@@ -591,7 +591,7 @@ pub(crate) enum Message {
         u64,
         Vec<String>,
         u64,
-        Result<HashMap<String, crate::api::WatchlistContext>, String>,
+        Result<crate::api::WatchlistContextsResponse, String>,
     ),
     LiveWatchlistHistoryLoaded(
         u64,
@@ -691,7 +691,7 @@ pub(crate) enum Message {
         u64,
         Vec<String>,
         u64,
-        Result<HashMap<String, crate::api::WatchlistContext>, String>,
+        Result<crate::api::WatchlistContextsResponse, String>,
     ),
     // Add widget menu
     ToggleAddWidgetMenu,
@@ -721,7 +721,7 @@ pub(crate) enum Message {
         u64,
         Vec<String>,
         u64,
-        Result<HashMap<String, crate::api::WatchlistContext>, String>,
+        Result<crate::api::WatchlistContextsResponse, String>,
     ),
     ScreenerHistoryLoaded(
         u64,
@@ -1266,6 +1266,12 @@ pub(crate) enum Message {
     /// Result of the REST `metaAndAssetCtxs` fallback fetch for a chart symbol
     /// (chart id, symbol the fetch was issued for, fetched context).
     ChartAssetContextRestFetched(ChartId, String, Result<Option<AssetContext>, String>),
+    /// Result of one coalesced `spotMetaAndAssetCtxs` request for every due
+    /// spot chart (targets, contexts keyed by symbol).
+    ChartSpotAssetContextsRestFetched(
+        Vec<(ChartId, String)>,
+        Result<Vec<(String, AssetContext)>, String>,
+    ),
     ChartViewportChanged(ChartId, ChartSurfaceId, ChartViewport),
     ChartFundingPanelHeightChanged(ChartId, u16, bool),
     ChartSessionPanelHeightChanged(ChartId, u16, bool),
@@ -1366,7 +1372,7 @@ pub(crate) enum Message {
         u64,
         Vec<String>,
         u64,
-        Result<HashMap<String, crate::api::WatchlistContext>, String>,
+        Result<crate::api::WatchlistContextsResponse, String>,
     ),
     OutcomeSearchChanged(String),
     OutcomeMarketGroupToggled(String),
@@ -1753,6 +1759,8 @@ mod tests {
                     encoding: 660,
                 }),
             }],
+            loaded_from_cache: false,
+            perp_meta_failed: false,
             spot_meta_failed: false,
             outcome_meta_failed: false,
         }));
@@ -1874,6 +1882,7 @@ mod tests {
                         quantity_provenance: Some(QuickOrderQuantityProvenance {
                             account_address: ADDRESS.to_string(),
                             account_data_revision: 1,
+                            spot_balances_revision: 1,
                             symbol_key: "HYPE".to_string(),
                             quantity_is_usd: false,
                             percentage: 25.0,

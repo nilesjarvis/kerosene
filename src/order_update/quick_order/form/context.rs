@@ -49,7 +49,11 @@ impl TradingTerminal {
         self.quick_order_margin_notional(symbol, data)
     }
 
-    pub(super) fn quick_order_sizing_basis(&self, symbol: &str) -> Option<OrderSizingBasis> {
+    pub(super) fn quick_order_sizing_basis(
+        &self,
+        symbol: &str,
+        _quantity_is_usd: bool,
+    ) -> Option<OrderSizingBasis> {
         let (_, data) = self.connected_order_account_snapshot()?;
         if self.quick_order_reduce_only_position_sizing_enabled(symbol) {
             return position_size_for_symbol(self.visible_clearinghouse_state(data), symbol).map(
@@ -59,7 +63,15 @@ impl TradingTerminal {
             );
         }
 
-        if self.is_spot_coin(symbol) {
+        if self
+            .exchange_symbol_for_key(symbol)
+            .is_some_and(|exchange_symbol| {
+                exchange_symbol.market_type == crate::api::MarketType::Spot
+            })
+        {
+            if !self.spot_usd_denomination_supported(symbol) {
+                return None;
+            }
             return self.spot_order_sizing_basis(symbol, data);
         }
 
@@ -94,7 +106,7 @@ impl TradingTerminal {
         let Some(quantity) = parse_positive_finite(quantity) else {
             return 0.0;
         };
-        let Some(sizing_basis) = self.quick_order_sizing_basis(symbol) else {
+        let Some(sizing_basis) = self.quick_order_sizing_basis(symbol, quantity_is_usd) else {
             return 0.0;
         };
         sizing_basis.percentage_for_quantity(

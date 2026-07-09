@@ -84,6 +84,12 @@ impl TradingTerminal {
         if self.is_outcome_coin(&self.active_symbol) {
             return self.handle_execute_outcome_preset(kind, preset, is_buy);
         }
+        if let Err(message) =
+            self.validate_spot_quantity_denomination(&self.active_symbol, self.preset_is_usd)
+        {
+            self.order_status = Some((message, true));
+            return Task::none();
+        }
 
         let Some(mid) = self
             .resolve_mid_for_symbol(&self.active_symbol)
@@ -546,6 +552,78 @@ mod tests {
         assert_eq!(terminal.order_quantity, "0.002000");
         assert!(!terminal.order_quantity_is_usd);
         assert_eq!(terminal.order_percentage, 0.0);
+    }
+
+    #[test]
+    fn usd_preset_rejects_non_usd_quoted_spot_without_mutating_ticket() {
+        let mut terminal = preset_ready_terminal();
+        let mut spot = symbol("@55", MarketType::Spot);
+        spot.ticker = "UETH".to_string();
+        spot.display_name = Some("UETH/UBTC".to_string());
+        spot.asset_index = 10_055;
+        terminal.active_symbol = "@55".to_string();
+        terminal.active_symbol_display = "UETH/UBTC".to_string();
+        terminal.exchange_symbols = vec![spot];
+        terminal.all_mids.insert("@55".to_string(), 0.05);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("@55".to_string(), TradingTerminal::now_ms());
+        terminal.preset_is_usd = true;
+        seed_existing_ticket(&mut terminal);
+
+        let _task = terminal.handle_execute_preset(
+            OrderKind::Market,
+            OrderPreset {
+                label: "$100".to_string(),
+                size: 100.0,
+                price_offset_pct: None,
+            },
+            true,
+        );
+
+        assert_existing_ticket_unchanged(&terminal);
+        assert!(terminal.presets_menu_expanded);
+        assert!(terminal.pending_order_action.is_none());
+        assert_eq!(
+            terminal.order_status,
+            Some((
+                "Spot trading is unavailable for UETH/UBTC because quote-token USD valuation and accounting are not verified".to_string(),
+                true,
+            ))
+        );
+    }
+
+    #[test]
+    fn coin_preset_cannot_bypass_non_usd_quote_gate() {
+        let mut terminal = preset_ready_terminal();
+        let mut spot = symbol("@55", MarketType::Spot);
+        spot.ticker = "UETH".to_string();
+        spot.display_name = Some("UETH/UBTC".to_string());
+        spot.asset_index = 10_055;
+        terminal.active_symbol = "@55".to_string();
+        terminal.active_symbol_display = "UETH/UBTC".to_string();
+        terminal.exchange_symbols = vec![spot];
+        terminal.all_mids.insert("@55".to_string(), 0.05);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("@55".to_string(), TradingTerminal::now_ms());
+        terminal.preset_is_usd = false;
+        seed_existing_ticket(&mut terminal);
+
+        let _task = terminal.handle_execute_preset(OrderKind::Market, base_preset(2.5), true);
+
+        assert_existing_ticket_unchanged(&terminal);
+        assert_eq!(terminal.pending_order_action, None);
+        assert!(
+            terminal
+                .order_status
+                .as_ref()
+                .is_some_and(|(message, is_error)| {
+                    *is_error
+                        && message
+                            .contains("quote-token USD valuation and accounting are not verified")
+                })
+        );
     }
 
     #[test]

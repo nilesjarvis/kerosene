@@ -57,20 +57,78 @@ pub async fn fetch_chart_asset_context(symbol: String) -> Result<Option<AssetCon
 }
 
 async fn fetch_spot_chart_asset_context(symbol: String) -> Result<Option<AssetContext>, String> {
-    let resp: Value = CLIENT
+    let mut contexts = fetch_spot_chart_asset_contexts(vec![symbol.clone()]).await?;
+    Ok(contexts
+        .drain(..)
+        .find_map(|(context_symbol, context)| (context_symbol == symbol).then_some(context)))
+}
+
+/// Fetch spot contexts for any number of charts with one
+/// `spotMetaAndAssetCtxs` request. That endpoint always returns the complete
+/// spot universe, so issuing one request per chart wastes the shared REST rate
+/// limit and turns transient failures into a retry storm.
+pub(crate) async fn fetch_spot_chart_asset_contexts(
+    symbols: Vec<String>,
+) -> Result<Vec<(String, AssetContext)>, String> {
+    if symbols.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let response = CLIENT
         .clone()
         .post(API_URL)
         .json(&serde_json::json!({ "type": "spotMetaAndAssetCtxs" }))
         .send()
         .await
-        .map_err(|e| format!("spotMetaAndAssetCtxs request failed: {e}"))?
+        .map_err(|e| format!("spotMetaAndAssetCtxs request failed: {e}"))?;
+    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| format!("; retry after {value}"))
+            .unwrap_or_default();
+        return Err(format!(
+            "spotMetaAndAssetCtxs rate limited (HTTP 429){retry_after}"
+        ));
+    }
+    let resp: Value = response
         .error_for_status()
         .map_err(|e| format!("spotMetaAndAssetCtxs HTTP error: {e}"))?
         .json()
         .await
         .map_err(|e| format!("spotMetaAndAssetCtxs parse failed: {e}"))?;
+    validate_spot_chart_asset_context_response(&resp)?;
 
-    Ok(parse_spot_chart_asset_context(&resp, &symbol))
+    let mut seen = std::collections::HashSet::new();
+    let contexts = symbols
+        .into_iter()
+        .filter(|symbol| seen.insert(symbol.clone()))
+        .filter_map(|symbol| {
+            parse_spot_chart_asset_context(&resp, &symbol).map(|context| (symbol, context))
+        })
+        .collect();
+    Ok(contexts)
+}
+
+fn validate_spot_chart_asset_context_response(resp: &Value) -> Result<(), String> {
+    let response_parts = resp
+        .as_array()
+        .filter(|parts| parts.len() == 2)
+        .ok_or_else(|| {
+            "spotMetaAndAssetCtxs schema invalid: expected [meta, contexts]".to_string()
+        })?;
+    let universe = response_parts[0]
+        .get("universe")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "spotMetaAndAssetCtxs schema invalid: missing meta universe".to_string())?;
+    let response_contexts = response_parts[1].as_array().ok_or_else(|| {
+        "spotMetaAndAssetCtxs schema invalid: contexts must be an array".to_string()
+    })?;
+    if universe.is_empty() || response_contexts.is_empty() {
+        return Err("spotMetaAndAssetCtxs schema invalid: empty universe or contexts".to_string());
+    }
+    Ok(())
 }
 
 /// Locate `symbol` within a `metaAndAssetCtxs` `[meta, contexts]` response and
@@ -176,7 +234,10 @@ fn spot_context_value_matches_symbol(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_chart_asset_context, parse_spot_chart_asset_context};
+    use super::{
+        parse_chart_asset_context, parse_spot_chart_asset_context,
+        validate_spot_chart_asset_context_response,
+    };
     use serde_json::json;
 
     fn hip3_response() -> serde_json::Value {
@@ -196,6 +257,17 @@ mod tests {
                   "oraclePx": "119.9", "prevDayPx": "118.0", "impactPxs": ["120.0", "120.2"] }
             ]
         ])
+    }
+
+    #[test]
+    fn rejects_error_shaped_spot_context_response() {
+        for invalid in [
+            json!({ "error": "rate limited" }),
+            json!([{}, []]),
+            json!([{ "universe": [{ "name": "@107", "index": 107 }] }, {}]),
+        ] {
+            assert!(validate_spot_chart_asset_context_response(&invalid).is_err());
+        }
     }
 
     #[test]

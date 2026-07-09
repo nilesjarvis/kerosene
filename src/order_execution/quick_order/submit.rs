@@ -111,7 +111,7 @@ impl TradingTerminal {
             .charts
             .get_mut(&chart_id)
             .and_then(|inst| inst.take_quick_order());
-        let Some(form) = form else {
+        let Some(mut form) = form else {
             return Task::none();
         };
 
@@ -120,9 +120,12 @@ impl TradingTerminal {
             .get(&chart_id)
             .map(|inst| inst.symbol.clone())
             .unwrap_or_default();
-        if let Some(task) =
-            self.stale_quick_order_percentage_task(&form, &chart_symbol, "placing a quick order")
-        {
+        if let Some(task) = self.stale_quick_order_percentage_task(
+            &mut form,
+            &chart_symbol,
+            "placing a quick order",
+            is_buy,
+        ) {
             self.restore_quick_order_form(chart_id, form, quick_order_surface);
             return task;
         }
@@ -131,7 +134,14 @@ impl TradingTerminal {
         } else {
             ExchangeOrderKind::Market
         };
-        let intent = PlaceIntent {
+        let spot_percentage_balance = form.quantity_provenance.as_ref().and_then(|provenance| {
+            self.account_data_for_order_account(&provenance.account_address)
+                .and_then(|data| {
+                    self.spot_percentage_available_balance_for_side(&chart_symbol, data, is_buy)
+                })
+                .map(|balance| (balance, provenance.percentage))
+        });
+        let mut intent = PlaceIntent {
             surface: OrderSurface::QuickOrder,
             symbol_key: chart_symbol,
             is_buy,
@@ -159,6 +169,14 @@ impl TradingTerminal {
             },
             reduce_only_source: ReduceOnlySource::Form(self.order_reduce_only),
         };
+        if let Some((available_balance, percentage)) = spot_percentage_balance {
+            intent.quantity_source = QuantitySource::SpotPercentageBalance {
+                available_balance,
+                percentage,
+                invalid_message: "Invalid spot percentage balance",
+                precision_invalid_message: "Spot percentage size is below asset precision",
+            };
+        }
         let prepared = match self.prepare_place_order(intent) {
             Ok(prepared) => prepared,
             Err(message) => {
@@ -179,9 +197,10 @@ impl TradingTerminal {
 
     fn stale_quick_order_percentage_task(
         &mut self,
-        form: &QuickOrderForm,
+        form: &mut QuickOrderForm,
         chart_symbol: &str,
         action: &str,
+        is_buy: bool,
     ) -> Option<Task<Message>> {
         let provenance = form.quantity_provenance.clone()?;
 
@@ -243,7 +262,20 @@ impl TradingTerminal {
             return Some(Task::none());
         }
 
-        if self.account_data_revision != provenance.account_data_revision {
+        let is_spot = self
+            .exchange_symbol_for_key(chart_symbol)
+            .is_some_and(|symbol| symbol.market_type == crate::api::MarketType::Spot);
+        if is_spot && self.spot_balances_revision != provenance.spot_balances_revision {
+            self.set_order_status(
+                format!(
+                    "Percentage size was calculated from older spot balances; reselect size before {action}"
+                ),
+                true,
+            );
+            return Some(Task::none());
+        }
+
+        if !is_spot && self.account_data_revision != provenance.account_data_revision {
             self.set_order_status(
                 format!(
                     "Percentage size was calculated from an older account snapshot; reselect size before {action}"
@@ -251,6 +283,62 @@ impl TradingTerminal {
                 true,
             );
             return Some(Task::none());
+        }
+
+        if is_spot {
+            if let Err(message) =
+                self.validate_spot_quantity_denomination(chart_symbol, form.quantity_is_usd)
+            {
+                self.set_order_status(message, true);
+                return Some(Task::none());
+            }
+            if !data.completeness.spot_balances_complete {
+                self.set_order_status(
+                    format!(
+                        "Spot balances may be incomplete; refresh account data before {action}"
+                    ),
+                    true,
+                );
+                return Some(self.refresh_account_data());
+            }
+            if !data.is_fresh_for_spot_balance_action(Self::now_ms()) {
+                self.set_order_status(
+                    format!("Spot balances are stale for percentage size; refresh before {action}"),
+                    true,
+                );
+                return Some(self.refresh_account_data());
+            }
+
+            let quantity = self.spot_percentage_quantity_for_side(
+                chart_symbol,
+                data,
+                is_buy,
+                provenance.percentage,
+                form.quantity_is_usd,
+                self.quick_order_reference_price(form.price, form.is_limit, chart_symbol),
+            );
+            let Some(quantity) = quantity else {
+                let side = if is_buy { "buying" } else { "selling" };
+                self.set_order_status(
+                    format!(
+                        "No verified spot balance available for {side}; refresh metadata and account data before {action}"
+                    ),
+                    true,
+                );
+                return Some(Task::none());
+            };
+            if form.quantity != quantity {
+                form.quantity = quantity;
+                let side = if is_buy { "Buy" } else { "Sell" };
+                self.set_order_status(
+                    format!(
+                        "{side} percentage size was recalculated for the selected side; review the quantity and submit again"
+                    ),
+                    true,
+                );
+                return Some(Task::none());
+            }
+            return None;
         }
 
         if !data.is_fresh_for_position_action(Self::now_ms()) {
@@ -317,6 +405,10 @@ impl TradingTerminal {
         };
 
         let (request, context) = prepared.place_request_with_context(&account_address);
+        self.invalidate_spot_balances_after_exchange_dispatch(
+            &account_address,
+            prepared.market_type,
+        );
         place_order_task(key, request, move |result| Message::QuickOrderResult {
             pending_indicator_id,
             context,

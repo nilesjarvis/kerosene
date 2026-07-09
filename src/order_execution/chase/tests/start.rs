@@ -56,6 +56,54 @@ fn start_chase_quantizes_base_size_to_asset_precision() {
 }
 
 #[test]
+fn spot_percentage_chase_sell_uses_exact_base_balance_not_rounded_usd_display() {
+    let mut terminal = chase_ready_terminal();
+    configure_spot_percentage_chase(&mut terminal, "100", "0", 0.00035);
+    assert_ne!(terminal.order_quantity, "100");
+
+    let _task = terminal.start_chase(false);
+
+    let chase = selected_chase(&terminal);
+    assert_eq!(chase.target_size, 100.0);
+}
+
+#[test]
+fn spot_percentage_chase_rejects_first_book_above_reserved_drift_budget() {
+    let mut terminal = chase_ready_terminal();
+    configure_spot_percentage_chase(&mut terminal, "0", "100", 100.0);
+
+    let _task = terminal.start_chase(true);
+    let chase_id = selected_chase_id(&terminal);
+    assert_eq!(selected_chase(&terminal).initial_price, 100.0);
+
+    let _task = terminal.chase_place_at_best(chase_id, 106.0);
+
+    assert!(terminal.chase_orders.is_empty());
+    assert!(order_status_error_contains(
+        &terminal,
+        "price drift limit exceeded"
+    ));
+}
+
+#[test]
+fn spot_chase_stops_before_dispatch_when_live_metadata_replaces_pair_identity() {
+    let mut terminal = chase_ready_terminal();
+    configure_spot_percentage_chase(&mut terminal, "100", "0", 1.0);
+    let _task = terminal.start_chase(false);
+    let chase_id = selected_chase_id(&terminal);
+
+    terminal.exchange_symbols[0].ticker = "OTHER".to_string();
+    terminal.exchange_symbols[0].display_name = Some("OTHER/USDC".to_string());
+    let _task = terminal.chase_place_at_best(chase_id, 1.0);
+
+    assert!(terminal.chase_orders.is_empty());
+    assert!(order_status_error_contains(
+        &terminal,
+        "spot market identity changed"
+    ));
+}
+
+#[test]
 fn start_chase_converts_usd_notional_to_base_size_using_fresh_mid() {
     let mut terminal = chase_ready_terminal();
     terminal.order_quantity = "1000".to_string();
@@ -121,6 +169,48 @@ fn start_chase_rejects_usd_notional_with_stale_mid() {
 
     assert!(terminal.chase_orders.is_empty());
     assert_eq!(terminal.pending_order_action, None);
+}
+
+#[test]
+fn start_chase_rejects_usd_notional_for_crypto_quoted_spot() {
+    let mut terminal = chase_ready_terminal();
+    terminal.active_symbol = "@151".to_string();
+    terminal.active_symbol_display = "HYPE/UETH".to_string();
+    terminal.exchange_symbols = vec![ExchangeSymbol {
+        ticker: "HYPE".to_string(),
+        category: "spot".to_string(),
+        display_name: Some("HYPE/UETH".to_string()),
+        asset_index: 10_151,
+        collateral_token: Some(221),
+        sz_decimals: 2,
+        max_leverage: 1,
+        market_type: MarketType::Spot,
+        ..symbol("@151", MarketType::Spot)
+    }];
+    terminal.order_quantity = "10".to_string();
+    terminal.order_quantity_is_usd = true;
+    terminal.all_mids.insert("@151".to_string(), 2.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("@151".to_string(), TradingTerminal::now_ms());
+
+    let _task = terminal.start_chase(true);
+
+    assert!(terminal.chase_orders.is_empty());
+    assert_eq!(terminal.pending_order_action, None);
+    assert!(order_status_error_contains(
+        &terminal,
+        "quote-token USD valuation and accounting are not verified"
+    ));
+
+    terminal.order_status = None;
+    terminal.order_quantity_is_usd = false;
+    let _task = terminal.start_chase(true);
+    assert!(terminal.chase_orders.is_empty());
+    assert!(order_status_error_contains(
+        &terminal,
+        "Spot trading is unavailable for HYPE/UETH"
+    ));
 }
 
 #[test]

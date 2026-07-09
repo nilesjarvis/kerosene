@@ -49,14 +49,67 @@ fn legacy_indexed_key_probes_the_api_named_spot_pair_mid() {
     // "PURR/USDC" is the actual allMids key; the legacy "@0" key must still
     // resolve it through the spot asset index alias.
     let candidates = terminal.mid_candidates_for_symbol("@0");
-    assert!(candidates.contains(&"@0".to_string()));
-    assert!(candidates.contains(&"PURR/USDC".to_string()));
-    assert!(candidates.contains(&"PURR".to_string()));
+    assert_eq!(candidates, vec!["@0", "PURR/USDC"]);
+
+    let canonical_candidates = terminal.mid_candidates_for_symbol("PURR/USDC");
+    assert_eq!(canonical_candidates, vec!["PURR/USDC", "@0"]);
+
+    let now_ms = TradingTerminal::now_ms();
+    terminal.all_mids.insert("PURR".to_string(), 4.1);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("PURR".to_string(), now_ms);
+    assert_eq!(terminal.resolve_mid_for_symbol_at("@0", now_ms), None);
+    assert_eq!(
+        terminal.resolve_mid_for_symbol_at("PURR/USDC", now_ms),
+        None
+    );
 
     terminal.all_mids.insert("PURR/USDC".to_string(), 4.2);
     terminal
         .all_mids_updated_at_ms
-        .insert("PURR/USDC".to_string(), TradingTerminal::now_ms());
-    assert_eq!(terminal.resolve_mid_for_symbol("@0"), Some(4.2));
-    assert_eq!(terminal.resolve_mid_for_symbol("PURR/USDC"), Some(4.2));
+        .insert("PURR/USDC".to_string(), now_ms);
+    assert_eq!(terminal.resolve_mid_for_symbol_at("@0", now_ms), Some(4.2));
+    assert_eq!(
+        terminal.resolve_mid_for_symbol_at("PURR/USDC", now_ms),
+        Some(4.2)
+    );
+}
+
+#[test]
+fn indexed_spot_mid_never_falls_through_to_same_ticker_perp_aliases() {
+    let mut terminal = TradingTerminal::boot().0;
+    let mut spot = symbol("@107", MarketType::Spot);
+    spot.ticker = "HYPE".to_string();
+    spot.display_name = Some("HYPE/USDC".to_string());
+    spot.asset_index = 10_107;
+    terminal.exchange_symbols = vec![symbol("HYPE", MarketType::Perp), spot];
+
+    let now_ms = TradingTerminal::now_ms();
+    terminal.all_mids = HashMap::from([("HYPE".to_string(), 40.0), ("UHYPE".to_string(), 41.0)]);
+    terminal.all_mids_updated_at_ms =
+        HashMap::from([("HYPE".to_string(), now_ms), ("UHYPE".to_string(), now_ms)]);
+
+    assert_eq!(terminal.mid_candidates_for_symbol("@107"), vec!["@107"]);
+    assert_eq!(terminal.resolve_mid_for_symbol_at("@107", now_ms), None);
+
+    terminal.all_mids.insert("@107".to_string(), 39.5);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("@107".to_string(), now_ms);
+    assert_eq!(
+        terminal.resolve_mid_for_symbol_at("@107", now_ms),
+        Some(39.5)
+    );
+}
+
+#[test]
+fn metadata_free_spot_keys_only_probe_the_exact_key() {
+    let terminal = TradingTerminal::boot().0;
+
+    assert_eq!(terminal.mid_candidates_for_symbol("@107"), vec!["@107"]);
+    assert_eq!(
+        terminal.mid_candidates_for_symbol("PURR/USDC"),
+        vec!["PURR/USDC"]
+    );
 }

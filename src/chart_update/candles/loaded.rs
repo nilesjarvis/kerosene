@@ -32,6 +32,8 @@ impl TradingTerminal {
         }
         let id = request.chart_id;
         let whole_unit_volume = self.is_outcome_coin(&request.symbol);
+        let is_spot_refresh =
+            request.mode == CandleFetchMode::Refresh && self.is_spot_coin(&request.symbol);
         let mut new_cache_data = None;
         let mut remove_cache_data = None;
         let mut retry_request = None;
@@ -75,6 +77,13 @@ impl TradingTerminal {
                             .first()
                             .map(|candle| candle.open_time);
                         instance.chart.merge_candles(candles);
+                        if is_spot_refresh {
+                            instance.candle_fetch_error = stale_spot_candle_tail_warning(
+                                &instance.chart.candles,
+                                request.timeframe,
+                                request.end_ms,
+                            );
+                        }
                         let oldest_after_merge = instance
                             .chart
                             .candles
@@ -322,11 +331,40 @@ fn candle_fetch_error_is_retryable(request: &CandleFetchRequest, error: &str) ->
     }
 }
 
+fn stale_spot_candle_tail_warning(
+    candles: &[Candle],
+    timeframe: crate::timeframe::Timeframe,
+    request_end_ms: u64,
+) -> Option<String> {
+    let last_close_ms = candles.last()?.close_time;
+    let age_ms = request_end_ms.saturating_sub(last_close_ms);
+    (age_ms > timeframe.cache_display_max_age_ms()).then(|| {
+        format!("Latest spot trade candle is stale for {timeframe}; the market may be inactive")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::chart_state::ChartInstance;
     use crate::timeframe::Timeframe;
+
+    fn spot_symbol(key: &str) -> crate::api::ExchangeSymbol {
+        crate::api::ExchangeSymbol {
+            key: key.to_string(),
+            ticker: "SPOT".to_string(),
+            category: "spot".to_string(),
+            display_name: Some("SPOT/USDC".to_string()),
+            keywords: vec!["spot".to_string()],
+            asset_index: 10_003,
+            collateral_token: Some(crate::api::USDC_TOKEN_INDEX),
+            sz_decimals: 2,
+            max_leverage: 1,
+            only_isolated: false,
+            market_type: crate::api::MarketType::Spot,
+            outcome: None,
+        }
+    }
 
     #[test]
     fn empty_candle_error_uses_chart_display_name_for_outcome_markets() {
@@ -360,6 +398,60 @@ mod tests {
             }
             other => panic!("expected error status, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn stale_spot_snapshot_remains_loaded_but_is_marked_stale() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.exchange_symbols = vec![spot_symbol("@3")];
+
+        let end_ms = 10 * 3_600_000;
+        let mut instance = ChartInstance::new(1, "@3".to_string(), Timeframe::H1);
+        let request = CandleFetchRequest {
+            chart_id: 1,
+            symbol: "@3".to_string(),
+            timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
+            start_ms: 0,
+            end_ms,
+            attempt: 0,
+        };
+        instance.candle_fetch_request = Some(request.clone());
+        terminal.charts.insert(1, instance);
+
+        let old = Candle::test_ohlcv(
+            3_600_000,
+            2 * 3_600_000 - 1,
+            [100.0, 100.0, 100.0, 100.0],
+            1.0,
+        );
+        let _task = terminal.apply_chart_candles_loaded(request, Ok(vec![old]));
+
+        let instance = terminal.charts.get(&1).expect("chart instance");
+        assert!(matches!(instance.chart.status, ChartStatus::Loaded));
+        assert_eq!(instance.chart.candles.len(), 1);
+        assert!(
+            instance
+                .candle_fetch_error
+                .as_deref()
+                .is_some_and(|message| message.contains("market may be inactive"))
+        );
+    }
+
+    #[test]
+    fn recent_spot_snapshot_is_not_marked_stale() {
+        let candle = Candle::test_ohlcv(
+            9 * 3_600_000,
+            10 * 3_600_000 - 1,
+            [100.0, 100.0, 100.0, 100.0],
+            1.0,
+        );
+
+        assert!(stale_spot_candle_tail_warning(&[candle], Timeframe::H1, 10 * 3_600_000).is_none());
     }
 
     #[test]

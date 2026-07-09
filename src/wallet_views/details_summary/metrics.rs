@@ -1,9 +1,8 @@
 use crate::account::WalletDetailsData;
 use crate::app_state::TradingTerminal;
 use crate::helpers::add_optional_f64;
-use crate::wallet_views::numbers::{
-    invalid_wallet_data, parse_wallet_number, wallet_has_visible_nonzero,
-};
+use crate::helpers::is_usd_stable_fee_token;
+use crate::wallet_views::numbers::{parse_wallet_number, wallet_has_visible_nonzero};
 use crate::wallet_views::position_metrics::{
     wallet_position_upnl, wallet_position_value, wallet_spot_value_unavailable,
 };
@@ -18,8 +17,29 @@ impl TradingTerminal {
         &self,
         data: &WalletDetailsData,
     ) -> WalletDetailsSummaryMetrics {
-        let account_value = parse_wallet_number(&data.clearinghouse.margin_summary.account_value);
-        let withdrawable = parse_wallet_number(&data.clearinghouse.withdrawable);
+        let clearinghouse_account_value =
+            parse_wallet_number(&data.clearinghouse.margin_summary.account_value);
+        let clearinghouse_withdrawable = parse_wallet_number(&data.clearinghouse.withdrawable);
+        let pm_available_value = data
+            .spot
+            .token_to_available_after_maintenance
+            .as_ref()
+            .and_then(|tokens| tokens.iter().find(|(token, _)| *token == 0))
+            .and_then(|(_, amount)| parse_wallet_number(amount));
+        // Portfolio-margin equity lives in spot state; individual perp-dex
+        // accountValue/withdrawable values are not the wallet's real headline
+        // balances. Fail visibly when a held token cannot be priced rather than
+        // presenting a plausible but materially incomplete value.
+        let account_value = if data.spot.portfolio_margin_enabled {
+            self.wallet_pm_spot_equity(data)
+        } else {
+            clearinghouse_account_value
+        };
+        let withdrawable = if data.spot.portfolio_margin_enabled {
+            pm_available_value
+        } else {
+            clearinghouse_withdrawable
+        };
         let margin_used = parse_wallet_number(&data.clearinghouse.margin_summary.total_margin_used);
         let notional = parse_wallet_number(&data.clearinghouse.margin_summary.total_ntl_pos);
         let margin_pct = wallet_margin_pct(account_value, margin_used);
@@ -89,20 +109,8 @@ impl TradingTerminal {
             .portfolio_margin_ratio
             .as_deref()
             .and_then(parse_wallet_number);
-        let pm_available_raw = data
-            .spot
-            .token_to_available_after_maintenance
-            .as_ref()
-            .and_then(|tokens| {
-                tokens
-                    .iter()
-                    .find(|(token, _)| *token == 0)
-                    .map(|(_, amount)| amount.as_str())
-            });
-        let pm_available = match pm_available_raw {
-            Some(amount) => parse_wallet_number(amount)
-                .map(|amount| self.format_display_usd_value(amount, 2))
-                .unwrap_or_else(invalid_wallet_data),
+        let pm_available = match pm_available_value {
+            Some(amount) => self.format_display_usd_value(amount, 2),
             None => "-".to_string(),
         };
 
@@ -121,6 +129,23 @@ impl TradingTerminal {
             pm_available,
             portfolio_margin_enabled: data.spot.portfolio_margin_enabled,
         }
+    }
+
+    fn wallet_pm_spot_equity(&self, data: &WalletDetailsData) -> Option<f64> {
+        let mut equity = 0.0;
+        for balance in &data.spot.balances {
+            let total = parse_wallet_number(&balance.total)?;
+            if total.abs() <= f64::EPSILON {
+                continue;
+            }
+            let mark = if is_usd_stable_fee_token(&balance.coin) {
+                1.0
+            } else {
+                self.spot_balance_mark_price(balance, &data.fills)?
+            };
+            equity += total * mark;
+        }
+        equity.is_finite().then_some(equity)
     }
 }
 

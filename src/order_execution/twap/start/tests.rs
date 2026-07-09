@@ -3,11 +3,15 @@ use super::validation::{
     TwapStartSchedule, parse_twap_start_schedule, validate_twap_schedule_capacity,
 };
 use super::*;
-use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
+use crate::account::{
+    AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary, SpotBalance,
+    SpotClearinghouseState, UserFeeRates,
+};
+use crate::api::{BookLevel, ExchangeSymbol, MarketType, OrderBook, OutcomeSymbolInfo};
 use crate::app_state::sensitive_string;
 use crate::config::AccountProfile;
 use crate::signing::OrderKind;
-use crate::twap_state::{TwapOrder, TwapStatus};
+use crate::twap_state::{TwapBookSnapshot, TwapOrder, TwapStatus};
 
 mod prices;
 mod schedule;
@@ -93,6 +97,78 @@ fn twap_ready_terminal() -> TradingTerminal {
     terminal.twap_form.randomize = false;
     terminal.pending_order_action = None;
     terminal
+}
+
+fn configure_spot_percentage_twap(
+    terminal: &mut TradingTerminal,
+    base_total: &str,
+    quote_total: &str,
+    mid: f64,
+) {
+    let mut spot = symbol("@7", MarketType::Spot);
+    spot.ticker = "LOW".to_string();
+    spot.display_name = Some("LOW/USDC".to_string());
+    spot.asset_index = 10_007;
+    spot.collateral_token = Some(crate::api::USDC_TOKEN_INDEX);
+    spot.sz_decimals = 2;
+    terminal.active_symbol = "@7".to_string();
+    terminal.active_symbol_display = "LOW/USDC".to_string();
+    terminal.exchange_symbols = vec![spot];
+    terminal.all_mids.insert("@7".to_string(), mid);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("@7".to_string(), TradingTerminal::now_ms());
+    terminal.order_quantity_is_usd = true;
+
+    let mut data = AccountData {
+        fetch_scope: Default::default(),
+        request_weight_estimate: 0,
+        account_abstraction: Default::default(),
+        clearinghouse: ClearinghouseState {
+            margin_summary: MarginSummary {
+                account_value: "0".to_string(),
+                total_ntl_pos: "0".to_string(),
+                total_margin_used: "0".to_string(),
+            },
+            cross_margin_summary: None,
+            cross_maintenance_margin_used: None,
+            withdrawable: "0".to_string(),
+            asset_positions: Vec::new(),
+        },
+        clearinghouses_by_dex: std::collections::HashMap::new(),
+        spot: SpotClearinghouseState {
+            balances: vec![
+                SpotBalance {
+                    coin: "LOW".to_string(),
+                    token: Some(7),
+                    total: base_total.to_string(),
+                    hold: "0".to_string(),
+                    entry_ntl: "0".to_string(),
+                    supplied: None,
+                },
+                SpotBalance {
+                    coin: "USDC".to_string(),
+                    token: Some(crate::api::USDC_TOKEN_INDEX),
+                    total: quote_total.to_string(),
+                    hold: "0".to_string(),
+                    entry_ntl: "0".to_string(),
+                    supplied: None,
+                },
+            ],
+            portfolio_margin_enabled: false,
+            portfolio_margin_ratio: None,
+            token_to_available_after_maintenance: None,
+        },
+        open_orders: Vec::new(),
+        fills: Vec::new(),
+        funding_history: Vec::new(),
+        fee_rates: UserFeeRates::default(),
+        completeness: AccountDataCompleteness::default(),
+        fetched_at_ms: TradingTerminal::now_ms(),
+    };
+    data.mark_spot_balances_fetched_at(TradingTerminal::now_ms());
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, data);
+    terminal.handle_order_percentage_changed(100.0);
 }
 
 fn started_twap_or_panic(terminal: &TradingTerminal) -> &TwapOrder {

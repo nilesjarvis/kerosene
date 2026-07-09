@@ -82,12 +82,20 @@ impl fmt::Debug for AccountDataCompletenessDebug<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let completeness = self.0;
         f.debug_struct("AccountDataCompleteness")
+            .field(
+                "spot_balances_complete",
+                &completeness.spot_balances_complete,
+            )
             .field("positions_complete", &completeness.positions_complete)
             .field("positions_actionable", &completeness.positions_actionable)
             .field("open_orders_complete", &completeness.open_orders_complete)
             .field("fills_complete", &completeness.fills_complete)
             .field("funding_complete", &completeness.funding_complete)
             .field("fees_complete", &completeness.fees_complete)
+            .field(
+                "spot_balances_fetched_at_ms",
+                &completeness.spot_balances_fetched_at_ms,
+            )
             .field(
                 "positions_fetched_at_ms",
                 &completeness.positions_fetched_at_ms,
@@ -109,6 +117,19 @@ impl fmt::Debug for AccountDataCompletenessDebug<'_> {
 
 impl AccountData {
     pub const POSITION_ACTION_MAX_AGE_MS: u64 = 15_000;
+
+    pub fn spot_balance_action_snapshot_age_ms(&self, now_ms: u64) -> Option<u64> {
+        now_ms.checked_sub(
+            self.completeness
+                .spot_balances_fetched_at_ms
+                .unwrap_or(self.fetched_at_ms),
+        )
+    }
+
+    pub fn is_fresh_for_spot_balance_action(&self, now_ms: u64) -> bool {
+        self.spot_balance_action_snapshot_age_ms(now_ms)
+            .is_some_and(|age| age <= Self::POSITION_ACTION_MAX_AGE_MS)
+    }
 
     pub fn position_action_snapshot_age_ms(&self, now_ms: u64) -> Option<u64> {
         now_ms.checked_sub(
@@ -190,6 +211,11 @@ impl AccountData {
         }
         self.completeness.positions_fetched_at_ms = Some(fetched_at_ms);
         self.fetched_at_ms = fetched_at_ms;
+    }
+
+    pub fn mark_spot_balances_fetched_at(&mut self, fetched_at_ms: u64) {
+        self.completeness.spot_balances_complete = true;
+        self.completeness.spot_balances_fetched_at_ms = Some(fetched_at_ms);
     }
 
     pub fn mark_open_orders_fetched_at(&mut self, fetched_at_ms: u64) {

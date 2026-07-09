@@ -151,6 +151,7 @@ impl TradingTerminal {
                 let fills_for_twap = data.fills.clone();
                 let is_pm = data.is_portfolio_margin();
                 self.bump_account_data_revision();
+                self.bump_spot_balances_revision();
                 self.account_data = Some(data);
                 self.account_data_address = Some(address.clone());
                 let position_reconciliation =

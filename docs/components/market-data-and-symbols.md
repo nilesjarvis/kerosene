@@ -46,6 +46,27 @@ Symbol search is implemented in `market_state/symbol_search/` and
 filters, hides muted tickers, resolves aliases, and feeds chart/order-book/order
 entry selection.
 
+## Spot Metadata And Identity Safety
+
+Perpetual, spot, and outcome metadata families are fetched independently, so a
+perpetual metadata outage does not prevent a valid spot universe from loading.
+Spot parsing is strict: error-shaped or empty responses, invalid token
+references, duplicate indices, malformed pairs, and unsupported precision are
+rejected rather than converted into an empty or partially guessed universe.
+
+`ExchangeSymbol` retains both the spot asset index and quote-token identity.
+Only a complete live metadata result is cacheable and orderable. A cached
+universe is displayed while an immediate live verification runs; if live spot
+metadata fails, last-known markets can remain visible but
+`spot_metadata_degraded` disables spot trading until verification succeeds.
+
+Persisted aliases for API-named spot pairs are migrated only after metadata
+proves the mapping. This currently rewrites legacy `@0` to `PURR/USDC` across
+regular chart primary/secondary series, fixed order books, spaghetti charts,
+and live watchlists, deduplicates collisions, invalidates old requests, and
+refetches under the canonical key. Startup and runtime layout restoration defer
+raw legacy candle/book requests when metadata is not yet available.
+
 ## Active Symbol
 
 The active symbol is the app-level trading context. It drives:
@@ -78,6 +99,31 @@ applies them and then updates dependent systems:
 - account/position PnL surfaces that depend on latest mids
 
 Mids are not persisted. They are live market state.
+
+Spot mid lookup is exact-pair-only. Indexed keys and API-named pairs may use a
+metadata-verified alias for the same spot asset, but a missing spot mid never
+falls back to a same-ticker perpetual. This invariant applies to chart values,
+order defaults, USD-to-coin conversion, presets, Chase, and TWAP.
+
+## Spot Context And Candle Recovery
+
+Spot chart asset-context fallback validates the complete
+`spotMetaAndAssetCtxs` schema and coalesces all eligible spot charts into one
+request. Missing/error results use bounded exponential backoff; rate limits set
+a shared cooldown so multiple charts cannot create a per-chart retry storm. A
+live websocket context always wins a race with REST fallback data.
+
+Watchlist/context requests are request-scoped: malformed top-level spot data is
+rejected, missing unrelated universe rows do not poison requested results, and
+missing requested symbols are reported without presenting a partial response
+as complete. Healthy requested market families are returned alongside explicit
+partial errors when another family fails.
+
+Sparse spot candle history is loaded but visibly marked stale when its tail is
+too old. A live jump beyond the normal contiguous window triggers a bounded
+reconciliation reload; further sparse updates during the cooldown append
+normally instead of causing continuous reload churn. The same rules apply to
+primary and comparison series.
 
 ## Order Books
 

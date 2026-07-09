@@ -59,6 +59,7 @@ impl TradingTerminal {
         else {
             return;
         };
+        self.twap_spot_symbol_identities.remove(&twap_id);
         upsert_advanced_order_history(&mut self.advanced_order_history, entry);
         self.persist_config();
     }

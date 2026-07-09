@@ -89,7 +89,7 @@ impl TradingTerminal {
         request_id: u64,
         requested_symbols: Vec<String>,
         requested_at: u64,
-        result: Result<HashMap<String, api::WatchlistContext>, String>,
+        result: Result<api::WatchlistContextsResponse, String>,
     ) -> Task<Message> {
         if !self.ticker_tape_contexts_loading
             || request_id != self.ticker_tape_contexts_request_id
@@ -112,9 +112,20 @@ impl TradingTerminal {
             .map(|(symbol, context)| (symbol.clone(), context.clone()))
             .collect();
         let scoped_contexts = match result {
-            Ok(contexts) => {
+            Ok(response) => {
                 let mut scoped_contexts = preserved_contexts;
-                scoped_contexts.extend(contexts.into_iter().filter(|(symbol, _)| {
+                if !response.partial_errors.is_empty() {
+                    scoped_contexts.extend(
+                        self.ticker_tape_ctxs
+                            .iter()
+                            .filter(|(symbol, _)| {
+                                requested_symbol_set.contains(*symbol)
+                                    && current_symbols.contains(*symbol)
+                            })
+                            .map(|(symbol, context)| (symbol.clone(), context.clone())),
+                    );
+                }
+                scoped_contexts.extend(response.contexts.into_iter().filter(|(symbol, _)| {
                     requested_symbol_set.contains(symbol) && current_symbols.contains(symbol)
                 }));
                 Some(scoped_contexts)
@@ -198,7 +209,7 @@ mod tests {
             stale_request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
         ));
 
         assert!(
@@ -222,13 +233,13 @@ mod tests {
             request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
         ));
         let _task = terminal.update_ticker_tape_market(Message::TickerTapeContextsLoaded(
             request_id,
             vec!["BTC".to_string()],
             11,
-            Ok(HashMap::from([("BTC".to_string(), context(2.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()),
         ));
 
         assert!(!terminal.ticker_tape_contexts_loading);
@@ -259,7 +270,8 @@ mod tests {
             Ok(HashMap::from([
                 ("BTC".to_string(), context(1.0)),
                 ("DOGE".to_string(), context(3.0)),
-            ])),
+            ])
+            .into()),
         ));
 
         assert_eq!(terminal.ticker_tape_ctxs.len(), 2);
@@ -281,6 +293,35 @@ mod tests {
     }
 
     #[test]
+    fn ticker_tape_partial_context_keeps_omitted_requested_last_known_value() {
+        let mut terminal = terminal_with_ticker_tape(&["BTC", "@107"]);
+        terminal
+            .ticker_tape_ctxs
+            .insert("@107".to_string(), context(9.0));
+        terminal.ticker_tape_contexts_loading = true;
+        terminal.ticker_tape_contexts_request_id = 7;
+        terminal.ticker_tape_contexts_request_symbols = vec!["BTC".to_string(), "@107".to_string()];
+
+        let _task = terminal.update_ticker_tape_market(Message::TickerTapeContextsLoaded(
+            7,
+            vec!["BTC".to_string(), "@107".to_string()],
+            10,
+            Ok(api::WatchlistContextsResponse {
+                contexts: HashMap::from([("BTC".to_string(), context(1.0))]),
+                partial_errors: vec!["spot: HTTP 503".to_string()],
+            }),
+        ));
+
+        assert_eq!(
+            terminal
+                .ticker_tape_ctxs
+                .get("@107")
+                .and_then(|ctx| ctx.day_vlm),
+            Some(9.0)
+        );
+    }
+
+    #[test]
     fn empty_ticker_tape_scope_invalidates_in_flight_context_result() {
         let mut terminal = terminal_with_ticker_tape(&["BTC"]);
 
@@ -298,7 +339,7 @@ mod tests {
             stale_request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
         ));
 
         assert!(terminal.ticker_tape_ctxs.is_empty());
@@ -316,7 +357,7 @@ mod tests {
             1,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
         ));
 
         assert!(terminal.ticker_tape_contexts_loading);

@@ -1,4 +1,4 @@
-use crate::api::WatchlistContext;
+use crate::api::{WatchlistContext, WatchlistContextsResponse};
 use crate::helpers::redact_sensitive_response_text;
 
 use std::collections::HashMap;
@@ -11,6 +11,7 @@ mod tests;
 // ---------------------------------------------------------------------------
 
 const SYMBOL_SEARCH_CONTEXT_FAILURE_PREFIX: &str = "24h volume refresh failed:";
+const SYMBOL_SEARCH_CONTEXT_PARTIAL_PREFIX: &str = "24h volume refresh partially failed:";
 
 pub(super) fn apply_contexts_loaded(
     loading: &mut bool,
@@ -18,15 +19,25 @@ pub(super) fn apply_contexts_loaded(
     contexts: &mut HashMap<String, WatchlistContext>,
     status: &mut Option<(String, bool)>,
     requested_at: u64,
-    result: Result<HashMap<String, WatchlistContext>, String>,
+    result: Result<WatchlistContextsResponse, String>,
 ) {
     *loading = false;
 
     match result {
-        Ok(loaded_contexts) => {
+        Ok(response) => {
             *last_fetch_ms = Some(requested_at);
-            *contexts = loaded_contexts;
-            *status = None;
+            *contexts = response.contexts;
+            *status = if response.partial_errors.is_empty() {
+                None
+            } else {
+                Some((
+                    format!(
+                        "{SYMBOL_SEARCH_CONTEXT_PARTIAL_PREFIX} {}",
+                        redact_sensitive_response_text(&response.partial_errors.join("; "))
+                    ),
+                    true,
+                ))
+            };
         }
         Err(error) => {
             *status = Some((

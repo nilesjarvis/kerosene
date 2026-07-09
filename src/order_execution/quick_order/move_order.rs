@@ -184,6 +184,10 @@ impl TradingTerminal {
             .insert(move_key.clone(), context);
         self.sync_all_chart_orders();
 
+        self.invalidate_spot_balances_after_exchange_dispatch(
+            &account_address,
+            prepared.market_type,
+        );
         modify_order_task(key, prepared, move |r| Message::MoveOrderModifyResult {
             account_address: account_address.clone().into(),
             coin: move_key.coin().to_string(),

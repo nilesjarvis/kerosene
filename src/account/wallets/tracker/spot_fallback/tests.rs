@@ -1,5 +1,23 @@
 use super::*;
 use crate::account::SpotBalance;
+use crate::api::{ExchangeSymbol, MarketType};
+
+fn ubtc_symbol() -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: "@142".to_string(),
+        ticker: "UBTC".to_string(),
+        category: "spot".to_string(),
+        display_name: Some("UBTC/USDC".to_string()),
+        keywords: vec!["spot".to_string()],
+        asset_index: 10_142,
+        collateral_token: Some(crate::api::USDC_TOKEN_INDEX),
+        sz_decimals: 5,
+        max_leverage: 1,
+        only_isolated: false,
+        market_type: MarketType::Spot,
+        outcome: None,
+    }
+}
 
 fn spot_balance(coin: &str, token: u32, total: &str) -> SpotBalance {
     SpotBalance {
@@ -28,18 +46,9 @@ fn pm_spot_state() -> SpotClearinghouseState {
 }
 
 #[test]
-fn fallback_needed_only_when_equity_or_withdrawable_not_positive() {
-    assert!(!spot_equity_fallback_needed(Some(100.0), Some(50.0)));
-    assert!(spot_equity_fallback_needed(Some(0.0), Some(50.0)));
-    assert!(spot_equity_fallback_needed(Some(100.0), Some(0.0)));
-    assert!(spot_equity_fallback_needed(Some(0.0), Some(0.0)));
-    assert!(spot_equity_fallback_needed(None, None));
-}
-
-#[test]
 fn pm_state_yields_spot_equity_and_token0_withdrawable() {
-    // Unit-wrapped UBTC prices via the BTC mid; USDC counts at face value.
-    let mids = HashMap::from([("BTC".to_string(), 60_000.0)]);
+    let mut mids = HashMap::from([("@142".to_string(), 60_000.0)]);
+    augment_spot_balance_mids(&mut mids, &[ubtc_symbol()]);
     let fallback = spot_equity_fallback_from_state(&pm_spot_state(), &mids)
         .expect("portfolio-margin state must produce a fallback");
     assert_eq!(fallback.equity, Some(250.0 + 0.5 * 60_000.0));
@@ -54,7 +63,7 @@ fn non_pm_state_produces_no_fallback() {
 }
 
 #[test]
-fn merge_fills_only_non_positive_perp_values() {
+fn merge_uses_authoritative_pm_spot_values() {
     let fallback = SpotEquityFallback {
         equity: Some(5_000.0),
         withdrawable: Some(1_000.0),
@@ -65,7 +74,8 @@ fn merge_fills_only_non_positive_perp_values() {
     assert_eq!(equity, Some(5_000.0));
     assert_eq!(withdrawable, Some(1_000.0));
 
-    // Already-positive perp values win over the spot estimate.
+    // A PM spot state is authoritative even when the per-dex response happens
+    // to contain small positive but incomplete values.
     let fallback = SpotEquityFallback {
         equity: Some(5_000.0),
         withdrawable: Some(1_000.0),
@@ -73,8 +83,8 @@ fn merge_fills_only_non_positive_perp_values() {
     let mut equity = Some(42.0);
     let mut withdrawable = Some(7.0);
     merge_spot_equity_fallback(Ok(Some(fallback)), &mut equity, &mut withdrawable);
-    assert_eq!(equity, Some(42.0));
-    assert_eq!(withdrawable, Some(7.0));
+    assert_eq!(equity, Some(5_000.0));
+    assert_eq!(withdrawable, Some(1_000.0));
 }
 
 #[test]

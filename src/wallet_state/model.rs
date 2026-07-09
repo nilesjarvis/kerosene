@@ -282,6 +282,7 @@ mod tests {
                 open_order_count: 5,
                 long_exposure: Some(1000.0),
                 short_exposure: Some(2000.0),
+                valuation_warning: Some("wallet-row-secret-valuation-warning".to_string()),
             }),
             error: Some("wallet-row-secret-error".to_string()),
             order_error: Some("wallet-row-secret-order-error".to_string()),
@@ -296,5 +297,6 @@ mod tests {
         assert!(!rendered.contains("987654321.123"));
         assert!(!rendered.contains("wallet-row-secret-error"));
         assert!(!rendered.contains("wallet-row-secret-order-error"));
+        assert!(!rendered.contains("wallet-row-secret-valuation-warning"));
     }
 }

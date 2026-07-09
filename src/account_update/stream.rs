@@ -6,6 +6,7 @@ use fills::{apply_fills_update, fill_toast_message};
 use orders::preserve_open_order_reduce_only;
 
 use crate::account::{UserFill, normalize_dex_open_order_coins};
+use crate::api::{MarketType, spot_symbol_for_indexed_key};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::ws::WsUserData;
@@ -28,6 +29,17 @@ fn should_repair_account_from_ws(
     account_loading: bool,
 ) -> bool {
     connected_address.is_some() && !has_account_data && !account_loading
+}
+
+fn fill_is_spot(fill: &UserFill, symbols: &[crate::api::ExchangeSymbol]) -> bool {
+    if fill.coin.starts_with('@') || fill.coin.contains('/') {
+        return true;
+    }
+    symbols
+        .iter()
+        .find(|symbol| symbol.key == fill.coin)
+        .or_else(|| spot_symbol_for_indexed_key(symbols, &fill.coin))
+        .is_some_and(|symbol| symbol.market_type == MarketType::Spot)
 }
 
 impl TradingTerminal {
@@ -71,6 +83,7 @@ impl TradingTerminal {
         let mut orders_updated_dex = None;
         let mut fills_changed = false;
         let mut positions_changed = false;
+        let mut spot_balances_changed = false;
         let mut mids_task = Task::none();
         let mut fill_toast_fills: Vec<UserFill> = Vec::new();
         let mut fresh_fills: Vec<UserFill> = Vec::new();
@@ -148,6 +161,17 @@ impl TradingTerminal {
                             .cloned()
                             .collect();
                     }
+                    if fresh_fills
+                        .iter()
+                        .any(|fill| fill_is_spot(fill, &exchange_symbols))
+                    {
+                        // Fills and spotState are separate websocket lanes. A
+                        // fill can arrive first, so the last balance snapshot
+                        // is no longer safe for percentage sizing until a new
+                        // spotState or full account refresh reconciles it.
+                        data.completeness.spot_balances_complete = false;
+                        spot_balances_changed = true;
+                    }
                     fill_toast_fills =
                         apply_fills_update(&mut data.fills, fills, is_snapshot, is_hidden);
                     account_data_changed = true;
@@ -155,7 +179,9 @@ impl TradingTerminal {
                 }
                 WsUserData::SpotBalances(balances) => {
                     data.spot.balances = balances;
+                    data.mark_spot_balances_fetched_at(Self::now_ms());
                     account_data_changed = true;
+                    spot_balances_changed = true;
                 }
                 WsUserData::AllMids(mids) => {
                     mids_task = self.handle_mids_update(mids);
@@ -190,6 +216,9 @@ impl TradingTerminal {
 
         if account_data_changed {
             self.bump_account_data_revision();
+        }
+        if spot_balances_changed {
+            self.bump_spot_balances_revision();
         }
         if !fresh_fills.is_empty() {
             self.consume_pending_market_order_fills(&fresh_fills);

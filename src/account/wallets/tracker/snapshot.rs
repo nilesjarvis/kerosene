@@ -59,6 +59,7 @@ pub(super) fn build_wallet_tracker_snapshot(
         open_order_count: 0,
         long_exposure,
         short_exposure,
+        valuation_warning: None,
     }
 }
 

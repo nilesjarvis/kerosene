@@ -29,9 +29,9 @@ fn spot_equity_estimate_rejects_invalid_balance_numbers() {
 }
 
 #[test]
-fn spot_equity_estimate_requires_mid_or_valid_entry_notional_for_non_stables() {
+fn spot_equity_estimate_requires_an_exact_spot_mark_for_non_stables() {
     let mut mids = HashMap::new();
-    mids.insert("PURR".to_string(), 4.0);
+    mids.insert(spot_balance_mid_key("PURR"), 4.0);
     assert_eq!(
         estimate_spot_equity(&[balance("PURR", "2", "3")], &mids),
         Some(8.0)
@@ -40,7 +40,7 @@ fn spot_equity_estimate_requires_mid_or_valid_entry_notional_for_non_stables() {
     let mids = HashMap::new();
     assert_eq!(
         estimate_spot_equity(&[balance("PURR", "2", "3")], &mids),
-        Some(3.0)
+        None
     );
     assert_eq!(
         estimate_spot_equity(&[balance("PURR", "2", "bad")], &mids),
@@ -51,7 +51,53 @@ fn spot_equity_estimate_requires_mid_or_valid_entry_notional_for_non_stables() {
     mids.insert("PURR".to_string(), 0.0);
     assert_eq!(
         estimate_spot_equity(&[balance("PURR", "2", "3")], &mids),
-        Some(3.0)
+        None
+    );
+}
+
+#[test]
+fn bare_perp_mid_is_never_used_for_spot_balance_equity() {
+    let mids = HashMap::from([("HYPE".to_string(), 40.0)]);
+
+    assert_eq!(
+        estimate_spot_equity(&[balance("HYPE", "2", "50")], &mids),
+        None
+    );
+}
+
+#[test]
+fn negative_spot_balances_reduce_equity_instead_of_disappearing() {
+    let mids = HashMap::from([(spot_balance_mid_key("UBTC"), 60_000.0)]);
+
+    assert_eq!(
+        estimate_spot_equity(&[balance("UBTC", "-0.5", "0")], &mids),
+        Some(-30_000.0)
+    );
+}
+
+#[test]
+fn validated_metadata_maps_indexed_spot_mid_to_balance_token() {
+    let symbol = ExchangeSymbol {
+        key: "@142".to_string(),
+        ticker: "UBTC".to_string(),
+        category: "spot".to_string(),
+        display_name: Some("UBTC/USDC".to_string()),
+        keywords: vec!["spot".to_string()],
+        asset_index: 10_142,
+        collateral_token: Some(crate::api::USDC_TOKEN_INDEX),
+        sz_decimals: 5,
+        max_leverage: 1,
+        only_isolated: false,
+        market_type: MarketType::Spot,
+        outcome: None,
+    };
+    let mut mids = HashMap::from([("@142".to_string(), 60_000.0)]);
+
+    augment_spot_balance_mids(&mut mids, &[symbol]);
+
+    assert_eq!(
+        estimate_spot_equity(&[balance("UBTC", "0.5", "0")], &mids),
+        Some(30_000.0)
     );
 }
 

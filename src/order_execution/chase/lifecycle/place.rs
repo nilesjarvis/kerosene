@@ -156,6 +156,73 @@ impl TradingTerminal {
             ));
             return Task::none();
         }
+        if chase_snapshot.is_spot
+            && !self.chase_spot_symbol_identity_is_current(chase_id, &chase_snapshot.coin)
+        {
+            if let Some(oid) = chase_snapshot.current_oid {
+                return self.cancel_known_chase_order_for_safety(
+                    chase_id,
+                    oid,
+                    "Chase stopped: spot market identity changed",
+                    true,
+                );
+            }
+            if chase_snapshot.has_exchange_identifier() {
+                if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                    chase.lifecycle = ChaseLifecycle::Verifying {
+                        reason: ChaseVerificationReason::MissingOrder,
+                    };
+                }
+                self.order_status = Some((
+                    "Chase paused: spot market identity changed; checking prior exposure".into(),
+                    true,
+                ));
+                return Task::none();
+            }
+            self.order_status = Some(("Chase stopped: spot market identity changed".into(), true));
+            self.remove_chase_order(chase_id);
+            return Task::none();
+        }
+        if chase_snapshot.is_spot
+            && let Err(message) =
+                self.validate_spot_quantity_denomination(&chase_snapshot.coin, false)
+        {
+            if let Some(oid) = chase_snapshot.current_oid {
+                return self.cancel_known_chase_order_for_safety(chase_id, oid, message, true);
+            }
+            self.order_status = Some((message, true));
+            self.remove_chase_order(chase_id);
+            return Task::none();
+        }
+        if chase_snapshot.is_spot && self.spot_metadata_degraded {
+            if let Some(oid) = chase_snapshot.current_oid {
+                return self.cancel_known_chase_order_for_safety(
+                    chase_id,
+                    oid,
+                    "Chase stopped: spot metadata has not been verified",
+                    true,
+                );
+            }
+            if chase_snapshot.has_exchange_identifier() {
+                if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                    chase.lifecycle = ChaseLifecycle::Verifying {
+                        reason: ChaseVerificationReason::MissingOrder,
+                    };
+                }
+                self.order_status = Some((
+                    "Chase paused: spot metadata has not been verified; checking prior exposure"
+                        .into(),
+                    true,
+                ));
+                return Task::none();
+            }
+            self.order_status = Some((
+                "Chase stopped: spot metadata has not been verified".into(),
+                true,
+            ));
+            self.remove_chase_order(chase_id);
+            return Task::none();
+        }
         if let Some(oid) = chase_snapshot.current_oid {
             return self.check_chase_order_status(
                 chase_id,
@@ -282,6 +349,7 @@ impl TradingTerminal {
         let asset = chase.asset;
         let is_buy = chase.is_buy;
         let reduce_only = chase.reduce_only;
+        let account_address = chase.account_address.clone();
         let market_type = if chase.is_spot {
             MarketType::Spot
         } else {
@@ -319,6 +387,7 @@ impl TradingTerminal {
         };
         let request = prepared.place_request_with_existing_cloid(cloid);
 
+        self.invalidate_spot_balances_after_exchange_dispatch(&account_address, market_type);
         place_order_task(key, request, move |r| Message::ChasePlaceResult {
             chase_id,
             result: Box::new(r),

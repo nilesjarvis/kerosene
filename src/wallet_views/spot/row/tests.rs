@@ -30,6 +30,17 @@ fn wallet_spot_amount_formats_outcome_balances_as_whole_contracts() {
 }
 
 #[test]
+fn wallet_spot_amount_formats_all_supported_stables_as_dollars() {
+    let denomination = crate::denomination::DisplayDenominationContext::default();
+    for stable in ["USDC", "USDH", "USDT0", "USDE"] {
+        assert_eq!(
+            wallet_spot_amount(&denomination, stable, Some(2.5), true),
+            "$2.50"
+        );
+    }
+}
+
+#[test]
 fn wallet_supplied_amount_distinguishes_missing_and_invalid_values() {
     let denomination = crate::denomination::DisplayDenominationContext::default();
     assert_eq!(wallet_supplied_amount(&denomination, None, false), "-");

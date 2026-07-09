@@ -124,7 +124,7 @@ impl TradingTerminal {
         if self.reject_if_account_reconciliation_required("placing an order", "account data") {
             return Task::none();
         }
-        if let Some(task) = self.stale_percentage_order_quantity_task("placing an order") {
+        if let Some(task) = self.stale_percentage_order_quantity_task("placing an order", is_buy) {
             return task;
         }
 
@@ -140,7 +140,7 @@ impl TradingTerminal {
                 return Task::none();
             }
         };
-        let intent = Self::ticket_order_place_intent(TicketOrderPlaceIntent {
+        let mut intent = Self::ticket_order_place_intent(TicketOrderPlaceIntent {
             surface,
             symbol_key: self.active_symbol.clone(),
             is_buy,
@@ -150,6 +150,16 @@ impl TradingTerminal {
             quantity_is_usd: self.order_quantity_is_usd,
             reduce_only: self.order_reduce_only,
         });
+        if let Some((available_balance, percentage)) =
+            self.ticket_spot_percentage_balance_for_side(is_buy)
+        {
+            intent.quantity_source = QuantitySource::SpotPercentageBalance {
+                available_balance,
+                percentage,
+                invalid_message: "Invalid spot percentage balance",
+                precision_invalid_message: "Spot percentage size is below asset precision",
+            };
+        }
 
         let prepared = match self.prepare_place_order(intent) {
             Ok(prepared) => prepared,
@@ -228,6 +238,10 @@ impl TradingTerminal {
         };
 
         let (request, context) = prepared.place_request_with_context(&account_address);
+        self.invalidate_spot_balances_after_exchange_dispatch(
+            &account_address,
+            prepared.market_type,
+        );
         place_order_task(key, request, move |result| Message::OrderResult {
             pending_indicator_id,
             context,

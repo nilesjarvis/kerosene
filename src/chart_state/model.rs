@@ -122,6 +122,11 @@ pub(crate) struct ChartInstance {
     /// Whether a REST asset-context fetch is currently in flight for this chart
     /// (dedupes the status-tick poller).
     pub(crate) asset_ctx_rest_in_flight: bool,
+    /// Consecutive REST fallback failures and the earliest retry time. Missing
+    /// symbols, transport failures, and rate limits back off instead of being
+    /// retried by every one-second status tick.
+    pub(crate) asset_ctx_rest_failures: u8,
+    pub(crate) asset_ctx_rest_next_attempt_at_ms: Option<u64>,
     /// Whether the inline symbol editor is open.
     pub(crate) editor_open: bool,
     /// Whether the chart header is collapsed to a ticker-only strip.
@@ -184,12 +189,17 @@ pub(crate) struct ChartInstance {
     pub(crate) candle_fetch_error: Option<String>,
     /// Whether older primary candle pagination reached the provider boundary.
     pub(crate) candle_backfill_exhausted: bool,
+    /// Last time a spot WebSocket discontinuity triggered a REST
+    /// reconciliation. Illiquid spot streams are naturally sparse, so further
+    /// gaps back off instead of reloading on every update.
+    pub(crate) spot_candle_gap_reloaded_at_ms: Option<u64>,
     /// Latest in-flight secondary comparison candle request for stale-response guards.
     pub(crate) secondary_candle_fetch_request: Option<CandleFetchRequest>,
     /// Non-blocking secondary comparison refresh error.
     pub(crate) secondary_candle_fetch_error: Option<String>,
     /// Whether older secondary candle pagination reached the provider boundary.
     pub(crate) secondary_candle_backfill_exhausted: bool,
+    pub(crate) secondary_spot_candle_gap_reloaded_at_ms: Option<u64>,
     /// Transient direction flash for price-derived header numbers after WS updates.
     pub(crate) last_price_flash: Option<PriceFlash>,
     /// Whether SEC earnings-release markers are enabled for this chart.

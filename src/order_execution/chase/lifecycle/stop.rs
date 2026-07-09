@@ -1,3 +1,4 @@
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers::positive_finite_value;
 use crate::message::Message;
@@ -51,6 +52,12 @@ impl TradingTerminal {
             self.pending_order_action = None;
         }
 
+        let account_address = chase.account_address.clone();
+        let market_type = if chase.is_spot {
+            MarketType::Spot
+        } else {
+            MarketType::Perp
+        };
         let reason = reason.into();
         match plan_stop_chase_with_reason(chase, reason.clone(), is_error) {
             StopChaseAction::CancelResting {
@@ -70,6 +77,10 @@ impl TradingTerminal {
                 self.set_order_status_toast_on_error(
                     format!("{reason}: cancelling order {oid}"),
                     is_error,
+                );
+                self.invalidate_spot_balances_after_exchange_dispatch(
+                    &account_address,
+                    market_type,
                 );
                 cancel_order_task(key, asset, oid, move |r| Message::ChaseCancelResult {
                     chase_id,
@@ -193,7 +204,14 @@ impl TradingTerminal {
         }
 
         let asset = chase.asset;
+        let account_address = chase.account_address.clone();
+        let market_type = if chase.is_spot {
+            MarketType::Spot
+        } else {
+            MarketType::Perp
+        };
         self.set_order_status_toast_on_error(format!("{reason}: cancelling order {oid}"), is_error);
+        self.invalidate_spot_balances_after_exchange_dispatch(&account_address, market_type);
         cancel_order_task(key, asset, oid, move |r| Message::ChaseCancelResult {
             chase_id,
             oid,

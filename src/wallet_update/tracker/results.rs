@@ -158,6 +158,7 @@ mod tests {
             open_order_count: 2,
             long_exposure: Some(10.0),
             short_exposure: Some(0.0),
+            valuation_warning: None,
         }
     }
 

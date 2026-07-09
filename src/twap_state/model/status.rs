@@ -39,6 +39,7 @@ impl TwapStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TwapPauseReason {
     StaleMarketData,
+    SpotMetadataUnverified,
     RateLimited,
     NetworkError,
     StatusUnknown,
@@ -49,6 +50,7 @@ impl TwapPauseReason {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::StaleMarketData => "Stale market data",
+            Self::SpotMetadataUnverified => "Spot metadata unverified",
             Self::RateLimited => "Rate limited",
             Self::NetworkError => "Network error",
             Self::StatusUnknown => "Checking status",

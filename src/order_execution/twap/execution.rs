@@ -73,6 +73,63 @@ impl TradingTerminal {
             return Task::none();
         };
 
+        if is_spot {
+            let symbol_key = self
+                .twap_orders
+                .get(&twap_id)
+                .map(|twap| twap.coin.as_str())
+                .unwrap_or_default();
+            if !self.twap_spot_symbol_identity_is_current(twap_id, symbol_key) {
+                return self.stop_twap_with_reason(
+                    twap_id,
+                    "TWAP stopped: spot market identity changed",
+                    true,
+                );
+            }
+        }
+
+        let spot_quote_error = if is_spot {
+            self.twap_orders.get(&twap_id).and_then(|twap| {
+                self.validate_spot_quantity_denomination(&twap.coin, false)
+                    .err()
+            })
+        } else {
+            None
+        };
+        if let Some(message) = spot_quote_error {
+            return self.stop_twap_with_reason(twap_id, message, true);
+        }
+
+        if is_spot && self.spot_metadata_degraded {
+            if let Some(twap) = self.twap_orders.get_mut(&twap_id)
+                && twap.pause_reason != Some(TwapPauseReason::SpotMetadataUnverified)
+            {
+                twap.pause(
+                    TwapPauseReason::SpotMetadataUnverified,
+                    None,
+                    "TWAP paused: spot metadata has not been verified".to_string(),
+                    true,
+                );
+                self.order_status = Some((
+                    "TWAP paused: spot metadata has not been verified".to_string(),
+                    true,
+                ));
+            }
+            return Task::none();
+        }
+        if is_spot
+            && let Some(twap) = self.twap_orders.get_mut(&twap_id)
+            && twap.pause_reason == Some(TwapPauseReason::SpotMetadataUnverified)
+        {
+            twap.clear_pause();
+            twap.status = TwapStatus::Running;
+            twap.push_event(
+                TwapEventKind::Reconciled,
+                "TWAP resumed: spot metadata verified".to_string(),
+                false,
+            );
+        }
+
         if now.saturating_duration_since(book_updated_at) > TWAP_BOOK_STALE_AFTER {
             if let Some(twap) = self.twap_orders.get_mut(&twap_id)
                 && twap.pause_reason != Some(TwapPauseReason::StaleMarketData)
@@ -229,6 +286,7 @@ impl TradingTerminal {
 
         let asset = twap.asset;
         let reduce_only = twap.reduce_only;
+        let account_address = twap.account_address.clone();
         let market_type = if twap.is_spot {
             MarketType::Spot
         } else {
@@ -249,6 +307,7 @@ impl TradingTerminal {
         };
         let request = prepared.place_request_with_existing_cloid(pending_slice.cloid);
 
+        self.invalidate_spot_balances_after_exchange_dispatch(&account_address, market_type);
         place_order_task(key, request, move |result| Message::TwapSliceResult {
             twap_id,
             result: Box::new(result),

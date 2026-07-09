@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 
 const SCREENER_LOADING_SYMBOLS_STATUS: &str = "Loading symbols";
 const SCREENER_CONTEXT_FAILURE_PREFIX: &str = "Screener refresh failed:";
+const SCREENER_CONTEXT_PARTIAL_PREFIX: &str = "Screener refresh partially failed:";
 const SCREENER_HISTORY_FAILURE_PREFIX: &str = "Screener history refresh failed:";
 
 impl TradingTerminal {
@@ -136,6 +137,7 @@ impl TradingTerminal {
         clear_screener_status_if(&mut self.screener.status, |message| {
             message == SCREENER_LOADING_SYMBOLS_STATUS
                 || message.starts_with(SCREENER_CONTEXT_FAILURE_PREFIX)
+                || message.starts_with(SCREENER_CONTEXT_PARTIAL_PREFIX)
         });
         Task::perform(api::fetch_watchlist_contexts(symbols), move |result| {
             Message::ScreenerContextsLoaded(request_id, requested_symbols.clone(), now_ms, result)
@@ -216,7 +218,7 @@ impl TradingTerminal {
         request_id: u64,
         requested_symbols: Vec<String>,
         requested_at: u64,
-        result: Result<HashMap<String, api::WatchlistContext>, String>,
+        result: Result<api::WatchlistContextsResponse, String>,
     ) -> Task<Message> {
         if !self.screener.contexts_loading
             || request_id != self.screener.contexts_request_id
@@ -245,17 +247,37 @@ impl TradingTerminal {
         self.screener.contexts_loading = false;
 
         match result {
-            Ok(contexts) => {
+            Ok(response) => {
                 let mut scoped_contexts = preserved_contexts;
-                scoped_contexts.extend(contexts.into_iter().filter(|(symbol, _)| {
+                if !response.partial_errors.is_empty() {
+                    scoped_contexts.extend(
+                        self.screener
+                            .contexts
+                            .iter()
+                            .filter(|(symbol, _)| {
+                                requested_symbol_set.contains(*symbol)
+                                    && current_symbols.contains(*symbol)
+                            })
+                            .map(|(symbol, context)| (symbol.clone(), context.clone())),
+                    );
+                }
+                scoped_contexts.extend(response.contexts.into_iter().filter(|(symbol, _)| {
                     requested_symbol_set.contains(symbol) && current_symbols.contains(symbol)
                 }));
                 self.screener.contexts = scoped_contexts;
                 self.screener.contexts_last_fetch_ms = Some(requested_at);
-                clear_screener_status_if(&mut self.screener.status, |message| {
-                    message == SCREENER_LOADING_SYMBOLS_STATUS
-                        || message.starts_with(SCREENER_CONTEXT_FAILURE_PREFIX)
-                });
+                if response.partial_errors.is_empty() {
+                    clear_screener_status_if(&mut self.screener.status, |message| {
+                        message == SCREENER_LOADING_SYMBOLS_STATUS
+                            || message.starts_with(SCREENER_CONTEXT_FAILURE_PREFIX)
+                            || message.starts_with(SCREENER_CONTEXT_PARTIAL_PREFIX)
+                    });
+                } else {
+                    self.screener.status = Some(screener_failure_status(
+                        SCREENER_CONTEXT_PARTIAL_PREFIX,
+                        &response.partial_errors.join("; "),
+                    ));
+                }
             }
             Err(error) if has_current_requested_symbol => {
                 self.screener
@@ -442,7 +464,8 @@ mod tests {
             Ok(HashMap::from([
                 ("BTC".to_string(), context(1.0)),
                 ("xyz:ETH".to_string(), context(2.0)),
-            ])),
+            ])
+            .into()),
         ));
 
         assert!(
@@ -469,7 +492,7 @@ mod tests {
             1,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
         ));
 
         assert!(terminal.screener.contexts_loading);
@@ -480,6 +503,46 @@ mod tests {
         );
         assert!(terminal.screener.contexts.is_empty());
         assert_eq!(terminal.screener.contexts_last_fetch_ms, None);
+    }
+
+    #[test]
+    fn screener_partial_context_result_keeps_data_and_reports_failed_family() {
+        let mut terminal = terminal_with_screener(&["BTC", "@107"]);
+        terminal
+            .screener
+            .contexts
+            .insert("@107".to_string(), context(9.0));
+        terminal.screener.contexts_loading = true;
+        terminal.screener.contexts_request_id = 7;
+        terminal.screener.contexts_request_symbols = vec!["BTC".to_string(), "@107".to_string()];
+
+        let _task = terminal.update_screener(Message::ScreenerContextsLoaded(
+            7,
+            vec!["BTC".to_string(), "@107".to_string()],
+            10,
+            Ok(api::WatchlistContextsResponse {
+                contexts: HashMap::from([("BTC".to_string(), context(1.0))]),
+                partial_errors: vec!["spot: HTTP 503".to_string()],
+            }),
+        ));
+
+        assert!(terminal.screener.contexts.contains_key("BTC"));
+        assert_eq!(
+            terminal
+                .screener
+                .contexts
+                .get("@107")
+                .and_then(|ctx| ctx.day_vlm),
+            Some(9.0)
+        );
+        assert_eq!(terminal.screener.contexts_last_fetch_ms, Some(10));
+        assert_eq!(
+            terminal.screener.status,
+            Some((
+                "Screener refresh partially failed: spot: HTTP 503".to_string(),
+                true
+            ))
+        );
     }
 
     #[test]
@@ -505,7 +568,8 @@ mod tests {
             Ok(HashMap::from([
                 ("xyz:ETH".to_string(), context(2.0)),
                 ("DOGE".to_string(), context(3.0)),
-            ])),
+            ])
+            .into()),
         ));
 
         assert_eq!(
@@ -535,7 +599,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::new()),
+            Ok(HashMap::new().into()),
         ));
 
         assert!(!terminal.screener.contexts_loading);
@@ -617,7 +681,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
         ));
 
         assert_eq!(
@@ -669,7 +733,7 @@ mod tests {
             stale_request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(2.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()),
         ));
 
         assert!(terminal.screener.contexts.is_empty());

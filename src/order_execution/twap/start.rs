@@ -17,6 +17,7 @@ use std::time::Instant;
 mod price_range;
 mod validation;
 
+use super::super::sizing::order_size_from_quantity_input;
 use validation::{parse_twap_start_schedule, validate_twap_schedule_capacity};
 
 impl TradingTerminal {
@@ -76,7 +77,17 @@ impl TradingTerminal {
         let Some(start_context) = self.advanced_order_start_context(AdvancedOrderKind::Twap) else {
             return Task::none();
         };
-        if let Some(task) = self.stale_percentage_order_quantity_task("starting a TWAP") {
+        if let Err(message) = self
+            .validate_spot_quantity_denomination(&self.active_symbol, self.order_quantity_is_usd)
+        {
+            self.order_status = Some((message, true));
+            return Task::none();
+        }
+        if let Err(message) = self.validate_spot_automation_quote(&self.active_symbol, "TWAP") {
+            self.order_status = Some((message, true));
+            return Task::none();
+        }
+        if let Some(task) = self.stale_percentage_order_quantity_task("starting a TWAP", is_buy) {
             return task;
         }
 
@@ -196,9 +207,23 @@ impl TradingTerminal {
         } else {
             None
         };
-        let Some(target_size) =
+        let exact_spot_percentage = is_spot
+            .then(|| self.ticket_spot_percentage_balance_for_side(is_buy))
+            .flatten();
+        let target_size = if let Some((balance, percentage)) = exact_spot_percentage {
+            let available = balance * (percentage as f64 / 100.0);
+            order_size_from_quantity_input(
+                available,
+                // A buy TWAP may execute anywhere in its configured range;
+                // size against the worst permitted price.
+                max_price,
+                is_buy,
+                sz_decimals,
+            )
+        } else {
             twap_target_size_from_quantity(raw_qty, reference_price, self.order_quantity_is_usd)
-        else {
+        };
+        let Some(target_size) = target_size else {
             self.order_status = Some(("Invalid TWAP size".into(), true));
             return Task::none();
         };
@@ -248,6 +273,9 @@ impl TradingTerminal {
             started_at_ms: Self::now_ms(),
         });
         self.twap_orders.insert(twap_id, twap);
+        if is_spot {
+            self.record_twap_spot_symbol_identity(twap_id, &sym);
+        }
         self.selected_twap_id = Some(twap_id);
         self.order_status = Some((
             format!(

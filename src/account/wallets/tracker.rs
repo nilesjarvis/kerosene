@@ -21,7 +21,7 @@ use open_orders::fetch_wallet_tracker_open_order_count_scoped;
 use snapshot::{build_wallet_tracker_snapshot, parse_tracker_number};
 use spot_fallback::{
     apply_spot_equity_fallback, fetch_spot_fallback_mids, merge_spot_equity_fallback,
-    spot_equity_fallback_from_state, spot_equity_fallback_needed,
+    spot_equity_fallback_from_state,
 };
 
 /// Fetch a low-cost account snapshot for the wallet tracker.
@@ -79,7 +79,8 @@ pub async fn fetch_wallet_tracker_snapshot_scoped(
 
     // Best-effort like the HIP-3 pass below: a transient failure of the
     // auxiliary spot request must not discard the perp snapshot in hand.
-    apply_spot_equity_fallback(&client, &address, &mut equity, &mut withdrawable).await;
+    let valuation_warning =
+        apply_spot_equity_fallback(&client, &address, &mut equity, &mut withdrawable).await;
     append_hip3_margin_and_positions(
         &client,
         &address,
@@ -89,12 +90,11 @@ pub async fn fetch_wallet_tracker_snapshot_scoped(
     )
     .await;
 
-    Ok(build_wallet_tracker_snapshot(
-        equity,
-        withdrawable,
-        margin_used,
-        asset_positions,
-    ))
+    let mut snapshot =
+        build_wallet_tracker_snapshot(equity, withdrawable, margin_used, asset_positions);
+    snapshot.valuation_warning =
+        valuation_warning.map(|warning| crate::helpers::redact_sensitive_response_text(&warning));
+    Ok(snapshot)
 }
 
 pub async fn fetch_wallet_tracker_snapshot_scoped_with_provider(
@@ -184,10 +184,25 @@ pub async fn fetch_wallet_tracker_snapshots_scoped_with_provider(
         .map(|(address, result)| {
             let result = result.map(|mut values| {
                 if let Some(spot) = values.spot_fallback.take() {
+                    if let Err(error) = &mids {
+                        values.valuation_warning = Some(format!(
+                            "Portfolio-margin spot valuation unavailable: {error}"
+                        ));
+                    }
                     let outcome = mids
                         .as_ref()
                         .map(|mids| spot_equity_fallback_from_state(&spot, mids))
                         .map_err(String::clone);
+                    if outcome.as_ref().is_ok_and(|fallback| {
+                        fallback
+                            .as_ref()
+                            .is_some_and(|fallback| fallback.equity.is_none())
+                    }) {
+                        values.valuation_warning = Some(
+                            "Portfolio-margin spot valuation is incomplete because one or more balances have no live mark"
+                                .to_string(),
+                        );
+                    }
                     merge_spot_equity_fallback(
                         outcome,
                         &mut values.equity,
@@ -241,19 +256,24 @@ struct PortfolioTrackerValues {
     withdrawable: Option<f64>,
     margin_used: Option<f64>,
     asset_positions: Vec<AssetPosition>,
-    /// `Some` only for portfolio-margin wallets whose perp equity or
-    /// withdrawable does not already reflect real equity.
+    /// `Some` for portfolio-margin wallets; spot state is authoritative even
+    /// when an individual perp-dex response contains a small positive value.
     spot_fallback: Option<SpotClearinghouseState>,
+    valuation_warning: Option<String>,
 }
 
 impl PortfolioTrackerValues {
     fn into_snapshot(self) -> WalletTrackerSnapshot {
-        build_wallet_tracker_snapshot(
+        let mut snapshot = build_wallet_tracker_snapshot(
             self.equity,
             self.withdrawable,
             self.margin_used,
             self.asset_positions,
-        )
+        );
+        snapshot.valuation_warning = self
+            .valuation_warning
+            .map(|warning| crate::helpers::redact_sensitive_response_text(&warning));
+        snapshot
     }
 }
 
@@ -273,19 +293,16 @@ fn wallet_tracker_values_from_portfolio(
         );
         asset_positions.extend(hip3_state.asset_positions);
     }
-    let spot_fallback = if spot_equity_fallback_needed(equity, withdrawable) {
-        portfolio
-            .spot_clearinghouse()
-            .ok()
-            .filter(|spot| spot.portfolio_margin_enabled)
-    } else {
-        None
-    };
+    let spot_fallback = portfolio
+        .spot_clearinghouse()
+        .ok()
+        .filter(|spot| spot.portfolio_margin_enabled);
     Ok(PortfolioTrackerValues {
         equity,
         withdrawable,
         margin_used,
         asset_positions,
         spot_fallback,
+        valuation_warning: None,
     })
 }

@@ -59,6 +59,16 @@ fn balance_amounts_mark_invalid_source_values() {
             "$3.00".to_string()
         )
     );
+    for stable in ["USDT0", "USDE"] {
+        assert_eq!(
+            balance_amounts(stable, Some(10.0), Some(7.0), Some(3.0), &denomination),
+            (
+                "$10.00".to_string(),
+                "$7.00".to_string(),
+                "$3.00".to_string()
+            )
+        );
+    }
 }
 
 #[test]

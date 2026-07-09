@@ -6,9 +6,10 @@ mod resolution;
 use crate::api::{ExchangeSymbolsPayload, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
+use crate::chart_state::ChartBackfillFetchContext;
 use crate::config::MarketUniverseConfig;
 use crate::helpers::redact_sensitive_response_text;
-use crate::market_state::SymbolSearchMarketFilter;
+use crate::market_state::{OrderBookSymbolMode, SymbolSearchMarketFilter};
 use crate::message::Message;
 use crate::spaghetti_state::SpaghettiChartId;
 
@@ -99,20 +100,30 @@ impl TradingTerminal {
         Task::perform(crate::api::fetch_exchange_symbols(), Message::SymbolsLoaded)
     }
 
-    /// A failed spotMeta/outcomeMeta request leaves that market type absent
-    /// from the payload. Spot symbols can remain tradable, but retained outcome
-    /// symbols are label-only until fresh outcome metadata proves they are
-    /// orderable again.
+    /// A failed metadata request leaves that market type absent from the
+    /// payload. Retained spot symbols stay visible but are fail-closed for new
+    /// orders; retained outcome symbols are label-only until fresh metadata
+    /// proves either market type orderable again.
     fn merge_symbols_payload(
         &self,
         payload: ExchangeSymbolsPayload,
     ) -> Vec<crate::api::ExchangeSymbol> {
         let ExchangeSymbolsPayload {
             mut symbols,
+            loaded_from_cache: _,
+            perp_meta_failed,
             spot_meta_failed,
             outcome_meta_failed,
         } = payload;
 
+        if perp_meta_failed {
+            symbols.extend(
+                self.exchange_symbols
+                    .iter()
+                    .filter(|symbol| symbol.market_type == MarketType::Perp)
+                    .cloned(),
+            );
+        }
         if spot_meta_failed {
             symbols.extend(
                 self.exchange_symbols
@@ -139,10 +150,185 @@ impl TradingTerminal {
                     }),
             );
         }
-        if spot_meta_failed || outcome_meta_failed {
+        if perp_meta_failed || spot_meta_failed || outcome_meta_failed {
             symbols.sort_by(|a, b| a.ticker.cmp(&b.ticker));
         }
         symbols
+    }
+
+    /// Rewrite persisted indexed aliases for API-named spot pairs (currently
+    /// legacy `@0` -> `PURR/USDC`) once strict spot metadata proves the
+    /// canonical key. Any request already issued with the old key is
+    /// invalidated, and affected widgets are refetched under the canonical key.
+    fn migrate_legacy_spot_widget_keys(&mut self) -> Vec<Task<Message>> {
+        let aliases: std::collections::HashMap<String, (String, String)> = self
+            .exchange_symbols
+            .iter()
+            .filter(|symbol| symbol.market_type == MarketType::Spot)
+            .filter_map(|symbol| {
+                let spot_index = symbol.asset_index.checked_sub(10_000)?;
+                let indexed_key = format!("@{spot_index}");
+                (indexed_key != symbol.key).then(|| {
+                    (
+                        indexed_key,
+                        (
+                            symbol.key.clone(),
+                            Self::exchange_symbol_display_name(symbol),
+                        ),
+                    )
+                })
+            })
+            .collect();
+        if aliases.is_empty() {
+            return Vec::new();
+        }
+
+        let mut changed = false;
+        let mut order_book_ids = Vec::new();
+        for (id, instance) in &mut self.order_books {
+            let OrderBookSymbolMode::Fixed(symbol) = &mut instance.mode else {
+                continue;
+            };
+            let Some((canonical, _)) = aliases.get(symbol) else {
+                continue;
+            };
+            *symbol = canonical.clone();
+            instance.set_book(crate::api::OrderBook::empty());
+            instance.clear_asset_context_and_price_history();
+            instance.reset_tick_options_basis();
+            instance.clear_book_request();
+            instance.book_loading = true;
+            instance.book_error = None;
+            instance.book_failure_toasted = false;
+            order_book_ids.push(*id);
+            changed = true;
+        }
+
+        let chart_backfill_source = self.chart_backfill_source;
+        let read_data_provider_generation = self.read_data_provider_generation;
+        let hydromancer_key_generation = self.hydromancer_key_generation;
+        let hydromancer_api_key = self.hydromancer_api_key_for_task();
+        let now_ms = Self::now_ms();
+        let mut removed_spaghetti_cache_keys = Vec::new();
+        let mut spaghetti_fetches = Vec::new();
+        for (chart_id, instance) in &mut self.spaghetti_charts {
+            let effective_timeframe = Self::spaghetti_effective_timeframe_for(
+                instance.interval,
+                instance.canvas.active_session,
+                instance.session_granularity,
+                now_ms,
+            );
+            let mut chart_changed = false;
+            for series in &mut instance.canvas.series {
+                let Some((canonical, display)) = aliases.get(&series.symbol) else {
+                    continue;
+                };
+                removed_spaghetti_cache_keys.push((series.symbol.clone(), effective_timeframe));
+                series.symbol = canonical.clone();
+                series.display = display.clone();
+                chart_changed = true;
+            }
+            if !chart_changed {
+                continue;
+            }
+
+            let mut seen = std::collections::HashSet::new();
+            instance
+                .canvas
+                .series
+                .retain(|series| seen.insert(series.symbol.clone()));
+            for series in &mut instance.canvas.series {
+                removed_spaghetti_cache_keys.push((series.symbol.clone(), effective_timeframe));
+                series.candles.clear();
+                series.loaded = false;
+                spaghetti_fetches.push((
+                    *chart_id,
+                    series.symbol.clone(),
+                    instance.interval,
+                    instance.canvas.active_session,
+                    instance.session_granularity,
+                ));
+            }
+            instance.canvas.cache.clear();
+            changed = true;
+        }
+        for (symbol, timeframe) in removed_spaghetti_cache_keys {
+            self.remove_cached_candles(&symbol, timeframe);
+        }
+
+        let mut watchlist_changed = false;
+        let mut legacy_watchlist_keys = std::collections::HashSet::new();
+        for watchlist in self.live_watchlists.values_mut() {
+            let mut this_watchlist_changed = false;
+            for symbol in &mut watchlist.symbols {
+                let Some((canonical, _)) = aliases.get(symbol) else {
+                    continue;
+                };
+                legacy_watchlist_keys.insert(symbol.clone());
+                *symbol = canonical.clone();
+                this_watchlist_changed = true;
+                watchlist_changed = true;
+            }
+            if this_watchlist_changed {
+                let mut seen = std::collections::HashSet::new();
+                watchlist
+                    .symbols
+                    .retain(|symbol| seen.insert(symbol.clone()));
+            }
+        }
+        if watchlist_changed {
+            for legacy_key in legacy_watchlist_keys {
+                self.live_watchlist_ctxs.remove(&legacy_key);
+                self.live_watchlist_history.remove(&legacy_key);
+                self.live_watchlist_history_loaded_at.remove(&legacy_key);
+            }
+            self.live_watchlist_contexts_request_id =
+                self.live_watchlist_contexts_request_id.saturating_add(1);
+            self.live_watchlist_contexts_loading = false;
+            self.live_watchlist_contexts_request_symbols.clear();
+            self.live_watchlist_contexts_refresh_pending = false;
+            self.live_watchlist_history_request_id =
+                self.live_watchlist_history_request_id.saturating_add(1);
+            self.live_watchlist_history_loading = false;
+            self.live_watchlist_history_request_symbols.clear();
+            self.live_watchlist_history_refresh_pending = false;
+            self.refresh_live_watchlist_row_caches();
+            changed = true;
+        }
+
+        if !changed {
+            return Vec::new();
+        }
+        self.persist_config();
+
+        let mut tasks = Vec::new();
+        tasks.extend(
+            order_book_ids
+                .into_iter()
+                .map(|id| self.order_book_fetch_task_for_id(id)),
+        );
+        tasks.extend(spaghetti_fetches.into_iter().map(
+            |(chart_id, symbol, timeframe, session, session_granularity)| {
+                Self::fetch_spaghetti_candles(
+                    chart_id,
+                    &symbol,
+                    timeframe,
+                    session,
+                    session_granularity,
+                    None,
+                    ChartBackfillFetchContext::new(
+                        chart_backfill_source,
+                        read_data_provider_generation,
+                        hydromancer_key_generation,
+                        hydromancer_api_key.clone(),
+                    ),
+                )
+            },
+        ));
+        if watchlist_changed {
+            tasks.push(self.request_live_watchlist_refresh(true));
+        }
+        tasks
     }
 
     /// Remember the display label of every loaded outcome market so fills,
@@ -210,11 +396,61 @@ impl TradingTerminal {
         self.exchange_symbols_refresh_inflight = false;
         match result {
             Ok(payload) => {
+                let loaded_from_cache = payload.loaded_from_cache;
+                let perp_meta_failed = payload.perp_meta_failed;
+                let spot_meta_failed = payload.spot_meta_failed;
                 let outcome_meta_failed = payload.outcome_meta_failed;
+                let was_spot_metadata_degraded = self.spot_metadata_degraded;
+                self.spot_metadata_degraded = spot_meta_failed || loaded_from_cache;
                 let symbols = self.merge_symbols_payload(payload);
                 let symbols_changed = self.exchange_symbols != symbols;
-                if outcome_meta_failed
-                    && !symbols.iter().any(|symbol| {
+                if symbols_changed {
+                    self.exchange_symbols = symbols;
+                }
+                let mut initial_tasks = if spot_meta_failed {
+                    Vec::new()
+                } else {
+                    self.migrate_legacy_spot_widget_keys()
+                };
+                if loaded_from_cache {
+                    self.symbol_search_status = Some((
+                        "Cached markets are visible while live spot metadata is verified; spot trading remains disabled until verification succeeds"
+                            .to_string(),
+                        true,
+                    ));
+                    self.exchange_symbols_refresh_inflight = true;
+                    initial_tasks.push(Task::perform(
+                        crate::api::fetch_exchange_symbols(),
+                        Message::SymbolsLoaded,
+                    ));
+                } else if spot_meta_failed {
+                    let retained = self
+                        .exchange_symbols
+                        .iter()
+                        .any(|symbol| symbol.market_type == MarketType::Spot);
+                    let message = if retained {
+                        "Spot metadata is temporarily unverified; last-known spot markets remain visible, but spot trading is disabled until verification succeeds"
+                    } else {
+                        "Spot metadata failed to load; spot trading is unavailable until verification succeeds"
+                    }
+                    .to_string();
+                    self.symbol_search_status = Some((message.clone(), true));
+                    if !was_spot_metadata_degraded {
+                        self.push_toast(message, true);
+                    }
+                } else if was_spot_metadata_degraded {
+                    self.symbol_search_status = Some((
+                        "Spot metadata verified; spot trading is available again".to_string(),
+                        false,
+                    ));
+                } else if perp_meta_failed {
+                    self.symbol_search_status = Some((
+                        "Perpetual metadata failed to load; using last-known perpetual markets and retrying shortly"
+                            .to_string(),
+                        true,
+                    ));
+                } else if outcome_meta_failed
+                    && !self.exchange_symbols.iter().any(|symbol| {
                         symbol.market_type == MarketType::Outcome && symbol.outcome.is_some()
                     })
                 {
@@ -225,9 +461,8 @@ impl TradingTerminal {
                 }
                 if !symbols_changed && !self.exchange_symbols.is_empty() {
                     self.symbols_loading = false;
-                    return Task::none();
+                    return Task::batch(initial_tasks);
                 }
-                self.exchange_symbols = symbols;
                 self.record_outcome_display_labels();
                 self.telegram_feed
                     .rebuild_ticker_mention_resolver(&self.exchange_symbols);
@@ -263,11 +498,21 @@ impl TradingTerminal {
                 self.refresh_symbol_search_results();
                 self.symbols_loading = false;
 
-                let mut tasks = Vec::new();
+                let mut tasks = initial_tasks;
                 tasks.extend(self.mids_bootstrap_tasks());
 
                 let active_symbol = self.active_symbol.clone();
-                match self.restored_active_symbol_key(&active_symbol) {
+                let active_source_unavailable = (spot_meta_failed
+                    && (active_symbol.starts_with('@') || active_symbol.contains('/')))
+                    || (outcome_meta_failed && active_symbol.starts_with('#'))
+                    || (perp_meta_failed
+                        && !active_symbol.starts_with('@')
+                        && !active_symbol.starts_with('#')
+                        && !active_symbol.contains('/'));
+                match (!active_source_unavailable)
+                    .then(|| self.restored_active_symbol_key(&active_symbol))
+                    .flatten()
+                {
                     Some(valid_key) if valid_key != self.active_symbol => {
                         tasks.push(self.switch_active_symbol_internal(valid_key));
                     }
@@ -280,9 +525,11 @@ impl TradingTerminal {
                         self.sync_order_leverage_form_for_active_symbol();
                     }
                     None => {
-                        self.apply_active_symbol_selection(String::new(), String::new());
-                        self.order_status =
-                            Some(("No tradable market symbols are available".into(), true));
+                        if !active_source_unavailable {
+                            self.apply_active_symbol_selection(String::new(), String::new());
+                            self.order_status =
+                                Some(("No tradable market symbols are available".into(), true));
+                        }
                     }
                 }
 
@@ -290,19 +537,23 @@ impl TradingTerminal {
                 let hydromancer_api_key = self.hydromancer_api_key_for_task();
                 let schwab_access_token = self.schwab.access_token_for_task();
                 let mut reset_quick_order_chart_ids = Vec::new();
+                let mut chart_identity_changed = false;
                 for (id, inst) in self.charts.iter_mut() {
                     let key = inst.symbol.clone();
                     let symbol = resolve_exchange_symbol(&self.exchange_symbols, &key);
+                    let mut primary_alias_canonicalized = false;
 
                     if let Some(valid) = symbol {
                         let display = Self::exchange_symbol_display_name(valid);
                         let symbol_changed = valid.key != inst.symbol;
+                        primary_alias_canonicalized = symbol_changed;
 
                         if symbol_changed || inst.symbol_display != display {
                             inst.set_symbol_identity(valid.key.clone(), display);
                         }
 
                         if symbol_changed {
+                            chart_identity_changed = true;
                             inst.reset_quick_order_for_account_reset();
                             reset_quick_order_chart_ids.push(*id);
                             inst.chart.status = ChartStatus::Loading;
@@ -342,6 +593,14 @@ impl TradingTerminal {
                         let display = Self::exchange_symbol_display_name(valid);
                         let symbol_changed =
                             inst.secondary_symbol.as_deref() != Some(valid.key.as_str());
+                        let alias_collision = valid.key == inst.symbol
+                            && (primary_alias_canonicalized || symbol_changed);
+
+                        if alias_collision {
+                            inst.clear_secondary_symbol();
+                            chart_identity_changed = true;
+                            continue;
+                        }
 
                         if symbol_changed
                             || inst.secondary_symbol_display.as_deref() != Some(display.as_str())
@@ -350,6 +609,7 @@ impl TradingTerminal {
                         }
 
                         if symbol_changed {
+                            chart_identity_changed = true;
                             inst.chart.set_secondary_candles(Vec::new());
                             inst.secondary_candle_fetch_error = None;
                             let request = Self::build_candle_fetch_request(
@@ -371,6 +631,9 @@ impl TradingTerminal {
                 }
                 for chart_id in reset_quick_order_chart_ids {
                     self.chart_quick_order_surface.remove(&chart_id);
+                }
+                if chart_identity_changed {
+                    self.persist_config();
                 }
 
                 self.refresh_spaghetti_series_displays();
@@ -421,7 +684,7 @@ impl TradingTerminal {
         request_id: u64,
         requested_symbols: Vec<String>,
         requested_at: u64,
-        result: Result<std::collections::HashMap<String, crate::api::WatchlistContext>, String>,
+        result: Result<crate::api::WatchlistContextsResponse, String>,
     ) -> Task<Message> {
         if request_id != self.symbol_search_contexts_request_id {
             return Task::none();
@@ -433,11 +696,22 @@ impl TradingTerminal {
         self.symbol_search_contexts_refresh_pending = false;
         self.symbol_search_contexts_request_symbols.clear();
 
-        let result = result.map(|mut contexts| {
+        let existing_contexts = self.symbol_search_ctxs.clone();
+        let result = result.map(|mut response| {
             let requested_symbols: std::collections::HashSet<String> =
                 requested_symbols.into_iter().collect();
-            contexts.retain(|symbol, _| requested_symbols.contains(symbol));
-            contexts
+            if !response.partial_errors.is_empty() {
+                let mut merged = existing_contexts
+                    .into_iter()
+                    .filter(|(symbol, _)| requested_symbols.contains(symbol))
+                    .collect::<std::collections::HashMap<_, _>>();
+                merged.extend(response.contexts);
+                response.contexts = merged;
+            }
+            response
+                .contexts
+                .retain(|symbol, _| requested_symbols.contains(symbol));
+            response
         });
 
         apply_contexts_loaded(
@@ -467,9 +741,14 @@ mod tests {
     use crate::hyperdash_api::{
         HeatmapFetchParams, LiquidationBucket, LiquidationHeatmap, LiquidationLevel,
     };
-    use crate::market_state::{SymbolSearchMarketFilter, SymbolSearchSortMode};
+    use crate::market_state::{
+        LiveWatchlistInstance, OrderBookInstance, OrderBookSymbolMode, SymbolSearchMarketFilter,
+        SymbolSearchSortMode,
+    };
     use crate::message::Message;
     use crate::order_execution::QuickOrderForm;
+    use crate::spaghetti::Series;
+    use crate::spaghetti_state::SpaghettiChartInstance;
     use crate::timeframe::Timeframe;
     use std::collections::HashMap;
 
@@ -486,6 +765,40 @@ mod tests {
             max_leverage: 1,
             only_isolated: false,
             market_type: MarketType::Perp,
+            outcome: None,
+        }
+    }
+
+    fn spot_symbol(key: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: "HYPE".to_string(),
+            category: "spot".to_string(),
+            display_name: Some("HYPE/USDC".to_string()),
+            keywords: vec!["spot".to_string()],
+            asset_index: 10_107,
+            collateral_token: Some(0),
+            sz_decimals: 2,
+            max_leverage: 1,
+            only_isolated: false,
+            market_type: MarketType::Spot,
+            outcome: None,
+        }
+    }
+
+    fn canonical_purr_symbol() -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: "PURR/USDC".to_string(),
+            ticker: "PURR".to_string(),
+            category: "spot".to_string(),
+            display_name: Some("PURR/USDC".to_string()),
+            keywords: vec!["spot".to_string()],
+            asset_index: 10_000,
+            collateral_token: Some(0),
+            sz_decimals: 0,
+            max_leverage: 1,
+            only_isolated: false,
+            market_type: MarketType::Spot,
             outcome: None,
         }
     }
@@ -545,6 +858,8 @@ mod tests {
     fn payload(symbols: Vec<ExchangeSymbol>) -> ExchangeSymbolsPayload {
         ExchangeSymbolsPayload {
             symbols,
+            loaded_from_cache: false,
+            perp_meta_failed: false,
             spot_meta_failed: false,
             outcome_meta_failed: false,
         }
@@ -563,6 +878,280 @@ mod tests {
             chart_w: 300.0,
             chart_h: 200.0,
         }
+    }
+
+    #[test]
+    fn failed_spot_metadata_retains_markets_but_disables_orders_until_verified() {
+        let mut terminal = TradingTerminal::boot().0;
+        let spot = spot_symbol("@107");
+        let _task =
+            terminal.apply_symbols_loaded(Ok(payload(vec![perp_symbol("HYPE"), spot.clone()])));
+        assert!(!terminal.spot_metadata_degraded);
+        assert!(
+            terminal
+                .validate_exchange_symbol_orderable(&spot, "Active")
+                .is_ok()
+        );
+
+        let _task = terminal.apply_symbols_loaded(Ok(ExchangeSymbolsPayload {
+            symbols: vec![perp_symbol("HYPE")],
+            loaded_from_cache: false,
+            perp_meta_failed: false,
+            spot_meta_failed: true,
+            outcome_meta_failed: false,
+        }));
+
+        assert!(terminal.spot_metadata_degraded);
+        let retained = terminal
+            .exchange_symbol_for_key("@107")
+            .expect("last-known spot symbol retained");
+        let error = terminal
+            .validate_exchange_symbol_orderable(retained, "Active")
+            .expect_err("unverified spot metadata must fail closed");
+        assert!(error.contains("temporarily unverified"));
+        assert!(terminal.symbol_search_status.as_ref().is_some_and(
+            |(message, is_error)| *is_error && message.contains("spot trading is disabled")
+        ));
+
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![perp_symbol("HYPE"), spot])));
+
+        assert!(!terminal.spot_metadata_degraded);
+        let verified = terminal
+            .exchange_symbol_for_key("@107")
+            .expect("fresh spot symbol");
+        assert!(
+            terminal
+                .validate_exchange_symbol_orderable(verified, "Active")
+                .is_ok()
+        );
+        assert!(
+            terminal.symbol_search_status.as_ref().is_some_and(
+                |(message, is_error)| !*is_error && message.contains("available again")
+            )
+        );
+    }
+
+    #[test]
+    fn cached_spot_metadata_is_visible_but_requires_immediate_live_verification() {
+        let mut terminal = TradingTerminal::boot().0;
+        let spot = spot_symbol("@107");
+        let mut cached = payload(vec![perp_symbol("HYPE"), spot.clone()]);
+        cached.loaded_from_cache = true;
+
+        let task = terminal.apply_symbols_loaded(Ok(cached));
+
+        assert!(terminal.exchange_symbol_for_key("@107").is_some());
+        assert!(terminal.spot_metadata_degraded);
+        assert!(terminal.exchange_symbols_refresh_inflight);
+        assert!(task.units() >= 1, "live verification must be scheduled now");
+        let cached_spot = terminal
+            .exchange_symbol_for_key("@107")
+            .expect("cached spot remains visible");
+        let error = terminal
+            .validate_exchange_symbol_orderable(cached_spot, "Active")
+            .expect_err("cache provenance cannot authorize a spot order");
+        assert!(error.contains("temporarily unverified"));
+        assert!(
+            terminal
+                .symbol_search_status
+                .as_ref()
+                .is_some_and(|(message, is_error)| *is_error
+                    && message.contains("live spot metadata is verified"))
+        );
+
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![perp_symbol("HYPE"), spot])));
+
+        assert!(!terminal.spot_metadata_degraded);
+        assert!(!terminal.exchange_symbols_refresh_inflight);
+        let verified_spot = terminal
+            .exchange_symbol_for_key("@107")
+            .expect("live-verified spot");
+        assert!(
+            terminal
+                .validate_exchange_symbol_orderable(verified_spot, "Active")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn cold_partial_load_preserves_saved_spot_selection() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.active_symbol = "@107".to_string();
+        terminal.active_symbol_display = "HYPE/USDC".to_string();
+
+        let _task = terminal.apply_symbols_loaded(Ok(ExchangeSymbolsPayload {
+            symbols: vec![perp_symbol("HYPE")],
+            loaded_from_cache: false,
+            perp_meta_failed: false,
+            spot_meta_failed: true,
+            outcome_meta_failed: false,
+        }));
+
+        assert_eq!(terminal.active_symbol, "@107");
+        assert_eq!(terminal.active_symbol_display, "HYPE/USDC");
+        assert!(terminal.spot_metadata_degraded);
+    }
+
+    #[test]
+    fn perp_failure_does_not_discard_fresh_spot_metadata() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![perp_symbol("BTC")];
+
+        let merged = terminal.merge_symbols_payload(ExchangeSymbolsPayload {
+            symbols: vec![spot_symbol("@107")],
+            loaded_from_cache: false,
+            perp_meta_failed: true,
+            spot_meta_failed: false,
+            outcome_meta_failed: false,
+        });
+
+        assert!(
+            merged
+                .iter()
+                .any(|symbol| symbol.market_type == MarketType::Perp && symbol.key == "BTC")
+        );
+        assert!(
+            merged
+                .iter()
+                .any(|symbol| symbol.market_type == MarketType::Spot && symbol.key == "@107")
+        );
+    }
+
+    #[test]
+    fn successful_spot_metadata_migrates_legacy_widget_keys_atomically() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.order_books.clear();
+        let mut book =
+            OrderBookInstance::new(7, OrderBookSymbolMode::Fixed("@0".to_string()), 0.01);
+        book.book_error = Some("legacy fetch failed".to_string());
+        terminal.order_books.insert(7, book);
+
+        terminal.spaghetti_charts.clear();
+        let mut spaghetti = SpaghettiChartInstance::new_empty(8);
+        spaghetti.canvas.series.push(Series {
+            symbol: "@0".to_string(),
+            display: "@0".to_string(),
+            candles: vec![Candle::test_flat(1_000, 0.2)],
+            color: iced::Color::BLACK,
+            loaded: true,
+        });
+        terminal.spaghetti_charts.insert(8, spaghetti);
+
+        terminal.live_watchlists.clear();
+        terminal.live_watchlists.insert(
+            9,
+            LiveWatchlistInstance {
+                id: 9,
+                symbols: vec!["@0".to_string(), "PURR/USDC".to_string()],
+                search_query: String::new(),
+                sort_column: crate::config::LiveWatchlistSortColumn::default(),
+                sort_direction: crate::config::SortDirection::default(),
+                visible_columns: crate::config::default_live_watchlist_columns(),
+                row_cache: Vec::new(),
+            },
+        );
+        terminal.live_watchlist_contexts_loading = true;
+        terminal.live_watchlist_contexts_request_id = 3;
+        terminal.live_watchlist_contexts_request_symbols = vec!["@0".to_string()];
+        terminal.live_watchlist_history_loading = true;
+        terminal.live_watchlist_history_request_id = 4;
+        terminal.live_watchlist_history_request_symbols = vec!["@0".to_string()];
+
+        let task = terminal.apply_symbols_loaded(Ok(payload(vec![
+            perp_symbol("HYPE"),
+            canonical_purr_symbol(),
+        ])));
+
+        assert_eq!(
+            terminal.order_books[&7].mode,
+            OrderBookSymbolMode::Fixed("PURR/USDC".to_string())
+        );
+        assert!(terminal.order_books[&7].book_loading);
+        assert!(terminal.order_books[&7].book_error.is_none());
+        let series = &terminal.spaghetti_charts[&8].canvas.series;
+        assert_eq!(series.len(), 1);
+        assert_eq!(series[0].symbol, "PURR/USDC");
+        assert_eq!(series[0].display, "PURR/USDC");
+        assert!(series[0].candles.is_empty());
+        assert!(!series[0].loaded);
+        assert_eq!(
+            terminal.live_watchlists[&9].symbols,
+            vec!["PURR/USDC".to_string()]
+        );
+        assert!(!terminal.live_watchlist_contexts_loading);
+        assert!(terminal.live_watchlist_contexts_request_symbols.is_empty());
+        assert_eq!(terminal.live_watchlist_contexts_request_id, 4);
+        assert!(!terminal.live_watchlist_history_loading);
+        assert!(terminal.live_watchlist_history_request_symbols.is_empty());
+        assert_eq!(terminal.live_watchlist_history_request_id, 5);
+        assert!(terminal.config_save_due_at.is_some());
+        assert!(
+            task.units() >= 2,
+            "book and spaghetti data must be refetched"
+        );
+    }
+
+    #[test]
+    fn successful_spot_metadata_migrates_regular_chart_aliases_before_refetch() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+
+        let context = crate::chart_state::ChartBackfillRequestContext::new(
+            crate::config::ChartBackfillSource::Hyperliquid,
+            0,
+            0,
+        );
+        let mut duplicate = ChartInstance::new(10, "@0".to_string(), Timeframe::H1);
+        duplicate.set_secondary_symbol_identity("@0".to_string(), "@0".to_string());
+        duplicate.candle_fetch_request = Some(TradingTerminal::build_candle_fetch_request(
+            10,
+            "@0",
+            Timeframe::H1,
+            context,
+            None,
+            0,
+        ));
+        duplicate.secondary_candle_fetch_request = Some(
+            TradingTerminal::build_candle_fetch_request(10, "@0", Timeframe::H1, context, None, 0),
+        );
+        terminal.charts.insert(10, duplicate);
+
+        let mut secondary = ChartInstance::new(11, "BTC".to_string(), Timeframe::H1);
+        secondary.set_secondary_symbol_identity("@0".to_string(), "@0".to_string());
+        secondary.secondary_candle_fetch_request = Some(
+            TradingTerminal::build_candle_fetch_request(11, "@0", Timeframe::H1, context, None, 0),
+        );
+        terminal.charts.insert(11, secondary);
+
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![
+            perp_symbol("BTC"),
+            canonical_purr_symbol(),
+        ])));
+
+        let duplicate = &terminal.charts[&10];
+        assert_eq!(duplicate.symbol, "PURR/USDC");
+        assert_eq!(duplicate.symbol_display, "PURR/USDC");
+        assert_eq!(
+            duplicate
+                .candle_fetch_request
+                .as_ref()
+                .map(|request| request.symbol.as_str()),
+            Some("PURR/USDC")
+        );
+        assert!(duplicate.secondary_symbol.is_none());
+        assert!(duplicate.secondary_candle_fetch_request.is_none());
+
+        let secondary = &terminal.charts[&11];
+        assert_eq!(secondary.symbol, "BTC");
+        assert_eq!(secondary.secondary_symbol.as_deref(), Some("PURR/USDC"));
+        assert_eq!(
+            secondary
+                .secondary_candle_fetch_request
+                .as_ref()
+                .map(|request| request.symbol.as_str()),
+            Some("PURR/USDC")
+        );
+        assert!(terminal.config_save_due_at.is_some());
     }
 
     #[test]
@@ -589,7 +1178,7 @@ mod tests {
             stale_request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
         ));
 
         assert!(
@@ -607,7 +1196,7 @@ mod tests {
             current_request_id,
             vec!["xyz:ETH".to_string()],
             11,
-            Ok(HashMap::from([("xyz:ETH".to_string(), context(2.0))])),
+            Ok(HashMap::from([("xyz:ETH".to_string(), context(2.0))]).into()),
         ));
 
         assert!(!terminal.symbol_search_contexts_loading);
@@ -633,13 +1222,13 @@ mod tests {
             request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
         ));
         let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
             request_id,
             vec!["BTC".to_string()],
             11,
-            Ok(HashMap::from([("BTC".to_string(), context(2.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()),
         ));
 
         assert!(!terminal.symbol_search_contexts_loading);
@@ -668,7 +1257,8 @@ mod tests {
             Ok(HashMap::from([
                 ("BTC".to_string(), context(1.0)),
                 ("ETH".to_string(), context(2.0)),
-            ])),
+            ])
+            .into()),
         ));
 
         assert_eq!(terminal.symbol_search_ctxs.len(), 1);
@@ -692,12 +1282,44 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::new()),
+            Ok(HashMap::new().into()),
         ));
 
         assert!(!terminal.symbol_search_contexts_loading);
         assert_eq!(terminal.symbol_search_contexts_last_fetch_ms, Some(10));
         assert!(!terminal.symbol_search_ctxs.contains_key("BTC"));
+    }
+
+    #[test]
+    fn symbol_search_partial_context_keeps_omitted_requested_last_known_value() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![perp_symbol("BTC"), spot_symbol("@107")];
+        terminal.symbol_search_sort_mode = SymbolSearchSortMode::Volume24h;
+        terminal
+            .symbol_search_ctxs
+            .insert("@107".to_string(), context(9.0));
+        terminal.symbol_search_contexts_loading = true;
+        terminal.symbol_search_contexts_request_id = 7;
+        terminal.symbol_search_contexts_request_symbols =
+            vec!["BTC".to_string(), "@107".to_string()];
+
+        let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
+            7,
+            vec!["BTC".to_string(), "@107".to_string()],
+            10,
+            Ok(crate::api::WatchlistContextsResponse {
+                contexts: HashMap::from([("BTC".to_string(), context(1.0))]),
+                partial_errors: vec!["spot: HTTP 503".to_string()],
+            }),
+        ));
+
+        assert_eq!(
+            terminal
+                .symbol_search_ctxs
+                .get("@107")
+                .and_then(|ctx| ctx.day_vlm),
+            Some(9.0)
+        );
     }
 
     #[test]
@@ -758,7 +1380,7 @@ mod tests {
             stale_request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
         ));
 
         assert!(terminal.symbol_search_ctxs.is_empty());
@@ -915,6 +1537,8 @@ mod tests {
 
         let _task = terminal.apply_symbols_loaded(Ok(ExchangeSymbolsPayload {
             symbols: Vec::new(),
+            loaded_from_cache: false,
+            perp_meta_failed: false,
             spot_meta_failed: false,
             outcome_meta_failed: true,
         }));

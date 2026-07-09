@@ -25,6 +25,11 @@ impl TradingTerminal {
         for chart_cfg in chart_configs {
             let id = chart_cfg.id;
             let tf = Timeframe::from_config_str(&chart_cfg.timeframe);
+            // `@0` is the legacy persisted key for the API-named PURR/USDC
+            // pair. The candle endpoint rejects it, so wait for strict spot
+            // metadata to supply the canonical key before loading cache or
+            // issuing primary/macro requests.
+            let defer_primary_legacy_spot = chart_cfg.symbol == "@0";
             let mut instance = ChartInstance::new(id, chart_cfg.symbol.clone(), tf);
             instance.chart.inverted = chart_cfg.inverted;
             instance.chart.show_trade_markers = chart_cfg.show_trade_markers;
@@ -62,7 +67,7 @@ impl TradingTerminal {
             if !chart_cfg.symbol.is_empty()
                 && !Self::key_matches_muted_tickers(&[], muted_tickers, &chart_cfg.symbol)
             {
-                if tf.uses_candle_backfill() {
+                if tf.uses_candle_backfill() && !defer_primary_legacy_spot {
                     let source = if crate::schwab::is_schwab_symbol_key(&chart_cfg.symbol) {
                         ChartBackfillSource::Schwab
                     } else if tf.requires_hydromancer_backfill() {
@@ -105,20 +110,23 @@ impl TradingTerminal {
                         hydromancer_api_key.clone(),
                         schwab_access_token.clone(),
                     ));
-                } else {
+                } else if !tf.uses_candle_backfill() {
                     instance.chart.status = crate::chart::ChartStatus::Loaded;
                 }
-                let macro_request_id = instance.next_macro_candles_request_id();
-                boot_tasks.extend(Self::fetch_macro_candles_tasks(
-                    id,
-                    macro_request_id,
-                    &chart_cfg.symbol,
-                ));
+                if !defer_primary_legacy_spot {
+                    let macro_request_id = instance.next_macro_candles_request_id();
+                    boot_tasks.extend(Self::fetch_macro_candles_tasks(
+                        id,
+                        macro_request_id,
+                        &chart_cfg.symbol,
+                    ));
+                }
             } else if !chart_cfg.symbol.is_empty() {
                 Self::clear_chart_for_muted_symbol(&mut instance);
             }
             if let Some(symbol) = instance.secondary_symbol.clone()
                 && tf.uses_candle_backfill()
+                && symbol != "@0"
             {
                 let source = if crate::schwab::is_schwab_symbol_key(&symbol) {
                     ChartBackfillSource::Schwab
@@ -205,17 +213,19 @@ impl TradingTerminal {
                 .iter()
                 .filter(|sym_key| !Self::key_matches_muted_tickers(&[], muted_tickers, sym_key))
             {
+                let defer_legacy_api_named_pair = sym_key == "@0";
                 let effective_tf = Self::spaghetti_effective_timeframe_for(
                     tf,
                     inst.canvas.active_session,
                     inst.session_granularity,
                     now_ms,
                 );
-                let can_load_cached_candles = crate::api_cache::cache_eligible(
-                    chart_backfill_source,
-                    effective_tf,
-                    hydromancer_api_key,
-                );
+                let can_load_cached_candles = !defer_legacy_api_named_pair
+                    && crate::api_cache::cache_eligible(
+                        chart_backfill_source,
+                        effective_tf,
+                        hydromancer_api_key,
+                    );
                 let cached_candles = can_load_cached_candles
                     .then(|| {
                         crate::api_cache::load_fresh_candles(
@@ -243,20 +253,22 @@ impl TradingTerminal {
                     candles: cached_candles.unwrap_or_default(),
                     color,
                 });
-                boot_tasks.push(Self::fetch_spaghetti_candles(
-                    sid,
-                    sym_key,
-                    tf,
-                    inst.canvas.active_session,
-                    inst.session_granularity,
-                    cached_start_ms,
-                    ChartBackfillFetchContext::new(
-                        chart_backfill_source,
-                        0,
-                        0,
-                        hydromancer_api_key.clone(),
-                    ),
-                ));
+                if !defer_legacy_api_named_pair {
+                    boot_tasks.push(Self::fetch_spaghetti_candles(
+                        sid,
+                        sym_key,
+                        tf,
+                        inst.canvas.active_session,
+                        inst.session_granularity,
+                        cached_start_ms,
+                        ChartBackfillFetchContext::new(
+                            chart_backfill_source,
+                            0,
+                            0,
+                            hydromancer_api_key.clone(),
+                        ),
+                    ));
+                }
             }
 
             spaghetti_charts.insert(sid, inst);

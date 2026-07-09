@@ -469,6 +469,44 @@ fn ioc_limit_orders_project_like_market_orders() {
 }
 
 #[test]
+fn spot_ticket_dispatch_invalidates_balance_snapshot_before_exchange_result() {
+    let account = "0xabc0000000000000000000000000000000000000";
+    let mut data = percentage_account_data();
+    data.completeness.spot_balances_complete = true;
+    data.completeness.spot_balances_fetched_at_ms = Some(TradingTerminal::now_ms());
+    let mut terminal = terminal_for_percentage_order(data);
+    let initial_revision = terminal.spot_balances_revision;
+
+    let _task = terminal.submit_prepared_ticket_order(
+        "agent-key".to_string().into(),
+        account.to_string(),
+        PreparedExchangeOrder {
+            surface: OrderSurface::Ticket,
+            symbol_key: "@7".to_string(),
+            asset: 10_007,
+            is_buy: true,
+            price: "1".to_string(),
+            size: "1".to_string(),
+            order_kind: ExchangeOrderKind::Limit,
+            reduce_only: false,
+            market_type: MarketType::Spot,
+        },
+    );
+
+    assert!(
+        !terminal
+            .account_data_for_order_account(account)
+            .expect("connected account data")
+            .completeness
+            .spot_balances_complete
+    );
+    assert_eq!(
+        terminal.spot_balances_revision,
+        initial_revision.wrapping_add(1)
+    );
+}
+
+#[test]
 fn execute_order_rejects_percentage_quantity_after_account_snapshot_changes() {
     let mut terminal = terminal_for_percentage_order(percentage_account_data());
     terminal.handle_order_percentage_changed(50.0);

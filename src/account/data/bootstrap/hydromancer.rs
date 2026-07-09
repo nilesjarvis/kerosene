@@ -189,6 +189,7 @@ async fn fetch_account_data_scoped_hydromancer(
     if main_open_orders_fetched {
         account_data.mark_open_orders_fetched_at(fetched_at_ms);
     }
+    account_data.mark_spot_balances_fetched_at(fetched_at_ms);
     for dex in hip3_open_orders_fetched {
         account_data.mark_open_orders_fetched_at_for_dex(&dex, fetched_at_ms);
     }

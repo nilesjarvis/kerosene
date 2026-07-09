@@ -1,7 +1,7 @@
 mod status;
 mod stop_cancel;
 
-use crate::api::fetch_order_status_by_cloid;
+use crate::api::{MarketType, fetch_order_status_by_cloid};
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
@@ -184,6 +184,15 @@ impl TradingTerminal {
                         .get(&chase_id)
                         .and_then(|chase| stopped_chase_cancel_request(chase, &resp));
                     if let Some(request) = stop_cancel_request {
+                        let market_type = if self
+                            .chase_orders
+                            .get(&chase_id)
+                            .is_some_and(|chase| chase.is_spot)
+                        {
+                            MarketType::Spot
+                        } else {
+                            MarketType::Perp
+                        };
                         if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                             chase.current_oid = Some(request.oid);
                             chase.lifecycle = ChaseLifecycle::Stopping {
@@ -194,6 +203,10 @@ impl TradingTerminal {
                             format!("Chase stopping: cancelling placed order {}", request.oid),
                             false,
                         ));
+                        self.invalidate_spot_balances_after_exchange_dispatch(
+                            &chase_account_address,
+                            market_type,
+                        );
                         let cancel_task = cancel_order_task(
                             request.agent_key,
                             request.asset,

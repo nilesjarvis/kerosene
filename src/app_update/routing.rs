@@ -506,6 +506,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartWsAssetCtxUpdate(_, _, _, _)
         | Message::ChartWsAssetCtxLagged(_, _, _, _)
         | Message::ChartAssetContextRestFetched(_, _, _)
+        | Message::ChartSpotAssetContextsRestFetched(_, _)
         | Message::ChartViewportChanged(_, _, _)
         | Message::ChartFundingPanelHeightChanged(_, _, _)
         | Message::ChartSessionPanelHeightChanged(_, _, _)

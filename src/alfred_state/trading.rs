@@ -81,7 +81,7 @@ impl TradingTerminal {
                 None
             }
             Some(symbol) => match self.resolve_trade_symbol(symbol, intent.explicit_spot) {
-                Some(symbol) => {
+                Ok(Some(symbol)) => {
                     if error.is_none()
                         && let Err(message) =
                             self.validate_exchange_symbol_orderable(symbol, "Trade")
@@ -90,9 +90,15 @@ impl TradingTerminal {
                     }
                     Some(symbol)
                 }
-                None => {
+                Ok(None) => {
                     if error.is_none() {
                         error = Some(unresolved_trade_symbol_error(symbol, intent.explicit_spot));
+                    }
+                    None
+                }
+                Err(message) => {
+                    if error.is_none() {
+                        error = Some(message);
                     }
                     None
                 }
@@ -168,22 +174,90 @@ impl TradingTerminal {
         &self,
         raw_symbol: &str,
         spot_requested: bool,
-    ) -> Option<&ExchangeSymbol> {
+    ) -> Result<Option<&ExchangeSymbol>, String> {
         if raw_symbol.contains('/') {
-            return self.resolve_spot_pair_symbol(raw_symbol);
+            return Ok(self.resolve_spot_pair_symbol(raw_symbol));
         }
 
         let normalized = normalize_symbol_input(raw_symbol);
-        let resolved = self
-            .resolve_exchange_symbol_by_key_or_ticker(raw_symbol)
-            .or_else(|| self.resolve_exchange_symbol_by_key_or_ticker(&normalized));
         if !spot_requested {
-            return resolved;
+            // An exact indexed key is an explicit spot identity, but a bare
+            // ticker must never fall through to the first spot market. The
+            // same base token can trade against multiple quote tokens.
+            if let Some(symbol) = self.exchange_symbols.iter().find(|symbol| {
+                (symbol.key.eq_ignore_ascii_case(raw_symbol)
+                    || symbol.key.eq_ignore_ascii_case(&normalized))
+                    && (symbol.market_type != MarketType::Spot || symbol.key.starts_with('@'))
+            }) {
+                return Ok(Some(symbol));
+            }
+            if let Some(symbol) = self.exchange_symbols.iter().find(|symbol| {
+                symbol.market_type == MarketType::Perp
+                    && symbol.ticker.eq_ignore_ascii_case(&normalized)
+            }) {
+                return Ok(Some(symbol));
+            }
+
+            let mut spot_names = self
+                .exchange_symbols
+                .iter()
+                .filter(|symbol| {
+                    symbol.market_type == MarketType::Spot
+                        && symbol.ticker.eq_ignore_ascii_case(&normalized)
+                })
+                .map(Self::exchange_symbol_display_name)
+                .collect::<Vec<_>>();
+            if !spot_names.is_empty() {
+                spot_names.sort_unstable();
+                spot_names.dedup();
+                return Err(if spot_names.len() == 1 {
+                    format!(
+                        "'{}' is a spot market; add 'spot' or use {}",
+                        normalized.to_ascii_uppercase(),
+                        spot_names[0]
+                    )
+                } else {
+                    format!(
+                        "Multiple spot markets for '{}'; use an explicit pair such as {}",
+                        normalized.to_ascii_uppercase(),
+                        spot_names.join(" or ")
+                    )
+                });
+            }
+            return Ok(None);
         }
 
-        resolved
-            .filter(|symbol| symbol.market_type == MarketType::Spot)
-            .or_else(|| self.spot_symbol_for_ticker(&normalized))
+        if let Some(symbol) = self.exchange_symbols.iter().find(|symbol| {
+            symbol.market_type == MarketType::Spot
+                && (symbol.key.eq_ignore_ascii_case(raw_symbol)
+                    || symbol.key.eq_ignore_ascii_case(&normalized))
+        }) {
+            return Ok(Some(symbol));
+        }
+
+        let mut matching_pairs = self.exchange_symbols.iter().filter(|symbol| {
+            symbol.market_type == MarketType::Spot
+                && symbol.ticker.eq_ignore_ascii_case(&normalized)
+        });
+        let first = matching_pairs.next();
+        if let Some(second) = matching_pairs.next() {
+            let mut names = vec![
+                first
+                    .map(Self::exchange_symbol_display_name)
+                    .unwrap_or_else(|| normalized.clone()),
+                Self::exchange_symbol_display_name(second),
+            ];
+            names.extend(matching_pairs.map(Self::exchange_symbol_display_name));
+            names.sort_unstable();
+            names.dedup();
+            return Err(format!(
+                "Multiple spot markets for '{}'; use a pair such as {}",
+                normalized.to_ascii_uppercase(),
+                names.join(" or ")
+            ));
+        }
+
+        Ok(first)
     }
 
     fn resolve_spot_pair_symbol(&self, pair: &str) -> Option<&ExchangeSymbol> {
@@ -193,12 +267,6 @@ impl TradingTerminal {
                     .display_name
                     .as_deref()
                     .is_some_and(|name| name.eq_ignore_ascii_case(pair))
-        })
-    }
-
-    fn spot_symbol_for_ticker(&self, ticker: &str) -> Option<&ExchangeSymbol> {
-        self.exchange_symbols.iter().find(|symbol| {
-            symbol.market_type == MarketType::Spot && symbol.ticker.eq_ignore_ascii_case(ticker)
         })
     }
 }

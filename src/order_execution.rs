@@ -31,12 +31,46 @@ pub(crate) use submit::{TicketOrderPlaceIntent, TicketOrderSubmissionSnapshot};
 pub(crate) use position_actions::{NukePositionOrder, NukeSkipReason};
 
 use crate::account::{AccountData, OpenOrder};
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::config;
 use crate::signing::{CapturedAgentKey, ChaseOrder};
 use std::fmt;
 use zeroize::Zeroizing;
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct SpotAutomationSymbolIdentity {
+    key: String,
+    ticker: String,
+    display_name: Option<String>,
+    asset_index: u32,
+    quote_token: Option<u32>,
+    sz_decimals: u32,
+}
+
+impl SpotAutomationSymbolIdentity {
+    fn from_symbol(symbol: &crate::api::ExchangeSymbol) -> Option<Self> {
+        (symbol.market_type == MarketType::Spot).then(|| Self {
+            key: symbol.key.clone(),
+            ticker: symbol.ticker.clone(),
+            display_name: symbol.display_name.clone(),
+            asset_index: symbol.asset_index,
+            quote_token: symbol.collateral_token,
+            sz_decimals: symbol.sz_decimals,
+        })
+    }
+
+    fn matches(&self, symbol: &crate::api::ExchangeSymbol) -> bool {
+        symbol.market_type == MarketType::Spot
+            && self.key == symbol.key
+            && self.ticker == symbol.ticker
+            && self.display_name == symbol.display_name
+            && self.asset_index == symbol.asset_index
+            && self.quote_token == symbol.collateral_token
+            && self.sz_decimals == symbol.sz_decimals
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PendingOrderAction {
@@ -145,6 +179,48 @@ pub(crate) fn open_order_matches_chase_identity(chase: &ChaseOrder, order: &Open
 }
 
 impl TradingTerminal {
+    pub(crate) fn record_chase_spot_symbol_identity(
+        &mut self,
+        chase_id: u64,
+        symbol: &crate::api::ExchangeSymbol,
+    ) {
+        if let Some(identity) = SpotAutomationSymbolIdentity::from_symbol(symbol) {
+            self.chase_spot_symbol_identities.insert(chase_id, identity);
+        }
+    }
+
+    pub(crate) fn record_twap_spot_symbol_identity(
+        &mut self,
+        twap_id: u64,
+        symbol: &crate::api::ExchangeSymbol,
+    ) {
+        if let Some(identity) = SpotAutomationSymbolIdentity::from_symbol(symbol) {
+            self.twap_spot_symbol_identities.insert(twap_id, identity);
+        }
+    }
+
+    pub(crate) fn chase_spot_symbol_identity_is_current(
+        &self,
+        chase_id: u64,
+        symbol_key: &str,
+    ) -> bool {
+        self.chase_spot_symbol_identities
+            .get(&chase_id)
+            .zip(self.exchange_symbol_for_key(symbol_key))
+            .is_some_and(|(identity, symbol)| identity.matches(symbol))
+    }
+
+    pub(crate) fn twap_spot_symbol_identity_is_current(
+        &self,
+        twap_id: u64,
+        symbol_key: &str,
+    ) -> bool {
+        self.twap_spot_symbol_identities
+            .get(&twap_id)
+            .zip(self.exchange_symbol_for_key(symbol_key))
+            .is_some_and(|(identity, symbol)| identity.matches(symbol))
+    }
+
     pub(crate) fn connected_order_account_address(&self) -> Option<String> {
         self.connected_address
             .as_deref()
@@ -190,6 +266,30 @@ impl TradingTerminal {
             self.account_data.as_mut()
         } else {
             None
+        }
+    }
+
+    /// A spot placement, modification, or cancellation can change exchange
+    /// holds before the next `spotState` frame arrives. Do not let a balance
+    /// snapshot captured before dispatch drive another percentage-sized order.
+    pub(crate) fn invalidate_spot_balances_after_exchange_dispatch(
+        &mut self,
+        account_address: &str,
+        market_type: MarketType,
+    ) {
+        if market_type != MarketType::Spot || !self.connected_order_account_matches(account_address)
+        {
+            return;
+        }
+
+        let invalidated = self
+            .account_data_for_order_account_mut(account_address)
+            .map(|data| {
+                data.completeness.spot_balances_complete = false;
+            })
+            .is_some();
+        if invalidated {
+            self.bump_spot_balances_revision();
         }
     }
 
@@ -454,6 +554,7 @@ mod tests {
         AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary,
         SpotClearinghouseState,
     };
+    use crate::api::MarketType;
     use crate::app_state::{TradingTerminal, sensitive_string};
     use crate::chart_state::ChartSurfaceId;
     use crate::config::AccountProfile;
@@ -515,6 +616,7 @@ mod tests {
         let provenance = QuickOrderQuantityProvenance {
             account_address: TEST_ACCOUNT.to_string(),
             account_data_revision: 7,
+            spot_balances_revision: 3,
             symbol_key: "SECRETCOIN".to_string(),
             quantity_is_usd: true,
             percentage: 42.42,
@@ -543,6 +645,7 @@ mod tests {
             quantity_provenance: Some(QuickOrderQuantityProvenance {
                 account_address: TEST_ACCOUNT.to_string(),
                 account_data_revision: 7,
+                spot_balances_revision: 3,
                 symbol_key: "SECRETCOIN".to_string(),
                 quantity_is_usd: true,
                 percentage: 42.42,
@@ -624,6 +727,53 @@ mod tests {
                 .is_some()
         );
         assert!(terminal.account_data_for_order_account("0xdef").is_none());
+    }
+
+    #[test]
+    fn spot_exchange_dispatch_invalidates_only_the_connected_accounts_spot_balances() {
+        let mut terminal = TradingTerminal::boot().0;
+        connect_test_account(&mut terminal);
+        terminal.account_data_address = Some(TEST_ACCOUNT.to_string());
+        let mut data = empty_account_data();
+        data.completeness.spot_balances_complete = true;
+        data.completeness.spot_balances_fetched_at_ms = Some(123);
+        terminal.account_data = Some(data);
+        let initial_revision = terminal.spot_balances_revision;
+
+        terminal.invalidate_spot_balances_after_exchange_dispatch(TEST_ACCOUNT, MarketType::Spot);
+
+        assert!(
+            !terminal
+                .account_data
+                .as_ref()
+                .expect("account data")
+                .completeness
+                .spot_balances_complete
+        );
+        assert_eq!(
+            terminal.spot_balances_revision,
+            initial_revision.wrapping_add(1)
+        );
+
+        terminal
+            .account_data
+            .as_mut()
+            .expect("account data")
+            .completeness
+            .spot_balances_complete = true;
+        let revision_after_spot = terminal.spot_balances_revision;
+        terminal.invalidate_spot_balances_after_exchange_dispatch(TEST_ACCOUNT, MarketType::Perp);
+        terminal.invalidate_spot_balances_after_exchange_dispatch(OTHER_ACCOUNT, MarketType::Spot);
+
+        assert!(
+            terminal
+                .account_data
+                .as_ref()
+                .expect("account data")
+                .completeness
+                .spot_balances_complete
+        );
+        assert_eq!(terminal.spot_balances_revision, revision_after_spot);
     }
 
     #[test]
@@ -918,6 +1068,7 @@ impl fmt::Debug for QuickOrderRecovery {
 pub(crate) struct QuickOrderQuantityProvenance {
     pub(crate) account_address: String,
     pub(crate) account_data_revision: u64,
+    pub(crate) spot_balances_revision: u64,
     pub(crate) symbol_key: String,
     pub(crate) quantity_is_usd: bool,
     pub(crate) percentage: f32,
@@ -932,6 +1083,7 @@ impl fmt::Debug for QuickOrderQuantityProvenance {
         f.debug_struct("QuickOrderQuantityProvenance")
             .field("account_address", &"<redacted>")
             .field("account_data_revision", &self.account_data_revision)
+            .field("spot_balances_revision", &self.spot_balances_revision)
             .field("symbol_key", &format_args!("<redacted>"))
             .field("quantity_is_usd", &self.quantity_is_usd)
             .field("percentage", &format_args!("<redacted>"))

@@ -36,6 +36,89 @@ fn wallet_details_summary_includes_reconciled_spot_fill_cost_basis() {
     );
 }
 
+#[test]
+fn portfolio_margin_headlines_use_spot_equity_and_available_balance() {
+    let terminal = TradingTerminal::boot().0;
+    let data = WalletDetailsData {
+        clearinghouse: ClearinghouseState {
+            margin_summary: MarginSummary {
+                account_value: "0".to_string(),
+                total_ntl_pos: "0".to_string(),
+                total_margin_used: "0".to_string(),
+            },
+            cross_margin_summary: None,
+            cross_maintenance_margin_used: None,
+            withdrawable: "0".to_string(),
+            asset_positions: Vec::new(),
+        },
+        spot: SpotClearinghouseState {
+            balances: vec![SpotBalance {
+                coin: "USDC".to_string(),
+                token: Some(crate::api::USDC_TOKEN_INDEX),
+                total: "5000".to_string(),
+                hold: "0".to_string(),
+                entry_ntl: "0".to_string(),
+                supplied: None,
+            }],
+            portfolio_margin_enabled: true,
+            portfolio_margin_ratio: Some("0.1".to_string()),
+            token_to_available_after_maintenance: Some(vec![(
+                crate::api::USDC_TOKEN_INDEX,
+                "4200".to_string(),
+            )]),
+        },
+        positions: Vec::new(),
+        open_orders: Vec::new(),
+        fills: Vec::new(),
+        warnings: Vec::new(),
+        fetched_at_ms: TradingTerminal::now_ms(),
+    };
+
+    let metrics = terminal.wallet_details_summary_metrics(&data);
+
+    assert_eq!(metrics.account_value, Some(5000.0));
+    assert_eq!(metrics.withdrawable, Some(4200.0));
+    assert_eq!(metrics.margin_pct, Some(0.0));
+}
+
+#[test]
+fn portfolio_margin_equity_fails_closed_when_a_held_token_has_no_mark() {
+    let terminal = TradingTerminal::boot().0;
+    let mut data = wallet_details_with_spot_basis(TradingTerminal::now_ms());
+    data.clearinghouse.margin_summary.account_value = "12345".to_string();
+
+    let metrics = terminal.wallet_details_summary_metrics(&data);
+
+    assert_eq!(metrics.account_value, None);
+}
+
+#[test]
+fn portfolio_margin_equity_rejects_non_usd_quoted_spot_marks() {
+    let mut terminal = TradingTerminal::boot().0;
+    let mut non_usd_pair = spot_symbol("@151", "FOO", 10_151);
+    non_usd_pair.display_name = Some("FOO/UBTC".to_string());
+    non_usd_pair.collateral_token = Some(197);
+    terminal.exchange_symbols = vec![non_usd_pair];
+    terminal.all_mids.insert("@151".to_string(), 0.001);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("@151".to_string(), TradingTerminal::now_ms());
+    let mut data = wallet_details_with_spot_basis(TradingTerminal::now_ms());
+    data.spot.balances = vec![SpotBalance {
+        coin: "FOO".to_string(),
+        token: Some(151),
+        total: "10".to_string(),
+        hold: "0".to_string(),
+        entry_ntl: "0".to_string(),
+        supplied: None,
+    }];
+    data.fills.clear();
+
+    let metrics = terminal.wallet_details_summary_metrics(&data);
+
+    assert_eq!(metrics.account_value, None);
+}
+
 /// Regression: a transferred-in spot balance (entryNtl "0", no reconciling
 /// fills) has no derivable cost basis and synthesizes empty entry/uPnL wire
 /// strings. Its unavailable PnL must be skipped, not poison the whole

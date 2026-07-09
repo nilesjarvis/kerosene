@@ -28,6 +28,8 @@ impl ChartInstance {
             asset_ctx_updated_at_ms: None,
             asset_ctx_from_rest: false,
             asset_ctx_rest_in_flight: false,
+            asset_ctx_rest_failures: 0,
+            asset_ctx_rest_next_attempt_at_ms: None,
             editor_open: false,
             header_collapsed: false,
             drawing_toolbar_collapsed: false,
@@ -59,9 +61,11 @@ impl ChartInstance {
             candle_fetch_request: None,
             candle_fetch_error: None,
             candle_backfill_exhausted: false,
+            spot_candle_gap_reloaded_at_ms: None,
             secondary_candle_fetch_request: None,
             secondary_candle_fetch_error: None,
             secondary_candle_backfill_exhausted: false,
+            secondary_spot_candle_gap_reloaded_at_ms: None,
             last_price_flash: None,
             show_earnings_markers: false,
             earnings_events: None,
@@ -87,6 +91,8 @@ impl ChartInstance {
         self.chart.set_symbol_label(display);
         if changed {
             self.candle_backfill_exhausted = false;
+            self.spot_candle_gap_reloaded_at_ms = None;
+            self.reset_asset_context_rest_retry();
         }
         changed
     }
@@ -103,6 +109,7 @@ impl ChartInstance {
         self.chart.set_secondary_series_identity(symbol, display);
         if changed {
             self.secondary_candle_backfill_exhausted = false;
+            self.secondary_spot_candle_gap_reloaded_at_ms = None;
         }
         changed
     }
@@ -116,6 +123,7 @@ impl ChartInstance {
         self.secondary_candle_fetch_request = None;
         self.secondary_candle_fetch_error = None;
         self.secondary_candle_backfill_exhausted = false;
+        self.secondary_spot_candle_gap_reloaded_at_ms = None;
         self.chart.clear_secondary_series();
     }
 
@@ -132,6 +140,8 @@ impl ChartInstance {
             asset_ctx_updated_at_ms: self.asset_ctx_updated_at_ms,
             asset_ctx_from_rest: self.asset_ctx_from_rest,
             asset_ctx_rest_in_flight: false,
+            asset_ctx_rest_failures: 0,
+            asset_ctx_rest_next_attempt_at_ms: None,
             editor_open: false,
             header_collapsed: self.header_collapsed,
             drawing_toolbar_collapsed: self.drawing_toolbar_collapsed,
@@ -163,9 +173,11 @@ impl ChartInstance {
             candle_fetch_request: None,
             candle_fetch_error: self.candle_fetch_error.clone(),
             candle_backfill_exhausted: self.candle_backfill_exhausted,
+            spot_candle_gap_reloaded_at_ms: self.spot_candle_gap_reloaded_at_ms,
             secondary_candle_fetch_request: None,
             secondary_candle_fetch_error: self.secondary_candle_fetch_error.clone(),
             secondary_candle_backfill_exhausted: self.secondary_candle_backfill_exhausted,
+            secondary_spot_candle_gap_reloaded_at_ms: self.secondary_spot_candle_gap_reloaded_at_ms,
             last_price_flash: None,
             show_earnings_markers: self.show_earnings_markers,
             earnings_events: self.earnings_events.clone(),
@@ -199,6 +211,9 @@ impl ChartInstance {
         // This setter is the live `activeAssetCtx` WebSocket / clear path; any
         // prior REST provenance no longer applies.
         self.asset_ctx_from_rest = false;
+        if self.asset_ctx.is_some() {
+            self.reset_asset_context_rest_retry();
+        }
     }
 
     /// Apply an `AssetContext` fetched from the REST `metaAndAssetCtxs`
@@ -211,6 +226,40 @@ impl ChartInstance {
         self.asset_ctx_updated_at_ms = Some(now_ms);
         self.asset_ctx = Some(ctx);
         self.asset_ctx_from_rest = true;
+        self.reset_asset_context_rest_retry();
+    }
+
+    pub(crate) fn reset_asset_context_rest_retry(&mut self) {
+        self.asset_ctx_rest_failures = 0;
+        self.asset_ctx_rest_next_attempt_at_ms = None;
+    }
+
+    /// Record a failed or empty REST fallback result with bounded exponential
+    /// backoff and deterministic per-chart jitter. A 429 receives a one-minute
+    /// minimum delay so this fallback cannot sustain an API rate-limit loop.
+    pub(crate) fn record_asset_context_rest_failure(&mut self, now_ms: u64, rate_limited: bool) {
+        const BASE_DELAY_MS: u64 = 5_000;
+        const RATE_LIMIT_MIN_DELAY_MS: u64 = 60_000;
+        const MAX_DELAY_MS: u64 = 5 * 60_000;
+
+        self.asset_ctx_rest_failures = self.asset_ctx_rest_failures.saturating_add(1);
+        let shift = u32::from(self.asset_ctx_rest_failures.saturating_sub(1).min(6));
+        let mut delay_ms = BASE_DELAY_MS.saturating_mul(1u64 << shift);
+        if rate_limited {
+            delay_ms = delay_ms.max(RATE_LIMIT_MIN_DELAY_MS);
+        }
+        delay_ms = delay_ms.min(MAX_DELAY_MS);
+
+        let seed = self
+            .symbol
+            .bytes()
+            .fold(self.id.wrapping_mul(1_103_515_245), |seed, byte| {
+                seed.rotate_left(5) ^ u64::from(byte)
+            });
+        let jitter_window = delay_ms / 5;
+        let jitter_ms = seed % jitter_window.saturating_add(1);
+        let delay_ms = delay_ms.saturating_add(jitter_ms).min(MAX_DELAY_MS);
+        self.asset_ctx_rest_next_attempt_at_ms = Some(now_ms.saturating_add(delay_ms));
     }
 
     /// Whether this chart should issue a REST asset-context fetch now.
@@ -222,7 +271,12 @@ impl ChartInstance {
     /// `MARKET_ASSET_CONTEXT_MAX_AGE_MS` to avoid a flicker between expiry and
     /// the refreshed fetch landing.
     pub(crate) fn needs_rest_asset_context(&self, now_ms: u64, refresh_ms: u64) -> bool {
-        if self.asset_ctx_rest_in_flight || self.symbol.is_empty() {
+        if self.asset_ctx_rest_in_flight
+            || self.symbol.is_empty()
+            || self
+                .asset_ctx_rest_next_attempt_at_ms
+                .is_some_and(|next_attempt_ms| now_ms < next_attempt_ms)
+        {
             return false;
         }
         match self.asset_ctx {
@@ -273,6 +327,8 @@ impl ChartInstance {
             asset_ctx_updated_at_ms: None,
             asset_ctx_from_rest: false,
             asset_ctx_rest_in_flight: false,
+            asset_ctx_rest_failures: 0,
+            asset_ctx_rest_next_attempt_at_ms: None,
             editor_open: true,
             header_collapsed: false,
             drawing_toolbar_collapsed: false,
@@ -304,9 +360,11 @@ impl ChartInstance {
             candle_fetch_request: None,
             candle_fetch_error: None,
             candle_backfill_exhausted: false,
+            spot_candle_gap_reloaded_at_ms: None,
             secondary_candle_fetch_request: None,
             secondary_candle_fetch_error: None,
             secondary_candle_backfill_exhausted: false,
+            secondary_spot_candle_gap_reloaded_at_ms: None,
             last_price_flash: None,
             show_earnings_markers: false,
             earnings_events: None,

@@ -1,5 +1,5 @@
 use super::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[test]
 fn watchlist_context_parser_accepts_finite_string_and_number_fields() {
@@ -172,4 +172,79 @@ fn spot_context_parser_keys_api_named_pairs_by_their_name() {
     assert_eq!(context.day_vlm, Some(1234.0));
     let legacy = map.get("@0").expect("legacy indexed context");
     assert_eq!(legacy.prev_day_px, Some(0.9));
+}
+
+#[test]
+fn requested_spot_contexts_ignore_missing_unrelated_universe_rows() {
+    let raw = serde_json::json!([
+        {
+            "universe": [
+                { "name": "@142", "index": 142 },
+                { "name": "@999", "index": 999 }
+            ]
+        },
+        [{
+            "coin": "@142",
+            "prevDayPx": "58322.0",
+            "dayNtlVlm": "321.25"
+        }]
+    ]);
+    let requested = HashSet::from(["@142".to_string()]);
+    let mut map = HashMap::new();
+
+    let parsed = append_spot_contexts_for_symbols(raw, &requested, &mut map);
+
+    assert_eq!(parsed, Ok(1));
+    assert!(map.contains_key("@142"));
+    assert!(!map.contains_key("@999"));
+}
+
+#[test]
+fn requested_spot_contexts_return_available_rows_when_one_requested_row_is_missing() {
+    let raw = serde_json::json!([
+        {
+            "universe": [
+                { "name": "@142", "index": 142 },
+                { "name": "@999", "index": 999 }
+            ]
+        },
+        [{
+            "coin": "@142",
+            "prevDayPx": "58322.0",
+            "dayNtlVlm": "321.25"
+        }]
+    ]);
+    let requested = HashSet::from(["@142".to_string(), "@999".to_string()]);
+    let mut map = HashMap::new();
+
+    let parsed = append_spot_contexts_for_symbols(raw, &requested, &mut map);
+
+    assert_eq!(parsed, Ok(1));
+    assert!(map.contains_key("@142"));
+    assert!(!map.contains_key("@999"));
+}
+
+#[test]
+fn requested_perp_contexts_ignore_missing_unrelated_universe_rows() {
+    let raw = serde_json::json!([
+        {
+            "universe": [
+                { "name": "HYPE" },
+                { "name": "UNRELATED" }
+            ]
+        },
+        [{
+            "funding": "0.001",
+            "prevDayPx": "40.0",
+            "dayNtlVlm": "123.0"
+        }]
+    ]);
+    let requested = HashSet::from(["HYPE".to_string()]);
+    let mut map = HashMap::new();
+
+    let parsed = append_perp_contexts_for_symbols(raw, None, &requested, &mut map);
+
+    assert_eq!(parsed, Ok(1));
+    assert!(map.contains_key("HYPE"));
+    assert!(!map.contains_key("UNRELATED"));
 }

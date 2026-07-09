@@ -1,6 +1,7 @@
 use crate::account::{
-    AccountData, AccountDataCompleteness, AccountDataSection, AssetPosition, ClearinghouseState,
-    MarginSummary, Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
+    AccountAbstractionMode, AccountData, AccountDataCompleteness, AccountDataSection,
+    AssetPosition, ClearinghouseState, MarginSummary, Position, PositionLeverage, SpotBalance,
+    SpotClearinghouseState, UserFeeRates,
 };
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::{TradingTerminal, sensitive_string};
@@ -38,8 +39,24 @@ fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
 
 fn spot_symbol(key: &str, display_name: &str) -> ExchangeSymbol {
     let mut symbol = symbol(key, MarketType::Spot);
+    symbol.ticker = display_name
+        .split_once('/')
+        .map(|(base, _)| base)
+        .unwrap_or(display_name)
+        .to_string();
     symbol.display_name = Some(display_name.to_string());
     symbol
+}
+
+fn spot_balance(coin: &str, token: u32, total: &str, hold: &str) -> SpotBalance {
+    SpotBalance {
+        coin: coin.to_string(),
+        token: Some(token),
+        total: total.to_string(),
+        hold: hold.to_string(),
+        entry_ntl: "0".to_string(),
+        supplied: None,
+    }
 }
 
 fn error_toast_messages(terminal: &TradingTerminal) -> Vec<&str> {
@@ -224,6 +241,14 @@ fn account_data_with_position(fetched_at_ms: u64, coin: &str, szi: &str) -> Acco
     data
 }
 
+fn spot_account_data_for_submit(balances: Vec<SpotBalance>) -> AccountData {
+    let mut data = account_data_with_margin(TradingTerminal::now_ms(), true);
+    data.account_abstraction = AccountAbstractionMode::Disabled;
+    data.clearinghouse.withdrawable = "0".to_string();
+    data.spot.balances = balances;
+    data
+}
+
 fn set_account_data_for_submit_test(
     terminal: &mut TradingTerminal,
     fetched_at_ms: u64,
@@ -375,6 +400,109 @@ fn quick_order_placing_status_shows_spot_pair_name() {
     let (message, is_error) = order_status_or_panic(&terminal);
     assert!(!is_error, "unexpected error status: {message}");
     assert_eq!(message, "Placing limit BUY 1.25 HYPE/USDC...");
+}
+
+#[test]
+fn spot_quick_order_recomputes_percentage_quantity_for_buy_side() {
+    let chart_id = 42;
+    let mut terminal = terminal_with_quick_order(chart_id, "@107");
+    terminal.exchange_symbols = vec![spot_symbol("@107", "HYPE/USDC")];
+    terminal.set_account_data_for_address_for_test(
+        TEST_ACCOUNT,
+        spot_account_data_for_submit(vec![
+            spot_balance("HYPE", 150, "5", "0"),
+            spot_balance("USDC", 0, "1000", "0"),
+        ]),
+    );
+    add_fresh_mid(&mut terminal, "@107", 100.0);
+
+    terminal.handle_quick_order_percentage_changed(chart_id, 100.0);
+    let preview = terminal
+        .charts
+        .get(&chart_id)
+        .and_then(|instance| instance.quick_order.as_ref())
+        .map(|form| form.quantity.as_str());
+    assert_eq!(preview, Some("5.0000"));
+
+    let _task = terminal.handle_submit_quick_order(chart_id, true);
+
+    assert!(terminal.pending_order_indicators.is_empty());
+    let reviewed_quantity = terminal
+        .charts
+        .get(&chart_id)
+        .and_then(|instance| instance.quick_order.as_ref())
+        .map(|form| form.quantity.as_str());
+    assert_eq!(reviewed_quantity, Some("10.0000"));
+    let (message, is_error) = order_status_or_panic(&terminal);
+    assert!(is_error);
+    assert!(message.contains("review the quantity and submit again"));
+
+    let _task = terminal.handle_submit_quick_order(chart_id, true);
+
+    let indicator = terminal
+        .pending_order_indicators
+        .values()
+        .next()
+        .expect("buy should be submitted");
+    let submitted_size = indicator
+        .size
+        .parse::<f64>()
+        .expect("submitted size should be numeric");
+    assert_eq!(submitted_size, 10.0);
+}
+
+#[test]
+fn spot_quick_order_sell_without_base_balance_fails_closed() {
+    let chart_id = 42;
+    let mut terminal = terminal_with_quick_order(chart_id, "@107");
+    terminal.exchange_symbols = vec![spot_symbol("@107", "HYPE/USDC")];
+    terminal.set_account_data_for_address_for_test(
+        TEST_ACCOUNT,
+        spot_account_data_for_submit(vec![spot_balance("USDC", 0, "1000", "0")]),
+    );
+    add_fresh_mid(&mut terminal, "@107", 100.0);
+
+    terminal.handle_quick_order_percentage_changed(chart_id, 100.0);
+    let _task = terminal.handle_submit_quick_order(chart_id, false);
+
+    let (message, is_error) = order_status_or_panic(&terminal);
+    assert!(is_error);
+    assert!(message.contains("No verified spot balance available for selling"));
+    assert!(terminal.pending_order_indicators.is_empty());
+    assert!(
+        terminal
+            .charts
+            .get(&chart_id)
+            .and_then(|instance| instance.quick_order.as_ref())
+            .is_some(),
+        "rejected quick order must be restored"
+    );
+}
+
+#[test]
+fn same_ticker_spot_balance_does_not_hijack_perp_percentage_quick_sell() {
+    let chart_id = 43;
+    let mut terminal = terminal_with_quick_order(chart_id, "HYPE");
+    terminal.exchange_symbols = vec![symbol("HYPE", MarketType::Perp)];
+    let mut data = account_data_with_margin(TradingTerminal::now_ms(), true);
+    data.spot.balances = vec![spot_balance("HYPE", 150, "500", "0")];
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, data);
+    add_fresh_mid(&mut terminal, "HYPE", 100.0);
+    terminal.handle_quick_order_percentage_changed(chart_id, 50.0);
+
+    let _task = terminal.handle_submit_quick_order(chart_id, false);
+
+    assert_eq!(
+        terminal.pending_order_action,
+        Some(PendingOrderAction::Sell)
+    );
+    assert_eq!(terminal.pending_order_indicators.len(), 1);
+    assert!(
+        terminal
+            .order_status
+            .as_ref()
+            .is_some_and(|(_, is_error)| !*is_error)
+    );
 }
 
 #[test]

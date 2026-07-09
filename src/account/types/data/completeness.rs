@@ -15,6 +15,10 @@ pub enum AccountDataSection {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountDataCompleteness {
+    /// Whether the spot balance snapshot was fetched and parsed completely.
+    /// Percentage-sized spot orders must never infer this from perp position
+    /// completeness because the two streams can advance independently.
+    pub spot_balances_complete: bool,
     pub positions_complete: bool,
     /// Whether the positions snapshot is safe to act on for risk-reducing
     /// controls (close/NUKE). A complete fallback snapshot — e.g. Hyperliquid
@@ -27,6 +31,7 @@ pub struct AccountDataCompleteness {
     pub fills_complete: bool,
     pub funding_complete: bool,
     pub fees_complete: bool,
+    pub spot_balances_fetched_at_ms: Option<u64>,
     pub positions_fetched_at_ms: Option<u64>,
     pub open_orders_fetched_at_ms: Option<u64>,
     pub open_orders_fetched_at_ms_by_dex: HashMap<String, u64>,
@@ -36,12 +41,14 @@ pub struct AccountDataCompleteness {
 impl Default for AccountDataCompleteness {
     fn default() -> Self {
         Self {
+            spot_balances_complete: true,
             positions_complete: true,
             positions_actionable: true,
             open_orders_complete: true,
             fills_complete: true,
             funding_complete: true,
             fees_complete: true,
+            spot_balances_fetched_at_ms: None,
             positions_fetched_at_ms: None,
             open_orders_fetched_at_ms: None,
             open_orders_fetched_at_ms_by_dex: HashMap::new(),
@@ -52,7 +59,8 @@ impl Default for AccountDataCompleteness {
 
 impl AccountDataCompleteness {
     pub fn is_complete(&self) -> bool {
-        self.positions_complete
+        self.spot_balances_complete
+            && self.positions_complete
             && self.open_orders_complete
             && self.fills_complete
             && self.funding_complete

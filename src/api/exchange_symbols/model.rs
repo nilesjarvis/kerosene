@@ -109,7 +109,8 @@ pub struct ExchangeSymbol {
     /// Builder dexes: 110000 + (dex_idx - 1) * 10000 + asset_idx.
     /// Spot pairs: 10000 + spot universe index.
     pub asset_index: u32,
-    /// Collateral token index for the perp DEX. None for non-perp markets.
+    /// Collateral token index for a perp DEX, or quote token index for a spot
+    /// pair. Outcomes do not use this field.
     pub collateral_token: Option<u32>,
     /// Number of decimal places for the size field.
     pub sz_decimals: u32,
@@ -145,9 +146,9 @@ impl fmt::Debug for ExchangeSymbol {
 impl ExchangeSymbol {
     /// Whether a spot pair is quoted in a USD-pegged stable, i.e. whether its
     /// mid can be treated as a USD price. Spot symbols carry their quote in
-    /// the "{base}/{quote}" display label; symbols without one (legacy caches
-    /// or fixtures) default to the historical USDC assumption. Only
-    /// meaningful for `MarketType::Spot` symbols.
+    /// the "{base}/{quote}" display label. A missing or malformed label is not
+    /// enough evidence to treat the quote as USD. Only meaningful for
+    /// `MarketType::Spot` symbols.
     pub fn spot_quote_is_usd_stable(&self) -> bool {
         match self
             .display_name
@@ -155,7 +156,7 @@ impl ExchangeSymbol {
             .and_then(|display| display.rsplit_once('/'))
         {
             Some((_, quote)) => matches!(quote, "USDC" | "USDE" | "USDT0" | "USDH"),
-            None => true,
+            None => false,
         }
     }
 
@@ -291,9 +292,7 @@ mod tests {
             );
         }
         assert!(!spot_symbol("@1", Some("UETH/UBTC"), 10_001).spot_quote_is_usd_stable());
-        // Legacy caches and fixtures without a label keep the historical
-        // USDC assumption.
-        assert!(spot_symbol("@1", None, 10_001).spot_quote_is_usd_stable());
+        assert!(!spot_symbol("@1", None, 10_001).spot_quote_is_usd_stable());
     }
 
     #[test]

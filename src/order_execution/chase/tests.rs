@@ -1,7 +1,7 @@
 use super::*;
 use crate::account::{
     AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary, OpenOrder,
-    SpotClearinghouseState, UserFeeRates,
+    SpotBalance, SpotClearinghouseState, UserFeeRates,
 };
 use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::chart::OrderOverlay;
@@ -140,6 +140,52 @@ fn account_data_with_order(order: OpenOrder) -> AccountData {
         completeness: AccountDataCompleteness::default(),
         fetched_at_ms: TradingTerminal::now_ms(),
     }
+}
+
+fn configure_spot_percentage_chase(
+    terminal: &mut TradingTerminal,
+    base_total: &str,
+    quote_total: &str,
+    mid: f64,
+) {
+    let mut spot = symbol("@7", MarketType::Spot);
+    spot.ticker = "LOW".to_string();
+    spot.display_name = Some("LOW/USDC".to_string());
+    spot.asset_index = 10_007;
+    spot.collateral_token = Some(crate::api::USDC_TOKEN_INDEX);
+    spot.sz_decimals = 2;
+    terminal.active_symbol = "@7".to_string();
+    terminal.active_symbol_display = "LOW/USDC".to_string();
+    terminal.exchange_symbols = vec![spot];
+    terminal.all_mids.insert("@7".to_string(), mid);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("@7".to_string(), TradingTerminal::now_ms());
+    terminal.order_quantity_is_usd = true;
+
+    let mut data = account_data_with_order(open_order(1));
+    data.open_orders.clear();
+    data.spot.balances = vec![
+        SpotBalance {
+            coin: "LOW".to_string(),
+            token: Some(7),
+            total: base_total.to_string(),
+            hold: "0".to_string(),
+            entry_ntl: "0".to_string(),
+            supplied: None,
+        },
+        SpotBalance {
+            coin: "USDC".to_string(),
+            token: Some(crate::api::USDC_TOKEN_INDEX),
+            total: quote_total.to_string(),
+            hold: "0".to_string(),
+            entry_ntl: "0".to_string(),
+            supplied: None,
+        },
+    ];
+    data.mark_spot_balances_fetched_at(TradingTerminal::now_ms());
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, data);
+    terminal.handle_order_percentage_changed(100.0);
 }
 
 fn selected_chase(terminal: &TradingTerminal) -> &ChaseOrder {

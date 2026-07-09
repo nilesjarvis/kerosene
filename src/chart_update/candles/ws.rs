@@ -7,6 +7,8 @@ use crate::timeframe::Timeframe;
 
 use iced::Task;
 
+const SPOT_CANDLE_GAP_RELOAD_BACKOFF_MS: u64 = 60_000;
+
 impl TradingTerminal {
     pub(crate) fn apply_orderbook_tick_price_to_charts(
         &mut self,
@@ -67,6 +69,7 @@ impl TradingTerminal {
 
         let now_ms = Self::now_ms();
         let should_flash = is_valid_candle(&candle);
+        let symbol_is_spot = self.is_spot_coin(&symbol);
         let mut refresh_funding_ids = Vec::new();
         let mut secondary_updated = false;
         let mut primary_reload_ids = Vec::new();
@@ -79,18 +82,35 @@ impl TradingTerminal {
                 && instance.symbol == symbol
                 && interval_matches
             {
-                if instance.chart.candles.last().is_some_and(|last| {
+                let has_gap = instance.chart.candles.last().is_some_and(|last| {
                     open_time_starts_after_gap(last.open_time, candle.open_time, interval_ms)
-                }) {
+                });
+                let spot_gap_reload_due =
+                    instance
+                        .spot_candle_gap_reloaded_at_ms
+                        .is_none_or(|last_reload_ms| {
+                            now_ms.saturating_sub(last_reload_ms)
+                                >= SPOT_CANDLE_GAP_RELOAD_BACKOFF_MS
+                        });
+                if has_gap && (!symbol_is_spot || spot_gap_reload_due) {
                     // A live candle that jumps past the tail (reconnect after a
-                    // sleep/quiet outage) means missed candles. Blind-appending
-                    // would splice a phantom gap that then persists; reload to
-                    // refetch a contiguous window instead.
+                    // sleep/quiet outage) may mean missed candles. Spot markets
+                    // can also be naturally sparse, so reconcile once and then
+                    // back off instead of reloading on every sparse update.
+                    if symbol_is_spot {
+                        instance.spot_candle_gap_reloaded_at_ms = Some(now_ms);
+                    }
                     primary_reload_ids.push(*chart_id);
                 } else {
                     let previous_close = instance.chart.candles.last().map(|candle| candle.close);
                     let next_close = candle.close;
                     instance.chart.push_candle(candle.clone());
+                    if symbol_is_spot
+                        && now_ms.saturating_sub(candle.close_time)
+                            <= instance.interval.cache_display_max_age_ms()
+                    {
+                        instance.candle_fetch_error = None;
+                    }
                     if should_flash {
                         instance.track_last_price_update(previous_close, next_close, now_ms);
                     }
@@ -109,9 +129,18 @@ impl TradingTerminal {
                     .as_ref()
                     .and_then(|series| series.candles.last())
                     .map(|candle| candle.open_time);
-                if secondary_last_open.is_some_and(|last| {
+                let has_gap = secondary_last_open.is_some_and(|last| {
                     open_time_starts_after_gap(last, candle.open_time, interval_ms)
-                }) {
+                });
+                let spot_gap_reload_due = instance
+                    .secondary_spot_candle_gap_reloaded_at_ms
+                    .is_none_or(|last_reload_ms| {
+                        now_ms.saturating_sub(last_reload_ms) >= SPOT_CANDLE_GAP_RELOAD_BACKOFF_MS
+                    });
+                if has_gap && (!symbol_is_spot || spot_gap_reload_due) {
+                    if symbol_is_spot {
+                        instance.secondary_spot_candle_gap_reloaded_at_ms = Some(now_ms);
+                    }
                     secondary_reload_ids.push(*chart_id);
                 } else {
                     instance.chart.push_secondary_candle(candle.clone());

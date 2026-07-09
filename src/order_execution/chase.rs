@@ -7,7 +7,7 @@ use crate::order_execution::{
     AdvancedOrderKind, AdvancedOrderStartSnapshot, OrderOperation, OrderSurface,
     PendingOrderAction, validate_surface_market_type,
 };
-use crate::signing::{ChaseLifecycle, ChaseOrder};
+use crate::signing::{ChaseLifecycle, ChaseOrder, MAX_CHASE_DRIFT_FRACTION};
 use iced::Task;
 
 mod lifecycle;
@@ -78,6 +78,7 @@ impl TradingTerminal {
         });
         let removed = self.chase_orders.contains_key(&chase_id);
         if let Some(chase) = self.chase_orders.remove(&chase_id) {
+            self.chase_spot_symbol_identities.remove(&chase_id);
             let summary = summary.unwrap_or_else(|| {
                 chase
                     .stop_reason
@@ -124,7 +125,19 @@ impl TradingTerminal {
             self.toast_order_status();
             return Task::none();
         };
-        if let Some(task) = self.stale_percentage_order_quantity_task("starting a chase") {
+        if let Err(message) = self
+            .validate_spot_quantity_denomination(&self.active_symbol, self.order_quantity_is_usd)
+        {
+            self.set_order_status(message, true);
+            self.toast_order_status();
+            return Task::none();
+        }
+        if let Err(message) = self.validate_spot_automation_quote(&self.active_symbol, "Chase") {
+            self.set_order_status(message, true);
+            self.toast_order_status();
+            return Task::none();
+        }
+        if let Some(task) = self.stale_percentage_order_quantity_task("starting a chase", is_buy) {
             self.toast_order_status();
             return task;
         }
@@ -168,29 +181,48 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let reference_price = if self.order_quantity_is_usd {
-            let Some(price) = self.resolve_mid_for_symbol(&self.active_symbol) else {
-                self.set_order_status(
-                    format!(
-                        concat!(
-                            "Cannot start USD Chase: no fresh mid price for {}. ",
-                            "Wait for market data or enter size in coin units."
+        let exact_spot_percentage = (sym.market_type == MarketType::Spot)
+            .then(|| self.ticket_spot_percentage_balance_for_side(is_buy))
+            .flatten();
+        let mut percentage_buy_budget_mid = None;
+        let reference_price =
+            if self.order_quantity_is_usd || exact_spot_percentage.is_some_and(|_| is_buy) {
+                let Some(mut price) = self.resolve_mid_for_symbol(&self.active_symbol) else {
+                    self.set_order_status(
+                        format!(
+                            concat!(
+                                "Cannot start USD Chase: no fresh mid price for {}. ",
+                                "Wait for market data or enter size in coin units."
+                            ),
+                            self.active_symbol
                         ),
-                        self.active_symbol
-                    ),
-                    true,
-                );
-                return Task::none();
+                        true,
+                    );
+                    return Task::none();
+                };
+                if exact_spot_percentage.is_some() && is_buy {
+                    percentage_buy_budget_mid = Some(price);
+                    price *= 1.0 + MAX_CHASE_DRIFT_FRACTION;
+                }
+                price
+            } else {
+                1.0
             };
-            price
-        } else {
-            1.0
-        };
 
+        let (sizing_quantity, sizing_uses_price) = exact_spot_percentage
+            .map(|(balance, percentage)| {
+                (
+                    balance * (percentage as f64 / 100.0),
+                    // Buys size from quote balance; sells size directly from
+                    // base balance. Reserve the Chase drift allowance above.
+                    is_buy,
+                )
+            })
+            .unwrap_or((raw_qty, self.order_quantity_is_usd));
         let Some(qty) = order_size_from_quantity_input(
-            raw_qty,
+            sizing_quantity,
             reference_price,
-            self.order_quantity_is_usd,
+            sizing_uses_price,
             sym.sz_decimals,
         ) else {
             let message = "Invalid quantity for asset precision".to_string();
@@ -231,7 +263,10 @@ impl TradingTerminal {
                 current_oid: None,
                 current_price: 0.0,
                 current_price_wire: String::new(),
-                initial_price: 0.0,
+                // Seed the exact percentage-buy drift anchor from the mid
+                // used to reserve quote balance. A stale first book cannot
+                // establish a higher anchor and exceed that budget.
+                initial_price: percentage_buy_budget_mid.unwrap_or(0.0),
                 started_at,
                 started_at_ms,
                 fill_cutoff_ms_by_oid: Vec::new(),
@@ -243,6 +278,9 @@ impl TradingTerminal {
                 cancel_retries: 0,
             },
         );
+        if is_spot {
+            self.record_chase_spot_symbol_identity(chase_id, &sym);
+        }
         self.selected_chase_id = Some(chase_id);
 
         let side_str = if is_buy { "BUY" } else { "SELL" };

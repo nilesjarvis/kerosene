@@ -1,5 +1,5 @@
 use super::live_mids::resolve_live_mid_from_candidates;
-use crate::api::spot_symbol_for_indexed_key;
+use crate::api::{MarketType, spot_symbol_for_indexed_key};
 use crate::app_state::TradingTerminal;
 use crate::helpers::format_price;
 use crate::signing::OrderKind;
@@ -18,6 +18,30 @@ impl TradingTerminal {
         };
 
         push_unique(symbol.to_string());
+
+        let exchange_symbol = self
+            .exchange_symbols
+            .iter()
+            .find(|candidate| candidate.key == symbol)
+            .or_else(|| spot_symbol_for_indexed_key(&self.exchange_symbols, symbol));
+
+        // Spot prices must stay scoped to the exact pair. A base ticker can
+        // also identify a perpetual market, and falling through to that mid
+        // would let the wrong market price a spot order. The only safe
+        // alternatives are the canonical API key and its legacy indexed key.
+        let is_spot = symbol.starts_with('@')
+            || symbol.contains('/')
+            || exchange_symbol.is_some_and(|candidate| candidate.market_type == MarketType::Spot);
+        if is_spot {
+            if let Some(spot) = exchange_symbol.filter(|candidate| {
+                candidate.market_type == MarketType::Spot && candidate.asset_index >= 10_000
+            }) {
+                push_unique(spot.key.clone());
+                push_unique(format!("@{}", spot.asset_index - 10_000));
+            }
+            return out;
+        }
+
         if let Some(encoding) = symbol.strip_prefix('+') {
             push_unique(format!("#{encoding}"));
         }
@@ -29,15 +53,8 @@ impl TradingTerminal {
             push_unique(stripped.to_string());
         }
 
-        // Saved state may still carry the legacy "@{index}" key for spot
-        // pairs the API names directly (PURR/USDC); resolving the alias adds
-        // the canonical key, which is the actual allMids entry.
-        if let Some(sym) = self
-            .exchange_symbols
-            .iter()
-            .find(|s| s.key == symbol)
-            .or_else(|| spot_symbol_for_indexed_key(&self.exchange_symbols, symbol))
-        {
+        // Non-spot metadata can add the established perp/HIP-3 aliases.
+        if let Some(sym) = exchange_symbol {
             push_unique(sym.key.clone());
             if let Some((dex, ticker)) = sym.key.split_once(':') {
                 if let Some(stripped) = ticker.strip_prefix('U') {

@@ -45,6 +45,7 @@ struct PreparedClusterLeg {
     is_buy: bool,
     size: String,
     price: String,
+    market_type: MarketType,
 }
 
 impl TradingTerminal {
@@ -876,6 +877,7 @@ impl TradingTerminal {
                 is_buy,
                 size: order.size,
                 price: order.price,
+                market_type: order.market_type,
             });
         }
 
@@ -990,6 +992,7 @@ impl TradingTerminal {
                 is_buy,
                 size: order.size,
                 price: order.price,
+                market_type: order.market_type,
             });
         }
 
@@ -1039,6 +1042,10 @@ impl TradingTerminal {
         let mut tasks = Vec::with_capacity(prepared.len());
         let mut legs = Vec::with_capacity(prepared.len());
         for leg in prepared {
+            self.invalidate_spot_balances_after_exchange_dispatch(
+                &leg.member.address,
+                leg.market_type,
+            );
             let member_key: RedactedAccountKey = Some(leg.member.profile_secret_id.clone()).into();
             let context = leg.context.clone();
             let key = leg.member.agent_key.clone();

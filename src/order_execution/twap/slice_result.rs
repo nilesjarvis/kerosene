@@ -384,6 +384,7 @@ impl TradingTerminal {
                 ));
                 return self.refresh_after_twap_result(TwapAccountRefresh::Immediate, twap_id);
             }
+            self.invalidate_spot_balances_after_twap_dispatch(twap_id);
             let cancel_task = twap_cancel_child_task(twap_id, key, asset, oid, cloid);
             return self.twap_result_task_with_optional_refresh(
                 refresh_policy,

@@ -1,5 +1,6 @@
 use super::{
     ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OutcomeSymbolInfo, info_request_payload,
+    mark_payload_loaded_from_cache, payload_from_source_results,
 };
 
 #[test]
@@ -54,6 +55,23 @@ fn test_outcome_symbol() -> ExchangeSymbol {
     }
 }
 
+fn test_spot_symbol(quote_token: Option<u32>) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: "@107".to_string(),
+        ticker: "HYPE".to_string(),
+        category: "spot".to_string(),
+        display_name: Some("HYPE/USDC".to_string()),
+        keywords: vec!["spot".to_string()],
+        asset_index: 10_107,
+        collateral_token: quote_token,
+        sz_decimals: 2,
+        max_leverage: 1,
+        only_isolated: false,
+        market_type: MarketType::Spot,
+        outcome: None,
+    }
+}
+
 #[test]
 fn exchange_symbols_payload_debug_summarizes_symbol_list() {
     let payload = ExchangeSymbolsPayload {
@@ -74,6 +92,8 @@ fn exchange_symbols_payload_debug_summarizes_symbol_list() {
             },
             test_outcome_symbol(),
         ],
+        loaded_from_cache: false,
+        perp_meta_failed: false,
         spot_meta_failed: true,
         outcome_meta_failed: false,
     };
@@ -84,8 +104,100 @@ fn exchange_symbols_payload_debug_summarizes_symbol_list() {
     assert!(rendered.contains("symbols_len: 2"));
     assert!(rendered.contains("perp_count: 1"));
     assert!(rendered.contains("outcome_count: 1"));
+    assert!(rendered.contains("loaded_from_cache: false"));
+    assert!(rendered.contains("perp_meta_failed: false"));
     assert!(rendered.contains("spot_meta_failed: true"));
     assert!(!rendered.contains("private threshold"));
     assert!(!rendered.contains("Long raw outcome description"));
     assert!(!rendered.contains("75348.12"));
+}
+
+#[test]
+fn symbol_cache_requires_complete_sources_and_spot_quote_tokens() {
+    let complete = ExchangeSymbolsPayload {
+        symbols: vec![test_spot_symbol(Some(0))],
+        loaded_from_cache: false,
+        perp_meta_failed: false,
+        spot_meta_failed: false,
+        outcome_meta_failed: false,
+    };
+    assert!(complete.is_cacheable());
+
+    let legacy_missing_quote = ExchangeSymbolsPayload {
+        symbols: vec![test_spot_symbol(None)],
+        ..complete.clone()
+    };
+    assert!(!legacy_missing_quote.is_cacheable());
+
+    let cached = ExchangeSymbolsPayload {
+        loaded_from_cache: true,
+        ..complete.clone()
+    };
+    assert!(!cached.is_cacheable());
+
+    let partial = ExchangeSymbolsPayload {
+        spot_meta_failed: true,
+        ..complete
+    };
+    assert!(!partial.is_cacheable());
+}
+
+#[test]
+fn cache_provenance_is_runtime_only() {
+    let payload = ExchangeSymbolsPayload {
+        symbols: vec![test_spot_symbol(Some(0))],
+        loaded_from_cache: true,
+        perp_meta_failed: false,
+        spot_meta_failed: false,
+        outcome_meta_failed: false,
+    };
+
+    let encoded = serde_json::to_value(&payload).expect("payload serializes");
+    assert!(encoded.get("loaded_from_cache").is_none());
+    let decoded: ExchangeSymbolsPayload =
+        serde_json::from_value(encoded).expect("payload deserializes");
+    assert!(!decoded.loaded_from_cache);
+}
+
+#[test]
+fn cached_fetch_marks_payload_as_unverified_for_runtime() {
+    let payload = ExchangeSymbolsPayload {
+        symbols: vec![test_spot_symbol(Some(0))],
+        loaded_from_cache: false,
+        perp_meta_failed: false,
+        spot_meta_failed: false,
+        outcome_meta_failed: false,
+    };
+
+    let cached = mark_payload_loaded_from_cache(payload);
+
+    assert!(cached.loaded_from_cache);
+    assert!(!cached.is_cacheable());
+    assert_eq!(cached.symbols[0].key, "@107");
+}
+
+#[test]
+fn legacy_cached_payload_defaults_perp_failure_flag_to_false() {
+    let payload: ExchangeSymbolsPayload = serde_json::from_value(serde_json::json!({
+        "symbols": [],
+        "spot_meta_failed": true,
+        "outcome_meta_failed": false
+    }))
+    .expect("legacy payload still deserializes");
+
+    assert!(!payload.perp_meta_failed);
+}
+
+#[test]
+fn perp_source_failure_preserves_successful_spot_result() {
+    let payload = payload_from_source_results(
+        Err("perp unavailable".to_string()),
+        Ok(vec![test_spot_symbol(Some(0))]),
+        Ok(Vec::new()),
+    );
+
+    assert!(payload.perp_meta_failed);
+    assert!(!payload.spot_meta_failed);
+    assert_eq!(payload.symbols.len(), 1);
+    assert_eq!(payload.symbols[0].market_type, MarketType::Spot);
 }

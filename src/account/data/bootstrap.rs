@@ -1,14 +1,12 @@
 use super::super::http::{best_effort_response_vec, post_info_json_with_retries};
-use super::super::{
-    AccountData, AccountDataCompleteness, AccountDataFetchScope, HIP3_DEXES, OpenOrder, UserFill,
-};
+use super::super::{AccountData, AccountDataFetchScope, HIP3_DEXES, OpenOrder, UserFill};
 use super::merge::{merge_hip3_open_orders, merge_hip3_positions};
 use crate::api::API_URL;
 use crate::app_time::now_ms;
 use responses::{
-    account_abstraction_from_best_effort_value, clearinghouse_from_required_value,
+    account_abstraction_from_best_effort_value, account_states_from_required_spot,
     fee_rates_from_response, funding_history_from_response, hip3_clearinghouse_from_response,
-    hip3_open_orders_from_response, record_best_effort_section_warnings, spot_from_required_value,
+    hip3_open_orders_from_response, record_best_effort_section_warnings,
 };
 use serde_json::Value;
 
@@ -154,10 +152,8 @@ pub async fn fetch_account_data_scoped(
         fees_resp,
     ) = futures::future::join4(main_fut, hip3_ch_join, hip3_ord_join, fees_fut).await;
 
-    let clearinghouse = clearinghouse_from_required_value(ch_resp?)?;
-    let spot = spot_from_required_value(spot_resp?)?;
-
-    let mut completeness = AccountDataCompleteness::default();
+    let (clearinghouse, spot, mut completeness) =
+        account_states_from_required_spot(ch_resp, spot_resp)?;
     let account_abstraction =
         account_abstraction_from_best_effort_value(abstraction_resp, &spot, &mut completeness);
     let mut bootstrap_warnings = Vec::new();
@@ -224,6 +220,7 @@ pub async fn fetch_account_data_scoped(
     if main_open_orders_fetched {
         account_data.mark_open_orders_fetched_at(fetched_at_ms);
     }
+    account_data.mark_spot_balances_fetched_at(fetched_at_ms);
     for dex in hip3_open_orders_fetched {
         account_data.mark_open_orders_fetched_at_for_dex(&dex, fetched_at_ms);
     }

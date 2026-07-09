@@ -33,6 +33,7 @@ fn quick_order_reopen_values_drop_percentage_derived_size() {
     form.quantity_provenance = Some(crate::order_execution::QuickOrderQuantityProvenance {
         account_address: "0xabc0000000000000000000000000000000000000".to_string(),
         account_data_revision: 7,
+        spot_balances_revision: 3,
         symbol_key: "BTC".to_string(),
         quantity_is_usd: false,
         percentage: 25.0,

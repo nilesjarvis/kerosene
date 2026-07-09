@@ -92,7 +92,9 @@ impl TradingTerminal {
             .connected_order_account_snapshot()
             .map(|(_, data)| data)
             .map(|data| {
-                if self.is_outcome_coin(&self.active_symbol) {
+                if self.is_spot_coin(&self.active_symbol) {
+                    self.spot_spendable_quote_balance(&self.active_symbol, data)
+                } else if self.is_outcome_coin(&self.active_symbol) {
                     data.available_margin_for_token(
                         self.outcome_quote_token_index_for_coin(&self.active_symbol),
                     )
@@ -101,13 +103,25 @@ impl TradingTerminal {
                 }
             })
             .unwrap_or(Some(0.0));
+        let spot_quote_label = self
+            .exchange_symbol_for_key(&self.active_symbol)
+            .filter(|symbol| symbol.market_type == crate::api::MarketType::Spot)
+            .and_then(|symbol| symbol.display_name.as_deref())
+            .and_then(|display| display.rsplit_once('/'))
+            .map(|(_, quote)| quote.to_string());
+        let available_label = match spot_quote_label.as_deref() {
+            Some(_) if !self.spot_usd_denomination_supported(&self.active_symbol) => {
+                format_optional_token_amount(available_margin, spot_quote_label.as_deref())
+            }
+            _ => format_optional_usd(available_margin),
+        };
         let weak_color = theme.extended_palette().background.weak.text;
         let invalid_color = theme.palette().warning;
         let available_color = optional_value_color(available_margin, weak_color, invalid_color);
         let margin_used_color = optional_value_color(margin_used, weak_color, invalid_color);
 
         row![
-            text(format!("Avail: {}", format_optional_usd(available_margin)))
+            text(format!("Avail: {available_label}"))
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
                 .color(available_color),
@@ -228,6 +242,18 @@ fn format_optional_usd(value: Option<f64>) -> String {
     value
         .map(|value| format_usd(&format!("{value:.2}")))
         .unwrap_or_else(invalid_data_placeholder)
+}
+
+fn format_optional_token_amount(value: Option<f64>, token: Option<&str>) -> String {
+    match (value, token.filter(|token| !token.trim().is_empty())) {
+        (Some(value), Some(token)) if value.is_finite() => {
+            format!(
+                "{} {token}",
+                helpers::trim_decimal_zeros(format!("{value:.8}"))
+            )
+        }
+        _ => invalid_data_placeholder(),
+    }
 }
 
 fn order_leverage_label(is_cross: bool, leverage: u32, is_actual: bool) -> String {

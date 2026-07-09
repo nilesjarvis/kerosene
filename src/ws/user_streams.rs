@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 use super::{SubscriptionGuard, WsCommand, WsCommandSender, get_manager};
 use events::parse_user_stream_message;
-use routing::normalize_ws_user_address;
+use routing::{matching_user_payload_address, normalize_ws_user_address};
 use std::fmt;
 use subscriptions::build_user_stream_subscriptions;
 
@@ -119,9 +119,25 @@ fn user_stream_routed_action(
     mids_addr: Option<String>,
     include_mids: bool,
 ) -> UserStreamReceiveAction {
-    parse_user_stream_routed_message(channel, data, target_addr, mids_addr, include_mids)
-        .map(UserStreamReceiveAction::Emit)
-        .unwrap_or(UserStreamReceiveAction::Ignore)
+    if let Some(update) =
+        parse_user_stream_routed_message(channel, data, target_addr, mids_addr, include_mids)
+    {
+        return UserStreamReceiveAction::Emit(update);
+    }
+
+    if channel == "spotState"
+        && let Some(source_addr) = matching_user_payload_address(data, target_addr)
+    {
+        // A correctly routed spotState frame that fails schema parsing must
+        // not be silently ignored: balances are now unknown. Force the same
+        // reconciliation/reconnect path used for an explicitly lagged stream.
+        return UserStreamReceiveAction::EmitAndReconnect((
+            Some(source_addr),
+            WsUserData::Lagged { skipped: 1 },
+        ));
+    }
+
+    UserStreamReceiveAction::Ignore
 }
 
 fn user_stream_lagged_action(addr: Option<String>, skipped: u64) -> UserStreamReceiveAction {
@@ -354,6 +370,49 @@ mod tests {
             Some("0xabc0000000000000000000000000000000000000")
         );
         assert_eq!(skipped, 7);
+    }
+
+    #[test]
+    fn malformed_targeted_spot_state_forces_reconciliation_and_reconnect() {
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+        let action = user_stream_routed_action(
+            "spotState",
+            &serde_json::json!({
+                "user": ADDRESS,
+                "spotState": { "balances": "invalid" }
+            }),
+            Some(ADDRESS),
+            Some(ADDRESS.to_string()),
+            true,
+        );
+
+        assert!(action.should_reconnect_after_emit());
+        let UserStreamReceiveAction::EmitAndReconnect((
+            source_addr,
+            WsUserData::Lagged { skipped: 1 },
+        )) = action
+        else {
+            panic!("malformed targeted spotState must reconcile");
+        };
+        assert_eq!(source_addr.as_deref(), Some(ADDRESS));
+    }
+
+    #[test]
+    fn malformed_spot_state_for_another_address_is_ignored() {
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+        const OTHER: &str = "0xdef0000000000000000000000000000000000000";
+        let action = user_stream_routed_action(
+            "spotState",
+            &serde_json::json!({
+                "user": OTHER,
+                "spotState": { "balances": "invalid" }
+            }),
+            Some(ADDRESS),
+            Some(ADDRESS.to_string()),
+            true,
+        );
+
+        assert!(matches!(action, UserStreamReceiveAction::Ignore));
     }
 
     #[test]

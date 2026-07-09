@@ -106,7 +106,9 @@ fn balance_amount(
     denomination: &DisplayDenominationContext,
 ) -> String {
     match value {
-        Some(value) if matches!(coin, "USDC" | "USDH") => denomination.format_value(value, 2),
+        Some(value) if crate::helpers::is_usd_stable_fee_token(coin) => {
+            denomination.format_value(value, 2)
+        }
         Some(value) if coin.starts_with('+') => format!("{:.0}", value.floor()),
         Some(value) => format!("{value:.6}"),
         None => invalid_account_data(),

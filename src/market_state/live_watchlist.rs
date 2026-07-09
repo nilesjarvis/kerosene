@@ -26,7 +26,12 @@ impl TradingTerminal {
     }
 
     pub(crate) fn request_live_watchlist_refresh(&mut self, force: bool) -> Task<Message> {
-        let symbols = self.watched_live_watchlist_symbols();
+        let mut symbols = self.watched_live_watchlist_symbols();
+        if self.symbols_loading {
+            // The canonical key for the legacy `@0` pair is only known after
+            // spotMeta loads. Defer rather than issue failing raw candle calls.
+            symbols.retain(|symbol| symbol != "@0");
+        }
         let plan = plan_live_watchlist_refresh(LiveWatchlistRefreshInput {
             symbols,
             force,

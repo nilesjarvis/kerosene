@@ -85,6 +85,12 @@ REST snapshots are merged with websocket events and optimistic local updates
 where safe. The model tracks freshness so high-risk actions can reject stale
 data.
 
+Spot balances have independent completeness, fetch time, and revision state;
+position freshness is not used as a proxy. Account bootstrap fetches spot and
+perpetual clearinghouse state independently so a failed perpetual read does not
+discard a valid spot snapshot. Percentage orders require a complete, fresh
+spot snapshot and use the selected pair's verified base/quote token identities.
+
 ## User Data Stream
 
 `subscription_state/user_data.rs` creates `WsUserDataStreamParams` for:
@@ -107,6 +113,12 @@ data.
 
 Websocket updates should not blindly override newer local verification state.
 Tests cover stale websocket behavior for advanced order reconciliation.
+
+A targeted `spotState` frame replaces balances, marks them fresh, and advances
+the spot-balance revision. A spot fill can arrive before that frame, so any live
+spot fill first marks balances incomplete. Signed spot dispatches do the same;
+percentage sizing remains blocked until the balance lane or a full refresh
+reconciles the resulting totals and holds.
 
 ## Positions
 
@@ -175,6 +187,14 @@ Wallet tracker features:
 - open-order counts
 - HIP-3 and spot fallback handling
 
+Portfolio-margin headline equity and available balance are spot-state values,
+not the values reported by an individual perpetual clearinghouse. Tracker
+refreshes therefore inspect spot state even when the perp response is positive,
+price non-stable balances only from exact validated spot marks, and include
+negative balances. Missing spot state or marks produce a redacted valuation
+warning and retain a usable perp snapshot rather than silently presenting a
+partial spot total as authoritative.
+
 Tracked wallets are persisted, but any private trading keys are not part of
 wallet tracker state.
 
@@ -192,6 +212,12 @@ grid. They can subscribe to user-data streams for their own address and show:
 
 The detail window should not mutate the connected trading account unless a
 message explicitly targets account profile state.
+
+For portfolio-margin wallets, detail-window equity is recomputed from spot
+balances and token-0 maintenance availability. If any material held balance
+cannot be priced, the headline value is unavailable instead of showing a
+plausible but incomplete number; row-level values and PnL likewise preserve an
+explicit unavailable state.
 
 ## Wallet Clusters
 
@@ -257,6 +283,12 @@ should be treated carefully.
 Account data carries freshness information. Close-position, NUKE, and some
 automation paths reject stale snapshots and request refresh rather than trading
 against outdated positions.
+
+Spot-balance freshness is evaluated separately from positions and open orders.
+Unrelated account revisions do not invalidate a spot percentage selection, but
+a spot dispatch, fill, balance replacement, account switch, or provider/key
+generation change does. This prevents a pre-trade balance snapshot from sizing
+another action while exchange holds are still converging.
 
 Refresh state includes:
 

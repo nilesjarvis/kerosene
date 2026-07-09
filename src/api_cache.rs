@@ -169,10 +169,19 @@ pub(crate) fn load_fresh_exchange_symbols(
     if now_ms.saturating_sub(cached.fetched_at_ms) > EXCHANGE_SYMBOLS_FRESH_MS {
         return Ok(None);
     }
+    if !cached.payload.is_cacheable() {
+        // Older cache entries did not retain the quote token for spot pairs;
+        // partial or malformed payloads must likewise never suppress a fresh
+        // metadata request in trading code.
+        return Ok(None);
+    }
     Ok(Some(cached.payload))
 }
 
 pub(crate) fn save_exchange_symbols(payload: &ExchangeSymbolsPayload) -> Result<(), String> {
+    if !payload.is_cacheable() {
+        return Err("refusing to cache incomplete exchange symbol metadata".to_string());
+    }
     let (path, bytes) = envelope_bytes(
         &cache_root()?,
         "market_metadata",

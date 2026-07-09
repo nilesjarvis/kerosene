@@ -65,9 +65,15 @@ impl TradingTerminal {
                 let trade_coin = self.select_spot_trade_coin(&trade_coins, balance, fills)?;
                 self.resolve_mid_for_symbol(&trade_coin)
             }
-            // Stables, outcome balance coins, and unlisted tokens keep the
-            // direct lookup ("+NNN" outcome coins resolve via their "#" alias).
-            None => self.resolve_mid_for_symbol(&balance.coin),
+            // Stables and outcome balance coins keep the direct lookup
+            // ("+NNN" outcome coins resolve via their "#" alias). Never use a
+            // same-ticker perp or a crypto-quoted pair as a USD spot mark.
+            None if spot_balance_is_stable(&balance.coin)
+                || Self::outcome_balance_coin_to_trade_coin(&balance.coin).is_some() =>
+            {
+                self.resolve_mid_for_symbol(&balance.coin)
+            }
+            None => None,
         }
     }
 
@@ -135,20 +141,15 @@ impl TradingTerminal {
                     && symbol.ticker.eq_ignore_ascii_case(&balance.coin)
             })
             .collect();
-        // Non-USD-quoted duplicates (e.g. a UBTC-quoted pair) report mids in
-        // quote units; valuing those as USD would misprice the balance, so
-        // they only count when no USD-stable-quoted pair exists.
+        // Non-USD-quoted pairs report mids in quote units. Every consumer of
+        // this mapping currently treats marks and position values as USD, so
+        // fail closed when no USD-stable pair exists.
         let usd_quoted: Vec<&ExchangeSymbol> = spot_pairs
             .iter()
             .copied()
             .filter(|symbol| symbol.spot_quote_is_usd_stable())
             .collect();
-        let pairs = if usd_quoted.is_empty() {
-            spot_pairs
-        } else {
-            usd_quoted
-        };
-        let mut trade_coins: Vec<(u32, String)> = pairs
+        let mut trade_coins: Vec<(u32, String)> = usd_quoted
             .into_iter()
             .map(|symbol| (symbol.asset_index, symbol.key.clone()))
             .collect();

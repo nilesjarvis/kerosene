@@ -22,6 +22,12 @@ Examples:
 - `buy $1k HYPE at 43` drafts a `$1,000` USD-notional limit buy at `43`.
 - `chase $1k HYPE` drafts a `$1,000` USD-notional Chase order and leaves the side selection to the order-entry controls.
 - `chase buy $1k HYPE` starts a `$1,000` USD-notional Chase buy.
+- Spell spot markets as an explicit pair, such as `buy $1k HYPE/USDC`. A
+  bare ticker with the `spot` qualifier is accepted only when exactly one
+  spot pair exists for that ticker; ambiguous tickers must name the quote
+  asset so Alfred cannot route an order to the wrong book. An unqualified
+  bare ticker resolves only to a perpetual market and never falls back to
+  spot.
 
 Supported size suffixes:
 

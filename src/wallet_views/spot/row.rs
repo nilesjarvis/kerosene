@@ -1,6 +1,6 @@
 use crate::account::SpotBalance;
 use crate::denomination::DisplayDenominationContext;
-use crate::helpers::optional_value_color;
+use crate::helpers::{is_usd_stable_fee_token, optional_value_color};
 use crate::message::Message;
 use crate::wallet_views::numbers::{
     format_wallet_display_amount, format_wallet_display_usd, invalid_wallet_data,
@@ -38,9 +38,9 @@ pub(super) fn wallet_spot_row(
     let supplied = wallet_supplied_amount(
         denomination,
         balance.supplied.as_deref(),
-        balance.coin == "USDC",
+        is_usd_stable_fee_token(&balance.coin),
     );
-    let is_usdc = balance.coin == "USDC";
+    let is_usd_stable = is_usd_stable_fee_token(&balance.coin);
     let weak_color = theme.extended_palette().background.weak.text;
     let invalid_color = theme.palette().warning;
 
@@ -48,7 +48,7 @@ pub(super) fn wallet_spot_row(
         text(display_coin)
             .size(11)
             .font(crate::app_fonts::monospace_font())
-            .color(if is_usdc {
+            .color(if is_usd_stable {
                 theme.palette().text
             } else {
                 theme.palette().success
@@ -58,7 +58,7 @@ pub(super) fn wallet_spot_row(
             denomination,
             &balance.coin,
             total,
-            is_usdc
+            is_usd_stable
         ))
         .size(11)
         .font(crate::app_fonts::monospace_font())
@@ -68,7 +68,7 @@ pub(super) fn wallet_spot_row(
             denomination,
             &balance.coin,
             hold,
-            is_usdc
+            is_usd_stable
         ))
         .size(11)
         .font(crate::app_fonts::monospace_font())
@@ -78,7 +78,7 @@ pub(super) fn wallet_spot_row(
             denomination,
             &balance.coin,
             available,
-            is_usdc
+            is_usd_stable
         ))
         .size(11)
         .font(crate::app_fonts::monospace_font())
@@ -110,11 +110,11 @@ fn wallet_spot_amount(
     denomination: &DisplayDenominationContext,
     coin: &str,
     value: Option<f64>,
-    is_usdc: bool,
+    is_usd_stable: bool,
 ) -> String {
     match value {
         Some(value) if coin.starts_with('+') => format!("{:.0}", value.floor()),
-        _ => format_wallet_display_amount(denomination, value, is_usdc),
+        _ => format_wallet_display_amount(denomination, value, is_usd_stable),
     }
 }
 
@@ -134,11 +134,11 @@ fn wallet_entry_notional(
 fn wallet_supplied_amount(
     denomination: &DisplayDenominationContext,
     value: Option<&str>,
-    is_usdc: bool,
+    is_usd_stable: bool,
 ) -> String {
     match value {
         Some(value) => {
-            format_wallet_display_amount(denomination, parse_wallet_number(value), is_usdc)
+            format_wallet_display_amount(denomination, parse_wallet_number(value), is_usd_stable)
         }
         None => "-".to_string(),
     }

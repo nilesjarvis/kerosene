@@ -16,6 +16,9 @@ pub struct WalletTrackerSnapshot {
     pub open_order_count: usize,
     pub long_exposure: Option<f64>,
     pub short_exposure: Option<f64>,
+    /// Non-fatal valuation degradation, such as unavailable PM spot marks.
+    /// The snapshot stays visible but must not be presented as fully current.
+    pub valuation_warning: Option<String>,
 }
 
 impl fmt::Debug for WalletTrackerSnapshot {
@@ -29,6 +32,10 @@ impl fmt::Debug for WalletTrackerSnapshot {
             .field("open_order_count", &self.open_order_count)
             .field("long_exposure", &redacted_presence(&self.long_exposure))
             .field("short_exposure", &redacted_presence(&self.short_exposure))
+            .field(
+                "valuation_warning",
+                &redacted_presence(&self.valuation_warning),
+            )
             .finish()
     }
 }
@@ -125,6 +132,7 @@ mod tests {
             open_order_count: 5,
             long_exposure: Some(1111.0),
             short_exposure: Some(2222.0),
+            valuation_warning: Some("wallet-snapshot-secret-warning".to_string()),
         };
 
         let rendered = format!("{snapshot:?}");
@@ -135,6 +143,7 @@ mod tests {
         for secret in ["987654321.123", "12345.67", "-7654.321", "42.42"] {
             assert!(!rendered.contains(secret), "{secret} leaked in {rendered}");
         }
+        assert!(!rendered.contains("wallet-snapshot-secret-warning"));
     }
 
     #[test]

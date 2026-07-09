@@ -207,6 +207,10 @@ impl TradingTerminal {
         });
 
         let (request, context) = prepared.place_request_with_context(&account_address);
+        self.invalidate_spot_balances_after_exchange_dispatch(
+            &account_address,
+            prepared.market_type,
+        );
         place_order_task(key, request, move |result| Message::HudOrderResult {
             pending_indicator_id,
             inflight_id,

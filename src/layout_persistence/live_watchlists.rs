@@ -17,11 +17,20 @@ impl TradingTerminal {
                     watchlist_config.id,
                     LiveWatchlistInstance {
                         id: watchlist_config.id,
-                        symbols: watchlist_config
-                            .symbols
-                            .into_iter()
-                            .filter(|symbol| !self.symbol_key_is_hidden(symbol))
-                            .collect(),
+                        symbols: {
+                            let mut seen = std::collections::HashSet::new();
+                            watchlist_config
+                                .symbols
+                                .into_iter()
+                                .filter(|symbol| !self.symbol_key_is_hidden(symbol))
+                                .map(|symbol| {
+                                    self.exchange_symbol_for_key(&symbol)
+                                        .map(|metadata| metadata.key.clone())
+                                        .unwrap_or(symbol)
+                                })
+                                .filter(|symbol| seen.insert(symbol.clone()))
+                                .collect()
+                        },
                         search_query: String::new(),
                         sort_column: watchlist_config.sort_column,
                         sort_direction: watchlist_config.sort_direction,

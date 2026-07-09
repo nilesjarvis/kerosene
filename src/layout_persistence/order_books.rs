@@ -24,7 +24,11 @@ impl TradingTerminal {
                     if self.symbol_key_is_hidden(symbol) {
                         OrderBookSymbolMode::Active
                     } else {
-                        OrderBookSymbolMode::Fixed(symbol.clone())
+                        let canonical = self
+                            .exchange_symbol_for_key(symbol)
+                            .map(|metadata| metadata.key.clone())
+                            .unwrap_or_else(|| symbol.clone());
+                        OrderBookSymbolMode::Fixed(canonical)
                     }
                 }
             };

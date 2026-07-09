@@ -1,4 +1,7 @@
-use super::super::super::{SpotClearinghouseState, spot::estimate_spot_equity};
+use super::super::super::{
+    SpotClearinghouseState,
+    spot::{augment_spot_balance_mids, estimate_spot_equity},
+};
 use super::snapshot::parse_tracker_number;
 use crate::api::API_URL;
 
@@ -22,14 +25,6 @@ pub(super) struct SpotEquityFallback {
     pub(super) withdrawable: Option<f64>,
 }
 
-/// Whether the spot-equity fallback is worth attempting: perp equity and
-/// withdrawable that are both present and positive already reflect real
-/// equity, so no fallback is needed.
-pub(super) fn spot_equity_fallback_needed(equity: Option<f64>, withdrawable: Option<f64>) -> bool {
-    !(equity.is_some_and(|equity| equity > 0.0)
-        && withdrawable.is_some_and(|withdrawable| withdrawable > 0.0))
-}
-
 /// Derive fallback values from an already-fetched spot clearinghouse state.
 /// Returns `None` for wallets without portfolio margin enabled.
 pub(super) fn spot_equity_fallback_from_state(
@@ -50,7 +45,7 @@ pub(super) fn spot_equity_fallback_from_state(
     })
 }
 
-/// Merge a best-effort fallback outcome into the perp snapshot values.
+/// Merge a best-effort portfolio-margin spot outcome into the perp snapshot.
 ///
 /// Errors (and non-portfolio-margin wallets) leave the already-fetched perp
 /// values untouched: a transient failure of the auxiliary spot request must
@@ -63,12 +58,13 @@ pub(super) fn merge_spot_equity_fallback(
     let Ok(Some(fallback)) = outcome else {
         return;
     };
-    if !equity.is_some_and(|equity| equity > 0.0) {
+    // A returned fallback is known to be portfolio-margin spot state, which is
+    // authoritative for these headline values. Do not let a small but
+    // incomplete per-dex clearinghouse number override it.
+    if fallback.equity.is_some() {
         *equity = fallback.equity;
     }
-    if !withdrawable.is_some_and(|withdrawable| withdrawable > 0.0)
-        && fallback.withdrawable.is_some()
-    {
+    if fallback.withdrawable.is_some() {
         *withdrawable = fallback.withdrawable;
     }
 }
@@ -79,12 +75,23 @@ pub(super) async fn apply_spot_equity_fallback(
     address: &str,
     equity: &mut Option<f64>,
     withdrawable: &mut Option<f64>,
-) {
-    if !spot_equity_fallback_needed(*equity, *withdrawable) {
-        return;
-    }
+) -> Option<String> {
+    // Portfolio-margin clearinghouse values can be positive yet incomplete.
+    // Always fetch spot state so PM detection does not depend on the magnitude
+    // of those non-authoritative values.
     let outcome = fetch_spot_equity_fallback(client, address).await;
+    let warning = match &outcome {
+        Err(error) => Some(format!(
+            "Spot/portfolio-margin valuation verification unavailable: {error}"
+        )),
+        Ok(Some(fallback)) if fallback.equity.is_none() => Some(
+            "Portfolio-margin spot valuation is incomplete because one or more balances have no live mark"
+                .to_string(),
+        ),
+        _ => None,
+    };
     merge_spot_equity_fallback(outcome, equity, withdrawable);
+    warning
 }
 
 async fn fetch_spot_equity_fallback(
@@ -144,12 +151,18 @@ pub(super) async fn fetch_spot_fallback_mids(
         .await
         .map_err(|e| format!("allMids parse failed: {e}"))?;
 
-    Ok(mids_raw
+    let mut mids: HashMap<String, f64> = mids_raw
         .into_iter()
         .filter_map(|(k, v)| {
             parse_tracker_number(&v)
                 .filter(|price| *price > 0.0)
                 .map(|price| (k, price))
         })
-        .collect())
+        .collect();
+    if let Ok(Some(payload)) =
+        crate::api_cache::load_fresh_exchange_symbols(crate::app_time::now_ms())
+    {
+        augment_spot_balance_mids(&mut mids, &payload.symbols);
+    }
+    Ok(mids)
 }

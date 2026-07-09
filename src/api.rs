@@ -16,7 +16,7 @@ pub use candles::{
     Candle, candles_have_interior_gap, fetch_candles, fetch_chart_backfill_candles,
     is_valid_candle, normalize_candles, open_time_starts_after_gap, trailing_contiguous_run_start,
 };
-pub(crate) use chart_asset_context::fetch_chart_asset_context;
+pub(crate) use chart_asset_context::{fetch_chart_asset_context, fetch_spot_chart_asset_contexts};
 pub use exchange_symbols::{
     ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OutcomeSymbolInfo, fetch_exchange_symbols,
     fetch_exchange_symbols_cached, spot_symbol_for_indexed_key,
@@ -34,7 +34,8 @@ pub(crate) use sec::{
 };
 pub use user_fills::{UserFill, UserFillsPage, UserFillsRequest, fetch_user_fills};
 pub use watchlist::{
-    WatchlistContext, fetch_screener_history, fetch_watchlist_contexts, fetch_watchlist_history,
+    WatchlistContext, WatchlistContextsResponse, fetch_screener_history, fetch_watchlist_contexts,
+    fetch_watchlist_history,
 };
 
 use reqwest::{

@@ -85,6 +85,47 @@ impl TradingTerminal {
         let Some(chase_snapshot) = self.chase_orders.get(&chase_id) else {
             return Task::none();
         };
+        if chase_snapshot.is_spot
+            && !self.chase_spot_symbol_identity_is_current(chase_id, &chase_snapshot.coin)
+        {
+            if let Some(oid) = chase_snapshot.current_oid {
+                return self.cancel_known_chase_order_for_safety(
+                    chase_id,
+                    oid,
+                    "Chase stopped: spot market identity changed",
+                    true,
+                );
+            }
+            return self.stop_chase_by_id_with_reason(
+                chase_id,
+                "Chase stopped: spot market identity changed",
+                true,
+            );
+        }
+        if chase_snapshot.is_spot
+            && let Err(message) =
+                self.validate_spot_quantity_denomination(&chase_snapshot.coin, false)
+        {
+            if let Some(oid) = chase_snapshot.current_oid {
+                return self.cancel_known_chase_order_for_safety(chase_id, oid, message, true);
+            }
+            return self.stop_chase_by_id_with_reason(chase_id, message, true);
+        }
+        if chase_snapshot.is_spot && self.spot_metadata_degraded {
+            if let Some(oid) = chase_snapshot.current_oid {
+                return self.cancel_known_chase_order_for_safety(
+                    chase_id,
+                    oid,
+                    "Chase stopped: spot metadata has not been verified",
+                    true,
+                );
+            }
+            return self.stop_chase_by_id_with_reason(
+                chase_id,
+                "Chase stopped: spot metadata has not been verified",
+                true,
+            );
+        }
         if chase_snapshot.current_oid.is_none() {
             return Task::none();
         }
@@ -185,6 +226,54 @@ impl TradingTerminal {
         now: Instant,
         status: &'static str,
     ) -> Task<Message> {
+        // Account reconciliation is asynchronous. Spot metadata can refresh
+        // while it is in flight, so repeat every market-identity gate at the
+        // final exchange-dispatch boundary instead of relying on the earlier
+        // book-update check.
+        let Some((is_spot, coin, current_oid)) = self
+            .chase_orders
+            .get(&chase_id)
+            .map(|chase| (chase.is_spot, chase.coin.clone(), chase.current_oid))
+        else {
+            return Task::none();
+        };
+        if is_spot && !self.chase_spot_symbol_identity_is_current(chase_id, &coin) {
+            if let Some(oid) = current_oid {
+                return self.cancel_known_chase_order_for_safety(
+                    chase_id,
+                    oid,
+                    "Chase stopped: spot market identity changed",
+                    true,
+                );
+            }
+            return self.stop_chase_by_id_with_reason(
+                chase_id,
+                "Chase stopped: spot market identity changed",
+                true,
+            );
+        }
+        if is_spot && let Err(message) = self.validate_spot_quantity_denomination(&coin, false) {
+            if let Some(oid) = current_oid {
+                return self.cancel_known_chase_order_for_safety(chase_id, oid, message, true);
+            }
+            return self.stop_chase_by_id_with_reason(chase_id, message, true);
+        }
+        if is_spot && self.spot_metadata_degraded {
+            if let Some(oid) = current_oid {
+                return self.cancel_known_chase_order_for_safety(
+                    chase_id,
+                    oid,
+                    "Chase stopped: spot metadata has not been verified",
+                    true,
+                );
+            }
+            return self.stop_chase_by_id_with_reason(
+                chase_id,
+                "Chase stopped: spot metadata has not been verified",
+                true,
+            );
+        }
+
         let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
             return Task::none();
         };
@@ -223,6 +312,7 @@ impl TradingTerminal {
         let asset = chase.asset;
         let is_buy = chase.is_buy;
         let reduce_only = chase.reduce_only;
+        let account_address = chase.account_address.clone();
         let market_type = if chase.is_spot {
             MarketType::Spot
         } else {
@@ -249,6 +339,7 @@ impl TradingTerminal {
         self.last_advanced_exchange_request_at = Some(now);
         self.order_status = Some((format!("{status} {oid}"), false));
 
+        self.invalidate_spot_balances_after_exchange_dispatch(&account_address, market_type);
         modify_order_task(key, prepared, move |r| Message::ChaseModifyResult {
             chase_id,
             oid,

@@ -60,3 +60,55 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
             .asset_volume_as_notional
     );
 }
+
+#[test]
+fn boot_defers_legacy_api_named_spaghetti_series_until_metadata_migration() {
+    let mut config = SpaghettiChartConfig::empty(7);
+    config.symbols = vec!["@0".to_string()];
+
+    let (charts, tasks) = TradingTerminal::boot_spaghetti_instances(
+        &[config],
+        &std::collections::HashSet::new(),
+        crate::config::ChartBackfillSource::Hyperliquid,
+        &zeroize::Zeroizing::new(String::new()),
+    );
+
+    assert!(tasks.is_empty(), "raw @0 candle fetch must be deferred");
+    let series = &charts[&7].canvas.series[0];
+    assert_eq!(series.symbol, "@0");
+    assert!(!series.loaded);
+    assert!(series.candles.is_empty());
+}
+
+#[test]
+fn boot_defers_legacy_regular_chart_series_until_metadata_migration() {
+    let mut config = ChartConfig::empty(7, "@0", "H1");
+    config.secondary_symbol = Some("@0".to_string());
+
+    let (charts, tasks) = TradingTerminal::boot_chart_instances(
+        &[config],
+        &std::collections::HashSet::new(),
+        crate::config::ChartBackfillSource::Hyperliquid,
+        &zeroize::Zeroizing::new(String::new()),
+        &zeroize::Zeroizing::new(String::new()),
+    );
+
+    assert!(
+        tasks.is_empty(),
+        "raw @0 primary, secondary, and macro candle fetches must be deferred"
+    );
+    let chart = &charts[&7];
+    assert_eq!(chart.symbol, "@0");
+    assert_eq!(chart.secondary_symbol.as_deref(), Some("@0"));
+    assert!(chart.candle_fetch_request.is_none());
+    assert!(chart.secondary_candle_fetch_request.is_none());
+    assert_eq!(chart.macro_candles_request_id, 0);
+    assert!(chart.chart.candles.is_empty());
+    assert!(
+        chart
+            .chart
+            .secondary_series
+            .as_ref()
+            .is_some_and(|series| series.candles.is_empty())
+    );
+}

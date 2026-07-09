@@ -48,13 +48,10 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        twap_cancel_child_task(
-            twap_id,
-            twap.agent_key.clone_for_task(),
-            twap.asset,
-            oid,
-            cloid,
-        )
+        let key = twap.agent_key.clone_for_task();
+        let asset = twap.asset;
+        self.invalidate_spot_balances_after_twap_dispatch(twap_id);
+        twap_cancel_child_task(twap_id, key, asset, oid, cloid)
     }
 
     pub(crate) fn handle_twap_unexpected_cancel_result(

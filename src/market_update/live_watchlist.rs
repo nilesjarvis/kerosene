@@ -149,7 +149,7 @@ impl TradingTerminal {
         request_id: u64,
         requested_symbols: Vec<String>,
         requested_at: u64,
-        result: Result<HashMap<String, WatchlistContext>, String>,
+        result: Result<crate::api::WatchlistContextsResponse, String>,
     ) -> Task<Message> {
         if !self.live_watchlist_contexts_loading
             || request_id != self.live_watchlist_contexts_request_id
@@ -172,19 +172,31 @@ impl TradingTerminal {
             .map(|(symbol, context)| (symbol.clone(), context.clone()))
             .collect();
         let scoped_result = match result {
-            Ok(contexts) => {
+            Ok(mut response) => {
                 let mut scoped_contexts = preserved_contexts;
-                scoped_contexts.extend(contexts.into_iter().filter(|(symbol, _)| {
+                if !response.partial_errors.is_empty() {
+                    scoped_contexts.extend(
+                        self.live_watchlist_ctxs
+                            .iter()
+                            .filter(|(symbol, _)| {
+                                requested_symbol_set.contains(*symbol)
+                                    && current_symbols.contains(*symbol)
+                            })
+                            .map(|(symbol, context)| (symbol.clone(), context.clone())),
+                    );
+                }
+                scoped_contexts.extend(response.contexts.into_iter().filter(|(symbol, _)| {
                     requested_symbol_set.contains(symbol) && current_symbols.contains(symbol)
                 }));
-                Ok(scoped_contexts)
+                response.contexts = scoped_contexts;
+                Ok(response)
             }
             Err(error) if has_current_requested_symbol => {
                 self.live_watchlist_ctxs
                     .retain(|symbol, _| current_symbols.contains(symbol));
                 Err(error)
             }
-            Err(_) => Ok(preserved_contexts),
+            Err(_) => Ok(preserved_contexts.into()),
         };
         let refresh_pending = self.live_watchlist_contexts_refresh_pending;
         self.live_watchlist_contexts_refresh_pending = false;
@@ -343,7 +355,7 @@ mod tests {
             stale_request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
         ));
 
         assert!(
@@ -405,7 +417,8 @@ mod tests {
             Ok(HashMap::from([
                 ("BTC".to_string(), context(1.0)),
                 ("DOGE".to_string(), context(3.0)),
-            ])),
+            ])
+            .into()),
         ));
 
         assert_eq!(terminal.live_watchlist_ctxs.len(), 2);
@@ -424,6 +437,36 @@ mod tests {
             Some(2.0)
         );
         assert!(!terminal.live_watchlist_ctxs.contains_key("DOGE"));
+    }
+
+    #[test]
+    fn live_watchlist_partial_context_keeps_omitted_requested_last_known_value() {
+        let mut terminal = terminal_with_live_watchlist(&["BTC", "@107"]);
+        terminal
+            .live_watchlist_ctxs
+            .insert("@107".to_string(), context(9.0));
+        terminal.live_watchlist_contexts_loading = true;
+        terminal.live_watchlist_contexts_request_id = 7;
+        terminal.live_watchlist_contexts_request_symbols =
+            vec!["BTC".to_string(), "@107".to_string()];
+
+        let _task = terminal.update_live_watchlist_market(Message::LiveWatchlistContextsLoaded(
+            7,
+            vec!["BTC".to_string(), "@107".to_string()],
+            10,
+            Ok(crate::api::WatchlistContextsResponse {
+                contexts: HashMap::from([("BTC".to_string(), context(1.0))]),
+                partial_errors: vec!["spot: HTTP 503".to_string()],
+            }),
+        ));
+
+        assert_eq!(
+            terminal
+                .live_watchlist_ctxs
+                .get("@107")
+                .and_then(|ctx| ctx.day_vlm),
+            Some(9.0)
+        );
     }
 
     #[test]
@@ -512,13 +555,13 @@ mod tests {
             request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
         ));
         let _task = terminal.update_live_watchlist_market(Message::LiveWatchlistContextsLoaded(
             request_id,
             vec!["BTC".to_string()],
             11,
-            Ok(HashMap::from([("BTC".to_string(), context(2.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()),
         ));
 
         assert!(!terminal.live_watchlist_contexts_loading);
@@ -543,7 +586,7 @@ mod tests {
             1,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
         ));
 
         assert!(terminal.live_watchlist_contexts_loading);

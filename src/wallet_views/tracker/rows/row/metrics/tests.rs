@@ -26,6 +26,7 @@ fn wallet_row_metrics_mark_invalid_snapshot_values() {
             open_order_count: 0,
             long_exposure: None,
             short_exposure: Some(0.0),
+            valuation_warning: None,
         }),
         ..WalletTrackerRow::default()
     };

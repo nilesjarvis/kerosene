@@ -1,3 +1,4 @@
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::twap_state::{TwapBookSnapshot, TwapEventKind, TwapPauseReason, TwapStatus};
@@ -24,6 +25,22 @@ use self::helpers::{
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    fn invalidate_spot_balances_after_twap_dispatch(&mut self, twap_id: u64) {
+        let Some((account_address, market_type)) = self.twap_orders.get(&twap_id).map(|twap| {
+            (
+                twap.account_address.clone(),
+                if twap.is_spot {
+                    MarketType::Spot
+                } else {
+                    MarketType::Perp
+                },
+            )
+        }) else {
+            return;
+        };
+        self.invalidate_spot_balances_after_exchange_dispatch(&account_address, market_type);
+    }
+
     pub(crate) fn stop_twap(&mut self, twap_id: u64) -> Task<Message> {
         self.stop_twap_with_reason(twap_id, "TWAP stopped", false)
     }

@@ -174,6 +174,16 @@ pub(crate) enum QuantitySource {
         invalid_message: &'static str,
         precision_invalid_message: &'static str,
     },
+    /// Exact spot percentage sizing. `available_balance` is quote-token
+    /// spendable balance for buys and sellable base-token balance for sells.
+    /// The final coin size is derived from the actual submitted price, never
+    /// from the rounded display quantity.
+    SpotPercentageBalance {
+        available_balance: f64,
+        percentage: f32,
+        invalid_message: &'static str,
+        precision_invalid_message: &'static str,
+    },
 }
 
 impl fmt::Debug for QuantitySource {
@@ -198,6 +208,17 @@ impl fmt::Debug for QuantitySource {
             } => f
                 .debug_struct("CoinSize")
                 .field("size", &format_args!("<redacted>"))
+                .field("invalid_message", invalid_message)
+                .field("precision_invalid_message", precision_invalid_message)
+                .finish(),
+            Self::SpotPercentageBalance {
+                invalid_message,
+                precision_invalid_message,
+                ..
+            } => f
+                .debug_struct("SpotPercentageBalance")
+                .field("available_balance", &format_args!("<redacted>"))
+                .field("percentage", &format_args!("<redacted>"))
                 .field("invalid_message", invalid_message)
                 .field("precision_invalid_message", precision_invalid_message)
                 .finish(),
@@ -538,6 +559,20 @@ impl OrderSurface {
         }
     }
 
+    fn uses_connected_account_state(self) -> bool {
+        matches!(
+            self,
+            Self::Ticket
+                | Self::Preset
+                | Self::QuickOrder
+                | Self::Hud
+                | Self::ClosePosition
+                | Self::Nuke
+                | Self::Chase
+                | Self::Twap
+        )
+    }
+
     fn symbol_not_found_status_text(self, symbol_key: &str) -> String {
         match self {
             Self::QuickOrder
@@ -649,24 +684,63 @@ impl ExchangeOrderKind {
 }
 
 impl TradingTerminal {
+    fn validate_place_account_market_state(
+        &self,
+        surface: OrderSurface,
+        market_type: MarketType,
+    ) -> Result<(), String> {
+        if market_type != MarketType::Perp || !surface.uses_connected_account_state() {
+            return Ok(());
+        }
+        if self
+            .connected_order_account_snapshot()
+            .is_some_and(|(_, data)| !data.completeness.positions_actionable)
+        {
+            return Err(
+                "Perpetual account state is incomplete; refresh account data before placing an order"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
     pub(crate) fn prepare_cancel_order(
         &self,
         intent: CancelIntent,
     ) -> Result<PreparedCancelOrder, String> {
-        let Some(sym) = self.exchange_symbol_for_key(&intent.symbol_key) else {
+        if let Some(sym) = self.exchange_symbol_for_key(&intent.symbol_key) {
+            validate_surface_market_type(intent.surface, OrderOperation::Cancel, sym.market_type)
+                .map_err(OrderCapabilityError::status_text)?;
+
+            return Ok(PreparedCancelOrder {
+                surface: intent.surface,
+                symbol_key: sym.key.clone(),
+                asset: sym.asset_index,
+                oid: intent.oid,
+                market_type: sym.market_type,
+            });
+        }
+
+        // Open-order snapshots identify spot markets as "@{index}", except
+        // for the established API-named PURR/USDC pair. Cancellation can
+        // safely recover those deterministic asset ids while metadata is
+        // unavailable. Keep this fallback cancellation-only: placement and
+        // modification still require complete metadata for decimals,
+        // orderability, and market-type validation.
+        let Some(asset) = metadata_free_spot_cancel_asset(&intent.symbol_key) else {
             return Err(intent
                 .surface
                 .symbol_not_found_status_text(&intent.symbol_key));
         };
-        validate_surface_market_type(intent.surface, OrderOperation::Cancel, sym.market_type)
+        validate_surface_market_type(intent.surface, OrderOperation::Cancel, MarketType::Spot)
             .map_err(OrderCapabilityError::status_text)?;
 
         Ok(PreparedCancelOrder {
             surface: intent.surface,
-            symbol_key: sym.key.clone(),
-            asset: sym.asset_index,
+            symbol_key: intent.symbol_key,
+            asset,
             oid: intent.oid,
-            market_type: sym.market_type,
+            market_type: MarketType::Spot,
         })
     }
 
@@ -680,6 +754,7 @@ impl TradingTerminal {
                 .symbol_not_found_status_text(&intent.symbol_key));
         };
         self.validate_exchange_symbol_orderable(sym, intent.surface.orderability_context_label())?;
+        self.validate_spot_quantity_denomination(&sym.key, false)?;
         validate_surface_market_type(intent.surface, OrderOperation::Modify, sym.market_type)
             .map_err(OrderCapabilityError::status_text)?;
 
@@ -752,23 +827,58 @@ impl TradingTerminal {
         self.validate_exchange_symbol_orderable(sym, intent.surface.orderability_context_label())?;
         validate_surface_market_type(intent.surface, OrderOperation::Place, sym.market_type)
             .map_err(OrderCapabilityError::status_text)?;
+        self.validate_place_account_market_state(intent.surface, sym.market_type)?;
 
         let symbol_key = sym.key.as_str();
         let sz_decimals = sym.sz_decimals;
         let is_outcome = sym.market_type == MarketType::Outcome;
         let is_spot_like = Self::market_type_is_spot_like(sym.market_type);
+        let input_quantity_is_usd = matches!(
+            &intent.quantity_source,
+            QuantitySource::UserInput {
+                denomination: QuantityDenomination::UsdNotional,
+                ..
+            }
+        ) && !is_outcome;
 
-        let raw_qty = match &intent.quantity_source {
+        self.validate_spot_quantity_denomination(symbol_key, input_quantity_is_usd)?;
+
+        let (raw_qty, quantity_uses_price) = match &intent.quantity_source {
             QuantitySource::UserInput {
                 value,
                 invalid_message,
                 ..
-            } => parse_positive_number(value).ok_or_else(|| (*invalid_message).to_string()),
+            } => parse_positive_number(value)
+                .map(|quantity| (quantity, input_quantity_is_usd))
+                .ok_or_else(|| (*invalid_message).to_string()),
             QuantitySource::CoinSize {
                 size,
                 invalid_message,
                 ..
-            } => positive_finite_value(*size).ok_or_else(|| (*invalid_message).to_string()),
+            } => positive_finite_value(*size)
+                .map(|quantity| (quantity, false))
+                .ok_or_else(|| (*invalid_message).to_string()),
+            QuantitySource::SpotPercentageBalance {
+                available_balance,
+                percentage,
+                invalid_message,
+                ..
+            } => {
+                if sym.market_type != MarketType::Spot
+                    || !percentage.is_finite()
+                    || *percentage <= 0.0
+                    || *percentage > 100.0
+                {
+                    Err((*invalid_message).to_string())
+                } else {
+                    positive_finite_value(*available_balance)
+                        .and_then(|balance| {
+                            positive_finite_value(balance * (*percentage as f64 / 100.0))
+                        })
+                        .map(|quantity| (quantity, intent.is_buy))
+                        .ok_or_else(|| (*invalid_message).to_string())
+                }
+            }
         }?;
         if is_outcome {
             self.validate_outcome_contract_size(raw_qty)?;
@@ -841,12 +951,6 @@ impl TradingTerminal {
             }
         };
 
-        let quantity_is_usd = match intent.quantity_source {
-            QuantitySource::UserInput { denomination, .. } => {
-                !is_outcome && denomination == QuantityDenomination::UsdNotional
-            }
-            QuantitySource::CoinSize { .. } => false,
-        };
         let precision_invalid_message = match &intent.quantity_source {
             QuantitySource::UserInput {
                 precision_invalid_message,
@@ -856,11 +960,23 @@ impl TradingTerminal {
                 precision_invalid_message,
                 ..
             } => *precision_invalid_message,
+            QuantitySource::SpotPercentageBalance {
+                precision_invalid_message,
+                ..
+            } => *precision_invalid_message,
+        };
+        let size_reference_price = if matches!(
+            intent.quantity_source,
+            QuantitySource::SpotPercentageBalance { .. }
+        ) {
+            price
+        } else {
+            usd_size_reference_price
         };
         let qty = order_size_from_quantity_input(
             raw_qty,
-            usd_size_reference_price,
-            quantity_is_usd,
+            size_reference_price,
+            quantity_uses_price,
             sz_decimals,
         )
         .ok_or_else(|| precision_invalid_message.to_string())?;
@@ -887,6 +1003,24 @@ impl TradingTerminal {
     }
 }
 
+/// Recover the only spot asset ids that are unambiguous without metadata.
+/// PURR/USDC is the API-named universe index zero; every other supported form
+/// must be the canonical indexed key.
+fn metadata_free_spot_cancel_asset(key: &str) -> Option<u32> {
+    if key == "PURR/USDC" {
+        return Some(10_000);
+    }
+
+    let index = key.strip_prefix('@')?;
+    if index.is_empty()
+        || (index.len() > 1 && index.starts_with('0'))
+        || !index.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    10_000u32.checked_add(index.parse::<u32>().ok()?)
+}
+
 fn validate_prepared_price(
     terminal: &TradingTerminal,
     symbol_key: &str,
@@ -902,6 +1036,10 @@ fn validate_prepared_price(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::account::{
+        AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary,
+        SpotClearinghouseState, UserFeeRates,
+    };
     use crate::api::{ExchangeSymbol, OutcomeSymbolInfo};
     use crate::signing::ExchangeOrderKind;
 
@@ -956,6 +1094,66 @@ mod tests {
             }),
             ..symbol(key, MarketType::Outcome)
         }
+    }
+
+    fn incomplete_perp_account_data() -> AccountData {
+        let mut completeness = AccountDataCompleteness::default();
+        completeness.positions_complete = false;
+        completeness.positions_actionable = false;
+        AccountData {
+            fetch_scope: Default::default(),
+            request_weight_estimate: 0,
+            account_abstraction: Default::default(),
+            clearinghouse: ClearinghouseState {
+                margin_summary: MarginSummary {
+                    account_value: "0".to_string(),
+                    total_ntl_pos: "0".to_string(),
+                    total_margin_used: "0".to_string(),
+                },
+                cross_margin_summary: None,
+                cross_maintenance_margin_used: None,
+                withdrawable: "0".to_string(),
+                asset_positions: Vec::new(),
+            },
+            clearinghouses_by_dex: std::collections::HashMap::new(),
+            spot: SpotClearinghouseState {
+                balances: Vec::new(),
+                portfolio_margin_enabled: false,
+                portfolio_margin_ratio: None,
+                token_to_available_after_maintenance: None,
+            },
+            open_orders: Vec::new(),
+            fills: Vec::new(),
+            funding_history: Vec::new(),
+            fee_rates: UserFeeRates::default(),
+            completeness,
+            fetched_at_ms: TradingTerminal::now_ms(),
+        }
+    }
+
+    #[test]
+    fn failed_perp_bootstrap_blocks_perp_placement_but_not_spot_placement_state() {
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.connected_address = Some(ADDRESS.to_string());
+        terminal.set_account_data_for_address_for_test(ADDRESS, incomplete_perp_account_data());
+
+        assert_eq!(
+            terminal.validate_place_account_market_state(OrderSurface::Ticket, MarketType::Perp),
+            Err(
+                "Perpetual account state is incomplete; refresh account data before placing an order"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            terminal.validate_place_account_market_state(OrderSurface::Ticket, MarketType::Spot),
+            Ok(())
+        );
+        assert_eq!(
+            terminal.validate_place_account_market_state(OrderSurface::Cluster, MarketType::Perp),
+            Ok(()),
+            "cluster legs validate their own member snapshots"
+        );
     }
 
     fn ticket_limit_intent(symbol_key: &str) -> PlaceIntent {
@@ -1273,6 +1471,84 @@ mod tests {
     }
 
     #[test]
+    fn spot_percentage_sell_uses_exact_base_balance_at_sub_cent_prices() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let mut spot = symbol("@7", MarketType::Spot);
+        spot.ticker = "LOW".to_string();
+        spot.display_name = Some("LOW/USDC".to_string());
+        spot.collateral_token = Some(crate::api::USDC_TOKEN_INDEX);
+        terminal.exchange_symbols = vec![spot];
+        terminal.all_mids.insert("@7".to_string(), 0.00035);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("@7".to_string(), TradingTerminal::now_ms());
+
+        let prepared = terminal
+            .prepare_place_order(PlaceIntent {
+                surface: OrderSurface::Ticket,
+                symbol_key: "@7".to_string(),
+                is_buy: false,
+                order_kind: ExchangeOrderKind::Limit,
+                price_source: PriceSource::LimitInput {
+                    value: "0.00035".to_string(),
+                    invalid_message: "Invalid price",
+                },
+                quantity_source: QuantitySource::SpotPercentageBalance {
+                    available_balance: 100.0,
+                    percentage: 100.0,
+                    invalid_message: "Invalid spot percentage balance",
+                    precision_invalid_message: "Invalid spot percentage size",
+                },
+                reduce_only_source: ReduceOnlySource::Form(false),
+            })
+            .expect("exact spot percentage sell should prepare");
+
+        let size: f64 = prepared.size.parse().expect("wire size");
+        assert!(size <= 100.0);
+        assert_eq!(size, 100.0);
+    }
+
+    #[test]
+    fn spot_percentage_buy_cannot_spend_more_than_fractional_quote_balance() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let mut spot = symbol("@7", MarketType::Spot);
+        spot.ticker = "LOW".to_string();
+        spot.display_name = Some("LOW/USDC".to_string());
+        spot.collateral_token = Some(crate::api::USDC_TOKEN_INDEX);
+        terminal.exchange_symbols = vec![spot];
+        terminal.market_slippage_pct = 5.0;
+        terminal.all_mids.insert("@7".to_string(), 0.35);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("@7".to_string(), TradingTerminal::now_ms());
+        let quote_balance = 1.000_001;
+
+        let prepared = terminal
+            .prepare_place_order(PlaceIntent {
+                surface: OrderSurface::QuickOrder,
+                symbol_key: "@7".to_string(),
+                is_buy: true,
+                order_kind: ExchangeOrderKind::Market,
+                price_source: PriceSource::MarketWithSlippage {
+                    invalid_message: Some("Invalid market price"),
+                    usd_size_reference: MarketUsdSizeReference::Mid,
+                },
+                quantity_source: QuantitySource::SpotPercentageBalance {
+                    available_balance: quote_balance,
+                    percentage: 100.0,
+                    invalid_message: "Invalid spot percentage balance",
+                    precision_invalid_message: "Invalid spot percentage size",
+                },
+                reduce_only_source: ReduceOnlySource::Form(false),
+            })
+            .expect("exact spot percentage buy should prepare");
+
+        let size: f64 = prepared.size.parse().expect("wire size");
+        let price: f64 = prepared.price.parse().expect("wire price");
+        assert!(size * price <= quote_balance + 1e-12);
+    }
+
+    #[test]
     fn prepare_limit_order_rejects_prices_that_round_to_zero() {
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
@@ -1470,6 +1746,234 @@ mod tests {
     }
 
     #[test]
+    fn prepare_cancel_order_derives_indexed_spot_asset_without_metadata() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.exchange_symbols.clear();
+
+        let prepared = terminal
+            .prepare_cancel_order(CancelIntent {
+                surface: OrderSurface::Cancel,
+                symbol_key: "@107".to_string(),
+                oid: 42,
+            })
+            .expect("indexed spot cancellation should not depend on metadata");
+
+        assert_eq!(prepared.symbol_key, "@107");
+        assert_eq!(prepared.asset, 10_107);
+        assert_eq!(prepared.oid, 42);
+        assert_eq!(prepared.market_type, MarketType::Spot);
+    }
+
+    #[test]
+    fn prepare_cancel_order_recovers_canonical_purr_without_metadata() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.exchange_symbols.clear();
+
+        let prepared = terminal
+            .prepare_cancel_order(CancelIntent {
+                surface: OrderSurface::Cancel,
+                symbol_key: "PURR/USDC".to_string(),
+                oid: 42,
+            })
+            .expect("canonical PURR cancellation should not depend on metadata");
+
+        assert_eq!(prepared.symbol_key, "PURR/USDC");
+        assert_eq!(prepared.asset, 10_000);
+        assert_eq!(prepared.oid, 42);
+        assert_eq!(prepared.market_type, MarketType::Spot);
+    }
+
+    #[test]
+    fn prepare_cancel_order_rejects_noncanonical_or_overflowing_spot_keys() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.exchange_symbols.clear();
+
+        for key in [
+            "@",
+            "@-1",
+            "@+1",
+            "@01",
+            "@1 ",
+            "@1x",
+            "@@1",
+            "@4294967295",
+            "HYPE/USDC",
+            "purr/USDC",
+        ] {
+            let error = terminal
+                .prepare_cancel_order(CancelIntent {
+                    surface: OrderSurface::Cancel,
+                    symbol_key: key.to_string(),
+                    oid: 42,
+                })
+                .expect_err("invalid metadata-free key must fail closed");
+
+            assert_eq!(error, format!("Symbol '{key}' not found"));
+        }
+    }
+
+    #[test]
+    fn metadata_free_indexed_spot_fallback_is_not_used_for_placement() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.exchange_symbols.clear();
+
+        let error = terminal
+            .prepare_place_order(PlaceIntent {
+                surface: OrderSurface::Ticket,
+                symbol_key: "@107".to_string(),
+                is_buy: true,
+                order_kind: ExchangeOrderKind::Market,
+                price_source: PriceSource::ReferenceMid,
+                quantity_source: QuantitySource::CoinSize {
+                    size: 1.0,
+                    invalid_message: "Invalid quantity",
+                    precision_invalid_message: "Invalid quantity for asset precision",
+                },
+                reduce_only_source: ReduceOnlySource::Form(false),
+            })
+            .expect_err("placement must still require exchange metadata");
+
+        assert_eq!(error, "Symbol '@107' not found in exchange metadata");
+    }
+
+    #[test]
+    fn spot_market_order_rejects_fresh_same_ticker_perp_mid() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let mut spot = symbol("@107", MarketType::Spot);
+        spot.ticker = "HYPE".to_string();
+        spot.display_name = Some("HYPE/USDC".to_string());
+        spot.asset_index = 10_107;
+        terminal.exchange_symbols = vec![symbol("HYPE", MarketType::Perp), spot];
+        terminal.all_mids.insert("HYPE".to_string(), 40.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("HYPE".to_string(), TradingTerminal::now_ms());
+
+        let error = terminal
+            .prepare_place_order(PlaceIntent {
+                surface: OrderSurface::Ticket,
+                symbol_key: "@107".to_string(),
+                is_buy: true,
+                order_kind: ExchangeOrderKind::Market,
+                price_source: PriceSource::MarketWithSlippage {
+                    invalid_message: Some("Invalid market price"),
+                    usd_size_reference: MarketUsdSizeReference::Mid,
+                },
+                quantity_source: QuantitySource::UserInput {
+                    value: "100".to_string(),
+                    denomination: QuantityDenomination::UsdNotional,
+                    invalid_message: "Invalid quantity",
+                    precision_invalid_message: "Invalid quantity for asset precision",
+                },
+                reduce_only_source: ReduceOnlySource::Form(false),
+            })
+            .expect_err("spot orders must not use a perpetual mid");
+
+        assert_eq!(error, "No mid price for HYPE/USDC (tried @107)");
+    }
+
+    #[test]
+    fn non_usd_quoted_spot_rejects_all_placement_denominations() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let mut spot = symbol("@55", MarketType::Spot);
+        spot.ticker = "UETH".to_string();
+        spot.display_name = Some("UETH/UBTC".to_string());
+        spot.asset_index = 10_055;
+        terminal.exchange_symbols = vec![spot];
+        terminal.all_mids.insert("@55".to_string(), 0.05);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("@55".to_string(), TradingTerminal::now_ms());
+
+        let usd_error = terminal
+            .prepare_place_order(PlaceIntent {
+                surface: OrderSurface::Ticket,
+                symbol_key: "@55".to_string(),
+                is_buy: true,
+                order_kind: ExchangeOrderKind::Market,
+                price_source: PriceSource::MarketWithSlippage {
+                    invalid_message: Some("Invalid market price"),
+                    usd_size_reference: MarketUsdSizeReference::Mid,
+                },
+                quantity_source: QuantitySource::UserInput {
+                    value: "100".to_string(),
+                    denomination: QuantityDenomination::UsdNotional,
+                    invalid_message: "Invalid quantity",
+                    precision_invalid_message: "Invalid quantity for asset precision",
+                },
+                reduce_only_source: ReduceOnlySource::Form(false),
+            })
+            .expect_err("a crypto-quoted pair has no safe USD conversion");
+
+        assert_eq!(
+            usd_error,
+            "Spot trading is unavailable for UETH/UBTC because quote-token USD valuation and accounting are not verified"
+        );
+
+        let coin_error = terminal
+            .prepare_place_order(PlaceIntent {
+                surface: OrderSurface::Ticket,
+                symbol_key: "@55".to_string(),
+                is_buy: true,
+                order_kind: ExchangeOrderKind::Market,
+                price_source: PriceSource::MarketWithSlippage {
+                    invalid_message: Some("Invalid market price"),
+                    usd_size_reference: MarketUsdSizeReference::Mid,
+                },
+                quantity_source: QuantitySource::CoinSize {
+                    size: 1.2345,
+                    invalid_message: "Invalid quantity",
+                    precision_invalid_message: "Invalid quantity for asset precision",
+                },
+                reduce_only_source: ReduceOnlySource::Form(false),
+            })
+            .expect_err("coin size must not bypass unverified quote accounting");
+
+        assert_eq!(coin_error, usd_error);
+    }
+
+    #[test]
+    fn non_usd_quoted_spot_can_be_cancelled_but_not_modified() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let mut spot = symbol("@55", MarketType::Spot);
+        spot.ticker = "UETH".to_string();
+        spot.display_name = Some("UETH/UBTC".to_string());
+        spot.asset_index = 10_055;
+        spot.collateral_token = Some(221);
+        terminal.exchange_symbols = vec![spot];
+        terminal.all_mids.insert("@55".to_string(), 0.05);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("@55".to_string(), TradingTerminal::now_ms());
+
+        let modify_error = terminal
+            .prepare_modify_order(ModifyIntent {
+                surface: OrderSurface::Move,
+                symbol_key: "@55".to_string(),
+                oid: 42,
+                is_buy: true,
+                new_price: 0.051,
+                original_price: "0.05".to_string(),
+                size: "1".to_string(),
+                invalid_size_message: "Invalid size",
+                reduce_only: None,
+                reduce_only_missing_message: "Missing reduce-only",
+                invalid_price_message: "Invalid price",
+            })
+            .expect_err("unverified quote accounting must block repricing");
+        assert!(modify_error.contains("quote-token USD valuation and accounting"));
+
+        let cancel = terminal
+            .prepare_cancel_order(CancelIntent {
+                surface: OrderSurface::Cancel,
+                symbol_key: "@55".to_string(),
+                oid: 42,
+            })
+            .expect("safety cancellation must remain available");
+        assert_eq!(cancel.market_type, MarketType::Spot);
+    }
+
+    #[test]
     fn prepare_modify_order_accepts_legacy_indexed_key_for_api_named_spot_pair() {
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.exchange_symbols = vec![purr_spot_symbol()];
@@ -1593,7 +2097,7 @@ mod tests {
     #[test]
     fn prepare_move_modify_order_clears_missing_reduce_only_for_spot() {
         let (mut terminal, _) = TradingTerminal::boot();
-        terminal.exchange_symbols = vec![symbol("PURR/USDC", MarketType::Spot)];
+        terminal.exchange_symbols = vec![purr_spot_symbol()];
         terminal.all_mids.insert("PURR/USDC".to_string(), 100.0);
         terminal
             .all_mids_updated_at_ms

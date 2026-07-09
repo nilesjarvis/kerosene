@@ -13,7 +13,7 @@ fn contexts_loaded_replaces_context_map_and_records_fetch_time() {
         &mut contexts,
         &mut status,
         42,
-        Ok(HashMap::from([("BTC".to_string(), context(2.0))])),
+        Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()),
     );
 
     assert!(!loading);
@@ -73,4 +73,47 @@ fn contexts_loaded_error_redacts_sensitive_status_details() {
     assert!(message.contains("cursor=<redacted>"));
     assert!(!message.contains("key-secret"));
     assert!(!message.contains("cursor-secret"));
+}
+
+#[test]
+fn contexts_loaded_partial_success_reports_error_without_discarding_data() {
+    let mut loading = true;
+    let mut last_fetch_ms = None;
+    let mut contexts = HashMap::new();
+    let mut status = None;
+
+    apply_contexts_loaded(
+        &mut loading,
+        &mut last_fetch_ms,
+        &mut contexts,
+        &mut status,
+        50,
+        Ok(crate::api::WatchlistContextsResponse {
+            contexts: HashMap::from([("@107".to_string(), context(3.0))]),
+            partial_errors: vec!["HIP-3 dex xyz: HTTP 503".to_string()],
+        }),
+    );
+
+    assert_eq!(last_fetch_ms, Some(50));
+    assert_eq!(
+        contexts.get("@107").and_then(|context| context.day_vlm),
+        Some(3.0)
+    );
+    assert_eq!(
+        status,
+        Some((
+            "Watchlist context refresh partially failed: HIP-3 dex xyz: HTTP 503".to_string(),
+            true
+        ))
+    );
+
+    apply_contexts_loaded(
+        &mut loading,
+        &mut last_fetch_ms,
+        &mut contexts,
+        &mut status,
+        60,
+        Ok(HashMap::from([("@107".to_string(), context(4.0))]).into()),
+    );
+    assert_eq!(status, None, "a complete refresh clears partial warning");
 }

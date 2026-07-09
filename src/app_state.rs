@@ -19,7 +19,7 @@ use crate::market_state::{
 use crate::notification_state::Toast;
 use crate::order_execution::{
     HudPlacementTracker, MoveOrderKey, PendingLeverageUpdateContext, PendingMoveOrderContext,
-    PendingNukeExecution, PendingOrderAction,
+    PendingNukeExecution, PendingOrderAction, SpotAutomationSymbolIdentity,
 };
 use crate::order_pending_indicators::PendingOrderIndicator;
 use crate::order_update::{
@@ -138,12 +138,17 @@ impl TradingTerminal {
         data: AccountData,
     ) {
         self.bump_account_data_revision();
+        self.bump_spot_balances_revision();
         self.account_data_address = Some(account_address.into());
         self.account_data = Some(data);
     }
 
     pub(crate) fn bump_account_data_revision(&mut self) {
         self.account_data_revision = self.account_data_revision.wrapping_add(1);
+    }
+
+    pub(crate) fn bump_spot_balances_revision(&mut self) {
+        self.spot_balances_revision = self.spot_balances_revision.wrapping_add(1);
     }
 
     pub(crate) fn hydromancer_api_key_for_task(&self) -> Zeroizing<String> {
@@ -358,6 +363,16 @@ pub(crate) struct TradingTerminal {
     pub(crate) exchange_symbols: Vec<ExchangeSymbol>,
     pub(crate) symbols_loading: bool,
     pub(crate) exchange_symbols_refresh_inflight: bool,
+    /// A spot metadata refresh failed validation or transport. Previously
+    /// loaded spot markets remain visible, but new orders are fail-closed
+    /// until a complete `spotMeta` response is verified.
+    pub(crate) spot_metadata_degraded: bool,
+    /// Global guard for the full-universe spot chart-context endpoint. This is
+    /// separate from per-chart missing-symbol backoff so an endpoint outage or
+    /// HTTP 429 cannot be bypassed by opening another chart.
+    pub(crate) spot_asset_context_rest_in_flight: bool,
+    pub(crate) spot_asset_context_rest_failures: u8,
+    pub(crate) spot_asset_context_rest_next_attempt_at_ms: Option<u64>,
     /// Persisted display labels for outcome trade coins ("#NNN" -> label) so
     /// expired or not-yet-loaded HIP-4 markets keep their human-readable names.
     pub(crate) outcome_display_labels: HashMap<String, String>,
@@ -440,6 +455,10 @@ pub(crate) struct TradingTerminal {
     pub(crate) account_data: Option<AccountData>,
     pub(crate) account_data_address: Option<String>,
     pub(crate) account_data_revision: u64,
+    /// Advances only when the connected account's spot balance snapshot is
+    /// replaced. Spot percentage sizing must not be coupled to unrelated
+    /// perp, order, fill, or funding updates in `account_data_revision`.
+    pub(crate) spot_balances_revision: u64,
     pub(crate) account_loading: bool,
     /// Transient: a wallet connect has been dispatched (account switch / boot)
     /// but not yet processed. Bridges the one-frame gap where `connected_address`
@@ -472,9 +491,11 @@ pub(crate) struct TradingTerminal {
     // Client-side chase orders. Chases run at account scope and do not depend
     // on a visible chart/order-book widget after they are started.
     pub(crate) chase_orders: BTreeMap<u64, ChaseOrder>,
+    pub(crate) chase_spot_symbol_identities: HashMap<u64, SpotAutomationSymbolIdentity>,
     pub(crate) selected_chase_id: Option<u64>,
     pub(crate) next_chase_id: u64,
     pub(crate) twap_orders: BTreeMap<u64, TwapOrder>,
+    pub(crate) twap_spot_symbol_identities: HashMap<u64, SpotAutomationSymbolIdentity>,
     pub(crate) selected_twap_id: Option<u64>,
     pub(crate) next_twap_id: u64,
     pub(crate) twap_form: TwapOrderForm,

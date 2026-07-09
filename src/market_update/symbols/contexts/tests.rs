@@ -30,7 +30,8 @@ fn contexts_loaded_success_replaces_cache_and_clears_status() {
         Ok(HashMap::from([
             ("BTC".to_string(), context(3.0)),
             ("ETH".to_string(), context(4.0)),
-        ])),
+        ])
+        .into()),
     );
 
     assert!(!loading);
@@ -88,4 +89,38 @@ fn contexts_loaded_error_redacts_sensitive_status_details() {
     assert!(message.contains("cursor=<redacted>"));
     assert!(!message.contains("key-secret"));
     assert!(!message.contains("cursor-secret"));
+}
+
+#[test]
+fn contexts_loaded_partial_success_keeps_data_and_reports_degraded_family() {
+    let mut loading = true;
+    let mut last_fetch_ms = None;
+    let mut contexts = HashMap::new();
+    let mut status = None;
+
+    apply_contexts_loaded(
+        &mut loading,
+        &mut last_fetch_ms,
+        &mut contexts,
+        &mut status,
+        42,
+        Ok(crate::api::WatchlistContextsResponse {
+            contexts: HashMap::from([("@107".to_string(), context(9.0))]),
+            partial_errors: vec!["main perps: HTTP 503".to_string()],
+        }),
+    );
+
+    assert!(!loading);
+    assert_eq!(last_fetch_ms, Some(42));
+    assert_eq!(
+        contexts.get("@107").and_then(|context| context.day_vlm),
+        Some(9.0)
+    );
+    assert_eq!(
+        status,
+        Some((
+            "24h volume refresh partially failed: main perps: HTTP 503".to_string(),
+            true
+        ))
+    );
 }

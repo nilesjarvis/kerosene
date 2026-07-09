@@ -1,6 +1,6 @@
 use super::responses::{
-    clearinghouse_from_required_value, fee_rates_from_best_effort_value,
-    record_best_effort_section_warnings,
+    account_states_from_required_spot, clearinghouse_from_required_value,
+    fee_rates_from_best_effort_value, record_best_effort_section_warnings,
 };
 use super::{
     FUNDING_HISTORY_LOOKBACK_MS, frontend_open_orders_payload, funding_history_start_ms_from,
@@ -82,6 +82,59 @@ fn clearinghouse_deserialize_error_redacts_sensitive_json_preview() {
             "clearinghouse deserialize error leaked {secret}"
         );
     }
+}
+
+#[test]
+fn healthy_spot_state_survives_failed_perp_clearinghouse() {
+    let spot = serde_json::json!({
+        "balances": [{
+            "coin": "USDC",
+            "token": 0,
+            "total": "1000",
+            "hold": "25",
+            "entryNtl": "0"
+        }]
+    });
+
+    let (clearinghouse, spot, completeness) = account_states_from_required_spot(
+        Err("clearinghouseState request failed".to_string()),
+        Ok(spot),
+    )
+    .expect("valid spot state must remain usable");
+
+    assert_eq!(spot.balances.len(), 1);
+    assert_eq!(spot.balances[0].coin, "USDC");
+    assert!(clearinghouse.asset_positions.is_empty());
+    assert_eq!(clearinghouse.withdrawable, "0");
+    assert!(!completeness.positions_complete);
+    assert!(!completeness.positions_actionable);
+    assert!(completeness.spot_balances_complete);
+    assert!(
+        completeness
+            .section_warning(AccountDataSection::Positions)
+            .is_some_and(|warning| warning.contains("clearinghouseState request failed"))
+    );
+}
+
+#[test]
+fn spot_state_remains_required_when_clearinghouse_is_healthy() {
+    let clearinghouse = serde_json::json!({
+        "marginSummary": {
+            "accountValue": "0",
+            "totalNtlPos": "0",
+            "totalMarginUsed": "0"
+        },
+        "withdrawable": "0",
+        "assetPositions": []
+    });
+
+    let error = account_states_from_required_spot(
+        Ok(clearinghouse),
+        Err("spotClearinghouseState request failed".to_string()),
+    )
+    .expect_err("spot state must remain required");
+
+    assert!(error.contains("spotClearinghouseState request failed"));
 }
 
 #[test]

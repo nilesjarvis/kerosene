@@ -2,6 +2,23 @@ use super::*;
 
 use std::collections::HashMap;
 
+fn hype_spot_symbol() -> crate::api::ExchangeSymbol {
+    crate::api::ExchangeSymbol {
+        key: "@107".to_string(),
+        ticker: "HYPE".to_string(),
+        category: "spot".to_string(),
+        display_name: Some("HYPE/USDC".to_string()),
+        keywords: vec!["spot".to_string()],
+        asset_index: 10_107,
+        collateral_token: Some(crate::api::USDC_TOKEN_INDEX),
+        sz_decimals: 2,
+        max_leverage: 1,
+        only_isolated: false,
+        market_type: crate::api::MarketType::Spot,
+        outcome: None,
+    }
+}
+
 fn portfolio(
     clearinghouse: serde_json::Value,
     spot: serde_json::Value,
@@ -50,7 +67,8 @@ fn hydromancer_pm_wallet_derives_equity_from_spot_state() {
         .take()
         .expect("PM wallet must retain spot state for the fallback");
 
-    let mids = HashMap::from([("HYPE".to_string(), 40.0)]);
+    let mut mids = HashMap::from([("@107".to_string(), 40.0)]);
+    crate::account::spot::augment_spot_balance_mids(&mut mids, &[hype_spot_symbol()]);
     merge_spot_equity_fallback(
         Ok(spot_equity_fallback_from_state(&spot, &mids)),
         &mut values.equity,
@@ -95,8 +113,8 @@ fn hydromancer_zero_equity_wallet_without_pm_skips_spot_fallback() {
 }
 
 #[test]
-fn hydromancer_pm_wallet_with_positive_perp_numbers_skips_spot_fallback() {
-    // Both equity and withdrawable already reflect real value: no fallback.
+fn hydromancer_pm_wallet_with_positive_perp_numbers_still_uses_spot_state() {
+    // Individual perp-dex values can be positive but incomplete under PM.
     let portfolio = portfolio(
         clearinghouse_json("900.0", "450.0"),
         serde_json::json!({
@@ -107,7 +125,18 @@ fn hydromancer_pm_wallet_with_positive_perp_numbers_skips_spot_fallback() {
         }),
     );
 
-    let values = wallet_tracker_values_from_portfolio(portfolio, &AccountDataFetchScope::default())
-        .expect("values");
-    assert!(values.spot_fallback.is_none());
+    let mut values =
+        wallet_tracker_values_from_portfolio(portfolio, &AccountDataFetchScope::default())
+            .expect("values");
+    let spot = values
+        .spot_fallback
+        .take()
+        .expect("PM spot state remains authoritative");
+    merge_spot_equity_fallback(
+        Ok(spot_equity_fallback_from_state(&spot, &HashMap::new())),
+        &mut values.equity,
+        &mut values.withdrawable,
+    );
+    let snapshot = values.into_snapshot();
+    assert_eq!(snapshot.equity, Some(10.0));
 }

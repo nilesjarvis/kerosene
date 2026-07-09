@@ -88,6 +88,10 @@ impl TradingTerminal {
             ));
 
         self.order_status = Some(("Cancelling order...".into(), false));
+        self.invalidate_spot_balances_after_exchange_dispatch(
+            &account_address,
+            prepared.market_type,
+        );
         cancel_order_task(key, prepared.asset, prepared.oid, move |result| {
             Message::CancelResult {
                 account_address: account_address.into(),

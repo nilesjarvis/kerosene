@@ -17,7 +17,44 @@ mod macro_indicators;
 /// before the staleness expiry would blank the header metrics.
 const CHART_ASSET_CONTEXT_REST_REFRESH_MS: u64 = 10_000;
 
+fn is_spot_asset_context_symbol(symbol: &str) -> bool {
+    symbol.starts_with('@') || symbol.contains('/')
+}
+
+fn asset_context_error_is_rate_limit(error: &str) -> bool {
+    error.contains("429") || error.to_ascii_lowercase().contains("rate limit")
+}
+
 impl TradingTerminal {
+    fn reset_spot_asset_context_rest_retry(&mut self) {
+        self.spot_asset_context_rest_failures = 0;
+        self.spot_asset_context_rest_next_attempt_at_ms = None;
+    }
+
+    fn record_spot_asset_context_rest_failure(&mut self, now_ms: u64, rate_limited: bool) {
+        const BASE_DELAY_MS: u64 = 5_000;
+        const RATE_LIMIT_MIN_DELAY_MS: u64 = 60_000;
+        const MAX_DELAY_MS: u64 = 5 * 60_000;
+
+        self.spot_asset_context_rest_failures =
+            self.spot_asset_context_rest_failures.saturating_add(1);
+        let shift = u32::from(
+            self.spot_asset_context_rest_failures
+                .saturating_sub(1)
+                .min(6),
+        );
+        let mut delay_ms = BASE_DELAY_MS.saturating_mul(1u64 << shift);
+        if rate_limited {
+            delay_ms = delay_ms.max(RATE_LIMIT_MIN_DELAY_MS);
+        }
+        delay_ms = delay_ms.min(MAX_DELAY_MS);
+        let jitter_window = delay_ms / 5;
+        let seed = u64::from(self.spot_asset_context_rest_failures).wrapping_mul(1_103_515_245);
+        let jitter_ms = seed % jitter_window.saturating_add(1);
+        let delay_ms = delay_ms.saturating_add(jitter_ms).min(MAX_DELAY_MS);
+        self.spot_asset_context_rest_next_attempt_at_ms = Some(now_ms.saturating_add(delay_ms));
+    }
+
     pub(crate) fn clear_chart_market_display_state(instance: &mut ChartInstance) {
         instance.heatmap_last_fetch = None;
         instance.heatmap_viewport = None;
@@ -261,14 +298,93 @@ impl TradingTerminal {
                 if let Some(instance) = self.charts.get_mut(&id) {
                     instance.asset_ctx_rest_in_flight = false;
                     if instance.symbol != symbol || hidden {
+                        instance.reset_asset_context_rest_retry();
                         return Task::none();
                     }
-                    // Fill only when there is no context, or the existing one is
-                    // itself REST-sourced — never clobber a live WebSocket push.
-                    if let Ok(Some(ctx)) = result
-                        && (instance.asset_ctx.is_none() || instance.asset_ctx_from_rest)
-                    {
-                        instance.fill_asset_context_from_rest(ctx, now_ms);
+                    match result {
+                        Ok(Some(ctx)) => {
+                            // Fill only when there is no context, or the existing
+                            // one is itself REST-sourced — never clobber a live
+                            // WebSocket push.
+                            if instance.asset_ctx.is_none() || instance.asset_ctx_from_rest {
+                                instance.fill_asset_context_from_rest(ctx, now_ms);
+                            } else {
+                                instance.reset_asset_context_rest_retry();
+                            }
+                        }
+                        Ok(None) => instance.record_asset_context_rest_failure(now_ms, false),
+                        Err(error) => instance.record_asset_context_rest_failure(
+                            now_ms,
+                            asset_context_error_is_rate_limit(&error),
+                        ),
+                    }
+                }
+            }
+            Message::ChartSpotAssetContextsRestFetched(targets, result) => {
+                self.spot_asset_context_rest_in_flight = false;
+                let now_ms = Self::now_ms();
+                let rate_limited = result
+                    .as_ref()
+                    .err()
+                    .is_some_and(|error| asset_context_error_is_rate_limit(error));
+                let request_failed = result.is_err();
+                if request_failed {
+                    self.record_spot_asset_context_rest_failure(now_ms, rate_limited);
+                }
+                let contexts = result.ok();
+                let mut failed_chart_ids = Vec::new();
+                for (id, symbol) in targets {
+                    let hidden = self.symbol_key_is_hidden(&symbol);
+                    let Some(instance) = self.charts.get_mut(&id) else {
+                        continue;
+                    };
+                    instance.asset_ctx_rest_in_flight = false;
+                    if instance.symbol != symbol || hidden {
+                        instance.reset_asset_context_rest_retry();
+                        continue;
+                    }
+                    let context = contexts.as_ref().and_then(|contexts| {
+                        contexts
+                            .iter()
+                            .find_map(|(key, context)| (key == &symbol).then_some(context.clone()))
+                    });
+                    if let Some(context) = context {
+                        if instance.asset_ctx.is_none() || instance.asset_ctx_from_rest {
+                            instance.fill_asset_context_from_rest(context, now_ms);
+                        } else {
+                            instance.reset_asset_context_rest_retry();
+                        }
+                    } else if instance.asset_ctx.is_some() && !instance.asset_ctx_from_rest {
+                        // A live push won the race; no REST retry is needed.
+                        instance.reset_asset_context_rest_retry();
+                    } else {
+                        instance.record_asset_context_rest_failure(now_ms, rate_limited);
+                        failed_chart_ids.push(id);
+                    }
+                }
+                // Every missing chart shared one response. Give them the same
+                // latest retry deadline so jitter does not split the next
+                // full-universe request back into per-chart calls.
+                let shared_retry_at = failed_chart_ids
+                    .iter()
+                    .filter_map(|id| {
+                        self.charts
+                            .get(id)
+                            .and_then(|instance| instance.asset_ctx_rest_next_attempt_at_ms)
+                    })
+                    .max();
+                if let Some(shared_retry_at) = shared_retry_at {
+                    for id in &failed_chart_ids {
+                        if let Some(instance) = self.charts.get_mut(id) {
+                            instance.asset_ctx_rest_next_attempt_at_ms = Some(shared_retry_at);
+                        }
+                    }
+                }
+                if !request_failed {
+                    if failed_chart_ids.is_empty() {
+                        self.reset_spot_asset_context_rest_retry();
+                    } else {
+                        self.record_spot_asset_context_rest_failure(now_ms, false);
                     }
                 }
             }
@@ -358,19 +474,47 @@ impl TradingTerminal {
             .map(|instance| (instance.id, instance.symbol.clone()))
             .collect();
 
-        targets
+        let (spot_targets, other_targets): (Vec<_>, Vec<_>) = targets
             .into_iter()
-            .map(|(id, symbol)| {
-                if let Some(instance) = self.charts.get_mut(&id) {
+            .partition(|(_, symbol)| is_spot_asset_context_symbol(symbol));
+        let mut tasks = Vec::new();
+
+        let spot_global_backoff_elapsed = self
+            .spot_asset_context_rest_next_attempt_at_ms
+            .is_none_or(|next_attempt_ms| now_ms >= next_attempt_ms);
+        if !self.spot_asset_context_rest_in_flight
+            && spot_global_backoff_elapsed
+            && !spot_targets.is_empty()
+        {
+            self.spot_asset_context_rest_in_flight = true;
+            for (id, _) in &spot_targets {
+                if let Some(instance) = self.charts.get_mut(id) {
                     instance.asset_ctx_rest_in_flight = true;
                 }
-                let fetch_symbol = symbol.clone();
-                Task::perform(
-                    crate::api::fetch_chart_asset_context(fetch_symbol),
-                    move |result| Message::ChartAssetContextRestFetched(id, symbol.clone(), result),
-                )
-            })
-            .collect()
+            }
+            let fetch_symbols = spot_targets
+                .iter()
+                .map(|(_, symbol)| symbol.clone())
+                .collect();
+            tasks.push(Task::perform(
+                crate::api::fetch_spot_chart_asset_contexts(fetch_symbols),
+                move |result| {
+                    Message::ChartSpotAssetContextsRestFetched(spot_targets.clone(), result)
+                },
+            ));
+        }
+
+        tasks.extend(other_targets.into_iter().map(|(id, symbol)| {
+            if let Some(instance) = self.charts.get_mut(&id) {
+                instance.asset_ctx_rest_in_flight = true;
+            }
+            let fetch_symbol = symbol.clone();
+            Task::perform(
+                crate::api::fetch_chart_asset_context(fetch_symbol),
+                move |result| Message::ChartAssetContextRestFetched(id, symbol.clone(), result),
+            )
+        }));
+        tasks
     }
 
     fn play_hud_ui_sound(&self, sound: sound::HudUiSound) {
@@ -630,6 +774,19 @@ mod tests {
         terminal
     }
 
+    fn terminal_with_spot_charts() -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(7, ChartInstance::new(7, "@107".to_string(), Timeframe::H1));
+        terminal.charts.insert(
+            8,
+            ChartInstance::new(8, "PURR/USDC".to_string(), Timeframe::H1),
+        );
+        terminal
+    }
+
     #[test]
     fn rest_fetch_fills_missing_hip3_asset_context() {
         let mut terminal = terminal_with_hip3_chart();
@@ -703,6 +860,205 @@ mod tests {
         // A fetch already in flight is not duplicated.
         let tasks = terminal.queue_chart_asset_context_rest_fetches(now_ms);
         assert!(tasks.is_empty());
+    }
+
+    #[test]
+    fn status_tick_coalesces_all_spot_charts_into_one_rest_request() {
+        let mut terminal = terminal_with_spot_charts();
+        let now_ms = TradingTerminal::now_ms();
+
+        let tasks = terminal.queue_chart_asset_context_rest_fetches(now_ms);
+
+        assert_eq!(tasks.len(), 1, "one full-universe spot request is enough");
+        assert!(terminal.spot_asset_context_rest_in_flight);
+        assert!(terminal.charts[&7].asset_ctx_rest_in_flight);
+        assert!(terminal.charts[&8].asset_ctx_rest_in_flight);
+        assert!(
+            terminal
+                .queue_chart_asset_context_rest_fetches(now_ms + 1_000)
+                .is_empty(),
+            "an in-flight spot batch suppresses every per-chart duplicate"
+        );
+    }
+
+    #[test]
+    fn closing_target_charts_cannot_drop_the_global_spot_inflight_guard() {
+        let mut terminal = terminal_with_spot_charts();
+        let now_ms = TradingTerminal::now_ms();
+        let _tasks = terminal.queue_chart_asset_context_rest_fetches(now_ms);
+        assert!(terminal.spot_asset_context_rest_in_flight);
+
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(9, ChartInstance::new(9, "@232".to_string(), Timeframe::H1));
+        assert!(
+            terminal
+                .queue_chart_asset_context_rest_fetches(now_ms + 1)
+                .is_empty(),
+            "a new chart must not start a concurrent full-universe request"
+        );
+
+        let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
+            vec![(7, "@107".to_string()), (8, "PURR/USDC".to_string())],
+            Ok(Vec::new()),
+        ));
+        assert!(!terminal.spot_asset_context_rest_in_flight);
+        assert_eq!(
+            terminal
+                .queue_chart_asset_context_rest_fetches(now_ms + 2)
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn coalesced_spot_result_fills_each_target_and_clears_backoff() {
+        let mut terminal = terminal_with_spot_charts();
+        for instance in terminal.charts.values_mut() {
+            instance.asset_ctx_rest_in_flight = true;
+            instance.record_asset_context_rest_failure(1_000, false);
+        }
+
+        let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
+            vec![(7, "@107".to_string()), (8, "PURR/USDC".to_string())],
+            Ok(vec![
+                ("@107".to_string(), asset_ctx("25.0")),
+                ("PURR/USDC".to_string(), asset_ctx("0.2")),
+            ]),
+        ));
+
+        for id in [7, 8] {
+            let instance = &terminal.charts[&id];
+            assert!(instance.asset_ctx.is_some());
+            assert!(instance.asset_ctx_from_rest);
+            assert!(!instance.asset_ctx_rest_in_flight);
+            assert_eq!(instance.asset_ctx_rest_failures, 0);
+            assert_eq!(instance.asset_ctx_rest_next_attempt_at_ms, None);
+        }
+        assert_eq!(terminal.spot_asset_context_rest_failures, 0);
+        assert_eq!(terminal.spot_asset_context_rest_next_attempt_at_ms, None);
+    }
+
+    #[test]
+    fn empty_or_failed_rest_context_uses_exponential_backoff() {
+        let now_ms = 1_000_000;
+        let refresh_ms = CHART_ASSET_CONTEXT_REST_REFRESH_MS;
+        let mut instance = ChartInstance::new(7, "@107".to_string(), Timeframe::H1);
+
+        instance.record_asset_context_rest_failure(now_ms, false);
+        let first_retry = instance
+            .asset_ctx_rest_next_attempt_at_ms
+            .expect("first retry scheduled");
+        assert!(first_retry >= now_ms + 5_000);
+        assert!(!instance.needs_rest_asset_context(first_retry - 1, refresh_ms));
+        assert!(instance.needs_rest_asset_context(first_retry, refresh_ms));
+
+        instance.record_asset_context_rest_failure(first_retry, false);
+        let second_retry = instance
+            .asset_ctx_rest_next_attempt_at_ms
+            .expect("second retry scheduled");
+        assert!(second_retry >= first_retry + 10_000);
+
+        instance.record_asset_context_rest_failure(second_retry, true);
+        let rate_limit_retry = instance
+            .asset_ctx_rest_next_attempt_at_ms
+            .expect("rate-limit retry scheduled");
+        assert!(rate_limit_retry >= second_retry + 60_000);
+    }
+
+    #[test]
+    fn missing_symbol_in_successful_spot_batch_does_not_retry_each_second() {
+        let mut terminal = terminal_with_spot_charts();
+        for instance in terminal.charts.values_mut() {
+            instance.asset_ctx_rest_in_flight = true;
+        }
+
+        let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
+            vec![(7, "@107".to_string()), (8, "PURR/USDC".to_string())],
+            Ok(vec![("@107".to_string(), asset_ctx("25.0"))]),
+        ));
+
+        assert!(terminal.charts[&7].asset_ctx.is_some());
+        let missing = &terminal.charts[&8];
+        assert!(missing.asset_ctx.is_none());
+        assert_eq!(missing.asset_ctx_rest_failures, 1);
+        assert!(missing.asset_ctx_rest_next_attempt_at_ms.is_some());
+        assert_eq!(terminal.spot_asset_context_rest_failures, 1);
+        assert!(
+            terminal
+                .spot_asset_context_rest_next_attempt_at_ms
+                .is_some()
+        );
+        terminal
+            .charts
+            .insert(9, ChartInstance::new(9, "@232".to_string(), Timeframe::H1));
+        assert!(
+            terminal
+                .queue_chart_asset_context_rest_fetches(TradingTerminal::now_ms())
+                .is_empty(),
+            "a missing batch target must also back off newly opened spot charts"
+        );
+    }
+
+    #[test]
+    fn empty_successful_spot_batch_sets_global_backoff() {
+        let mut terminal = terminal_with_spot_charts();
+        terminal.spot_asset_context_rest_in_flight = true;
+        for instance in terminal.charts.values_mut() {
+            instance.asset_ctx_rest_in_flight = true;
+        }
+
+        let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
+            vec![(7, "@107".to_string()), (8, "PURR/USDC".to_string())],
+            Ok(Vec::new()),
+        ));
+
+        assert_eq!(terminal.spot_asset_context_rest_failures, 1);
+        assert!(
+            terminal
+                .spot_asset_context_rest_next_attempt_at_ms
+                .is_some()
+        );
+        terminal
+            .charts
+            .insert(9, ChartInstance::new(9, "@232".to_string(), Timeframe::H1));
+        assert!(
+            terminal
+                .queue_chart_asset_context_rest_fetches(TradingTerminal::now_ms())
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn spot_endpoint_rate_limit_sets_global_guard_for_new_charts() {
+        let mut terminal = terminal_with_spot_charts();
+        for instance in terminal.charts.values_mut() {
+            instance.asset_ctx_rest_in_flight = true;
+        }
+
+        let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
+            vec![(7, "@107".to_string()), (8, "PURR/USDC".to_string())],
+            Err("spotMetaAndAssetCtxs rate limited (HTTP 429)".to_string()),
+        ));
+
+        assert_eq!(terminal.spot_asset_context_rest_failures, 1);
+        let retry_at = terminal
+            .spot_asset_context_rest_next_attempt_at_ms
+            .expect("global retry deadline");
+        let now_ms = TradingTerminal::now_ms();
+        assert!(retry_at >= now_ms + 59_000);
+
+        // A newly opened chart has no per-chart failure history, but must not
+        // bypass the shared endpoint's rate-limit deadline.
+        terminal
+            .charts
+            .insert(9, ChartInstance::new(9, "@232".to_string(), Timeframe::H1));
+        assert!(
+            terminal
+                .queue_chart_asset_context_rest_fetches(now_ms)
+                .is_empty()
+        );
     }
 
     #[test]

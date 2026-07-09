@@ -11,6 +11,6 @@ pub(in crate::account::data::bootstrap) use best_effort::{
 pub(in crate::account::data::bootstrap) use hip3::{
     hip3_clearinghouse_from_response, hip3_open_orders_from_response,
 };
-pub(in crate::account::data::bootstrap) use required::{
-    clearinghouse_from_required_value, spot_from_required_value,
-};
+pub(in crate::account::data::bootstrap) use required::account_states_from_required_spot;
+#[cfg(test)]
+pub(in crate::account::data::bootstrap) use required::clearinghouse_from_required_value;

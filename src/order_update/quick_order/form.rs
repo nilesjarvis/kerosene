@@ -49,7 +49,7 @@ impl TradingTerminal {
         } else {
             0.0
         };
-        let sizing_basis = self.quick_order_sizing_basis(&symbol);
+        let sizing_basis = self.quick_order_sizing_basis(&symbol, quantity_is_usd);
         let reference_price = self.quick_order_reference_price(price, is_limit, &symbol);
         let decimals = self.quick_order_size_decimals(&symbol);
         let quantity = sizing_basis
@@ -109,7 +109,7 @@ impl TradingTerminal {
             .unwrap_or_else(|| (String::new(), 0.0, false));
         let (quantity, percentage, quantity_provenance) =
             if had_provenance && current_percentage > 0.0 {
-                let sizing_basis = self.quick_order_sizing_basis(&symbol);
+                let sizing_basis = self.quick_order_sizing_basis(&symbol, target_is_usd);
                 let quantity = sizing_basis
                     .map(|basis| {
                         basis.quantity_for_percentage(
@@ -179,7 +179,7 @@ impl TradingTerminal {
         let decimals = self.quick_order_size_decimals(&symbol);
         let (quantity, percentage, quantity_provenance) =
             if had_provenance && current_percentage > 0.0 {
-                let sizing_basis = self.quick_order_sizing_basis(&symbol);
+                let sizing_basis = self.quick_order_sizing_basis(&symbol, quantity_is_usd);
                 let quantity = sizing_basis
                     .map(|basis| {
                         basis.quantity_for_percentage(
@@ -246,6 +246,7 @@ impl TradingTerminal {
         Some(QuickOrderQuantityProvenance {
             account_address,
             account_data_revision: self.account_data_revision,
+            spot_balances_revision: self.spot_balances_revision,
             symbol_key: symbol.to_string(),
             quantity_is_usd,
             percentage,

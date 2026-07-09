@@ -1,4 +1,4 @@
-use crate::api::WatchlistContext;
+use crate::api::{WatchlistContext, WatchlistContextsResponse};
 use crate::helpers::redact_sensitive_response_text;
 
 use std::collections::HashMap;
@@ -11,6 +11,7 @@ mod tests;
 // ---------------------------------------------------------------------------
 
 const WATCHLIST_CONTEXT_FAILURE_PREFIX: &str = "Watchlist context refresh failed:";
+const WATCHLIST_CONTEXT_PARTIAL_PREFIX: &str = "Watchlist context refresh partially failed:";
 const WATCHLIST_HISTORY_FAILURE_PREFIX: &str = "Watchlist history refresh failed:";
 
 pub(super) fn apply_contexts_loaded(
@@ -19,14 +20,25 @@ pub(super) fn apply_contexts_loaded(
     contexts: &mut HashMap<String, WatchlistContext>,
     status: &mut Option<(String, bool)>,
     requested_at: u64,
-    result: Result<HashMap<String, WatchlistContext>, String>,
+    result: Result<WatchlistContextsResponse, String>,
 ) {
     *loading = false;
 
     match result {
-        Ok(loaded_contexts) => {
+        Ok(response) => {
             *last_fetch_ms = Some(requested_at);
-            *contexts = loaded_contexts;
+            *contexts = response.contexts;
+            if !response.partial_errors.is_empty() {
+                *status = Some(live_watchlist_failure_status(
+                    WATCHLIST_CONTEXT_PARTIAL_PREFIX,
+                    &response.partial_errors.join("; "),
+                ));
+            } else if status.as_ref().is_some_and(|(message, _)| {
+                message.starts_with(WATCHLIST_CONTEXT_FAILURE_PREFIX)
+                    || message.starts_with(WATCHLIST_CONTEXT_PARTIAL_PREFIX)
+            }) {
+                *status = None;
+            }
         }
         Err(error) => {
             *status = Some(live_watchlist_failure_status(

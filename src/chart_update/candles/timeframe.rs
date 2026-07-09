@@ -91,6 +91,8 @@ impl TradingTerminal {
             }
             instance.secondary_candle_fetch_request = None;
             instance.secondary_candle_fetch_error = None;
+            instance.spot_candle_gap_reloaded_at_ms = None;
+            instance.secondary_spot_candle_gap_reloaded_at_ms = None;
         }
 
         self.persist_config();

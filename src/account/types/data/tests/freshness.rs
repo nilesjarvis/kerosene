@@ -12,6 +12,23 @@ fn position_action_snapshot_is_fresh_only_within_cutoff() {
 }
 
 #[test]
+fn spot_balance_freshness_advances_independently_from_positions() {
+    let mut data = account_data_snapshot(1_000);
+    let spot_refresh_ms = 1_000 + AccountData::POSITION_ACTION_MAX_AGE_MS + 1;
+
+    data.mark_spot_balances_fetched_at(spot_refresh_ms);
+
+    assert!(data.is_fresh_for_spot_balance_action(spot_refresh_ms));
+    assert!(!data.is_fresh_for_position_action(spot_refresh_ms));
+
+    let position_refresh_ms = spot_refresh_ms + AccountData::POSITION_ACTION_MAX_AGE_MS + 1;
+    data.mark_positions_fetched_at(position_refresh_ms);
+
+    assert!(data.is_fresh_for_position_action(position_refresh_ms));
+    assert!(!data.is_fresh_for_spot_balance_action(position_refresh_ms));
+}
+
+#[test]
 fn positions_refresh_does_not_refresh_open_order_action_snapshot() {
     let mut data = account_data_snapshot(1_000);
     let fresh_now = 1_000 + AccountData::POSITION_ACTION_MAX_AGE_MS;

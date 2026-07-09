@@ -60,7 +60,20 @@ impl TradingTerminal {
     }
 
     pub(super) fn boot_order_book_tasks(&mut self) -> Task<Message> {
-        self.order_book_fetch_tasks_for_all()
+        // `@0` is the legacy persisted key for the API-named PURR/USDC pair.
+        // Defer it until strict spot metadata rewrites the instance; sending
+        // raw `@0` to l2Book fails and can start a noisy retry streak.
+        let ids: Vec<_> = self
+            .order_books
+            .iter()
+            .filter_map(|(id, instance)| {
+                (self.order_book_symbol_for_mode(&instance.mode) != "@0").then_some(*id)
+            })
+            .collect();
+        Task::batch(
+            ids.into_iter()
+                .map(|id| self.order_book_fetch_task_for_id(id)),
+        )
     }
 }
 
@@ -130,6 +143,29 @@ mod tests {
         assert_eq!(
             terminal.order_books.get(&0).map(|book| book.tick_size),
             Some(2.5)
+        );
+    }
+
+    #[test]
+    fn boot_defers_legacy_api_named_spot_book_until_metadata_migration() {
+        let order_book = serde_json::from_str::<OrderBookConfig>(
+            r#"{"id":7,"mode":{"Fixed":"@0"},"tick_size":0.01}"#,
+        )
+        .expect("legacy fixed spot order book config");
+        let cfg = KeroseneConfig {
+            order_books: vec![order_book],
+            pane_layout: None,
+            ..KeroseneConfig::default()
+        };
+
+        let (terminal, _) = TradingTerminal::boot_from_config(cfg);
+        let instance = terminal.order_books.get(&7).expect("fixed book");
+
+        assert_eq!(instance.mode, OrderBookSymbolMode::Fixed("@0".to_string()));
+        assert_eq!(
+            instance.pending_book_request_id(),
+            None,
+            "raw @0 must not be sent before spotMeta supplies PURR/USDC"
         );
     }
 }

@@ -44,6 +44,12 @@ impl TradingTerminal {
         symbol: &ExchangeSymbol,
         hidden_context: &str,
     ) -> Result<(), String> {
+        if symbol.market_type == MarketType::Spot && self.spot_metadata_degraded {
+            return Err(format!(
+                "{} spot metadata is temporarily unverified; spot trading is disabled until it refreshes",
+                Self::exchange_symbol_display_name(symbol)
+            ));
+        }
         if symbol.market_type == MarketType::Outcome && symbol.outcome.is_none() {
             return Err(format!(
                 "{} outcome metadata is incomplete",

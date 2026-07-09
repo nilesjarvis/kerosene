@@ -20,8 +20,10 @@ use sizing::{OrderSizingBasis, position_size_for_symbol};
 pub(crate) struct OrderQuantityProvenance {
     account_address: String,
     account_data_revision: u64,
+    spot_balances_revision: u64,
     symbol_key: String,
     quantity_is_usd: bool,
+    percentage: f32,
     order_kind: OrderKind,
     reference_price: Option<f64>,
     reduce_only: bool,
@@ -33,8 +35,10 @@ impl fmt::Debug for OrderQuantityProvenance {
         f.debug_struct("OrderQuantityProvenance")
             .field("account_address", &"<redacted>")
             .field("account_data_revision", &self.account_data_revision)
+            .field("spot_balances_revision", &self.spot_balances_revision)
             .field("symbol_key", &self.symbol_key)
             .field("quantity_is_usd", &self.quantity_is_usd)
+            .field("percentage", &"<redacted>")
             .field("order_kind", &self.order_kind)
             .field("reference_price", &self.reference_price)
             .field("reduce_only", &self.reduce_only)
@@ -137,9 +141,7 @@ impl TradingTerminal {
     }
 
     fn active_symbol_size_decimals(&self) -> usize {
-        self.exchange_symbols
-            .iter()
-            .find(|s| s.key == self.active_symbol)
+        self.exchange_symbol_for_key(&self.active_symbol)
             .map(|s| s.sz_decimals)
             .unwrap_or(4) as usize
     }
@@ -194,8 +196,10 @@ impl TradingTerminal {
             self.order_quantity_provenance = Some(OrderQuantityProvenance {
                 account_address,
                 account_data_revision: self.account_data_revision,
+                spot_balances_revision: self.spot_balances_revision,
                 symbol_key: self.active_symbol.clone(),
                 quantity_is_usd: self.order_quantity_is_usd,
+                percentage,
                 order_kind: self.order_kind,
                 reference_price,
                 reduce_only: self.order_reduce_only,
@@ -215,7 +219,13 @@ impl TradingTerminal {
             });
         }
 
-        if self.is_spot_coin(&self.active_symbol) {
+        if self
+            .exchange_symbol_for_key(&self.active_symbol)
+            .is_some_and(|symbol| symbol.market_type == crate::api::MarketType::Spot)
+        {
+            if !self.spot_usd_denomination_supported(&self.active_symbol) {
+                return None;
+            }
             return self.spot_order_sizing_basis(&self.active_symbol, data);
         }
 
@@ -252,21 +262,196 @@ impl TradingTerminal {
         symbol: &str,
         data: &AccountData,
     ) -> Option<OrderSizingBasis> {
+        if self
+            .exchange_symbol_for_key(symbol)
+            .is_none_or(|exchange_symbol| {
+                exchange_symbol.market_type != crate::api::MarketType::Spot
+            })
+        {
+            return None;
+        }
         if let Some(sellable_size_coin) = self.spot_sellable_base_size(symbol, data) {
             return Some(OrderSizingBasis::SpotSellableBalance { sellable_size_coin });
         }
 
-        spot_spendable_quote_notional(data)
+        self.spot_spendable_quote_balance(symbol, data)
+            .and_then(positive_finite_value)
             .map(|max_notional| OrderSizingBasis::MarginNotional { max_notional })
+    }
+
+    /// Exact sizing basis for a spot action. The shared ticket has two action
+    /// buttons, so its preview cannot know a side; submission must recompute
+    /// the percentage-derived quantity with the side that was actually
+    /// clicked.
+    pub(in crate::order_update) fn spot_order_sizing_basis_for_side(
+        &self,
+        symbol: &str,
+        data: &AccountData,
+        is_buy: bool,
+    ) -> Option<OrderSizingBasis> {
+        if self
+            .exchange_symbol_for_key(symbol)
+            .is_none_or(|exchange_symbol| {
+                exchange_symbol.market_type != crate::api::MarketType::Spot
+            })
+        {
+            return None;
+        }
+        if !is_buy {
+            return self
+                .spot_sellable_base_size(symbol, data)
+                .map(|sellable_size_coin| OrderSizingBasis::SpotSellableBalance {
+                    sellable_size_coin,
+                });
+        }
+
+        self.spot_spendable_quote_balance(symbol, data)
+            .and_then(positive_finite_value)
+            .map(|max_notional| OrderSizingBasis::MarginNotional { max_notional })
+    }
+
+    pub(crate) fn spot_percentage_quantity_for_side(
+        &self,
+        symbol: &str,
+        data: &AccountData,
+        is_buy: bool,
+        percentage: f32,
+        quantity_is_usd: bool,
+        reference_price: Option<f64>,
+    ) -> Option<String> {
+        if !self.spot_usd_denomination_supported(symbol) {
+            return None;
+        }
+        let decimals = self.exchange_symbol_for_key(symbol)?.sz_decimals as usize;
+        self.spot_order_sizing_basis_for_side(symbol, data, is_buy)
+            .map(|basis| {
+                basis.quantity_for_percentage(
+                    percentage,
+                    quantity_is_usd,
+                    reference_price,
+                    decimals,
+                )
+            })
+    }
+
+    pub(crate) fn spot_percentage_available_balance_for_side(
+        &self,
+        symbol: &str,
+        data: &AccountData,
+        is_buy: bool,
+    ) -> Option<f64> {
+        match self.spot_order_sizing_basis_for_side(symbol, data, is_buy)? {
+            OrderSizingBasis::MarginNotional { max_notional } => Some(max_notional),
+            OrderSizingBasis::SpotSellableBalance { sellable_size_coin } => {
+                Some(sellable_size_coin)
+            }
+            OrderSizingBasis::ReduceOnlyPosition { .. } => None,
+        }
+    }
+
+    pub(crate) fn ticket_spot_percentage_balance_for_side(
+        &self,
+        is_buy: bool,
+    ) -> Option<(f64, f32)> {
+        let provenance = self.order_quantity_provenance.as_ref()?;
+        if provenance.symbol_key != self.active_symbol
+            || !provenance.percentage.is_finite()
+            || provenance.percentage <= 0.0
+            || provenance.percentage > 100.0
+            || self
+                .exchange_symbol_for_key(&self.active_symbol)
+                .is_none_or(|symbol| symbol.market_type != crate::api::MarketType::Spot)
+        {
+            return None;
+        }
+        let data = self.account_data_for_order_account(&provenance.account_address)?;
+        self.spot_percentage_available_balance_for_side(&self.active_symbol, data, is_buy)
+            .map(|balance| (balance, provenance.percentage))
+    }
+
+    pub(crate) fn spot_usd_denomination_supported(&self, symbol: &str) -> bool {
+        self.exchange_symbol_for_key(symbol)
+            .filter(|exchange_symbol| exchange_symbol.market_type == crate::api::MarketType::Spot)
+            .is_some_and(crate::api::ExchangeSymbol::spot_quote_is_usd_stable)
+    }
+
+    pub(crate) fn validate_spot_quantity_denomination(
+        &self,
+        symbol: &str,
+        _quantity_is_usd: bool,
+    ) -> Result<(), String> {
+        let Some(exchange_symbol) = self.exchange_symbol_for_key(symbol) else {
+            return Ok(());
+        };
+        if exchange_symbol.market_type != crate::api::MarketType::Spot {
+            return Ok(());
+        }
+        if self.spot_usd_denomination_supported(symbol) {
+            return Ok(());
+        }
+
+        Err(format!(
+            "Spot trading is unavailable for {} because quote-token USD valuation and accounting are not verified",
+            self.display_name_for_symbol(symbol)
+        ))
+    }
+
+    pub(crate) fn validate_spot_automation_quote(
+        &self,
+        symbol: &str,
+        automation: &str,
+    ) -> Result<(), String> {
+        let Some(exchange_symbol) = self.exchange_symbol_for_key(symbol) else {
+            return Ok(());
+        };
+        if exchange_symbol.market_type != crate::api::MarketType::Spot
+            || exchange_symbol.spot_quote_is_usd_stable()
+        {
+            return Ok(());
+        }
+
+        Err(format!(
+            "{automation} is unavailable for {} because its quote token cannot be converted safely to USD",
+            self.display_name_for_symbol(symbol)
+        ))
+    }
+
+    pub(crate) fn spot_quote_token_index(&self, symbol: &str) -> Option<u32> {
+        let exchange_symbol = self.exchange_symbol_for_key(symbol)?;
+        if exchange_symbol.market_type != crate::api::MarketType::Spot {
+            return None;
+        }
+
+        // `collateral_token` carries the quote-token index for spot symbols.
+        // Legacy cached USDC pairs predate that metadata; only that unambiguous
+        // quote is safe to recover. Never guess token 0 for another quote.
+        exchange_symbol.collateral_token.or_else(|| {
+            exchange_symbol
+                .display_name
+                .as_deref()
+                .and_then(|display| display.rsplit_once('/'))
+                .and_then(|(_, quote)| quote.eq_ignore_ascii_case("USDC").then_some(0))
+        })
+    }
+
+    pub(crate) fn spot_spendable_quote_balance(
+        &self,
+        symbol: &str,
+        data: &AccountData,
+    ) -> Option<f64> {
+        let quote_token = self.spot_quote_token_index(symbol)?;
+        let spendable = if data.account_abstraction == AccountAbstractionMode::Disabled {
+            data.spot_available_for_token(quote_token)?
+        } else {
+            data.available_margin_for_token(quote_token)?
+        };
+        spendable.is_finite().then_some(spendable)
     }
 
     /// Sellable base-token balance (total - hold) for a spot pair, floored to
     /// the pair's size decimals so a 100% sell never exceeds the balance.
     fn spot_sellable_base_size(&self, symbol: &str, data: &AccountData) -> Option<f64> {
-        let exchange_symbol = self
-            .exchange_symbols
-            .iter()
-            .find(|exchange_symbol| exchange_symbol.key == symbol)?;
+        let exchange_symbol = self.exchange_symbol_for_key(symbol)?;
         let balance = data
             .spot
             .balances
@@ -289,11 +474,13 @@ impl TradingTerminal {
     pub(crate) fn stale_percentage_order_quantity_task(
         &mut self,
         action: &str,
+        is_buy: bool,
     ) -> Option<Task<Message>> {
         let provenance = self.order_quantity_provenance.clone()?;
 
         if provenance.symbol_key != self.active_symbol
             || provenance.quantity_is_usd != self.order_quantity_is_usd
+            || provenance.percentage.to_bits() != self.order_percentage.to_bits()
             || provenance.reduce_only != self.order_reduce_only
             || provenance.market_universe != self.market_universe
         {
@@ -356,7 +543,20 @@ impl TradingTerminal {
             return Some(Task::none());
         }
 
-        if self.account_data_revision != provenance.account_data_revision {
+        let is_spot = self
+            .exchange_symbol_for_key(&self.active_symbol)
+            .is_some_and(|symbol| symbol.market_type == crate::api::MarketType::Spot);
+        if is_spot && self.spot_balances_revision != provenance.spot_balances_revision {
+            self.order_status = Some((
+                format!(
+                    "Percentage size was calculated from older spot balances; reselect size before {action}"
+                ),
+                true,
+            ));
+            return Some(Task::none());
+        }
+
+        if !is_spot && self.account_data_revision != provenance.account_data_revision {
             self.order_status = Some((
                 format!(
                     "Percentage size was calculated from an older account snapshot; reselect size before {action}"
@@ -364,6 +564,63 @@ impl TradingTerminal {
                 true,
             ));
             return Some(Task::none());
+        }
+
+        if is_spot {
+            if let Err(message) = self.validate_spot_quantity_denomination(
+                &self.active_symbol,
+                self.order_quantity_is_usd,
+            ) {
+                self.order_status = Some((message, true));
+                return Some(Task::none());
+            }
+            if !data.completeness.spot_balances_complete {
+                self.order_status = Some((
+                    format!(
+                        "Spot balances may be incomplete; refresh account data before {action}"
+                    ),
+                    true,
+                ));
+                return Some(self.refresh_account_data());
+            }
+            if !data.is_fresh_for_spot_balance_action(Self::now_ms()) {
+                self.order_status = Some((
+                    format!("Spot balances are stale for percentage size; refresh before {action}"),
+                    true,
+                ));
+                return Some(self.refresh_account_data());
+            }
+
+            let quantity = self.spot_percentage_quantity_for_side(
+                &self.active_symbol,
+                data,
+                is_buy,
+                provenance.percentage,
+                self.order_quantity_is_usd,
+                self.order_reference_price(),
+            );
+            let Some(quantity) = quantity else {
+                let side = if is_buy { "buying" } else { "selling" };
+                self.order_status = Some((
+                    format!(
+                        "No verified spot balance available for {side}; refresh metadata and account data before {action}"
+                    ),
+                    true,
+                ));
+                return Some(Task::none());
+            };
+            if self.order_quantity != quantity {
+                self.order_quantity = quantity;
+                let side = if is_buy { "Buy" } else { "Sell" };
+                self.order_status = Some((
+                    format!(
+                        "{side} percentage size was recalculated for the selected side; review the quantity and submit again"
+                    ),
+                    true,
+                ));
+                return Some(Task::none());
+            }
+            return None;
         }
 
         if !data.is_fresh_for_position_action(Self::now_ms()) {
@@ -384,18 +641,6 @@ impl TradingTerminal {
 
         None
     }
-}
-
-/// Spot USDC spendable on spot buys. Accounts without balance abstraction can
-/// only spend their spot USDC; abstraction modes auto-transfer, so they keep
-/// the account-level USDC availability.
-fn spot_spendable_quote_notional(data: &AccountData) -> Option<f64> {
-    let spendable = if data.account_abstraction == AccountAbstractionMode::Disabled {
-        data.spot_available_for_token(0)?
-    } else {
-        data.available_margin_for_token(0)?
-    };
-    positive_finite_value(spendable)
 }
 
 fn floor_to_size_decimals(size: f64, sz_decimals: u32) -> Option<f64> {

@@ -4,6 +4,23 @@ use crate::config::ReadDataProvider;
 use crate::read_data_provider::MarketDataSourceContext;
 use crate::timeframe::Timeframe;
 
+fn spot_symbol(key: &str) -> crate::api::ExchangeSymbol {
+    crate::api::ExchangeSymbol {
+        key: key.to_string(),
+        ticker: "SPOT".to_string(),
+        category: "spot".to_string(),
+        display_name: Some("SPOT/USDC".to_string()),
+        keywords: vec!["spot".to_string()],
+        asset_index: 10_003,
+        collateral_token: Some(crate::api::USDC_TOKEN_INDEX),
+        sz_decimals: 2,
+        max_leverage: 1,
+        only_isolated: false,
+        market_type: crate::api::MarketType::Spot,
+        outcome: None,
+    }
+}
+
 fn candle(open_time: u64, close: f64) -> Candle {
     Candle::test_ohlcv(
         open_time,
@@ -95,6 +112,57 @@ fn ws_candle_after_large_gap_triggers_reload_instead_of_blind_append() {
     // series cleared so the refetch replaces rather than stitches.
     assert!(instance.candle_fetch_request.is_some());
     assert!(instance.chart.candles.is_empty());
+}
+
+#[test]
+fn new_spot_candle_gap_triggers_one_reconciliation_reload() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    terminal.exchange_symbols = vec![spot_symbol("@3")];
+
+    let mut chart = ChartInstance::new(1, "@3".to_string(), Timeframe::H1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(3_600_000, 100.0)]);
+    terminal.charts.insert(1, chart);
+
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "@3".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, None),
+        candle(3_600_000 + 24 * 3_600_000, 200.0),
+    );
+
+    let instance = terminal.charts.get(&1).expect("chart");
+    assert!(instance.candle_fetch_request.is_some());
+    assert!(instance.chart.candles.is_empty());
+    assert!(instance.spot_candle_gap_reloaded_at_ms.is_some());
+}
+
+#[test]
+fn sparse_spot_gap_during_backoff_appends_without_reload_churn() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    terminal.exchange_symbols = vec![spot_symbol("@3")];
+
+    let mut chart = ChartInstance::new(1, "@3".to_string(), Timeframe::H1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(3_600_000, 100.0)]);
+    chart.spot_candle_gap_reloaded_at_ms = Some(TradingTerminal::now_ms());
+    terminal.charts.insert(1, chart);
+
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "@3".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, None),
+        candle(3_600_000 + 24 * 3_600_000, 200.0),
+    );
+
+    let instance = terminal.charts.get(&1).expect("chart");
+    assert!(instance.candle_fetch_request.is_none());
+    assert_eq!(instance.chart.candles.len(), 2);
+    assert_eq!(last_close(&terminal, 1), Some(200.0));
 }
 
 #[test]

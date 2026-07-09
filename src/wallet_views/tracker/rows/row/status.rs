@@ -30,6 +30,17 @@ impl TradingTerminal {
                 iced::widget::tooltip::Position::Top,
             )
             .into()
+        } else if let Some(warning) = row_data
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.valuation_warning.as_ref())
+        {
+            tooltip(
+                text("Degraded").size(11).color(theme.palette().warning),
+                text(warning.clone()).size(10),
+                iced::widget::tooltip::Position::Top,
+            )
+            .into()
         } else if let Some(updated_at) = row_data.last_updated_ms {
             text(helpers::format_relative_time(updated_at, now_ms))
                 .size(11)

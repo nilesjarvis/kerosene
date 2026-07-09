@@ -1,7 +1,7 @@
 use super::model::WatchlistContext;
 use crate::helpers::parse_finite_json_number;
 use serde_json::{Map, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub(super) fn insert_empty_context(map: &mut HashMap<String, WatchlistContext>, symbol: &str) {
     map.insert(
@@ -14,9 +14,28 @@ pub(super) fn insert_empty_context(map: &mut HashMap<String, WatchlistContext>, 
     );
 }
 
+#[cfg(test)]
 pub(super) fn append_perp_contexts(
     resp: Value,
     dex: Option<&str>,
+    map: &mut HashMap<String, WatchlistContext>,
+) -> Result<usize, String> {
+    append_perp_contexts_impl(resp, dex, None, map)
+}
+
+pub(super) fn append_perp_contexts_for_symbols(
+    resp: Value,
+    dex: Option<&str>,
+    requested_symbols: &HashSet<String>,
+    map: &mut HashMap<String, WatchlistContext>,
+) -> Result<usize, String> {
+    append_perp_contexts_impl(resp, dex, Some(requested_symbols), map)
+}
+
+fn append_perp_contexts_impl(
+    resp: Value,
+    dex: Option<&str>,
+    requested_symbols: Option<&HashSet<String>>,
     map: &mut HashMap<String, WatchlistContext>,
 ) -> Result<usize, String> {
     let arr = resp
@@ -35,28 +54,37 @@ pub(super) fn append_perp_contexts(
         .get("universe")
         .and_then(|v| v.as_array())
         .ok_or_else(|| "expected meta.universe array".to_string())?;
-    if ctxs.len() < universe.len() {
+    if requested_symbols.is_none() && ctxs.len() < universe.len() {
         return Err("contexts array shorter than universe".to_string());
     }
 
     let mut parsed = Vec::new();
     for (i, coin_meta) in universe.iter().enumerate() {
         if let Some(name) = coin_meta.get("name").and_then(|n| n.as_str()) {
-            let ctx = ctxs
-                .get(i)
-                .and_then(|v| v.as_object())
-                .ok_or_else(|| format!("expected context object for {name}"))?;
-            let context = WatchlistContext {
-                funding: parse_optional_f64(ctx, "funding"),
-                prev_day_px: parse_optional_f64(ctx, "prevDayPx"),
-                day_vlm: parse_optional_f64(ctx, "dayNtlVlm"),
-            };
             let canonical_key = if name.contains(':') {
                 name.to_string()
             } else if let Some(dex) = dex {
                 format!("{dex}:{name}")
             } else {
                 name.to_string()
+            };
+            if requested_symbols.is_some_and(|requested| {
+                !requested.contains(&canonical_key) && !requested.contains(name)
+            }) {
+                continue;
+            }
+            let Some(ctx) = ctxs.get(i).and_then(|v| v.as_object()) else {
+                if requested_symbols.is_some() {
+                    // A missing requested row is scoped absence, not grounds to
+                    // discard other healthy requested rows from this family.
+                    continue;
+                }
+                return Err(format!("expected context object for {name}"));
+            };
+            let context = WatchlistContext {
+                funding: parse_optional_f64(ctx, "funding"),
+                prev_day_px: parse_optional_f64(ctx, "prevDayPx"),
+                day_vlm: parse_optional_f64(ctx, "dayNtlVlm"),
             };
             parsed.push((canonical_key, name.to_string(), context));
         }
@@ -71,8 +99,25 @@ pub(super) fn append_perp_contexts(
     Ok(appended)
 }
 
+#[cfg(test)]
 pub(super) fn append_spot_contexts(
     resp: Value,
+    map: &mut HashMap<String, WatchlistContext>,
+) -> Result<usize, String> {
+    append_spot_contexts_impl(resp, None, map)
+}
+
+pub(super) fn append_spot_contexts_for_symbols(
+    resp: Value,
+    requested_symbols: &HashSet<String>,
+    map: &mut HashMap<String, WatchlistContext>,
+) -> Result<usize, String> {
+    append_spot_contexts_impl(resp, Some(requested_symbols), map)
+}
+
+fn append_spot_contexts_impl(
+    resp: Value,
+    requested_symbols: Option<&HashSet<String>>,
     map: &mut HashMap<String, WatchlistContext>,
 ) -> Result<usize, String> {
     let arr = resp
@@ -91,7 +136,11 @@ pub(super) fn append_spot_contexts(
         .get("universe")
         .and_then(|v| v.as_array())
         .ok_or_else(|| "expected meta.universe array".to_string())?;
-    if ctxs.len() < universe.len() {
+    if ctxs.len() < universe.len()
+        && ctxs
+            .iter()
+            .all(|ctx| ctx.get("coin").and_then(Value::as_str).is_none())
+    {
         return Err("contexts array shorter than universe".to_string());
     }
 
@@ -111,6 +160,12 @@ pub(super) fn append_spot_contexts(
         if let Some(spot_index) = coin_meta.get("index").and_then(|v| v.as_u64()) {
             let symbol_key = format!("@{spot_index}");
             let pair_name = coin_meta.get("name").and_then(|v| v.as_str());
+            if requested_symbols.is_some_and(|requested| {
+                !requested.contains(&symbol_key)
+                    && !pair_name.is_some_and(|name| requested.contains(name))
+            }) {
+                continue;
+            }
             let allow_unkeyed_fallback = ctxs_by_coin.is_empty();
             let ctx = ctxs.get(i).and_then(|v| v.as_object()).filter(|ctx| {
                 spot_context_matches_symbol(ctx, &symbol_key, pair_name, allow_unkeyed_fallback)
@@ -119,8 +174,13 @@ pub(super) fn append_spot_contexts(
                 .get(symbol_key.as_str())
                 .copied()
                 .or_else(|| pair_name.and_then(|name| ctxs_by_coin.get(name).copied()))
-                .or(ctx)
-                .ok_or_else(|| format!("expected context object for @{spot_index}"))?;
+                .or(ctx);
+            let Some(ctx) = ctx else {
+                // Context snapshots can lag a just-listed/removed universe row.
+                // Missing requested rows remain absent instead of invalidating
+                // every other requested spot and already parsed perp context.
+                continue;
+            };
             let prev_day_px = parse_optional_f64(ctx, "prevDayPx");
             let day_vlm = parse_optional_f64(ctx, "dayNtlVlm");
             let context = WatchlistContext {

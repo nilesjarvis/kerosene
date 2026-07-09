@@ -178,7 +178,11 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        let symbol = self.exchange_symbols.iter().find(|s| s.key == coin);
+        let symbol = self
+            .exchange_symbols
+            .iter()
+            .find(|s| s.key == coin)
+            .cloned();
         let Some(symbol) = symbol else {
             self.set_order_status(format!("Symbol '{coin}' not found"), true);
             return Task::none();
@@ -186,6 +190,19 @@ impl TradingTerminal {
         if symbol.market_type == MarketType::Outcome {
             self.outcome_read_only_status("chase trading");
             return Task::none();
+        }
+        if symbol.market_type == MarketType::Spot {
+            if self.spot_metadata_degraded {
+                self.set_order_status(
+                    "Cannot chase spot order until metadata is verified".into(),
+                    true,
+                );
+                return Task::none();
+            }
+            if let Err(message) = self.validate_spot_quantity_denomination(&symbol.key, false) {
+                self.set_order_status(message, true);
+                return Task::none();
+            }
         }
 
         let asset = symbol.asset_index;
@@ -243,6 +260,9 @@ impl TradingTerminal {
                 cancel_retries: 0,
             },
         );
+        if is_spot {
+            self.record_chase_spot_symbol_identity(chase_id, &symbol);
+        }
         self.selected_chase_id = Some(chase_id);
 
         self.order_status = Some((format!("Chasing resting order {oid}..."), false));

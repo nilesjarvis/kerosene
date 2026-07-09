@@ -100,6 +100,42 @@ This layer centralizes:
 Feature-specific surfaces should build intents and let this layer prepare the
 wire action.
 
+## Spot Execution Safety
+
+Spot execution is pair-specific and must not borrow perpetual-market state:
+
+- A spot order resolves a fresh mid only from its exact API pair key or a
+  metadata-verified canonical/legacy alias. It never falls through to a bare
+  ticker, same-ticker perpetual, or `U`-prefixed alias.
+- Spot metadata preserves the pair's quote-token identity. Percentage buys use
+  that quote token's spendable balance; percentage sells use the base token's
+  sellable `total - hold`, floored to the market's size precision.
+- The shared Buy/Sell ticket cannot determine a side while previewing a slider
+  value. At submission it recomputes the coin quantity for the clicked side.
+  If the displayed quantity changes, submission stops and requires the user to
+  review and submit again.
+- Percentage provenance is tied to the connected account and the independent
+  spot-balance revision. Incomplete or stale spot balances, or a changed spot
+  revision, block submission and request reconciliation instead of reusing the
+  old quantity.
+- Placement is allowed only when the pair has a recognized USD-stable quote.
+  Crypto-quoted or unknown-quote pairs stay fail-closed across ticket, quick,
+  cluster, Chase, and TWAP surfaces until quote-to-USD accounting is verified.
+
+Dispatching a spot placement, modification, cancellation, Chase action, or
+TWAP child invalidates the connected account's spot-balance completeness. A
+live spot fill does the same because fills and `spotState` are separate stream
+lanes. A subsequent targeted `spotState` frame or full account refresh restores
+completeness and advances the spot-balance revision.
+
+Cached or retained spot metadata is visible but not orderable until a live,
+strict metadata response verifies it. New spot actions fail closed during this
+state. Existing spot TWAPs pause and can resume after verification; an existing
+spot Chase stops and cancels a known resting order, or enters verification when
+prior exchange exposure is uncertain. Cancellation remains available without
+metadata only for strictly parsed `@N` order keys and the canonical
+`PURR/USDC` pair; placement and modification never use that fallback.
+
 Wallet clusters add two order surfaces:
 
 - `OrderSurface::Cluster` for standard split entries across member profiles.

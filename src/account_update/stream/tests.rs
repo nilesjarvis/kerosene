@@ -1,7 +1,9 @@
 use super::*;
 use crate::account::{
     AccountData, AssetPosition, ClearinghouseState, MarginSummary, Position, PositionLeverage,
+    SpotBalance,
 };
+use crate::api::{ExchangeSymbol, MarketType};
 
 mod chase_fills;
 mod chase_reprice;
@@ -318,6 +320,89 @@ fn ws_fill_update_preserves_canonical_market_symbols_and_wire_sides_in_account_d
         parsed,
         vec![("BTC", "B"), ("flx:BTC", "B"), ("@107", "A"), ("#950", "A")]
     );
+}
+
+#[test]
+fn live_spot_fill_invalidates_balances_until_spot_state_reconciles() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.account_data_address = Some(address.clone());
+    let mut data = account_data_with_timestamp(TradingTerminal::now_ms());
+    data.mark_spot_balances_fetched_at(TradingTerminal::now_ms());
+    terminal.account_data = Some(data);
+    terminal.exchange_symbols = vec![ExchangeSymbol {
+        key: "@107".to_string(),
+        ticker: "HYPE".to_string(),
+        category: "spot".to_string(),
+        display_name: Some("HYPE/USDC".to_string()),
+        keywords: Vec::new(),
+        asset_index: 10_107,
+        collateral_token: Some(0),
+        sz_decimals: 2,
+        max_leverage: 1,
+        only_isolated: false,
+        market_type: MarketType::Spot,
+        outcome: None,
+    }];
+    let initial_revision = terminal.spot_balances_revision;
+    let mut spot_fill = fixtures::fill(TradingTerminal::now_ms() + 1);
+    spot_fill.coin = "@107".to_string();
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address.clone()),
+        WsUserData::Fills {
+            fills: vec![spot_fill],
+            is_snapshot: false,
+        },
+    );
+
+    assert!(
+        !terminal
+            .account_data
+            .as_ref()
+            .expect("account data")
+            .completeness
+            .spot_balances_complete
+    );
+    assert_eq!(
+        terminal.spot_balances_revision,
+        initial_revision.wrapping_add(1)
+    );
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::SpotBalances(vec![SpotBalance {
+            coin: "USDC".to_string(),
+            token: Some(0),
+            total: "900".to_string(),
+            hold: "0".to_string(),
+            entry_ntl: "0".to_string(),
+            supplied: None,
+        }]),
+    );
+
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert!(data.completeness.spot_balances_complete);
+    assert!(data.is_fresh_for_spot_balance_action(TradingTerminal::now_ms()));
+    assert_eq!(
+        terminal.spot_balances_revision,
+        initial_revision.wrapping_add(2)
+    );
+}
+
+#[test]
+fn spot_fill_classification_does_not_depend_on_loaded_metadata() {
+    let mut indexed = fixtures::fill(1);
+    indexed.coin = "@107".to_string();
+    let mut named = fixtures::fill(2);
+    named.coin = "PURR/USDC".to_string();
+    let mut perp = fixtures::fill(3);
+    perp.coin = "HYPE".to_string();
+
+    assert!(fill_is_spot(&indexed, &[]));
+    assert!(fill_is_spot(&named, &[]));
+    assert!(!fill_is_spot(&perp, &[]));
 }
 
 #[test]

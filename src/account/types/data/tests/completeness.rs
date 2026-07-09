@@ -51,6 +51,17 @@ fn marking_positions_incomplete_clears_actionable() {
 }
 
 #[test]
+fn spot_balance_completeness_is_independent_from_positions() {
+    let mut completeness = AccountDataCompleteness::default();
+
+    completeness.spot_balances_complete = false;
+
+    assert!(!completeness.spot_balances_complete);
+    assert!(completeness.positions_complete);
+    assert!(completeness.positions_actionable);
+}
+
+#[test]
 fn degraded_positions_stay_actionable_but_warn() {
     let mut completeness = AccountDataCompleteness::default();
 
