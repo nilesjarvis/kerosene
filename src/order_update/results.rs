@@ -498,7 +498,7 @@ impl TradingTerminal {
         if outcome.kind == ExecutionOutcomeKind::AcceptedResting
             && !context.order_kind.allows_resting_response()
         {
-            let nuke_task = self.record_nuke_child_uncertain(execution_id);
+            let nuke_task = self.record_nuke_child_uncertain(execution_id, &context.cloid);
             self.set_unexpected_one_shot_resting_status(&context, &outcome.status);
             return Task::batch([nuke_task, self.refresh_account_data()]);
         }
@@ -507,7 +507,12 @@ impl TradingTerminal {
             outcome.kind,
             ExecutionOutcomeKind::AcceptedResting | ExecutionOutcomeKind::Filled
         );
-        self.record_nuke_child_outcome(execution_id, confirmed, outcome.refresh_account)
+        self.record_nuke_child_outcome(
+            execution_id,
+            &context.cloid,
+            confirmed,
+            outcome.refresh_account,
+        )
     }
 
     pub(crate) fn toggle_close_menu(&mut self, coin: String) {
@@ -794,26 +799,27 @@ impl TradingTerminal {
 
         match result {
             Ok(status) if status.is_open() && !context.order_kind.allows_resting_response() => {
-                let nuke_task = self.record_nuke_child_uncertain(execution_id);
+                let nuke_task = self.record_nuke_child_uncertain(execution_id, &context.cloid);
                 self.set_unexpected_one_shot_resting_status(&context, &status.raw_summary);
                 Task::batch([nuke_task, self.refresh_account_data()])
             }
             Ok(status) if status.is_open() || status.is_filled() => {
-                self.record_nuke_child_outcome(execution_id, true, true)
+                self.record_nuke_child_outcome(execution_id, &context.cloid, true, true)
             }
             Ok(status) if status.is_definitive_no_fill_terminal() => {
-                self.record_nuke_child_outcome(execution_id, false, false)
+                self.record_nuke_child_outcome(execution_id, &context.cloid, false, false)
             }
             Ok(status) if status.is_no_fill_terminal() => {
-                self.record_nuke_child_outcome(execution_id, false, true)
+                self.record_nuke_child_outcome(execution_id, &context.cloid, false, true)
             }
-            Ok(_) | Err(_) => self.record_nuke_child_uncertain(execution_id),
+            Ok(_) | Err(_) => self.record_nuke_child_uncertain(execution_id, &context.cloid),
         }
     }
 
     fn record_nuke_child_outcome(
         &mut self,
         execution_id: u64,
+        child_cloid: &str,
         confirmed: bool,
         refresh_needed: bool,
     ) -> Task<Message> {
@@ -825,15 +831,22 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        if confirmed {
-            execution.record_confirmed(refresh_needed);
+        let recorded = if confirmed {
+            execution.record_confirmed(child_cloid, refresh_needed)
         } else {
-            execution.record_failed(refresh_needed);
+            execution.record_failed(child_cloid, refresh_needed)
+        };
+        if !recorded {
+            return Task::none();
         }
         self.finish_or_update_nuke_execution()
     }
 
-    fn record_nuke_child_uncertain(&mut self, execution_id: u64) -> Task<Message> {
+    fn record_nuke_child_uncertain(
+        &mut self,
+        execution_id: u64,
+        child_cloid: &str,
+    ) -> Task<Message> {
         let Some(execution) = self
             .pending_nuke_execution
             .as_mut()
@@ -842,7 +855,9 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        execution.record_uncertain();
+        if !execution.record_uncertain(child_cloid) {
+            return Task::none();
+        }
         self.finish_or_update_nuke_execution()
     }
 

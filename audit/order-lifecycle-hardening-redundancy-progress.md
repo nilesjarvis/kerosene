@@ -66,7 +66,7 @@
 | Quick place | Chart ID/surface snapshot and recovery data; captured account; one-shot context | Indicator ID + CLOID context; optional form recovery | Unique one-shot CLOID | Shared classifier | Shared CLOID status + account refresh | Chart/surface/symbol and percentage provenance checks; current-account match | Clears global action/indicator; rejection may restore matching form | `order_execution/quick_order/submit/tests.rs`, `order_update/quick_order/form/tests.rs` | No confirmed gap |
 | HUD place | `HudOrderRequest` captures chart/surface/symbol/side; account context; one-shot context | Market: global action + CLOID. Limit: HUD in-flight ID + indicator + CLOID | Unique one-shot CLOID | Shared classifier | Shared CLOID status + account refresh | Chart/surface/symbol/arm checks; per-account limit tracker; current-account match | Market clears global action; limit finishes its tracker entry; both clear indicator | `order_update/hud.rs` tests, `order_execution/hud.rs` tests | Per-tracker ID wraps without collision handling; practically remote, audit with other allocators |
 | Close-position place (UI or Alfred) | Fresh connected-account position snapshot; account/key; coin/fraction; one-shot context | Global close action + indicator + CLOID context | Unique one-shot CLOID | Shared classifier | Shared CLOID status + account refresh | Pending/reconciliation/freshness/completeness gates; current-account match | Clears close action/indicator; shared one-shot terminal handling | `order_execution/position_actions/close/tests/**`, result tests | No confirmed gap |
-| NUKE child place (UI or Alfred) | Parent execution ID; connected account; planner output; per-child one-shot context | Execution ID + child CLOID in message, but aggregate stores counters only | Unique one-shot CLOID per child | Shared classifier | Uncertain child gets CLOID status; parent refreshes after aggregate completion | Current-account and execution-ID checks | Counter-based confirmed/failed/uncertain totals; parent removed at `completed >= total` | `order_execution/position_actions/nuke/tests/**`, `order_update/results/tests.rs` | Duplicate result/status for one child can be counted twice and complete the parent early (F-01) |
+| NUKE child place (UI or Alfred) | Parent execution ID; connected account; planner output; per-child one-shot context | Execution ID + child CLOID in the result context and aggregate settlement set | Unique one-shot CLOID per child; the first terminal transition claims it | Shared classifier | Uncertain child gets CLOID status; parent refreshes after aggregate completion | Current-account and execution-ID checks; duplicate settlement is a no-op | CLOID-keyed confirmed/failed/uncertain totals; parent removed after the unique settled-child count reaches total | `order_execution/position_actions/nuke/tests/**`, direct/status duplicate regressions in `order_update/results/tests.rs` | F-01 addressed in Turn 2; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Cancel by OID | Connected account + symbol + OID; durable pending cancel status context | Account + OID + symbol; indicator is presentation only | Target OID (no separate request token) | Shared classifier plus confirmed-cancel predicate | `orderStatus` by OID + open-order/account refresh | Same-account check and exact pending status tuple | Confirmed/terminal result removes matching local order; complete open-order refresh clears uncertainty | `order_execution/position_actions/cancel.rs` tests, cancel result tests | Audit whether every `Ok` refresh used for cleanup has complete open orders |
 | Move/modify | Connected account + symbol + OID; original key captured in `PendingMoveOrderContext` | Account + symbol + OID; indicator ID | Target OID (no separate request token) | Shared classifier plus confirmed-modify predicate | `orderStatus` by OID + account refresh to confirm price | Exact pending move key/context; account match; status tuple match | Removes move context/indicator; terminal status or complete open-order refresh clears uncertainty | `order_execution/quick_order/move_order/tests/**`, `order_update/move_order.rs` tests | Same OID can be modified repeatedly; audit per-attempt correlation after prior completion |
 | Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account refresh + open-order/fill stream reconciliation | `expects_place_result`, current account, symbol identity, prior-exposure and reconciliation gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled | Chase lifecycle/place/result/status tests and account stream Chase tests | Direct place-result message lacks the attempt CLOID; audit duplicate/late result behavior (F-05) |
@@ -82,7 +82,8 @@
 
 ### F-01 — NUKE child aggregation is not idempotent
 
-- Status: confirmed from handler-level state transitions; implementation queued
+- Status: addressed in Turn 2; focused tests added, but executable validation is
+  blocked before Kerosene compilation by the missing system ALSA package
 - Severity: Medium, with a High consequence if duplicate delivery occurs during
   a multi-child emergency close
 - Scope: NUKE result and status-result plumbing
@@ -101,12 +102,22 @@
   aggregate.
 - Risk: the parent can reach `completed >= total`, clear its pending blocker,
   and report completion while another child is still in flight.
-- Smallest behavior-preserving fix: key NUKE child settlement by CLOID inside
-  the parent and ignore duplicate terminal transitions. Preserve all existing
-  counts and status text for unique results.
-- Required regression: deliver the same child result twice in a two-child
-  execution, then prove the parent remains pending until the second unique
-  CLOID settles. Cover both direct and status-result paths.
+- Implemented fix: NUKE parents retain a runtime-only set of settled child
+  CLOIDs. The first confirmed, failed, or uncertain terminal transition claims
+  its CLOID; subsequent transitions for that CLOID cannot increment any count
+  or finish the parent. Completion is derived from the number of unique settled
+  children (`src/order_execution.rs:84-186`,
+  `src/order_update/results.rs:463-515`,
+  `src/order_update/results.rs:789-862`).
+- Regression coverage: direct exchange results and `orderStatus` results each
+  deliver the same child twice in a two-child execution, assert the unchanged
+  `1/2` progress text and pending parent, then settle a distinct CLOID
+  (`src/order_update/results/tests.rs:924-1001`). The direct regression also
+  proves `PendingNukeExecution` debug output does not expose its retained CLOID.
+- Protected behavior: unique child outcomes retain the existing confirmed,
+  failed, uncertain, skipped, refresh, error-state, and status-text behavior.
+  The change does not affect request construction, signing, dispatch, order
+  semantics, views, persistence, or user interaction timing.
 
 ### F-02 — Successful refresh may clear unresolved one-shot status state too broadly
 
@@ -199,22 +210,69 @@
   CLOID-keyed idempotent NUKE aggregation, preserving all unique-result behavior
   and status text.
 
+## Turn 2 — Idempotent NUKE Child Settlement
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: Medium invariant hardening for a potentially High-consequence
+  emergency-close ordering failure
+- Scope: runtime NUKE parent accounting and the two terminal result boundaries
+- Invariant: one logical NUKE child contributes at most one terminal outcome to
+  its parent, regardless of duplicate direct or reconciliation-result delivery.
+- Protected behavior: every unique child still produces the same aggregate
+  counts, completion threshold, account-refresh decision, error flag, and
+  visible status text. Order preparation, CLOID generation, signed payloads,
+  exchange calls, UI, and persistence are untouched.
+- Evidence: the result context already carries the child's immutable CLOID;
+  prior aggregation discarded it and incremented an unkeyed counter. Source
+  references and adversarial ordering are recorded under F-01 above.
+- Change: replaced the unkeyed completed count with a runtime-only settled-CLOID
+  set, made each outcome recorder atomically reject an already-settled child,
+  derived completion from unique settlements, and retained the former safe
+  counter-only `Debug` shape so stored CLOIDs cannot be formatted.
+- Regression tests: added duplicate direct-result and duplicate status-result
+  cases. Each proves one repeated CLOID leaves the parent at `1/2` and that a
+  second unique CLOID is required for the unchanged `2/2` completion state.
+- Validation:
+  - `cargo fmt` passed.
+  - `cargo fmt -- --check` passed.
+  - `git diff --check` passed before the ledger update and is rerun during the
+    final review.
+  - `cargo test --package kerosene --bin kerosene duplicate_nuke_` stopped in
+    `alsa-sys` before compiling Kerosene because `pkg-config` could not find
+    the system `alsa.pc` package.
+  - `cargo check` stopped at the same pre-existing environment dependency
+    boundary before checking Kerosene.
+  - A pre-implementation focused-test attempt encountered the same ALSA
+    boundary, so the new regression could not be observed failing on this host.
+- Compatibility/UX assessment: internal runtime bookkeeping only; no normal
+  success/failure copy or behavior changes and no schema/dependency changes.
+- Residual risk: source parsing, formatting, call-site inspection, and the diff
+  pass, but the new tests and Rust type-check must still execute once ALSA
+  development metadata is available.
+- Prior turn commit hash: `f8d2fa41abc4f6ef1456fcc2988b1ef8d280f315`
+- Next candidate: audit F-02's account-refresh completeness and exact-resolution
+  semantics before deciding whether one-shot status cleanup needs a guarded
+  production change or only characterization coverage.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
 
 ## Validation Summary
 
-- Passing: `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked: focused Rust tests and `cargo check` at `alsa-sys`
-  system dependency discovery.
+- Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
+- Environment-blocked this turn: the focused `duplicate_nuke_` Rust tests and
+  `cargo check` at `alsa-sys` system dependency discovery, before Kerosene was
+  compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
-- The remaining audit tracks are incomplete; this first turn establishes the
-  map rather than claiming safety completion.
-- F-01 through F-05 remain open as described above.
+- The remaining audit tracks are incomplete; no overall safety-completion claim
+  is made.
+- F-01 has a source fix and regression coverage but awaits executable validation
+  on a host with ALSA development metadata. F-02 through F-05 remain open as
+  described above.
 - Signing wire construction, response classification, Chase/TWAP correlation,
   cluster result handling, account refresh completeness, restart cleanup, and
   redaction require further track-by-track completion before a final verdict.

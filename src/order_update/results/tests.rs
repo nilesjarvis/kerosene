@@ -922,6 +922,85 @@ fn nuke_results_aggregate_until_all_children_settle() {
 }
 
 #[test]
+fn duplicate_nuke_direct_result_does_not_settle_two_children() {
+    let mut terminal = terminal_with_connected_account();
+    terminal.pending_nuke_execution = Some(PendingNukeExecution::new(8, 2, 0));
+    let first_context = nuke_context("BTC");
+
+    for _ in 0..2 {
+        let _task = terminal.handle_nuke_result(
+            8,
+            first_context.clone(),
+            Ok(exchange_response(vec![serde_json::json!({
+                "filled": {
+                    "totalSz": "1",
+                    "avgPx": "100",
+                    "oid": 42_u64
+                }
+            })])),
+        );
+    }
+
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
+    assert!(!is_error);
+    assert_eq!(message, "NUKE progress: 1/2 confirmed");
+    let pending = terminal
+        .pending_nuke_execution
+        .as_ref()
+        .expect("one unique child must remain pending");
+    let rendered = format!("{pending:?}");
+    assert!(rendered.contains("completed: 1"));
+    assert!(!rendered.contains(&first_context.cloid));
+
+    let _task = terminal.handle_nuke_result(
+        8,
+        nuke_context("ETH"),
+        Ok(exchange_response(vec![serde_json::json!({
+            "filled": {
+                "totalSz": "1",
+                "avgPx": "100",
+                "oid": 43_u64
+            }
+        })])),
+    );
+
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
+    assert!(!is_error);
+    assert_eq!(message, "NUKE completed: 2/2 confirmed");
+    assert!(terminal.pending_nuke_execution.is_none());
+}
+
+#[test]
+fn duplicate_nuke_status_result_does_not_settle_two_children() {
+    let mut terminal = terminal_with_connected_account();
+    terminal.pending_nuke_execution = Some(PendingNukeExecution::new(10, 2, 0));
+
+    for _ in 0..2 {
+        let _task = terminal.handle_nuke_placement_status_result(
+            10,
+            nuke_context("BTC"),
+            Ok(order_status("filled")),
+        );
+    }
+
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
+    assert!(!is_error);
+    assert_eq!(message, "NUKE progress: 1/2 confirmed");
+    assert!(terminal.pending_nuke_execution.is_some());
+
+    let _task = terminal.handle_nuke_placement_status_result(
+        10,
+        nuke_context("ETH"),
+        Ok(order_status("filled")),
+    );
+
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
+    assert!(!is_error);
+    assert_eq!(message, "NUKE completed: 2/2 confirmed");
+    assert!(terminal.pending_nuke_execution.is_none());
+}
+
+#[test]
 fn nuke_uncertain_child_waits_for_order_status_before_aggregating() {
     let mut terminal = terminal_with_connected_account();
     terminal.pending_nuke_execution = Some(PendingNukeExecution::new(9, 1, 0));

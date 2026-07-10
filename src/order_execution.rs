@@ -36,7 +36,7 @@ use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::config;
 use crate::signing::{CapturedAgentKey, ChaseOrder};
-use std::fmt;
+use std::{collections::BTreeSet, fmt};
 use zeroize::Zeroizing;
 
 #[derive(Clone, PartialEq, Eq)]
@@ -81,11 +81,11 @@ pub(crate) enum PendingOrderAction {
     ClosePosition,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct PendingNukeExecution {
     pub(crate) id: u64,
     total: usize,
-    completed: usize,
+    settled_child_cloids: BTreeSet<String>,
     confirmed: usize,
     failed: usize,
     uncertain: usize,
@@ -98,7 +98,7 @@ impl PendingNukeExecution {
         Self {
             id,
             total,
-            completed: 0,
+            settled_child_cloids: BTreeSet::new(),
             confirmed: 0,
             failed: 0,
             uncertain: 0,
@@ -107,26 +107,39 @@ impl PendingNukeExecution {
         }
     }
 
-    pub(crate) fn record_confirmed(&mut self, refresh_needed: bool) {
-        self.completed = self.completed.saturating_add(1);
+    fn record_child_settled(&mut self, child_cloid: &str) -> bool {
+        self.settled_child_cloids.insert(child_cloid.to_string())
+    }
+
+    pub(crate) fn record_confirmed(&mut self, child_cloid: &str, refresh_needed: bool) -> bool {
+        if !self.record_child_settled(child_cloid) {
+            return false;
+        }
         self.confirmed = self.confirmed.saturating_add(1);
         self.refresh_needed |= refresh_needed;
+        true
     }
 
-    pub(crate) fn record_failed(&mut self, refresh_needed: bool) {
-        self.completed = self.completed.saturating_add(1);
+    pub(crate) fn record_failed(&mut self, child_cloid: &str, refresh_needed: bool) -> bool {
+        if !self.record_child_settled(child_cloid) {
+            return false;
+        }
         self.failed = self.failed.saturating_add(1);
         self.refresh_needed |= refresh_needed;
+        true
     }
 
-    pub(crate) fn record_uncertain(&mut self) {
-        self.completed = self.completed.saturating_add(1);
+    pub(crate) fn record_uncertain(&mut self, child_cloid: &str) -> bool {
+        if !self.record_child_settled(child_cloid) {
+            return false;
+        }
         self.uncertain = self.uncertain.saturating_add(1);
         self.refresh_needed = true;
+        true
     }
 
     pub(crate) fn is_complete(&self) -> bool {
-        self.completed >= self.total
+        self.settled_child_cloids.len() >= self.total
     }
 
     pub(crate) fn refresh_needed(&self) -> bool {
@@ -154,6 +167,21 @@ impl PendingNukeExecution {
             status.push_str(&format!("; {} skipped", self.skipped));
         }
         status
+    }
+}
+
+impl fmt::Debug for PendingNukeExecution {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PendingNukeExecution")
+            .field("id", &self.id)
+            .field("total", &self.total)
+            .field("completed", &self.settled_child_cloids.len())
+            .field("confirmed", &self.confirmed)
+            .field("failed", &self.failed)
+            .field("uncertain", &self.uncertain)
+            .field("skipped", &self.skipped)
+            .field("refresh_needed", &self.refresh_needed)
+            .finish()
     }
 }
 
