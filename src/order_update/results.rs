@@ -44,7 +44,7 @@ impl fmt::Debug for PendingOneShotStatusRequest {
         f.debug_struct("PendingOneShotStatusRequest")
             .field("request_id", &self.request_id)
             .field("account_address", &"<redacted>")
-            .field("cloid", &self.cloid)
+            .field("cloid", &"<redacted>")
             .field("surface", &self.surface)
             .finish()
     }

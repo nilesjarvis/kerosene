@@ -173,14 +173,15 @@ fn finish_current_account_refresh(terminal: &mut TradingTerminal) {
 }
 
 #[test]
-fn pending_one_shot_status_request_debug_redacts_account_address() {
+fn pending_one_shot_status_request_debug_redacts_account_and_cloid() {
     let request = PendingOneShotStatusRequest::new(7, &one_shot_context());
 
     let rendered = format!("{request:?}");
 
-    assert!(rendered.contains("<redacted>"));
+    assert!(rendered.contains("account_address: \"<redacted>\""));
+    assert!(rendered.contains("cloid: \"<redacted>\""));
     assert!(!rendered.contains(TEST_ACCOUNT));
-    assert!(rendered.contains("0x00000000000000000000000000000000"));
+    assert!(!rendered.contains("0x00000000000000000000000000000000"));
 }
 
 #[test]

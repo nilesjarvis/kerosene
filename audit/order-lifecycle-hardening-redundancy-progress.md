@@ -169,16 +169,26 @@
 
 ### F-03 — Pending one-shot debug output exposes the CLOID
 
-- Status: confirmed, not yet implemented
+- Status: addressed in Turn 4; focused test added, but executable validation is
+  blocked before Kerosene compilation by the missing system ALSA package
 - Severity: Medium privacy hardening
-- Evidence: `PendingOneShotStatusRequest::fmt` redacts the address but formats
-  the full CLOID (`src/order_update/results.rs:41-48`), while
-  `OneShotPlacementContext` and `PlaceOrderRequest` deliberately avoid exposing
-  it.
-- Risk: diagnostic formatting can reveal a stable order correlation identifier
-  derived from account and order inputs.
-- Smallest fix: emit `has_cloid` or `<redacted>` and extend the existing debug
-  regression test. This has no runtime or UX effect.
+- Scope: `PendingOneShotStatusRequest` diagnostic formatting only
+- Evidence: the formatter redacted the account address but previously emitted
+  the full CLOID, while `OneShotPlacementContext`, signed wire types, and order
+  status result models already redact the same identifier.
+- Violated invariant: a sensitive order correlation identifier retained for
+  lifecycle matching must not be exposed through general diagnostic formatting.
+- Risk: formatting parent application state or a pending request during
+  diagnostics could disclose a stable identifier derived from account and order
+  inputs even though adjacent boundaries are redacted.
+- Implemented fix: the existing `cloid` debug field now emits `<redacted>` while
+  retaining the same struct/field shape (`src/order_update/results.rs:42-50`).
+- Regression coverage: the focused formatter test requires explicit redaction
+  markers for both the account address and CLOID and rejects both synthetic raw
+  values (`src/order_update/results/tests.rs:175-185`).
+- Protected behavior: storage, equality, request correlation, status handling,
+  UI strings, order semantics, and persistence are unchanged. Only `Debug`
+  output differs.
 
 ### F-04 — Wallet-cluster result transitions lack focused correlation/idempotence coverage
 
@@ -335,6 +345,45 @@
 - Next candidate: implement F-03's zero-behavior-change CLOID redaction in
   `PendingOneShotStatusRequest::Debug` with focused regression coverage.
 
+## Turn 4 — Redact Pending One-Shot CLOIDs
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: Medium privacy hardening
+- Scope: one custom `Debug` implementation and its focused regression
+- Invariant: diagnostic formatting of pending order lifecycle state must not
+  disclose account addresses or CLOIDs.
+- Protected behavior: the pending record retains the exact CLOID internally for
+  matching. All request IDs, lifecycle transitions, status strings, account
+  refreshes, exchange payloads, views, and persistence behavior are untouched.
+- Evidence: repository-wide inspection of explicit CLOID formatters found the
+  raw exposure only in `PendingOneShotStatusRequest`; adjacent context, signing,
+  TWAP, cluster, and order-status models use `<redacted>` or presence-only
+  fields.
+- Change: replaced the raw CLOID formatter value with `<redacted>` and tightened
+  the existing test to reject the synthetic account and CLOID independently.
+- Validation:
+  - `cargo fmt` passed.
+  - `cargo fmt -- --check` passed.
+  - `git diff --check` passed before the ledger update and is rerun during the
+    final review.
+  - `cargo test --package kerosene --bin kerosene pending_one_shot_status_request_debug_redacts_account_and_cloid`
+    stopped in `alsa-sys` before compiling Kerosene because `pkg-config` could
+    not find the system `alsa.pc` package.
+  - `cargo check` stopped at the same pre-existing environment dependency
+    boundary before checking Kerosene.
+  - The pre-implementation focused-test attempt encountered the same ALSA
+    boundary, so the strengthened regression could not be observed failing on
+    this host.
+- Compatibility/UX assessment: diagnostic-only output change; no user-visible,
+  trading-semantic, timing, schema, or dependency impact.
+- Residual risk: source parsing, formatting, call-site inspection, and the diff
+  pass, but the focused test and Rust type-check must still execute once ALSA
+  development metadata is available.
+- Prior turn commit hash: `55263a56c1b598af20e3aaadb012948e20644e47`
+- Next candidate: characterize F-04's wallet-cluster result correlation and
+  idempotence under stale IDs, wrong profile/CLOID, duplicate direct results,
+  and status-after-terminal ordering before changing production behavior.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -342,7 +391,7 @@
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: the focused one-shot refresh-scope regression
+- Environment-blocked this turn: the focused pending-CLOID redaction regression
   and `cargo check` at `alsa-sys` system dependency discovery, before Kerosene
   was compiled.
 - No live exchange mutation or credential-bearing operation was run.
@@ -351,9 +400,9 @@
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 and F-02 have source fixes and regression coverage but await executable
-  validation on a host with ALSA development metadata. F-03 through F-05 remain
-  open as described above.
+- F-01 through F-03 have source fixes and regression coverage but await
+  executable validation on a host with ALSA development metadata. F-04 and F-05
+  remain open as described above.
 - Signing wire construction, response classification, Chase/TWAP correlation,
   cluster result handling, account refresh completeness, restart cleanup, and
   redaction require further track-by-track completion before a final verdict.
