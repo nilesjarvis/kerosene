@@ -658,6 +658,77 @@ fn one_shot_status_error_stays_pending_until_account_refresh() {
 }
 
 #[test]
+fn incomplete_account_refresh_does_not_clear_one_shot_status_request() {
+    for incomplete_section in [
+        crate::account::AccountDataSection::OpenOrders,
+        crate::account::AccountDataSection::Fills,
+    ] {
+        let mut terminal = terminal_with_connected_account();
+        let context = one_shot_context();
+        let request_id = begin_one_shot_status_request(&mut terminal, &context);
+
+        let _task = terminal.handle_one_shot_placement_status_result(
+            request_id,
+            context,
+            Err("orderStatus temporarily unavailable".to_string()),
+        );
+
+        let mut data = account_data_with_open_orders(Vec::new());
+        data.completeness
+            .mark_incomplete(incomplete_section, "test section unavailable");
+        let refresh_context = terminal.current_account_data_request_context();
+        let _task =
+            terminal.apply_account_data_loaded(TEST_ACCOUNT.to_string(), refresh_context, Ok(data));
+
+        assert!(
+            terminal.has_pending_one_shot_status_requests_for_test(),
+            "{incomplete_section:?} must not resolve an uncertain placement"
+        );
+        assert!(terminal.has_pending_trading_request());
+    }
+}
+
+#[test]
+fn account_refresh_must_cover_one_shot_symbol_before_clearing_status_request() {
+    let mut terminal = terminal_with_connected_account();
+    let context = one_shot_outcome_context("flx:BTC");
+    let request_id = begin_one_shot_status_request(&mut terminal, &context);
+    terminal.market_universe = crate::config::MarketUniverseConfig::hip3_dex("xyz");
+
+    let _task = terminal.handle_one_shot_placement_status_result(
+        request_id,
+        context,
+        Err("orderStatus temporarily unavailable".to_string()),
+    );
+
+    let mut unrelated_scope = account_data_with_open_orders(Vec::new());
+    unrelated_scope.fetch_scope = crate::account::AccountDataFetchScope::hip3_dex("xyz");
+    let refresh_context = terminal.current_account_data_request_context();
+    let _task = terminal.apply_account_data_loaded(
+        TEST_ACCOUNT.to_string(),
+        refresh_context,
+        Ok(unrelated_scope),
+    );
+
+    assert!(terminal.has_pending_one_shot_status_requests_for_test());
+    assert!(terminal.has_pending_trading_request());
+
+    terminal.market_universe = crate::config::MarketUniverseConfig::hip3_dex("flx");
+    let _task = terminal.refresh_account_data();
+    let mut covering_scope = account_data_with_open_orders(Vec::new());
+    covering_scope.fetch_scope = crate::account::AccountDataFetchScope::hip3_dex("flx");
+    let refresh_context = terminal.current_account_data_request_context();
+    let _task = terminal.apply_account_data_loaded(
+        TEST_ACCOUNT.to_string(),
+        refresh_context,
+        Ok(covering_scope),
+    );
+
+    assert!(terminal.pending_one_shot_status_requests.is_empty());
+    assert!(!terminal.has_pending_trading_request());
+}
+
+#[test]
 fn one_shot_status_result_with_stale_request_id_is_ignored() {
     let mut terminal = terminal_with_connected_account();
     let context = one_shot_context();

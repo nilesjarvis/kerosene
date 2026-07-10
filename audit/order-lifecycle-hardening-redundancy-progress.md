@@ -60,7 +60,7 @@
 
 | Surface/operation | Immutable origin identity | Correlation key | Idempotency key | Immediate-result classifier | Authoritative reconciliation | Stale-result guard | Terminal cleanup | Existing tests | Gaps |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Ticket place | Submission snapshot; captured account/key; `OneShotPlacementContext` with account, surface, symbol, kind | Indicator ID + placement context; request ID after uncertain result | Unique one-shot CLOID | `classify_execution_result` | `orderStatus` by CLOID + connected-account refresh; fills consume market projections | Serialized pending gate; snapshot equality; current-account and pending-request match | Clears global action/indicator; exact status or later refresh removes status request | `order_execution/submit/tests.rs`, `order_execution/core.rs` tests, `order_update/results/tests.rs` | Audit successful-refresh removal of unresolved CLOID requests (F-02) |
+| Ticket place | Submission snapshot; captured account/key; `OneShotPlacementContext` with account, surface, symbol, kind | Indicator ID + placement context; request ID after uncertain result | Unique one-shot CLOID | `classify_execution_result` | `orderStatus` by CLOID + connected-account refresh; fills consume market projections | Serialized pending gate; snapshot equality; current-account and pending-request match | Clears global action/indicator; exact status or a complete open-order/fill snapshot covering the origin symbol removes the status request | `order_execution/submit/tests.rs`, `order_execution/core.rs` tests, `order_update/results/tests.rs` | F-02 addressed in Turn 3; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Preset place | Preset preflight then the shared ticket fields/context with `OrderSurface::Preset` | Same as ticket | Unique one-shot CLOID | Shared classifier | Shared one-shot reconciliation | Pending/reconciliation gates run before preflight and again on submit | Shared ticket/result cleanup | `order_update/presets.rs` tests | No confirmed gap; retain double preflight as deliberate queued-event defense |
 | Alfred place | Parsed draft preflight; then current form and captured signing context | Same ticket result message/context | Unique one-shot CLOID | Shared classifier | Shared one-shot reconciliation | Alfred preflight plus shared submit gates | Shared ticket/result cleanup | `alfred_update/submit.rs` tests and ticket tests | Verify command-to-form handoff in the later origin-identity track |
 | Quick place | Chart ID/surface snapshot and recovery data; captured account; one-shot context | Indicator ID + CLOID context; optional form recovery | Unique one-shot CLOID | Shared classifier | Shared CLOID status + account refresh | Chart/surface/symbol and percentage provenance checks; current-account match | Clears global action/indicator; rejection may restore matching form | `order_execution/quick_order/submit/tests.rs`, `order_update/quick_order/form/tests.rs` | No confirmed gap |
@@ -107,12 +107,12 @@
   its CLOID; subsequent transitions for that CLOID cannot increment any count
   or finish the parent. Completion is derived from the number of unique settled
   children (`src/order_execution.rs:84-186`,
-  `src/order_update/results.rs:463-515`,
-  `src/order_update/results.rs:789-862`).
+  `src/order_update/results.rs:470-522`,
+  `src/order_update/results.rs:813-886`).
 - Regression coverage: direct exchange results and `orderStatus` results each
   deliver the same child twice in a two-child execution, assert the unchanged
   `1/2` progress text and pending parent, then settle a distinct CLOID
-  (`src/order_update/results/tests.rs:924-1001`). The direct regression also
+  (`src/order_update/results/tests.rs:995-1072`). The direct regression also
   proves `PendingNukeExecution` debug output does not expose its retained CLOID.
 - Protected behavior: unique child outcomes retain the existing confirmed,
   failed, uncertain, skipped, refresh, error-state, and status-text behavior.
@@ -121,26 +121,51 @@
 
 ### F-02 — Successful refresh may clear unresolved one-shot status state too broadly
 
-- Status: candidate; completeness and intended-resolution semantics still need
-  a focused test before classification
-- Provisional severity: High
+- Status: addressed in Turn 3; focused tests added, but executable validation is
+  blocked before Kerosene compilation by the missing system ALSA package
+- Severity: High
+- Scope: shared one-shot placement reconciliation for ticket, preset, Alfred,
+  quick-order, HUD, and close-position surfaces
+- Preconditions/event ordering:
+  1. A one-shot placement has an unresolved CLOID status request.
+  2. The exact `orderStatus` response is missing, non-definitive, or fails.
+  3. A connected-account refresh returns `Ok(AccountData)` while open orders or
+     fills are incomplete, or while its open-order scope excludes the origin
+     symbol's market.
+  4. The account-wide cleanup treats that snapshot as resolution.
 - Evidence:
-  - `apply_account_data_loaded` clears all pending one-shot status requests for
-    the account after a successful non-follow-up refresh
-    (`src/account_update/connection/refresh.rs:145-187`).
-  - `clear_pending_one_shot_status_request_for_account` does not inspect CLOID,
-    fills, open-order completeness, or status (`src/order_update/results.rs:571-577`).
-  - Cancel/move cleanup, by contrast, explicitly requires complete open orders
-    (`src/order_update/results.rs:579-604`).
-- Risk hypothesis: a partial-but-successful account snapshot can remove the
-  blocker for an ambiguous placement without proving whether that placement
-  filled, rested, or failed.
-- Next evidence needed: construct an `AccountData` result with incomplete order
-  or fill lanes and verify whether the fetch contract permits it to reach this
-  cleanup path. Determine whether any complete snapshot can resolve a CLOID
-  without the separate status response.
-- Compatibility note: any fix that changes visible blocking behavior needs
-  explicit comparison against the protected UX contract.
+  - Open-order and fill requests are best-effort. Failures mark their sections
+    incomplete but the bootstrap still returns `Ok(AccountData)`
+    (`src/account/data/bootstrap.rs:160-228`,
+    `src/account/data/bootstrap/responses/best_effort.rs:26-38`).
+  - `AccountDataFetchScope` can contain only one HIP-3 dex, and its completeness
+    applies to that fetched scope (`src/account/types/data/fetch_scope.rs:40-73`).
+  - The prior pending record discarded `symbol_key`, and successful refresh
+    cleanup removed every request for the account without inspecting either
+    completeness lane or scope.
+- Violated invariant: fallback reconciliation may release an uncertain
+  placement only when the snapshot contains both independent outcome lanes —
+  open orders for the placement's origin market and account-wide fills.
+- Risk: a partial or unrelated-market snapshot can release the pending-trading
+  blocker while an open or filled order remains absent from local account state,
+  allowing the next mutation to be prepared from incomplete exposure.
+- Implemented fix: pending one-shot status records retain the runtime-only
+  origin symbol. Refresh cleanup now removes each account-matching request only
+  when fills are complete and the snapshot successfully fetched that symbol's
+  open-order lane. The account-data helper uses per-market fetch timestamps so
+  an unrelated dex failure does not invalidate a healthy origin lane
+  (`src/account/types/data.rs:198-213`,
+  `src/order_update/results.rs:33-86`,
+  `src/order_update/results.rs:583-606`).
+- Regression coverage: incomplete open-order and incomplete fill snapshots both
+  retain the request and trading blocker; a complete snapshot for another
+  HIP-3 dex also retains them; a later complete snapshot covering the origin
+  dex performs the existing cleanup (`src/order_update/results/tests.rs:660-729`).
+- Protected behavior: exact CLOID status handling is unchanged. Existing tests
+  continue to characterize that a complete, covering fallback refresh clears
+  missing, cancelled, or errored status requests with the same status text and
+  blocker behavior (`src/order_update/results/tests.rs:578-658`). No request,
+  signing, order semantics, view, persistence, or normal-path timing changed.
 
 ### F-03 — Pending one-shot debug output exposes the CLOID
 
@@ -254,6 +279,62 @@
   semantics before deciding whether one-shot status cleanup needs a guarded
   production change or only characterization coverage.
 
+## Turn 3 — Scope-Complete One-Shot Refresh Reconciliation
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: High
+- Scope: the shared pending one-shot status record and successful account-load
+  cleanup boundary
+- Invariant: an account refresh may release an uncertain one-shot placement only
+  if account-wide fills are complete and the refresh successfully fetched the
+  open-order lane for the order's origin market.
+- Protected behavior: exact `orderStatus` outcomes and complete covering refresh
+  cleanup retain their existing status strings, blocker transitions, account
+  refresh behavior, and timing. Order construction, signing, dispatch, pricing,
+  sizing, reduce-only behavior, UI, and persistence are untouched.
+- Evidence: best-effort bootstrap and scoped open-order behavior prove that
+  `Ok(AccountData)` alone is not a completeness guarantee. Detailed source
+  evidence and the failure ordering are recorded under F-02 above.
+- Change: retained `symbol_key` in the runtime-only pending status record and
+  added a per-symbol open-order completeness helper that distinguishes main and
+  HIP-3 fetch lanes. Account-refresh cleanup evaluates that signal and fill
+  completeness independently for every pending request.
+- Regression tests: added incomplete-open-orders, incomplete-fills,
+  wrong-HIP-3-scope, and later-covering-scope cases. Existing complete-refresh
+  tests remain the characterization for unchanged normal cleanup. A focused
+  account-data test proves an unrelated failed dex does not invalidate an
+  origin lane with a successful fetch timestamp
+  (`src/account/types/data/tests/freshness.rs:112-125`).
+- Validation:
+  - `cargo fmt` passed.
+  - `cargo fmt -- --check` passed.
+  - `git diff --check` passed before the ledger update and is rerun during the
+    final review.
+  - `cargo test --package kerosene --bin kerosene account_refresh_must_cover_one_shot_symbol_before_clearing_status_request`
+    stopped in `alsa-sys` before compiling Kerosene because `pkg-config` could
+    not find the system `alsa.pc` package.
+  - `cargo test --package kerosene --bin kerosene incomplete_account_refresh_does_not_clear_one_shot_status_request`
+    stopped at the same environment boundary.
+  - `cargo test --package kerosene --bin kerosene complete_open_order_coverage_tracks_each_symbol_lane`
+    stopped at the same environment boundary.
+  - `cargo check` stopped at the same pre-existing environment dependency
+    boundary before checking Kerosene.
+  - A pre-implementation focused-test attempt encountered the same ALSA
+    boundary, so the new regression could not be observed failing on this host.
+- Compatibility/UX assessment: no visible copy, indicator, layout, or
+  normal-path enabled/disabled behavior changes. Only an incomplete or
+  origin-excluding fallback snapshot remains uncertain until exact status or a
+  complete covering refresh arrives; treating that state as resolved was the
+  confirmed safety defect.
+- Residual risk: source parsing, formatting, call-site inspection, and the diff
+  pass, but the new tests and Rust type-check must still execute once ALSA
+  development metadata is available. A complete covering account snapshot
+  remains the established fallback resolution boundary and does not rewrite the
+  visible status into a false exact success.
+- Prior turn commit hash: `5ea78f1c2aa9a1327d50093f1b382c37f48b0b28`
+- Next candidate: implement F-03's zero-behavior-change CLOID redaction in
+  `PendingOneShotStatusRequest::Debug` with focused regression coverage.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -261,18 +342,18 @@
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: the focused `duplicate_nuke_` Rust tests and
-  `cargo check` at `alsa-sys` system dependency discovery, before Kerosene was
-  compiled.
+- Environment-blocked this turn: the focused one-shot refresh-scope regression
+  and `cargo check` at `alsa-sys` system dependency discovery, before Kerosene
+  was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 has a source fix and regression coverage but awaits executable validation
-  on a host with ALSA development metadata. F-02 through F-05 remain open as
-  described above.
+- F-01 and F-02 have source fixes and regression coverage but await executable
+  validation on a host with ALSA development metadata. F-03 through F-05 remain
+  open as described above.
 - Signing wire construction, response classification, Chase/TWAP correlation,
   cluster result handling, account refresh completeness, restart cleanup, and
   redaction require further track-by-track completion before a final verdict.

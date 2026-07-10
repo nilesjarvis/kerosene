@@ -35,6 +35,7 @@ pub(crate) struct PendingOneShotStatusRequest {
     pub(crate) request_id: u64,
     account_address: String,
     cloid: String,
+    symbol_key: String,
     surface: OrderSurface,
 }
 
@@ -55,6 +56,7 @@ impl PendingOneShotStatusRequest {
             request_id,
             account_address: context.account_address.clone(),
             cloid: context.cloid.clone(),
+            symbol_key: context.symbol_key.clone(),
             surface: context.surface,
         }
     }
@@ -71,6 +73,11 @@ impl PendingOneShotStatusRequest {
 
     pub(crate) fn is_for_account(&self, account_address: &str) -> bool {
         self.account_address == account_address
+    }
+
+    fn is_reconciled_by_account_snapshot(&self, data: &crate::account::AccountData) -> bool {
+        data.completeness.fills_complete
+            && data.has_complete_open_orders_for_symbol(&self.symbol_key)
     }
 
     pub(crate) fn surface(&self) -> OrderSurface {
@@ -577,8 +584,25 @@ impl TradingTerminal {
         &mut self,
         account_address: &str,
     ) {
-        self.pending_one_shot_status_requests
-            .retain(|_, pending| !pending.is_for_account(account_address));
+        // Account snapshots can succeed with best-effort sections omitted or
+        // with open orders scoped to a different HIP-3 dex. Such a snapshot is
+        // not authoritative fallback evidence for an uncertain placement.
+        let reconciled_request_ids = {
+            let Some(data) = self.account_data_for_order_account(account_address) else {
+                return;
+            };
+            self.pending_one_shot_status_requests
+                .iter()
+                .filter_map(|(request_id, pending)| {
+                    (pending.is_for_account(account_address)
+                        && pending.is_reconciled_by_account_snapshot(data))
+                    .then_some(*request_id)
+                })
+                .collect::<Vec<_>>()
+        };
+        for request_id in reconciled_request_ids {
+            self.pending_one_shot_status_requests.remove(&request_id);
+        }
     }
 
     pub(crate) fn clear_pending_order_status_requests_for_account_after_refresh(

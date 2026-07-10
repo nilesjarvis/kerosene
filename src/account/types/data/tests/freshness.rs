@@ -110,6 +110,21 @@ fn scoped_hip3_open_order_freshness_does_not_cover_main_or_other_dexes() {
 }
 
 #[test]
+fn complete_open_order_coverage_tracks_each_symbol_lane() {
+    let mut data = account_data_snapshot(1_000);
+    data.fetch_scope = AccountDataFetchScope::all_markets(["flx", "xyz"]);
+    data.completeness.open_orders_complete = false;
+    data.mark_open_orders_fetched_at_for_dex("flx", 1_000);
+
+    assert!(data.has_complete_open_orders_for_symbol("flx:BTC"));
+    assert!(!data.has_complete_open_orders_for_symbol("xyz:BTC"));
+    assert!(!data.has_complete_open_orders_for_symbol("BTC"));
+
+    data.mark_open_orders_fetched_at(1_000);
+    assert!(data.has_complete_open_orders_for_symbol("BTC"));
+}
+
+#[test]
 fn scoped_hip3_positions_refresh_preserves_prior_open_order_lane_timestamp() {
     let mut data = account_data_snapshot(1_000);
     data.fetch_scope = AccountDataFetchScope::hip3_dex("flx");

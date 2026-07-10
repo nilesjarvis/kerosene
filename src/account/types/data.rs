@@ -195,6 +195,23 @@ impl AccountData {
             .is_some_and(|age| age <= Self::POSITION_ACTION_MAX_AGE_MS)
     }
 
+    /// Whether this snapshot successfully fetched the open-order lane that
+    /// owns `symbol_key`. A failure in an unrelated dex does not invalidate a
+    /// lane whose per-dex fetch timestamp is present.
+    pub fn has_complete_open_orders_for_symbol(&self, symbol_key: &str) -> bool {
+        let dex = open_orders_dex_key_from_symbol(symbol_key);
+        let symbol_lane_fetched = if dex.is_empty() {
+            self.completeness.open_orders_fetched_at_ms.is_some()
+        } else {
+            self.completeness
+                .open_orders_fetched_at_ms_by_dex
+                .contains_key(&dex)
+        };
+        symbol_lane_fetched
+            || (self.completeness.open_orders_complete
+                && self.fetch_scope.fetches_open_orders_for_dex(&dex))
+    }
+
     pub fn mark_positions_fetched_at(&mut self, fetched_at_ms: u64) {
         match &self.fetch_scope {
             AccountDataFetchScope::AllMarkets { .. } => {
