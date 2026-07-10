@@ -74,8 +74,8 @@
 | Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account refresh/open-order disappearance | Exact stopping phase/OID; disconnected account is reconciled at origin scope | Verifying-cancel then archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests | No confirmed gap; retry idempotence depends on target-specific cancel semantics |
 | TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID | TWAP ID + current `pending_op`; status path adds exact CLOID | Deterministic child CLOID | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Pending-op state, current account for dispatch, status CLOID, terminal checks | Finishes attempt once; child status/fills updated; terminal TWAP archived | `order_execution/twap/tests/**`, `twap_state/tests/**` | Direct slice-result message carries only TWAP ID; audit duplicate/late result behavior (F-05) |
 | TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + retry attempt | Pending cancel target matches OID or CLOID; retry message includes attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Exact pending target, retry count, and terminal-state checks | Clears pending cancel and finishes attempt, or bounded error terminal | `order_execution/twap/tests/cancel.rs`, status/account tests | No confirmed gap |
-| Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution ID + profile secret ID + CLOID | Unique one-shot CLOID per member leg | Shared classifier | CLOID status + member refresh + member user stream | Leg lookup uses execution/profile/CLOID; pending executions are not evicted | Leg becomes confirmed/failed/uncertain; execution complete when every leg terminal | Cluster planning/member tests; shared core/signing tests | Result/status transitions lack focused tests and can overwrite an already-terminal leg (F-04) |
-| Wallet-cluster close child | Same as cluster order, plus fresh per-member position snapshot and reduce-only plan | Execution ID + profile secret ID + CLOID | Unique one-shot CLOID per member leg | Shared classifier | CLOID status + member refresh + member stream | Freshness/side/position checks; exact leg lookup | Same leg/execution terminal handling | Cluster close sizing/freshness tests; shared result tests | Same focused result/idempotence gap as cluster orders (F-04) |
+| Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution/profile/CLOID plus account, symbol, surface, and order kind | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member user stream | Full origin match; direct requires `Pending`, status requires `Checking`; pending executions are not evicted | First terminal leg outcome is immutable; execution complete when every leg terminal | Cluster planning/member tests plus adversarial result/status tests in `wallet_cluster_update.rs` | F-04 addressed in Turn 5; executable regression validation remains environment-blocked by missing ALSA metadata |
+| Wallet-cluster close child | Same as cluster order, plus fresh per-member position snapshot and reduce-only plan | Same full correlation tuple with `ClusterClose` surface | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member stream | Freshness/side/position preflight plus the shared exact transition guard | Same first-terminal-wins handling as cluster orders | Close sizing/freshness tests and shared adversarial result tests | F-04 addressed by the shared Turn 5 transition guard |
 | Leverage update | `PendingLeverageUpdateContext` captures account, symbol, asset, dex, margin mode, leverage | Full pending-context equality | None; mutation is not blindly retried | Confirmed-default predicate; other non-error bodies are uncertain | Scoped account refresh for outcomes that may have committed | Pending-context equality + current-account match | Pending context cleared once; matching form updated only on confirmed default | `order_update/leverage.rs` tests, signing action/response tests | No exact mutation status endpoint; verify refresh completeness is sufficient in transport audit |
 
 ## Ranked Findings and Audit Candidates
@@ -192,18 +192,49 @@
 
 ### F-04 — Wallet-cluster result transitions lack focused correlation/idempotence coverage
 
-- Status: confirmed test gap; production defect not yet proven
+- Status: addressed in Turn 5; focused tests added, but executable validation is
+  blocked before Kerosene compilation by the missing system ALSA package
 - Severity: Medium
+- Scope: wallet-cluster order and close direct-result/status-result plumbing
+- Preconditions/event ordering:
+  1. A cluster execution retains a pending, checking, or terminal member leg.
+  2. A stale or mismatched result reaches the current execution ID, or a direct
+     or status result is delivered more than once/out of its expected phase.
+  3. The prior helper finds no leg or finds an already-terminal leg but does not
+     report whether the update was valid.
+  4. The handler still rewrites state or launches repair/refresh and aggregate
+     status work.
 - Evidence:
-  - Result/status handlers update a leg by execution ID, profile secret ID, and
-    CLOID (`src/wallet_cluster_update.rs:1095-1239`).
-  - The update overwrites any existing terminal state and does not report a
-    missing or already-terminal match.
-  - Current wallet-cluster tests cover sizing, member selection, persistence,
-    and pending-history retention, but not exchange result/status transitions.
-- Next evidence needed: characterize stale execution IDs, wrong profile/CLOID,
-  duplicate placement results, and status-after-terminal ordering before
-  deciding whether production guards are needed.
+  - The direct and status handlers previously assigned any target status to a
+    matching execution/profile/CLOID leg regardless of its current phase.
+  - The void update helper could not tell callers that an execution, profile, or
+    CLOID did not match, so they still refreshed a member, launched CLOID status
+    repair, and/or recomputed aggregate UI state.
+  - Handler-level adversarial cases prove a confirmed leg could be rewritten as
+    `Checking` by a late ambiguous direct result or as `Failed` by a conflicting
+    duplicate; a status result could settle a leg that was never `Checking`.
+- Violated invariant: each cluster child accepts exactly one direct result from
+  `Pending`; only an ambiguity-created `Checking` child accepts one status
+  result; terminal outcomes are immutable.
+- Risk: duplicate or misrouted lifecycle messages can regress a completed
+  execution to pending, change confirmed member outcomes into failures, produce
+  false aggregate problem counts, and launch irrelevant repair tasks.
+- Implemented fix: one transition helper now verifies execution ID, profile
+  secret ID, CLOID, account address, symbol, cluster/close surface, exchange
+  order kind, and expected source phase before mutating a leg. Direct handlers
+  require `Pending`; status handlers require `Checking`; failed transitions
+  return before any repair, refresh, aggregate status, or message mutation
+  (`src/wallet_cluster_update.rs:1096-1272`).
+- Regression coverage: exact-origin mismatch cases cover execution, profile,
+  CLOID, address, symbol, surface, and order kind; both order and close legs
+  reject terminal-to-checking and terminal-to-failed duplicates; status results
+  are ignored before `Checking`, settle it once, and cannot rewrite the terminal
+  outcome (`src/wallet_cluster_update.rs:1652-1834`).
+- Protected behavior: valid direct transitions remain
+  `Pending -> Confirmed|Failed|Uncertain|Checking`, and valid reconciliation
+  remains `Checking -> Confirmed|Failed|Uncertain`. Existing messages, aggregate
+  status strings, refresh behavior, fan-out sizing, order preparation, signing,
+  UI, and persistence are unchanged for unique correctly correlated results.
 
 ### F-05 — Advanced place/modify result messages rely on lifecycle state rather than per-attempt tokens
 
@@ -220,6 +251,22 @@
 - Next evidence needed: adversarial duplicate and late-result tests. If the
   state machines already make replay harmless, close this candidate with test
   evidence rather than adding fields.
+
+### F-06 — Wallet-cluster leg debug output exposes its lifecycle message
+
+- Status: confirmed during the Turn 5 formatter review; not yet implemented
+- Severity: Medium privacy hardening
+- Evidence: `WalletClusterExecutionLeg::Debug` redacts the explicit CLOID,
+  address, symbol, size, and price fields but formats `message` verbatim
+  (`src/wallet_cluster_state.rs:220-236`). Unexpected-resting result messages
+  embed the CLOID and exchange summary (`src/wallet_cluster_update.rs:1141-1149`,
+  `src/wallet_cluster_update.rs:1189-1195`).
+- Risk: diagnostic formatting can bypass the explicit field redaction and reveal
+  the same order identifier or order-result detail through the derived lifecycle
+  message.
+- Smallest fix: redact only the `message` field in `Debug` and add a focused
+  synthetic regression. Keep the stored message unchanged because the existing
+  cluster execution view renders it directly.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -384,6 +431,51 @@
   idempotence under stale IDs, wrong profile/CLOID, duplicate direct results,
   and status-after-terminal ordering before changing production behavior.
 
+## Turn 5 — Make Wallet-Cluster Leg Transitions Idempotent
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: Medium invariant hardening
+- Scope: shared order/close cluster leg result transitions and follow-up gating
+- Invariant: a fully correlated direct result may transition a leg out of
+  `Pending` once; only the resulting `Checking` phase may accept one
+  `orderStatus` result; terminal states never transition again.
+- Protected behavior: every valid unique result retains the existing classifier,
+  status/message text, member refresh, CLOID repair, aggregate completion, and
+  problem-count behavior. Cluster planning, sizing, signing, fan-out, UI,
+  persistence, and member data streams are untouched.
+- Evidence: handler and model tracing plus adversarial cases proved the void
+  update helper could overwrite terminal legs and could not suppress follow-up
+  work for mismatched results. Detailed ordering and source evidence are
+  recorded under F-04 above.
+- Change: replaced unconditional leg assignment with an expected-state
+  transition that verifies the complete immutable origin context. Both handlers
+  now stop immediately when correlation or phase validation fails.
+- Regression tests: added exact-origin mismatch coverage, conflicting duplicate
+  direct results for both cluster order and close executions, terminal-to-
+  checking regression, duplicate ambiguity, status-before-checking, normal
+  checking-to-confirmed settlement, and status-after-terminal replay.
+- Validation:
+  - `cargo fmt` passed.
+  - `cargo fmt -- --check` passed.
+  - `git diff --check` passed before the ledger update and is rerun during the
+    final review.
+  - `cargo test --package kerosene --bin kerosene wallet_cluster_update::tests`
+    stopped in `alsa-sys` before compiling Kerosene because `pkg-config` could
+    not find the system `alsa.pc` package.
+  - `cargo check` stopped at the same pre-existing environment dependency
+    boundary before checking Kerosene.
+  - The pre-implementation focused-test attempt encountered the same ALSA
+    boundary, so the new regression could not be observed failing on this host.
+- Compatibility/UX assessment: internal correlation and replay rejection only;
+  no visible copy, normal result timing, controls, order semantics, schema, or
+  dependency changes.
+- Residual risk: source parsing, formatting, call-site inspection, and the diff
+  pass, but the focused tests and Rust type-check must still execute once ALSA
+  development metadata is available.
+- Prior turn commit hash: `966de31f4ad2b8de6451d0ef04a54bcb8fde74a4`
+- Next candidate: implement F-06's diagnostic-only cluster-leg message
+  redaction, then resume F-05's Chase and TWAP duplicate/late-result audit.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -391,17 +483,17 @@
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: the focused pending-CLOID redaction regression
-  and `cargo check` at `alsa-sys` system dependency discovery, before Kerosene
-  was compiled.
+- Environment-blocked this turn: the focused wallet-cluster update tests and
+  `cargo check` at `alsa-sys` system dependency discovery, before Kerosene was
+  compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-03 have source fixes and regression coverage but await
-  executable validation on a host with ALSA development metadata. F-04 and F-05
+- F-01 through F-04 have source fixes and regression coverage but await
+  executable validation on a host with ALSA development metadata. F-05 and F-06
   remain open as described above.
 - Signing wire construction, response classification, Chase/TWAP correlation,
   cluster result handling, account refresh completeness, restart cleanup, and

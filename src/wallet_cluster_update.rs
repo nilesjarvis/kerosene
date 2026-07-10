@@ -10,7 +10,8 @@ use crate::helpers::{
 use crate::message::{Message, RedactedAccountKey};
 use crate::order_execution::{
     MarketUsdSizeReference, OneShotPlacementContext, OrderSurface, PlaceIntent, PriceSource,
-    QuantityDenomination, QuantitySource, ReduceOnlySource, place_order_task,
+    QuantityDenomination, QuantitySource, ReduceOnlySource, order_account_addresses_match,
+    place_order_task,
 };
 use crate::order_update::{ExecutionOutcomeKind, classify_execution_result};
 use crate::read_data_provider::ReadDataRequestContext;
@@ -1107,13 +1108,17 @@ impl TradingTerminal {
             outcome.kind,
             ExecutionOutcomeKind::Ambiguous | ExecutionOutcomeKind::TransportUnknown
         ) {
-            self.update_wallet_cluster_leg(
+            let transitioned = self.transition_wallet_cluster_leg(
                 execution_id,
                 &profile_secret_id,
-                &context.cloid,
+                &context,
+                WalletClusterLegStatus::Pending,
                 WalletClusterLegStatus::Checking,
                 format!("Status unknown: {}; checking orderStatus", outcome.status),
             );
+            if !transitioned {
+                return Task::none();
+            }
             let request_context = context.clone();
             let followup = Task::batch([
                 self.refresh_wallet_cluster_member(profile_secret_id.clone()),
@@ -1151,13 +1156,17 @@ impl TradingTerminal {
         } else {
             (WalletClusterLegStatus::Failed, outcome.status)
         };
-        self.update_wallet_cluster_leg(
+        let transitioned = self.transition_wallet_cluster_leg(
             execution_id,
             &profile_secret_id,
-            &context.cloid,
+            &context,
+            WalletClusterLegStatus::Pending,
             status,
             message,
         );
+        if !transitioned {
+            return Task::none();
+        }
         let refresh = outcome
             .refresh_account
             .then(|| self.refresh_wallet_cluster_member(profile_secret_id));
@@ -1202,41 +1211,64 @@ impl TradingTerminal {
                 redact_sensitive_response_text(&error),
             ),
         };
-        self.update_wallet_cluster_leg(
+        let transitioned = self.transition_wallet_cluster_leg(
             execution_id,
             &profile_secret_id,
-            &context.cloid,
+            &context,
+            WalletClusterLegStatus::Checking,
             status,
             message,
         );
+        if !transitioned {
+            return Task::none();
+        }
         let followup = self.refresh_wallet_cluster_member(profile_secret_id);
         self.finish_wallet_cluster_execution_update(execution_id, followup)
     }
 
-    fn update_wallet_cluster_leg(
+    fn transition_wallet_cluster_leg(
         &mut self,
         execution_id: u64,
         profile_secret_id: &str,
-        cloid: &str,
+        context: &OneShotPlacementContext,
+        expected_status: WalletClusterLegStatus,
         status: WalletClusterLegStatus,
         message: String,
-    ) {
+    ) -> bool {
+        // The expected phase is part of the correlation key: direct exchange
+        // results own Pending, and only their ambiguity repair owns Checking.
         let Some(execution) = self
             .wallet_clusters
             .executions
             .iter_mut()
             .find(|execution| execution.id == execution_id)
         else {
-            return;
+            return false;
         };
-        if let Some(leg) = execution
-            .legs
-            .iter_mut()
-            .find(|leg| leg.profile_secret_id == profile_secret_id && leg.cloid == cloid)
+        let expected_surface = match execution.kind {
+            WalletClusterExecutionKind::Order => OrderSurface::Cluster,
+            WalletClusterExecutionKind::Close => OrderSurface::ClusterClose,
+        };
+        if context.surface != expected_surface
+            || context.symbol_key != execution.symbol
+            || ExchangeOrderKind::try_from(execution.order_kind).ok() != Some(context.order_kind)
         {
-            leg.status = status;
-            leg.message = message;
+            return false;
         }
+        let Some(leg) = execution.legs.iter_mut().find(|leg| {
+            leg.profile_secret_id == profile_secret_id
+                && leg.cloid == context.cloid
+                && leg.symbol == context.symbol_key
+                && order_account_addresses_match(&leg.address, &context.account_address)
+        }) else {
+            return false;
+        };
+        if leg.status != expected_status {
+            return false;
+        }
+        leg.status = status;
+        leg.message = message;
+        true
     }
 
     fn finish_wallet_cluster_execution_update(
@@ -1519,6 +1551,287 @@ mod tests {
     use crate::account::{ClearinghouseState, MarginSummary, SpotClearinghouseState};
 
     const ADDRESS: &str = "0x1111111111111111111111111111111111111111";
+    const OTHER_ADDRESS: &str = "0x2222222222222222222222222222222222222222";
+    const PROFILE_SECRET_ID: &str = "member-profile";
+    const TEST_CLOID: &str = "0x00000000000000000000000000000001";
+
+    fn cluster_context(kind: WalletClusterExecutionKind) -> OneShotPlacementContext {
+        OneShotPlacementContext {
+            account_address: ADDRESS.to_string(),
+            cloid: TEST_CLOID.to_string(),
+            surface: match kind {
+                WalletClusterExecutionKind::Order => OrderSurface::Cluster,
+                WalletClusterExecutionKind::Close => OrderSurface::ClusterClose,
+            },
+            symbol_key: "BTC".to_string(),
+            order_kind: ExchangeOrderKind::Market,
+        }
+    }
+
+    fn cluster_execution(
+        kind: WalletClusterExecutionKind,
+        status: WalletClusterLegStatus,
+    ) -> WalletClusterExecution {
+        WalletClusterExecution {
+            id: 7,
+            cluster_name: "Test cluster".to_string(),
+            kind,
+            symbol: "BTC".to_string(),
+            order_kind: OrderKind::Market,
+            created_at_ms: 1,
+            legs: vec![WalletClusterExecutionLeg {
+                profile_secret_id: PROFILE_SECRET_ID.to_string(),
+                address: ADDRESS.to_string(),
+                label: "Test member".to_string(),
+                symbol: "BTC".to_string(),
+                is_buy: true,
+                size: "1".to_string(),
+                price: "100".to_string(),
+                cloid: TEST_CLOID.to_string(),
+                status,
+                message: "Submitted".to_string(),
+            }],
+        }
+    }
+
+    fn terminal_with_cluster_execution(kind: WalletClusterExecutionKind) -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal
+            .wallet_clusters
+            .push_execution(cluster_execution(kind, WalletClusterLegStatus::Pending));
+        terminal
+    }
+
+    fn cluster_leg(terminal: &TradingTerminal) -> &WalletClusterExecutionLeg {
+        &terminal
+            .wallet_clusters
+            .executions
+            .front()
+            .expect("cluster execution")
+            .legs[0]
+    }
+
+    fn cluster_exchange_response(status: serde_json::Value) -> ExchangeResponse {
+        serde_json::from_value(serde_json::json!({
+            "status": "ok",
+            "response": {
+                "type": "order",
+                "data": {
+                    "statuses": [status]
+                }
+            }
+        }))
+        .expect("test exchange response should deserialize")
+    }
+
+    fn filled_cluster_response() -> ExchangeResponse {
+        cluster_exchange_response(serde_json::json!({
+            "filled": {
+                "totalSz": "1",
+                "avgPx": "100",
+                "oid": 42_u64
+            }
+        }))
+    }
+
+    fn rejected_cluster_response() -> ExchangeResponse {
+        cluster_exchange_response(serde_json::json!({
+            "error": "Order rejected"
+        }))
+    }
+
+    fn cluster_order_status(status: &str) -> OrderStatusResult {
+        OrderStatusResult {
+            status: status.to_string(),
+            oid: Some(42),
+            cloid: Some(TEST_CLOID.to_string()),
+            raw_summary: format!("{status} (oid 42)"),
+        }
+    }
+
+    #[test]
+    fn cluster_direct_result_requires_exact_origin_identity() {
+        let mut wrong_cloid = cluster_context(WalletClusterExecutionKind::Order);
+        wrong_cloid.cloid = "0x00000000000000000000000000000002".to_string();
+        let mut wrong_address = cluster_context(WalletClusterExecutionKind::Order);
+        wrong_address.account_address = OTHER_ADDRESS.to_string();
+        let mut wrong_symbol = cluster_context(WalletClusterExecutionKind::Order);
+        wrong_symbol.symbol_key = "ETH".to_string();
+        let mut wrong_surface = cluster_context(WalletClusterExecutionKind::Order);
+        wrong_surface.surface = OrderSurface::Ticket;
+        let mut wrong_order_kind = cluster_context(WalletClusterExecutionKind::Order);
+        wrong_order_kind.order_kind = ExchangeOrderKind::Limit;
+
+        for (case, execution_id, profile_secret_id, context) in [
+            (
+                "execution id",
+                8,
+                Some(PROFILE_SECRET_ID.to_string()),
+                cluster_context(WalletClusterExecutionKind::Order),
+            ),
+            (
+                "profile id",
+                7,
+                Some("other-profile".to_string()),
+                cluster_context(WalletClusterExecutionKind::Order),
+            ),
+            ("cloid", 7, Some(PROFILE_SECRET_ID.to_string()), wrong_cloid),
+            (
+                "account address",
+                7,
+                Some(PROFILE_SECRET_ID.to_string()),
+                wrong_address,
+            ),
+            (
+                "symbol",
+                7,
+                Some(PROFILE_SECRET_ID.to_string()),
+                wrong_symbol,
+            ),
+            (
+                "surface",
+                7,
+                Some(PROFILE_SECRET_ID.to_string()),
+                wrong_surface,
+            ),
+            (
+                "order kind",
+                7,
+                Some(PROFILE_SECRET_ID.to_string()),
+                wrong_order_kind,
+            ),
+        ] {
+            let mut terminal = terminal_with_cluster_execution(WalletClusterExecutionKind::Order);
+
+            let _task = terminal.apply_wallet_cluster_order_result(
+                execution_id,
+                profile_secret_id,
+                context,
+                Ok(filled_cluster_response()),
+            );
+
+            let leg = cluster_leg(&terminal);
+            assert_eq!(leg.status, WalletClusterLegStatus::Pending, "{case}");
+            assert_eq!(leg.message, "Submitted", "{case}");
+            assert!(terminal.wallet_clusters.status.is_none(), "{case}");
+        }
+    }
+
+    #[test]
+    fn duplicate_cluster_direct_result_cannot_rewrite_terminal_leg() {
+        for kind in [
+            WalletClusterExecutionKind::Order,
+            WalletClusterExecutionKind::Close,
+        ] {
+            let mut terminal = terminal_with_cluster_execution(kind);
+            let context = cluster_context(kind);
+
+            let _task = terminal.apply_wallet_cluster_order_result(
+                7,
+                Some(PROFILE_SECRET_ID.to_string()),
+                context.clone(),
+                Ok(filled_cluster_response()),
+            );
+            let original_message = cluster_leg(&terminal).message.clone();
+            let original_status = terminal.wallet_clusters.status.clone();
+
+            let _task = terminal.apply_wallet_cluster_order_result(
+                7,
+                Some(PROFILE_SECRET_ID.to_string()),
+                context.clone(),
+                Err("late ambiguous result".to_string()),
+            );
+            assert_eq!(
+                cluster_leg(&terminal).status,
+                WalletClusterLegStatus::Confirmed,
+                "{kind:?}"
+            );
+            assert_eq!(cluster_leg(&terminal).message, original_message, "{kind:?}");
+            assert_eq!(terminal.wallet_clusters.status, original_status, "{kind:?}");
+
+            let _task = terminal.apply_wallet_cluster_order_result(
+                7,
+                Some(PROFILE_SECRET_ID.to_string()),
+                context,
+                Ok(rejected_cluster_response()),
+            );
+
+            let leg = cluster_leg(&terminal);
+            assert_eq!(leg.status, WalletClusterLegStatus::Confirmed, "{kind:?}");
+            assert_eq!(leg.message, original_message, "{kind:?}");
+            assert_eq!(terminal.wallet_clusters.status, original_status, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn cluster_status_result_only_settles_checking_leg_once() {
+        let mut terminal = terminal_with_cluster_execution(WalletClusterExecutionKind::Order);
+        let context = cluster_context(WalletClusterExecutionKind::Order);
+
+        let _task = terminal.apply_wallet_cluster_order_status_result(
+            7,
+            Some(PROFILE_SECRET_ID.to_string()),
+            context.clone(),
+            Ok(cluster_order_status("filled")),
+        );
+        assert_eq!(
+            cluster_leg(&terminal).status,
+            WalletClusterLegStatus::Pending
+        );
+        assert!(terminal.wallet_clusters.status.is_none());
+
+        let _task = terminal.apply_wallet_cluster_order_result(
+            7,
+            Some(PROFILE_SECRET_ID.to_string()),
+            context.clone(),
+            Err("exchange request failed".to_string()),
+        );
+        assert_eq!(
+            cluster_leg(&terminal).status,
+            WalletClusterLegStatus::Checking
+        );
+        let checking_message = cluster_leg(&terminal).message.clone();
+        let progress_status = terminal.wallet_clusters.status.clone();
+
+        let _task = terminal.apply_wallet_cluster_order_result(
+            7,
+            Some(PROFILE_SECRET_ID.to_string()),
+            context.clone(),
+            Err("duplicate exchange request failure".to_string()),
+        );
+        assert_eq!(
+            cluster_leg(&terminal).status,
+            WalletClusterLegStatus::Checking
+        );
+        assert_eq!(cluster_leg(&terminal).message, checking_message);
+        assert_eq!(terminal.wallet_clusters.status, progress_status);
+
+        let _task = terminal.apply_wallet_cluster_order_status_result(
+            7,
+            Some(PROFILE_SECRET_ID.to_string()),
+            context.clone(),
+            Ok(cluster_order_status("filled")),
+        );
+        let confirmed_message = cluster_leg(&terminal).message.clone();
+        let completed_status = terminal.wallet_clusters.status.clone();
+        assert_eq!(
+            cluster_leg(&terminal).status,
+            WalletClusterLegStatus::Confirmed
+        );
+
+        let _task = terminal.apply_wallet_cluster_order_status_result(
+            7,
+            Some(PROFILE_SECRET_ID.to_string()),
+            context,
+            Ok(cluster_order_status("rejected")),
+        );
+        assert_eq!(
+            cluster_leg(&terminal).status,
+            WalletClusterLegStatus::Confirmed
+        );
+        assert_eq!(cluster_leg(&terminal).message, confirmed_message);
+        assert_eq!(terminal.wallet_clusters.status, completed_status);
+    }
 
     fn empty_details() -> WalletDetailsData {
         WalletDetailsData {
