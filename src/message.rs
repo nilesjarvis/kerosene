@@ -1254,6 +1254,7 @@ pub(crate) enum Message {
     TwapOrderStatusLoaded {
         twap_id: u64,
         cloid: RedactedClientOrderId,
+        attempt: u32,
         result: Box<Result<api::OrderStatusResult, String>>,
     },
     OpenTwapDetails(u64),
@@ -1669,6 +1670,7 @@ mod tests {
             Message::TwapOrderStatusLoaded {
                 twap_id: 1,
                 cloid: CLOID.into(),
+                attempt: 0,
                 result: Box::new(Err("status failed".to_string())),
             },
             Message::ChaseModifyResult {

@@ -34,6 +34,7 @@ pub(in crate::order_execution::twap::tests) fn test_twap(
     twap.status = TwapStatus::Paused;
     twap.pause_reason = Some(TwapPauseReason::StatusUnknown);
     twap.status_check_cloid = Some(cloid.to_string());
+    twap.status_check_pending_attempt = Some(0);
     twap.child_orders.push(TwapChildOrder {
         index: 1,
         requested_at: now,
@@ -61,6 +62,7 @@ pub(in crate::order_execution::twap::tests) fn pending_twap(
     twap.pause_reason = None;
     twap.paused_until = None;
     twap.status_check_cloid = None;
+    twap.status_check_pending_attempt = None;
     twap.pending_op = Some(TwapPendingOp::Place(TwapPendingSlice {
         index: 1,
         planned_size: 0.5,

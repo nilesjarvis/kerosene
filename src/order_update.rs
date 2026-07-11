@@ -235,9 +235,15 @@ impl TradingTerminal {
             Message::TwapOrderStatusLoaded {
                 twap_id,
                 cloid,
+                attempt,
                 result,
             } => {
-                return self.handle_twap_order_status_result(twap_id, cloid.into_string(), *result);
+                return self.handle_twap_order_status_result(
+                    twap_id,
+                    cloid.into_string(),
+                    attempt,
+                    *result,
+                );
             }
             Message::OpenTwapDetails(twap_id) => return self.open_twap_details(twap_id),
             Message::OpenAdvancedOrderHistory(entry_id) => {

@@ -177,6 +177,7 @@ impl TradingTerminal {
                 had_reconciliation_child && !twap.has_status_unknown_child();
             if reconciliation_resolved {
                 twap.status_check_cloid = None;
+                twap.status_check_pending_attempt = None;
                 twap.account_reconciliation_retries = 0;
                 twap.reconciliation_deadline = None;
                 if before_status == TwapStatus::Paused {
@@ -268,6 +269,7 @@ fn fail_twap_reconciliation_timeout(twap: &mut TwapOrder, now: Instant) -> Optio
 
     let pending_slice = pending_reconciliation_slice_label(twap);
     twap.status_check_cloid = None;
+    twap.status_check_pending_attempt = None;
     twap.account_reconciliation_retries = 0;
     twap.reconciliation_deadline = None;
     twap.status = TwapStatus::Error;

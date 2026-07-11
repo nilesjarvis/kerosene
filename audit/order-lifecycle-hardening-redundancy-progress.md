@@ -102,7 +102,8 @@
   `src/wallet_cluster_update.rs:92-98`).
 - Chase and TWAP retain captured account/key identity and explicit lifecycle or
   pending-operation state. Their active state and in-flight requests are
-  runtime-only.
+  runtime-only. Each TWAP CLOID status task now has one separately armed retry
+  attempt because the CLOID remains live during later account-fill repair.
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -133,7 +134,7 @@
 | Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle + dispatch-time place attempt; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact place-attempt equality + `expects_place_result`; current account, symbol identity, prior-exposure, per-symbol open-order authority, and reconciliation gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled; final replacement gate repeats the origin-lane proof | Chase lifecycle/place/result/status tests, duplicate/late direct-result regressions, account stream tests, and wrong-scope replacement tests | F-05/F-16 addressed in Turns 7/15; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact reprice-count/lifecycle/OID match; account, symbol, origin-lane, and reconciliation checks before correction/replacement | Verification/resting/stop flow; terminal Chase archived only from covering evidence | `order_update/chase/modify/tests/**`, including duplicate/late direct-result regressions, Chase reprice tests, and wrong-scope refresh tests | F-05/F-16 addressed in Turns 7/15; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account-wide fills + origin-symbol account refresh/open-order disappearance | Exact stopping phase/OID; REST archive requires the origin open-order lane; websocket disappearance is dex-scoped | Verifying-cancel then covering-snapshot archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests, and wrong-scope archive regression | F-08/F-16 addressed in Turns 9/15; retry idempotence depends on target-specific cancel semantics; executable validation remains environment-blocked |
-| TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending index/retry equality, current account for dispatch, status CLOID, and terminal checks | Finishes attempt once; child status/fills updated; terminal TWAP archived | `order_execution/twap/tests/**`, including duplicate/late slice-result regressions, and `twap_state/tests/**` | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
+| TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID and armed retry attempt | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending slice/retry for placement; status dispatch/result requires the current CLOID and single in-flight attempt; current-account and terminal guards remain | Finishes attempt once; child status/fills updated; status ownership cleared on result or account-fill resolution; terminal TWAP archived | `order_execution/twap/tests/**`, including duplicate/late slice and status dispatch/result regressions, and `twap_state/tests/**` | F-05/F-19 addressed in Turns 7/18; executable regression validation remains environment-blocked by missing ALSA metadata |
 | TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + retry attempt | Pending cancel target matches OID or CLOID; retry message includes attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Exact pending target, retry count, and terminal-state checks | Clears pending cancel and finishes attempt, or bounded error terminal | `order_execution/twap/tests/cancel.rs`, status/account tests | F-08 addressed in Turn 9; contradictory acknowledgements retain the existing bounded target-specific retry path |
 | Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution/profile/CLOID plus account, symbol, surface, and order kind | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member user stream | Full origin match; direct requires `Pending`, status requires `Checking`; pending executions are not evicted | First terminal leg outcome is immutable; execution complete when every leg terminal | Cluster planning/member tests plus adversarial result/status tests in `wallet_cluster_update.rs` | F-04 addressed in Turn 5; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Wallet-cluster close child | Same as cluster order, plus fresh per-member position snapshot and reduce-only plan | Same full correlation tuple with `ClusterClose` surface | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member stream | Freshness/side/position preflight plus the shared exact transition guard | Same first-terminal-wins handling as cluster orders | Close sizing/freshness tests and shared adversarial result tests | F-04 addressed by the shared Turn 5 transition guard |
@@ -168,6 +169,12 @@ runtime recipe generation must still equal the subscription requested by
 current application state. An old same-address recipe therefore cannot drive
 order, fill, Chase/TWAP, or cluster-close freshness transitions after account,
 window, cluster, profile, or market-scope replacement.
+
+Turn 18 adds exact ownership to TWAP child-status repair. At most one lookup is
+armed for the current CLOID/retry attempt, and only that attempt can consume a
+result. The CLOID can remain set independently while a definitive exchange
+status waits for account-fill confirmation without allowing a duplicate or
+older status result to rewrite that later reconciliation phase.
 
 ### Mutation Transport Phase Audit
 
@@ -1186,6 +1193,81 @@ target-specific cancellation policy, not HTTP replay.
   recoverable reconnect state; startup/shutdown fault handling remains for the
   later lifecycle-close track.
 
+### F-19 — TWAP status results do not own an exact retry attempt
+
+- Status: addressed in Turn 18; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: High
+- Scope: TWAP child-status task dispatch, result correlation, bounded status
+  retries, account-fill confirmation, and reconciliation cleanup
+- Preconditions/event ordering:
+  1. A TWAP child has an ambiguous placement outcome and retains its CLOID for
+     status repair.
+  2. A status result is duplicated, or results from separately queued calls for
+     the same CLOID are delivered out of order.
+  3. One result has already consumed or advanced the mutable retry counter, or
+     moved the child into filled/no-fill account reconciliation.
+  4. The delayed result still finds the same `status_check_cloid`; that value
+     intentionally remains present while account fills confirm the outcome.
+- Evidence: both immediate and delayed status tasks previously emitted only
+  the TWAP ID and CLOID. Dispatch had no in-flight owner, while the handler
+  accepted every non-terminal result matching that CLOID and derived its next
+  action from shared `status_check_retries`. Filled and canceled results retain
+  the CLOID during their separate account-fill reconciliation phase
+  (`src/order_execution/twap/status/tasks.rs:13-100`,
+  `src/order_execution/twap/status.rs:34-225`).
+- Violated invariant: exactly one status task may own a TWAP child retry
+  attempt, and exactly one matching result may consume that attempt or advance
+  its reconciliation phase.
+- Risk: a duplicate missing/unclear/error result can consume bounded retry
+  budget more than once. More importantly, a stale missing result can rewrite
+  `AwaitingNoFillConfirmation` back to `StatusUnknown` and launch another
+  lookup after a later canceled result already entered account-fill proof. A
+  reversed open result can also enter target-specific cancellation after a
+  newer status moved to fill reconciliation. These transitions cannot place a
+  new child because the CLOID gate remains closed, but they can corrupt the
+  fail-closed lifecycle, issue an obsolete cancel, or terminally fail a TWAP
+  using evidence that no longer owns the phase.
+- Why existing checks did not cover it: Turn 7 correlates the mutation result
+  to an exact slice index/retry, but status repair is a recurring read phase
+  after that pending mutation has cleared. CLOID equality proves the logical
+  child, not which status attempt owns current mutable state; the terminal
+  guard applies only after the TWAP has already terminated.
+- Implemented fix: add one runtime-only optional status attempt to `TwapOrder`.
+  A shared arming helper verifies the TWAP is non-terminal, the CLOID is still
+  current, and no task already owns it, then captures the current bounded retry
+  count in `TwapOrderStatusLoaded`. The handler requires exact CLOID/attempt
+  ownership and clears it before applying the result, so every subsequent copy
+  is stale. A retry arms the next attempt synchronously. Account-fill success
+  and timeout cleanup clear any outstanding ownership independently of the
+  CLOID (`src/twap_state/model.rs:184-189`,
+  `src/order_execution/twap/status/tasks.rs:13-100`,
+  `src/order_execution/twap/status.rs:34-64`,
+  `src/order_execution/twap/fills.rs:176-182`).
+- Regression coverage: one test calls status dispatch twice and proves only one
+  task is created; one duplicates a missing result and proves retry count,
+  events, and the next armed attempt advance only once; one delivers a stale
+  missing result after canceled/no-fill status and proves the deadline and
+  `AwaitingNoFillConfirmation` phase are unchanged
+  (`src/order_execution/twap/tests/account/status_check.rs:137-215`). Existing
+  filled, canceled, rejected, retry-exhaustion, stop, and terminal-result tests
+  now supply and/or assert the attempt owner. Custom `TwapOrder::Debug` exposes
+  only whether an attempt exists.
+- Smallest behavior-preserving fix: correlate the existing read task with the
+  existing retry counter rather than adding a mutation retry, timer, exchange
+  identifier, or new lifecycle policy. No attempt value is signed, sent to the
+  exchange, rendered, or persisted.
+- Protected behavior: deterministic child CLOIDs, IOC request construction,
+  slice size/price/cadence/randomization, retry limits and delays, status REST
+  endpoint, fill attribution, no-fill confirmation, stop/timeout/archive paths,
+  status strings, tasks for unique results, UI, persistence, and secrets are
+  unchanged.
+- Residual uncertainty: constructor/producer/consumer inventory, Elm message
+  ordering, retry and reconciliation cleanup paths, redacted diagnostics, and
+  diff review pass. Rust type-check/tests/clippy must execute on a host with
+  ALSA development metadata. TWAP unexpected-resting cancel results remain a
+  separate exact-attempt correlation candidate for continued Track 6 audit.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -2198,6 +2280,79 @@ target-specific cancellation policy, not HTTP replay.
   fill attribution, stop, completion, and archive. Preserve slice sizes,
   cadence, price bounds, retry policy, and all visible lifecycle behavior.
 
+## Turn 18 — Claim TWAP Status Results by Exact Attempt
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: High
+- Scope: F-19 across TWAP status-task dispatch, message context, retry
+  ownership, fill-reconciliation cleanup, diagnostics, docs, and adversarial
+  ordering regressions
+- Invariant: at most one status lookup owns the current TWAP child CLOID/retry
+  attempt, and only its exact result may mutate retry or reconciliation state.
+- Protected behavior: deterministic child CLOIDs, IOC placement/cancel request
+  construction, slice sizing, pricing, cadence, randomization, book gates,
+  retry limits/delays, account-fill confirmation, stop/timeout/archive paths,
+  order status text, UI, persistence, and secrets.
+- Audit evidence: scheduler ticks synchronously claim `pending_op` before
+  returning a place task; direct placement results require exact slice index
+  and retry count; child CLOIDs remain deterministic; account fill attribution
+  requires OID plus exact coin/side and aggregates by per-child maxima/sums;
+  stop and deadline paths cannot schedule while pending/status reconciliation
+  remains. Status repair was the uncovered recurring lane: its tasks/results
+  carried only TWAP ID and CLOID, while retries and later account-fill proof
+  reused mutable state under that same CLOID. F-19 records the exact ordering
+  failure and consequence.
+- Change: added a runtime-only optional armed status attempt. Both immediate and
+  delayed status helpers claim that owner before creating a task and refuse a
+  second owner. `TwapOrderStatusLoaded` carries the attempt; the handler
+  requires and consumes exact CLOID/attempt ownership before applying any
+  result. Retry scheduling synchronously arms the next existing retry count.
+  Account-fill resolution and timeout cleanup clear ownership defensively.
+  Custom debug output exposes only a boolean presence value.
+- Tests/checks:
+  - Added regressions proving duplicate dispatch creates one task, a duplicate
+    missing result cannot consume retry budget/events twice, and a stale
+    missing result cannot overwrite canceled/no-fill account reconciliation.
+  - Updated filled, canceled, rejected, retry-exhaustion, stop, terminal,
+    account-origin, and debug tests for exact attempt ownership and cleanup.
+  - Focused attempts for
+    `duplicate_status_dispatch_keeps_one_in_flight_owner`,
+    `duplicate_status_result_cannot_consume_retry_budget_twice`,
+    `stale_missing_status_cannot_override_no_fill_confirmation_phase`,
+    `canceled_status_check_waits_for_account_fill_confirmation`,
+    `running_twap_reconciliation_clears_status_metadata_after_fill`, and
+    `duplicate_slice_result_cannot_consume_a_settled_attempt` all stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    the system `alsa.pc` package.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: this internal state/message change does not
+    justify launching an unknown local credential/live-trading configuration,
+    and compilation is already blocked by ALSA metadata.
+- Compatibility/UX assessment: every uniquely owned status result follows the
+  identical classifier, retry, refresh, cancel, finish, and archive code. The
+  attempt is local correlation only; it is not signed, sent to Hyperliquid,
+  persisted, rendered, or used to alter timing. Only duplicate dispatches and
+  duplicate/delayed results that do not own current state are ignored. No
+  visible string, control, schema, order field, retry, timer, or normal task
+  changed.
+- Residual risk: formatting, field initialization, message producer/consumer
+  inventory, status-result branches, fill/timeout cleanup, redacted debug,
+  protected scheduler behavior, and full diff review pass. The crate has not
+  type-checked; focused/full tests and clippy must execute on a host with ALSA
+  development metadata. The target-correlated unexpected-child cancel retry
+  trigger carries an attempt, but the direct cancel result does not; its
+  duplicate/reversed-result behavior remains the next Track 6 candidate.
+- Prior turn commit hash: `2cbd350d38f08989f21e3305e1f2b0355c2afba0`
+- Next candidate: continue Track 6 by adversarially ordering TWAP unexpected-
+  child cancel retry triggers and direct results for the same OID/CLOID. Prove
+  whether target identity plus current retry state is sufficient, or add the
+  smallest runtime attempt ownership needed to prevent an older failure or
+  success from settling a newer retry; preserve the target-specific cancel,
+  retry limit/delay, refresh, stop, and visible behavior.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -2205,17 +2360,18 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused same-address account, cluster
-  position-freshness, wallet-detail generation, source/context, and
-  message-redaction tests; `cargo check`; full `cargo test`; and strict clippy
-  at `alsa-sys` system dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: focused duplicate TWAP status dispatch/result,
+  stale status ordering, status-to-fill reconciliation, and direct slice-result
+  tests; `cargo check`; full `cargo test`; and strict clippy at `alsa-sys`
+  system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-18 have source fixes and regression coverage but await
+- F-01 through F-19 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- TWAP, restart/shutdown cleanup, local planning/state diagnostic redaction,
-  and the remaining tracks require completion before a final verdict.
+- TWAP unexpected-cancel ordering, restart/shutdown cleanup, local
+  planning/state diagnostic redaction, and the remaining tracks require
+  completion before a final verdict.

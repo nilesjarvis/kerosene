@@ -69,6 +69,7 @@ impl TwapOrder {
             paused_until: None,
             retry_slice: None,
             status_check_cloid: None,
+            status_check_pending_attempt: None,
             status_check_retries: 0,
             account_reconciliation_retries: 0,
             reconciliation_deadline: None,
@@ -165,6 +166,7 @@ impl std::fmt::Debug for TwapOrder {
         let has_latest_book = self.latest_book.is_some();
         let has_retry_slice = self.retry_slice.is_some();
         let has_status_check_cloid = self.status_check_cloid.is_some();
+        let has_pending_status_check = self.status_check_pending_attempt.is_some();
         let stop_reason_is_error = self.stop_reason.as_ref().map(|(_, is_error)| *is_error);
 
         formatter
@@ -196,6 +198,7 @@ impl std::fmt::Debug for TwapOrder {
             .field("paused_until", &self.paused_until)
             .field("has_retry_slice", &has_retry_slice)
             .field("has_status_check_cloid", &has_status_check_cloid)
+            .field("has_pending_status_check", &has_pending_status_check)
             .field("status_check_retries", &self.status_check_retries)
             .field(
                 "account_reconciliation_retries",

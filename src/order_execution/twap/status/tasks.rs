@@ -11,6 +11,19 @@ use std::time::Duration;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    fn arm_twap_child_status_check(&mut self, twap_id: u64, cloid: &str) -> Option<(String, u32)> {
+        let twap = self.twap_orders.get_mut(&twap_id)?;
+        if twap.status.is_terminal()
+            || twap.status_check_cloid.as_deref() != Some(cloid)
+            || twap.status_check_pending_attempt.is_some()
+        {
+            return None;
+        }
+        let attempt = twap.status_check_retries;
+        twap.status_check_pending_attempt = Some(attempt);
+        Some((twap.account_address.clone(), attempt))
+    }
+
     pub(in crate::order_execution::twap) fn refresh_after_twap_result(
         &mut self,
         policy: TwapAccountRefresh,
@@ -47,7 +60,7 @@ impl TradingTerminal {
         twap_id: u64,
         cloid: String,
     ) -> Task<Message> {
-        let Some(address) = self.twap_origin_address(twap_id) else {
+        let Some((address, attempt)) = self.arm_twap_child_status_check(twap_id, &cloid) else {
             return Task::none();
         };
         let request_cloid = cloid.clone();
@@ -56,6 +69,7 @@ impl TradingTerminal {
             move |result| Message::TwapOrderStatusLoaded {
                 twap_id,
                 cloid: cloid.clone().into(),
+                attempt,
                 result: Box::new(result),
             },
         )
@@ -67,7 +81,7 @@ impl TradingTerminal {
         cloid: String,
         delay: Duration,
     ) -> Task<Message> {
-        let Some(address) = self.twap_origin_address(twap_id) else {
+        let Some((address, attempt)) = self.arm_twap_child_status_check(twap_id, &cloid) else {
             return Task::none();
         };
         let request_cloid = cloid.clone();
@@ -79,6 +93,7 @@ impl TradingTerminal {
             move |result| Message::TwapOrderStatusLoaded {
                 twap_id,
                 cloid: cloid.clone().into(),
+                attempt,
                 result: Box::new(result),
             },
         )

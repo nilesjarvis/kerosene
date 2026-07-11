@@ -43,6 +43,7 @@ fn reconciliation_twap(now: Instant) -> TwapOrder {
     twap.child_orders[0].oid = Some(CHILD_OID);
     twap.child_orders[0].status = TwapChildStatus::AwaitingReconciliation;
     twap.status_check_cloid = Some(CLOID.to_string());
+    twap.status_check_pending_attempt = None;
     twap.reconciliation_deadline = Some(now + TWAP_RECONCILIATION_TIMEOUT);
     twap
 }

@@ -182,6 +182,10 @@ pub(crate) struct TwapOrder {
     pub(crate) paused_until: Option<Instant>,
     pub(crate) retry_slice: Option<TwapPendingSlice>,
     pub(crate) status_check_cloid: Option<String>,
+    /// Exact retry attempt currently owns the in-flight CLOID status task.
+    /// `status_check_cloid` can remain set while account fills reconcile after
+    /// that task completes, so task ownership must be tracked independently.
+    pub(crate) status_check_pending_attempt: Option<u32>,
     pub(crate) status_check_retries: u32,
     pub(crate) account_reconciliation_retries: u32,
     /// Deadline by which `account.fills` must reconcile a child whose exchange

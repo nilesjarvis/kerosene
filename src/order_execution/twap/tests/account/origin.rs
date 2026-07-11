@@ -435,6 +435,7 @@ fn canceled_status_reconciliation_counts_late_fill_from_account_refresh() {
     let _task = terminal.handle_twap_order_status_result(
         1,
         CLOID.to_string(),
+        0,
         Ok(canceled_status(CLOID, CHILD_OID)),
     );
     assert_eq!(
@@ -466,6 +467,7 @@ fn canceled_status_empty_refresh_confirms_no_fill_and_finishes_attempt() {
     let _task = terminal.handle_twap_order_status_result(
         1,
         CLOID.to_string(),
+        0,
         Ok(canceled_status(CLOID, CHILD_OID)),
     );
 
@@ -626,6 +628,7 @@ fn stopped_transport_unknown_twap_finishes_after_partial_fill_reconciliation() {
     let _task = terminal.handle_twap_order_status_result(
         1,
         CLOID.to_string(),
+        0,
         Ok(filled_status(CLOID, CHILD_OID)),
     );
     assert_eq!(twap_by_id(&terminal, 1).status, TwapStatus::Stopping);

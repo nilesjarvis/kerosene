@@ -35,6 +35,7 @@ impl TradingTerminal {
         &mut self,
         twap_id: u64,
         cloid: String,
+        attempt: u32,
         result: Result<OrderStatusResult, String>,
     ) -> Task<Message> {
         let now = Instant::now();
@@ -44,12 +45,18 @@ impl TradingTerminal {
         let mut finish_attempt = false;
 
         if let Some(twap) = self.twap_orders.get_mut(&twap_id) {
-            if twap.status_check_cloid.as_deref() != Some(cloid.as_str()) {
+            if twap.status_check_cloid.as_deref() != Some(cloid.as_str())
+                || twap.status_check_pending_attempt != Some(attempt)
+            {
                 return Task::none();
             }
             if twap.status.is_terminal() {
                 return Task::none();
             }
+            // Claim this exact task result before applying it. Any duplicate
+            // or delayed result for the same CLOID/attempt is now stale, even
+            // if `status_check_cloid` remains set for account-fill repair.
+            twap.status_check_pending_attempt = None;
 
             match result {
                 Ok(status) if status.is_missing() => {

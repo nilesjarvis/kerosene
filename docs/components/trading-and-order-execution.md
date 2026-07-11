@@ -326,6 +326,12 @@ Lifecycle messages include:
 Terminal TWAPs are archived into advanced order history. Active TWAPs are
 runtime-only and are not resumed as live automation after restart.
 
+Each in-flight TWAP child-status lookup has one runtime-only retry-attempt
+owner. A result must match the current TWAP, CLOID, and armed attempt before it
+can change retry or reconciliation state; duplicate or delayed results are
+ignored. This correlation does not change child CLOIDs, status retry limits or
+delays, account-fill reconciliation, or slice scheduling.
+
 ## Advanced Order History
 
 `advanced_order_history/` stores bounded snapshots of terminal advanced orders.
