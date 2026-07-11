@@ -5706,6 +5706,124 @@ target-specific cancellation policy, not HTTP replay.
   Screenshot/file/config and private-integration completion families remain for
   later Track 9 review.
 
+### F-73 — Screenshot capture ownership can saturate or cross chart incarnations
+
+- Status: addressed in Turn 66; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium runtime-owner and account-artifact diagnostic hardening; an
+  old render can settle a later capture or unresolved bounds can target a
+  reconstructed chart, but no order preparation, signing, reconciliation,
+  automation, or exchange-mutation path was found
+- Scope: screenshot intent, bounds operation, offscreen-render publication and
+  completion, request allocation, phase ordering, screenshot-window close/
+  reopen, pane/detached/layout replacement, chart/privacy snapshot timing,
+  state/result diagnostics, copy/save task results and exact toasts, routes,
+  settings persistence, all chart/order consumers, docs, and focused coverage
+- Preconditions/event ordering:
+  1. Screenshot request IDs used `saturating_add(1)`. Once the terminal reached
+     `u64::MAX`, closing the screenshot window cleared the pending scalar but
+     did not cancel an already-owned renderer. The next capture reused `MAX`;
+     if its bounds resolved first, the prior render result matched and replaced
+     the new capture with the old image.
+  2. Pending state recorded only that scalar ID, not whether the request was
+     awaiting widget bounds or already rendering. A same-ID captured message
+     could therefore settle before bounds, duplicate successful bounds could
+     dispatch more than one expensive renderer, and a later duplicate `None`
+     bounds result could terminalize an active render as a visibility error.
+  3. Bounds messages carried chart and surface IDs but result acceptance checked
+     only the scalar. Runtime saved-layout restoration can reconstruct the same
+     chart ID before bounds resolve; the handler then cloned the replacement
+     chart and rendered it for the earlier intent.
+  4. `ChartScreenshotCaptured`, `ChartScreenshotCopied`, and
+     `ChartScreenshotSaved` carried raw results through derived `Message::Debug`.
+     The screenshot state's custom formatter already bounded pixel/PNG content
+     to lengths, but exposed the exact symbol, timeframe, local capture time,
+     and default filename. Save success exposed the selected local path, while
+     all three error forms were visible before the established sanitizer.
+- Evidence: `OpenChartScreenshot` is the sole capture allocator and bounds-task
+  publisher; its mapped bounds message is consumed only in
+  `TradingTerminal::update_chart_screenshot`, which is also the sole render-task
+  publisher and captured-result consumer (`src/chart_screenshot/update.rs`,
+  `src/app_update/routing.rs`). `TradingTerminal` stored the scalar sequence,
+  scalar pending owner, progress Boolean, image/error state, window ID, and
+  persisted settings (`src/app_state.rs`, `src/app_boot/state.rs`). Screenshot-
+  window close cleared the scalar owner while the detached/pane/layout paths
+  could independently remove or reconstruct charts (`src/window_update.rs`,
+  `src/pane_interaction_update.rs`, `src/layout_persistence/instances.rs`). The
+  runtime chart incarnation already advances before layout reconstruction.
+  Bounds resolution clones the then-current chart, viewport, theme, and privacy
+  settings into `ChartScreenshotRenderRequest`; the async renderer thereafter
+  owns those values (`src/chart_screenshot/update/request.rs`,
+  `src/chart_screenshot/capture.rs`). Copy and save each clone the exact accepted
+  state and have one task publisher/consumer; they mutate only clipboard/file
+  output and toast feedback (`src/chart_screenshot/capture/io.rs`). Repository-
+  wide order, signing, Chase/TWAP, wallet-cluster, account-reconciliation, and
+  risk searches found no screenshot request, image, path, or completion used as
+  an order price, size, identity, pending mutation, or exchange trigger. Only
+  the existing two Boolean privacy settings are persisted.
+- Violated invariant: an unresolved screenshot intent may start rendering only
+  for its exact chart incarnation and surface, and it must advance exactly once
+  from awaiting bounds to rendering. Only that exact rendering owner may install
+  an image or error. Closing the screenshot window must invalidate its owner
+  across reopen, while an already-started exact render remains an owned snapshot
+  if unrelated chart/layout state changes later. Generic diagnostics must not
+  reproduce screenshot identity, local paths, artifacts, or pre-handler errors.
+- Risk: the collision can show/export a prior chart artifact—including position
+  or order overlays captured under different privacy settings—in place of the
+  newly requested image. Layout ordering can capture a replacement instrument
+  rather than the chart on which the user acted. Duplicate bounds waste an
+  offscreen renderer and large image allocations. Separately, diagnostics can
+  disclose trading symbols/timing and workstation path identity. The image
+  workflow remains user-initiated and cannot dispatch or settle a trade.
+- Why existing checks did not cover it: the in-progress Boolean suppressed
+  ordinary concurrent clicks and the scalar rejected normal stale completions;
+  window close cleared visible state and duplicate captured results were inert
+  after the first completion. Existing screenshot tests covered bitmap sizing,
+  filenames, export-clone privacy, and post-handler error sanitization, but not
+  terminal ID allocation, bounds/render phase ordering, layout incarnation,
+  close/reopen task survival, parent diagnostics, or exact result recovery.
+- Implemented fix: replace the pending scalar with a runtime-only typed request
+  containing wrapping terminal request ID, chart ID, chart-incarnation
+  generation, and surface ID plus an explicit `AwaitingBounds`/`Rendering`
+  phase. Bounds must match the exact awaiting owner and current incarnation,
+  then atomically advance it before publishing one renderer. Capture results
+  must match the exact rendering owner. Window close clears the full owner; the
+  sequence wraps instead of sticking at `MAX`. Once rendering begins, its exact
+  completion intentionally does not recheck the live incarnation because its
+  chart/viewport/theme/privacy snapshot is already owned. Add a dedicated
+  screenshot-result wrapper for render/copy/save messages and recover values at
+  their prior update points. Make standalone screenshot-state diagnostics hide
+  symbol, timeframe, capture time, and filename while retaining dimensions and
+  buffer lengths.
+- Regression coverage: controls cover `MAX` close/reopen allocation and old-
+  result rejection, premature capture-result rejection, prior-layout bounds
+  rejection, duplicate successful/empty bounds ordering, exact post-render
+  completion after a later layout change, settings-at-bounds snapshot timing,
+  exact accepted state and sanitized capture failure, exact copy/save success,
+  cancellation and error feedback, standalone state diagnostics, wrapper path/
+  error recovery, parent artifact/path/error diagnostics, config compatibility,
+  and complete screenshot message routing. Existing bitmap, label, sizing,
+  filename, PNG, export-clone, and window behavior suites remain in the ladder.
+- Smallest behavior-preserving fix: two runtime owner types, replacement of one
+  pending scalar, one allocator operation, phase gates at the sole bounds/render
+  handoff, one shared result wrapper at three message fields, sole producer/
+  consumer conversions, a narrower state formatter, focused tests, and docs.
+  No canvas value, pixel/PNG byte, label, filename derivation, logical/export
+  size, viewport, theme, privacy-setting value or sampling boundary, copy/save
+  operation, dialog/path, toast string, interaction timing, config field/
+  default/wire value, order input, signed bytes, or trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked or launched on this host.
+  Rustfmt, exhaustive publisher/consumer/lifecycle/output/persistence/order-
+  consumer tracing, typed phase ownership, and source controls establish the
+  intended boundary, but focused tests cannot execute until ALSA development
+  metadata is available. A surviving result would need a complete `u64` request
+  cycle (and, for a reconstructed chart, a complete incarnation cycle) before
+  theoretical identity reuse. Concurrent copy/save clicks remain separate
+  intentional external actions with their established independent feedback;
+  adding newest-only result ownership would change visible behavior. Remaining
+  config/asset-import and private-integration completion families still require
+  Track 9 review.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -9880,8 +9998,8 @@ target-specific cancellation policy, not HTTP replay.
 - Invariant: only an exact active request in the current chart incarnation may
   apply funding or REST asset context, clear its per-chart owner, or alter its
   retry state. A prior-layout spot batch may terminalize only its own retained
-  global endpoint guard and complete/partial/error backoff outcome before its chart
-  targets are rejected. Generic Elm diagnostics retain public request
+  global endpoint guard and complete/partial/error backoff outcome before its
+  chart targets are rejected. Generic Elm diagnostics retain public request
   correlation and result shape without traversing payload or task-error
   content, and live websocket context remains authoritative.
 - Protected behavior: every funding point and asset-context field; endpoints,
@@ -9919,8 +10037,8 @@ target-specific cancellation policy, not HTTP replay.
   exact typed individual and coalesced REST-context owners with one terminal-
   lifetime wrapping allocator; install the batch both globally and on every
   target, require global and per-target equality, and let a matching old-layout
-  batch settle only its own global complete/partial/error endpoint state before the
-  incarnation gate. Replace the three raw completion results with the existing
+  batch settle only its own global complete/partial/error endpoint state before
+  the incarnation gate. Replace the three raw completion results with the existing
   public-market result wrapper and recover exact values only after owner
   acceptance. Document the runtime, source-precedence, and diagnostic
   boundaries.
@@ -9950,11 +10068,11 @@ target-specific cancellation policy, not HTTP replay.
   replace/merge, status/toast, REST fill, live-stream precedence, retry/backoff,
   rendering, and overlay paths. Request IDs and typed owners are runtime-only;
   endpoint parameters, scheduling and retry deadlines are unchanged. A prior-
-  layout spot result settles the same global complete/partial/error state as before,
-  without applying target data or retry state to replacements. Only stale
+  layout spot result settles the same global complete/partial/error state as
+  before, without applying target data or retry state to replacements. Only stale
   ownership and generic diagnostic traversal change. No ordinary visible copy/
-  data/timing,
-  interaction, persisted value/default, signed bytes, order preparation, or
+  data/timing, interaction, persisted value/default, signed bytes, order
+  preparation, or
   trading semantic changed.
 - Residual risk: Kerosene has not type-checked or launched on this host. F-72 is
   source-hardened; theoretical full-`u64` request/incarnation-cycle message
@@ -9971,6 +10089,105 @@ target-specific cancellation policy, not HTTP replay.
   clipboard/file side-effect terminalization, persistence, and chart/order
   interactions; preserve exact pixels, filename/path behavior, visible status,
   UI, privacy settings, and every trading semantic.
+
+## Turn 66 — Preserve Screenshot Capture Ownership
+
+- Status: F-73 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: screenshot open/bounds/render lifecycle, terminal request allocation,
+  chart incarnation and surface identity, phase/duplicate ordering, screenshot-
+  window close/reopen, pane/detached/layout changes, privacy snapshot timing,
+  image/copy/save diagnostics and exact feedback, state initialization, routes,
+  config persistence, docs, and all chart/order consumers
+- Invariant: only the exact current chart-incarnation/surface request may move
+  once from awaiting bounds to rendering, and only that rendering owner may
+  install a capture result. Closing the screenshot window invalidates the full
+  owner across reopen. Once rendering owns its chart/viewport/theme/privacy
+  snapshot, its completion remains valid despite later chart changes. Generic
+  diagnostics expose correlation/result shape without artifact identity,
+  content, local paths, or task-error text.
+- Protected behavior: exact chart clone, candles, overlays, viewport, theme,
+  privacy flags, label, dimensions, RGBA/PNG bytes, timestamp and filename;
+  settings-at-bounds sampling; copy/save clicks, clipboard/file dialog/write,
+  cancellation, selected path, exact success/error toasts, screenshot window
+  loading/preview/error behavior; persisted settings/defaults/wire format; pane/
+  detached/chart interaction; order preparation/signing; and all trading
+  semantics.
+- Preconditions/event ordering: the scalar capture sequence saturated at
+  `u64::MAX`, allowing a closed request's surviving renderer to collide with a
+  reopened request. Scalar-only pending state did not distinguish bounds from
+  rendering, so a same-ID capture could settle prematurely and duplicate bounds
+  could dispatch/cancel the render phase. A layout could also reconstruct the
+  same chart ID before bounds and redirect the capture. Raw render/copy/save
+  results exposed screenshot identity, saved paths, or unsanitized errors in the
+  parent; standalone screenshot-state diagnostics exposed symbol, timeframe,
+  local capture time, and filename while already bounding image bytes to lengths.
+- Evidence: F-73 records terminal state/boot initialization, the sole request/
+  bounds/render/copy/save publishers and consumers, route arms, widget-bounds
+  operation, offscreen render request and owned chart clone, screenshot-window
+  cleanup, pane/detached/layout replacement, viewport/theme/privacy sampling,
+  bitmap/PNG/label/filename/file/clipboard helpers, views/toasts, config schema/
+  snapshot/serialization, and repository-wide order/signing/automation searches.
+  No alternate publisher, persisted runtime capture, order-price/size input,
+  pending mutation, signer, reconciliation consumer, or exchange trigger was
+  found. Copy/save completions affect only their established toasts after the
+  user-requested external action.
+- Change: replace the scalar pending ID with a typed request containing wrapping
+  request ID, chart ID, runtime chart incarnation, and surface ID plus an
+  awaiting-bounds/rendering phase. Require exact phase/owner equality at both
+  handoffs; reject prior-incarnation bounds with the existing chart-unavailable
+  error; retain exact post-render results after later layout changes. Treat the
+  typed owner as an independent in-progress guard and clear it on screenshot-
+  window close. Carry render/copy/save results through a dedicated value-neutral
+  wrapper and recover them at the same handler locations. Redact standalone
+  screenshot identity/time/filename diagnostics while retaining safe dimensions
+  and buffer lengths; document the runtime and diagnostic boundaries.
+- Tests/checks:
+  - Baseline screenshot and routing suites plus `cargo check` stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    the system `alsa.pc` file.
+  - The pre-fix exact `MAX` close/reopen collision and premature captured-result
+    regressions stopped at that same dependency boundary before demonstrating
+    their expected assertion failures.
+  - Post-fix exact allocation/close/reopen, phase, layout-bounds, duplicate-
+    bounds, post-render-layout, privacy-snapshot, standalone-state diagnostic,
+    wrapper-recovery, and parent-message diagnostic controls all stopped at the
+    same dependency boundary.
+  - Post-fix screenshot, screenshot-message, routing, screenshot-config, and
+    window-update suites plus `cargo check` stopped at the same boundary.
+  - `cargo fmt` passed after Rust edits; final formatting and diff checks are
+    recorded in the current validation summary below.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    the same pre-existing dependency boundary before checking Kerosene.
+  - `timeout 20s xvfb-run -a cargo run` stopped there before app startup. No
+    clipboard call, file dialog/write, live market request, exchange mutation,
+    or credential-bearing operation ran.
+- Compatibility/UX assessment: normal capture enters the same loading window,
+  samples the same live chart/viewport/theme/privacy settings when bounds
+  resolve, renders the byte-for-byte same state, and enters the unchanged
+  preview/error/focus path. The phase merely makes duplicate/out-of-order
+  messages inert. A prior-layout unresolved intent now receives the already-
+  existing chart-not-found copy instead of silently capturing a replacement;
+  an already-started render still completes as before. Copy/save recover the
+  exact result and retain every side effect, cancellation rule, path and toast
+  string. Settings/config are unchanged. Only stale ownership and generic
+  diagnostics change; no ordinary visible data/timing, interaction, persisted
+  value/default, signed bytes, order behavior, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked or launched on this host. F-73 is
+  source-hardened; theoretical full-`u64` request/incarnation-cycle message
+  survival and executable validation remain residual. Concurrent copy/save
+  actions intentionally retain independent completion feedback. Config/asset-
+  import and private-integration completion fields, independently formattable
+  nested account/order types, classified external-status paths, and the rest of
+  Track 9 still require review.
+- Prior turn commit hash: `451499d47b8ba63c9f51a519964245a259c5d234`
+- Next candidate: audit `ChartHudOrderSoundImported`, `DisplayFontImported`, and
+  `MonospaceFontImported` across file-picker/request ownership, close/reopen and
+  repeated-import ordering, validation/copy/persistence terminalization,
+  selected-path/config/error diagnostics, cleanup, and all UI/order consumers;
+  preserve exact accepted assets, filenames, visible status/toasts, settings,
+  persistence compatibility, and every trading semantic.
 
 ## Deferred Findings
 
@@ -10013,23 +10230,23 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline funding, chart update, asset-context
-  API, chart subscription, layout-instance, and routing suites plus
-  `cargo check`; the pre-fix funding/context owner and parent-diagnostic
-  regressions; post-fix exact funding/context owner and public-message controls,
-  funding, chart-update, asset-context and Hydromancer API, chart-subscription,
-  layout-instance, and routing suites; `cargo check`, full `cargo test`, strict
-  clippy, and the headless GUI smoke command at `alsa-sys` system dependency
-  discovery, before Kerosene was compiled or launched.
-- No live Hydromancer/Hyperliquid/market request, exchange mutation, clipboard/
-  file action, or credential-bearing operation was run.
+- Environment-blocked this turn: baseline screenshot and routing suites plus
+  `cargo check`; the pre-fix terminal-ID collision and premature-result
+  regressions; post-fix exact allocation, close/reopen, phase, layout-bounds,
+  duplicate-bounds, post-render-layout, privacy-snapshot, state/message
+  diagnostic, and wrapper-recovery controls; screenshot, screenshot-message,
+  routing, screenshot-config, and window-update suites; `cargo check`, full
+  `cargo test`, strict clippy, and the headless GUI smoke command at `alsa-sys`
+  system dependency discovery, before Kerosene was compiled or launched.
+- No clipboard call, file dialog/write, live market request, exchange mutation,
+  or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-72
+  F-40, and F-42 through F-73
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -10108,7 +10325,11 @@ target-specific cancellation policy, not HTTP replay.
   completion ownership now survives chart reconstruction and same-incarnation
   reissue ordering, and their parent diagnostics are source-hardened by F-72
   while exact public data, key/source precedence, retry cadence, chart metrics,
-  and interactions remain unchanged. Remaining screenshot/file/config and
-  private-integration result lifecycles, independently formattable nested
-  account/order types, and classified external-status paths, plus the rest of
-  Track 9, require completion before a final verdict.
+  and interactions remain unchanged. Screenshot capture ownership now survives
+  close/reopen terminal allocation, bounds/render phase ordering, and unresolved
+  layout reconstruction; artifact/path/error diagnostics are source-hardened by
+  F-73 while exact pixels, privacy timing, copy/save effects, and feedback remain
+  unchanged. Remaining file/config/asset-import and private-integration result
+  lifecycles, independently formattable nested account/order types, and
+  classified external-status paths, plus the rest of Track 9, require completion
+  before a final verdict.

@@ -7,6 +7,12 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         read_data_provider_generation: 0,
         hydromancer_key_generation: None,
     };
+    let screenshot_request = crate::chart_screenshot::ChartScreenshotCaptureRequest::new(
+        5,
+        7,
+        1,
+        crate::chart_state::ChartSurfaceId::Docked(7),
+    );
 
     assert_route(
         Message::ClearDrawingTool(7, crate::chart_state::ChartSurfaceId::Docked(7)),
@@ -121,6 +127,25 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
     );
     assert_route(
         Message::OpenChartScreenshot(7, crate::chart_state::ChartSurfaceId::Docked(7)),
+        UpdateRoute::ChartScreenshot,
+    );
+    assert_route(
+        Message::ChartScreenshotBoundsResolved(screenshot_request, None),
+        UpdateRoute::ChartScreenshot,
+    );
+    assert_route(
+        Message::ChartScreenshotCaptured(
+            screenshot_request,
+            Err("synthetic render error".to_string()).into(),
+        ),
+        UpdateRoute::ChartScreenshot,
+    );
+    assert_route(
+        Message::ChartScreenshotCopied(Ok(()).into()),
+        UpdateRoute::ChartScreenshot,
+    );
+    assert_route(
+        Message::ChartScreenshotSaved(Ok(None).into()),
         UpdateRoute::ChartScreenshot,
     );
     assert_route(

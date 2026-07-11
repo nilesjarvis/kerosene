@@ -442,6 +442,17 @@ their exact runtime owners accept them; the existing live-websocket-wins rule
 then governs context application. Exact public values, retry timing, header and
 overlay rendering, and chart/order interaction remain unchanged.
 
+Chart-screenshot capture and export diagnostics must not reproduce the
+artifact. The runtime capture owner retains only request/chart-incarnation/
+surface correlation and an awaiting-bounds versus rendering phase. Render,
+copy, and save completion messages use a dedicated result wrapper, so generic
+Elm diagnostics expose only `Ok`/`Err` shape rather than image state, a saved
+path, or an upstream error. Standalone screenshot-state diagnostics retain only
+dimensions and buffer lengths while hiding symbol, timeframe, capture time,
+filename, pixels, and PNG content. The exact state/path/error is recovered only
+at the established update boundary; privacy settings, rendered bytes,
+clipboard/file behavior, saved-path toast text, and UI remain unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

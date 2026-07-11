@@ -6,7 +6,7 @@ use crate::annotations::DrawingTool;
 use crate::api::{self, ExchangeSymbol};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart::ChartViewport;
-use crate::chart_screenshot::ChartScreenshotState;
+use crate::chart_screenshot::{ChartScreenshotPendingCapture, ChartScreenshotState};
 use crate::chart_state::{
     ChartId, ChartInstance, ChartSpotAssetContextsRestRequest, ChartSurfaceId,
     DetachedChartWindowState,
@@ -586,7 +586,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) chart_screenshot_error: Option<String>,
     pub(crate) chart_screenshot_capture_in_progress: bool,
     pub(crate) chart_screenshot_next_request_id: u64,
-    pub(crate) chart_screenshot_pending_request_id: Option<u64>,
+    pub(crate) chart_screenshot_pending_capture: Option<ChartScreenshotPendingCapture>,
     pub(crate) chart_screenshot_settings: config::ChartScreenshotSettingsConfig,
     pub(crate) chart_screenshot_menu_open: Option<ChartSurfaceId>,
     pub(crate) chart_surface_active_tools: HashMap<ChartSurfaceId, DrawingTool>,

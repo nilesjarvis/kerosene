@@ -293,6 +293,24 @@ the chart instance if the chart is still present in the main pane grid.
 Screenshot settings are persisted, but generated images are output artifacts
 and should not include secrets.
 
+Capture is a two-phase runtime operation. Its owner contains the terminal
+request ID, chart ID, chart-incarnation generation, and surface ID, and moves
+once from awaiting widget bounds to rendering. Only the exact owner may resolve
+bounds or install a rendered image. Layout reconstruction therefore cannot
+redirect an unresolved capture to a replacement chart with the same ID, and a
+duplicate bounds message cannot start a second renderer. Closing the screenshot
+window clears the owner; request IDs wrap across reopen without saturating on
+one reusable value. Once rendering starts, its chart, viewport, theme, and
+privacy settings are already owned snapshots, so the exact completion remains
+valid even if chart/layout state changes later.
+
+Privacy flags are sampled at the existing bounds-resolution boundary and are
+applied only to the export clone; they do not mutate the live chart. Copy/save
+tasks retain the exact image, dialog, path, and toast behavior. Their Elm
+completion diagnostics expose only success/error shape, while standalone image
+state diagnostics retain dimensions and buffer lengths but hide symbol,
+timeframe, capture time, filename, and artifact content.
+
 ## Spaghetti Charts
 
 Spaghetti charts are comparison charts with their own state and canvas engine.

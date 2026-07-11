@@ -6,7 +6,7 @@ use crate::annotations::{Annotation, AnnotationId, AnnotationStyle, DrawingTool}
 use crate::api::{self, Candle, OrderBook};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart::ChartViewport;
-use crate::chart_screenshot::ChartScreenshotState;
+use crate::chart_screenshot::{ChartScreenshotCaptureRequest, ChartScreenshotState};
 use crate::chart_state::{
     CandleFetchRequest, ChartAssetContextRestRequest, ChartId, ChartSpotAssetContextsRestRequest,
     ChartSurfaceId, FundingFetchRequest,
@@ -755,6 +755,35 @@ impl<T> From<Result<T, String>> for RedactedPnlCardMessageResult<T> {
 }
 
 impl<T> fmt::Debug for RedactedPnlCardMessageResult<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
+/// Exact chart-screenshot render and export result carried through the Elm
+/// message boundary.
+///
+/// Update handlers recover the original image, saved path, or external error.
+/// Generic message diagnostics expose only success/error shape.
+#[derive(Clone)]
+pub(crate) struct RedactedChartScreenshotMessageResult<T>(Result<T, String>);
+
+impl<T> RedactedChartScreenshotMessageResult<T> {
+    pub(crate) fn into_result(self) -> Result<T, String> {
+        self.0
+    }
+}
+
+impl<T> From<Result<T, String>> for RedactedChartScreenshotMessageResult<T> {
+    fn from(value: Result<T, String>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> fmt::Debug for RedactedChartScreenshotMessageResult<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0 {
             Ok(_) => f.write_str("Ok(<redacted>)"),
@@ -1915,12 +1944,15 @@ pub(crate) enum Message {
     ToggleChartScreenshotObscurePositionEntry(bool),
     ToggleChartScreenshotHidePositionsAndOrders(bool),
     OpenChartScreenshot(ChartId, ChartSurfaceId),
-    ChartScreenshotBoundsResolved(u64, ChartId, ChartSurfaceId, Option<iced::Rectangle>),
-    ChartScreenshotCaptured(u64, ChartId, Result<ChartScreenshotState, String>),
+    ChartScreenshotBoundsResolved(ChartScreenshotCaptureRequest, Option<iced::Rectangle>),
+    ChartScreenshotCaptured(
+        ChartScreenshotCaptureRequest,
+        RedactedChartScreenshotMessageResult<ChartScreenshotState>,
+    ),
     CopyChartScreenshot,
-    ChartScreenshotCopied(Result<(), String>),
+    ChartScreenshotCopied(RedactedChartScreenshotMessageResult<()>),
     SaveChartScreenshot,
-    ChartScreenshotSaved(Result<Option<PathBuf>, String>),
+    ChartScreenshotSaved(RedactedChartScreenshotMessageResult<Option<PathBuf>>),
     CloseChartScreenshotWindow,
     // Hotkeys related messages
     KeyboardEvent(window::Id, iced::keyboard::Event, iced::event::Status),
@@ -2144,8 +2176,8 @@ pub(crate) enum Message {
 mod tests {
     use super::{
         Message, RedactedAccountLabel, RedactedAccountMessageResult, RedactedAccountProfileId,
-        RedactedAdvancedOrderHistoryId, RedactedClientOrderId,
-        RedactedHyperdashMarketMessageResult, RedactedJournalMessageResult,
+        RedactedAdvancedOrderHistoryId, RedactedChartScreenshotMessageResult,
+        RedactedClientOrderId, RedactedHyperdashMarketMessageResult, RedactedJournalMessageResult,
         RedactedLayoutMessageResult, RedactedOrderId, RedactedOrderInput,
         RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput,
         RedactedPnlCardMessageResult, RedactedPositioningMessageResult,
@@ -2879,6 +2911,30 @@ mod tests {
     }
 
     #[test]
+    fn chart_screenshot_result_wrapper_preserves_exact_path_and_error() {
+        const ERROR: &str = "chart-screenshot-result-error-sentinel";
+        const PATH_COMPONENT: &str = "chart-screenshot-result-path-sentinel";
+        let path = std::path::PathBuf::from(format!("{PATH_COMPONENT}/chart.png"));
+        let error: RedactedChartScreenshotMessageResult<Option<std::path::PathBuf>> =
+            Err(ERROR.to_string()).into();
+        let success: RedactedChartScreenshotMessageResult<Option<std::path::PathBuf>> =
+            Ok(Some(path.clone())).into();
+
+        let error_debug = format!("{error:?}");
+        let success_debug = format!("{success:?}");
+
+        assert!(error_debug.contains("Err(<redacted>)"), "{error_debug}");
+        assert!(success_debug.contains("Ok(<redacted>)"), "{success_debug}");
+        assert!(!error_debug.contains(ERROR), "{error_debug}");
+        assert!(!success_debug.contains(PATH_COMPONENT), "{success_debug}");
+        assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
+        assert_eq!(
+            success.into_result().expect("synthetic success"),
+            Some(path)
+        );
+    }
+
+    #[test]
     fn layout_message_result_wrapper_preserves_exact_layout_and_error() {
         const NAME: &str = "layout-result-name-sentinel";
         const SYMBOL: &str = "layout-result-symbol-sentinel";
@@ -3338,6 +3394,60 @@ mod tests {
             let rendered = format!("{message:?}");
             assert!(rendered.contains("<redacted>"), "{rendered}");
             assert!(!rendered.contains(SYMBOL), "{rendered}");
+            assert!(!rendered.contains(ERROR), "{rendered}");
+            assert!(!rendered.contains(PATH_COMPONENT), "{rendered}");
+        }
+    }
+
+    #[test]
+    fn chart_screenshot_message_debug_redacts_artifacts_paths_and_errors() {
+        const SYMBOL: &str = "private-chart-screenshot-symbol-sentinel";
+        const TIMEFRAME: &str = "private-chart-screenshot-timeframe-sentinel";
+        const FILENAME: &str = "private-chart-screenshot-filename-sentinel.png";
+        const ERROR: &str = "private-chart-screenshot-error-sentinel";
+        const PATH_COMPONENT: &str = "private-chart-screenshot-save-path-sentinel";
+        let request = crate::chart_screenshot::ChartScreenshotCaptureRequest::new(
+            23,
+            31,
+            7,
+            crate::chart_state::ChartSurfaceId::Docked(31),
+        );
+        let screenshot = crate::chart_screenshot::ChartScreenshotState {
+            symbol: SYMBOL.to_string(),
+            timeframe: TIMEFRAME.to_string(),
+            width: 1,
+            height: 1,
+            rgba: std::sync::Arc::from(vec![17, 29, 43, 255]),
+            png: std::sync::Arc::from(vec![89, 67, 45, 23]),
+            preview_handle: iced::widget::image::Handle::from_rgba(1, 1, vec![17, 29, 43, 255]),
+            captured_at: chrono::Local::now(),
+            default_filename: FILENAME.to_string(),
+        };
+
+        for message in [
+            Message::ChartScreenshotCaptured(request, Ok(screenshot).into()),
+            Message::ChartScreenshotCaptured(request, Err(ERROR.to_string()).into()),
+        ] {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("23"), "{rendered}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for hidden in [SYMBOL, TIMEFRAME, FILENAME, ERROR] {
+                assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
+            }
+        }
+
+        for message in [
+            Message::ChartScreenshotCopied(Err(ERROR.to_string()).into()),
+            Message::ChartScreenshotSaved(
+                Ok(Some(std::path::PathBuf::from(format!(
+                    "{PATH_COMPONENT}/chart.png"
+                ))))
+                .into(),
+            ),
+            Message::ChartScreenshotSaved(Err(ERROR.to_string()).into()),
+        ] {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
             assert!(!rendered.contains(ERROR), "{rendered}");
             assert!(!rendered.contains(PATH_COMPONENT), "{rendered}");
         }

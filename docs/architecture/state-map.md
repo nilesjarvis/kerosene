@@ -126,7 +126,7 @@ Representative fields:
 - `chart_surface_viewports`
 - detached chart window state
 - `spaghetti_charts: HashMap<SpaghettiChartId, SpaghettiChartInstance>`
-- screenshot settings/window state
+- screenshot settings/window state plus the runtime capture owner and sequence
 
 `ChartInstance` owns:
 

@@ -52,7 +52,7 @@ impl TradingTerminal {
                     self.chart_screenshot = None;
                     self.chart_screenshot_error = None;
                     self.chart_screenshot_capture_in_progress = false;
-                    self.chart_screenshot_pending_request_id = None;
+                    self.chart_screenshot_pending_capture = None;
                 }
                 self.pnl_card_windows.remove(&id);
                 if self.remove_detached_chart_window_state(id) {
