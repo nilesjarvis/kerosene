@@ -14,6 +14,9 @@ impl TradingTerminal {
         request: CandleFetchRequest,
         result: Result<Vec<Candle>, String>,
     ) -> Task<Message> {
+        if request.chart_instance_generation != self.chart_instance_generation {
+            return Task::none();
+        }
         if request.source
             != self.chart_backfill_source_for_symbol_timeframe(&request.symbol, request.timeframe)
         {
@@ -191,6 +194,9 @@ impl TradingTerminal {
         request: CandleFetchRequest,
         result: Result<Vec<Candle>, String>,
     ) -> Task<Message> {
+        if request.chart_instance_generation != self.chart_instance_generation {
+            return Task::none();
+        }
         if request.source
             != self.chart_backfill_source_for_symbol_timeframe(&request.symbol, request.timeframe)
         {
@@ -367,6 +373,121 @@ mod tests {
     }
 
     #[test]
+    fn prior_chart_incarnation_result_does_not_consume_recreated_primary_request() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.chart_instance_generation = 1;
+
+        let old_request = CandleFetchRequest {
+            chart_id: 7,
+            chart_instance_generation: 1,
+            symbol: "BTC".to_string(),
+            timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
+            start_ms: 0,
+            end_ms: 1_000,
+            attempt: 0,
+        };
+
+        terminal.chart_instance_generation = 2;
+        let current_request = CandleFetchRequest {
+            chart_instance_generation: 2,
+            ..old_request.clone()
+        };
+        let mut replacement = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        replacement.candle_fetch_request = Some(current_request.clone());
+        terminal.charts.insert(7, replacement);
+
+        let _task = terminal
+            .apply_chart_candles_loaded(old_request, Ok(vec![Candle::test_flat(1_000, 100.0)]));
+
+        let instance = &terminal.charts[&7];
+        assert_eq!(
+            instance.candle_fetch_request.as_ref(),
+            Some(&current_request)
+        );
+        assert!(instance.chart.candles.is_empty());
+
+        let _task = terminal
+            .apply_chart_candles_loaded(current_request, Ok(vec![Candle::test_flat(2_000, 200.0)]));
+
+        let instance = &terminal.charts[&7];
+        assert!(instance.candle_fetch_request.is_none());
+        assert_eq!(instance.chart.candles.len(), 1);
+        assert_eq!(instance.chart.candles[0].close, 200.0);
+    }
+
+    #[test]
+    fn prior_chart_incarnation_result_does_not_consume_recreated_secondary_request() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.chart_instance_generation = 1;
+
+        let old_request = CandleFetchRequest {
+            chart_id: 7,
+            chart_instance_generation: 1,
+            symbol: "ETH".to_string(),
+            timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
+            start_ms: 0,
+            end_ms: 1_000,
+            attempt: 0,
+        };
+
+        terminal.chart_instance_generation = 2;
+        let current_request = CandleFetchRequest {
+            chart_instance_generation: 2,
+            ..old_request.clone()
+        };
+        let mut replacement = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        replacement.set_secondary_symbol_identity("ETH".to_string(), "ETH".to_string());
+        replacement.secondary_candle_fetch_request = Some(current_request.clone());
+        terminal.charts.insert(7, replacement);
+
+        let _task = terminal.apply_chart_secondary_candles_loaded(
+            old_request,
+            Ok(vec![Candle::test_flat(1_000, 100.0)]),
+        );
+
+        let instance = &terminal.charts[&7];
+        assert_eq!(
+            instance.secondary_candle_fetch_request.as_ref(),
+            Some(&current_request)
+        );
+        assert!(
+            instance
+                .chart
+                .secondary_series
+                .as_ref()
+                .expect("secondary series")
+                .candles
+                .is_empty()
+        );
+
+        let _task = terminal.apply_chart_secondary_candles_loaded(
+            current_request,
+            Ok(vec![Candle::test_flat(2_000, 200.0)]),
+        );
+
+        let instance = &terminal.charts[&7];
+        assert!(instance.secondary_candle_fetch_request.is_none());
+        let candles = &instance
+            .chart
+            .secondary_series
+            .as_ref()
+            .expect("secondary series")
+            .candles;
+        assert_eq!(candles.len(), 1);
+        assert_eq!(candles[0].close, 200.0);
+    }
+
+    #[test]
     fn empty_candle_error_uses_chart_display_name_for_outcome_markets() {
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.charts.clear();
@@ -374,6 +495,7 @@ mod tests {
         instance.symbol_display = "YES: Will BTC close green?".to_string();
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "#950".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::Refresh,
@@ -410,6 +532,7 @@ mod tests {
         let mut instance = ChartInstance::new(1, "@3".to_string(), Timeframe::H1);
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "@3".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::Refresh,
@@ -463,6 +586,7 @@ mod tests {
         let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::Refresh,
@@ -493,6 +617,7 @@ mod tests {
         let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::Refresh,
@@ -522,6 +647,7 @@ mod tests {
         let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::S1);
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::S1,
             mode: CandleFetchMode::Refresh,
@@ -551,6 +677,7 @@ mod tests {
         let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::Refresh,
@@ -588,6 +715,7 @@ mod tests {
         let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::Refresh,
@@ -622,6 +750,7 @@ mod tests {
             .set_candles(vec![Candle::test_flat(1_000, 100.0)]);
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::BackfillOlder,
@@ -657,6 +786,7 @@ mod tests {
             .set_candles(vec![Candle::test_flat(2_000, 100.0)]);
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::BackfillOlder,
@@ -696,6 +826,7 @@ mod tests {
             .set_candles(vec![Candle::test_flat(1_000, 100.0)]);
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::BackfillOlder,
@@ -736,6 +867,7 @@ mod tests {
         instance.set_secondary_symbol_identity("ETH".to_string(), "ETH".to_string());
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "ETH".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::Refresh,
@@ -776,6 +908,7 @@ mod tests {
         instance.set_secondary_symbol_identity("ETH".to_string(), "ETH".to_string());
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "ETH".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::Refresh,
@@ -813,6 +946,7 @@ mod tests {
         instance.set_secondary_symbol_identity("ETH".to_string(), "ETH".to_string());
         let request = CandleFetchRequest {
             chart_id: 1,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "ETH".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::Refresh,

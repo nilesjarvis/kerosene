@@ -100,7 +100,7 @@ impl TradingTerminal {
                         id,
                         &chart_cfg.symbol,
                         tf,
-                        crate::chart_state::ChartBackfillRequestContext::new(source, 0, 0),
+                        crate::chart_state::ChartBackfillRequestContext::new(source, 0, 0, 0),
                         cached_start_ms,
                         0,
                     );
@@ -117,6 +117,7 @@ impl TradingTerminal {
                     let macro_request_id = instance.next_macro_candles_request_id();
                     boot_tasks.extend(Self::fetch_macro_candles_tasks(
                         id,
+                        0,
                         macro_request_id,
                         &chart_cfg.symbol,
                     ));
@@ -155,7 +156,7 @@ impl TradingTerminal {
                     id,
                     &symbol,
                     tf,
-                    crate::chart_state::ChartBackfillRequestContext::new(source, 0, 0),
+                    crate::chart_state::ChartBackfillRequestContext::new(source, 0, 0, 0),
                     cached_start_ms,
                     0,
                 );

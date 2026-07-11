@@ -109,14 +109,24 @@ impl TradingTerminal {
                     return self.maybe_fetch_chart_funding(id);
                 }
             }
-            Message::MacroCandlesLoaded(id, request_id, symbol, tf, result) => {
+            Message::MacroCandlesLoaded(
+                id,
+                chart_instance_generation,
+                request_id,
+                symbol,
+                tf,
+                result,
+            ) => {
+                if chart_instance_generation != self.chart_instance_generation {
+                    return Task::none();
+                }
                 if self.symbol_key_is_hidden(&symbol) {
                     return Task::none();
                 }
                 if let Some(inst) = self.charts.get_mut(&id)
                     && inst.macro_candles_request_id == request_id
                     && inst.symbol == symbol
-                    && let Ok(candles) = result
+                    && let Ok(candles) = result.into_result()
                 {
                     match tf {
                         Timeframe::H1 => {
@@ -239,10 +249,11 @@ mod tests {
 
         let _task = terminal.update_chart_macro_indicators(Message::MacroCandlesLoaded(
             7,
+            0,
             1,
             "BTC".to_string(),
             Timeframe::D1,
-            Ok(vec![Candle::test_flat(1_000, 100.0)]),
+            Ok(vec![Candle::test_flat(1_000, 100.0)]).into(),
         ));
 
         let instance = terminal.charts.get(&7).expect("chart instance");
@@ -263,10 +274,11 @@ mod tests {
 
         let _task = terminal.update_chart_macro_indicators(Message::MacroCandlesLoaded(
             7,
+            0,
             2,
             "BTC".to_string(),
             Timeframe::W1,
-            Ok(vec![Candle::test_flat(3_000, 300.0)]),
+            Ok(vec![Candle::test_flat(3_000, 300.0)]).into(),
         ));
 
         let instance = terminal.charts.get(&7).expect("chart instance");
@@ -286,15 +298,61 @@ mod tests {
 
         let _task = terminal.update_chart_macro_indicators(Message::MacroCandlesLoaded(
             7,
+            0,
             2,
             "BTC".to_string(),
             Timeframe::H1,
-            Ok(vec![Candle::test_flat(4_000, 400.0)]),
+            Ok(vec![Candle::test_flat(4_000, 400.0)]).into(),
         ));
 
         let instance = terminal.charts.get(&7).expect("chart instance");
         assert_eq!(instance.chart.hourly_candles.len(), 1);
         assert_eq!(instance.chart.hourly_candles[0].open_time, 4_000);
         assert_eq!(instance.chart.hourly_candles[0].close, 400.0);
+    }
+
+    #[test]
+    fn prior_chart_incarnation_macro_result_is_ignored() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+        terminal.chart_instance_generation = 2;
+
+        let mut replacement = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        replacement.macro_candles_request_id = 1;
+        terminal.charts.insert(7, replacement);
+
+        let _task = terminal.update_chart_macro_indicators(Message::MacroCandlesLoaded(
+            7,
+            1,
+            1,
+            "BTC".to_string(),
+            Timeframe::D1,
+            Ok(vec![Candle::test_flat(1_000, 100.0)]).into(),
+        ));
+
+        assert!(terminal.charts[&7].chart.daily_candles.is_empty());
+
+        let _task = terminal.update_chart_macro_indicators(Message::MacroCandlesLoaded(
+            7,
+            2,
+            1,
+            "BTC".to_string(),
+            Timeframe::D1,
+            Ok(vec![Candle::test_flat(2_000, 200.0)]).into(),
+        ));
+
+        let candles = &terminal.charts[&7].chart.daily_candles;
+        assert_eq!(candles.len(), 1);
+        assert_eq!(candles[0].open_time, 2_000);
+        assert_eq!(candles[0].close, 200.0);
+    }
+
+    #[test]
+    fn macro_request_id_wraps_to_a_distinct_immediate_owner() {
+        let mut instance = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        instance.macro_candles_request_id = u64::MAX;
+
+        assert_eq!(instance.next_macro_candles_request_id(), 0);
+        assert_eq!(instance.macro_candles_request_id, 0);
     }
 }

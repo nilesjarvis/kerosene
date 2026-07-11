@@ -159,6 +159,7 @@ impl TradingTerminal {
             preset_edit_idx: None,
             charts: parts.charts,
             next_chart_id: parts.next_chart_id,
+            chart_instance_generation: 0,
             primary_chart_id: None,
             spaghetti_charts: parts.spaghetti_charts,
             next_spaghetti_id: parts.next_spaghetti_id,

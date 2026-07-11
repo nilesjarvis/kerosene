@@ -333,6 +333,10 @@ pub(crate) struct TradingTerminal {
     // Multi-chart state: each chart pane has its own instance
     pub(crate) charts: HashMap<ChartId, ChartInstance>,
     pub(crate) next_chart_id: ChartId,
+    /// Runtime incarnation shared by historical primary, secondary, and macro
+    /// candle tasks. Runtime layout reconstruction advances it before replacing
+    /// chart instances.
+    pub(crate) chart_instance_generation: u64,
     // Primary chart ID - this chart follows watchlist symbol changes
     pub(crate) primary_chart_id: Option<ChartId>,
     // Spaghetti (comparison) charts

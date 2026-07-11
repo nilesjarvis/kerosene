@@ -489,7 +489,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartEarningsFilingSummaryLoaded(_, _, _)
         | Message::OpenChartEarningsFiling(_, _, _)
         | Message::ChartEarningsFilingOpenResult(_)
-        | Message::MacroCandlesLoaded(_, _, _, _, _)
+        | Message::MacroCandlesLoaded(_, _, _, _, _, _)
         | Message::ChartCandlesLoaded(_, _)
         | Message::ChartSecondaryCandlesLoaded(_, _)
         | Message::ChartFundingHistoryLoaded(_, _)

@@ -597,6 +597,7 @@ impl TradingTerminal {
                             let macro_request_id = inst.next_macro_candles_request_id();
                             chart_tasks.extend(Self::fetch_macro_candles_tasks(
                                 *id,
+                                chart_backfill_request_context.chart_instance_generation,
                                 macro_request_id,
                                 &valid.key,
                             ));
@@ -1213,6 +1214,7 @@ mod tests {
             crate::config::ChartBackfillSource::Hyperliquid,
             0,
             0,
+            terminal.chart_instance_generation,
         );
         let mut duplicate = ChartInstance::new(10, "@0".to_string(), Timeframe::H1);
         duplicate.set_secondary_symbol_identity("@0".to_string(), "@0".to_string());

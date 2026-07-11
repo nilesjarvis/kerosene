@@ -46,6 +46,7 @@ impl TradingTerminal {
     /// the chart ID and symbol that requested them.
     pub(crate) fn fetch_macro_candles_tasks(
         chart_id: ChartId,
+        chart_instance_generation: u64,
         request_id: u64,
         coin: &str,
     ) -> Vec<Task<Message>> {
@@ -70,7 +71,14 @@ impl TradingTerminal {
                     now_ms,
                 ),
                 move |result| {
-                    Message::MacroCandlesLoaded(id, request_id, s1.clone(), Timeframe::H1, result)
+                    Message::MacroCandlesLoaded(
+                        id,
+                        chart_instance_generation,
+                        request_id,
+                        s1.clone(),
+                        Timeframe::H1,
+                        result.into(),
+                    )
                 },
             ),
             Task::perform(
@@ -81,7 +89,14 @@ impl TradingTerminal {
                     now_ms,
                 ),
                 move |result| {
-                    Message::MacroCandlesLoaded(id, request_id, s2.clone(), Timeframe::D1, result)
+                    Message::MacroCandlesLoaded(
+                        id,
+                        chart_instance_generation,
+                        request_id,
+                        s2.clone(),
+                        Timeframe::D1,
+                        result.into(),
+                    )
                 },
             ),
             Task::perform(
@@ -92,7 +107,14 @@ impl TradingTerminal {
                     now_ms,
                 ),
                 move |result| {
-                    Message::MacroCandlesLoaded(id, request_id, s3.clone(), Timeframe::W1, result)
+                    Message::MacroCandlesLoaded(
+                        id,
+                        chart_instance_generation,
+                        request_id,
+                        s3.clone(),
+                        Timeframe::W1,
+                        result.into(),
+                    )
                 },
             ),
             Task::perform(
@@ -103,7 +125,14 @@ impl TradingTerminal {
                     now_ms,
                 ),
                 move |result| {
-                    Message::MacroCandlesLoaded(id, request_id, s4.clone(), Timeframe::Mo1, result)
+                    Message::MacroCandlesLoaded(
+                        id,
+                        chart_instance_generation,
+                        request_id,
+                        s4.clone(),
+                        Timeframe::Mo1,
+                        result.into(),
+                    )
                 },
             ),
         ]
@@ -121,7 +150,7 @@ impl TradingTerminal {
         else {
             return Vec::new();
         };
-        Self::fetch_macro_candles_tasks(chart_id, request_id, coin)
+        Self::fetch_macro_candles_tasks(chart_id, self.chart_instance_generation, request_id, coin)
     }
 
     pub(crate) fn build_candle_fetch_request(
@@ -139,6 +168,7 @@ impl TradingTerminal {
         };
         CandleFetchRequest {
             chart_id,
+            chart_instance_generation: backfill.chart_instance_generation,
             symbol: coin.to_string(),
             timeframe: tf,
             mode: CandleFetchMode::Refresh,
@@ -175,6 +205,7 @@ impl TradingTerminal {
         let request_span_ms = tf.duration_ms().saturating_mul(candles_this_request);
         Some(CandleFetchRequest {
             chart_id,
+            chart_instance_generation: backfill.chart_instance_generation,
             symbol: coin.to_string(),
             timeframe: tf,
             mode: CandleFetchMode::BackfillOlder,
@@ -201,6 +232,7 @@ impl TradingTerminal {
             self.chart_backfill_source,
             self.read_data_provider_generation,
             self.hydromancer_key_generation,
+            self.chart_instance_generation,
         )
     }
 
@@ -236,6 +268,7 @@ impl TradingTerminal {
             self.chart_backfill_source_for_symbol_timeframe(symbol, timeframe),
             self.read_data_provider_generation,
             self.hydromancer_key_generation,
+            self.chart_instance_generation,
         )
     }
 
@@ -262,7 +295,7 @@ impl TradingTerminal {
                 )
                 .await
             },
-            move |result| Message::ChartCandlesLoaded(request.clone(), result),
+            move |result| Message::ChartCandlesLoaded(request.clone(), result.into()),
         )
     }
 
@@ -289,7 +322,7 @@ impl TradingTerminal {
                 )
                 .await
             },
-            move |result| Message::ChartSecondaryCandlesLoaded(request.clone(), result),
+            move |result| Message::ChartSecondaryCandlesLoaded(request.clone(), result.into()),
         )
     }
 

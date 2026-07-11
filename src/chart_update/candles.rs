@@ -17,10 +17,10 @@ impl TradingTerminal {
                 self.switch_chart_candle_timeframe(id, timeframe)
             }
             Message::ChartCandlesLoaded(request, result) => {
-                self.apply_chart_candles_loaded(request, result)
+                self.apply_chart_candles_loaded(request, result.into_result())
             }
             Message::ChartSecondaryCandlesLoaded(request, result) => {
-                self.apply_chart_secondary_candles_loaded(request, result)
+                self.apply_chart_secondary_candles_loaded(request, result.into_result())
             }
             Message::ChartFundingHistoryLoaded(request, result) => {
                 self.apply_chart_funding_history_loaded(request, *result)

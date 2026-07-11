@@ -77,7 +77,7 @@ impl TradingTerminal {
         match message {
             message @ (Message::ToggleMacroMenu(_)
             | Message::ToggleMacroIndicator(_, _)
-            | Message::MacroCandlesLoaded(_, _, _, _, _)) => {
+            | Message::MacroCandlesLoaded(_, _, _, _, _, _)) => {
                 return self.update_chart_macro_indicators(message);
             }
             message @ (Message::ToggleChartEarningsMarkers(_)

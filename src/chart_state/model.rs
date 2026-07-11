@@ -23,6 +23,7 @@ pub(crate) use surface::{ChartSurfaceId, DetachedChartWindowState};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CandleFetchRequest {
     pub(crate) chart_id: ChartId,
+    pub(crate) chart_instance_generation: u64,
     pub(crate) symbol: String,
     pub(crate) timeframe: Timeframe,
     pub(crate) mode: CandleFetchMode,
@@ -45,6 +46,7 @@ pub(crate) struct ChartBackfillRequestContext {
     pub(crate) source: config::ChartBackfillSource,
     pub(crate) read_data_provider_generation: u64,
     pub(crate) hydromancer_key_generation: u64,
+    pub(crate) chart_instance_generation: u64,
 }
 
 impl ChartBackfillRequestContext {
@@ -52,11 +54,13 @@ impl ChartBackfillRequestContext {
         source: config::ChartBackfillSource,
         read_data_provider_generation: u64,
         hydromancer_key_generation: u64,
+        chart_instance_generation: u64,
     ) -> Self {
         Self {
             source,
             read_data_provider_generation,
             hydromancer_key_generation,
+            chart_instance_generation,
         }
     }
 }

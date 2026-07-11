@@ -1812,13 +1812,26 @@ pub(crate) enum Message {
     ChartSwitchTimeframe(ChartId, Timeframe),
     ChartReload(ChartId),
     ChartResetView(ChartId, ChartSurfaceId),
-    ChartCandlesLoaded(CandleFetchRequest, Result<Vec<Candle>, String>),
-    ChartSecondaryCandlesLoaded(CandleFetchRequest, Result<Vec<Candle>, String>),
+    ChartCandlesLoaded(
+        CandleFetchRequest,
+        RedactedPublicMarketMessageResult<Vec<Candle>>,
+    ),
+    ChartSecondaryCandlesLoaded(
+        CandleFetchRequest,
+        RedactedPublicMarketMessageResult<Vec<Candle>>,
+    ),
     ChartFundingHistoryLoaded(
         FundingFetchRequest,
         Box<Result<Vec<FundingRatePoint>, String>>,
     ),
-    MacroCandlesLoaded(ChartId, u64, String, Timeframe, Result<Vec<Candle>, String>),
+    MacroCandlesLoaded(
+        ChartId,
+        u64,
+        u64,
+        String,
+        Timeframe,
+        RedactedPublicMarketMessageResult<Vec<Candle>>,
+    ),
     ChartWsCandleUpdate(ChartId, String, String, MarketDataSourceContext, Candle),
     ChartWsCandleLagged(ChartId, String, String, MarketDataSourceContext, u64),
     ChartPriceFlashTick,
@@ -3630,6 +3643,27 @@ mod tests {
                 sz: DAY_VALUE,
             }],
         };
+        let candle_request = || crate::chart_state::CandleFetchRequest {
+            chart_id: 9,
+            chart_instance_generation: 7,
+            symbol: REQUEST_SYMBOL.to_string(),
+            timeframe: Timeframe::H1,
+            mode: crate::chart_state::CandleFetchMode::Refresh,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: 5,
+            hydromancer_key_generation: 3,
+            start_ms: 1_778_357_590_000,
+            end_ms: 1_778_361_190_000,
+            attempt: 0,
+        };
+        let candles = || {
+            vec![crate::api::Candle::test_ohlcv(
+                1_778_357_590_000,
+                1_778_361_189_999,
+                [DAY_VALUE, WEEK_VALUE, MONTH_VALUE, DAY_VALUE],
+                WEEK_VALUE,
+            )]
+        };
         let messages = vec![
             Message::BookLoaded {
                 request_id: 7,
@@ -3738,6 +3772,26 @@ mod tests {
                 7,
                 request_symbols(),
                 1_778_357_590_000,
+                Err(ERROR.to_string()).into(),
+            ),
+            Message::ChartCandlesLoaded(candle_request(), Ok(candles()).into()),
+            Message::ChartCandlesLoaded(candle_request(), Err(ERROR.to_string()).into()),
+            Message::ChartSecondaryCandlesLoaded(candle_request(), Ok(candles()).into()),
+            Message::ChartSecondaryCandlesLoaded(candle_request(), Err(ERROR.to_string()).into()),
+            Message::MacroCandlesLoaded(
+                9,
+                7,
+                11,
+                REQUEST_SYMBOL.to_string(),
+                Timeframe::D1,
+                Ok(candles()).into(),
+            ),
+            Message::MacroCandlesLoaded(
+                9,
+                7,
+                11,
+                REQUEST_SYMBOL.to_string(),
+                Timeframe::D1,
                 Err(ERROR.to_string()).into(),
             ),
         ];

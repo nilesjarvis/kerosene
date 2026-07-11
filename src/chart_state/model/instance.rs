@@ -309,7 +309,7 @@ impl ChartInstance {
     }
 
     pub(crate) fn next_macro_candles_request_id(&mut self) -> u64 {
-        self.macro_candles_request_id = self.macro_candles_request_id.saturating_add(1);
+        self.macro_candles_request_id = self.macro_candles_request_id.wrapping_add(1);
         self.macro_candles_request_id
     }
 

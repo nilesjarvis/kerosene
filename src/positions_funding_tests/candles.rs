@@ -12,6 +12,7 @@ fn candle_fetch_request_overlaps_cached_candle_refresh() {
             crate::config::ChartBackfillSource::Hyperliquid,
             0,
             0,
+            0,
         ),
         Some(last_candle_ms),
         0,

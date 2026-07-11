@@ -379,6 +379,17 @@ from the replacement pane's request. REST/stream parsing, exact book values,
 precision planning, merge/scope behavior, sanitized UI errors, rendered rows,
 and click-to-limit behavior remain unchanged.
 
+Historical primary, comparison, and macro candle completions use the same
+public-market result boundary. Generic Elm diagnostics retain chart,
+incarnation, request, symbol, timeframe, provider/key-generation, range, and
+attempt correlation while exposing only `Ok`/`Err` shape; they do not traverse
+OHLCV payloads or pre-handler external errors. A runtime chart-incarnation
+generation spans all three completion families and advances before saved-layout
+chart reconstruction, so an old task cannot become the owner of an identical
+replacement chart. Exact candle values, cache/backfill/retry policy, chart
+errors, macro calculations, rendering, interaction, and order-price behavior
+remain unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

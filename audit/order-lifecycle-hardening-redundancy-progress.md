@@ -5034,6 +5034,114 @@ target-specific cancellation policy, not HTTP replay.
   could theoretically meet a reused ID because removed owners are intentionally
   not retained as unbounded tombstones; current active IDs are collision-safe.
 
+### F-67 — Runtime chart reconstruction can reuse candle completion ownership
+
+- Status: addressed in Turn 60; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium correlation and diagnostic hardening; prior-incarnation
+  history can become chart and interaction pricing context, but no automatic
+  exchange mutation or current wrong-order submission was found
+- Scope: primary and comparison candle refresh/backfill planning, macro candle
+  batches, provider/key/request ownership, runtime layout reconstruction,
+  request/batch rollover, cache/merge/retry/error handling, canvas and quick-
+  order dependencies, parent diagnostics, boot state, routes, docs, and focused
+  tests
+- Preconditions/event ordering:
+  1. A chart with persisted ID, symbol, timeframe, source, and provider/key
+     generations dispatches primary or comparison request `A`; its complete
+     request value is stored on that `ChartInstance`. Its first macro batch is
+     also numbered one.
+  2. Before the tasks complete, saved-layout application clears the pending
+     chart request state and reconstructs the chart map with the same persisted
+     IDs and configuration. The old iced tasks remain alive.
+  3. If the replacement historical request is planned in the same millisecond,
+     its prior request tuple can equal `A` exactly. Independently, the new
+     `ChartInstance` always resets its macro sequence and dispatches batch one.
+  4. A prior primary or comparison completion could therefore consume the
+     replacement's stored request and merge old history; a prior macro
+     completion could overwrite the replacement's matching timeframe. The
+     intended replacement completion could then be rejected or arrive after
+     the stale data was displayed.
+  5. The three raw parent results also allowed derived `Message::Debug` to walk
+     candle timing/collection structure or a pre-handler upstream error even
+     though standalone candle diagnostics already redact OHLCV values.
+- Evidence: parent commit
+  `361d951368ba5c1884be1d15057e1bb7a576b7fb` stored the full
+  `CandleFetchRequest` on primary/comparison instances and required exact
+  source, provider generation, conditional Hydromancer generation, hidden-
+  symbol, chart ID, symbol, timeframe, and stored-request equality at the first
+  consumers (`src/chart_state/candles.rs`, `src/chart_update/candles/loaded.rs`).
+  The request had no chart-incarnation field. Runtime `apply_layout` clears
+  pending state and calls `restore_layout_chart_instances`, which constructs a
+  new map with the persisted IDs and publishes replacement tasks
+  (`src/layout_persistence.rs`, `src/layout_persistence/instances.rs`). Macro
+  ownership lived only in `ChartInstance::macro_candles_request_id`, initialized
+  at zero and saturated after increment; its result guard compared only chart
+  ID, local batch ID, symbol, and timeframe. All boot, layout, symbol-repair,
+  reload/backfill, comparison, and macro publishers and the only three result
+  consumers were traced. Candle state feeds canvas bounds/coordinates and the
+  existing right-click/HUD quick-order interaction, but submission remains an
+  explicit user action through canonical order preparation and signing. No
+  second result writer, persisted runtime owner, or automatic mutation consumer
+  was found.
+- Violated invariant: a historical candle completion may consume pending state
+  or mutate chart history only when its immutable owner belongs to the current
+  runtime chart incarnation. Reconstructing an identical persisted chart must
+  not make a surviving prior task current again.
+- Risk: a prior series can replace or preempt the intended replacement series,
+  affect displayed history and indicator inputs, and temporarily influence the
+  chart coordinate from which a user seeds a limit price. A user must still
+  initiate and confirm the order, and canonical pricing, sizing, validation,
+  preparation, and signing remain unchanged. Different provider, key, source,
+  symbol, timeframe, or stored-request contexts were already rejected and
+  remain so.
+- Why existing checks did not cover it: ordinary symbol/timeframe/reload and
+  backfill changes replace the exact stored request on the same instance, while
+  provider/key generation checks reject their stale tasks. Existing tests
+  covered those mismatches and stale macro batch IDs. Only whole-map runtime
+  reconstruction reset the instance-local identity while preserving every
+  persisted public parameter; no test delivered an old completion to an
+  otherwise identical replacement chart.
+- Implemented fix: add one runtime-only terminal
+  `chart_instance_generation`, initialize it to zero with boot chart tasks, and
+  advance it with wrapping addition before runtime layout chart reconstruction.
+  Stamp it into every primary/comparison refresh, older-page, and retry request;
+  carry it beside the local macro batch ID; and reject a mismatching generation
+  at each first consumer before any pending/cache/chart mutation. Change the
+  macro sequence from saturating to wrapping so the immediate owner changes at
+  `u64::MAX`. Replace all three raw parent results with the existing
+  `RedactedPublicMarketMessageResult<T>` and restore the exact result only at
+  the first consumer. Existing source/provider/key and complete request/batch
+  fences remain intact.
+- Regression coverage: prior-incarnation primary and comparison successes must
+  preserve the replacement request and empty series before the exact current
+  generation is accepted. A prior macro result with the replacement's same
+  local batch ID must remain inert before the current generation updates the
+  series. Repeating runtime restoration with the same ID/config proves
+  generations 42 and 43 own otherwise reset batch-one instances. A boundary
+  control proves the local macro owner wraps from `u64::MAX` to zero. The shared
+  parent-message control retains request correlation and result shape while
+  hiding OHLCV payload/error values; existing candle, retry/backfill, provider,
+  layout, routing, and macro controls remain applicable.
+- Smallest behavior-preserving fix: one runtime scalar/default, one field in the
+  existing historical request context, one argument in the existing macro task
+  and message path, three first-consumer checks, one counter operation change,
+  reuse of an existing result wrapper, mechanical route/call-site updates,
+  focused adversarial tests, and docs. No endpoint/request window, provider/key
+  policy, candle value, merge/cache/backfill/retry rule, error/status copy,
+  macro calculation, canvas interaction, order input/preparation, signed bytes,
+  config/schema/layout representation, persistence, or trading semantic
+  changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  exhaustive definition/producer/consumer/reconstruction tracing, existing
+  request-context controls, and the mechanical diff establish the intended
+  boundary, but focused and nearby suites cannot execute until ALSA development
+  metadata is available. Generation reuse would require a task to survive a
+  full `u64` runtime-layout cycle; macro batch reuse within one incarnation
+  likewise requires a task to survive a full `u64` batch cycle. No finite
+  counter can eliminate those theoretical cases. Session-data and spaghetti
+  candle completion ownership remain separate lifecycles for review.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -8767,6 +8875,90 @@ target-specific cancellation policy, not HTTP replay.
   price/quick-order consumers; preserve every candle value, chart state,
   interaction, refresh policy, and trading semantic.
 
+## Turn 60 — Fence Candle History to the Runtime Chart Incarnation
+
+- Status: F-67 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: primary/comparison refresh and older-page candle requests, macro
+  batches, immutable request context, runtime layout/chart incarnation,
+  provider/key/source fences, rollover behavior, cache/merge/retry/error paths,
+  chart and order-price consumers, diagnostics, boot/routing/call sites, docs,
+  and focused regressions
+- Invariant: only a completion stamped for the current runtime chart
+  incarnation, and still satisfying every existing provider/key/request or
+  macro-batch check, may consume pending ownership or mutate historical chart
+  data; reconstructing the same persisted chart cannot revive an old task.
+- Protected behavior: exact OHLCV values and timeframes; primary/comparison
+  refresh and backfill windows; retry count/delay and terminal errors; provider,
+  Hydromancer-key, Schwab-token, cache, normalization, merge, exhaustion and
+  overlay policy; macro fetch cadence/calculations; visible charts, statuses and
+  interactions; right-click/HUD quick-order pricing inputs; every explicit
+  order preparation/signing rule; task timing/content; configuration, layout and
+  persistence compatibility; and all trading/UI semantics.
+- Preconditions/event ordering: request `A` owns an existing chart. Applying an
+  identical saved layout reconstructs that chart ID while `A` remains in flight
+  and publishes `B`. Primary/comparison request equality can collide when both
+  windows are planned in the same millisecond, and both old/new macro instances
+  use local batch one. Runtime restoration now advances one shared outer
+  generation before replacement; all new requests/batches carry it, so each
+  unchanged first-consumer fence rejects `A` without consuming `B` or changing
+  any series, cache, error, or retry state.
+- Evidence: F-67 records every request/context field, refresh/backfill/retry and
+  macro publisher, boot/layout/symbol-repair call site, parent message, first
+  consumer, chart-map replacement, provider/key/source guard, cache/merge/error
+  branch, macro owner, standalone/parent diagnostic boundary, rendered and
+  interaction consumer, route, and nearby test. No other regular-chart candle
+  result publisher, pending owner, persisted runtime generation, direct signed
+  mutation caller, or second history writer was found.
+- Change: add and initialize runtime-only `chart_instance_generation`; stamp it
+  through primary/comparison request contexts and macro publications; advance it
+  before runtime layout chart reconstruction; reject mismatches in all three
+  first consumers; let the macro batch ID wrap rather than saturate; wrap the
+  three parent results in the existing public-market diagnostic boundary and
+  recover them only at those consumers; add primary, comparison, macro,
+  repeated-reconstruction, rollover, and parent-diagnostic controls; document
+  the ownership boundary.
+- Tests/checks:
+  - Baseline `chart_update::candles`, `chart_state::candles`,
+    `chart_update::macro_indicators`, and `layout_persistence::instances` suites
+    plus `cargo check` stopped in `alsa-sys` before Kerosene compilation because
+    `pkg-config` could not find the system `alsa.pc` file.
+  - The pre-fix primary-incarnation regression stopped at that same dependency
+    boundary before demonstrating its expected failure.
+  - Post-fix `chart_update::candles`, `chart_update::macro_indicators`,
+    `layout_persistence::instances`, public-market parent-message,
+    `app_update::routing`, and `api::candles` suites stopped at the same
+    dependency boundary.
+  - `cargo fmt` passed after the Rust edits; final formatting and diff checks are
+    recorded in the current validation summary below.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no view, subscription identity, request
+    body/window/cadence, interaction behavior, or exchange mutation changed;
+    compilation is already blocked, and no live market request, exchange call,
+    or credential-bearing operation ran.
+- Compatibility/UX assessment: every valid completion restores the exact
+  payload at the same first consumer and enters the unchanged request checks,
+  merge/cache/retry/error/overlay/macro paths. The new numbers are runtime-only,
+  unrendered, and unserialized. Parent diagnostics become value-neutral while
+  request correlation and standalone candle diagnostics remain available. No
+  exact candle/price/timeframe, visible copy/state/timing, user interaction,
+  persisted value, signed bytes, order preparation, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-67 is source-
+  hardened; full-`u64` incarnation/batch reuse and executable validation remain
+  residual. Session-data/spaghetti candle results, calendar/file/config/
+  screenshot/private-integration result classes, independently formattable
+  nested account/order types, classified external-status paths, and the
+  remainder of Track 9 still require review.
+- Prior turn commit hash: `361d951368ba5c1884be1d15057e1bb7a576b7fb`
+- Next candidate: audit `SessionDataCandlesLoaded` and
+  `SpaghettiCandlesLoaded` through request ownership, runtime pane/chart
+  reconstruction, batch/partial completion, normalization and pair/session
+  calculations, errors and parent diagnostics, and all order-price consumers;
+  preserve exact data, rendering, refresh behavior, persistence, interaction,
+  and trading semantics.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -8808,10 +9000,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline order-book data/API/layout suites and
-  `cargo check`; the pre-fix recreated-instance regression; post-fix exact
-  recreation, rollover, complete book-data, public-message, order-book API/
-  layout, routing, and order-book form suites;
+- Environment-blocked this turn: baseline chart-candle, chart-state candle,
+  macro-indicator, and layout-instance suites plus `cargo check`; the pre-fix
+  primary chart-incarnation regression; post-fix chart-candle, macro-indicator,
+  layout-instance, public-message, routing, and candle-API suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live market request, exchange mutation, or credential-bearing operation was
@@ -8822,7 +9014,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-66
+  F-40, and F-42 through F-67
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -8882,7 +9074,9 @@ target-specific cancellation policy, not HTTP replay.
   preserving metadata policy and all valid fan-out. Order-book REST ownership
   now survives runtime pane recreation and parent diagnostics are source-
   hardened by F-66 while preserving exact book/precision/click behavior.
-  Remaining
-  independently formattable nested account/order types and classified external-
-  status paths, plus the rest of Track 9, require completion before a final
-  verdict.
+  Primary, comparison, and macro candle history ownership now survives runtime
+  chart recreation and parent diagnostics are source-hardened by F-67 while
+  preserving exact candle/cache/backfill/interaction behavior. Remaining
+  session-data/spaghetti candle lifecycles, independently formattable nested
+  account/order types, and classified external-status paths, plus the rest of
+  Track 9, require completion before a final verdict.

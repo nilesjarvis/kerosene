@@ -20,6 +20,7 @@ impl TradingTerminal {
         next_chart_id: ChartId,
         next_spaghetti_id: SpaghettiChartId,
     ) -> Vec<Task<Message>> {
+        self.chart_instance_generation = self.chart_instance_generation.wrapping_add(1);
         let mut boot_tasks = Vec::new();
         self.restore_saved_chart_instances(chart_configs, next_chart_id, &mut boot_tasks);
         self.restore_saved_spaghetti_instances(
@@ -121,6 +122,7 @@ impl TradingTerminal {
                     let macro_request_id = instance.next_macro_candles_request_id();
                     boot_tasks.extend(Self::fetch_macro_candles_tasks(
                         id,
+                        self.chart_instance_generation,
                         macro_request_id,
                         &primary_symbol,
                     ));
@@ -295,6 +297,8 @@ mod tests {
             0,
         );
 
+        assert_eq!(terminal.chart_instance_generation, 1);
+
         let primary = &terminal.charts[&1];
         assert_eq!(primary.symbol, "PURR/USDC");
         assert_eq!(primary.symbol_display, "PURR/USDC");
@@ -353,6 +357,48 @@ mod tests {
                     .map(|request| request.symbol.as_str())
                     != Some("@0")
         }));
+        assert!(terminal.charts.values().all(|chart| {
+            chart
+                .candle_fetch_request
+                .as_ref()
+                .is_none_or(|request| request.chart_instance_generation == 1)
+                && chart
+                    .secondary_candle_fetch_request
+                    .as_ref()
+                    .is_none_or(|request| request.chart_instance_generation == 1)
+        }));
+    }
+
+    #[test]
+    fn repeated_runtime_layout_restore_advances_chart_incarnation() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        terminal.chart_instance_generation = 41;
+        let config = config::ChartConfig::empty(7, "BTC", "H1");
+
+        let _tasks = terminal.restore_layout_chart_instances(&[config.clone()], &[], 8, 0);
+
+        assert_eq!(terminal.chart_instance_generation, 42);
+        assert_eq!(
+            terminal.charts[&7]
+                .candle_fetch_request
+                .as_ref()
+                .map(|request| request.chart_instance_generation),
+            Some(42)
+        );
+        assert_eq!(terminal.charts[&7].macro_candles_request_id, 1);
+
+        let _tasks = terminal.restore_layout_chart_instances(&[config], &[], 8, 0);
+
+        assert_eq!(terminal.chart_instance_generation, 43);
+        assert_eq!(
+            terminal.charts[&7]
+                .candle_fetch_request
+                .as_ref()
+                .map(|request| request.chart_instance_generation),
+            Some(43)
+        );
+        assert_eq!(terminal.charts[&7].macro_candles_request_id, 1);
     }
 
     #[test]

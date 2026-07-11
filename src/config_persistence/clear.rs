@@ -1073,6 +1073,7 @@ mod tests {
         let mut instance = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
         instance.candle_fetch_request = Some(CandleFetchRequest {
             chart_id: 7,
+            chart_instance_generation: terminal.chart_instance_generation,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
             mode: CandleFetchMode::Refresh,

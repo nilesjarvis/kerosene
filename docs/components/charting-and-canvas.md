@@ -67,9 +67,20 @@ symbol/timeframe/reload change
   -> overlays and funding/heatmap/liquidations may refresh
 ```
 
-`CandleFetchRequest` includes chart ID, symbol, timeframe, source, time range,
-and attempt number. Result handling compares the incoming request with the
-currently stored request before applying it.
+`CandleFetchRequest` includes chart ID, runtime chart-incarnation generation,
+symbol, timeframe, source/provider generations, time range, and attempt number.
+Result handling first requires the current incarnation and provider owners,
+then compares the incoming request with the currently stored request before
+applying it. Runtime layout restoration advances the incarnation before it
+reconstructs persisted chart IDs, so a surviving task from the prior layout
+cannot consume an otherwise identical primary or comparison request on the
+replacement chart.
+
+Hourly, daily, weekly, and monthly macro-candle batches carry that same outer
+incarnation plus their per-chart batch ID. This keeps macro history owned by the
+replacement chart even though a reconstructed `ChartInstance` starts its local
+batch sequence again. All valid merge, retry, cache, backfill, and macro
+indicator behavior is unchanged.
 
 The backfill source comes from `ReadDataProvider`:
 
