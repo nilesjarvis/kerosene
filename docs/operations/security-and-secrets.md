@@ -248,6 +248,16 @@ validation still compares the untouched strings and exact floating-point bits;
 quantity calculation, invalidation, recalculation, submission, and visible
 errors remain unchanged.
 
+Order presets and saved layouts remain exact persisted configuration, but their
+diagnostics are structural only. `OrderPreset` hides its label, size, and price
+offset value; `OrderPresetsConfig` reports only category counts; `SavedLayout`
+hides names, symbols, order/risk values, widget contents, and other nested
+configuration while reporting only collection counts and presence. Layout
+import/export result messages expose only `Ok`/`Err` shape and restore the
+original layout or error before existing normalization and toast handling.
+Serde fields, defaults, JSON wire output, layout application, preset execution,
+and visible import/export behavior remain unchanged.
+
 Account refresh results for the connected account, wallet-cluster members,
 wallet details, wallet tracker, portfolio history, and income snapshots retain
 their exact success payloads and upstream errors until the established update

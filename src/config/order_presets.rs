@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct OrderPreset {
     pub label: String,
     pub size: f64,
@@ -8,7 +9,20 @@ pub struct OrderPreset {
     pub price_offset_pct: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+impl fmt::Debug for OrderPreset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OrderPreset")
+            .field("label", &format_args!("<redacted>"))
+            .field("size", &format_args!("<redacted>"))
+            .field(
+                "price_offset_pct",
+                &self.price_offset_pct.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct OrderPresetsConfig {
     #[serde(default = "default_market_usd_presets")]
     pub market_usd: Vec<OrderPreset>,
@@ -22,6 +36,19 @@ pub struct OrderPresetsConfig {
     pub limit_coin: Vec<OrderPreset>,
     #[serde(default = "default_chase_coin_presets")]
     pub chase_coin: Vec<OrderPreset>,
+}
+
+impl fmt::Debug for OrderPresetsConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OrderPresetsConfig")
+            .field("market_usd_len", &self.market_usd.len())
+            .field("limit_usd_len", &self.limit_usd.len())
+            .field("chase_usd_len", &self.chase_usd.len())
+            .field("market_coin_len", &self.market_coin.len())
+            .field("limit_coin_len", &self.limit_coin.len())
+            .field("chase_coin_len", &self.chase_coin.len())
+            .finish()
+    }
 }
 
 fn default_market_usd_presets() -> Vec<OrderPreset> {

@@ -97,7 +97,7 @@ impl TradingTerminal {
 
                 return import_layout_task();
             }
-            Message::LayoutExported(result) => match result {
+            Message::LayoutExported(result) => match result.into_result() {
                 Ok(_) => self.push_toast("Layout exported successfully".to_string(), false),
                 Err(e) => {
                     if e != "Export cancelled" {
@@ -108,7 +108,7 @@ impl TradingTerminal {
                     }
                 }
             },
-            Message::LayoutImported(result) => match result {
+            Message::LayoutImported(result) => match result.into_result() {
                 Ok(layout) => {
                     if self.config_clear_requested || self.config_cleared_this_session {
                         self.push_toast(

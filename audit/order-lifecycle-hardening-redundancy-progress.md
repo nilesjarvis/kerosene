@@ -3983,6 +3983,91 @@ target-specific cancellation policy, not HTTP replay.
   preset/config-layout diagnostics and remaining raw external-status messages
   require separate Track 9 audits.
 
+### F-55 — Preset and saved-layout diagnostics expose trading configuration and I/O errors
+
+- Status: addressed in Turn 48; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium order/config privacy and diagnostic-boundary hardening; no
+  serialization, layout-application, preset-execution, or known production
+  disclosure defect was found
+- Scope: `OrderPreset`, `OrderPresetsConfig`, the complete `SavedLayout` wire
+  type, `LoadLayout`, `ExportLayout`, `LayoutImported`, and `LayoutExported`;
+  live/snapshot/persisted owners, layout I/O tasks, result consumers, preset
+  execution, import normalization, and config/layout/message tests
+- Preconditions/event ordering:
+  1. Preset editing stores user-defined label, exact size, and optional price
+     offset in one of six USD/coin market/limit/Chase categories. Preset
+     selection later reads those exact values for the existing sizing/order
+     path.
+  2. A saved-layout snapshot clones the preset config together with layout
+     name, pane/widget configs, active and favourite symbols, timeframe, order
+     kind, reduce-only state, tick size, alert thresholds, market slippage, and
+     other preferences. Serde persists the same structure to config or an
+     exported JSON file and restores it through import normalization.
+  3. All three wire types derived field-complete `Debug`. `LoadLayout` and
+     `ExportLayout` therefore traversed the full snapshot; `LayoutImported`
+     additionally traversed a successful snapshot or raw parse/read error, and
+     `LayoutExported` exposed its raw external error before the update handler's
+     existing cancellation check and sanitizer.
+- Evidence: parent commit
+  `c588dcd59c65b5d0083552084b1623e92246cd8b` shows raw preset/config derives at
+  `src/config/order_presets.rs:3-25`, the full raw saved-layout derive and fields
+  at `src/config/layouts.rs:303-370`, and the four layout message fields at
+  `src/message.rs:804-813`. Export/import serialization and publication are
+  `src/layout_update/layouts/io.rs:10-52`; exact result handling, cancellation
+  checks, import pruning/normalization, persistence, and visible toasts are
+  `src/layout_update/layouts.rs:85-149`. Preset mutation and execution remain in
+  `src/order_update/presets.rs:9-196`.
+- Violated invariant: persisted order/layout configuration must remain exact
+  for compatibility and execution, but generic runtime diagnostics must not
+  reproduce preset amounts, symbol/risk preferences, nested widget contents,
+  imported layout data, or unsanitized filesystem/parse errors.
+- Risk: parent `Message::Debug`, an assertion failure, state/config
+  instrumentation, or future logging could disclose a user's preset sizing,
+  watched/traded symbols, slippage and risk settings, layout contents, or raw
+  external error details. No key, signature, mutation retry, signed payload,
+  incorrect order preparation, or known live diagnostic is implicated.
+- Why existing checks did not cover it: F-51 wrapped the exact preset only at
+  direct order messages, leaving the independently formattable config model and
+  saved-layout nesting raw. Existing preset tests protected default offsets and
+  execution; layout tests protected serde defaults, future-pane retention,
+  config-clear fencing, and post-routing error sanitization, but none formatted
+  the model or parent I/O message.
+- Implemented fix: custom `Debug` for `OrderPreset` hides label/size/offset
+  value while retaining offset presence; `OrderPresetsConfig` emits six category
+  counts (`src/config/order_presets.rs:4-52`). `SavedLayout` emits only a
+  redacted name, pane presence, nested collection counts, and the already-safe
+  preset counts (`src/config/layouts.rs:303-390`). Add
+  `RedactedLayoutMessageResult<T>` and apply it to both I/O result variants,
+  with producer wrapping and immediate update-layer recovery
+  (`src/message.rs:427-453`, `src/message.rs:829-841`,
+  `src/layout_update/layouts/io.rs:10-52`,
+  `src/layout_update/layouts.rs:100-111`).
+- Regression coverage: preset/config controls reject unique label, size, and
+  offset sentinels; require offset presence/category counts; and prove identical
+  serde JSON plus exact round-tripped float bits
+  (`src/config/order_presets/tests.rs:45-90`). A saved-layout control rejects
+  name, symbol, order-kind, slippage, and preset sentinels while proving
+  identical JSON, equality, and exact financial bits
+  (`src/layout_update/layouts/tests.rs:116-163`). Message controls cover load,
+  export, imported success/error, and exported error; wrapper recovery proves
+  exact layout JSON and error (`src/message.rs:2366-2396`,
+  `src/message.rs:2814-2851`). Existing preset execution, layout persistence,
+  import normalization, config-clear, routing, and toast tests remain behavior
+  controls; an explicit cancellation control keeps both established cancellation
+  strings silent (`src/layout_update/layouts/tests.rs:424-436`).
+- Smallest behavior-preserving fix: only diagnostic trait implementations and
+  the transient result newtype changed. Serde derives/attributes, field types,
+  defaults, equality, JSON content, layout snapshot/application, preset values,
+  import pruning/normalization, cancellation strings, sanitizer, task order,
+  persistence, UI copy, and trading behavior are unchanged.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  full type/message/I/O tracing, raw-derive/result-field absence checks, serde
+  controls, and the mechanical diff establish the intended boundary, but
+  focused and nearby suites cannot execute until ALSA development metadata is
+  available. Remaining raw external-status message classes require the next
+  Track 9 inventory.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -6914,6 +6999,67 @@ target-specific cancellation policy, not HTTP replay.
   tests; harden only formatting while proving exact serde wire compatibility
   and preset execution values.
 
+## Turn 48 — Redact Preset and Saved-Layout Diagnostics
+
+- Status: F-55 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: preset values and six-category config; complete saved-layout wire
+  model; load/export/import messages; layout I/O tasks and result handling;
+  serde defaults/round trips, snapshot/application, preset execution, import
+  normalization, config-clear fencing, and toast controls
+- Invariant: every preset/layout field and external result must remain exact for
+  JSON compatibility, layout behavior, and order execution, while generic
+  diagnostics expose only safe presence/count/result-shape metadata.
+- Protected behavior: preset label/size/offset and category selection; exact
+  float bits; all saved-layout fields/defaults/unknown future panes; config and
+  export JSON; layout name collision handling, pruning, widget normalization,
+  application, and persistence; cancellation detection; sanitized visible
+  errors; preset order calculation/preparation/signing; task order; and all UI/
+  trading semantics.
+- Preconditions/event ordering: live state produces the same `SavedLayout` and
+  serde consumes/produces it unchanged. Only formatting borrows the models.
+  Import/export tasks wrap their completed result at `Message` construction;
+  the layout update arm immediately restores it before every existing branch.
+- Evidence: F-55 records the raw parent derives/fields, full snapshot/I/O/result
+  graph, post-routing sanitizer gap, preset execution owner, exact serde/float
+  controls, and repository-wide removal of the targeted raw result fields.
+- Change: replace three derived formatters with value-redacting structural
+  `Debug`; add a dedicated exact layout-result wrapper; mechanically convert
+  the two task publishers, two consumers, and affected test constructors.
+- Tests/checks:
+  - Baseline and pre-fix preset, saved-layout, and layout-Message diagnostic
+    regressions stopped in `alsa-sys` before Kerosene compilation because
+    `pkg-config` could not find the system `alsa.pc` file.
+  - Post-fix focused preset/config/layout/Message diagnostics, exact layout-
+    result recovery, silent-cancellation control, complete preset-config,
+    layout-update, layout-persistence, preset-execution, and Message suites
+    stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, view, window, task timing,
+    layout application, file-dialog, or rendering behavior changed;
+    compilation is already blocked, and no live exchange or credential-bearing
+    operation was run.
+- Compatibility/UX assessment: controls compare serialized JSON before and
+  after formatting, deserialize it, and verify exact float bits; wrapper
+  recovery compares the full restored layout JSON and error, and both exact
+  cancellation strings remain silent. Existing layout/preset behavior tests
+  remain source-identical apart from constructor wrapping. No visible behavior,
+  timing, schema, defaults, file content, precision, signed bytes, or trading
+  semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-55 is source-
+  hardened, but raw non-order external-status messages adjacent to layout I/O
+  (wallet-label and other file/integration results) still need a classified
+  Track 9 inventory. Direct layout-name edit messages are user preference text,
+  not account/order values, and remain ordinary diagnostics.
+- Prior turn commit hash: `c588dcd59c65b5d0083552084b1623e92246cd8b`
+- Next candidate: inventory every remaining raw `Result<_, String>` and nested
+  external-status field in `Message`; classify public market data, user-
+  preference/file operations, account data, and order lifecycle separately,
+  then close one complete sensitive result class.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -6955,11 +7101,13 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline and pre-fix ticket-provenance
-  diagnostics; post-fix focused ticket provenance, quick-order parity, complete
-  form, submit, and order-update suites, `cargo check`, full `cargo test`, and
-  strict clippy at `alsa-sys` system dependency discovery, before Kerosene was
-  compiled.
+- Environment-blocked this turn: baseline and pre-fix preset, saved-layout, and
+  layout-Message diagnostics; post-fix focused preset/config/layout/Message
+  diagnostics, exact layout-result recovery, silent-cancellation control,
+  complete preset-config, layout-update, layout-persistence, preset-execution,
+  and Message suites,
+  `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
+  dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
@@ -6967,7 +7115,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-54
+  F-40, and F-42 through F-55
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -7008,6 +7156,7 @@ target-specific cancellation policy, not HTTP replay.
   financial message values by F-51. Boxed account-result diagnostics are
   source-hardened by F-52, and PnL-card model/image/export diagnostics by F-53.
   Ticket percentage-sizing provenance diagnostics are source-hardened by F-54.
-  Remaining independently formattable nested account/order types and external-
-  status paths, plus the rest of Track 9, require completion before a final
-  verdict.
+  Preset/saved-layout model and I/O-result diagnostics are source-hardened by
+  F-55. Remaining independently formattable nested account/order types and
+  external-status paths, plus the rest of Track 9, require completion before a
+  final verdict.

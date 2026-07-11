@@ -1,6 +1,8 @@
 use super::normalized_layout_name;
 use crate::app_state::TradingTerminal;
-use crate::config::{ChartConfig, KeroseneConfig, SavedLayout, WidgetPaddingTargetConfig};
+use crate::config::{
+    ChartConfig, KeroseneConfig, OrderPreset, SavedLayout, WidgetPaddingTargetConfig,
+};
 use crate::liquidations_distribution_state::{
     LiquidationDistributionData, LiquidationDistributionRequest,
 };
@@ -111,6 +113,55 @@ fn saved_layout(name: &str) -> SavedLayout {
     }
 }
 
+#[test]
+fn saved_layout_debug_redacts_order_configuration_without_changing_serde() {
+    const NAME: &str = "private-layout-name-sentinel";
+    const SYMBOL: &str = "private-layout-symbol-sentinel";
+    const ORDER_KIND: &str = "private-layout-order-kind-sentinel";
+    const PRESET_LABEL: &str = "private-layout-preset-sentinel";
+    const SLIPPAGE: f64 = 7.654_321;
+    const PRESET_SIZE: f64 = 87_654.321;
+    let mut layout = saved_layout(NAME);
+    layout.active_symbol = SYMBOL.to_string();
+    layout.liquidation_distribution_symbol = Some(SYMBOL.to_string());
+    layout.order_kind = ORDER_KIND.to_string();
+    layout.favourite_symbols = vec![SYMBOL.to_string()];
+    layout.market_slippage_pct = SLIPPAGE;
+    layout.order_presets.market_usd = vec![OrderPreset {
+        label: PRESET_LABEL.to_string(),
+        size: PRESET_SIZE,
+        price_offset_pct: Some(1.234_567),
+    }];
+    let wire_before = serde_json::to_value(&layout).expect("serialize saved layout");
+
+    let rendered = format!("{layout:?}");
+    let wire_after = serde_json::to_value(&layout).expect("serialize layout after formatting");
+    let restored: SavedLayout =
+        serde_json::from_value(wire_after.clone()).expect("restore saved layout");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    for sentinel in [NAME, SYMBOL, ORDER_KIND, PRESET_LABEL] {
+        assert!(!rendered.contains(sentinel), "{rendered}");
+    }
+    assert!(!rendered.contains(&format!("{SLIPPAGE:?}")), "{rendered}");
+    assert!(
+        !rendered.contains(&format!("{PRESET_SIZE:?}")),
+        "{rendered}"
+    );
+    assert!(rendered.contains("favourite_symbols_len: 1"), "{rendered}");
+    assert!(
+        rendered.contains("order_presets: OrderPresetsConfig"),
+        "{rendered}"
+    );
+    assert_eq!(wire_after, wire_before);
+    assert_eq!(restored, layout);
+    assert_eq!(restored.market_slippage_pct.to_bits(), SLIPPAGE.to_bits());
+    assert_eq!(
+        restored.order_presets.market_usd[0].size.to_bits(),
+        PRESET_SIZE.to_bits()
+    );
+}
+
 fn liquidation_distribution_data(symbol: &str) -> LiquidationDistributionData {
     LiquidationDistributionData {
         request: LiquidationDistributionRequest::new(
@@ -139,7 +190,7 @@ fn completed_layout_import_is_discarded_after_config_clear() {
     let saved_layouts_before = terminal.saved_layouts.clone();
 
     let _task =
-        terminal.update_saved_layouts(Message::LayoutImported(Ok(saved_layout("Imported"))));
+        terminal.update_saved_layouts(Message::LayoutImported(Ok(saved_layout("Imported")).into()));
 
     assert_eq!(terminal.saved_layouts, saved_layouts_before);
     assert!(terminal.config_save_due_at.is_none());
@@ -172,7 +223,7 @@ fn layout_import_drops_unknown_widget_padding_targets() {
     .expect("saved layout with unknown padding target should deserialize");
 
     let (mut terminal, _) = TradingTerminal::boot();
-    let _task = terminal.update_saved_layouts(Message::LayoutImported(Ok(imported)));
+    let _task = terminal.update_saved_layouts(Message::LayoutImported(Ok(imported).into()));
 
     let imported_layout = terminal
         .saved_layouts
@@ -212,7 +263,7 @@ fn layout_import_preserves_unknown_future_panes() {
     .expect("saved layout with unknown future pane should deserialize");
 
     let (mut terminal, _) = TradingTerminal::boot();
-    let _task = terminal.update_saved_layouts(Message::LayoutImported(Ok(imported)));
+    let _task = terminal.update_saved_layouts(Message::LayoutImported(Ok(imported).into()));
 
     let imported_layout = terminal
         .saved_layouts
@@ -342,7 +393,7 @@ fn completed_layout_import_is_discarded_while_config_clear_is_pending() {
     let saved_layouts_before = terminal.saved_layouts.clone();
 
     let _task =
-        terminal.update_saved_layouts(Message::LayoutImported(Ok(saved_layout("Imported"))));
+        terminal.update_saved_layouts(Message::LayoutImported(Ok(saved_layout("Imported")).into()));
 
     assert_eq!(terminal.saved_layouts, saved_layouts_before);
     assert!(terminal.config_save_due_at.is_none());
@@ -370,12 +421,27 @@ fn layout_import_start_is_blocked_after_config_clear() {
 }
 
 #[test]
+fn cancelled_layout_io_results_remain_silent() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let toast_count = terminal.toasts.len();
+
+    let _task = terminal.update_saved_layouts(Message::LayoutExported(
+        Err("Export cancelled".to_string()).into(),
+    ));
+    let _task = terminal.update_saved_layouts(Message::LayoutImported(
+        Err("Import cancelled".to_string()).into(),
+    ));
+
+    assert_eq!(terminal.toasts.len(), toast_count);
+}
+
+#[test]
 fn layout_export_error_redacts_toast_detail() {
     let (mut terminal, _) = TradingTerminal::boot();
 
-    let _task = terminal.update_saved_layouts(Message::LayoutExported(Err(
-        "write failed: api_key=layout-secret".to_string(),
-    )));
+    let _task = terminal.update_saved_layouts(Message::LayoutExported(
+        Err("write failed: api_key=layout-secret".to_string()).into(),
+    ));
 
     let toast = terminal.toasts.last().expect("toast");
     assert!(toast.is_error);
@@ -387,9 +453,9 @@ fn layout_export_error_redacts_toast_detail() {
 fn layout_import_error_redacts_toast_detail() {
     let (mut terminal, _) = TradingTerminal::boot();
 
-    let _task = terminal.update_saved_layouts(Message::LayoutImported(Err(
-        "parse failed: signature=sig-secret".to_string(),
-    )));
+    let _task = terminal.update_saved_layouts(Message::LayoutImported(
+        Err("parse failed: signature=sig-secret".to_string()).into(),
+    ));
 
     let toast = terminal.toasts.last().expect("toast");
     assert!(toast.is_error);

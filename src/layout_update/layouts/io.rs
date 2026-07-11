@@ -28,7 +28,7 @@ pub(super) fn export_layout_task(layout: config::SavedLayout) -> Task<Message> {
                 Err("Export cancelled".to_string())
             }
         },
-        Message::LayoutExported,
+        |result| Message::LayoutExported(result.into()),
     )
 }
 
@@ -49,6 +49,6 @@ pub(super) fn import_layout_task() -> Task<Message> {
                 Err("Import cancelled".to_string())
             }
         },
-        Message::LayoutImported,
+        |result| Message::LayoutImported(result.into()),
     )
 }

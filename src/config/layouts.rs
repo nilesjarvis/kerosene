@@ -2,6 +2,7 @@ mod pane_kind_wire;
 mod widget_padding_wire;
 
 use serde::{Deserialize, Deserializer, Serialize};
+use std::{collections::BTreeMap, fmt};
 
 use super::{
     ChartConfig, CustomThemeConfig, LiveWatchlistConfig, OrderBookConfig, OrderPresetsConfig,
@@ -9,7 +10,6 @@ use super::{
     default_symbol, default_timeframe, default_true, default_widget_padding,
     normalize_pane_split_ratio, normalize_widget_padding,
 };
-use std::collections::BTreeMap;
 
 /// Persisted axis for a pane split.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Default)]
@@ -300,7 +300,7 @@ fn prune_pane_layout(
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct SavedLayout {
     pub name: String,
     #[serde(default)]
@@ -367,4 +367,24 @@ pub struct SavedLayout {
     pub preset_is_usd: bool,
     #[serde(default)]
     pub order_presets: OrderPresetsConfig,
+}
+
+impl fmt::Debug for SavedLayout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SavedLayout")
+            .field("name", &format_args!("<redacted>"))
+            .field("pane_layout_present", &self.pane_layout.is_some())
+            .field("layout_ratios_len", &self.layout_ratios.len())
+            .field("charts_len", &self.charts.len())
+            .field("order_books_len", &self.order_books.len())
+            .field("live_watchlists_len", &self.live_watchlists.len())
+            .field("positioning_infos_len", &self.positioning_infos.len())
+            .field("session_data_len", &self.session_data.len())
+            .field("x_feeds_len", &self.x_feeds.len())
+            .field("spaghetti_charts_len", &self.spaghetti_charts.len())
+            .field("favourite_symbols_len", &self.favourite_symbols.len())
+            .field("custom_themes_len", &self.custom_themes.len())
+            .field("order_presets", &self.order_presets)
+            .finish()
+    }
 }

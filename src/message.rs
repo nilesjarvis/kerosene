@@ -424,6 +424,34 @@ impl<T> fmt::Debug for RedactedAccountMessageResult<T> {
     }
 }
 
+/// Exact saved-layout I/O result carried through the Elm message boundary.
+///
+/// Update handlers recover the original layout or external error. Generic
+/// message diagnostics expose only success/error shape.
+#[derive(Clone)]
+pub(crate) struct RedactedLayoutMessageResult<T>(Result<T, String>);
+
+impl<T> RedactedLayoutMessageResult<T> {
+    pub(crate) fn into_result(self) -> Result<T, String> {
+        self.0
+    }
+}
+
+impl<T> From<Result<T, String>> for RedactedLayoutMessageResult<T> {
+    fn from(value: Result<T, String>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> fmt::Debug for RedactedLayoutMessageResult<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 /// Exact PnL-card export result carried through the Elm message boundary.
 ///
 /// Update handlers recover the original saved path or external error. Generic
@@ -809,8 +837,8 @@ pub(crate) enum Message {
     LayoutRenameSubmitted(usize),
     ExportLayout(config::SavedLayout),
     ImportLayout,
-    LayoutImported(Result<config::SavedLayout, String>),
-    LayoutExported(Result<(), String>),
+    LayoutImported(RedactedLayoutMessageResult<config::SavedLayout>),
+    LayoutExported(RedactedLayoutMessageResult<()>),
     ExportWalletLabels,
     ImportWalletLabels,
     WalletLabelsExported(Result<(), String>),
@@ -1778,12 +1806,12 @@ pub(crate) enum Message {
 mod tests {
     use super::{
         Message, RedactedAccountMessageResult, RedactedAdvancedOrderHistoryId,
-        RedactedClientOrderId, RedactedOrderId, RedactedOrderInput, RedactedOrderMessageResult,
-        RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput, RedactedPnlCardMessageResult,
-        RedactedTelegramChannelKey, SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult,
-        SecretInput, TelegramFastAuthMessageResult, TelegramFastAuthOutcome,
-        XAccessTokenRefreshMessageResult, XAuthContextMessageResult, XFeedPageMessageResult,
-        XListsMessageResult, XProfileImageMessageResult,
+        RedactedClientOrderId, RedactedLayoutMessageResult, RedactedOrderId, RedactedOrderInput,
+        RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput,
+        RedactedPnlCardMessageResult, RedactedTelegramChannelKey, SchwabAccountsMessageResult,
+        SchwabTokenRefreshMessageResult, SecretInput, TelegramFastAuthMessageResult,
+        TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult, XAuthContextMessageResult,
+        XFeedPageMessageResult, XListsMessageResult, XProfileImageMessageResult,
     };
     use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
     use crate::api::{
@@ -2336,6 +2364,38 @@ mod tests {
     }
 
     #[test]
+    fn layout_message_result_wrapper_preserves_exact_layout_and_error() {
+        const NAME: &str = "layout-result-name-sentinel";
+        const SYMBOL: &str = "layout-result-symbol-sentinel";
+        const ERROR: &str = "layout-result-error-sentinel";
+        let layout: crate::config::SavedLayout = serde_json::from_value(serde_json::json!({
+            "name": NAME,
+            "active_symbol": SYMBOL,
+            "market_slippage_pct": 6.54321
+        }))
+        .expect("synthetic saved layout");
+        let wire = serde_json::to_value(&layout).expect("serialize synthetic layout");
+        let error: RedactedLayoutMessageResult<crate::config::SavedLayout> =
+            Err(ERROR.to_string()).into();
+        let success: RedactedLayoutMessageResult<crate::config::SavedLayout> = Ok(layout).into();
+
+        let error_debug = format!("{error:?}");
+        let success_debug = format!("{success:?}");
+
+        assert!(error_debug.contains("Err(<redacted>)"), "{error_debug}");
+        assert!(success_debug.contains("Ok(<redacted>)"), "{success_debug}");
+        assert!(!error_debug.contains(ERROR), "{error_debug}");
+        assert!(!success_debug.contains(NAME), "{success_debug}");
+        assert!(!success_debug.contains(SYMBOL), "{success_debug}");
+        assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
+        let restored = success.into_result().expect("synthetic success");
+        assert_eq!(
+            serde_json::to_value(restored).expect("serialize restored layout"),
+            wire
+        );
+    }
+
+    #[test]
     fn leverage_message_debug_redacts_mutation_parameters() {
         const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
         const SYMBOL: &str = "leverage-symbol-sentinel";
@@ -2748,6 +2808,45 @@ mod tests {
             assert!(!rendered.contains(SYMBOL), "{rendered}");
             assert!(!rendered.contains(ERROR), "{rendered}");
             assert!(!rendered.contains(PATH_COMPONENT), "{rendered}");
+        }
+    }
+
+    #[test]
+    fn layout_message_debug_redacts_saved_order_config_and_external_errors() {
+        const NAME: &str = "private-message-layout-name-sentinel";
+        const SYMBOL: &str = "private-message-layout-symbol-sentinel";
+        const PRESET_LABEL: &str = "private-message-preset-label-sentinel";
+        const ERROR: &str = "private-layout-io-error-sentinel";
+        let layout: crate::config::SavedLayout = serde_json::from_value(serde_json::json!({
+            "name": NAME,
+            "active_symbol": SYMBOL,
+            "market_slippage_pct": 7.654321,
+            "order_presets": {
+                "market_usd": [{
+                    "label": PRESET_LABEL,
+                    "size": 98765.4321,
+                    "price_offset_pct": 1.234567
+                }]
+            }
+        }))
+        .expect("synthetic saved layout");
+        let messages = [
+            Message::LoadLayout(layout.clone()),
+            Message::ExportLayout(layout.clone()),
+            Message::LayoutImported(Ok(layout).into()),
+            Message::LayoutImported(Err(ERROR.to_string()).into()),
+            Message::LayoutExported(Err(ERROR.to_string()).into()),
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(NAME), "{rendered}");
+            assert!(!rendered.contains(SYMBOL), "{rendered}");
+            assert!(!rendered.contains(PRESET_LABEL), "{rendered}");
+            assert!(!rendered.contains(ERROR), "{rendered}");
+            assert!(!rendered.contains("98765.4321"), "{rendered}");
+            assert!(!rendered.contains("7.654321"), "{rendered}");
         }
     }
 
