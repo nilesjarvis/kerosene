@@ -88,6 +88,14 @@
 - Chase and TWAP retain captured account/key identity and explicit lifecycle or
   pending-operation state. Their active state and in-flight requests are
   runtime-only.
+- Chase reconciliation for fills, refreshes, stops, archives, and final
+  replacements now derives open-order authority independently for each active
+  Chase's origin symbol. Account-wide fill completeness remains a separate
+  requirement, and websocket disappearance remains dex-scoped; an unrelated
+  scoped REST lane cannot authorize absence or a new placement
+  (`src/account_update/stream/chase/fill_reconciliation.rs:17-146`,
+  `src/account_update/stream/chase/refresh.rs:37-292`,
+  `src/order_execution/chase/lifecycle/place.rs:247-290`).
 - Wallet-cluster fan-out has a separate update route, but each member leg uses
   shared preparation/signing, its own CLOID, and a tuple of execution ID,
   profile secret ID, and CLOID for local correlation.
@@ -107,9 +115,9 @@
 | NUKE child place (UI or Alfred) | Parent execution ID; connected account; planner output; per-child one-shot context | Execution ID + child CLOID in the result context and aggregate settlement set | Unique one-shot CLOID per child; the first terminal transition claims it | Shared classifier | Uncertain child gets CLOID status; parent refreshes after aggregate completion | Current-account and execution-ID checks; duplicate settlement is a no-op | CLOID-keyed confirmed/failed/uncertain totals; parent removed after the unique settled-child count reaches total | `order_execution/position_actions/nuke/tests/**`, direct/status duplicate regressions in `order_update/results/tests.rs` | F-01 addressed in Turn 2; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Cancel by OID | Connected account + symbol + OID + runtime request sequence; one request owns awaiting-result/checking-status phases | Request sequence + account + OID + symbol; indicator is presentation only | Target OID; runtime sequence is correlation only | Shared classifier plus confirmed-cancel predicate | `orderStatus` by OID + origin-symbol open-order refresh | Exact request/phase/account match for direct result; exact request/account/OID/symbol match for status; refresh must cover origin lane | Confirmed/terminal result removes matching local order; only status-check phase and a covering snapshot can release refresh uncertainty | `order_execution/position_actions/cancel.rs` tests, cancel result/status duplicate, stale-attempt, and scoped-refresh tests | F-14/F-15 addressed in Turns 13-14; executable validation remains environment-blocked |
 | Move/modify | Connected account + symbol + OID + runtime request sequence; original key and exact prepared target captured in `PendingMoveOrderContext` | Request sequence + account + symbol + OID; indicator ID is presentation/local projection only | Target OID; runtime sequence is correlation only | Shared classifier plus confirmed-modify predicate | `orderStatus` by OID + origin-symbol refresh that classifies target absent/expected-price/different-valid-price | Exact request/account/move-key context for direct result; exact request/account/OID/symbol for status; refresh rejects uncovered or malformed target evidence | Removes only the matching move context/indicator; terminal status or sufficient target-lane evidence clears status uncertainty | `order_execution/quick_order/move_order/tests/**`, `order_update/move_order.rs` duplicate/stale-attempt/scoped-refresh tests | F-14/F-15 addressed in Turns 13-14; executable validation remains environment-blocked |
-| Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle + dispatch-time place attempt; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account refresh + open-order/fill stream reconciliation | Exact place-attempt equality + `expects_place_result`; current account, symbol identity, prior-exposure, and reconciliation gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled | Chase lifecycle/place/result/status tests, duplicate/late direct-result regressions, and account stream Chase tests | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
-| Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account refresh + open-order/fill stream | Exact reprice-count/lifecycle/OID match; account and symbol/reconciliation checks before dispatch | Verification/resting/stop flow; terminal Chase archived | `order_update/chase/modify/tests/**`, including duplicate/late direct-result regressions, and Chase reprice tests | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
-| Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account refresh/open-order disappearance | Exact stopping phase/OID; disconnected account is reconciled at origin scope | Verifying-cancel then archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests | F-08 addressed in Turn 9; retry idempotence depends on target-specific cancel semantics |
+| Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle + dispatch-time place attempt; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact place-attempt equality + `expects_place_result`; current account, symbol identity, prior-exposure, per-symbol open-order authority, and reconciliation gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled; final replacement gate repeats the origin-lane proof | Chase lifecycle/place/result/status tests, duplicate/late direct-result regressions, account stream tests, and wrong-scope replacement tests | F-05/F-16 addressed in Turns 7/15; executable regression validation remains environment-blocked by missing ALSA metadata |
+| Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact reprice-count/lifecycle/OID match; account, symbol, origin-lane, and reconciliation checks before correction/replacement | Verification/resting/stop flow; terminal Chase archived only from covering evidence | `order_update/chase/modify/tests/**`, including duplicate/late direct-result regressions, Chase reprice tests, and wrong-scope refresh tests | F-05/F-16 addressed in Turns 7/15; executable regression validation remains environment-blocked by missing ALSA metadata |
+| Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account-wide fills + origin-symbol account refresh/open-order disappearance | Exact stopping phase/OID; REST archive requires the origin open-order lane; websocket disappearance is dex-scoped | Verifying-cancel then covering-snapshot archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests, and wrong-scope archive regression | F-08/F-16 addressed in Turns 9/15; retry idempotence depends on target-specific cancel semantics; executable validation remains environment-blocked |
 | TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending index/retry equality, current account for dispatch, status CLOID, and terminal checks | Finishes attempt once; child status/fills updated; terminal TWAP archived | `order_execution/twap/tests/**`, including duplicate/late slice-result regressions, and `twap_state/tests/**` | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
 | TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + retry attempt | Pending cancel target matches OID or CLOID; retry message includes attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Exact pending target, retry count, and terminal-state checks | Clears pending cancel and finishes attempt, or bounded error terminal | `order_execution/twap/tests/cancel.rs`, status/account tests | F-08 addressed in Turn 9; contradictory acknowledgements retain the existing bounded target-specific retry path |
 | Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution/profile/CLOID plus account, symbol, surface, and order kind | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member user stream | Full origin match; direct requires `Pending`, status requires `Checking`; pending executions are not evicted | First terminal leg outcome is immutable; execution complete when every leg terminal | Cluster planning/member tests plus adversarial result/status tests in `wallet_cluster_update.rs` | F-04 addressed in Turn 5; executable regression validation remains environment-blocked by missing ALSA metadata |
@@ -887,6 +895,83 @@ target-specific cancellation policy, not HTTP replay.
   UI, and persistence are unchanged. The new target price is runtime-only and
   redacted in the pending request's custom `Debug` output.
 
+### F-16 — Unrelated scoped refresh can replace or archive a Chase with unknown exposure
+
+- Status: addressed in Turn 15; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Critical
+- Scope: Chase account-refresh reconciliation, fill-completion cleanup,
+  stop/cancel verification, and the final prior-exposure gate before a
+  replacement placement
+- Preconditions/event ordering:
+  1. A Chase owns a known order on one HIP-3 lane, such as `flx:BTC`, and is
+     awaiting account verification after a terminal no-fill status, target
+     fill, or confirmed cancel/stop transition.
+  2. The selected market universe changes before the required account refresh,
+     so the refresh scope is another HIP-3 dex, such as `xyz`.
+  3. That request returns complete account-wide fills and a complete open-order
+     result for `xyz`, but necessarily carries no authoritative `flx` orders.
+  4. Before Turn 15, Chase reconciliation treated snapshot-wide
+     `open_orders_complete` as authority for every Chase. It could therefore
+     queue a replacement, archive a fully filled Chase without cancelling a
+     still-open known order, or archive `Stopping::VerifyingCancel` without
+     proving the origin lane clear. The final known-OID placement guard repeated
+     the same global check.
+- Affected order surfaces: adopted and newly placed Chase orders across
+  replacement, reprice verification, fill completion, stop, and archive paths.
+- Evidence: refresh scope is derived from the current market universe
+  (`src/account_update/connection/refresh.rs:81-92`), while the account model's
+  authority predicate is explicitly per symbol
+  (`src/account/types/data.rs:198-213`). The affected reconciliation decisions
+  converge in `reconcile_chase_after_account_refresh`,
+  `reconcile_chase_fills_from_snapshot`, and `chase_place_at_best`; their fixed
+  boundaries are now at `src/account_update/stream/chase/refresh.rs:37-292`,
+  `src/account_update/stream/chase/fill_reconciliation.rs:17-146`, and
+  `src/order_execution/chase/lifecycle/place.rs:247-290`.
+- Violated invariant: only an open-order snapshot that successfully fetched a
+  Chase's immutable origin-symbol lane may prove its known exposure absent,
+  authorize terminal archive, or permit a replacement placement. Fill evidence
+  remains independently account-wide.
+- Risk: a wrong-scope snapshot can falsely declare unknown exchange exposure
+  safe. At the strongest boundary it can dispatch a replacement while another
+  known Chase order remains live; after a target fill it can instead leave a
+  residual live order unmanaged by archiving the Chase that should cancel it.
+- Why existing checks did not cover it: account address, provider generation,
+  lifecycle, OID/CLOID, attempt, fill completeness, and pending-operation gates
+  can all be valid in this ordering. Snapshot-wide completeness describes only
+  the request's own scope. The already-correct websocket disappearance gate is
+  keyed by dex (`src/account_update/stream/chase/disappearance.rs:13-51`) and
+  does not constrain the separate REST-refresh path.
+- Implemented fix: derive the set of active Chase symbols whose open-order lane
+  the snapshot actually covers, using the established
+  `has_complete_open_orders_for_symbol` predicate. Pass that immutable evidence
+  into fill reconciliation; gate each refresh, stop, removal, correction, and
+  replacement decision by its Chase's symbol; and repeat the same per-symbol
+  requirement at the final known-exposure placement guard. Missing authority
+  retains verification and requests refresh rather than mutating exchange
+  state. No polling, retry, or request was added.
+- Regression coverage: an unrelated HIP-3 refresh cannot place a resolved
+  no-fill replacement, archive a stopping Chase, or archive a fully filled
+  Chase whose open orders are unknown; a direct final-dispatch test proves the
+  redundant placement guard also blocks the replacement
+  (`src/account_update/stream/tests/chase_reprice/account_refresh.rs:152-173`,
+  `src/account_update/stream/tests/chase_stop.rs:64-91`,
+  `src/account_update/stream/tests/chase_fills/completion.rs:23-47`,
+  `src/order_execution/chase/lifecycle/tests/place.rs:101-125`). Existing
+  covering-snapshot replacement, stop cleanup, fill archive, and CLOID-attempt
+  tests characterize unchanged normal behavior.
+- Smallest behavior-preserving fix: reuse the existing account-lane predicate
+  at the three authoritative boundaries; do not change Chase state types,
+  exchange payloads, task cadence, pricing/sizing, or status copy.
+- Protected behavior: repricing, limits, timing, status strings, retry policy,
+  fill totals, order identity, normal covering-snapshot transitions, signing,
+  UI, persistence, and secret handling are unchanged. Only an unrelated or
+  incomplete origin lane remains in the existing verification state.
+- Residual uncertainty: formatting, call-site inventory, and state-transition
+  review pass, but Rust type-check/tests/clippy must execute on a host with ALSA
+  development metadata. Reversed REST-versus-websocket delivery remains a
+  separate Track 8 candidate and is not claimed resolved by this fix.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -1663,6 +1748,81 @@ target-specific cancellation policy, not HTTP replay.
   scopes, partial account snapshots, websocket lag/repair, and reversed REST
   versus user-stream delivery, preserving all repricing and archive behavior.
 
+## Turn 15 — Scope Chase Reconciliation to Its Origin Lane
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: Critical
+- Scope: F-16 across Chase REST refresh, account/stream fill reconciliation,
+  replacement dispatch, stop verification, fill completion, and archive
+- Invariant: only a snapshot that successfully fetched the active Chase's
+  origin-symbol open-order lane may prove prior exposure absent, authorize
+  archive, or permit a replacement; account-wide fills are an independent
+  evidence lane.
+- Protected behavior: exact Chase prices, sizes, sides, reduce-only and asset
+  fields, CLOID/OID identity, place/reprice limits, cadence, retries, result and
+  status classification, normal covering-snapshot transitions, all visible
+  strings, UI, persistence, and secret lifetime.
+- Preconditions/event ordering: a Chase on one HIP-3 dex awaits verification
+  after no-fill status, fill completion, or stop/cancel; the selected universe
+  changes; an `Ok` refresh for a different dex returns globally complete fills
+  and open orders for its own scope; the prior global open-order check treats
+  absence from that unrelated result as absence from the Chase's lane.
+- Evidence: account refresh derives its request scope from the current market
+  universe, whereas `AccountData` exposes explicit per-symbol open-order
+  authority. The pre-change Chase refresh, fill cleanup, and final replacement
+  guard used only snapshot-wide completeness. Websocket disappearance was
+  already correctly dex-gated, fill merging and Chase attribution deduplicate
+  by fill identity and filter account/coin/side/OID/cutoff, and place/modify
+  callbacks retain dispatch-attempt correlation. F-16 records the concrete
+  boundaries and failure consequences.
+- Change: compute an immutable set of covered active Chase symbols once per
+  account snapshot; pass it into fill reconciliation; evaluate every Chase
+  refresh/stop/archive/replacement branch against its own symbol; and replace
+  the final known-OID placement guard's global check with the same per-symbol
+  predicate. Uncovered state remains in its existing verification lifecycle
+  and refreshes; no new mutation, retry, timer, request, state field, schema,
+  dependency, view, or message was introduced.
+- Tests/checks:
+  - Added regressions proving a wrong-scope HIP-3 refresh cannot dispatch a
+    no-fill replacement, archive a stopping Chase, or archive a filled Chase
+    whose open orders remain unknown, plus an independent final-dispatch guard
+    test for known prior OIDs.
+  - Pre- and post-implementation focused attempts for
+    `unrelated_hip3_refresh_does_not_place_chase_replacement`,
+    `unrelated_hip3_refresh_does_not_archive_stopping_chase`,
+    `unrelated_hip3_refresh_does_not_archive_filled_chase_with_unknown_open_orders`,
+    and `chase_replacement_requires_open_order_coverage_for_its_symbol` all
+    stopped in `alsa-sys` before Kerosene compilation because `pkg-config`
+    could not find the system `alsa.pc` package.
+  - Nearby/protected attempts for
+    `no_fill_terminal_status_allows_clean_replacement`,
+    `stopped_chase_clears_only_after_no_known_open_orders_remain`,
+    `chase_fill_reconciliation_removes_fully_filled_chase`, and
+    `chase_place_assigns_unique_cloid_per_place_attempt` stopped at the same
+    dependency boundary. A broader `cargo test --package kerosene --bin
+    kerosene chase` attempt did likewise.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing boundary before checking Kerosene.
+- Compatibility/UX assessment: a complete covering lane retains the exact
+  prior replacement, safety-cancel, and archive behavior. Only a snapshot that
+  never observed the Chase's lane remains uncertain. All user-facing copy and
+  normal enabled/disabled behavior are unchanged; this is runtime plumbing and
+  no persisted type changed.
+- Residual risk: source formatting, all call-site inventory, per-state ordering,
+  fill-deduplication, websocket dex-scope, attempt-correlation, and diff review
+  pass, but the crate has not type-checked and tests/clippy must execute on a
+  host with ALSA development metadata. REST snapshot versus newer websocket
+  delta ordering needs a separate Track 8 audit.
+- Prior turn commit hash: `97c40f9fca2cdb9e9035e682b87a5ac5824c2ec5`
+- Next candidate: audit whether an account REST request captured before a newer
+  user-stream delta can complete afterward and replace that delta without
+  scheduling a follow-up refresh. Trace request-start revision, generation,
+  `account_refresh_followup_pending`, and every websocket mutation before
+  deciding whether this is a finding; preserve refresh cadence and display
+  behavior.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -1670,19 +1830,19 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused cancel/move origin-lane, live-price,
-  snapshot-classification, captured-context, and diagnostic-redaction tests;
-  nearby cancel/move status and protected one-shot/account-lane tests;
-  `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
-  dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: focused Chase wrong-scope replacement,
+  stop/archive, fill-completion, and final-dispatch tests; nearby covering-scope
+  replacement, stop, fill, and CLOID-attempt tests; the broader Chase test
+  filter; `cargo check`; full `cargo test`; and strict clippy at `alsa-sys`
+  system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-15 have source fixes and regression coverage but await
+- F-01 through F-16 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- Broader Chase/TWAP and account-stream ordering, restart/shutdown cleanup,
-  local planning/state diagnostic redaction, and the remaining tracks require
+- TWAP, REST/user-stream causal ordering, restart/shutdown cleanup, local
+  planning/state diagnostic redaction, and the remaining tracks require
   completion before a final verdict.

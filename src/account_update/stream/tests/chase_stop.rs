@@ -62,6 +62,35 @@ fn stopped_chase_clears_only_after_no_known_open_orders_remain() {
 }
 
 #[test]
+fn unrelated_hip3_refresh_does_not_archive_stopping_chase() {
+    let mut terminal = TradingTerminal::boot().0;
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    let mut chase = chase_order();
+    chase.coin = "flx:BTC".to_string();
+    chase.lifecycle = ChaseLifecycle::Stopping {
+        phase: ChaseStopPhase::VerifyingCancel { oid: 42 },
+    };
+    chase.stop_reason = Some(("Chase stopped".to_string(), false));
+    terminal.chase_orders.insert(1, chase);
+    let mut data = account_data_with_timestamp(1_000);
+    data.fetch_scope = crate::account::AccountDataFetchScope::hip3_dex("xyz");
+    terminal.account_data_address = Some(address);
+    terminal.account_data = Some(data);
+
+    let _task = terminal.reconcile_chase_after_account_refresh();
+
+    let chase = chase_order_by_id(&terminal, 1);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Stopping {
+            phase: ChaseStopPhase::VerifyingCancel { oid: 42 }
+        }
+    );
+    assert!(terminal.advanced_order_history.is_empty());
+}
+
+#[test]
 fn stopped_chase_cancels_next_known_open_order_before_clearing() {
     let mut terminal = TradingTerminal::boot().0;
     let address = "0xabc0000000000000000000000000000000000000".to_string();

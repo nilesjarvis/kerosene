@@ -1,18 +1,34 @@
 use super::super::fills::{chase_completed_summary, chase_fill_totals_for_chase};
 use super::super::orders::first_open_chase_oid;
 
-use crate::account::{OpenOrder, UserFill};
+use crate::account::{AccountData, OpenOrder, UserFill};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::signing::{ChaseLifecycle, ChaseVerificationReason};
 
 use iced::Task;
+use std::collections::HashSet;
 
 // ---------------------------------------------------------------------------
 // Chase Fill Reconciliation
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    /// Capture which active Chase origin lanes this snapshot can resolve.
+    /// `open_orders_complete` is scoped to the fetch and is not account-wide.
+    pub(super) fn chase_symbols_with_complete_open_orders(
+        &self,
+        snapshot_account_address: &str,
+        data: &AccountData,
+    ) -> HashSet<String> {
+        self.chase_orders
+            .values()
+            .filter(|chase| chase.account_address == snapshot_account_address)
+            .filter(|chase| data.has_complete_open_orders_for_symbol(&chase.coin))
+            .map(|chase| chase.coin.clone())
+            .collect()
+    }
+
     pub(crate) fn reconcile_chase_fills_from_account(&mut self) -> Task<Message> {
         let Some((snapshot_account_address, data)) = self.connected_order_account_snapshot() else {
             return Task::none();
@@ -22,11 +38,13 @@ impl TradingTerminal {
         }
         let fills = data.fills.clone();
         let open_orders = data.open_orders.clone();
-        let open_orders_complete = data.completeness.open_orders_complete;
+        let complete_open_order_symbols =
+            self.chase_symbols_with_complete_open_orders(&snapshot_account_address, data);
         self.reconcile_chase_fills_from_snapshot(
             &snapshot_account_address,
             &fills,
-            open_orders_complete.then_some(open_orders.as_slice()),
+            &open_orders,
+            &complete_open_order_symbols,
             false,
         )
     }
@@ -35,7 +53,8 @@ impl TradingTerminal {
         &mut self,
         snapshot_account_address: &str,
         fills: &[UserFill],
-        open_orders: Option<&[OpenOrder]>,
+        open_orders: &[OpenOrder],
+        complete_open_order_symbols: &HashSet<String>,
         open_orders_authoritative: bool,
     ) -> Task<Message> {
         let chase_ids: Vec<u64> = self.chase_orders.keys().copied().collect();
@@ -57,6 +76,9 @@ impl TradingTerminal {
             let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
                 continue;
             };
+            let open_orders = complete_open_order_symbols
+                .contains(&coin)
+                .then_some(open_orders);
             let Some(totals) = chase_fill_totals_for_chase(fills, chase) else {
                 continue;
             };

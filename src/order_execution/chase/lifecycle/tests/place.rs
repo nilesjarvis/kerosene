@@ -99,6 +99,32 @@ fn chase_place_ignores_same_oid_open_order_with_mismatched_identity() {
 }
 
 #[test]
+fn chase_replacement_requires_open_order_coverage_for_its_symbol() {
+    let mut terminal = terminal_ready_for_chase_place();
+    let mut chase = chase();
+    chase.coin = "flx:BTC".to_string();
+    chase.current_oid = None;
+    chase.known_oids = vec![42];
+    let mut data = account_data_with_open_orders(Vec::new());
+    data.fetch_scope = crate::account::AccountDataFetchScope::hip3_dex("xyz");
+    terminal.account_data_address = Some(chase.account_address.clone());
+    terminal.account_data = Some(data);
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.chase_place_at_best(1, 101.0);
+
+    let chase = chase_by_id(&terminal, 1);
+    assert_eq!(chase.current_oid, None);
+    assert_eq!(chase.place_attempt_count, 0);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: crate::signing::ChaseVerificationReason::MissingOrder
+        }
+    );
+}
+
+#[test]
 fn chase_place_assigns_unique_cloid_per_place_attempt() {
     let mut terminal = terminal_ready_for_chase_place();
     let mut chase = chase();

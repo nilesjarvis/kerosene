@@ -21,6 +21,32 @@ fn chase_fill_reconciliation_removes_fully_filled_chase() {
 }
 
 #[test]
+fn unrelated_hip3_refresh_does_not_archive_filled_chase_with_unknown_open_orders() {
+    let mut chase = chase_order();
+    chase.coin = "flx:BTC".to_string();
+    let mut fill = fill_with_oid(1_001, 42, "100", "1.0");
+    fill.coin = "flx:BTC".to_string();
+    let mut terminal = terminal_with_chase_fills(chase, vec![fill]);
+    terminal
+        .account_data
+        .as_mut()
+        .expect("account data")
+        .fetch_scope = crate::account::AccountDataFetchScope::hip3_dex("xyz");
+
+    let _task = terminal.reconcile_chase_after_account_refresh();
+
+    let chase = chase_order_by_id(&terminal, 1);
+    assert_eq!(chase.filled_size, 1.0);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::MissingOrder
+        }
+    );
+    assert!(terminal.advanced_order_history.is_empty());
+}
+
+#[test]
 fn historical_resting_oid_fills_do_not_complete_adopted_chase() {
     let mut chase = chase_order();
     chase.started_at_ms = 120_000;

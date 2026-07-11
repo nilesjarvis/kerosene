@@ -40,14 +40,16 @@ impl TradingTerminal {
         };
         let open_orders = data.open_orders.clone();
         let fills = data.fills.clone();
-        let open_orders_complete = data.completeness.open_orders_complete;
         let fills_complete = data.completeness.fills_complete;
+        let complete_open_order_symbols =
+            self.chase_symbols_with_complete_open_orders(&connected_address, data);
         let mut tasks = Vec::new();
         if fills_complete {
             tasks.push(self.reconcile_chase_fills_from_snapshot(
                 &connected_address,
                 &fills,
-                open_orders_complete.then_some(open_orders.as_slice()),
+                &open_orders,
+                &complete_open_order_symbols,
                 true,
             ));
         }
@@ -67,11 +69,13 @@ impl TradingTerminal {
             {
                 continue;
             }
+            let origin_open_orders_complete =
+                complete_open_order_symbols.contains(&chase_snapshot.coin);
             if let ChaseLifecycle::Stopping {
                 phase: ChaseStopPhase::VerifyingCancel { .. },
             } = chase_snapshot.lifecycle
             {
-                if !open_orders_complete || !fills_complete {
+                if !origin_open_orders_complete || !fills_complete {
                     self.set_order_status_once(
                         "Chase stopping: waiting for complete account snapshot before clearing"
                             .into(),
@@ -109,7 +113,7 @@ impl TradingTerminal {
                 _ => continue,
             };
             let wants_replacement = chase_snapshot.desired_price.is_some();
-            if !open_orders_complete || !fills_complete {
+            if !origin_open_orders_complete || !fills_complete {
                 self.set_order_status_once(
                     concat!(
                         "Chase paused: account refresh was incomplete; not mutating until fills ",
@@ -207,7 +211,7 @@ impl TradingTerminal {
                         tasks.push(self.stop_chase_by_id_with_reason(chase_id, reason, is_error));
                     }
                 }
-                None if open_orders_complete
+                None if origin_open_orders_complete
                     && wants_replacement
                     && matches!(
                         verification_reason,
@@ -223,10 +227,10 @@ impl TradingTerminal {
                     }
                     replacement_ids.push(chase_id);
                 }
-                None if open_orders_complete && wants_replacement => {
+                None if origin_open_orders_complete && wants_replacement => {
                     status_check_ids.push((chase_id, oid));
                 }
-                None if open_orders_complete => {
+                None if origin_open_orders_complete => {
                     if matches!(
                         verification_reason,
                         ChaseVerificationReason::MissingOrderResolvedNoFill

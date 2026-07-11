@@ -150,6 +150,29 @@ fn no_fill_terminal_status_allows_clean_replacement() {
 }
 
 #[test]
+fn unrelated_hip3_refresh_does_not_place_chase_replacement() {
+    let mut terminal = refresh_ready_terminal();
+    let mut chase = verifying_chase(ChaseVerificationReason::MissingOrderResolvedNoFill);
+    chase.coin = "flx:BTC".to_string();
+    terminal.chase_orders.insert(1, chase);
+    let mut data = account_data_with_timestamp(1_000);
+    data.fetch_scope = crate::account::AccountDataFetchScope::hip3_dex("xyz");
+    set_account_data_for_connected_account(&mut terminal, data);
+
+    let _task = terminal.reconcile_chase_after_account_refresh();
+
+    let chase = chase_order_by_id(&terminal, 1);
+    assert_eq!(chase.current_oid, Some(42));
+    assert_eq!(chase.place_attempt_count, 0);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::MissingOrderResolvedNoFill
+        }
+    );
+}
+
+#[test]
 fn queued_followup_snapshot_does_not_place_chase_replacement() {
     let mut terminal = refresh_ready_terminal();
     let address = terminal

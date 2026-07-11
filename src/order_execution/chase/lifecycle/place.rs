@@ -260,7 +260,9 @@ impl TradingTerminal {
                 ));
                 return self.refresh_account_data();
             };
-            if !data.completeness.open_orders_complete || !data.completeness.fills_complete {
+            if !data.has_complete_open_orders_for_symbol(&chase_snapshot.coin)
+                || !data.completeness.fills_complete
+            {
                 if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                     chase.desired_price = Some(rounded_best);
                     chase.lifecycle = ChaseLifecycle::Verifying {
