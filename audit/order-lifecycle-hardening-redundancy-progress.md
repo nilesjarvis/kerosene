@@ -106,6 +106,9 @@
   attempt because the CLOID remains live during later account-fill repair.
   Unexpected-child cancellation likewise separates its scheduled retry count
   from the exact attempt that owns an in-flight target-specific cancel task.
+  Authoritative TWAP fill size, price, fee, remaining target, and completion
+  derive from per-child fill metrics independently of that child's display
+  status.
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -137,7 +140,7 @@
 | Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact reprice-count/lifecycle/OID match; account, symbol, origin-lane, and reconciliation checks before correction/replacement | Verification/resting/stop flow; terminal Chase archived only from covering evidence | `order_update/chase/modify/tests/**`, including duplicate/late direct-result regressions, Chase reprice tests, and wrong-scope refresh tests | F-05/F-16 addressed in Turns 7/15; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account-wide fills + origin-symbol account refresh/open-order disappearance | Exact stopping phase/OID; REST archive requires the origin open-order lane; websocket disappearance is dex-scoped | Verifying-cancel then covering-snapshot archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests, and wrong-scope archive regression | F-08/F-16 addressed in Turns 9/15; retry idempotence depends on target-specific cancel semantics; executable validation remains environment-blocked |
 | TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID and armed retry attempt | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending slice/retry for placement; status dispatch/result requires the current CLOID and single in-flight attempt; current-account and terminal guards remain | Finishes attempt once; child status/fills updated; status ownership cleared on result or account-fill resolution; terminal TWAP archived | `order_execution/twap/tests/**`, including duplicate/late slice and status dispatch/result regressions, and `twap_state/tests/**` | F-05/F-19 addressed in Turns 7/18; executable regression validation remains environment-blocked by missing ALSA metadata |
-| TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + exact armed retry attempt | Pending target plus current retry count and one in-flight attempt; retry and result messages both carry the attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Dispatch atomically requires non-terminal exact target/retry with no existing owner; result requires exact target/retry/owner | Consumes one owner, then clears pending cancel and finishes once or schedules the next bounded attempt; bounded error terminal remains | `order_execution/twap/tests/cancel.rs`, placement/status entry-path tests | F-08/F-20 addressed in Turns 9/19; cancel-result versus earlier fill ordering remains under Track 6 review |
+| TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + exact armed retry attempt | Pending target plus current retry count and one in-flight attempt; retry and result messages both carry the attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Dispatch atomically requires non-terminal exact target/retry with no existing owner; result requires exact target/retry/owner | Consumes one owner, then clears pending cancel and finishes once or schedules the next bounded attempt; bounded error terminal remains | `order_execution/twap/tests/cancel.rs`, placement/status entry-path tests, fill/cancel order characterizations | F-08/F-20 addressed in Turns 9/19; F-21's delivery-order-dependent child label is deferred for an explicit UX/history semantics decision; financial accounting is order-independent |
 | Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution/profile/CLOID plus account, symbol, surface, and order kind | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member user stream | Full origin match; direct requires `Pending`, status requires `Checking`; pending executions are not evicted | First terminal leg outcome is immutable; execution complete when every leg terminal | Cluster planning/member tests plus adversarial result/status tests in `wallet_cluster_update.rs` | F-04 addressed in Turn 5; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Wallet-cluster close child | Same as cluster order, plus fresh per-member position snapshot and reduce-only plan | Same full correlation tuple with `ClusterClose` surface | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member stream | Freshness/side/position preflight plus the shared exact transition guard | Same first-terminal-wins handling as cluster orders | Close sizing/freshness tests and shared adversarial result tests | F-04 addressed by the shared Turn 5 transition guard |
 | Leverage update | `PendingLeverageUpdateContext` captures account, symbol, asset, dex, margin mode, leverage | Full pending-context equality | None; mutation is not blindly retried | Confirmed-default predicate; other non-error bodies are uncertain | Scoped account refresh for outcomes that may have committed | Pending-context equality + current-account match | Pending context cleared once; matching form updated only on confirmed default | `order_update/leverage.rs` tests, signing action/response tests | No exact mutation status endpoint; verify refresh completeness is sufficient in transport audit |
@@ -183,6 +186,14 @@ target-specific retry trigger must atomically arm the current attempt before it
 can dispatch, and only a result carrying that target and attempt can consume
 retry budget or finish the pending cancellation. Scheduled backoff remains a
 separate phase with no in-flight owner.
+
+Turn 20 verifies both fill-versus-cancel delivery orders. Per-child and
+aggregate fill quantities, average price, fee, remaining target, completion,
+history financial metrics, and repeated-fill idempotence are equivalent. The
+child label is deliberately not normalized: current live/history rendering
+exposes whether `Filled` or `UnexpectedRestingCancelled` wrote last, and
+choosing a dominant or combined label requires the deferred F-21 product
+decision.
 
 ### Mutation Transport Phase Audit
 
@@ -1359,6 +1370,73 @@ target-specific cancellation policy, not HTTP replay.
   filled before a later cancel result rewrites its child status; that reversed
   ordering is the next distinct Track 6 candidate.
 
+### F-21 — Filled unexpected-child label depends on cancel result ordering
+
+- Status: deferred in Turn 20; financial invariants characterized; resolving
+  the label requires explicit user-visible/history semantics approval
+- Severity: Medium
+- Scope: TWAP unexpected-resting child status, authoritative fill
+  reconciliation, live details rows, terminal advanced-order history, and
+  event-order permutations
+- Preconditions/event ordering:
+  1. An IOC child unexpectedly rests and a target-specific cancellation is in
+     flight.
+  2. Account or user-stream reconciliation proves a partial or full fill for
+     the exact OID, coin, and side.
+  3. The fill and confirmed/terminal-not-open cancel result arrive in opposite
+     orders while both refer to that same child.
+  4. Each handler writes its own single-valued `TwapChildStatus`; the later
+     writer therefore determines the label.
+- Evidence: fill reconciliation preserves the maximum child fill, average
+  price, and fee, then assigns `Filled` for any non-rejected positive fill
+  (`src/twap_state/order/reconciliation.rs:54-65`). Both definitive cancel
+  branches assign `UnexpectedRestingCancelled` without consulting retained
+  fill metrics (`src/order_execution/twap/cancel.rs:121-153`). Live details
+  render `child.status.label()`, terminal snapshots persist that label as a
+  string, and history details render it directly
+  (`src/order_views/twap_details/sections/activity.rs:66-93`,
+  `src/advanced_order_history/snapshots.rs:88-107`,
+  `src/order_views/advanced_history_details/sections.rs:174-186`).
+- Violated invariant: identical exchange facts should not produce a different
+  terminal child outcome label solely because two valid messages were queued
+  in a different order.
+- Risk: the live row and persisted audit history can say `Canceled` for a child
+  with a confirmed fill in one ordering and `Filled` in the reverse ordering.
+  This is presentation/history ambiguity, not lost exposure: child and
+  aggregate fill quantities, average price, fee, remaining target, scheduling,
+  completion, and terminal numeric history remain correct and idempotent.
+- Why existing checks do not cover it: `filled_size` intentionally carries
+  fill truth independently of the status enum, so all financial calculations
+  are safe while last-writer label behavior remains observable. Existing fill
+  and cancel tests exercised each lane separately, not both permutations.
+- Characterization coverage: partial-fill permutations now prove identical
+  child/aggregate fill metrics, remaining target, pending cleanup, retry state,
+  next lifecycle status, and duplicate-fill idempotence while explicitly
+  recording the two current labels. Full-fill permutations prove identical
+  completed status, scrubbed agent key, and archived target/fill/remaining/
+  average/fee metrics while recording `Canceled` versus `Filled` history rows
+  (`src/order_execution/twap/tests/cancel.rs:462-570`).
+- Why deferred: making fill dominate would change an existing visible
+  `Canceled` row to `Filled`; making cancel dominate would change the reverse
+  case; adding `Partially filled / canceled` or an equivalent combined state
+  adds new UI/history copy and semantics. All three violate this campaign's
+  no-UX-change authority. The persisted history string also makes the chosen
+  meaning part of the user-visible audit record. No trading-safety benefit
+  justifies silently selecting one.
+- Approval options: explicitly choose fill-dominant, cancel-dominant, or a new
+  combined outcome label, then update live/history rendering and both
+  permutation expectations together. No persisted schema migration is required
+  for future entries, but existing stored strings should remain untouched
+  unless separately approved.
+- Protected behavior: no production source changed in Turn 20. Fill matching,
+  deduplication, quantities, fees, target-specific cancellation, retry and
+  refresh behavior, scheduling, stop/completion/archive behavior, current
+  labels/copy, persistence format, and secrets remain unchanged.
+- Residual uncertainty: the characterization tests cannot execute on this host
+  until ALSA development metadata is present. Event log summary ordering also
+  follows message order, but those entries truthfully record both events and do
+  not alter financial state; no copy normalization is proposed.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -2530,18 +2608,90 @@ target-specific cancellation policy, not HTTP replay.
   the resting remainder still reaches the identical cancel/finish path; do not
   change cancellation, partial-fill, scheduling, or visible policy.
 
+## Turn 20 — Characterize TWAP Fill/Cancel Ordering
+
+- Status: audited; financial invariants characterized; F-21 deferred for an
+  explicit UX/history semantics decision; executable Rust validation
+  environment-blocked
+- Severity: Medium for F-21; no Critical/High financial-state defect confirmed
+- Scope: TWAP authoritative account/user-stream fills versus confirmed
+  unexpected-child cancellation, partial and full fill permutations, repeated
+  fill delivery, scheduling/completion, key scrubbing, and terminal history
+- Invariant: fill quantity, average price, fee, remaining target, next
+  lifecycle state, completion, and archived financial metrics must be
+  independent of whether fill reconciliation or cancel acknowledgement arrives
+  first.
+- Protected behavior: exact OID/coin/side fill attribution, stable fill
+  deduplication, child/aggregate max-and-sum accounting, target-specific cancel,
+  retry/refresh/stop behavior, next-slice cadence and sizing, current child
+  labels and event copy, terminal history format, persistence, and secrets.
+- Preconditions/event ordering: an IOC child rests; the cancel task is already
+  owned; the account/user stream proves a partial or full fill; the confirmed
+  cancel result and fill application are handled in both possible orders. A
+  repeated fill snapshot then tests idempotence after both paths converge.
+- Evidence: fill calculations depend on retained per-child metrics, not the
+  child status label. Cancel success changes pending/retry state and the child
+  label but never resets fill metrics. Scheduling derives its next size from
+  aggregate remaining target. Terminal snapshots separately copy numeric fill
+  metrics and the visible label. F-21 records the exact source and rendering
+  boundaries.
+- Change: added two adversarial characterization tests only. The partial test
+  proves both orders converge on identical `0.25 / 0.75` child/aggregate
+  accounting, price, fee, waiting state, pending cleanup, and retry state, then
+  reapplies the same fill without double counting. The full test proves both
+  orders converge on completion, zero remainder, key scrubbing, and identical
+  archived target/fill/average/fee values. It explicitly captures the current
+  order-dependent `Canceled`/`Filled` child labels. No production source or
+  documentation contract changed.
+- Tests/checks:
+  - Pre-edit attempts for
+    `confirmed_unexpected_child_cancel_clears_pending_cancel`,
+    `running_twap_reconciliation_clears_status_metadata_after_fill`, and
+    baseline `cargo check` stopped in `alsa-sys` before Kerosene compilation
+    because `pkg-config` could not find the system `alsa.pc` package.
+  - Focused attempts for
+    `partial_fill_accounting_is_monotonic_across_cancel_result_order`,
+    `terminal_fill_history_keeps_financial_metrics_across_cancel_result_order`,
+    `twap_fill_reconciliation_deduplicates_fills_by_stable_identity`, and
+    `current_unexpected_cancel_retry_result_settles_attempt` stopped at the same
+    dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - Post-edit `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: this turn changes tests and the audit ledger
+    only, and compilation is already blocked by ALSA metadata.
+- Compatibility/UX assessment: tests and ledger only. Current live/history
+  labels, event ordering, order values, cancellation behavior, timing, views,
+  schema, stored data, and secrets are untouched. The explicit deferral avoids
+  silently selecting a new visible meaning for a partially filled and canceled
+  child.
+- Residual risk: source and view/history tracing plus the new permutations
+  establish the intended financial invariants, but the crate has not
+  type-checked and the tests cannot execute without ALSA metadata. F-21 remains
+  an approved-decision dependency, not an active production-safety gap.
+- Prior turn commit hash: `351f90fe1b36316d9e0d312796c121683e472625`
+- Next candidate: finish Track 6 terminalization by adversarially ordering full
+  fill completion, stop requests, successful/failed in-flight status and cancel
+  results, retry-due messages, repeated archive upserts, and captured-key
+  scrubbing. Prove no terminal TWAP can schedule or dispatch new exchange work
+  and that delayed results cannot corrupt its financial history.
+
 ## Deferred Findings
 
-- None yet. Candidates are not deferred findings.
+- F-21: the live and persisted child label for a filled unexpected-resting
+  order depends on fill-versus-cancel delivery order. Financial state is safe,
+  but choosing fill-dominant, cancel-dominant, or combined visible semantics
+  requires explicit approval. Existing stored history strings remain unchanged.
 
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused duplicate TWAP unexpected-cancel
-  dispatch/result, stale/current retry result, initial placement/status entry,
-  exhaustion, and baseline stale-trigger tests; `cargo check`; full
-  `cargo test`; and strict clippy at `alsa-sys` system dependency discovery,
-  before Kerosene was compiled.
+- Environment-blocked this turn: focused partial/full TWAP fill-versus-cancel
+  permutations, repeated-fill deduplication, current cancel-result behavior,
+  and pre-edit cancel/fill tests; `cargo check`; full `cargo test`; and strict
+  clippy at `alsa-sys` system dependency discovery, before Kerosene was
+  compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
@@ -2550,6 +2700,8 @@ target-specific cancellation policy, not HTTP replay.
   is made.
 - F-01 through F-20 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- TWAP fill/cancel ordering, restart/shutdown cleanup, local planning/state
+- F-21 is explicitly deferred for a visible/history semantics decision; its
+  financial invariants have characterization coverage.
+- TWAP terminalization, restart/shutdown cleanup, local planning/state
   diagnostic redaction, and the remaining tracks require completion before a
   final verdict.

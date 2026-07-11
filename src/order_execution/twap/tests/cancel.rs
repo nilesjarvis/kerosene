@@ -1,5 +1,5 @@
 use super::super::twap_cancel_target_matches;
-use super::fixtures::{exchange_response_from_value, test_twap, twap_by_id};
+use super::fixtures::{exchange_response_from_value, test_twap, twap_by_id, user_fill};
 use crate::app_state::TradingTerminal;
 use crate::twap_state::{
     TWAP_MAX_UNEXPECTED_CANCEL_RETRIES, TwapChildStatus, TwapPauseReason, TwapPendingOp, TwapStatus,
@@ -457,6 +457,152 @@ fn stale_unexpected_cancel_result_cannot_settle_newer_attempt() {
         twap.child_orders[0].status,
         TwapChildStatus::UnexpectedResting
     );
+}
+
+#[test]
+fn partial_fill_accounting_is_monotonic_across_cancel_result_order() {
+    let mut fill_first = terminal_with_attempted_unexpected_cancel();
+    fill_first.reconcile_twap_fills_for_account("0xabc", &[user_fill(OID, "0.25", "100")]);
+    assert_eq!(
+        twap_by_id(&fill_first, 1).child_orders[0].status,
+        TwapChildStatus::Filled
+    );
+    let _task = fill_first.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        0,
+        Ok(cancel_success_response()),
+    );
+
+    let mut cancel_first = terminal_with_attempted_unexpected_cancel();
+    let _task = cancel_first.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        0,
+        Ok(cancel_success_response()),
+    );
+    cancel_first.reconcile_twap_fills_for_account("0xabc", &[user_fill(OID, "0.25", "100")]);
+
+    for terminal in [&fill_first, &cancel_first] {
+        assert_twap_fill_accounting(terminal, 0.25, 0.75, TwapStatus::WaitingForMarket);
+        let twap = twap_by_id(terminal, 1);
+        assert_eq!(twap.pending_op, None);
+        assert_eq!(twap.unexpected_cancel_pending_attempt, None);
+        assert_eq!(twap.cancel_retries, 0);
+        assert!(terminal.advanced_order_history.is_empty());
+    }
+
+    // Both labels describe a real child effect, but their delivery-order
+    // dependence is visible policy and is deliberately only characterized.
+    assert_eq!(
+        twap_by_id(&fill_first, 1).child_orders[0].status,
+        TwapChildStatus::UnexpectedRestingCancelled
+    );
+    assert_eq!(
+        twap_by_id(&cancel_first, 1).child_orders[0].status,
+        TwapChildStatus::Filled
+    );
+
+    fill_first.reconcile_twap_fills_for_account("0xabc", &[user_fill(OID, "0.25", "100")]);
+    cancel_first.reconcile_twap_fills_for_account("0xabc", &[user_fill(OID, "0.25", "100")]);
+    assert_twap_fill_accounting(&fill_first, 0.25, 0.75, TwapStatus::WaitingForMarket);
+    assert_twap_fill_accounting(&cancel_first, 0.25, 0.75, TwapStatus::WaitingForMarket);
+}
+
+#[test]
+fn terminal_fill_history_keeps_financial_metrics_across_cancel_result_order() {
+    let mut fill_first = terminal_with_attempted_unexpected_cancel();
+    prepare_single_child_target(&mut fill_first, 0.5);
+    fill_first.reconcile_twap_fills_for_account("0xabc", &[user_fill(OID, "0.5", "100")]);
+    let _task = fill_first.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        0,
+        Ok(cancel_success_response()),
+    );
+
+    let mut cancel_first = terminal_with_attempted_unexpected_cancel();
+    prepare_single_child_target(&mut cancel_first, 0.5);
+    let _task = cancel_first.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        0,
+        Ok(cancel_success_response()),
+    );
+    cancel_first.reconcile_twap_fills_for_account("0xabc", &[user_fill(OID, "0.5", "100")]);
+
+    for terminal in [&fill_first, &cancel_first] {
+        assert_twap_fill_accounting(terminal, 0.5, 0.0, TwapStatus::Completed);
+        let twap = twap_by_id(terminal, 1);
+        assert_eq!(twap.pending_op, None);
+        assert_eq!(twap.unexpected_cancel_pending_attempt, None);
+        assert!(twap.agent_key.as_str().is_empty());
+
+        let entry = terminal
+            .advanced_order_history
+            .iter()
+            .find(|entry| entry.source_id == 1)
+            .expect("terminal TWAP should be archived");
+        assert_eq!(entry.target_size, 0.5);
+        assert_eq!(entry.filled_size, 0.5);
+        assert_eq!(entry.remaining_size, 0.0);
+        assert_eq!(entry.average_price, Some(100.0));
+        assert_eq!(entry.total_fee, 0.01);
+        assert_eq!(entry.status, "Completed");
+        assert_eq!(entry.children.len(), 1);
+        assert_eq!(entry.children[0].filled_size, 0.5);
+        assert_eq!(entry.children[0].avg_price, Some(100.0));
+        assert_eq!(entry.children[0].fee, 0.01);
+    }
+
+    assert_eq!(
+        fill_first.advanced_order_history[0].children[0].status,
+        "Canceled"
+    );
+    assert_eq!(
+        cancel_first.advanced_order_history[0].children[0].status,
+        "Filled"
+    );
+}
+
+fn assert_twap_fill_accounting(
+    terminal: &TradingTerminal,
+    filled_size: f64,
+    remaining_size: f64,
+    status: TwapStatus,
+) {
+    let twap = twap_by_id(terminal, 1);
+    assert_eq!(twap.filled_size, filled_size);
+    assert_eq!(twap.remaining_size, remaining_size);
+    assert_eq!(twap.status, status);
+    assert_eq!(twap.child_orders[0].filled_size, filled_size);
+    assert_eq!(twap.child_orders[0].avg_price, Some(100.0));
+    assert_eq!(twap.child_orders[0].fee, 0.01);
+    assert_eq!(twap.slices_attempted, 1);
+    assert_eq!(twap.slices_sent, 1);
+    if status == TwapStatus::WaitingForMarket {
+        assert!(twap.next_slice_due > twap.started_at);
+    }
+}
+
+fn prepare_single_child_target(terminal: &mut TradingTerminal, target_size: f64) {
+    let twap = terminal.twap_orders.get_mut(&1).expect("twap");
+    twap.target_size = target_size;
+    twap.remaining_size = target_size;
+    twap.child_orders[0].planned_size = target_size;
+}
+
+fn terminal_with_attempted_unexpected_cancel() -> TradingTerminal {
+    let mut terminal = terminal_with_unexpected_cancel();
+    let twap = terminal.twap_orders.get_mut(&1).expect("twap");
+    twap.slices_attempted = 1;
+    twap.slices_sent = 1;
+    twap.pause_reason = Some(TwapPauseReason::UnexpectedResting);
+    terminal
 }
 
 fn terminal_with_unexpected_cancel() -> TradingTerminal {
