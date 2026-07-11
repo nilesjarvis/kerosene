@@ -1,15 +1,38 @@
 use super::super::actions::HyperliquidL1Action;
 use super::super::model::ExchangeOrderKind;
 use super::{
-    EXCHANGE_EXPIRES_AFTER_MS, PlaceOrderRequest, allocate_exchange_nonce_from,
-    build_signed_exchange_payload_with_nonce, exchange_payload_action,
-    exchange_payload_contains_private_key, exchange_payload_expires_after, exchange_payload_nonce,
-    exchange_payload_signature, exchange_payload_vault_address, parse_exchange_response,
+    EXCHANGE_EXPIRES_AFTER_MS, EXCHANGE_REQUEST_TIMEOUT, EXCHANGE_URL, PlaceOrderRequest,
+    allocate_exchange_nonce_from, build_exchange_client, build_signed_exchange_payload_with_nonce,
+    exchange_payload_action, exchange_payload_contains_private_key, exchange_payload_expires_after,
+    exchange_payload_nonce, exchange_payload_signature, exchange_payload_vault_address,
+    exchange_request, parse_exchange_http_response, parse_exchange_response,
+    redact_exchange_result,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use zeroize::Zeroizing;
 
 const TEST_PRIVATE_KEY: &str = "0000000000000000000000000000000000000000000000000000000000000001";
+
+async fn read_test_http_request(stream: &mut tokio::net::TcpStream) -> String {
+    use tokio::io::AsyncReadExt;
+
+    let mut request = Vec::new();
+    let mut chunk = [0_u8; 512];
+    while request.len() < 8_192 {
+        let read = stream
+            .read(&mut chunk)
+            .await
+            .expect("test request should be readable");
+        if read == 0 {
+            break;
+        }
+        request.extend_from_slice(&chunk[..read]);
+        if request.windows(4).any(|window| window == b"\r\n\r\n") {
+            break;
+        }
+    }
+    String::from_utf8(request).expect("test HTTP request should be UTF-8")
+}
 
 #[test]
 fn exchange_nonce_allocator_is_monotonic_inside_same_millisecond() {
@@ -32,6 +55,88 @@ fn exchange_nonce_allocator_never_moves_backwards_when_clock_regresses() {
 
     assert_eq!(nonce, 5_001);
     assert_eq!(last_nonce.load(Ordering::SeqCst), 5_001);
+}
+
+#[test]
+fn exchange_request_has_a_mutation_local_timeout() {
+    let client = reqwest::Client::new();
+    let payload = serde_json::json!({"action": {"type": "cancel"}});
+
+    let default_request = client
+        .post(EXCHANGE_URL)
+        .json(&payload)
+        .build()
+        .expect("default test request should build");
+    let request = exchange_request(&client, &payload)
+        .build()
+        .expect("test exchange request should build");
+
+    assert!(default_request.timeout().is_none());
+    assert_eq!(request.method(), reqwest::Method::POST);
+    assert_eq!(request.url().as_str(), EXCHANGE_URL);
+    assert_eq!(request.timeout(), Some(&EXCHANGE_REQUEST_TIMEOUT));
+}
+
+#[tokio::test]
+async fn exchange_client_does_not_replay_a_redirected_mutation() {
+    use tokio::io::AsyncWriteExt;
+
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("test listener should bind");
+    let address = listener.local_addr().expect("listener should have address");
+    let redirect_location = format!("http://{address}/replayed");
+    let server = tokio::spawn(async move {
+        let (mut first, _) = listener
+            .accept()
+            .await
+            .expect("initial exchange request should arrive");
+        let first_request = read_test_http_request(&mut first).await;
+        assert!(first_request.starts_with("POST /exchange "));
+        first
+            .write_all(
+                format!(
+                    concat!(
+                        "HTTP/1.1 307 Temporary Redirect\r\n",
+                        "Location: {}\r\n",
+                        "Content-Length: 0\r\n",
+                        "Connection: close\r\n\r\n"
+                    ),
+                    redirect_location
+                )
+                .as_bytes(),
+            )
+            .await
+            .expect("redirect response should write");
+        drop(first);
+
+        match tokio::time::timeout(std::time::Duration::from_millis(250), listener.accept()).await {
+            Ok(Ok((mut replay, _))) => {
+                let replay_request = read_test_http_request(&mut replay).await;
+                replay
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    .await
+                    .expect("replay response should write");
+                Some(replay_request)
+            }
+            _ => None,
+        }
+    });
+
+    let client = build_exchange_client().expect("test exchange client should build");
+    let response = client
+        .post(format!("http://{address}/exchange"))
+        .body("{}")
+        .send()
+        .await
+        .expect("redirect response should be returned without replay");
+    let replay = server.await.expect("test server should finish");
+
+    assert_eq!(response.status(), reqwest::StatusCode::TEMPORARY_REDIRECT);
+    assert!(
+        replay.is_none(),
+        "redirect caused a second mutation request"
+    );
 }
 
 #[test]
@@ -324,10 +429,48 @@ fn parse_exchange_response_accepts_valid_exchange_json() {
 }
 
 #[test]
+fn non_success_http_status_cannot_confirm_a_successful_mutation() {
+    let raw = r#"{"status":"ok","response":{"type":"order","data":{"statuses":[{"resting":{"oid":42}}]}}}"#;
+
+    let success = parse_exchange_http_response(reqwest::StatusCode::OK, raw)
+        .expect("success HTTP envelope should preserve response");
+    assert_eq!(success.order_oid(), Some(42));
+
+    let error = parse_exchange_http_response(reqwest::StatusCode::INTERNAL_SERVER_ERROR, raw)
+        .expect_err("non-success HTTP envelope must not confirm success");
+
+    assert_eq!(
+        error,
+        "Exchange response status uncertain: HTTP 500 Internal Server Error"
+    );
+    assert!(!error.contains("42"));
+}
+
+#[test]
+fn non_success_http_status_preserves_structured_rejection_and_conflict() {
+    let rejection = parse_exchange_http_response(
+        reqwest::StatusCode::BAD_REQUEST,
+        r#"{"status":"ok","response":{"type":"order","data":{"statuses":[{"error":"Order rejected"}]}}}"#,
+    )
+    .expect("structured rejection should remain classifiable");
+    assert!(rejection.is_error());
+    assert!(!rejection.has_potential_order_effect());
+
+    let conflict = parse_exchange_http_response(
+        reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+        r#"{"status":"ok","response":{"type":"order","data":{"statuses":[{"resting":{"oid":42}},{"error":"conflicting rejection"}]}}}"#,
+    )
+    .expect("structured conflict should reach ambiguity classification");
+    assert!(conflict.has_conflicting_order_effect());
+    assert!(conflict.is_ambiguous_order_result());
+}
+
+#[test]
 fn parse_exchange_response_redacts_sensitive_raw_body_on_error() {
     let signature = "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    let cloid = "0x1234567890abcdef1234567890abcdef";
     let raw = format!(
-        "upstream parse failed Authorization: Bearer exchange-secret api_key=\"json-secret\" txid={signature}"
+        "upstream parse failed Authorization: Bearer exchange-secret api_key=\"json-secret\" txid={signature} cloid={cloid}"
     );
 
     let error = parse_exchange_response(&raw).expect_err("malformed body should fail");
@@ -339,10 +482,52 @@ fn parse_exchange_response_redacts_sensitive_raw_body_on_error() {
         "exchange-secret",
         "json-secret",
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        cloid,
     ] {
         assert!(
             !error.contains(secret),
             "exchange parse error leaked {secret}"
         );
     }
+}
+
+#[test]
+fn exchange_result_error_is_redacted_before_message_mapping() {
+    let private_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    let cloid = "0x1234567890abcdef1234567890abcdef";
+    let raw = format!(
+        concat!(
+            "Exchange request failed: Authorization: Bearer bearer-secret ",
+            "api_key=api-secret private_key={} trace=0x{} cloid={}"
+        ),
+        private_key, private_key, cloid
+    );
+
+    let result = redact_exchange_result(Err(raw));
+    let debug = format!("{result:?}");
+    let error = result.expect_err("error should remain an error");
+
+    assert!(error.contains("Exchange request failed"));
+    assert!(error.contains("<redacted>"));
+    assert!(error.contains("<redacted-hex>"));
+    for secret in ["bearer-secret", "api-secret", private_key, cloid] {
+        assert!(!error.contains(secret), "exchange result leaked {secret}");
+        assert!(!debug.contains(secret), "result debug leaked {secret}");
+    }
+}
+
+#[test]
+fn exchange_result_redaction_preserves_success_and_safe_error_text() {
+    let response = parse_exchange_response(r#"{"status":"ok","response":{"type":"default"}}"#)
+        .expect("valid response should parse");
+    let response = redact_exchange_result(Ok(response)).expect("success should remain successful");
+    assert_eq!(response.status, "ok");
+    assert_eq!(response.summary(), "OK (default)");
+
+    let safe = "Exchange request failed: connection closed before response";
+
+    let error = redact_exchange_result(Err(safe.to_string()))
+        .expect_err("safe error should remain an error");
+
+    assert_eq!(error, safe);
 }

@@ -63,7 +63,19 @@ pub fn sensitive_response_snippet(text: &str) -> String {
 }
 
 pub fn redact_sensitive_response_text(text: &str) -> String {
-    redact_long_hex_tokens(&redact_bearer_phrases(&redact_sensitive_key_values(text)))
+    redact_sensitive_text(text, 40)
+}
+
+/// Redact external order-lifecycle text, including 128-bit client order IDs.
+pub fn redact_sensitive_order_text(text: &str) -> String {
+    redact_sensitive_text(text, 32)
+}
+
+fn redact_sensitive_text(text: &str, minimum_hex_run: usize) -> String {
+    redact_hex_tokens(
+        &redact_bearer_phrases(&redact_sensitive_key_values(text)),
+        minimum_hex_run,
+    )
 }
 
 pub fn redact_wallet_address_debug_value(value: &str) -> &str {
@@ -365,7 +377,7 @@ fn redact_bearer_phrases(text: &str) -> String {
     redacted
 }
 
-fn redact_long_hex_tokens(text: &str) -> String {
+fn redact_hex_tokens(text: &str, minimum_run: usize) -> String {
     let mut redacted = String::with_capacity(text.len());
     let mut run_start = None;
     let mut run_len = 0_usize;
@@ -380,7 +392,7 @@ fn redact_long_hex_tokens(text: &str) -> String {
         }
 
         if let Some(start) = run_start.take() {
-            if run_len >= 40 {
+            if run_len >= minimum_run {
                 redacted.push_str("<redacted-hex>");
             } else {
                 redacted.push_str(&text[start..index]);
@@ -391,7 +403,7 @@ fn redact_long_hex_tokens(text: &str) -> String {
     }
 
     if let Some(start) = run_start {
-        if run_len >= 40 {
+        if run_len >= minimum_run {
             redacted.push_str("<redacted-hex>");
         } else {
             redacted.push_str(&text[start..]);
@@ -444,6 +456,16 @@ mod tests {
         ] {
             assert!(!rendered.contains(secret), "snippet leaked {secret}");
         }
+    }
+
+    #[test]
+    fn sensitive_order_text_redacts_128_bit_cloid_but_preserves_short_oid() {
+        let cloid = "0x1234567890abcdef1234567890abcdef";
+        let rendered = redact_sensitive_order_text(&format!("cloid={cloid} oid=42"));
+
+        assert!(rendered.contains("<redacted-hex>"));
+        assert!(rendered.contains("oid=42"));
+        assert!(!rendered.contains(cloid));
     }
 
     #[test]

@@ -145,13 +145,37 @@ fn exchange_response_debug_redacts_raw_sensitive_values() {
     let debug = format!("{response:?}");
 
     assert!(debug.contains("<redacted>"));
-    assert!(debug.contains("<redacted-hex>"));
     for secret in [
         "exchange-secret",
         "bearer-secret",
         "0123456789abcdef0123456789abcdef01234567",
     ] {
         assert!(!debug.contains(secret), "debug leaked {secret}");
+    }
+}
+
+#[test]
+fn exchange_response_debug_redacts_successful_order_details() {
+    let response = exchange_response(serde_json::json!({
+        "filled": {
+            "totalSz": "1.234",
+            "avgPx": "98765.43",
+            "oid": 424242_u64
+        }
+    }));
+
+    let debug = format!("{response:?}");
+
+    assert!(debug.contains("ExchangeResponse"));
+    assert!(debug.contains("status: \"ok\""));
+    assert!(debug.contains("summary: \"<redacted>\""));
+    assert!(debug.contains("response_type: Some(\"order\")"));
+    assert!(debug.contains("status_count: Some(1)"));
+    for detail in ["1.234", "98765.43", "424242"] {
+        assert!(
+            !debug.contains(detail),
+            "debug leaked order detail {detail}"
+        );
     }
 }
 

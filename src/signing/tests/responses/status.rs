@@ -56,10 +56,11 @@ fn exchange_response_error_status_drives_error_transition() {
 #[test]
 fn exchange_response_error_status_redacts_sensitive_values() {
     let response = exchange_response(serde_json::json!({
-        "error": "rejected api_key=\"exchange-secret\" Authorization: Bearer bearer-secret txid=0x0123456789abcdef0123456789abcdef01234567"
+        "error": "rejected api_key=\"exchange-secret\" Authorization: Bearer bearer-secret txid=0x0123456789abcdef0123456789abcdef01234567 cloid=0x1234567890abcdef1234567890abcdef"
     }));
 
     let summary = response.summary();
+    let debug = format!("{response:?}");
 
     assert!(summary.contains("<redacted>"));
     assert!(summary.contains("<redacted-hex>"));
@@ -67,8 +68,10 @@ fn exchange_response_error_status_redacts_sensitive_values() {
         "exchange-secret",
         "bearer-secret",
         "0123456789abcdef0123456789abcdef01234567",
+        "0x1234567890abcdef1234567890abcdef",
     ] {
         assert!(!summary.contains(secret), "summary leaked {secret}");
+        assert!(!debug.contains(secret), "response debug leaked {secret}");
     }
 }
 

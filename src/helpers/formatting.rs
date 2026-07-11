@@ -10,7 +10,7 @@ pub use numbers::{
     parse_positive_number, positive_finite_value, trim_decimal_zeros, values_match_approx,
 };
 pub use text::{
-    ellipsized_text, fallback_initials, path_neutral_io_error_detail,
+    ellipsized_text, fallback_initials, path_neutral_io_error_detail, redact_sensitive_order_text,
     redact_sensitive_response_text, redact_wallet_address_debug_value, response_excerpt,
     response_snippet, sensitive_response_excerpt, sensitive_response_snippet, text_excerpt,
 };

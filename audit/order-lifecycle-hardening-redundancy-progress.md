@@ -24,13 +24,13 @@
 - All signed L1 mutations converge in `src/signing/client.rs` through
   `sign_and_post`. The current action set is place, cancel by OID, cancel by
   CLOID, modify, and leverage update (`src/signing/actions.rs:28-34`,
-  `src/signing/client.rs:165-224`).
+  `src/signing/client.rs:234-293`).
 - Place and modify preparation preserves asset, side, price and size strings,
   TIF/order kind, reduce-only, OID/CLOID, and action field order without a
   conversion after `PreparedExchangeOrder`/`PreparedModifyOrder`. The final
   signed-payload boundary now independently rejects non-positive/non-finite
   numeric strings and a missing or malformed placement CLOID before hashing or
-  posting (`src/signing/actions.rs:36-158`, `src/signing/client.rs:83-104`).
+  posting (`src/signing/actions.rs:36-158`, `src/signing/client.rs:106-135`).
 - User and automation placement paths use `place_order_task`; cancel/modify
   paths use the corresponding task wrappers in `src/order_execution/core.rs`.
   A repository-wide call-site search found no feature-owned signing pipeline.
@@ -46,13 +46,14 @@
 - One-shot result classification distinguishes accepted-resting, filled,
   cancelled, rejected, ambiguous, and transport-unknown outcomes
   (`src/order_update/results.rs:15-30`, `src/order_update/results.rs:173-215`).
-- Signed mutation transport currently maps every serialization, connect/send,
-  body-read, and JSON-parse failure to transport-unknown and never retries a
-  placement or modify. Parsed responses now also preserve uncertainty whenever
-  an explicit error conflicts with a structured resting, filled, successful
-  cancel, or otherwise non-error status, including an erroneous top-level
-  envelope
-  (`src/signing/client.rs:65-126`,
+- Signed mutation transport uses a dedicated client with no redirects or HTTP
+  retries, a 5-second connect timeout, a 15-second total timeout at both client
+  and request scope, and a 60-second idle-pool timeout. Every local-build,
+  connect/send, body-read, and JSON-parse failure remains conservatively
+  transport-unknown and is order-aware redacted before task mapping into
+  `Message`; no placement or modify is automatically retried. Parsed responses
+  also preserve uncertainty whenever an explicit error conflicts with a
+  structured possible effect (`src/signing/client.rs:74-232`,
   `src/signing/model/exchange_response/analysis.rs:83-144`).
 - Order-status REST parsing validates the returned OID/CLOID for concrete order
   bodies before handing a result to lifecycle code
@@ -105,6 +106,28 @@ wallet-cluster results, and explicitly to Chase place/modify/cancel plus TWAP
 child-place/unexpected-cancel handling. Pure errors, unambiguous successes,
 transport failures, and unstructured malformed responses retain their prior
 paths; only simultaneous error/effect claims reconcile.
+
+### Mutation Transport Phase Audit
+
+| Boundary | Can the exchange have observed the mutation? | Downstream treatment | Replay/retry behavior |
+| --- | --- | --- | --- |
+| Wire validation, msgpack, key decode/signing, JSON serialization, or dedicated-client initialization | No | Preserved `Err` shape; existing handlers conservatively classify or handle it as status unknown | No HTTP dispatch and no application retry |
+| Request construction or connect failure | No for builder/connect failures, but reqwest's public error string is deliberately not used as a financial proof | `TransportUnknown`; exact CLOID/OID status and/or scoped account refresh | Dedicated client has retries and redirects disabled |
+| Send error or 15-second timeout | Possibly; bytes may have left the process | `TransportUnknown`; exact reconciliation | No transport replay and no placement/modify retry |
+| HTTP response body read failure | Yes | `TransportUnknown`; exact reconciliation | No retry |
+| Non-JSON or structurally unparseable HTTP body, regardless of HTTP status | Yes | `TransportUnknown`; redacted bounded body snippet, then exact reconciliation | No retry |
+| Non-success HTTP envelope with apparently successful/incomplete parsed body | Yes | F-11 `TransportUnknown`; exact reconciliation | No retry |
+| Parsed exchange rejection under any HTTP status | Yes, with explicit no-effect error | `Rejected`; no ambiguity cleanup is released by inference | No retry |
+| Parsed success or conflicting effect/error statuses | Yes | Strict success classifier, or F-08 `Ambiguous` reconciliation on conflict | No retry |
+
+The result type intentionally remains `Result<ExchangeResponse, String>` in
+this turn. Distinguishing provably local errors in downstream UX would change
+form recovery, refresh, and automation failure paths without improving safety;
+the existing over-approximation is fail-closed. The transport boundary instead
+prevents hidden redirects/replays, bounds every request, and sanitizes both
+`Ok` and `Err` diagnostic formatting before derived `Message::Debug` can observe
+the result. Existing bounded Chase/TWAP cancel retries are lifecycle-level,
+target-specific cancellation policy, not HTTP replay.
 
 ## Ranked Findings and Audit Candidates
 
@@ -481,11 +504,181 @@ paths; only simultaneous error/effect claims reconcile.
   persistence, and UI behavior is unchanged. Only a parseable internally
   contradictory acknowledgement now takes an already-established uncertain
   reconciliation path.
-- Residual uncertainty: all response-body and transport failures remain
-  conservatively transport-unknown because the current client flattens send and
-  post-send failures into `String`; the next transport pass must decide whether
-  phase typing adds diagnostic precision without weakening this fail-closed
-  classification or exposing external response content.
+- Residual uncertainty: Turn 10 completed the phase audit and retained the
+  conservative `String` error shape deliberately; transport replay, timeout,
+  HTTP-envelope conflict, and pre-message redaction are now independently
+  guarded under F-09 through F-11.
+
+### F-09 — Generic HTTP policy can replay or indefinitely strand a signed mutation
+
+- Status: addressed in Turn 10; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: High, with a Critical duplicate-mutation consequence if an
+  anomalous redirect is emitted after an exchange-side effect
+- Scope: the one `/exchange` HTTP client and request builder used by every
+  place, cancel-by-OID, cancel-by-CLOID, modify, and leverage action
+- Preconditions/event ordering:
+  1. A valid action has already been serialized and signed.
+  2. The generic shared reqwest client receives a 307/308 redirect or a
+     retryable protocol NACK, or its configured construction fails and the
+     fallback client is used.
+  3. Redirect/retry middleware can clone and resend the JSON POST below the
+     application lifecycle, or the fallback has no total request timeout.
+  4. The state machine observes only the eventual response/error and cannot
+     correlate how many wire sends occurred.
+- Evidence:
+  - The prior `post_exchange` cloned the shared `api::CLIENT`; that client used
+    reqwest defaults for redirect/retry policy and fell back to `Client::new()`
+    if the configured builder failed (`src/api.rs:47-58`).
+  - All five signed action wrappers converge on `sign_and_post`, and the JSON
+    request body is replayable (`src/signing/client.rs:74-135`,
+    `src/signing/client.rs:234-293`).
+  - The audited reqwest 0.12 implementation follows up to ten redirects by
+    default, preserves POST/body for 307/308, permits safe-protocol retries by
+    default, and gives a default client no total timeout. Kerosene must not rely
+    on generic HTTP safety assumptions as its mutation idempotency policy.
+- Violated invariant: exactly one transport send may be initiated for one
+  signed lifecycle attempt; any uncertainty must return to Kerosene for exact
+  reconciliation, never trigger hidden middleware replay.
+- Risk: an infrastructure redirect or lower-level replay can submit the same
+  signed mutation more than once without a second state-machine attempt. CLOID
+  and nonce behavior provide useful exchange defenses, but cancel, modify, and
+  leverage actions do not all have a placement CLOID, and client code must not
+  assume undocumented duplicate suppression. An unbounded fallback request can
+  also strand global or automation pending state indefinitely.
+- Implemented fix: `/exchange` now has a dedicated lazily built client with
+  redirects disabled, retries disabled, the existing 5-second connect and
+  15-second total limits, and the existing 60-second idle-pool limit. Client
+  construction failure is returned through the normal conservative error path
+  instead of falling back to an unbounded generic client. The request builder
+  independently reapplies the 15-second limit as prudent redundancy
+  (`src/signing/client.rs:16-23`, `src/signing/client.rs:137-176`).
+- Regression coverage: a request-construction test proves the mutation-local
+  timeout exists even on a default client, and a loopback 307 server proves the
+  dedicated client returns the redirect without issuing a second POST
+  (`src/signing/client/tests.rs:60-137`).
+- Protected behavior: endpoint, method, JSON body, headers/user agent, signing,
+  nonce/expiry, response parsing, all application result classifications, and
+  the ordinary 5/15/60-second timing policy remain unchanged. No dependency,
+  exchange retry, application retry, UI, persistence, or trading-policy change
+  was introduced.
+
+### F-10 — Signed mutation results can expose details before update-time redaction
+
+- Status: addressed in Turn 10; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium privacy and diagnostic-boundary hardening
+- Scope: signed response/error text between `sign_and_post`, task mapping,
+  derived `Message::Debug`, `ExchangeResponse::Debug`, and update handlers
+- Preconditions/event ordering:
+  1. A local, reqwest, response-body, or parse error includes a credential,
+     bearer value, long hexadecimal token, or 128-bit CLOID; or a successful
+     response includes size, price, and OID details.
+  2. A task closure maps that `Result<ExchangeResponse, String>` directly into
+     a `Message` variant.
+  3. Derived `Message::Debug` formats the nested result before an update handler
+     applies its redundant sanitizer.
+- Evidence:
+  - `Message` derives `Debug`, and every signed-result variant stores the raw
+    result shape (`src/message.rs:571-572`, `src/message.rs:1079-1137`).
+  - The prior `sign_and_post` returned build/post errors directly, while
+    individual handlers performed redaction only after message delivery.
+  - `ExchangeResponse::Debug` previously embedded `summary()`, which exposes
+    deliberate user-facing resting/fill size, price, and OID details even when
+    the raw response model itself is not formatted.
+- Violated invariant: every mutation result must already be diagnostically safe
+  at the boundary where it can enter a derived-debug message; handler-time
+  redaction is useful redundancy, not the first privacy boundary.
+- Risk: diagnostic logging, panic context, or state formatting between task
+  completion and update handling can disclose secrets, order correlation IDs,
+  or order details that adjacent models deliberately redact.
+- Implemented fix: the single signing exit now applies order-aware redaction to
+  every `Err` before task mapping. The malformed-body path uses the same
+  bounded sanitizer, and response error/unknown summaries redact 128-bit hex
+  identifiers without changing the generic application redactor. Successful
+  `ExchangeResponse::Debug` keeps safe status/type/count metadata but replaces
+  its human summary with `<redacted>` (`src/signing/client.rs:74-95`,
+  `src/signing/client.rs:211-218`,
+  `src/helpers/formatting/text.rs:65-79`,
+  `src/signing/model/exchange_response/analysis.rs:227-246`).
+- Regression coverage: tests prove a bearer token, API key, private key, long
+  hex token, and CLOID are absent from result/debug output; safe error copy and
+  successful response semantics remain exact; the order-only helper preserves
+  a short OID; and successful response debug omits fill size, price, and OID
+  (`src/signing/client/tests.rs:466-529`,
+  `src/helpers/formatting/text.rs:461-469`,
+  `src/signing/tests/responses/status.rs:57-76`,
+  `src/signing/tests/responses/strings.rs:158-184`).
+- Protected behavior: `ExchangeResponse::summary()` remains unchanged for valid
+  user-facing results; safe transport error strings remain byte-for-byte
+  unchanged; `Ok`/`Err` shape, outcome classification, reconciliation, task
+  count/timing, controls, persistence, and wire behavior are untouched. Only
+  diagnostic/error content that matches the existing sensitive-order policy is
+  redacted earlier.
+
+### F-11 — A non-success HTTP envelope can masquerade as mutation success
+
+- Status: addressed in Turn 10; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: High outcome-classification hardening
+- Scope: HTTP status/body handoff immediately after `/exchange` returns
+- Preconditions/event ordering:
+  1. The signed request reaches an exchange server or intermediary.
+  2. It returns a non-2xx HTTP status but a syntactically valid body whose
+     exchange-level fields appear successful or merely incomplete rather than
+     explicitly erroneous.
+  3. The prior transport reads only the body and discards the HTTP status.
+  4. Normal parsed-success handling can accept, fill, rest, or advance
+     automation from a response whose two protocol layers disagree.
+- Evidence: the prior `post_exchange` chained `.send().text()` and passed only
+  raw body text to `parse_exchange_response`. The current handoff captures both
+  values at `src/signing/client.rs:137-152`, while parsed-response conflict
+  analysis has no access to HTTP status once it is discarded.
+- Violated invariant: a successful local lifecycle transition requires success
+  at both the HTTP envelope and exchange response layer; disagreement is
+  uncertain exposure, not confirmation.
+- Risk: an upstream error page or intermediary response shaped like a valid
+  exchange result could be consumed as acceptance/fill and allow automation to
+  continue from unverified state.
+- Implemented fix: HTTP status now accompanies the raw body into one parser.
+  A non-success envelope plus an apparently non-error exchange body becomes a
+  value-neutral transport error and exact reconciliation. A structured pure
+  rejection remains rejected, and an error/effect conflict remains an F-08
+  ambiguity, preserving the stronger information already in the body
+  (`src/signing/client.rs:220-232`).
+- Regression coverage: a 500 envelope with a resting-success body cannot expose
+  its OID or confirm success; a 400 structured rejection remains classifiable;
+  and a 500 mixed resting/error body still reaches conflict reconciliation
+  (`src/signing/client/tests.rs:429-463`).
+- Protected behavior: every 2xx response, structured rejection, error/effect
+  conflict, syntactically invalid body, redaction rule, timeout, normal status
+  string, and reconciliation path retains its prior behavior. Only a previously
+  unrepresented HTTP/exchange success disagreement becomes fail-closed.
+
+### F-12 — `orderStatus` error strings can expose CLOIDs in derived message debug
+
+- Status: confirmed in Turn 10; queued for the next redaction batch
+- Severity: Medium privacy hardening
+- Scope: CLOID status-query HTTP/parser errors and their result messages
+- Preconditions/event ordering: an HTTP error body echoes a 128-bit CLOID, or a
+  parsed concrete order returns a mismatching CLOID; the `Err(String)` is mapped
+  into `OneShotPlacementStatusLoaded`, `NukePlacementStatusLoaded`, Chase/TWAP
+  status, or wallet-cluster status messages before handler-time redaction.
+- Evidence: the status parser includes both expected and returned CLOIDs in a
+  mismatch error (`src/api/order_status/parsing.rs:48-54`); the HTTP preview
+  uses the generic rather than order-aware excerpt (`src/api/order_status.rs:49-70`);
+  status-result variants live inside derived `Message::Debug`
+  (`src/message.rs:1094-1099`, `src/message.rs:1128-1137`).
+- Violated invariant: exact correlation values must be retained for matching
+  but omitted from diagnostic errors before message mapping.
+- Risk: an anomalous or hostile reconciliation response can bypass the custom
+  `OrderStatusResult::Debug` redaction by returning through the error lane.
+- Smallest planned fix: apply the Turn 10 order-aware sanitizer at the two
+  public `orderStatus` task exits and make mismatch errors value-neutral, with
+  focused HTTP-preview, mismatch, safe-copy, and derived-result regressions.
+- Protected behavior: request body/correlation, parsed success values, status
+  classification, retries/timeouts, and user-visible normal status paths must
+  remain unchanged.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -918,6 +1111,73 @@ paths; only simultaneous error/effect claims reconcile.
   typed internal context only if it improves diagnostics while every uncertain
   mutation remains fail-closed and no retry or user-facing behavior changes.
 
+## Turn 10 — Isolate and Bound Signed Mutation Transport
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: High transport replay prevention plus Medium diagnostic/privacy
+  hardening
+- Scope: completion of Audit Track 3 from pre-signing validation through HTTP
+  policy, response parsing, task-message mapping, and immediate-result debug
+- Invariant: one lifecycle attempt initiates at most one HTTP send; transport
+  uncertainty returns to exact reconciliation; and both success and error
+  results are diagnostically safe before they can enter derived `Message::Debug`.
+- Protected behavior: valid signed payloads, endpoint/method/body, nonce and
+  expiry, safe error copy, all outcome kinds, conservative unknown handling,
+  CLOID/OID reconciliation, application-level target-cancel policy, ordinary
+  status copy, controls, persistence, and normal request timing remain
+  unchanged.
+- Evidence: every signed wrapper and task caller was retraced. The exact phase
+  decisions are recorded in the Mutation Transport Phase Audit, and the three
+  confirmed boundary weaknesses are detailed under F-09 through F-11.
+- Change: replaced shared generic HTTP policy with a dedicated no-redirect,
+  no-retry exchange client; retained the existing 5/15/60-second limits and
+  redundantly bound each request to 15 seconds; removed the unsafe unbounded
+  fallback; applied one order-aware sanitizer to every signing exit; and made
+  successful exchange-response debug metadata-only. Non-success HTTP envelopes
+  can no longer confirm an apparently successful body. No downstream result
+  type or handler branch changed because treating provably local errors less
+  conservatively would alter UX without improving financial safety.
+- Regression tests: added a loopback 307 replay trap, explicit per-request
+  timeout inspection, secret/CLOID result-debug redaction, safe error and `Ok`
+  preservation, 128-bit order-identifier redaction, and successful
+  response-detail debug redaction, plus non-success HTTP success/rejection/
+  conflict classification.
+- Validation:
+  - `cargo fmt` passed.
+  - `cargo fmt -- --check` and `git diff --check` passed before the ledger
+    update and are rerun during final review.
+  - Pre- and post-implementation
+    `cargo test --package kerosene --bin kerosene exchange_client_does_not_replay_a_redirected_mutation`
+    attempts stopped in `alsa-sys` before compiling Kerosene because
+    `pkg-config` could not find the system `alsa.pc` package.
+  - Focused `exchange_request_has_a_mutation_local_timeout`,
+    `exchange_result_`, `parse_exchange_response_`,
+    `sensitive_order_text_redacts_128_bit_cloid`,
+    `exchange_response_error_status_redacts_sensitive_values`, and
+    `exchange_response_debug_redacts_successful_order_details` test attempts
+    stopped at the same environment boundary.
+  - Focused `non_success_http_status_` test attempts stopped at the same
+    boundary.
+  - The protected existing
+    `ambiguous_transport_results_require_account_refresh` test attempt also
+    stopped at that boundary.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+- Compatibility/UX assessment: the ordinary client used the same user agent
+  and timeouts; valid exchange calls, explicit rejections, and all normal
+  handler-visible strings/state are unchanged. Only hidden HTTP resend/redirect
+  behavior, an unsafe client-build fallback, diagnostic exposure, and false
+  confirmation from a contradictory non-2xx envelope are removed.
+- Residual risk: formatting, exhaustive signed-call/result-handler inspection,
+  phase analysis, and diff checks pass, but the new tests/type-check/clippy must
+  execute on a host with ALSA development metadata. F-12 confirms that the
+  separate `orderStatus` read-error lane needs the same pre-message CLOID
+  protection in the next narrow batch.
+- Prior turn commit hash: `501cfb097428987c0cd8f1dbb4f47779655db468`
+- Next candidate: address F-12 at the `orderStatus` task boundary, then resume
+  cancel/move ownership and repeated-attempt correlation in Track 4.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -925,19 +1185,20 @@ paths; only simultaneous error/effect claims reconcile.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused conflicting-response model,
-  classifier, Chase, and TWAP tests; nearby response tests; `cargo check`; full
-  `cargo test`; and strict clippy at `alsa-sys` system dependency discovery,
-  before Kerosene was compiled.
+- Environment-blocked this turn: focused exchange redirect/replay, timeout,
+  result/parser redaction, order-aware helper, and response-debug tests; the
+  protected transport-unknown refresh test; `cargo check`; full `cargo test`;
+  and strict clippy at `alsa-sys` system dependency discovery, before Kerosene
+  was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-08 have source fixes and regression coverage but await
+- F-01 through F-11 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- Transport-phase provenance/redaction, cancel/move correlation, broader
-  Chase/TWAP and account-stream ordering, restart/shutdown cleanup, and the
-  remaining redaction audit require track-by-track completion before a final
-  verdict.
+- F-12 is confirmed and queued. `orderStatus` pre-message error redaction,
+  cancel/move correlation, broader Chase/TWAP and account-stream ordering,
+  restart/shutdown cleanup, and the remaining redaction audit require
+  track-by-track completion before a final verdict.

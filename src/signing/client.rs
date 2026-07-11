@@ -2,16 +2,25 @@ use super::actions::HyperliquidL1Action;
 use super::crypto::sign_l1_action;
 use super::model::{ExchangeOrderKind, ExchangeResponse};
 use crate::app_time::now_ms;
-use crate::helpers::sensitive_response_snippet;
+use crate::helpers::{redact_sensitive_order_text, response_snippet};
 
 use serde_json::Value;
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    LazyLock,
+    atomic::{AtomicU64, Ordering},
+};
+use std::time::Duration;
 use zeroize::Zeroizing;
 
 const EXCHANGE_URL: &str = "https://api.hyperliquid.xyz/exchange";
 const EXCHANGE_EXPIRES_AFTER_MS: u64 = 30_000;
+const EXCHANGE_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+const EXCHANGE_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const EXCHANGE_POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 static LAST_EXCHANGE_NONCE_MS: AtomicU64 = AtomicU64::new(0);
+static EXCHANGE_CLIENT: LazyLock<Result<reqwest::Client, String>> =
+    LazyLock::new(build_exchange_client);
 
 #[derive(Clone)]
 pub struct PlaceOrderRequest {
@@ -67,8 +76,22 @@ async fn sign_and_post(
     action: &HyperliquidL1Action,
     vault_address: Option<&str>,
 ) -> Result<ExchangeResponse, String> {
-    let payload = build_signed_exchange_payload(private_key, action, vault_address)?;
-    post_exchange(&payload).await
+    let result = match build_signed_exchange_payload(private_key, action, vault_address) {
+        Ok(payload) => post_exchange(&payload).await,
+        Err(error) => Err(error),
+    };
+
+    // Task wrappers map this result directly into `Message`, whose derived
+    // `Debug` implementation can format an error before any update handler
+    // gets a second chance to sanitize it. Keep the existing conservative
+    // downstream `Err` semantics, but make redaction a single-exit invariant.
+    redact_exchange_result(result)
+}
+
+fn redact_exchange_result(
+    result: Result<ExchangeResponse, String>,
+) -> Result<ExchangeResponse, String> {
+    result.map_err(|error| redact_sensitive_order_text(&error))
 }
 
 fn build_signed_exchange_payload(
@@ -112,18 +135,46 @@ fn build_signed_exchange_payload_with_nonce(
 }
 
 async fn post_exchange(payload: &Value) -> Result<ExchangeResponse, String> {
-    let client = crate::api::CLIENT.clone();
-    let raw = client
-        .post(EXCHANGE_URL)
-        .json(payload)
+    let client = match &*EXCHANGE_CLIENT {
+        Ok(client) => client,
+        Err(error) => return Err(error.clone()),
+    };
+    let response = exchange_request(client, payload)
         .send()
         .await
-        .map_err(|e| format!("Exchange request failed: {e}"))?
+        .map_err(|e| format!("Exchange request failed: {e}"))?;
+    let status = response.status();
+    let raw = response
         .text()
         .await
         .map_err(|e| format!("Failed to read response: {e}"))?;
 
-    parse_exchange_response(&raw)
+    parse_exchange_http_response(status, &raw)
+}
+
+fn build_exchange_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent(crate::api::KEROSENE_USER_AGENT)
+        .timeout(EXCHANGE_REQUEST_TIMEOUT)
+        .connect_timeout(EXCHANGE_CONNECT_TIMEOUT)
+        .pool_idle_timeout(EXCHANGE_POOL_IDLE_TIMEOUT)
+        // A signed mutation must never be redirected or replayed below the
+        // lifecycle state machine, even for protocol conditions a generic
+        // HTTP client considers safe to retry.
+        .redirect(reqwest::redirect::Policy::none())
+        .retry(reqwest::retry::never())
+        .build()
+        .map_err(|error| format!("Exchange HTTP client initialization failed: {error}"))
+}
+
+fn exchange_request(client: &reqwest::Client, payload: &Value) -> reqwest::RequestBuilder {
+    // The dedicated client carries this same timeout. Keep a request-local
+    // bound as prudent redundancy so future client-construction changes cannot
+    // silently make a signed mutation unbounded.
+    client
+        .post(EXCHANGE_URL)
+        .timeout(EXCHANGE_REQUEST_TIMEOUT)
+        .json(payload)
 }
 
 #[cfg(test)]
@@ -158,8 +209,26 @@ fn exchange_payload_contains_private_key(payload: &Value, private_key: &str) -> 
 }
 
 fn parse_exchange_response(raw: &str) -> Result<ExchangeResponse, String> {
-    serde_json::from_str::<ExchangeResponse>(raw)
-        .map_err(|_| format!("Exchange error: {}", sensitive_response_snippet(raw)))
+    serde_json::from_str::<ExchangeResponse>(raw).map_err(|_| {
+        format!(
+            "Exchange error: {}",
+            response_snippet(&redact_sensitive_order_text(raw))
+        )
+    })
+}
+
+fn parse_exchange_http_response(
+    status: reqwest::StatusCode,
+    raw: &str,
+) -> Result<ExchangeResponse, String> {
+    let response = parse_exchange_response(raw)?;
+    // A structured exchange error still conveys a definitive rejection or an
+    // F-08 error/effect conflict. Without that explicit error signal, a
+    // non-success HTTP envelope cannot confirm mutation success.
+    if !status.is_success() && !response.is_error() {
+        return Err(format!("Exchange response status uncertain: HTTP {status}"));
+    }
+    Ok(response)
 }
 
 /// Place an order with a Hyperliquid client order id.

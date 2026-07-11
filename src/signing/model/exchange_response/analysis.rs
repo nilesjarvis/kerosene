@@ -1,4 +1,4 @@
-use crate::helpers::{positive_finite_value, redact_sensitive_response_text};
+use crate::helpers::{positive_finite_value, redact_sensitive_order_text};
 
 use super::ExchangeResponse;
 use serde_json::Value;
@@ -17,7 +17,7 @@ impl ExchangeResponse {
             }
             return format!(
                 "Error: status={}",
-                redact_sensitive_response_text(&self.status)
+                redact_sensitive_order_text(&self.status)
             );
         }
         let Some(inner) = &self.response else {
@@ -237,11 +237,8 @@ impl fmt::Debug for ExchangeResponse {
             .map(|data| data.statuses.len());
 
         f.debug_struct("ExchangeResponse")
-            .field(
-                "status",
-                &redact_sensitive_response_text(self.status.as_str()),
-            )
-            .field("summary", &self.summary())
+            .field("status", &redact_sensitive_order_text(self.status.as_str()))
+            .field("summary", &"<redacted>")
             .field("response_type", &response_type)
             .field("status_count", &status_count)
             .field("has_raw_response", &self.raw_response.is_some())
@@ -314,12 +311,12 @@ fn raw_exchange_response_summary(value: &Value) -> String {
         .as_str()
         .map(ToString::to_string)
         .unwrap_or_else(|| value.to_string());
-    redact_sensitive_response_text(&summary)
+    redact_sensitive_order_text(&summary)
 }
 
 fn status_summary(st: &Value, response_type: &str) -> String {
     if let Some(err) = st.get("error").and_then(|v| v.as_str()) {
-        return format!("Error: {}", redact_sensitive_response_text(err));
+        return format!("Error: {}", redact_sensitive_order_text(err));
     }
     if let Some(filled) = st.get("filled") {
         let sz = filled
@@ -353,5 +350,5 @@ fn status_summary(st: &Value, response_type: &str) -> String {
             "Success".to_string()
         };
     }
-    redact_sensitive_response_text(&format!("{st}"))
+    redact_sensitive_order_text(&format!("{st}"))
 }
