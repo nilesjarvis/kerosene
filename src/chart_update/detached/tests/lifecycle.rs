@@ -1,7 +1,7 @@
 use super::*;
 use crate::annotations::DrawingTool;
 use crate::api::{ExchangeSymbol, MarketType};
-use crate::chart::ChartViewport;
+use crate::chart::{ChartViewport, EarningsMarker};
 use std::collections::HashSet;
 
 fn exchange_symbol(key: &str) -> ExchangeSymbol {
@@ -83,6 +83,79 @@ fn open_detached_chart_window_clones_source_chart() {
 
     assert_eq!(chart_instance(&terminal, chart_id).symbol, "BTC");
     assert_eq!(chart_instance(&terminal, detached_chart_id).symbol, "ETH");
+}
+
+#[test]
+fn detached_chart_clone_joins_active_earnings_request() {
+    let chart_id = 7;
+    let mut terminal = terminal_with_chart(chart_id);
+    {
+        let source = chart_instance_mut(&mut terminal, chart_id);
+        source.show_earnings_markers = true;
+        source.earnings_fetching = true;
+        source.earnings_pending_ticker = Some("NVDA".to_string());
+        source.earnings_status = Some(("EARN loading".to_string(), false));
+    }
+    terminal
+        .sec_earnings_pending_request_ids
+        .insert("NVDA".to_string(), 11);
+    terminal
+        .sec_earnings_pending_charts
+        .insert("NVDA".to_string(), vec![chart_id]);
+
+    let _task = terminal.open_detached_chart_window(chart_id);
+    let (_, detached_chart_id) = first_detached_window(&terminal);
+
+    assert_eq!(
+        terminal.sec_earnings_pending_charts.get("NVDA"),
+        Some(&vec![chart_id, detached_chart_id])
+    );
+    let detached = chart_instance(&terminal, detached_chart_id);
+    assert!(detached.earnings_fetching);
+    assert_eq!(detached.earnings_pending_ticker.as_deref(), Some("NVDA"));
+    assert_eq!(
+        detached.earnings_status.as_ref(),
+        Some(&("EARN loading".to_string(), false))
+    );
+}
+
+#[test]
+fn detached_chart_clone_joins_active_filing_summary_request() {
+    let chart_id = 7;
+    let mut terminal = terminal_with_chart(chart_id);
+    let filing_key = "1045819:0001045819-26-000001:nvda-20260528.htm".to_string();
+    {
+        let source = chart_instance_mut(&mut terminal, chart_id);
+        source.show_earnings_markers = true;
+        source.chart.set_earnings_markers(vec![EarningsMarker {
+            time_ms: 1_779_926_400_000,
+            cik: 1_045_819,
+            form: "8-K".to_string(),
+            filing_date: "2026-05-28".to_string(),
+            accession_number: "0001045819-26-000001".to_string(),
+            primary_document: "nvda-20260528.htm".to_string(),
+            quarter_label: Some("Q1 2026".to_string()),
+            filing_summary: None,
+            filing_summary_status: None,
+            filing_summary_loading: true,
+        }]);
+    }
+    terminal
+        .sec_filing_summary_pending_request_ids
+        .insert(filing_key.clone(), 13);
+    terminal
+        .sec_filing_summary_pending_charts
+        .insert(filing_key.clone(), vec![chart_id]);
+
+    let _task = terminal.open_detached_chart_window(chart_id);
+    let (_, detached_chart_id) = first_detached_window(&terminal);
+
+    assert_eq!(
+        terminal.sec_filing_summary_pending_charts.get(&filing_key),
+        Some(&vec![chart_id, detached_chart_id])
+    );
+    let detached = chart_instance(&terminal, detached_chart_id);
+    assert!(detached.chart.earnings_markers[0].filing_summary_loading);
 }
 
 #[test]

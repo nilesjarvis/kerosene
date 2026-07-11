@@ -81,6 +81,18 @@ fn seed_chart_pending_requests(
     terminal
         .sec_earnings_pending_request_ids
         .insert("TSLA".to_string(), 8);
+    terminal
+        .sec_filing_summary_pending_charts
+        .insert("filing-shared".to_string(), vec![chart_id, other_chart_id]);
+    terminal
+        .sec_filing_summary_pending_charts
+        .insert("filing-only".to_string(), vec![chart_id]);
+    terminal
+        .sec_filing_summary_pending_request_ids
+        .insert("filing-shared".to_string(), 9);
+    terminal
+        .sec_filing_summary_pending_request_ids
+        .insert("filing-only".to_string(), 10);
 }
 
 fn assert_chart_pending_requests_pruned(terminal: &TradingTerminal, other_chart_id: ChartId) {
@@ -107,5 +119,27 @@ fn assert_chart_pending_requests_pruned(terminal: &TradingTerminal, other_chart_
         !terminal
             .sec_earnings_pending_request_ids
             .contains_key("TSLA")
+    );
+    assert_eq!(
+        terminal
+            .sec_filing_summary_pending_charts
+            .get("filing-shared"),
+        Some(&vec![other_chart_id])
+    );
+    assert_eq!(
+        terminal
+            .sec_filing_summary_pending_request_ids
+            .get("filing-shared"),
+        Some(&9)
+    );
+    assert!(
+        !terminal
+            .sec_filing_summary_pending_charts
+            .contains_key("filing-only")
+    );
+    assert!(
+        !terminal
+            .sec_filing_summary_pending_request_ids
+            .contains_key("filing-only")
     );
 }

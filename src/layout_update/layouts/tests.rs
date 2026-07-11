@@ -480,6 +480,12 @@ fn applying_layout_clears_pending_requests_for_replaced_charts() {
     terminal
         .sec_earnings_pending_request_ids
         .insert("NVDA".to_string(), 7);
+    terminal
+        .sec_filing_summary_pending_charts
+        .insert("filing-old".to_string(), vec![old_chart_id]);
+    terminal
+        .sec_filing_summary_pending_request_ids
+        .insert("filing-old".to_string(), 8);
 
     let mut layout = saved_layout("Replacement");
     layout.charts = vec![ChartConfig::empty(replacement_chart_id, "BTC", "H1")];
@@ -491,4 +497,6 @@ fn applying_layout_clears_pending_requests_for_replaced_charts() {
     assert!(terminal.liquidation_pending_charts.is_empty());
     assert!(terminal.sec_earnings_pending_charts.is_empty());
     assert!(terminal.sec_earnings_pending_request_ids.is_empty());
+    assert!(terminal.sec_filing_summary_pending_charts.is_empty());
+    assert!(terminal.sec_filing_summary_pending_request_ids.is_empty());
 }

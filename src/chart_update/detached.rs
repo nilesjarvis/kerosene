@@ -27,11 +27,14 @@ impl TradingTerminal {
                 );
                 return Task::none();
             };
+            let mut detached_instance = source.clone_for_detached_window(detached_chart_id);
+            detached_instance.earnings_fetching = source.earnings_fetching;
+            detached_instance.earnings_pending_ticker = source.earnings_pending_ticker.clone();
             (
                 source.symbol.clone(),
                 source.interval,
                 source.chart.candles.last().map(|candle| candle.open_time),
-                source.clone_for_detached_window(detached_chart_id),
+                detached_instance,
             )
         };
 
@@ -47,6 +50,7 @@ impl TradingTerminal {
             .set_surface_id(ChartSurfaceId::Detached(window_id));
         self.charts.insert(detached_chart_id, detached_instance);
         self.detached_chart_windows.insert(window_id, state);
+        self.join_chart_earnings_pending_requests(chart_id, detached_chart_id);
         self.persist_config();
 
         let mut tasks = vec![task.map(Message::WindowOpened)];

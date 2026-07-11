@@ -5450,6 +5450,136 @@ target-specific cancellation policy, not HTTP replay.
   safe warnings remain exact. SEC earnings completion ownership and diagnostics
   are the next separate public-data lifecycle for review.
 
+### F-71 — SEC completions expose exact results and detached clones miss active owners
+
+- Status: addressed in Turn 64; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium lifecycle and diagnostic-boundary hardening; SEC data is
+  public and no wrong-order or automatic-mutation path was found, but a runtime
+  chart clone can be stranded in copied loading state and exact filing content
+  or task errors must not become incidental parent-message diagnostics
+- Scope: SEC earnings-event, filing-summary, and filing-open task publication;
+  ticker/key/request-ID ownership and rollover; shared waiters; cache, marker,
+  status, and toast acceptance; toggle, symbol, active-symbol, boot/layout,
+  pane, detached-window, and cleanup paths; stale/duplicate ordering; API and
+  model content; parent diagnostics; routes; persistence; chart interactions;
+  all trading consumers; docs; and focused characterization coverage
+- Preconditions/event ordering:
+  1. An earnings or filing-summary task returns exact SEC content or an HTTP/
+     parse error inside a raw boxed `Result` field of derived `Message::Debug`.
+     Generic formatting can traverse company and filing identifiers, full
+     headline/highlight text, or the error before the ticker/key owner is
+     checked. A filing-open OS result is independently raw in the parent.
+  2. An earnings request is active for a docked source chart. Opening a detached
+     clone copies the source status but `clone_for_detached_window` deliberately
+     resets `earnings_fetching` and `earnings_pending_ticker`; the open path did
+     not register the new chart in the existing ticker waiter list. The result
+     therefore completes only the source while the clone can retain a loading
+     status without an owner.
+  3. After events are loaded, a filing-summary request is active for a hovered
+     marker. The detached clone copies that marker, including
+     `filing_summary_loading`, but likewise was absent from the exact filing-key
+     waiter list. The existing completion cannot clear or populate the clone.
+  4. Independently, normal results may mutate shared cache/waiter state only
+     when their normalized ticker or validated CIK/accession/document key and
+     request ID match the active owner. Chart application additionally requires
+     the current enabled symbol or exact marker key. Close, toggle, and layout
+     paths prune removed waiters and remove an orphaned owner.
+- Evidence: `TradingTerminal` owns runtime-only event/summary caches, bounded
+  cache order, two terminal-wide wrapping sequences, per-ticker/per-key active
+  ID maps, and shared chart waiter maps (`src/app_state.rs`,
+  `src/app_boot/state.rs`). Toggle, enabled-layout restoration, exchange-symbol
+  refresh, chart symbol selection, and active-symbol retargeting converge on
+  `maybe_fetch_chart_earnings`; marker hover converges on the filing-summary
+  helper. Each task family has one publisher and one first consumer, and both
+  consumers already reject absent or mismatched owners before cache/waiter/
+  chart mutation (`src/chart_update/earnings.rs`,
+  `src/layout_persistence/instances.rs`, `src/market_update/symbols.rs`,
+  `src/chart_update/editor/symbol.rs`, `src/order_execution/active_symbol.rs`,
+  `src/chart_update.rs`). Event application re-resolves the chart's current
+  HIP-3 stock ticker; summary application matches the marker's validated key.
+  Pane close, detached close, toggle-off, and layout replacement remove waiters
+  through `clear_chart_earnings_pending_request_state` or the all-chart reset.
+  Before this turn, `open_detached_chart_window` cloned marker/status data but
+  queued only candle and macro tasks and did not inherit either SEC waiter
+  (`src/chart_update/detached.rs`, `src/chart_state/model/instance.rs`,
+  `src/chart/data.rs`). The three raw result fields in `src/message.rs` were the
+  pre-handler diagnostic traversal. `api/sec.rs` supplies exact public event,
+  summary, URL, and task-error values. Chart marker press/hover consumes only
+  the filing link/summary behavior; repository-wide order, signing, Chase/TWAP,
+  wallet-cluster, reconciliation, and risk searches found no SEC result or
+  marker value used for order preparation or exchange mutation. The active-
+  symbol order module only schedules the informational overlay fetch after its
+  existing chart retargeting.
+- Violated invariant: a runtime clone that copies an in-flight SEC loading state
+  must become a waiter only for the exact active owner already held by its
+  source, without dispatching a duplicate request. Generic Elm diagnostics may
+  retain public ticker/key/request correlation and result shape, but must not
+  recursively format full SEC payloads or pre-handler task errors. All state
+  mutation still requires the exact current owner and chart/marker scope.
+- Risk: a detached chart opened during either request can display an indefinite
+  copied loading state and never receive the public result already being
+  fetched. Separately, logs, panic context, or test diagnostics can reproduce
+  exact filing content or task errors, including large headline/highlight
+  collections. This affects public analytical plumbing and diagnostics only;
+  no order input, price, size, signer, pending mutation, reconciliation state,
+  or automation lifecycle is reachable from these completions.
+- Why existing checks did not cover it: the existing ticker/key request IDs,
+  stale and duplicate guards, symbol/key rechecks, and close/layout cleanup were
+  sound for charts registered when a request began. Detached cloning correctly
+  reset other task-local fields, but copied the human-visible SEC status and
+  marker loading state without inheriting their shared waiter ownership.
+  Cleanup tests covered earnings waiters but not filing-summary waiters, and no
+  detached-open test exercised either in-flight state. The SEC completion
+  variants also predated the common public-market diagnostic wrapper.
+- Implemented fix: while creating a detached chart, copy only the source's two
+  transient earnings owner fields that correspond to its already-copied status.
+  After insertion, a narrow helper registers the clone for an event ticker or
+  loading filing key only when the relevant active request-ID map exists and
+  the exact source chart is already present in that same waiter vector. It does
+  not allocate, fetch, retry, or alter result timing. Carry all three SEC task
+  results through `RedactedPublicMarketMessageResult<T>`; event and summary
+  consumers recover the exact result only after their unchanged owner gates,
+  while filing-open recovers directly into the unchanged exact toast path.
+- Regression coverage: pre-fix controls cover detached cloning during an active
+  event request and during the later, independently possible filing-summary
+  request, requiring exact source-to-clone waiter inheritance and copied loading
+  state. Event and summary controls characterize wrapping from `u64::MAX`,
+  same-ticker/key coalescing without owner replacement, exact accepted payload/
+  marker/cache values, reversed stale success/error rejection, duplicate
+  post-completion rejection, symbol-change rejection, toggle-off late-result
+  rejection, and safe error/status handling. Pane close, detached close, and
+  layout replacement controls now cover both filing-summary and event waiter/
+  owner pruning. The shared parent-message control proves success/error
+  diagnostics retain public ticker/key/request IDs and result shape while
+  hiding event, summary, and error content; filing-open characterization proves
+  its failure toast remains exact and success remains silent. Existing SEC API,
+  chart marker, detached lifecycle, routing, and persistence suites remain in
+  the validation ladder.
+- Smallest behavior-preserving fix: two transient field copies at the existing
+  detached construction boundary; one source-membership-checked waiter helper
+  and call; reuse of one existing wrapper at three message fields; three
+  producer, two gated-consumer, and one direct-consumer conversions; focused
+  owner, cleanup, diagnostic, rollover, ordering, and exact-toast tests; and
+  docs. No endpoint, SEC request, normalization, CIK/accession/document key,
+  cache limit,
+  event/summary field, marker coordinate/content, hover/click rule, filing URL,
+  visible string, toast value, request timing, pane/window layout, config wire
+  value, persistence default, order input, signed bytes, or trading semantic
+  changed. The detached clone receives the same existing completion at the same
+  time as its registered source without a second request.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  exhaustive definition/publisher/consumer/reset/cache/view/persistence/order-
+  consumer tracing, established owner gates, and the narrow mechanical changes
+  establish the source boundary, but focused and nearby suites and the window
+  smoke test cannot execute until ALSA development metadata is available. An
+  already-completed result would need to survive a complete terminal `u64`
+  sequence before same-key ID reuse. The clone helper intentionally refuses to
+  attach when the source is not itself an active waiter; impossible inconsistent
+  copied loading state outside the production detached constructor remains
+  inert rather than crossing owners. Funding-history and asset-context
+  completion ownership form the next chart-data lifecycle for review.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -9518,6 +9648,98 @@ target-specific cancellation policy, not HTTP replay.
   earnings and filing content, cadence, markers, UI, persistence, and every
   trading semantic.
 
+## Turn 64 — Preserve SEC Completion Ownership
+
+- Status: F-71 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: SEC earnings-event, filing-summary, and filing-open completion fields;
+  normalized ticker and validated filing-key owners; terminal request-ID
+  rollover and shared coalescing; exact cache/marker/status/toast application;
+  stale/duplicate ordering; toggle, symbol, active-symbol, pane, detached-
+  window, boot/layout, and cleanup paths; API/model/parent diagnostics; routes;
+  persisted marker preference; chart interaction and order consumers; docs;
+  and focused characterization coverage
+- Invariant: only an exact active ticker/key request owner may mutate SEC cache
+  or chart state; a detached clone may inherit an active request only from the
+  exact source waiter and must not dispatch a second request; generic Elm
+  diagnostics expose correlation and result shape without traversing payload or
+  task-error content.
+- Protected behavior: every SEC event and summary field; ticker normalization,
+  CIK/accession/document validation, endpoints, parsing, summary selection and
+  cache limits; toggle/boot/symbol/hover request timing and shared dedupe;
+  status and exact filing-open toast copy; marker timestamp, position, hover,
+  tooltip, and click behavior; public filing URL; pane/detached-window/layout
+  behavior; persisted toggle and compatibility; chart quick-order/HUD/order-
+  line interactions; order preparation/signing; and all trading semantics.
+- Preconditions/event ordering: raw task results can be formatted through the
+  parent before either owner gate. Independently, opening a detached chart while
+  an event request is active copies the source's loading status but previously
+  reset its event owner fields and omitted the clone from the ticker waiters.
+  Opening it during a later filing-summary request copies the loading marker but
+  omits the clone from that filing-key waiter list. The unchanged completion can
+  then settle the source only, leaving the clone stranded. Existing request IDs,
+  symbol/key application checks, and removal cleanup otherwise reject practical
+  stale, duplicate, and cross-scope results.
+- Evidence: F-71 records both global runtime owner families, every request
+  trigger, sole publishers and first consumers, request/key construction,
+  detached clone construction, copied/reset fields, pane/window/layout/toggle
+  cleanup, cache and marker application, API/error models, parent routes,
+  persistence boundary, hover/click behavior, and repository-wide order/
+  signing/automation search. No alternate publisher, persisted runtime owner,
+  direct result-state writer, order-price input, automatic exchange mutation,
+  or practical defect in the existing ticker/key/ID acceptance gates was found.
+- Change: make detached construction retain the source event-loading fields and
+  register the clone only when the same source chart already belongs to the
+  active ticker or filing-key waiter vector; reuse the public-market result
+  wrapper for all three completion messages and restore exact event/summary
+  results only after their unchanged owner checks; add rollover, coalescing,
+  detached inheritance, filing cleanup, stale/duplicate, exact toast, and parent
+  diagnostic controls; document the runtime and diagnostic boundaries.
+- Tests/checks:
+  - Baseline SEC earnings update, SEC API, chart earnings-rendering, and routing
+    suites plus `cargo check` stopped in `alsa-sys` before Kerosene compilation
+    because `pkg-config` could not find the system `alsa.pc` file.
+  - The pre-fix exact public-message and detached active-owner regressions each
+    stopped at that same dependency boundary before demonstrating their
+    expected diagnostic and missing-waiter assertion failures.
+  - Post-fix exact public-message, detached-owner, full earnings update,
+    detached-chart, pane-close cleanup, layout-replacement cleanup, SEC API,
+    chart earnings-rendering, and routing suites all stopped at the same
+    dependency boundary.
+  - `cargo fmt` passed after the Rust edits; final formatting and diff checks
+    are recorded in the current validation summary below.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - `timeout 20s xvfb-run -a cargo run` was attempted because detached-window
+    plumbing changed and stopped at the same dependency boundary before app
+    startup. No live SEC/market request, filing-open command, exchange call, or
+    credential-bearing operation ran.
+- Compatibility/UX assessment: event and summary consumers receive the byte-
+  for-byte same result after the same key/ID gate and enter unchanged cache,
+  marker, status, error, and rendering paths. Filing-open success/error enters
+  the exact prior toast path. A detached clone adds no request or delay and now
+  receives the already-active completion at the same time as its exact source;
+  copied strings and marker values are unchanged. Only parent diagnostic
+  traversal and the previously missing runtime waiter membership change. No
+  normal visible copy/data/timing, interaction, persisted value/default, signed
+  bytes, order preparation, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked or launched on this host. F-71 is
+  source-hardened; theoretical full-`u64` completed-message survival, impossible
+  inconsistent clone state outside the production constructor, and executable
+  validation remain residual. Funding/context, file/config/screenshot, and
+  private-integration result classes; independently formattable nested account/
+  order types; classified external-status paths; and the remainder of Track 9
+  still require review.
+- Prior turn commit hash: `9e00b03e3c44a6cec2930dbb7d186e61fe552514`
+- Next candidate: audit `ChartFundingHistoryLoaded`,
+  `ChartAssetContextRestFetched`, and `ChartSpotAssetContextsRestFetched`
+  across chart-incarnation, symbol, provider/key, request, REST-versus-websocket,
+  retry, detached/layout reconstruction, stale/duplicate acceptance, parent/
+  model diagnostics, and chart/order consumers; preserve exact funding and
+  asset-context data, websocket precedence, fallback cadence, UI, persistence,
+  and every trading semantic.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -9559,21 +9781,22 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline HYPE ETF and unstaking update, state,
-  API, public-message, and routing suites plus `cargo check`; the pre-fix
-  unstaking filter, summary, and parent-diagnostic regressions; post-fix HYPE
-  ETF and unstaking update, state, view, and API suites, exact public-message
-  and routing suites; `cargo check`, full `cargo test`, and strict clippy at
-  `alsa-sys` system dependency discovery, before Kerosene was compiled.
-- No live HYPE/market request, exchange mutation, or credential-bearing
-  operation was run.
+- Environment-blocked this turn: baseline SEC earnings update, SEC API, chart
+  earnings-rendering, and routing suites plus `cargo check`; the pre-fix parent-
+  diagnostic and detached-owner regressions; post-fix exact public-message,
+  detached-owner, earnings update, detached-chart, pane/layout cleanup, SEC API,
+  chart earnings-rendering, and routing suites; `cargo check`, full
+  `cargo test`, strict clippy, and the headless GUI smoke command at `alsa-sys`
+  system dependency discovery, before Kerosene was compiled or launched.
+- No live SEC/market request, filing-open command, exchange mutation, or
+  credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-70
+  F-40, and F-42 through F-71
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -9644,7 +9867,11 @@ target-specific cancellation policy, not HTTP replay.
   unchanged. HYPE ETF/unstaking completion ownership is fully characterized and
   its parent/helper/view diagnostics plus partial-warning boundary are source-
   hardened by F-70 while exact data, calculation, pruning, filtering, timing,
-  and safe warning behavior remain unchanged. Remaining SEC earnings/funding/
-  context and other public/private result lifecycles, independently formattable
-  nested account/order types, and classified external-status paths, plus the
-  rest of Track 9, require completion before a final verdict.
+  and safe warning behavior remain unchanged. SEC event/summary completion
+  ownership now survives detached runtime cloning and its event, summary, and
+  filing-open parent diagnostics are source-hardened by F-71 while exact public
+  content, caches, markers, status/toast copy, filing links, and interactions
+  remain unchanged. Remaining funding/context and other public/private result
+  lifecycles, independently formattable nested account/order types, and
+  classified external-status paths, plus the rest of Track 9, require
+  completion before a final verdict.

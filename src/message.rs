@@ -1241,10 +1241,18 @@ pub(crate) enum Message {
     ToggleMacroMenu(ChartId),
     ToggleMacroIndicator(ChartId, String),
     ToggleChartEarningsMarkers(ChartId),
-    ChartEarningsEventsLoaded(String, u64, Box<Result<Vec<api::SecEarningsEvent>, String>>),
-    ChartEarningsFilingSummaryLoaded(String, u64, Box<Result<api::SecFilingSummary, String>>),
+    ChartEarningsEventsLoaded(
+        String,
+        u64,
+        RedactedPublicMarketMessageResult<Vec<api::SecEarningsEvent>>,
+    ),
+    ChartEarningsFilingSummaryLoaded(
+        String,
+        u64,
+        RedactedPublicMarketMessageResult<api::SecFilingSummary>,
+    ),
     OpenChartEarningsFiling(ChartId, ChartSurfaceId, u64),
-    ChartEarningsFilingOpenResult(Result<(), String>),
+    ChartEarningsFilingOpenResult(RedactedPublicMarketMessageResult<()>),
     CloseAllMenus,
     AddPositionsHistoryPane,
     AddPortfolioPane,
@@ -3710,6 +3718,26 @@ mod tests {
                 },
             ])
         };
+        let sec_earnings_events = || {
+            vec![crate::api::SecEarningsEvent {
+                ticker: PAYLOAD_SYMBOL.to_string(),
+                company_name: "SEC payload company sentinel".to_string(),
+                cik: 9_182_731,
+                filing_date: "2026-06-13".to_string(),
+                filing_time_ms: 1_781_286_400_000,
+                report_date: Some("2026-06-12".to_string()),
+                form: "8-K payload sentinel".to_string(),
+                accession_number: "sec-accession-payload-sentinel".to_string(),
+                primary_document: "sec-document-payload-sentinel.htm".to_string(),
+            }]
+        };
+        let sec_filing_summary = || crate::api::SecFilingSummary {
+            form: "8-K summary payload sentinel".to_string(),
+            filing_date: "2026-06-13".to_string(),
+            source_documents: vec!["sec-source-document-payload-sentinel".to_string()],
+            headline: Some(PAYLOAD_SYMBOL.to_string()),
+            highlights: vec!["SEC highlight 918273.125 payload sentinel".to_string()],
+        };
         let spaghetti_request = || crate::spaghetti_state::SpaghettiCandleFetch {
             chart_id: 9,
             chart_instance_generation: 7,
@@ -3909,6 +3937,73 @@ mod tests {
             ] {
                 assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
             }
+        }
+
+        const SEC_REQUEST_TICKER: &str = "SEC-REQUEST-TICKER";
+        const SEC_FILING_KEY: &str = "sec-public-filing-request-key";
+        for (message, correlation) in [
+            (
+                Message::ChartEarningsEventsLoaded(
+                    SEC_REQUEST_TICKER.to_string(),
+                    23,
+                    Ok(sec_earnings_events()).into(),
+                ),
+                SEC_REQUEST_TICKER,
+            ),
+            (
+                Message::ChartEarningsEventsLoaded(
+                    SEC_REQUEST_TICKER.to_string(),
+                    23,
+                    Err(ERROR.to_string()).into(),
+                ),
+                SEC_REQUEST_TICKER,
+            ),
+            (
+                Message::ChartEarningsFilingSummaryLoaded(
+                    SEC_FILING_KEY.to_string(),
+                    29,
+                    Ok(sec_filing_summary()).into(),
+                ),
+                SEC_FILING_KEY,
+            ),
+            (
+                Message::ChartEarningsFilingSummaryLoaded(
+                    SEC_FILING_KEY.to_string(),
+                    29,
+                    Err(ERROR.to_string()).into(),
+                ),
+                SEC_FILING_KEY,
+            ),
+        ] {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains(correlation), "{rendered}");
+            assert!(
+                rendered.contains("23") || rendered.contains("29"),
+                "{rendered}"
+            );
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for hidden in [
+                ERROR,
+                PAYLOAD_SYMBOL,
+                "SEC payload company sentinel",
+                "9182731",
+                "1781286400000",
+                "sec-accession-payload-sentinel",
+                "sec-document-payload-sentinel.htm",
+                "sec-source-document-payload-sentinel",
+                "918273.125",
+            ] {
+                assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
+            }
+        }
+
+        for message in [
+            Message::ChartEarningsFilingOpenResult(Ok(()).into()),
+            Message::ChartEarningsFilingOpenResult(Err(ERROR.to_string()).into()),
+        ] {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(ERROR), "{rendered}");
         }
     }
 

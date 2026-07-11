@@ -224,6 +224,18 @@ SEC earnings markers are optional chart overlays:
   using SEC complete-submission text and earnings exhibits such as `EX-99.1`
 - clicked through `OpenChartEarningsFiling` to open the public SEC filing
 
+Earnings-event requests are deduplicated by normalized ticker and a wrapping
+terminal request ID; filing-summary requests are deduplicated by the validated
+CIK/accession/document key and an independent request ID. A completion must
+match that exact active owner before it can change a cache, chart, marker, or
+status. Shared chart waiters are pruned on toggle-off, pane/window removal, and
+layout replacement. A detached runtime clone joins an in-flight owner only when
+its source chart is already registered for the same ticker or filing key, so it
+receives the existing completion without issuing a duplicate request. Generic
+Elm diagnostics retain public request correlation and `Ok`/`Err` shape without
+traversing SEC event/summary content or task errors. These owners, caches, and
+filing summaries are runtime-only; only the existing marker toggle is persisted.
+
 Macro indicators are configured per chart and include candle/funding-derived
 series. The candle-backed moving averages support active-timeframe, 1-hour,
 daily, weekly, and monthly source series. Their menu and active badges live in

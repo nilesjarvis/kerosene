@@ -421,6 +421,17 @@ pruning, rendering, and freshness remain unchanged. Accepted ETF partial-source
 warnings now receive the same sensitive-text sanitization as top-level errors
 before state/rendering; ordinary safe warning copy remains exact.
 
+SEC earnings-event, filing-summary, and filing-open completions use the same
+public-market result boundary. Parent diagnostics retain the public ticker or
+validated filing key, request ID, and result shape without traversing company,
+filing, headline/highlight, or task-error content. Event and summary results are
+recovered only after their exact ticker/key request owner accepts them; the
+filing-open result is recovered directly into the existing success/error toast
+path. Detached chart clones join an active SEC request only through an already-
+registered source waiter, preventing both a stranded copied loading state and
+cross-request attachment. Exact public content, status/toast copy, filing URL,
+cache behavior, markers, and chart interaction remain unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

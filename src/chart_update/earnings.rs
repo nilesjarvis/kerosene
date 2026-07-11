@@ -6,7 +6,7 @@ use crate::app_state::TradingTerminal;
 use crate::chart::EarningsMarker;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::helpers::redact_sensitive_response_text;
-use crate::message::Message;
+use crate::message::{Message, RedactedPublicMarketMessageResult};
 
 use iced::Task;
 use std::process::Command;
@@ -26,18 +26,18 @@ impl TradingTerminal {
                 self.toggle_chart_earnings_markers(chart_id)
             }
             Message::ChartEarningsEventsLoaded(ticker, request_id, result) => {
-                self.apply_sec_earnings_loaded(ticker, request_id, *result);
+                self.apply_sec_earnings_loaded(ticker, request_id, result);
                 Task::none()
             }
             Message::ChartEarningsFilingSummaryLoaded(key, request_id, result) => {
-                self.apply_sec_filing_summary_loaded(key, request_id, *result);
+                self.apply_sec_filing_summary_loaded(key, request_id, result);
                 Task::none()
             }
             Message::OpenChartEarningsFiling(chart_id, surface_id, time_ms) => {
                 self.open_chart_earnings_filing(chart_id, surface_id, time_ms)
             }
             Message::ChartEarningsFilingOpenResult(result) => {
-                if let Err(error) = result {
+                if let Err(error) = result.into_result() {
                     self.push_toast(format!("SEC filing open failed: {error}"), true);
                 }
                 Task::none()
@@ -121,7 +121,7 @@ impl TradingTerminal {
         }
 
         Task::perform(fetch_sec_earnings_events(ticker.clone()), move |result| {
-            Message::ChartEarningsEventsLoaded(ticker.clone(), request_id, Box::new(result))
+            Message::ChartEarningsEventsLoaded(ticker.clone(), request_id, result.into())
         })
     }
 
@@ -149,6 +149,52 @@ impl TradingTerminal {
         instance.earnings_status = None;
         instance.earnings_pending_ticker = None;
         instance.chart.clear_earnings_markers();
+    }
+
+    /// Register a runtime chart clone with the same active public SEC requests
+    /// as its copied loading state. The request remains owned by ticker/key and
+    /// request ID; the clone becomes only another result waiter.
+    pub(crate) fn join_chart_earnings_pending_requests(
+        &mut self,
+        source_chart_id: ChartId,
+        cloned_chart_id: ChartId,
+    ) {
+        let Some(instance) = self.charts.get(&cloned_chart_id) else {
+            return;
+        };
+        let pending_ticker = if instance.earnings_fetching {
+            instance.earnings_pending_ticker.clone()
+        } else {
+            None
+        };
+        let pending_filing_keys = instance
+            .chart
+            .earnings_markers
+            .iter()
+            .filter(|marker| marker.filing_summary_loading)
+            .filter_map(earnings_marker_filing_key)
+            .collect::<Vec<_>>();
+
+        if let Some(ticker) = pending_ticker
+            && self.sec_earnings_pending_request_ids.contains_key(&ticker)
+            && let Some(waiting_charts) = self.sec_earnings_pending_charts.get_mut(&ticker)
+            && waiting_charts.contains(&source_chart_id)
+            && !waiting_charts.contains(&cloned_chart_id)
+        {
+            waiting_charts.push(cloned_chart_id);
+        }
+
+        for key in pending_filing_keys {
+            if self
+                .sec_filing_summary_pending_request_ids
+                .contains_key(&key)
+                && let Some(waiting_charts) = self.sec_filing_summary_pending_charts.get_mut(&key)
+                && waiting_charts.contains(&source_chart_id)
+                && !waiting_charts.contains(&cloned_chart_id)
+            {
+                waiting_charts.push(cloned_chart_id);
+            }
+        }
     }
 
     fn toggle_chart_earnings_markers(&mut self, chart_id: ChartId) -> Task<Message> {
@@ -208,7 +254,7 @@ impl TradingTerminal {
         &mut self,
         ticker: String,
         request_id: u64,
-        result: Result<Vec<SecEarningsEvent>, String>,
+        result: RedactedPublicMarketMessageResult<Vec<SecEarningsEvent>>,
     ) {
         let ticker = ticker.to_ascii_uppercase();
         let Some(pending_request_id) = self.sec_earnings_pending_request_ids.get(&ticker).copied()
@@ -218,6 +264,7 @@ impl TradingTerminal {
         if pending_request_id != request_id {
             return;
         }
+        let result = result.into_result();
         self.sec_earnings_pending_request_ids.remove(&ticker);
         let pending = self
             .sec_earnings_pending_charts
@@ -374,7 +421,7 @@ impl TradingTerminal {
         self.apply_sec_filing_summary_to_chart(chart_id, &key, None, true, None);
 
         Task::perform(fetch_sec_filing_summary(request), move |result| {
-            Message::ChartEarningsFilingSummaryLoaded(key.clone(), request_id, Box::new(result))
+            Message::ChartEarningsFilingSummaryLoaded(key.clone(), request_id, result.into())
         })
     }
 
@@ -382,7 +429,7 @@ impl TradingTerminal {
         &mut self,
         key: String,
         request_id: u64,
-        result: Result<SecFilingSummary, String>,
+        result: RedactedPublicMarketMessageResult<SecFilingSummary>,
     ) {
         let Some(pending_request_id) = self
             .sec_filing_summary_pending_request_ids
@@ -394,6 +441,7 @@ impl TradingTerminal {
         if pending_request_id != request_id {
             return;
         }
+        let result = result.into_result();
         self.sec_filing_summary_pending_request_ids.remove(&key);
         let pending = self
             .sec_filing_summary_pending_charts
@@ -519,10 +567,9 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        Task::perform(
-            open_external_url(url),
-            Message::ChartEarningsFilingOpenResult,
-        )
+        Task::perform(open_external_url(url), |result| {
+            Message::ChartEarningsFilingOpenResult(result.into())
+        })
     }
 }
 
@@ -819,6 +866,116 @@ mod tests {
     }
 
     #[test]
+    fn earnings_request_id_wraps_and_shared_ticker_coalesces() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.exchange_symbols = vec![symbol("xyz:NVDA", "NVDA", "stocks", MarketType::Perp)];
+        terminal.charts.clear();
+        for chart_id in [1, 2] {
+            let mut instance = ChartInstance::new(chart_id, "xyz:NVDA".to_string(), Timeframe::H1);
+            instance.show_earnings_markers = true;
+            terminal.charts.insert(chart_id, instance);
+        }
+        terminal.sec_earnings_request_id = u64::MAX;
+
+        let _first_task = terminal.maybe_fetch_chart_earnings(1);
+
+        assert_eq!(terminal.sec_earnings_request_id, 0);
+        assert_eq!(
+            terminal.sec_earnings_pending_request_ids.get("NVDA"),
+            Some(&0)
+        );
+        assert_eq!(
+            terminal.sec_earnings_pending_charts.get("NVDA"),
+            Some(&vec![1])
+        );
+
+        let _shared_task = terminal.maybe_fetch_chart_earnings(2);
+
+        assert_eq!(terminal.sec_earnings_request_id, 0);
+        assert_eq!(
+            terminal.sec_earnings_pending_request_ids.get("NVDA"),
+            Some(&0)
+        );
+        assert_eq!(
+            terminal.sec_earnings_pending_charts.get("NVDA"),
+            Some(&vec![1, 2])
+        );
+        let first = terminal.charts.get(&1).expect("first chart");
+        let second = terminal.charts.get(&2).expect("second chart");
+        assert!(first.earnings_fetching);
+        assert!(second.earnings_fetching);
+        assert_eq!(first.earnings_pending_ticker.as_deref(), Some("NVDA"));
+        assert_eq!(second.earnings_pending_ticker.as_deref(), Some("NVDA"));
+        assert_eq!(
+            first.earnings_status.as_ref(),
+            Some(&("EARN loading".to_string(), false))
+        );
+        assert_eq!(
+            second.earnings_status.as_ref(),
+            Some(&("EARN waiting for shared request".to_string(), false))
+        );
+    }
+
+    #[test]
+    fn filing_summary_request_id_wraps_and_shared_key_coalesces() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.charts.clear();
+        let marker =
+            earnings_markers_from_events(&[earnings_event("NVDA", "0001045810-26-000051")])
+                .remove(0);
+        let key = earnings_marker_filing_key(&marker).expect("filing key");
+        for chart_id in [1, 2] {
+            let mut instance = ChartInstance::new(chart_id, "xyz:NVDA".to_string(), Timeframe::H1);
+            instance.chart.set_earnings_markers(vec![marker.clone()]);
+            terminal.charts.insert(chart_id, instance);
+        }
+        terminal.sec_filing_summary_request_id = u64::MAX;
+
+        let _first_task = terminal.maybe_fetch_chart_earnings_filing_summary(
+            1,
+            ChartSurfaceId::Docked(1),
+            marker.time_ms,
+        );
+
+        assert_eq!(terminal.sec_filing_summary_request_id, 0);
+        assert_eq!(
+            terminal.sec_filing_summary_pending_request_ids.get(&key),
+            Some(&0)
+        );
+        assert_eq!(
+            terminal.sec_filing_summary_pending_charts.get(&key),
+            Some(&vec![1])
+        );
+
+        let _shared_task = terminal.maybe_fetch_chart_earnings_filing_summary(
+            2,
+            ChartSurfaceId::Docked(2),
+            marker.time_ms,
+        );
+
+        assert_eq!(terminal.sec_filing_summary_request_id, 0);
+        assert_eq!(
+            terminal.sec_filing_summary_pending_request_ids.get(&key),
+            Some(&0)
+        );
+        assert_eq!(
+            terminal.sec_filing_summary_pending_charts.get(&key),
+            Some(&vec![1, 2])
+        );
+        for chart_id in [1, 2] {
+            let marker = &terminal
+                .charts
+                .get(&chart_id)
+                .expect("chart")
+                .chart
+                .earnings_markers[0];
+            assert!(marker.filing_summary_loading);
+            assert!(marker.filing_summary.is_none());
+            assert!(marker.filing_summary_status.is_none());
+        }
+    }
+
+    #[test]
     fn stale_earnings_result_does_not_clear_current_pending_request() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         terminal
@@ -831,7 +988,7 @@ mod tests {
         terminal.apply_sec_earnings_loaded(
             "NVDA".to_string(),
             1,
-            Ok(vec![earnings_event("NVDA", "old")]),
+            Ok(vec![earnings_event("NVDA", "old")]).into(),
         );
 
         assert_eq!(
@@ -861,7 +1018,11 @@ mod tests {
             .sec_earnings_pending_charts
             .insert("NVDA".to_string(), vec![1]);
 
-        terminal.apply_sec_earnings_loaded("NVDA".to_string(), 1, Err("old failure".to_string()));
+        terminal.apply_sec_earnings_loaded(
+            "NVDA".to_string(),
+            1,
+            Err("old failure".to_string()).into(),
+        );
 
         assert_eq!(
             terminal.sec_earnings_pending_request_ids.get("NVDA"),
@@ -896,7 +1057,7 @@ mod tests {
         terminal.apply_sec_earnings_loaded(
             "NVDA".to_string(),
             7,
-            Err("SEC failed: api_key=key-secret signature=sig-secret".to_string()),
+            Err("SEC failed: api_key=key-secret signature=sig-secret".to_string()).into(),
         );
 
         let instance = terminal.charts.get(&1).expect("chart");
@@ -919,6 +1080,26 @@ mod tests {
     }
 
     #[test]
+    fn filing_open_result_preserves_exact_failure_toast_and_success_is_silent() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let error = "xdg-open command failed: executable unavailable";
+
+        let _error_task = terminal.update_chart_earnings(Message::ChartEarningsFilingOpenResult(
+            Err(error.to_string()).into(),
+        ));
+
+        let toast = terminal.toasts.last().expect("filing open error toast");
+        assert!(toast.is_error);
+        assert_eq!(toast.message, format!("SEC filing open failed: {error}"));
+        let toast_count = terminal.toasts.len();
+
+        let _success_task =
+            terminal.update_chart_earnings(Message::ChartEarningsFilingOpenResult(Ok(()).into()));
+
+        assert_eq!(terminal.toasts.len(), toast_count);
+    }
+
+    #[test]
     fn current_earnings_result_applies_and_clears_pending_request() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         terminal
@@ -931,7 +1112,7 @@ mod tests {
         terminal.apply_sec_earnings_loaded(
             "NVDA".to_string(),
             3,
-            Ok(vec![earnings_event("NVDA", "accepted")]),
+            Ok(vec![earnings_event("NVDA", "accepted")]).into(),
         );
 
         assert!(
@@ -963,7 +1144,7 @@ mod tests {
             .insert(key.clone(), vec![1]);
 
         let summary = filing_summary();
-        terminal.apply_sec_filing_summary_loaded(key.clone(), 4, Ok(summary.clone()));
+        terminal.apply_sec_filing_summary_loaded(key.clone(), 4, Ok(summary.clone()).into());
 
         assert!(
             !terminal
@@ -998,7 +1179,7 @@ mod tests {
             .sec_filing_summary_pending_charts
             .insert(key.clone(), vec![1]);
 
-        terminal.apply_sec_filing_summary_loaded(key.clone(), 4, Ok(filing_summary()));
+        terminal.apply_sec_filing_summary_loaded(key.clone(), 4, Ok(filing_summary()).into());
 
         assert_eq!(
             terminal.sec_filing_summary_pending_request_ids.get(&key),
@@ -1009,6 +1190,70 @@ mod tests {
             Some(&vec![1])
         );
         assert!(!terminal.sec_filing_summary_cache.contains_key(&key));
+    }
+
+    #[test]
+    fn stale_filing_summary_error_preserves_current_marker_cache_and_owner() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.charts.clear();
+        let mut instance = ChartInstance::new(1, "xyz:NVDA".to_string(), Timeframe::H1);
+        let mut markers =
+            earnings_markers_from_events(&[earnings_event("NVDA", "0001045810-26-000051")]);
+        let key = earnings_marker_filing_key(&markers[0]).expect("filing key");
+        markers[0].filing_summary_loading = true;
+        instance.chart.set_earnings_markers(markers);
+        terminal.charts.insert(1, instance);
+        terminal
+            .sec_filing_summary_pending_request_ids
+            .insert(key.clone(), 5);
+        terminal
+            .sec_filing_summary_pending_charts
+            .insert(key.clone(), vec![1]);
+        let cached = filing_summary();
+        terminal
+            .sec_filing_summary_cache
+            .insert(key.clone(), cached.clone());
+
+        terminal.apply_sec_filing_summary_loaded(
+            key.clone(),
+            4,
+            Err("stale filing summary failure".to_string()).into(),
+        );
+
+        assert_eq!(
+            terminal.sec_filing_summary_pending_request_ids.get(&key),
+            Some(&5)
+        );
+        assert_eq!(
+            terminal.sec_filing_summary_pending_charts.get(&key),
+            Some(&vec![1])
+        );
+        assert_eq!(terminal.sec_filing_summary_cache.get(&key), Some(&cached));
+        let marker = &terminal
+            .charts
+            .get(&1)
+            .expect("chart")
+            .chart
+            .earnings_markers[0];
+        assert!(marker.filing_summary_loading);
+        assert!(marker.filing_summary.is_none());
+        assert!(marker.filing_summary_status.is_none());
+    }
+
+    #[test]
+    fn duplicate_filing_summary_result_after_completion_does_not_overwrite_cache() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let key = "1045810:0001045810-26-000051:nvda-20260520.htm".to_string();
+        let accepted = filing_summary();
+        terminal
+            .sec_filing_summary_cache
+            .insert(key.clone(), accepted.clone());
+        let mut duplicate = filing_summary();
+        duplicate.headline = Some("duplicate filing summary".to_string());
+
+        terminal.apply_sec_filing_summary_loaded(key.clone(), 7, Ok(duplicate).into());
+
+        assert_eq!(terminal.sec_filing_summary_cache.get(&key), Some(&accepted));
     }
 
     #[test]
@@ -1046,7 +1291,7 @@ mod tests {
         terminal.apply_sec_earnings_loaded(
             "NVDA".to_string(),
             7,
-            Ok(vec![earnings_event("NVDA", "duplicate")]),
+            Ok(vec![earnings_event("NVDA", "duplicate")]).into(),
         );
 
         let events = terminal.sec_earnings_cache.get("NVDA").expect("cache");
@@ -1072,7 +1317,11 @@ mod tests {
             .insert("NVDA".to_string(), vec![1]);
 
         let _task = terminal.toggle_chart_earnings_markers(1);
-        terminal.apply_sec_earnings_loaded("NVDA".to_string(), 7, Err("late failure".to_string()));
+        terminal.apply_sec_earnings_loaded(
+            "NVDA".to_string(),
+            7,
+            Err("late failure".to_string()).into(),
+        );
 
         assert!(!terminal.sec_earnings_pending_charts.contains_key("NVDA"));
         assert!(
