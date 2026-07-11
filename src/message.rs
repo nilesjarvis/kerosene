@@ -1958,7 +1958,7 @@ pub(crate) enum Message {
         u64,
         Vec<String>,
         u64,
-        Result<crate::api::WatchlistContextsResponse, String>,
+        RedactedPublicMarketMessageResult<crate::api::WatchlistContextsResponse>,
     ),
     OutcomeSearchChanged(String),
     OutcomeMarketGroupToggled(String),
@@ -3687,6 +3687,18 @@ mod tests {
                 Ok(contexts_response()).into(),
             ),
             Message::ScreenerContextsLoaded(
+                7,
+                request_symbols(),
+                1_778_357_590_000,
+                Err(ERROR.to_string()).into(),
+            ),
+            Message::SymbolSearchContextsLoaded(
+                7,
+                request_symbols(),
+                1_778_357_590_000,
+                Ok(contexts_response()).into(),
+            ),
+            Message::SymbolSearchContextsLoaded(
                 7,
                 request_symbols(),
                 1_778_357_590_000,

@@ -59,7 +59,7 @@ impl TradingTerminal {
                 request_id,
                 requested_symbols,
                 requested_at,
-                result,
+                result.into_result(),
             ),
             Message::OutcomeSearchChanged(query) => {
                 self.outcome_search_query = query;
@@ -690,7 +690,10 @@ impl TradingTerminal {
         requested_at: u64,
         result: Result<crate::api::WatchlistContextsResponse, String>,
     ) -> Task<Message> {
-        if request_id != self.symbol_search_contexts_request_id {
+        if !self.symbol_search_contexts_loading
+            || request_id != self.symbol_search_contexts_request_id
+            || requested_symbols != self.symbol_search_contexts_request_symbols
+        {
             return Task::none();
         }
 
@@ -1182,7 +1185,7 @@ mod tests {
             stale_request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()).into(),
         ));
 
         assert!(
@@ -1200,7 +1203,7 @@ mod tests {
             current_request_id,
             vec!["xyz:ETH".to_string()],
             11,
-            Ok(HashMap::from([("xyz:ETH".to_string(), context(2.0))]).into()),
+            Ok(HashMap::from([("xyz:ETH".to_string(), context(2.0))]).into()).into(),
         ));
 
         assert!(!terminal.symbol_search_contexts_loading);
@@ -1226,13 +1229,13 @@ mod tests {
             request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()).into(),
         ));
         let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
             request_id,
             vec!["BTC".to_string()],
             11,
-            Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()).into(),
         ));
 
         assert!(!terminal.symbol_search_contexts_loading);
@@ -1247,22 +1250,68 @@ mod tests {
     }
 
     #[test]
+    fn mismatched_symbol_search_context_scope_does_not_consume_current_request() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![perp_symbol("BTC"), perp_symbol("ETH")];
+        terminal.symbol_search_sort_mode = SymbolSearchSortMode::Volume24h;
+        terminal
+            .symbol_search_ctxs
+            .insert("BTC".to_string(), context(9.0));
+        terminal.symbol_search_contexts_loading = true;
+        terminal.symbol_search_contexts_request_id = 7;
+        terminal.symbol_search_contexts_request_symbols = vec!["BTC".to_string()];
+        terminal.symbol_search_contexts_refresh_pending = true;
+        terminal.symbol_search_contexts_last_fetch_ms = Some(5);
+        terminal.symbol_search_status = Some(("existing status".to_string(), true));
+
+        let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
+            7,
+            vec!["ETH".to_string()],
+            10,
+            Ok(HashMap::from([("ETH".to_string(), context(1.0))]).into()).into(),
+        ));
+
+        assert!(terminal.symbol_search_contexts_loading);
+        assert_eq!(terminal.symbol_search_contexts_request_id, 7);
+        assert_eq!(
+            terminal.symbol_search_contexts_request_symbols,
+            vec!["BTC".to_string()]
+        );
+        assert!(terminal.symbol_search_contexts_refresh_pending);
+        assert_eq!(terminal.symbol_search_contexts_last_fetch_ms, Some(5));
+        assert_eq!(
+            terminal
+                .symbol_search_ctxs
+                .get("BTC")
+                .and_then(|context| context.day_vlm),
+            Some(9.0)
+        );
+        assert!(!terminal.symbol_search_ctxs.contains_key("ETH"));
+        assert_eq!(
+            terminal.symbol_search_status,
+            Some(("existing status".to_string(), true))
+        );
+    }
+
+    #[test]
     fn symbol_search_context_result_keeps_only_requested_symbols() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.exchange_symbols = vec![perp_symbol("BTC"), perp_symbol("ETH")];
         terminal.symbol_search_sort_mode = SymbolSearchSortMode::Volume24h;
+        terminal.symbol_search_contexts_loading = true;
+        terminal.symbol_search_contexts_request_id = 7;
+        terminal.symbol_search_contexts_request_symbols = vec!["BTC".to_string()];
 
-        let _task = terminal.request_symbol_search_context_refresh(true);
-        let request_id = terminal.symbol_search_contexts_request_id;
         let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
-            request_id,
+            7,
             vec!["BTC".to_string()],
             10,
             Ok(HashMap::from([
                 ("BTC".to_string(), context(1.0)),
                 ("ETH".to_string(), context(2.0)),
             ])
-            .into()),
+            .into())
+            .into(),
         ));
 
         assert_eq!(terminal.symbol_search_ctxs.len(), 1);
@@ -1286,7 +1335,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::new().into()),
+            Ok(HashMap::new().into()).into(),
         ));
 
         assert!(!terminal.symbol_search_contexts_loading);
@@ -1314,7 +1363,8 @@ mod tests {
             Ok(crate::api::WatchlistContextsResponse {
                 contexts: HashMap::from([("BTC".to_string(), context(1.0))]),
                 partial_errors: vec!["spot: HTTP 503".to_string()],
-            }),
+            })
+            .into(),
         ));
 
         assert_eq!(
@@ -1343,7 +1393,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             20,
-            Err("network".to_string()),
+            Err("network".to_string()).into(),
         ));
 
         assert!(!terminal.symbol_search_contexts_loading);
@@ -1384,7 +1434,7 @@ mod tests {
             stale_request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()).into(),
         ));
 
         assert!(terminal.symbol_search_ctxs.is_empty());
