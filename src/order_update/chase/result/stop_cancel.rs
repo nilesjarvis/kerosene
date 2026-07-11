@@ -21,7 +21,7 @@ impl fmt::Debug for StoppedChaseCancelRequest {
             .field("chase_id", &self.chase_id)
             .field("agent_key", &"<redacted>")
             .field("asset", &self.asset)
-            .field("oid", &self.oid)
+            .field("oid", &"<redacted>")
             .finish()
     }
 }

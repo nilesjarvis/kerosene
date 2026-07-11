@@ -244,7 +244,7 @@ impl TradingTerminal {
             fetch_order_status_by_oid(account_address.clone(), oid),
             move |result| Message::CancelOrderStatusLoaded {
                 account_address: account_address.into(),
-                oid,
+                oid: oid.into(),
                 symbol,
                 result: Box::new(result),
             },

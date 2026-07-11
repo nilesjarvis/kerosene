@@ -248,8 +248,8 @@ fn twap_unexpected_cancel_retry_due_task(
     Task::perform(twap_unexpected_cancel_retry_due_after(delay), move |()| {
         Message::TwapUnexpectedCancelRetryDue {
             twap_id,
-            oid,
-            cloid,
+            oid: oid.map(Into::into),
+            cloid: cloid.map(Into::into),
             attempt,
         }
     })

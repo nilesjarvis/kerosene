@@ -83,7 +83,7 @@ impl TradingTerminal {
                 fetch_order_status_by_oid(account_address, oid),
                 move |result| Message::ChaseOrderOidStatusLoaded {
                     chase_id,
-                    oid,
+                    oid: oid.into(),
                     result: Box::new(result),
                 },
             )

@@ -343,7 +343,7 @@ impl TradingTerminal {
         self.invalidate_spot_balances_after_exchange_dispatch(&account_address, market_type);
         modify_order_task(key, prepared, move |r| Message::ChaseModifyResult {
             chase_id,
-            oid,
+            oid: oid.into(),
             reprice_count,
             result: Box::new(r),
         })

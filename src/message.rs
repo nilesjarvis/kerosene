@@ -251,6 +251,62 @@ impl fmt::Debug for RedactedOrderInput {
     }
 }
 
+/// Exchange order ID carried through the transient message boundary.
+///
+/// The exact value remains available to update handlers, while the derived
+/// `Message::Debug` path receives only this redacted representation.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub(crate) struct RedactedOrderId(u64);
+
+impl RedactedOrderId {
+    pub(crate) fn into_u64(self) -> u64 {
+        self.0
+    }
+}
+
+impl From<u64> for RedactedOrderId {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl fmt::Debug for RedactedOrderId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("OrderId(<redacted>)")
+    }
+}
+
+/// Client order ID carried through the transient message boundary.
+///
+/// The exact value remains available to update handlers, while the derived
+/// `Message::Debug` path receives only this redacted representation.
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
+pub(crate) struct RedactedClientOrderId(String);
+
+impl RedactedClientOrderId {
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedClientOrderId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedClientOrderId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Debug for RedactedClientOrderId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ClientOrderId(<redacted>)")
+    }
+}
+
 #[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct RedactedAccountKey(Option<String>);
 
@@ -1084,7 +1140,7 @@ pub(crate) enum Message {
     DismissOrderStatus,
     CancelOrder {
         coin: String,
-        oid: u64,
+        oid: RedactedOrderId,
     },
     CancelResult {
         account_address: RedactedAddress,
@@ -1093,7 +1149,7 @@ pub(crate) enum Message {
     },
     CancelOrderStatusLoaded {
         account_address: RedactedAddress,
-        oid: u64,
+        oid: RedactedOrderId,
         symbol: String,
         result: Box<Result<api::OrderStatusResult, String>>,
     },
@@ -1175,19 +1231,19 @@ pub(crate) enum Message {
     },
     TwapUnexpectedCancelResult {
         twap_id: u64,
-        oid: Option<u64>,
-        cloid: Option<String>,
+        oid: Option<RedactedOrderId>,
+        cloid: Option<RedactedClientOrderId>,
         result: Box<Result<ExchangeResponse, String>>,
     },
     TwapUnexpectedCancelRetryDue {
         twap_id: u64,
-        oid: Option<u64>,
-        cloid: Option<String>,
+        oid: Option<RedactedOrderId>,
+        cloid: Option<RedactedClientOrderId>,
         attempt: u32,
     },
     TwapOrderStatusLoaded {
         twap_id: u64,
-        cloid: String,
+        cloid: RedactedClientOrderId,
         result: Box<Result<api::OrderStatusResult, String>>,
     },
     OpenTwapDetails(u64),
@@ -1218,28 +1274,28 @@ pub(crate) enum Message {
     },
     ChaseModifyResult {
         chase_id: u64,
-        oid: u64,
+        oid: RedactedOrderId,
         reprice_count: u32,
         result: Box<Result<ExchangeResponse, String>>,
     },
     ChaseCancelResult {
         chase_id: u64,
-        oid: u64,
+        oid: RedactedOrderId,
         result: Box<Result<ExchangeResponse, String>>,
     },
     ChaseOrderStatusLoaded {
         chase_id: u64,
-        cloid: String,
+        cloid: RedactedClientOrderId,
         result: Box<Result<api::OrderStatusResult, String>>,
     },
     ChaseOrderOidStatusLoaded {
         chase_id: u64,
-        oid: u64,
+        oid: RedactedOrderId,
         result: Box<Result<api::OrderStatusResult, String>>,
     },
     ChaseRestingOrder {
         coin: String,
-        oid: u64,
+        oid: RedactedOrderId,
     },
     // Per-chart messages (keyed by ChartId)
     ChartFocused(ChartId),
@@ -1262,7 +1318,13 @@ pub(crate) enum Message {
     /// (sounds play on change; the weapon-selector popup opens either way).
     ChartHudControlChanged(ChartId, ChartSurfaceId, crate::sound::HudUiSound, bool),
     ChartHudSafetyTick,
-    ChartHoverStateChanged(ChartId, ChartSurfaceId, Option<u64>, bool, Option<u64>),
+    ChartHoverStateChanged(
+        ChartId,
+        ChartSurfaceId,
+        Option<RedactedOrderId>,
+        bool,
+        Option<u64>,
+    ),
     ChartOrderCancelHoverAnimationTick,
     ChartEarningsMarkerHoverAnimationTick,
     ChartWsAssetCtxUpdate(ChartId, String, MarketDataSourceContext, AssetContext),
@@ -1345,24 +1407,24 @@ pub(crate) enum Message {
     // Order drag-to-move (from chart canvas)
     MoveOrderDragStarted {
         coin: String,
-        oid: u64,
+        oid: RedactedOrderId,
     },
     MoveOrder {
         coin: String,
-        oid: u64,
+        oid: RedactedOrderId,
         new_price: f64,
     },
     MoveOrderModifyResult {
         account_address: RedactedAddress,
         coin: String,
-        oid: u64,
+        oid: RedactedOrderId,
         pending_indicator_id: Option<u64>,
         result: Box<Result<ExchangeResponse, String>>,
     },
     MoveOrderStatusLoaded {
         account_address: RedactedAddress,
         coin: String,
-        oid: u64,
+        oid: RedactedOrderId,
         result: Box<Result<api::OrderStatusResult, String>>,
     },
     // Global messages
@@ -1503,11 +1565,11 @@ pub(crate) enum Message {
 #[cfg(test)]
 mod tests {
     use super::{
-        Message, RedactedOrderInput, RedactedPhoneInput, RedactedTelegramChannelKey,
-        SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult, SecretInput,
-        TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult,
-        XAuthContextMessageResult, XFeedPageMessageResult, XListsMessageResult,
-        XProfileImageMessageResult,
+        Message, RedactedClientOrderId, RedactedOrderId, RedactedOrderInput, RedactedPhoneInput,
+        RedactedTelegramChannelKey, SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult,
+        SecretInput, TelegramFastAuthMessageResult, TelegramFastAuthOutcome,
+        XAccessTokenRefreshMessageResult, XAuthContextMessageResult, XFeedPageMessageResult,
+        XListsMessageResult, XProfileImageMessageResult,
     };
     use crate::api::{ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OutcomeSymbolInfo};
     use crate::chart_state::ChartSurfaceId;
@@ -1554,6 +1616,116 @@ mod tests {
             assert!(rendered.contains("<redacted>"));
             assert!(!rendered.contains("order-input-secret"));
         }
+    }
+
+    #[test]
+    fn order_identifier_message_debug_redacts_oid_and_cloid_fields() {
+        const OID: u64 = 9_876_543_210_123_457;
+        const CLOID: &str = "0x1234567890abcdef1234567890abcdef";
+
+        let messages = vec![
+            Message::CancelOrder {
+                coin: "HYPE".to_string(),
+                oid: OID.into(),
+            },
+            Message::CancelOrderStatusLoaded {
+                account_address: "0x0000000000000000000000000000000000000001".into(),
+                oid: OID.into(),
+                symbol: "HYPE".to_string(),
+                result: Box::new(Err("status failed".to_string())),
+            },
+            Message::TwapUnexpectedCancelResult {
+                twap_id: 1,
+                oid: Some(OID.into()),
+                cloid: Some(CLOID.into()),
+                result: Box::new(Err("cancel failed".to_string())),
+            },
+            Message::TwapUnexpectedCancelRetryDue {
+                twap_id: 1,
+                oid: Some(OID.into()),
+                cloid: Some(CLOID.into()),
+                attempt: 1,
+            },
+            Message::TwapOrderStatusLoaded {
+                twap_id: 1,
+                cloid: CLOID.into(),
+                result: Box::new(Err("status failed".to_string())),
+            },
+            Message::ChaseModifyResult {
+                chase_id: 1,
+                oid: OID.into(),
+                reprice_count: 1,
+                result: Box::new(Err("modify failed".to_string())),
+            },
+            Message::ChaseCancelResult {
+                chase_id: 1,
+                oid: OID.into(),
+                result: Box::new(Err("cancel failed".to_string())),
+            },
+            Message::ChaseOrderStatusLoaded {
+                chase_id: 1,
+                cloid: CLOID.into(),
+                result: Box::new(Err("status failed".to_string())),
+            },
+            Message::ChaseOrderOidStatusLoaded {
+                chase_id: 1,
+                oid: OID.into(),
+                result: Box::new(Err("status failed".to_string())),
+            },
+            Message::ChaseRestingOrder {
+                coin: "HYPE".to_string(),
+                oid: OID.into(),
+            },
+            Message::MoveOrderDragStarted {
+                coin: "HYPE".to_string(),
+                oid: OID.into(),
+            },
+            Message::MoveOrder {
+                coin: "HYPE".to_string(),
+                oid: OID.into(),
+                new_price: 100.0,
+            },
+            Message::MoveOrderModifyResult {
+                account_address: "0x0000000000000000000000000000000000000001".into(),
+                coin: "HYPE".to_string(),
+                oid: OID.into(),
+                pending_indicator_id: None,
+                result: Box::new(Err("modify failed".to_string())),
+            },
+            Message::MoveOrderStatusLoaded {
+                account_address: "0x0000000000000000000000000000000000000001".into(),
+                coin: "HYPE".to_string(),
+                oid: OID.into(),
+                result: Box::new(Err("status failed".to_string())),
+            },
+            Message::ChartHoverStateChanged(
+                1,
+                ChartSurfaceId::Docked(1),
+                Some(OID.into()),
+                true,
+                None,
+            ),
+        ];
+        let oid = OID.to_string();
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(&oid), "message leaked OID: {rendered}");
+            assert!(
+                !rendered.contains(CLOID),
+                "message leaked CLOID: {rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn order_identifier_message_wrappers_preserve_exact_values() {
+        const OID: u64 = 9_876_543_210_123_457;
+        const CLOID: &str = "0x1234567890abcdef1234567890abcdef";
+
+        assert_eq!(RedactedOrderId::from(OID).into_u64(), OID);
+        assert_eq!(RedactedClientOrderId::from(CLOID).into_string(), CLOID);
     }
 
     #[test]
@@ -1924,21 +2096,21 @@ mod tests {
             },
             Message::CancelOrderStatusLoaded {
                 account_address: ADDRESS.into(),
-                oid: 42,
+                oid: 42.into(),
                 symbol: "HYPE".to_string(),
                 result: Box::new(Err("status failed".to_string())),
             },
             Message::MoveOrderModifyResult {
                 account_address: ADDRESS.into(),
                 coin: "HYPE".to_string(),
-                oid: 42,
+                oid: 42.into(),
                 pending_indicator_id: None,
                 result: Box::new(Err("modify failed".to_string())),
             },
             Message::MoveOrderStatusLoaded {
                 account_address: ADDRESS.into(),
                 coin: "HYPE".to_string(),
-                oid: 42,
+                oid: 42.into(),
                 result: Box::new(Err("move status failed".to_string())),
             },
             Message::WalletAddressInputChanged(ADDRESS.into()),

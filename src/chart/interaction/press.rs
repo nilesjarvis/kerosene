@@ -131,7 +131,7 @@ impl CandlestickChart {
                 return Some(
                     canvas::Action::publish(Message::CancelOrder {
                         coin: hit.order.coin.clone(),
-                        oid: hit.order.oid,
+                        oid: hit.order.oid.into(),
                     })
                     .and_capture(),
                 );
@@ -144,7 +144,7 @@ impl CandlestickChart {
             return Some(
                 canvas::Action::publish(Message::MoveOrderDragStarted {
                     coin: hit.order.coin.clone(),
-                    oid: hit.order.oid,
+                    oid: hit.order.oid.into(),
                 })
                 .and_capture(),
             );
@@ -313,7 +313,7 @@ impl CandlestickChart {
             return Some(
                 canvas::Action::publish(Message::CancelOrder {
                     coin: hit.order.coin.clone(),
-                    oid: hit.order.oid,
+                    oid: hit.order.oid.into(),
                 })
                 .and_capture(),
             );

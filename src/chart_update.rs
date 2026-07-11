@@ -227,7 +227,9 @@ impl TradingTerminal {
                 if let Some(instance) = self.charts.get_mut(&id)
                     && instance.chart.surface_id() == surface_id
                 {
-                    instance.chart.set_order_cancel_hover(oid);
+                    instance
+                        .chart
+                        .set_order_cancel_hover(oid.map(|oid| oid.into_u64()));
                     instance
                         .chart
                         .set_earnings_marker_hover(earnings_marker_time_ms);

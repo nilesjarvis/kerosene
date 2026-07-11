@@ -62,6 +62,14 @@
   diagnostics retain only redacted/boolean identifier metadata
   (`src/api/order_status.rs:16-82`, `src/api/order_status/parsing.rs:10-62`,
   `src/api/order_status/model.rs:8-24`).
+- Transient order-message OID/CLOID fields use exact-value wrappers whose
+  diagnostic representations are redacted. Producers wrap only when publishing
+  a message, and the order/chart update boundary restores the original
+  primitive before invoking unchanged handlers. This covers cancel, move,
+  Chase, TWAP, and chart cancel-hover messages without changing runtime state or
+  exchange types (`src/message.rs:254-308`, `src/message.rs:1141-1429`,
+  `src/order_update.rs:80-104`, `src/order_update.rs:205-431`,
+  `src/chart_update.rs:218-240`).
 - Account task results carry read-provider and request-generation context;
   user-data events are address-scoped, and websocket lag forces reconciliation
   (`src/account_update/connection/refresh.rs:94-140`,
@@ -702,31 +710,48 @@ target-specific cancellation policy, not HTTP replay.
   retries/timeouts, state transitions, and normal user-visible status paths are
   unchanged. Only sensitive or anomalous diagnostic values are removed.
 
-### F-13 — Derived order messages expose raw OID/CLOID context fields
+### F-13 — Derived order diagnostics expose raw OID/CLOID context fields
 
-- Status: confirmed in Turn 11; queued for the next diagnostic-redaction batch
+- Status: addressed in Turn 12; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
 - Severity: Medium privacy hardening
 - Scope: order-related `Message` variants with direct numeric OID or owned
-  CLOID fields, independent of their already-redacted result payloads
+  CLOID fields, independent of their already-redacted result payloads, plus the
+  adjacent stopped-Chase cancel request formatter
 - Preconditions/event ordering: any diagnostic formats the derived `Debug` for
-  a cancel, move, Chase, or TWAP intent/result/status/retry message carrying a
-  raw correlation identifier.
-- Evidence: `Message` derives `Debug`; raw fields remain on cancel/status at
-  `src/message.rs:1084-1099`, TWAP cancel/status at
-  `src/message.rs:1176-1192`, Chase modify/cancel/status at
-  `src/message.rs:1219-1239`, and move intent/result/status at
-  `src/message.rs:1345-1367`. Sanitizing F-12's `Result` lane does not affect
-  these sibling context fields.
+  a cancel, move, Chase, TWAP, or chart-hover message carrying a raw correlation
+  identifier, or formats a stopped-Chase cancel request during diagnostics.
+- Evidence: before Turn 12, `Message` derived `Debug` over raw fields on
+  cancel/status, TWAP cancel/status, Chase modify/cancel/status, move
+  intent/result/status, and chart cancel-hover variants. Sanitizing F-12's
+  `Result` lane did not affect those sibling context fields. A repository-wide
+  custom-formatter scan also found that `StoppedChaseCancelRequest` redacted its
+  agent key but emitted its OID (`src/order_update/chase/result/stop_cancel.rs:18-26`).
 - Violated invariant: order identifiers needed for routing and equality must
   not be emitted by general diagnostic formatting.
 - Risk: a normal or failing lifecycle message can disclose the identifier even
   though response models, placement contexts, account keys, and addresses use
   redacted diagnostic representations.
-- Smallest planned fix: inventory every direct order-identifier field on
-  `Message`, introduce the narrowest copy/owned redacted wrappers that preserve
-  routing and equality values, and add whole-message `Debug` regressions before
-  changing callers. Do not change message routing, handler values, or status
-  text.
+- Implemented fix: added copy/owned `RedactedOrderId` and
+  `RedactedClientOrderId` message-boundary wrappers, converted every direct
+  exchange identifier producer at publication, and restored the exact values
+  once at `update_order` or the chart update consumer. The stopped-Chase request
+  formatter now redacts its OID alongside its key (`src/message.rs:254-308`,
+  `src/message.rs:1141-1429`, `src/order_update.rs:80-104`,
+  `src/order_update.rs:205-431`, `src/chart/interaction/hud.rs:103-122`,
+  `src/chart_update.rs:218-240`,
+  `src/order_update/chase/result/stop_cancel.rs:18-26`).
+- Regression coverage: one whole-message test formats all fifteen affected
+  variants, including optional TWAP identifiers and chart hover, and rejects
+  the raw OID/CLOID; a round-trip test proves wrapper values are byte/numerically
+  exact; the stopped-Chase formatter test rejects both its key and OID
+  (`src/message.rs:1621-1729`,
+  `src/order_update/chase/result/tests/stop_cancel.rs:38-52`).
+- Protected behavior: message variant names/routing, exact OID/CLOID values,
+  handler arguments, account/symbol/attempt context, cancellation, movement,
+  Chase/TWAP state transitions, chart hover state, task timing, UI, signing,
+  persistence, and trading semantics are unchanged. Only diagnostic formatting
+  differs.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -1284,6 +1309,73 @@ target-specific cancellation policy, not HTTP replay.
   whole-message debug regressions, then resume cancel/move ownership and
   repeated-attempt correlation in Track 4.
 
+## Turn 12 — Redact Order-Identifier Message Context
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: Medium privacy hardening
+- Scope: F-13 across every direct exchange OID/CLOID field on `Message`, its
+  publication and consumption boundaries, and the adjacent stopped-Chase cancel
+  request diagnostic
+- Invariant: transient message and planning diagnostics must not expose an
+  exchange order identifier, while update handlers receive the exact same
+  primitive value and lifecycle context as before.
+- Protected behavior: all message variants and routes, exact OID/CLOID values,
+  account/symbol/attempt context, handler signatures, state transitions,
+  cancellation/modify/status requests, chart cancel-hover behavior, task
+  timing, visible status/UI, signing, order semantics, and persistence.
+- Evidence: a field-and-caller inventory traced all named OID/CLOID fields plus
+  the positional chart cancel-hover OID. Fourteen order-route variants converge
+  on `update_order`; the chart variant converges on `update_chart`. Every
+  constructor was found by both variant-specific and repository-wide searches,
+  and no alternate consumer was found. The concrete prior exposure and current
+  source references are recorded under F-13.
+- Change: introduced two message-only redacted wrappers with exact consuming
+  accessors; wrapped at every publication site; unwrapped only at the order or
+  chart update boundary; and made the stopped-Chase request's existing custom
+  debug formatter value-neutral for OID. The patch adds no state field, request,
+  retry, dependency, schema, or policy.
+- Regression tests: added a single table-style whole-message formatter test for
+  all fifteen variants, an exact wrapper round-trip test, and an OID assertion
+  on the stopped-Chase request formatter. The existing chart cancel-click and
+  TWAP retry-task tests remain the protected producer-path checks.
+- Validation:
+  - `cargo fmt` passed.
+  - `cargo fmt -- --check` and `git diff --check` passed before the ledger
+    update and are rerun during final review.
+  - The pre-implementation
+    `cargo test --package kerosene --bin kerosene order_identifier_message_debug_redacts_oid_and_cloid_fields`
+    attempt stopped in `alsa-sys` before compiling Kerosene because
+    `pkg-config` could not find the system `alsa.pc` package.
+  - The extended pre-implementation
+    `cargo test --package kerosene --bin kerosene stopped_chase_cancel_request_debug_redacts_agent_key_and_oid`
+    attempt stopped at the same environment boundary.
+  - Post-implementation focused
+    `cargo test --package kerosene --bin kerosene order_identifier_message_` and
+    `cargo test --package kerosene --bin kerosene stopped_chase_cancel_request_debug_redacts_agent_key_and_oid`
+    attempts stopped at the same boundary.
+  - Protected producer-path
+    `cargo test --package kerosene --bin kerosene fisheye_left_click_on_order_cancel_button_cancels_order`
+    and
+    `cargo test --package kerosene --bin kerosene unexpected_cancel_retry_due_task_waits_for_delay`
+    attempts stopped at the same boundary.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+- Compatibility/UX assessment: the wrappers exist only while a message is in
+  transit and consume back to the original primitive before any handler logic.
+  All visible and trading behavior is unchanged; only derived/custom diagnostic
+  output substitutes a redaction marker for the identifier.
+- Residual risk: formatting, exact-value characterization, complete variant
+  producer/consumer inspection, direct-field source scans, and diff review pass,
+  but the new tests/type-check/clippy must execute on a host with ALSA
+  development metadata. The broader Track 9 audit still needs to inspect local
+  derived planning/state enums that are not carried by `Message`; no claim is
+  made about those later diagnostic surfaces here.
+- Prior turn commit hash: `349f532e89d33135d3abc912d994af9daf7f91b5`
+- Next candidate: resume Track 4 by auditing cancel and move ownership across
+  repeated attempts on the same OID, delayed direct/status results, indicator
+  disappearance, and authoritative open-order/fill refresh ordering.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -1291,19 +1383,18 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused order-status preview/parser/result
-  redaction and preserved-success tests; `cargo check`; full `cargo test`; and
-  strict clippy at `alsa-sys` system dependency discovery, before Kerosene was
-  compiled.
+- Environment-blocked this turn: focused order-message identifier and
+  stopped-Chase request formatter tests; protected chart/TWAP producer tests;
+  `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
+  dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-12 have source fixes and regression coverage but await
+- F-01 through F-13 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- F-13 is confirmed and queued. Derived order-message context redaction,
-  cancel/move correlation, broader Chase/TWAP and account-stream ordering,
-  restart/shutdown cleanup, and the remaining redaction audit require
-  track-by-track completion before a final verdict.
+- Cancel/move repeated-attempt correlation, broader Chase/TWAP and account-stream
+  ordering, restart/shutdown cleanup, local planning/state diagnostic
+  redaction, and the remaining tracks require completion before a final verdict.

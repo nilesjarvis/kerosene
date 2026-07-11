@@ -52,8 +52,8 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
             async { Err("original agent key unavailable".to_string()) },
             move |result| Message::TwapUnexpectedCancelResult {
                 twap_id,
-                oid,
-                cloid: cloid.clone(),
+                oid: oid.map(Into::into),
+                cloid: cloid.clone().map(Into::into),
                 result: Box::new(result),
             },
         );
@@ -65,7 +65,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
             Message::TwapUnexpectedCancelResult {
                 twap_id,
                 oid: None,
-                cloid: Some(cloid.clone()),
+                cloid: Some(cloid.clone().into()),
                 result: Box::new(result),
             }
         });
@@ -77,7 +77,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
     cancel_order_task(key, asset, oid, move |result| {
         Message::TwapUnexpectedCancelResult {
             twap_id,
-            oid: Some(oid),
+            oid: Some(oid.into()),
             cloid: None,
             result: Box::new(result),
         }

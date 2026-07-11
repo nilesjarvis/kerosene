@@ -84,7 +84,7 @@ impl TradingTerminal {
                 );
                 cancel_order_task(key, asset, oid, move |r| Message::ChaseCancelResult {
                     chase_id,
-                    oid,
+                    oid: oid.into(),
                     result: Box::new(r),
                 })
             }
@@ -214,7 +214,7 @@ impl TradingTerminal {
         self.invalidate_spot_balances_after_exchange_dispatch(&account_address, market_type);
         cancel_order_task(key, asset, oid, move |r| Message::ChaseCancelResult {
             chase_id,
-            oid,
+            oid: oid.into(),
             result: Box::new(r),
         })
     }

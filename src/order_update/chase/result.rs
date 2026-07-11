@@ -116,7 +116,7 @@ impl TradingTerminal {
                 fetch_order_status_by_cloid(account_address, request_cloid),
                 move |result| Message::ChaseOrderStatusLoaded {
                     chase_id,
-                    cloid,
+                    cloid: cloid.into(),
                     result: Box::new(result),
                 },
             ),
@@ -220,7 +220,7 @@ impl TradingTerminal {
                             request.oid,
                             move |r| Message::ChaseCancelResult {
                                 chase_id: request.chase_id,
-                                oid: request.oid,
+                                oid: request.oid.into(),
                                 result: Box::new(r),
                             },
                         );

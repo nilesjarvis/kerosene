@@ -15,7 +15,7 @@ impl TradingTerminal {
             move |result| Message::MoveOrderStatusLoaded {
                 account_address: account_address.into(),
                 coin,
-                oid,
+                oid: oid.into(),
                 result: Box::new(result),
             },
         )

@@ -114,7 +114,7 @@ impl CandlestickChart {
             canvas::Action::publish(Message::ChartHoverStateChanged(
                 self.id,
                 self.surface_id,
-                order_cancel_hover_oid,
+                order_cancel_hover_oid.map(Into::into),
                 hovering,
                 earnings_marker_time_ms,
             ))

@@ -77,7 +77,9 @@ impl TradingTerminal {
                 context,
                 result,
             } => return self.handle_order_result(pending_indicator_id, context, *result),
-            Message::CancelOrder { coin, oid } => return self.execute_cancel(&coin, oid),
+            Message::CancelOrder { coin, oid } => {
+                return self.execute_cancel(&coin, oid.into_u64());
+            }
             Message::CancelResult {
                 account_address,
                 pending_indicator_id,
@@ -97,7 +99,7 @@ impl TradingTerminal {
             } => {
                 return self.handle_cancel_order_status_result(
                     account_address.into_string(),
-                    oid,
+                    oid.into_u64(),
                     symbol,
                     *result,
                 );
@@ -205,20 +207,34 @@ impl TradingTerminal {
                 oid,
                 cloid,
                 result,
-            } => return self.handle_twap_unexpected_cancel_result(twap_id, oid, cloid, *result),
+            } => {
+                return self.handle_twap_unexpected_cancel_result(
+                    twap_id,
+                    oid.map(|oid| oid.into_u64()),
+                    cloid.map(|cloid| cloid.into_string()),
+                    *result,
+                );
+            }
             Message::TwapUnexpectedCancelRetryDue {
                 twap_id,
                 oid,
                 cloid,
                 attempt,
             } => {
-                return self.handle_twap_unexpected_cancel_retry_due(twap_id, oid, cloid, attempt);
+                return self.handle_twap_unexpected_cancel_retry_due(
+                    twap_id,
+                    oid.map(|oid| oid.into_u64()),
+                    cloid.map(|cloid| cloid.into_string()),
+                    attempt,
+                );
             }
             Message::TwapOrderStatusLoaded {
                 twap_id,
                 cloid,
                 result,
-            } => return self.handle_twap_order_status_result(twap_id, cloid, *result),
+            } => {
+                return self.handle_twap_order_status_result(twap_id, cloid.into_string(), *result);
+            }
             Message::OpenTwapDetails(twap_id) => return self.open_twap_details(twap_id),
             Message::OpenAdvancedOrderHistory(entry_id) => {
                 return self.open_advanced_order_history(entry_id);
@@ -270,23 +286,40 @@ impl TradingTerminal {
                 reprice_count,
                 result,
             } => {
-                return self.handle_chase_modify_result(chase_id, oid, reprice_count, *result);
+                return self.handle_chase_modify_result(
+                    chase_id,
+                    oid.into_u64(),
+                    reprice_count,
+                    *result,
+                );
             }
             Message::ChaseCancelResult {
                 chase_id,
                 oid,
                 result,
-            } => return self.handle_chase_cancel_result(chase_id, oid, *result),
+            } => return self.handle_chase_cancel_result(chase_id, oid.into_u64(), *result),
             Message::ChaseOrderStatusLoaded {
                 chase_id,
                 cloid,
                 result,
-            } => return self.handle_chase_order_status_result(chase_id, cloid, *result),
+            } => {
+                return self.handle_chase_order_status_result(
+                    chase_id,
+                    cloid.into_string(),
+                    *result,
+                );
+            }
             Message::ChaseOrderOidStatusLoaded {
                 chase_id,
                 oid,
                 result,
-            } => return self.handle_chase_order_oid_status_result(chase_id, oid, *result),
+            } => {
+                return self.handle_chase_order_oid_status_result(
+                    chase_id,
+                    oid.into_u64(),
+                    *result,
+                );
+            }
             Message::OpenQuickOrder(
                 chart_id,
                 surface_id,
@@ -353,8 +386,10 @@ impl TradingTerminal {
             }
             Message::EscapePressed(window_id) => self.handle_order_escape_pressed(window_id),
             Message::MoveOrderDragStarted { coin, oid } => {
-                self.active_move_order_drag =
-                    Some(crate::order_execution::MoveOrderKey::new(coin, oid));
+                self.active_move_order_drag = Some(crate::order_execution::MoveOrderKey::new(
+                    coin,
+                    oid.into_u64(),
+                ));
             }
             Message::MoveOrder {
                 coin,
@@ -362,7 +397,7 @@ impl TradingTerminal {
                 new_price,
             } => {
                 self.active_move_order_drag = None;
-                return self.handle_move_order(coin, oid, new_price);
+                return self.handle_move_order(coin, oid.into_u64(), new_price);
             }
             Message::MoveOrderModifyResult {
                 account_address,
@@ -374,7 +409,7 @@ impl TradingTerminal {
                 return self.handle_move_order_modify_result(
                     account_address.into_string(),
                     coin,
-                    oid,
+                    oid.into_u64(),
                     pending_indicator_id,
                     *result,
                 );
@@ -388,12 +423,12 @@ impl TradingTerminal {
                 return self.handle_move_order_status_result(
                     account_address.into_string(),
                     coin,
-                    oid,
+                    oid.into_u64(),
                     *result,
                 );
             }
             Message::ChaseRestingOrder { coin, oid } => {
-                return self.handle_chase_resting_order(coin, oid);
+                return self.handle_chase_resting_order(coin, oid.into_u64());
             }
             // Every message routed to `UpdateRoute::Order` has an explicit arm
             // above, so this is unreachable today. If a future order message is

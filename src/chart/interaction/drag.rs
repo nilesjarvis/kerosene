@@ -212,7 +212,7 @@ impl CandlestickChart {
                 return Some(
                     canvas::Action::publish(Message::MoveOrder {
                         coin,
-                        oid,
+                        oid: oid.into(),
                         new_price: price,
                     })
                     .and_capture(),

@@ -40,7 +40,7 @@ impl TradingTerminal {
                 theme.palette().danger,
                 Message::CancelOrder {
                     coin: order.coin.clone(),
-                    oid: order.oid,
+                    oid: order.oid.into(),
                 },
             )
         } else {
@@ -62,7 +62,7 @@ impl TradingTerminal {
                     theme.palette().primary,
                     Message::ChaseRestingOrder {
                         coin: order.coin.clone(),
-                        oid: order.oid,
+                        oid: order.oid.into(),
                     },
                 )
             } else {

@@ -201,7 +201,7 @@ fn fisheye_left_click_on_order_cancel_button_cancels_order() {
     match message_or_panic(message, "cancel order message") {
         Message::CancelOrder { coin, oid } => {
             assert_eq!(coin, "BTC");
-            assert_eq!(oid, 42);
+            assert_eq!(oid.into_u64(), 42);
         }
         other => panic!("expected CancelOrder, got {other:?}"),
     }

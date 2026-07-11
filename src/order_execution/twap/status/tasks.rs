@@ -55,7 +55,7 @@ impl TradingTerminal {
             fetch_order_status_by_cloid(address, request_cloid),
             move |result| Message::TwapOrderStatusLoaded {
                 twap_id,
-                cloid: cloid.clone(),
+                cloid: cloid.clone().into(),
                 result: Box::new(result),
             },
         )
@@ -78,7 +78,7 @@ impl TradingTerminal {
             },
             move |result| Message::TwapOrderStatusLoaded {
                 twap_id,
-                cloid: cloid.clone(),
+                cloid: cloid.clone().into(),
                 result: Box::new(result),
             },
         )
