@@ -210,7 +210,13 @@ impl TradingTerminal {
                         true,
                     );
                     let key = twap.agent_key.clone_for_task();
-                    cancel_unexpected = Some((key, twap.asset, status.oid, Some(cloid.clone())));
+                    cancel_unexpected = Some((
+                        key,
+                        twap.asset,
+                        status.oid,
+                        Some(cloid.clone()),
+                        twap.cancel_retries,
+                    ));
                 }
                 Ok(status) if status.is_filled() => {
                     twap.account_reconciliation_retries = 0;
@@ -305,9 +311,12 @@ impl TradingTerminal {
             }
         }
 
-        if let Some((key, asset, oid, cloid)) = cancel_unexpected {
+        if let Some((key, asset, oid, cloid, attempt)) = cancel_unexpected {
+            if !self.arm_twap_unexpected_cancel_attempt(twap_id, oid, cloid.as_deref(), attempt) {
+                return Task::none();
+            }
             self.invalidate_spot_balances_after_twap_dispatch(twap_id);
-            return twap_cancel_child_task(twap_id, key, asset, oid, cloid);
+            return twap_cancel_child_task(twap_id, key, asset, oid, cloid, attempt);
         }
         if let Some((cloid, delay)) = retry_status_check {
             return self.check_twap_child_status_after(twap_id, cloid, delay);

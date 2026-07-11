@@ -97,6 +97,7 @@ fn twap_order_debug_redacts_agent_key_and_account_address() {
     });
     twap.status_check_cloid = Some("status-cloid-secret".to_string());
     twap.status_check_pending_attempt = Some(3);
+    twap.unexpected_cancel_pending_attempt = Some(3);
     twap.stop_reason = Some(("stop reason with SECRET_TWAP_COIN".to_string(), true));
     twap.child_orders.push(TwapChildOrder {
         index: 4,
@@ -127,6 +128,7 @@ fn twap_order_debug_redacts_agent_key_and_account_address() {
     assert!(rendered.contains("has_retry_slice: true"));
     assert!(rendered.contains("has_status_check_cloid: true"));
     assert!(rendered.contains("has_pending_status_check: true"));
+    assert!(rendered.contains("has_pending_unexpected_cancel: true"));
     assert!(rendered.contains("stop_reason_is_error: Some(true)"));
     assert!(rendered.contains("child_orders_count: 1"));
     assert!(rendered.contains("<redacted>"));

@@ -325,6 +325,7 @@ fn open_status_check_after_stop_keeps_twap_stopping_and_requests_cancel() {
             cloid: Some(cloid),
         }) if cloid == CLOID
     ));
+    assert_eq!(twap.unexpected_cancel_pending_attempt, Some(0));
 }
 
 #[test]

@@ -1243,6 +1243,7 @@ pub(crate) enum Message {
         twap_id: u64,
         oid: Option<RedactedOrderId>,
         cloid: Option<RedactedClientOrderId>,
+        attempt: u32,
         result: Box<Result<ExchangeResponse, String>>,
     },
     TwapUnexpectedCancelRetryDue {
@@ -1659,6 +1660,7 @@ mod tests {
                 twap_id: 1,
                 oid: Some(OID.into()),
                 cloid: Some(CLOID.into()),
+                attempt: 0,
                 result: Box::new(Err("cancel failed".to_string())),
             },
             Message::TwapUnexpectedCancelRetryDue {

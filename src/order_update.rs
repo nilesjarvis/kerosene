@@ -210,12 +210,14 @@ impl TradingTerminal {
                 twap_id,
                 oid,
                 cloid,
+                attempt,
                 result,
             } => {
                 return self.handle_twap_unexpected_cancel_result(
                     twap_id,
                     oid.map(|oid| oid.into_u64()),
                     cloid.map(|cloid| cloid.into_string()),
+                    attempt,
                     *result,
                 );
             }

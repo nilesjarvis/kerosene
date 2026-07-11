@@ -19,18 +19,21 @@ use std::time::{Duration, Instant};
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(crate) fn handle_twap_unexpected_cancel_retry_due(
+    pub(in crate::order_execution::twap) fn arm_twap_unexpected_cancel_attempt(
         &mut self,
         twap_id: u64,
         oid: Option<u64>,
-        cloid: Option<String>,
+        cloid: Option<&str>,
         attempt: u32,
-    ) -> Task<Message> {
-        let Some(twap) = self.twap_orders.get(&twap_id) else {
-            return Task::none();
+    ) -> bool {
+        let Some(twap) = self.twap_orders.get_mut(&twap_id) else {
+            return false;
         };
-        if twap.status.is_terminal() || twap.cancel_retries != attempt {
-            return Task::none();
+        if twap.status.is_terminal()
+            || twap.cancel_retries != attempt
+            || twap.unexpected_cancel_pending_attempt.is_some()
+        {
+            return false;
         }
         let matches_pending_cancel = matches!(
             &twap.pending_op,
@@ -41,17 +44,35 @@ impl TradingTerminal {
                 *pending_oid,
                 pending_cloid.as_deref(),
                 oid,
-                cloid.as_deref(),
+                cloid,
             )
         );
         if !matches_pending_cancel {
+            return false;
+        }
+
+        twap.unexpected_cancel_pending_attempt = Some(attempt);
+        true
+    }
+
+    pub(crate) fn handle_twap_unexpected_cancel_retry_due(
+        &mut self,
+        twap_id: u64,
+        oid: Option<u64>,
+        cloid: Option<String>,
+        attempt: u32,
+    ) -> Task<Message> {
+        if !self.arm_twap_unexpected_cancel_attempt(twap_id, oid, cloid.as_deref(), attempt) {
             return Task::none();
         }
+        let Some(twap) = self.twap_orders.get(&twap_id) else {
+            return Task::none();
+        };
 
         let key = twap.agent_key.clone_for_task();
         let asset = twap.asset;
         self.invalidate_spot_balances_after_twap_dispatch(twap_id);
-        twap_cancel_child_task(twap_id, key, asset, oid, cloid)
+        twap_cancel_child_task(twap_id, key, asset, oid, cloid, attempt)
     }
 
     pub(crate) fn handle_twap_unexpected_cancel_result(
@@ -59,6 +80,7 @@ impl TradingTerminal {
         twap_id: u64,
         oid: Option<u64>,
         cloid: Option<String>,
+        attempt: u32,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         let now = Instant::now();
@@ -66,6 +88,8 @@ impl TradingTerminal {
         let mut finish_attempt = false;
         let mut matched_cancel_target = false;
         if let Some(twap) = self.twap_orders.get_mut(&twap_id)
+            && twap.cancel_retries == attempt
+            && twap.unexpected_cancel_pending_attempt == Some(attempt)
             && matches!(
                 &twap.pending_op,
                 Some(TwapPendingOp::CancelUnexpectedResting {
@@ -80,6 +104,9 @@ impl TradingTerminal {
             )
         {
             matched_cancel_target = true;
+            // Claim this exact result before applying it. Duplicate or delayed
+            // results cannot consume retry budget or settle a newer attempt.
+            twap.unexpected_cancel_pending_attempt = None;
             let exchange_summary = match &result {
                 Ok(response) => response.summary(),
                 Err(error) => redact_sensitive_response_text(error),

@@ -195,6 +195,10 @@ pub(crate) struct TwapOrder {
     /// the TWAP transitions to terminal error.
     pub(crate) reconciliation_deadline: Option<Instant>,
     pub(crate) cancel_retries: u32,
+    /// Exact retry attempt currently owns the in-flight unexpected-child
+    /// cancellation task. `cancel_retries` also identifies a scheduled retry,
+    /// so task ownership must be tracked independently.
+    pub(crate) unexpected_cancel_pending_attempt: Option<u32>,
     pub(crate) stop_requested: bool,
     pub(crate) stop_reason: Option<(String, bool)>,
     pub(crate) child_orders: Vec<TwapChildOrder>,

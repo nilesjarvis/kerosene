@@ -74,6 +74,7 @@ impl TwapOrder {
             account_reconciliation_retries: 0,
             reconciliation_deadline: None,
             cancel_retries: 0,
+            unexpected_cancel_pending_attempt: None,
             stop_requested: false,
             stop_reason: None,
             child_orders: Vec::new(),
@@ -167,6 +168,7 @@ impl std::fmt::Debug for TwapOrder {
         let has_retry_slice = self.retry_slice.is_some();
         let has_status_check_cloid = self.status_check_cloid.is_some();
         let has_pending_status_check = self.status_check_pending_attempt.is_some();
+        let has_pending_unexpected_cancel = self.unexpected_cancel_pending_attempt.is_some();
         let stop_reason_is_error = self.stop_reason.as_ref().map(|(_, is_error)| *is_error);
 
         formatter
@@ -206,6 +208,10 @@ impl std::fmt::Debug for TwapOrder {
             )
             .field("reconciliation_deadline", &self.reconciliation_deadline)
             .field("cancel_retries", &self.cancel_retries)
+            .field(
+                "has_pending_unexpected_cancel",
+                &has_pending_unexpected_cancel,
+            )
             .field("stop_requested", &self.stop_requested)
             .field("stop_reason_is_error", &stop_reason_is_error)
             .field("child_orders_count", &self.child_orders.len())

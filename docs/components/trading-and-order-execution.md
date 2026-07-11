@@ -332,6 +332,12 @@ can change retry or reconciliation state; duplicate or delayed results are
 ignored. This correlation does not change child CLOIDs, status retry limits or
 delays, account-fill reconciliation, or slice scheduling.
 
+Unexpected-resting TWAP child cancellation uses the same runtime-only ownership
+rule. A retry trigger must claim the current target and attempt before it can
+dispatch, and only that attempt's result can consume retry budget or settle the
+pending cancellation. The cancel-by-CLOID/OID preference, bounded retry policy,
+and refresh behavior are unchanged.
+
 ## Advanced Order History
 
 `advanced_order_history/` stores bounded snapshots of terminal advanced orders.

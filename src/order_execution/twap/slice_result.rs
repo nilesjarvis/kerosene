@@ -283,8 +283,13 @@ impl TradingTerminal {
                             true,
                         );
                         let key = twap.agent_key.clone_for_task();
-                        cancel_unexpected =
-                            Some((key, twap.asset, Some(oid), Some(pending.cloid.clone())));
+                        cancel_unexpected = Some((
+                            key,
+                            twap.asset,
+                            Some(oid),
+                            Some(pending.cloid.clone()),
+                            twap.cancel_retries,
+                        ));
                         status_update = Some((
                             format!(
                                 "TWAP slice {} unexpectedly rested; cancelling",
@@ -374,7 +379,7 @@ impl TradingTerminal {
             }
         }
 
-        if let Some((key, asset, oid, cloid)) = cancel_unexpected {
+        if let Some((key, asset, oid, cloid, attempt)) = cancel_unexpected {
             if key.is_empty() {
                 if let Some(twap) = self.twap_orders.get_mut(&twap_id) {
                     twap.status = TwapStatus::Error;
@@ -394,8 +399,14 @@ impl TradingTerminal {
                 ));
                 return self.refresh_after_twap_result(TwapAccountRefresh::Immediate, twap_id);
             }
-            self.invalidate_spot_balances_after_twap_dispatch(twap_id);
-            let cancel_task = twap_cancel_child_task(twap_id, key, asset, oid, cloid);
+            let cancel_task =
+                if self.arm_twap_unexpected_cancel_attempt(twap_id, oid, cloid.as_deref(), attempt)
+                {
+                    self.invalidate_spot_balances_after_twap_dispatch(twap_id);
+                    twap_cancel_child_task(twap_id, key, asset, oid, cloid, attempt)
+                } else {
+                    Task::none()
+                };
             return self.twap_result_task_with_optional_refresh(
                 refresh_policy,
                 twap_id,

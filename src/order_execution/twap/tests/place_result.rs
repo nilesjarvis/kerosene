@@ -150,6 +150,42 @@ fn non_conflicting_fill_without_oid_preserves_existing_fill_accounting() {
 }
 
 #[test]
+fn unexpected_resting_slice_arms_exact_cancel_attempt() {
+    let now = Instant::now();
+    let mut terminal = TradingTerminal::boot().0;
+    terminal
+        .twap_orders
+        .insert(1, pending_twap(1, "0xaaa", now));
+
+    let task = terminal.handle_twap_slice_result(
+        1,
+        1,
+        0,
+        Ok(exchange_response(serde_json::json!({
+            "resting": {
+                "oid": 77_u64
+            }
+        }))),
+    );
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(task.units(), 1);
+    assert_eq!(twap.cancel_retries, 0);
+    assert_eq!(twap.unexpected_cancel_pending_attempt, Some(0));
+    assert_eq!(
+        twap.pending_op,
+        Some(TwapPendingOp::CancelUnexpectedResting {
+            oid: Some(77),
+            cloid: Some("0xaaa".to_string()),
+        })
+    );
+    assert_eq!(
+        twap.child_orders[0].status,
+        TwapChildStatus::UnexpectedResting
+    );
+}
+
+#[test]
 fn retryable_slice_error_pauses_active_twap_for_retry() {
     let now = Instant::now();
     let mut terminal = TradingTerminal::boot().0;

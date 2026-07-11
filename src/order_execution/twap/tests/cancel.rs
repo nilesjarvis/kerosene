@@ -40,12 +40,14 @@ fn confirmed_unexpected_child_cancel_clears_pending_cancel() {
         1,
         Some(OID),
         Some(CLOID.to_string()),
+        0,
         Ok(cancel_success_response()),
     );
 
     let twap = twap_by_id(&terminal, 1);
     assert_eq!(twap.pending_op, None);
     assert_eq!(twap.cancel_retries, 0);
+    assert_eq!(twap.unexpected_cancel_pending_attempt, None);
     assert_eq!(
         twap.child_orders[0].status,
         TwapChildStatus::UnexpectedRestingCancelled
@@ -61,6 +63,7 @@ fn ambiguous_ok_unexpected_child_cancel_stays_pending_for_retry() {
         1,
         Some(OID),
         Some(CLOID.to_string()),
+        0,
         Ok(empty_cancel_response()),
     );
 
@@ -73,6 +76,7 @@ fn ambiguous_ok_unexpected_child_cancel_stays_pending_for_retry() {
         })
     );
     assert_eq!(twap.cancel_retries, 1);
+    assert_eq!(twap.unexpected_cancel_pending_attempt, None);
     assert_eq!(
         twap.child_orders[0].status,
         TwapChildStatus::UnexpectedResting
@@ -101,6 +105,7 @@ fn conflicting_unexpected_child_cancel_stays_pending_for_retry() {
         1,
         Some(OID),
         Some(CLOID.to_string()),
+        0,
         Ok(conflicting_cancel_response()),
     );
 
@@ -129,6 +134,7 @@ fn transport_unexpected_child_cancel_redacts_child_summary_before_retry() {
         1,
         Some(OID),
         Some(CLOID.to_string()),
+        0,
         Err("cancel request failed: api_key=super-secret".to_string()),
     );
 
@@ -164,18 +170,21 @@ fn exhausted_transport_unexpected_child_cancel_redacts_error_event() {
     {
         let twap = terminal.twap_orders.get_mut(&1).expect("twap");
         twap.cancel_retries = TWAP_MAX_UNEXPECTED_CANCEL_RETRIES - 1;
+        twap.unexpected_cancel_pending_attempt = Some(TWAP_MAX_UNEXPECTED_CANCEL_RETRIES - 1);
     }
 
     let _task = terminal.handle_twap_unexpected_cancel_result(
         1,
         Some(OID),
         Some(CLOID.to_string()),
+        TWAP_MAX_UNEXPECTED_CANCEL_RETRIES - 1,
         Err("cancel request failed: token=super-secret".to_string()),
     );
 
     let twap = twap_by_id(&terminal, 1);
     assert_eq!(twap.pending_op, None);
     assert_eq!(twap.status, TwapStatus::Error);
+    assert_eq!(twap.unexpected_cancel_pending_attempt, None);
     let event = twap.events.last().expect("error event");
     assert!(event.is_error);
     assert!(event.message.contains("Cancel status unknown"));
@@ -189,12 +198,66 @@ fn unexpected_cancel_retry_due_revalidates_current_pending_cancel() {
     {
         let twap = terminal.twap_orders.get_mut(&1).expect("twap");
         twap.cancel_retries = 1;
+        twap.unexpected_cancel_pending_attempt = None;
     }
 
     let task =
         terminal.handle_twap_unexpected_cancel_retry_due(1, Some(OID), Some(CLOID.to_string()), 1);
 
     assert_eq!(task.units(), 1);
+    assert_eq!(
+        twap_by_id(&terminal, 1).unexpected_cancel_pending_attempt,
+        Some(1)
+    );
+}
+
+#[test]
+fn duplicate_unexpected_cancel_retry_due_dispatches_once() {
+    let mut terminal = terminal_with_unexpected_cancel();
+    {
+        let twap = terminal.twap_orders.get_mut(&1).expect("twap");
+        twap.cancel_retries = 1;
+        twap.unexpected_cancel_pending_attempt = None;
+    }
+
+    let first_task =
+        terminal.handle_twap_unexpected_cancel_retry_due(1, Some(OID), Some(CLOID.to_string()), 1);
+    let duplicate_task =
+        terminal.handle_twap_unexpected_cancel_retry_due(1, Some(OID), Some(CLOID.to_string()), 1);
+
+    assert_eq!(first_task.units(), 1);
+    assert_eq!(duplicate_task.units(), 0);
+    assert_eq!(
+        twap_by_id(&terminal, 1).unexpected_cancel_pending_attempt,
+        Some(1)
+    );
+}
+
+#[test]
+fn current_unexpected_cancel_retry_result_settles_attempt() {
+    let mut terminal = terminal_with_unexpected_cancel();
+    {
+        let twap = terminal.twap_orders.get_mut(&1).expect("twap");
+        twap.cancel_retries = 1;
+        twap.unexpected_cancel_pending_attempt = Some(1);
+    }
+
+    let _task = terminal.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        1,
+        Ok(cancel_success_response()),
+    );
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(twap.pending_op, None);
+    assert_eq!(twap.cancel_retries, 0);
+    assert_eq!(twap.unexpected_cancel_pending_attempt, None);
+    assert_eq!(
+        twap.child_orders[0].status,
+        TwapChildStatus::UnexpectedRestingCancelled
+    );
 }
 
 #[test]
@@ -203,6 +266,7 @@ fn unexpected_cancel_retry_due_ignores_stale_attempt() {
     {
         let twap = terminal.twap_orders.get_mut(&1).expect("twap");
         twap.cancel_retries = 2;
+        twap.unexpected_cancel_pending_attempt = None;
     }
 
     let task =
@@ -217,6 +281,7 @@ fn unexpected_cancel_retry_due_ignores_mismatched_target() {
     {
         let twap = terminal.twap_orders.get_mut(&1).expect("twap");
         twap.cancel_retries = 1;
+        twap.unexpected_cancel_pending_attempt = None;
     }
 
     let task = terminal.handle_twap_unexpected_cancel_retry_due(
@@ -235,6 +300,7 @@ fn unexpected_cancel_retry_due_ignores_terminal_twap() {
     {
         let twap = terminal.twap_orders.get_mut(&1).expect("twap");
         twap.cancel_retries = 1;
+        twap.unexpected_cancel_pending_attempt = None;
         twap.status = TwapStatus::Error;
     }
 
@@ -259,6 +325,7 @@ fn stale_unexpected_child_cancel_result_is_noop_for_mismatched_target() {
         1,
         Some(OID + 1),
         Some("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string()),
+        0,
         Ok(cancel_success_response()),
     );
 
@@ -279,6 +346,119 @@ fn stale_unexpected_child_cancel_result_is_noop_for_mismatched_target() {
     );
 }
 
+#[test]
+fn duplicate_unexpected_cancel_result_cannot_consume_retry_budget_twice() {
+    let mut terminal = terminal_with_unexpected_cancel();
+
+    let first_task = terminal.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        0,
+        Ok(empty_cancel_response()),
+    );
+    let event_count = twap_by_id(&terminal, 1).events.len();
+    let paused_until = twap_by_id(&terminal, 1).paused_until;
+
+    let duplicate_task = terminal.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        0,
+        Ok(empty_cancel_response()),
+    );
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(first_task.units(), 2);
+    assert_eq!(duplicate_task.units(), 0);
+    assert_eq!(twap.cancel_retries, 1);
+    assert_eq!(twap.unexpected_cancel_pending_attempt, None);
+    assert_eq!(twap.events.len(), event_count);
+    assert_eq!(twap.paused_until, paused_until);
+    assert!(matches!(
+        twap.pending_op,
+        Some(TwapPendingOp::CancelUnexpectedResting { .. })
+    ));
+}
+
+#[test]
+fn duplicate_prior_attempt_error_cannot_falsely_exhaust_cancel_retries() {
+    let mut terminal = terminal_with_unexpected_cancel();
+    let attempt = TWAP_MAX_UNEXPECTED_CANCEL_RETRIES - 2;
+    {
+        let twap = terminal.twap_orders.get_mut(&1).expect("twap");
+        twap.cancel_retries = attempt;
+        twap.unexpected_cancel_pending_attempt = Some(attempt);
+    }
+
+    let first_task = terminal.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        attempt,
+        Err("cancel transport outcome unknown".to_string()),
+    );
+    let event_count = twap_by_id(&terminal, 1).events.len();
+
+    let duplicate_task = terminal.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        attempt,
+        Err("cancel transport outcome unknown".to_string()),
+    );
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(first_task.units(), 2);
+    assert_eq!(duplicate_task.units(), 0);
+    assert_eq!(twap.cancel_retries, TWAP_MAX_UNEXPECTED_CANCEL_RETRIES - 1);
+    assert_ne!(twap.status, TwapStatus::Error);
+    assert_eq!(twap.events.len(), event_count);
+    assert!(matches!(
+        twap.pending_op,
+        Some(TwapPendingOp::CancelUnexpectedResting { .. })
+    ));
+}
+
+#[test]
+fn stale_unexpected_cancel_result_cannot_settle_newer_attempt() {
+    let mut terminal = terminal_with_unexpected_cancel();
+
+    let _task = terminal.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        0,
+        Ok(empty_cancel_response()),
+    );
+    let retry_task =
+        terminal.handle_twap_unexpected_cancel_retry_due(1, Some(OID), Some(CLOID.to_string()), 1);
+    let event_count = twap_by_id(&terminal, 1).events.len();
+
+    let stale_task = terminal.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        0,
+        Ok(cancel_success_response()),
+    );
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(retry_task.units(), 1);
+    assert_eq!(stale_task.units(), 0);
+    assert_eq!(twap.cancel_retries, 1);
+    assert_eq!(twap.unexpected_cancel_pending_attempt, Some(1));
+    assert_eq!(twap.events.len(), event_count);
+    assert!(matches!(
+        twap.pending_op,
+        Some(TwapPendingOp::CancelUnexpectedResting { .. })
+    ));
+    assert_eq!(
+        twap.child_orders[0].status,
+        TwapChildStatus::UnexpectedResting
+    );
+}
+
 fn terminal_with_unexpected_cancel() -> TradingTerminal {
     let now = Instant::now();
     let mut terminal = TradingTerminal::boot().0;
@@ -287,7 +467,10 @@ fn terminal_with_unexpected_cancel() -> TradingTerminal {
         oid: Some(OID),
         cloid: Some(CLOID.to_string()),
     });
+    twap.status_check_cloid = None;
+    twap.status_check_pending_attempt = None;
     twap.cancel_retries = 0;
+    twap.unexpected_cancel_pending_attempt = Some(0);
     twap.child_orders[0].oid = Some(OID);
     twap.child_orders[0].status = TwapChildStatus::UnexpectedResting;
     terminal.twap_orders.insert(1, twap);

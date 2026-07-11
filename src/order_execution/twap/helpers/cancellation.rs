@@ -46,6 +46,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
     asset: u32,
     oid: Option<u64>,
     cloid: Option<String>,
+    attempt: u32,
 ) -> Task<Message> {
     if key.trim().is_empty() {
         return Task::perform(
@@ -54,6 +55,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
                 twap_id,
                 oid: oid.map(Into::into),
                 cloid: cloid.clone().map(Into::into),
+                attempt,
                 result: Box::new(result),
             },
         );
@@ -66,6 +68,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
                 twap_id,
                 oid: None,
                 cloid: Some(cloid.clone().into()),
+                attempt,
                 result: Box::new(result),
             }
         });
@@ -79,6 +82,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
             twap_id,
             oid: Some(oid.into()),
             cloid: None,
+            attempt,
             result: Box::new(result),
         }
     })

@@ -104,6 +104,8 @@
   pending-operation state. Their active state and in-flight requests are
   runtime-only. Each TWAP CLOID status task now has one separately armed retry
   attempt because the CLOID remains live during later account-fill repair.
+  Unexpected-child cancellation likewise separates its scheduled retry count
+  from the exact attempt that owns an in-flight target-specific cancel task.
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -135,7 +137,7 @@
 | Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact reprice-count/lifecycle/OID match; account, symbol, origin-lane, and reconciliation checks before correction/replacement | Verification/resting/stop flow; terminal Chase archived only from covering evidence | `order_update/chase/modify/tests/**`, including duplicate/late direct-result regressions, Chase reprice tests, and wrong-scope refresh tests | F-05/F-16 addressed in Turns 7/15; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account-wide fills + origin-symbol account refresh/open-order disappearance | Exact stopping phase/OID; REST archive requires the origin open-order lane; websocket disappearance is dex-scoped | Verifying-cancel then covering-snapshot archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests, and wrong-scope archive regression | F-08/F-16 addressed in Turns 9/15; retry idempotence depends on target-specific cancel semantics; executable validation remains environment-blocked |
 | TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID and armed retry attempt | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending slice/retry for placement; status dispatch/result requires the current CLOID and single in-flight attempt; current-account and terminal guards remain | Finishes attempt once; child status/fills updated; status ownership cleared on result or account-fill resolution; terminal TWAP archived | `order_execution/twap/tests/**`, including duplicate/late slice and status dispatch/result regressions, and `twap_state/tests/**` | F-05/F-19 addressed in Turns 7/18; executable regression validation remains environment-blocked by missing ALSA metadata |
-| TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + retry attempt | Pending cancel target matches OID or CLOID; retry message includes attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Exact pending target, retry count, and terminal-state checks | Clears pending cancel and finishes attempt, or bounded error terminal | `order_execution/twap/tests/cancel.rs`, status/account tests | F-08 addressed in Turn 9; contradictory acknowledgements retain the existing bounded target-specific retry path |
+| TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + exact armed retry attempt | Pending target plus current retry count and one in-flight attempt; retry and result messages both carry the attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Dispatch atomically requires non-terminal exact target/retry with no existing owner; result requires exact target/retry/owner | Consumes one owner, then clears pending cancel and finishes once or schedules the next bounded attempt; bounded error terminal remains | `order_execution/twap/tests/cancel.rs`, placement/status entry-path tests | F-08/F-20 addressed in Turns 9/19; cancel-result versus earlier fill ordering remains under Track 6 review |
 | Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution/profile/CLOID plus account, symbol, surface, and order kind | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member user stream | Full origin match; direct requires `Pending`, status requires `Checking`; pending executions are not evicted | First terminal leg outcome is immutable; execution complete when every leg terminal | Cluster planning/member tests plus adversarial result/status tests in `wallet_cluster_update.rs` | F-04 addressed in Turn 5; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Wallet-cluster close child | Same as cluster order, plus fresh per-member position snapshot and reduce-only plan | Same full correlation tuple with `ClusterClose` surface | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member stream | Freshness/side/position preflight plus the shared exact transition guard | Same first-terminal-wins handling as cluster orders | Close sizing/freshness tests and shared adversarial result tests | F-04 addressed by the shared Turn 5 transition guard |
 | Leverage update | `PendingLeverageUpdateContext` captures account, symbol, asset, dex, margin mode, leverage | Full pending-context equality | None; mutation is not blindly retried | Confirmed-default predicate; other non-error bodies are uncertain | Scoped account refresh for outcomes that may have committed | Pending-context equality + current-account match | Pending context cleared once; matching form updated only on confirmed default | `order_update/leverage.rs` tests, signing action/response tests | No exact mutation status endpoint; verify refresh completeness is sufficient in transport audit |
@@ -175,6 +177,12 @@ armed for the current CLOID/retry attempt, and only that attempt can consume a
 result. The CLOID can remain set independently while a definitive exchange
 status waits for account-fill confirmation without allowing a duplicate or
 older status result to rewrite that later reconciliation phase.
+
+Turn 19 extends exact ownership to TWAP unexpected-child cancellation. A
+target-specific retry trigger must atomically arm the current attempt before it
+can dispatch, and only a result carrying that target and attempt can consume
+retry budget or finish the pending cancellation. Scheduled backoff remains a
+separate phase with no in-flight owner.
 
 ### Mutation Transport Phase Audit
 
@@ -1268,6 +1276,89 @@ target-specific cancellation policy, not HTTP replay.
   ALSA development metadata. TWAP unexpected-resting cancel results remain a
   separate exact-attempt correlation candidate for continued Track 6 audit.
 
+### F-20 — TWAP unexpected-child cancel attempts lack single result ownership
+
+- Status: addressed in Turn 19; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: High
+- Scope: TWAP unexpected-resting child cancellation dispatch, delayed retry
+  triggers, result messages, bounded retry accounting, stop/terminal guards,
+  and diagnostic state
+- Preconditions/event ordering:
+  1. An IOC child unexpectedly rests and the TWAP begins target-specific
+     cancellation by CLOID (or OID when no CLOID exists).
+  2. Attempt N returns an ambiguous, contradictory, or transport-unknown
+     result. The handler increments shared `cancel_retries` and schedules the
+     delayed trigger for attempt N+1.
+  3. A duplicate result for N arrives, or the N result is delayed until N+1 is
+     in flight. The pending operation still has the same target throughout the
+     bounded retry sequence.
+  4. Independently, a duplicate retry-due message for N+1 can arrive while the
+     same counter and target still match.
+- Evidence: `TwapUnexpectedCancelRetryDue` carried an attempt and compared it
+  with `cancel_retries`, but dispatch did not consume or otherwise mark that
+  attempt in flight. `twap_cancel_child_task` then emitted
+  `TwapUnexpectedCancelResult` with only TWAP ID and target. The result handler
+  accepted any message matching the long-lived pending target and incremented
+  the current shared counter (`src/order_execution/twap/cancel.rs:22-110`,
+  `src/order_execution/twap/helpers/cancellation.rs:43-88`).
+- Violated invariant: one retry attempt may create at most one in-flight cancel
+  task, and exactly one result from that attempt may consume retry budget or
+  settle the pending child.
+- Risk: repeated ambiguous/error results for one dispatch can consume the
+  five-attempt budget without five owned exchange attempts, transition the
+  TWAP to terminal error, archive its history, and clear its captured agent key
+  while the unexpected resting child may remain open. A stale earlier success
+  can also finish the pending operation while a newer task still owns it.
+  Duplicate retry triggers can send redundant cancellation mutations. The
+  mutation is deliberately target-specific and idempotent, but duplicate
+  dispatch and false retry exhaustion are unnecessary lifecycle risk.
+- Why existing checks did not cover it: target matching identifies the same
+  logical child, not which recurring dispatch owns current mutable state. The
+  retry-trigger attempt check rejects a trigger only after the counter changes;
+  it does not distinguish two copies while one task is in flight. Turn 9's
+  contradictory-response classifier prevents false success but does not make
+  retry accounting idempotent.
+- Implemented fix: add one runtime-only optional unexpected-cancel owner to
+  `TwapOrder`. Both initial entry paths capture the current retry attempt when
+  they create the pending cancel. A shared arming helper requires non-terminal
+  state, the exact current retry count, the exact OID/CLOID target, and no
+  existing owner before any cancel task dispatch. The result message carries
+  that attempt; the handler requires the exact target, retry count, and owner,
+  then clears ownership before applying the result. Ambiguous/error handling
+  then schedules the unchanged next retry with no owner until its delayed
+  trigger claims it
+  (`src/twap_state/model.rs:197-201`,
+  `src/order_execution/twap/cancel.rs:22-110`,
+  `src/order_execution/twap/slice_result.rs:270-412`,
+  `src/order_execution/twap/status.rs:198-319`).
+- Regression coverage: duplicate retry-due delivery creates one task; duplicate
+  ambiguous results consume one retry/event/backoff transition; a near-limit
+  duplicate error cannot falsely exhaust the budget; a stale success from
+  attempt zero cannot settle attempt one; and the current attempt-one success
+  retains the existing terminal transition
+  (`src/order_execution/twap/tests/cancel.rs:195-460`). Placement-result and
+  status-result tests prove both initial cancellation paths arm attempt zero
+  (`src/order_execution/twap/tests/place_result.rs:152-186`,
+  `src/order_execution/twap/tests/account/status_check.rs:300-329`). Existing
+  target mismatch, terminal, redaction, contradictory response, and retry
+  exhaustion coverage now models exact ownership. Custom `TwapOrder::Debug`
+  exposes only whether an owner exists.
+- Smallest behavior-preserving fix: correlate and atomically claim the existing
+  retry count rather than changing the target-specific mutation, adding a new
+  retry, or introducing an exchange status policy. The attempt is not signed,
+  transmitted to Hyperliquid, rendered, or persisted.
+- Protected behavior: CLOID-before-OID cancel selection, signed cancellation
+  payload, classification, retry maximum and delays, refresh/invalidation,
+  stop and archive behavior for unique results, status/event strings, UI,
+  scheduling, persistence, and secrets are unchanged.
+- Residual uncertainty: field/message/call-site inventories, initial and retry
+  dispatch paths, target matching, stop/terminal guards, redacted diagnostics,
+  and diff review pass. Rust type-check/tests/clippy must execute on a host with
+  ALSA development metadata. Fill reconciliation can mark an unexpected child
+  filled before a later cancel result rewrites its child status; that reversed
+  ordering is the next distinct Track 6 candidate.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -2353,6 +2444,92 @@ target-specific cancellation policy, not HTTP replay.
   success from settling a newer retry; preserve the target-specific cancel,
   retry limit/delay, refresh, stop, and visible behavior.
 
+## Turn 19 — Claim TWAP Unexpected-Cancel Attempts
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: High
+- Scope: F-20 across TWAP unexpected-resting cancellation entry, delayed retry
+  dispatch, result context, bounded retry ownership, terminal guards,
+  diagnostics, docs, and adversarial regressions
+- Invariant: one target-specific cancellation retry attempt creates at most one
+  in-flight task, and exactly one matching result may consume its retry budget
+  or settle the pending child.
+- Protected behavior: cancel-by-CLOID preference and OID fallback, signed
+  request values, response classification, five-attempt limit, backoff delays,
+  account refresh and balance invalidation, stop/archive handling, all status
+  and event strings, scheduling, UI, persistence, and secrets.
+- Preconditions/event ordering: an unexpected-resting cancel returns an
+  ambiguous/error result and schedules the next retry; the direct result is
+  duplicated or delayed past the next dispatch, or the same retry-due message
+  is delivered twice while its target and shared counter still match. Target
+  checks previously accepted the former and counter checks dispatched both
+  copies of the latter.
+- Evidence: the retry trigger carried `attempt` but did not claim in-flight
+  ownership. Every cancel task result discarded that attempt, and the handler
+  mutated shared `cancel_retries` using only the long-lived OID/CLOID target.
+  Repeating one failure enough times could reach terminal error without the
+  corresponding number of owned attempts. F-20 records the full call graph,
+  ordering, consequence, and protected semantics.
+- Change: added a runtime-only optional in-flight cancel attempt. A shared
+  arming method atomically checks non-terminal state, current retry count,
+  exact target, and absence of another owner. Both initial cancellation paths
+  and delayed retry dispatch use it. `TwapUnexpectedCancelResult` now carries
+  the captured attempt; its handler requires the exact target/retry/owner and
+  consumes ownership before executing the unchanged classifier. Scheduled
+  backoff deliberately has no owner until the due message dispatches. Debug
+  output retains only a boolean presence field.
+- Tests/checks:
+  - Added regressions proving a duplicated retry trigger dispatches once, a
+    duplicated ambiguous result consumes one retry/event/backoff transition,
+    a near-limit duplicate error cannot falsely exhaust the retry budget, and a
+    stale attempt-zero success cannot settle in-flight attempt one.
+  - Added a current-attempt retry success characterization and asserted that
+    both direct resting placement and open status reconciliation arm the
+    initial cancellation owner.
+  - Updated existing success, ambiguity, contradiction, transport redaction,
+    exhaustion, target mismatch, stale trigger, and terminal trigger cases for
+    exact ownership.
+  - Focused attempts for
+    `duplicate_unexpected_cancel_retry_due_dispatches_once`,
+    `duplicate_unexpected_cancel_result_cannot_consume_retry_budget_twice`,
+    `duplicate_prior_attempt_error_cannot_falsely_exhaust_cancel_retries`,
+    `stale_unexpected_cancel_result_cannot_settle_newer_attempt`,
+    `current_unexpected_cancel_retry_result_settles_attempt`,
+    `unexpected_resting_slice_arms_exact_cancel_attempt`,
+    `open_status_check_after_stop_keeps_twap_stopping_and_requests_cancel`, and
+    `exhausted_transport_unexpected_child_cancel_redacts_error_event` all
+    stopped in `alsa-sys` before Kerosene compilation because `pkg-config`
+    could not find the system `alsa.pc` package.
+  - The pre-edit focused
+    `unexpected_cancel_retry_due_ignores_stale_attempt` attempt and baseline
+    `cargo check` stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - Post-edit `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: this runtime result-correlation change does
+    not justify launching an unknown local credential/live-trading setup, and
+    compilation is already blocked by ALSA metadata.
+- Compatibility/UX assessment: every uniquely owned initial or retry result
+  follows the identical target-specific request, classifier, backoff, refresh,
+  finish, and terminal path. The new attempt is local correlation only. Only a
+  duplicate dispatch or a duplicate/delayed result that does not own current
+  state is ignored. No visible string, control, schema, payload, retry, timer,
+  or normal interaction changed.
+- Residual risk: formatting, all state initializers, message producers and the
+  sole consumer, both initial entry paths, retry dispatch, result branches,
+  stop/terminal behavior, redacted diagnostics, and full diff review pass. The
+  crate has not type-checked; focused/full tests and clippy must execute on a
+  host with ALSA development metadata. A fill can reconcile before the cancel
+  result and the latter currently rewrites the child status; that separate
+  monotonic fill-state ordering requires the next Track 6 audit.
+- Prior turn commit hash: `692cc46c6a6a517a89302ff6aaed05aaa6b00eae`
+- Next candidate: continue Track 6 by ordering account/user-stream fill
+  reconciliation before and after unexpected-child cancel results. Verify that
+  a confirmed child fill and aggregate fill accounting remain monotonic while
+  the resting remainder still reaches the identical cancel/finish path; do not
+  change cancellation, partial-fill, scheduling, or visible policy.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -2360,18 +2537,19 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused duplicate TWAP status dispatch/result,
-  stale status ordering, status-to-fill reconciliation, and direct slice-result
-  tests; `cargo check`; full `cargo test`; and strict clippy at `alsa-sys`
-  system dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: focused duplicate TWAP unexpected-cancel
+  dispatch/result, stale/current retry result, initial placement/status entry,
+  exhaustion, and baseline stale-trigger tests; `cargo check`; full
+  `cargo test`; and strict clippy at `alsa-sys` system dependency discovery,
+  before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-19 have source fixes and regression coverage but await
+- F-01 through F-20 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- TWAP unexpected-cancel ordering, restart/shutdown cleanup, local
-  planning/state diagnostic redaction, and the remaining tracks require
-  completion before a final verdict.
+- TWAP fill/cancel ordering, restart/shutdown cleanup, local planning/state
+  diagnostic redaction, and the remaining tracks require completion before a
+  final verdict.
