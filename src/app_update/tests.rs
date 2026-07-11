@@ -131,7 +131,7 @@ fn final_exit_fence_classifies_every_fresh_mutation_intent() {
             new_price: 101.0,
         },
         Message::ChaseRestingOrder {
-            coin: "BTC".to_string(),
+            coin: "BTC".into(),
             oid: 7.into(),
         },
         Message::AlfredSubmit,
@@ -183,7 +183,7 @@ fn final_exit_fence_allows_reconciliation_and_exposure_cleanup_messages() {
             twap_id: 1,
             slice_index: 0,
             retry_count: 0,
-            result: Box::new(Err("transport outcome unknown".to_string())),
+            result: Err("transport outcome unknown".to_string()).into(),
         },
     ];
 

@@ -56,7 +56,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
                 oid: oid.map(Into::into),
                 cloid: cloid.clone().map(Into::into),
                 attempt,
-                result: Box::new(result),
+                result: result.into(),
             },
         );
     }
@@ -69,7 +69,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
                 oid: None,
                 cloid: Some(cloid.clone().into()),
                 attempt,
-                result: Box::new(result),
+                result: result.into(),
             }
         });
     }
@@ -83,7 +83,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
             oid: Some(oid.into()),
             cloid: None,
             attempt,
-            result: Box::new(result),
+            result: result.into(),
         }
     })
 }

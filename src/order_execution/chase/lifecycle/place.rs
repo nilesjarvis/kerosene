@@ -393,7 +393,7 @@ impl TradingTerminal {
         place_order_task(key, request, move |r| Message::ChasePlaceResult {
             chase_id,
             place_attempt,
-            result: Box::new(r),
+            result: r.into(),
         })
     }
 }

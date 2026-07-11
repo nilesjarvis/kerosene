@@ -70,7 +70,7 @@ impl TradingTerminal {
                 twap_id,
                 cloid: cloid.clone().into(),
                 attempt,
-                result: Box::new(result),
+                result: result.into(),
             },
         )
     }
@@ -94,7 +94,7 @@ impl TradingTerminal {
                 twap_id,
                 cloid: cloid.clone().into(),
                 attempt,
-                result: Box::new(result),
+                result: result.into(),
             },
         )
     }

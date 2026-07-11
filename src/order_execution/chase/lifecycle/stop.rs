@@ -85,7 +85,7 @@ impl TradingTerminal {
                 cancel_order_task(key, asset, oid, move |r| Message::ChaseCancelResult {
                     chase_id,
                     oid: oid.into(),
-                    result: Box::new(r),
+                    result: r.into(),
                 })
             }
             StopChaseAction::AwaitPlaceResult => {
@@ -215,7 +215,7 @@ impl TradingTerminal {
         cancel_order_task(key, asset, oid, move |r| Message::ChaseCancelResult {
             chase_id,
             oid: oid.into(),
-            result: Box::new(r),
+            result: r.into(),
         })
     }
 

@@ -345,7 +345,7 @@ impl TradingTerminal {
             chase_id,
             oid: oid.into(),
             reprice_count,
-            result: Box::new(r),
+            result: r.into(),
         })
     }
 }

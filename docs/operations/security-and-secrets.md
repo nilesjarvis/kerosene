@@ -203,6 +203,14 @@ both fill-summary layers expose only structural booleans/presence where useful
 and redaction markers. Their values, defaults, equality, calculations,
 scheduling, and reconciliation behavior remain unchanged.
 
+Chase/TWAP market, mutation-result, cancellation, and status-result messages
+retain exact symbols and `Result` payloads until the order update boundary.
+Their transient wrappers make derived `Message` diagnostics value-neutral:
+symbols are redacted and task results expose only `Ok`/`Err` shape without
+traversing nested responses or external error text. Update immediately restores
+the original types before unchanged handlers run, so stream identity,
+correlation, reconciliation, and visible error handling remain exact.
+
 Terminal Chase/TWAP history intentionally persists exact account, symbol,
 financial, timing, child-identifier, status, and activity fields for its
 existing views. The persisted entry, child, and log types have independently

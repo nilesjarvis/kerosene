@@ -84,7 +84,7 @@ impl TradingTerminal {
                 move |result| Message::ChaseOrderOidStatusLoaded {
                     chase_id,
                     oid: oid.into(),
-                    result: Box::new(result),
+                    result: result.into(),
                 },
             )
         });

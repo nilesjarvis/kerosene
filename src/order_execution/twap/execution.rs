@@ -314,7 +314,7 @@ impl TradingTerminal {
             twap_id,
             slice_index,
             retry_count,
-            result: Box::new(result),
+            result: result.into(),
         })
     }
 }

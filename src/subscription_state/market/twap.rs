@@ -77,7 +77,7 @@ fn twap_book_stream_event_message(
                 source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::TwapBookUpdate {
                 twap_id,
-                coin,
+                coin: coin.into(),
                 sigfigs,
                 source_context,
                 book,
@@ -94,7 +94,7 @@ fn twap_book_stream_event_message(
                 source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::TwapBookLagged {
                 twap_id: id,
-                coin,
+                coin: coin.into(),
                 sigfigs,
                 source_context,
                 skipped,

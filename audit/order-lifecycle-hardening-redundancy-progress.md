@@ -169,6 +169,16 @@
   (`src/twap_state/model.rs:18-48`, `src/twap_state/model.rs:133-146`,
   `src/twap_state/fills.rs:11-130`,
   `src/order_execution/twap/start/validation.rs:12-47`).
+- Chase/TWAP market/adoption messages now wrap their exact symbol only while it
+  crosses the Elm boundary, and all nine initial-book, mutation, cancel, and
+  order-status result variants wrap the original `Result<T, String>`. Derived
+  `Message` diagnostics expose symbol redaction plus only `Ok`/`Err` shape;
+  producers preserve the same IDs/attempts/provider context/payloads, and
+  `update_order` consumes each wrapper immediately before invoking the unchanged
+  handler (`src/message.rs:310-368`, `src/message.rs:1282-1371`,
+  `src/order_update.rs:177-354`,
+  `src/subscription_state/market/chase.rs:82-118`,
+  `src/subscription_state/market/twap.rs:68-104`).
 - Terminal advanced-order history retains the exact Chase/TWAP account,
   symbol, financial, timing, identifier, status, activity, and child fields
   required by its persisted schema and existing views. Each independently
@@ -3369,6 +3379,86 @@ target-specific cancellation policy, not HTTP replay.
   execute until ALSA development metadata is available. Remaining external-
   status/message diagnostics and other Track 9 boundaries still require audit.
 
+### F-48 — Advanced-order messages expose symbols and error results
+
+- Status: addressed in Turn 41; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account/order privacy and diagnostic-boundary hardening; the
+  debug-only unrouted-order-message invariant panic is a concrete formatter,
+  but no known production misroute or emitted disclosure was found
+- Scope: complete Chase/TWAP market/result subset of the Elm message graph and
+  its nested diagnostic policies; five symbol-bearing market/adoption variants;
+  nine initial-book, place/modify/cancel, and CLOID/OID status-result variants;
+  every view/subscription/task producer; root routing; immediate order-update
+  consumption; final-exit tests
+- Preconditions/event ordering:
+  1. Keyed Chase/TWAP book streams publish exact automation ID, symbol,
+     sigfigs, provider generation, book, or lag count. Resting-order adoption
+     publishes its exact symbol/OID.
+  2. Initial-book fetch, TWAP placement/cancel/status, and Chase place/modify/
+     cancel/status tasks publish the original `Result<T, String>` with immutable
+     automation, attempt, and order identifiers.
+  3. `Message` derives `Debug`. Raw symbol fields were emitted directly. An
+     `Ok` result delegated to already-redacted `OrderBook`, `ExchangeResponse`,
+     or `OrderStatusResult`, but `Err(String)` was emitted verbatim. Any future
+     nested formatter regression also bypassed the parent message boundary.
+- Evidence: parent commit
+  `cb361da193d340bd2443e448a491fc0e1c60ea33` shows raw symbols and boxed raw
+  results on the advanced-order variants (`src/message.rs:1222-1311`). All
+  producers and consumers were traced through keyed market subscription maps,
+  initial book fetch, canonical place/modify/cancel tasks, status tasks, result-
+  triggered follow-up cancellation, routing, and `update_order`
+  (`src/subscription_state/market/chase.rs:82-118`,
+  `src/subscription_state/market/twap.rs:68-104`,
+  `src/order_execution/chase.rs:296-308`,
+  `src/order_execution/chase/lifecycle/place.rs:388-398`,
+  `src/order_execution/chase/lifecycle/reprice.rs:339-350`,
+  `src/order_execution/chase/lifecycle/stop.rs:77-90`,
+  `src/order_execution/twap/execution.rs:307-318`,
+  `src/order_execution/twap/helpers/cancellation.rs:45-88`,
+  `src/order_execution/twap/status/tasks.rs:59-100`,
+  `src/order_update.rs:159-354`). The order update catch-all formats an
+  unexpectedly routed message in debug/test builds
+  (`src/order_update.rs:470-477`). Existing nested response/status/book,
+  OID/CLOID, input, and start-snapshot formatters are independently redacted.
+- Violated invariant: exact automation symbol and result/error payloads belong
+  only in keyed stream validation and lifecycle result handlers. The generic
+  Elm-message diagnostic must retain useful route/correlation control metadata
+  without exposing them or trusting every nested formatter and sanitized-but-
+  still-sensitive error string indefinitely.
+- Risk: a debug assertion, test failure, framework instrumentation, or future
+  message logging could reveal the instrument under automation and exact local
+  or external failure copy. Successful response internals were already
+  redacted; no private key, signature, or live disclosure is claimed.
+- Why existing checks did not cover it: input and OID/CLOID tests asserted only
+  their dedicated wrappers. Response, status, and book tests stopped at nested
+  model formatters, while advanced lifecycle tests called handlers directly.
+  Message tests used ordinary error strings without asserting their absence and
+  explicitly left Chase resting symbols visible.
+- Implemented fix: add `RedactedOrderSymbol`, whose consuming accessor restores
+  the exact `String`, and generic `RedactedOrderMessageResult<T>`, which retains
+  the boxed exact result but formats only `Ok(<redacted>)` or
+  `Err(<redacted>)`. Convert all 14 affected variant fields at every publication
+  site and consume at the single order-update boundary. Numeric IDs, attempts,
+  sigfigs, source contexts, and existing OID/CLOID wrappers remain unchanged.
+- Regression coverage: format every affected variant with symbol/error
+  sentinels and require type/control metadata plus redaction without either
+  value. Independently format success/error wrapper states, recover the exact
+  symbol, exact error, and exact successful book price, and retain existing ID,
+  routing, final-exit, Chase, and TWAP controls (`src/message.rs:1710-1853`,
+  `src/app_update/tests.rs:110-194`).
+- Smallest behavior-preserving fix: the wrapper keeps the existing heap box and
+  exact `Result<T, String>` allocation, moves values once at publication, and
+  consumes them once before the same handler call. No handler signature,
+  stream/subscription identity, message route, task order, result classifier,
+  retry/reconciliation decision, status string, view, persistence, timing,
+  signed mutation, or trading policy changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete call-site tracing, and the mechanical publication/consumption diff
+  establish the intended boundary, but exact and nearby suites cannot execute
+  until ALSA development metadata is available. Non-advanced order-result,
+  symbol/value, and history-navigation message diagnostics remain to audit.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -5879,6 +5969,67 @@ target-specific cancellation policy, not HTTP replay.
   response/status formatters, producers, routing, and handler unwrapping; keep
   every stream identity and automation transition unchanged.
 
+## Turn 41 — Redact Advanced-Order Message Diagnostics
+
+- Status: F-48 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: complete Chase/TWAP market/result Elm-message graph; five symbol-
+  bearing market/adoption variants; nine initial-book, exchange-mutation,
+  cancellation, and status-result variants; all publishers, routing, update
+  consumption, nested formatters, and final-exit classification controls
+- Invariant: the Elm boundary must transport exact keyed automation identity
+  and task outcomes without making symbols, nested payloads, or error strings
+  available to generic message diagnostics.
+- Protected behavior: exact symbols, books, external/local errors, exchange and
+  status responses; Chase/TWAP IDs, slice/place/reprice/cancel/status attempts,
+  OID/CLOID wrappers, sigfigs, provider/key generations, stream subscription
+  identity; handler signatures and call order; placement/repricing/cancellation,
+  status checks, result classification, retries, reconciliation, terminalization,
+  status/history/UI copy, final-exit fencing, tasks, timing, persistence, signed
+  values, and trading semantics.
+- Preconditions/event ordering: each existing subscription/view/task producer
+  wraps only when constructing `Message`; routing remains pattern-only; the
+  order-update arm consumes the wrapper immediately and passes the original
+  `String` or `Result<T, String>` to the same handler at the same point. No
+  wrapper persists in feature state or crosses another lifecycle transition.
+- Evidence: F-48 records the full variant/producer/consumer inventory, parent
+  raw fields, safe nested model policies, concrete debug-only catch-all sink,
+  prior coverage gap, and exact wrapper/message characterizations.
+- Change: added one exact-value redacted symbol wrapper and one generic boxed
+  result wrapper that exposes only success/error shape; converted the 14 fields
+  and their publishers/consumer arms without altering feature handlers or
+  routes; documented the advanced-order Elm diagnostic boundary.
+- Tests/checks:
+  - The pre-fix exact advanced-order message diagnostic regression stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    the system `alsa.pc` file.
+  - Post-fix exact message/wrapper regressions, the complete message and app-
+    update suites, and the complete Chase and TWAP execution suites stopped at
+    the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: wrapper publication/consumption does not
+    change startup, subscriptions, views, windows, tasks, or runtime behavior;
+    compilation is already blocked, and no live exchange or credential-bearing
+    operation was run.
+- Compatibility/UX assessment: the wrapper regression recovers the exact
+  symbol, exact error, and exact successful nested book value after formatting.
+  Every handler continues receiving its prior type and every route/producer
+  retains the same correlation fields. Only derived diagnostics and test
+  construction syntax differ; no visible copy, behavior, timing, schema,
+  signed bytes, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-48 is source-
+  hardened, but one-shot/cancel/move/close/NUKE/quick/HUD/cluster result errors,
+  raw order symbols/prices/fractions, and advanced-history navigation IDs remain
+  in the broader Elm-message audit.
+- Prior turn commit hash: `cb361da193d340bd2443e448a491fc0e1c60ea33`
+- Next candidate: audit and cohesively harden the remaining one-shot, cancel,
+  move, close/NUKE, quick/HUD, and wallet-cluster mutation-result `Message`
+  fields using the proven result wrapper; separately inventory raw symbol,
+  price/fraction, and history-navigation values before changing their types.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -5920,10 +6071,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: pre-fix exact form/book diagnostics; post-fix
-  exact helper diagnostics and complete TWAP-state/TWAP-start tests;
-  `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
-  dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: pre-fix advanced-order message diagnostics;
+  post-fix exact wrapper/message diagnostics, complete message/app-update and
+  Chase/TWAP suites, `cargo check`, full `cargo test`, and strict clippy at
+  `alsa-sys` system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
@@ -5931,7 +6082,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-47
+  F-40, and F-42 through F-48
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -5965,6 +6116,6 @@ target-specific cancellation policy, not HTTP replay.
   diagnostics by F-43. TWAP planning/live-event diagnostics are source-hardened
   by F-44, persisted advanced-history diagnostics by F-45, and cancel/move
   correlation diagnostics by F-46. Transient TWAP form/schedule/book/fill
-  helper diagnostics are source-hardened by F-47. Remaining Elm-message and
-  external-status paths, plus the rest of Track 9, require completion before a
-  final verdict.
+  helper diagnostics are source-hardened by F-47, and advanced-order Elm
+  message diagnostics by F-48. Remaining mutation-message and external-status
+  paths, plus the rest of Track 9, require completion before a final verdict.

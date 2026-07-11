@@ -302,7 +302,7 @@ impl TradingTerminal {
         Task::perform(fetch_order_book(symbol, sigfigs), move |result| {
             Message::ChaseInitialBookLoaded {
                 chase_id,
-                result: Box::new(result),
+                result: result.into(),
             }
         })
     }

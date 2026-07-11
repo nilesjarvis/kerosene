@@ -117,7 +117,7 @@ impl TradingTerminal {
                 move |result| Message::ChaseOrderStatusLoaded {
                     chase_id,
                     cloid: cloid.into(),
-                    result: Box::new(result),
+                    result: result.into(),
                 },
             ),
         ])
@@ -221,7 +221,7 @@ impl TradingTerminal {
                             move |r| Message::ChaseCancelResult {
                                 chase_id: request.chase_id,
                                 oid: request.oid.into(),
-                                result: Box::new(r),
+                                result: r.into(),
                             },
                         );
                         return if should_refresh {

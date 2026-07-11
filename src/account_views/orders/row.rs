@@ -61,7 +61,7 @@ impl TradingTerminal {
                     "Chase",
                     theme.palette().primary,
                     Message::ChaseRestingOrder {
-                        coin: order.coin.clone(),
+                        coin: order.coin.clone().into(),
                         oid: order.oid.into(),
                     },
                 )

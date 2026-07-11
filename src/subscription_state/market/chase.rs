@@ -91,7 +91,7 @@ fn chase_book_stream_event_message(
                 source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::ChaseBookUpdate {
                 chase_id,
-                coin,
+                coin: coin.into(),
                 sigfigs,
                 source_context,
                 book,
@@ -108,7 +108,7 @@ fn chase_book_stream_event_message(
                 source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::ChaseBookLagged {
                 chase_id: id,
-                coin,
+                coin: coin.into(),
                 sigfigs,
                 source_context,
                 skipped,

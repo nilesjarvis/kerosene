@@ -307,6 +307,66 @@ impl fmt::Debug for RedactedClientOrderId {
     }
 }
 
+/// Exchange symbol carried through an order-lifecycle message.
+///
+/// The exact value remains available to update handlers, while the derived
+/// `Message::Debug` path receives only this redacted representation.
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
+pub(crate) struct RedactedOrderSymbol(String);
+
+impl RedactedOrderSymbol {
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedOrderSymbol {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedOrderSymbol {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Debug for RedactedOrderSymbol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("OrderSymbol(<redacted>)")
+    }
+}
+
+/// Exact order task result carried through the Elm message boundary.
+///
+/// Update handlers recover the original value. Generic message diagnostics
+/// expose only success/error shape and never traverse a nested response or
+/// external error string.
+#[derive(Clone)]
+pub(crate) struct RedactedOrderMessageResult<T>(Box<Result<T, String>>);
+
+impl<T> RedactedOrderMessageResult<T> {
+    pub(crate) fn into_result(self) -> Result<T, String> {
+        *self.0
+    }
+}
+
+impl<T> From<Result<T, String>> for RedactedOrderMessageResult<T> {
+    fn from(value: Result<T, String>) -> Self {
+        Self(Box::new(value))
+    }
+}
+
+impl<T> fmt::Debug for RedactedOrderMessageResult<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 #[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct RedactedAccountKey(Option<String>);
 
@@ -1221,14 +1281,14 @@ pub(crate) enum Message {
     TwapTick,
     TwapBookUpdate {
         twap_id: u64,
-        coin: String,
+        coin: RedactedOrderSymbol,
         sigfigs: (Option<u8>, Option<u8>),
         source_context: MarketDataSourceContext,
         book: OrderBook,
     },
     TwapBookLagged {
         twap_id: u64,
-        coin: String,
+        coin: RedactedOrderSymbol,
         sigfigs: (Option<u8>, Option<u8>),
         source_context: MarketDataSourceContext,
         skipped: u64,
@@ -1237,14 +1297,14 @@ pub(crate) enum Message {
         twap_id: u64,
         slice_index: u32,
         retry_count: u32,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     TwapUnexpectedCancelResult {
         twap_id: u64,
         oid: Option<RedactedOrderId>,
         cloid: Option<RedactedClientOrderId>,
         attempt: u32,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     TwapUnexpectedCancelRetryDue {
         twap_id: u64,
@@ -1256,24 +1316,24 @@ pub(crate) enum Message {
         twap_id: u64,
         cloid: RedactedClientOrderId,
         attempt: u32,
-        result: Box<Result<api::OrderStatusResult, String>>,
+        result: RedactedOrderMessageResult<api::OrderStatusResult>,
     },
     OpenTwapDetails(u64),
     OpenAdvancedOrderHistory(String),
     ChaseInitialBookLoaded {
         chase_id: u64,
-        result: Box<Result<OrderBook, String>>,
+        result: RedactedOrderMessageResult<OrderBook>,
     },
     ChaseBookUpdate {
         chase_id: u64,
-        coin: String,
+        coin: RedactedOrderSymbol,
         sigfigs: (Option<u8>, Option<u8>),
         source_context: MarketDataSourceContext,
         book: OrderBook,
     },
     ChaseBookLagged {
         chase_id: u64,
-        coin: String,
+        coin: RedactedOrderSymbol,
         sigfigs: (Option<u8>, Option<u8>),
         source_context: MarketDataSourceContext,
         skipped: u64,
@@ -1282,31 +1342,31 @@ pub(crate) enum Message {
     ChasePlaceResult {
         chase_id: u64,
         place_attempt: u32,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     ChaseModifyResult {
         chase_id: u64,
         oid: RedactedOrderId,
         reprice_count: u32,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     ChaseCancelResult {
         chase_id: u64,
         oid: RedactedOrderId,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     ChaseOrderStatusLoaded {
         chase_id: u64,
         cloid: RedactedClientOrderId,
-        result: Box<Result<api::OrderStatusResult, String>>,
+        result: RedactedOrderMessageResult<api::OrderStatusResult>,
     },
     ChaseOrderOidStatusLoaded {
         chase_id: u64,
         oid: RedactedOrderId,
-        result: Box<Result<api::OrderStatusResult, String>>,
+        result: RedactedOrderMessageResult<api::OrderStatusResult>,
     },
     ChaseRestingOrder {
-        coin: String,
+        coin: RedactedOrderSymbol,
         oid: RedactedOrderId,
     },
     // Per-chart messages (keyed by ChartId)
@@ -1583,20 +1643,25 @@ pub(crate) enum Message {
 #[cfg(test)]
 mod tests {
     use super::{
-        Message, RedactedClientOrderId, RedactedOrderId, RedactedOrderInput, RedactedPhoneInput,
+        Message, RedactedClientOrderId, RedactedOrderId, RedactedOrderInput,
+        RedactedOrderMessageResult, RedactedOrderSymbol, RedactedPhoneInput,
         RedactedTelegramChannelKey, SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult,
         SecretInput, TelegramFastAuthMessageResult, TelegramFastAuthOutcome,
         XAccessTokenRefreshMessageResult, XAuthContextMessageResult, XFeedPageMessageResult,
         XListsMessageResult, XProfileImageMessageResult,
     };
-    use crate::api::{ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OutcomeSymbolInfo};
+    use crate::api::{
+        BookLevel, ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OrderBook, OutcomeSymbolInfo,
+    };
     use crate::chart_state::ChartSurfaceId;
     use crate::config::{ChartBackfillSource, MarketUniverseConfig, ReadDataProvider};
     use crate::order_execution::{
         OneShotPlacementContext, OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext,
         QuickOrderForm, QuickOrderQuantityProvenance, QuickOrderRecovery,
     };
-    use crate::read_data_provider::{AccountDataRequestContext, ReadDataRequestContext};
+    use crate::read_data_provider::{
+        AccountDataRequestContext, MarketDataSourceContext, ReadDataRequestContext,
+    };
     use crate::timeframe::Timeframe;
     use crate::ws::{
         HydromancerWsMessage, TrackedTradeEvent, WsUserData, WsUserDataStreamParams,
@@ -1640,6 +1705,151 @@ mod tests {
             assert!(rendered.contains("<redacted>"));
             assert!(!rendered.contains("order-input-secret"));
         }
+    }
+
+    #[test]
+    fn advanced_order_message_debug_redacts_symbol_and_error_context() {
+        const SYMBOL: &str = "advanced-order-symbol-sentinel";
+        const ERROR: &str = "advanced-order-external-error-sentinel";
+        const OID: u64 = 9_876_543_210_123_457;
+        const CLOID: &str = "0x1234567890abcdef1234567890abcdef";
+        let source_context = MarketDataSourceContext {
+            provider: ReadDataProvider::Hyperliquid,
+            read_data_provider_generation: 7,
+            hydromancer_key_generation: None,
+        };
+        let book = OrderBook {
+            bids: vec![BookLevel {
+                px: 98_765.432_123,
+                sz: 12.345_678_912,
+            }],
+            asks: vec![BookLevel {
+                px: 98_766.543_234,
+                sz: 23.456_789_123,
+            }],
+        };
+        let messages = vec![
+            Message::TwapBookUpdate {
+                twap_id: 1,
+                coin: SYMBOL.into(),
+                sigfigs: (Some(5), None),
+                source_context,
+                book: book.clone(),
+            },
+            Message::TwapBookLagged {
+                twap_id: 1,
+                coin: SYMBOL.into(),
+                sigfigs: (Some(5), None),
+                source_context,
+                skipped: 3,
+            },
+            Message::TwapSliceResult {
+                twap_id: 1,
+                slice_index: 2,
+                retry_count: 0,
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::TwapUnexpectedCancelResult {
+                twap_id: 1,
+                oid: Some(OID.into()),
+                cloid: Some(CLOID.into()),
+                attempt: 2,
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::TwapOrderStatusLoaded {
+                twap_id: 1,
+                cloid: CLOID.into(),
+                attempt: 2,
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::ChaseInitialBookLoaded {
+                chase_id: 2,
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::ChaseBookUpdate {
+                chase_id: 2,
+                coin: SYMBOL.into(),
+                sigfigs: (Some(5), None),
+                source_context,
+                book,
+            },
+            Message::ChaseBookLagged {
+                chase_id: 2,
+                coin: SYMBOL.into(),
+                sigfigs: (Some(5), None),
+                source_context,
+                skipped: 4,
+            },
+            Message::ChasePlaceResult {
+                chase_id: 2,
+                place_attempt: 3,
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::ChaseModifyResult {
+                chase_id: 2,
+                oid: OID.into(),
+                reprice_count: 4,
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::ChaseCancelResult {
+                chase_id: 2,
+                oid: OID.into(),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::ChaseOrderStatusLoaded {
+                chase_id: 2,
+                cloid: CLOID.into(),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::ChaseOrderOidStatusLoaded {
+                chase_id: 2,
+                oid: OID.into(),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::ChaseRestingOrder {
+                coin: SYMBOL.into(),
+                oid: OID.into(),
+            },
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(SYMBOL), "symbol leaked in {rendered}");
+            assert!(!rendered.contains(ERROR), "error leaked in {rendered}");
+        }
+    }
+
+    #[test]
+    fn advanced_order_message_wrappers_preserve_exact_values_and_result_shape() {
+        const SYMBOL: &str = "advanced-order-symbol-sentinel";
+        const ERROR: &str = "advanced-order-external-error-sentinel";
+        const BID_PRICE: f64 = 98_765.432_123;
+        let symbol = RedactedOrderSymbol::from(SYMBOL);
+        let error: RedactedOrderMessageResult<OrderBook> = Err(ERROR.to_string()).into();
+        let success: RedactedOrderMessageResult<OrderBook> = Ok(OrderBook {
+            bids: vec![BookLevel {
+                px: BID_PRICE,
+                sz: 12.345_678_912,
+            }],
+            asks: Vec::new(),
+        })
+        .into();
+
+        let error_debug = format!("{error:?}");
+        let success_debug = format!("{success:?}");
+
+        assert!(error_debug.contains("Err(<redacted>)"), "{error_debug}");
+        assert!(success_debug.contains("Ok(<redacted>)"), "{success_debug}");
+        assert!(!error_debug.contains(ERROR), "{error_debug}");
+        assert!(
+            !success_debug.contains(&BID_PRICE.to_string()),
+            "{success_debug}"
+        );
+        assert_eq!(symbol.into_string(), SYMBOL);
+        assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
+        let restored_book = success.into_result().expect("synthetic book");
+        assert_eq!(restored_book.bids[0].px, BID_PRICE);
     }
 
     #[test]
@@ -1716,7 +1926,7 @@ mod tests {
                 oid: Some(OID.into()),
                 cloid: Some(CLOID.into()),
                 attempt: 0,
-                result: Box::new(Err("cancel failed".to_string())),
+                result: Err("cancel failed".to_string()).into(),
             },
             Message::TwapUnexpectedCancelRetryDue {
                 twap_id: 1,
@@ -1728,31 +1938,31 @@ mod tests {
                 twap_id: 1,
                 cloid: CLOID.into(),
                 attempt: 0,
-                result: Box::new(Err("status failed".to_string())),
+                result: Err("status failed".to_string()).into(),
             },
             Message::ChaseModifyResult {
                 chase_id: 1,
                 oid: OID.into(),
                 reprice_count: 1,
-                result: Box::new(Err("modify failed".to_string())),
+                result: Err("modify failed".to_string()).into(),
             },
             Message::ChaseCancelResult {
                 chase_id: 1,
                 oid: OID.into(),
-                result: Box::new(Err("cancel failed".to_string())),
+                result: Err("cancel failed".to_string()).into(),
             },
             Message::ChaseOrderStatusLoaded {
                 chase_id: 1,
                 cloid: CLOID.into(),
-                result: Box::new(Err("status failed".to_string())),
+                result: Err("status failed".to_string()).into(),
             },
             Message::ChaseOrderOidStatusLoaded {
                 chase_id: 1,
                 oid: OID.into(),
-                result: Box::new(Err("status failed".to_string())),
+                result: Err("status failed".to_string()).into(),
             },
             Message::ChaseRestingOrder {
-                coin: "HYPE".to_string(),
+                coin: "HYPE".into(),
                 oid: OID.into(),
             },
             Message::MoveOrderDragStarted {

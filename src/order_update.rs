@@ -181,7 +181,13 @@ impl TradingTerminal {
                 source_context,
                 book,
             } => {
-                return self.handle_twap_book_update(twap_id, coin, sigfigs, source_context, book);
+                return self.handle_twap_book_update(
+                    twap_id,
+                    coin.into_string(),
+                    sigfigs,
+                    source_context,
+                    book,
+                );
             }
             Message::TwapBookLagged {
                 twap_id,
@@ -192,7 +198,7 @@ impl TradingTerminal {
             } => {
                 return self.handle_twap_book_lagged(
                     twap_id,
-                    coin,
+                    coin.into_string(),
                     sigfigs,
                     source_context,
                     skipped,
@@ -204,7 +210,12 @@ impl TradingTerminal {
                 retry_count,
                 result,
             } => {
-                return self.handle_twap_slice_result(twap_id, slice_index, retry_count, *result);
+                return self.handle_twap_slice_result(
+                    twap_id,
+                    slice_index,
+                    retry_count,
+                    result.into_result(),
+                );
             }
             Message::TwapUnexpectedCancelResult {
                 twap_id,
@@ -218,7 +229,7 @@ impl TradingTerminal {
                     oid.map(|oid| oid.into_u64()),
                     cloid.map(|cloid| cloid.into_string()),
                     attempt,
-                    *result,
+                    result.into_result(),
                 );
             }
             Message::TwapUnexpectedCancelRetryDue {
@@ -244,7 +255,7 @@ impl TradingTerminal {
                     twap_id,
                     cloid.into_string(),
                     attempt,
-                    *result,
+                    result.into_result(),
                 );
             }
             Message::OpenTwapDetails(twap_id) => return self.open_twap_details(twap_id),
@@ -252,7 +263,7 @@ impl TradingTerminal {
                 return self.open_advanced_order_history(entry_id);
             }
             Message::ChaseInitialBookLoaded { chase_id, result } => {
-                return self.handle_chase_initial_book_loaded(chase_id, *result);
+                return self.handle_chase_initial_book_loaded(chase_id, result.into_result());
             }
             Message::ChaseBookUpdate {
                 chase_id,
@@ -263,7 +274,7 @@ impl TradingTerminal {
             } => {
                 return self.handle_chase_book_update(
                     chase_id,
-                    coin,
+                    coin.into_string(),
                     sigfigs,
                     source_context,
                     book,
@@ -278,7 +289,7 @@ impl TradingTerminal {
             } => {
                 return self.handle_chase_book_lagged(
                     chase_id,
-                    coin,
+                    coin.into_string(),
                     sigfigs,
                     source_context,
                     skipped,
@@ -290,7 +301,11 @@ impl TradingTerminal {
                 place_attempt,
                 result,
             } => {
-                return self.handle_chase_place_result(chase_id, place_attempt, *result);
+                return self.handle_chase_place_result(
+                    chase_id,
+                    place_attempt,
+                    result.into_result(),
+                );
             }
             Message::ChaseModifyResult {
                 chase_id,
@@ -302,14 +317,20 @@ impl TradingTerminal {
                     chase_id,
                     oid.into_u64(),
                     reprice_count,
-                    *result,
+                    result.into_result(),
                 );
             }
             Message::ChaseCancelResult {
                 chase_id,
                 oid,
                 result,
-            } => return self.handle_chase_cancel_result(chase_id, oid.into_u64(), *result),
+            } => {
+                return self.handle_chase_cancel_result(
+                    chase_id,
+                    oid.into_u64(),
+                    result.into_result(),
+                );
+            }
             Message::ChaseOrderStatusLoaded {
                 chase_id,
                 cloid,
@@ -318,7 +339,7 @@ impl TradingTerminal {
                 return self.handle_chase_order_status_result(
                     chase_id,
                     cloid.into_string(),
-                    *result,
+                    result.into_result(),
                 );
             }
             Message::ChaseOrderOidStatusLoaded {
@@ -329,7 +350,7 @@ impl TradingTerminal {
                 return self.handle_chase_order_oid_status_result(
                     chase_id,
                     oid.into_u64(),
-                    *result,
+                    result.into_result(),
                 );
             }
             Message::OpenQuickOrder(
@@ -444,7 +465,7 @@ impl TradingTerminal {
                 );
             }
             Message::ChaseRestingOrder { coin, oid } => {
-                return self.handle_chase_resting_order(coin, oid.into_u64());
+                return self.handle_chase_resting_order(coin.into_string(), oid.into_u64());
             }
             // Every message routed to `UpdateRoute::Order` has an explicit arm
             // above, so this is unreachable today. If a future order message is
