@@ -157,6 +157,18 @@ only the non-secret terminal allocator. Result wrappers remain value-neutral in
 generic diagnostics, and accepted credential errors pass a final sensitive-text
 redaction boundary before entering runtime status.
 
+X List, timeline-page, and profile-image completions retain only runtime request
+ownership: one shared auth-context/manual List sequence (with user identity on
+manual refresh), authenticated user plus exact source, or redacted author-
+profile key plus exact image URL. Their terminal allocators survive in-process
+config clear while owners and private content do not. Handlers claim the exact
+owner before recovering a result, require the page's source to match its
+request, and apply a final redaction pass before an accepted List/page error
+enters visible state. Private X post identifiers and
+timing, pagination identifiers, response-wire fields, profile identity/URLs,
+and image payload sizes remain exact for their functional consumers but are
+value-neutral in `Debug` output.
+
 OpenRouter key validation captures the configured key only in a `Zeroizing`
 task value. Its completion carries safe runtime request correlation and a
 value-neutral result wrapper; generic diagnostics do not traverse key-check

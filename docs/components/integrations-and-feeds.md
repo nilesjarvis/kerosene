@@ -291,6 +291,18 @@ clear keeps the terminal allocator but no owner or credential, preventing pre-
 clear results from aliasing new work. Ordinary requests, result text, and UI
 timing are unchanged, and accepted errors receive a final redaction pass.
 
+Bundled auth-context List discovery and manual List refresh share one latest-
+result owner; manual refresh is also bound to the authenticated user.
+Source-page polling has one exact user/source owner per logical source, so
+distinct sources remain concurrent and identical sources retain the existing
+single-request fan-out across panes; a returned page must carry the same source
+before posts or rate-limit state are applied. Profile-image owners retain the
+exact redacted profile key and URL until settlement. All three sequences wrap,
+skip live concurrent owners, settle once, and preserve only allocator state
+across in-process config clear. Stale results are rejected before value recovery,
+accepted List/page errors are redacted again, and private feed/image model
+diagnostics do not traverse identifying values or image sizes.
+
 Low-latency behavior is REST polling while an X Feed pane is open. Following and
 List timelines are user-context REST endpoints, so X Filtered Stream is not a
 drop-in replacement for these sources; it is app-context public filtering and

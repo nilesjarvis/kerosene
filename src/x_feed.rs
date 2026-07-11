@@ -242,6 +242,71 @@ impl XTokenRefreshRequest {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct XFeedRequestAllocators {
+    credential: u64,
+    lists: u64,
+    source: u64,
+    profile_image: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum XListsRequestKind {
+    AuthContext { credential_request_id: u64 },
+    ListsRefresh,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct XListsRequest {
+    request_id: u64,
+    kind: XListsRequestKind,
+    user_id: Option<String>,
+}
+
+impl fmt::Debug for XListsRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XListsRequest")
+            .field("request_id", &self.request_id)
+            .field("kind", &self.kind)
+            .field("user_id", &self.user_id.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct XSourceRefreshRequest {
+    request_id: u64,
+    source: XFeedSource,
+    user_id: String,
+}
+
+impl fmt::Debug for XSourceRefreshRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XSourceRefreshRequest")
+            .field("request_id", &self.request_id)
+            .field("source", &self.source)
+            .field("user_id", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct XProfileImageRequest {
+    request_id: u64,
+    profile_key: String,
+    image_url: String,
+}
+
+impl fmt::Debug for XProfileImageRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XProfileImageRequest")
+            .field("request_id", &self.request_id)
+            .field("profile_key", &"<redacted>")
+            .field("image_url", &"<url>")
+            .finish()
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct XFeedPost {
     pub(crate) id: String,
@@ -258,7 +323,7 @@ pub(crate) struct XFeedPost {
 impl fmt::Debug for XFeedPost {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("XFeedPost")
-            .field("id", &self.id)
+            .field("id", &"<redacted>")
             .field("author_id", &self.author_id.as_ref().map(|_| "<redacted>"))
             .field("author_name", &"<redacted>")
             .field("author_username", &"<redacted>")
@@ -267,8 +332,8 @@ impl fmt::Debug for XFeedPost {
                 &self.author_profile_image_url.as_ref().map(|_| "<url>"),
             )
             .field("text", &"<redacted>")
-            .field("created_at_ms", &self.created_at_ms)
-            .field("received_at_ms", &self.received_at_ms)
+            .field("created_at_ms", &"<redacted>")
+            .field("received_at_ms", &"<redacted>")
             .field("url", &"<redacted>")
             .finish()
     }
@@ -297,7 +362,7 @@ impl fmt::Debug for XFeedPage {
         f.debug_struct("XFeedPage")
             .field("source", &self.source.debug_label())
             .field("posts", &self.posts.len())
-            .field("newest_id", &self.newest_id)
+            .field("newest_id", &self.newest_id.as_ref().map(|_| "<redacted>"))
             .field("rate_limited_until_ms", &self.rate_limited_until_ms)
             .finish()
     }
@@ -430,9 +495,10 @@ pub(crate) struct XFeedState {
     next_credential_request_id: u64,
     credential_request: Option<XCredentialRequest>,
     token_refresh_request: Option<XTokenRefreshRequest>,
-    pub(crate) lists_request_id: u64,
-    pub(crate) refresh_request_id: u64,
-    source_refresh_request_ids: HashMap<String, u64>,
+    next_lists_request_id: u64,
+    lists_request: Option<XListsRequest>,
+    next_source_refresh_request_id: u64,
+    source_refresh_requests: HashMap<String, XSourceRefreshRequest>,
     source_rate_limit_reset_ms: HashMap<String, u64>,
     pub(crate) connecting: bool,
     pub(crate) token_refreshing: bool,
@@ -440,7 +506,8 @@ pub(crate) struct XFeedState {
     pub(crate) status: Option<(String, bool)>,
     pub(crate) instances: HashMap<XFeedId, XFeedInstance>,
     pub(crate) author_profiles: HashMap<String, XAuthorProfile>,
-    pub(crate) next_profile_image_request_id: u64,
+    next_profile_image_request_id: u64,
+    profile_image_requests: HashMap<u64, XProfileImageRequest>,
 }
 
 impl fmt::Debug for XFeedState {
@@ -467,11 +534,15 @@ impl fmt::Debug for XFeedState {
             )
             .field("credential_request", &self.credential_request)
             .field("token_refresh_request", &self.token_refresh_request)
-            .field("lists_request_id", &self.lists_request_id)
-            .field("refresh_request_id", &self.refresh_request_id)
+            .field("next_lists_request_id", &self.next_lists_request_id)
+            .field("lists_request", &self.lists_request)
             .field(
-                "source_refresh_request_ids",
-                &self.source_refresh_request_ids.len(),
+                "next_source_refresh_request_id",
+                &self.next_source_refresh_request_id,
+            )
+            .field(
+                "source_refresh_requests",
+                &self.source_refresh_requests.len(),
             )
             .field(
                 "source_rate_limit_reset_ms",
@@ -493,6 +564,7 @@ impl fmt::Debug for XFeedState {
                 "next_profile_image_request_id",
                 &self.next_profile_image_request_id,
             )
+            .field("profile_image_requests", &self.profile_image_requests.len())
             .finish()
     }
 }
@@ -529,9 +601,10 @@ impl XFeedState {
             next_credential_request_id: 0,
             credential_request: None,
             token_refresh_request: None,
-            lists_request_id: 0,
-            refresh_request_id: 0,
-            source_refresh_request_ids: HashMap::new(),
+            next_lists_request_id: 0,
+            lists_request: None,
+            next_source_refresh_request_id: 0,
+            source_refresh_requests: HashMap::new(),
             source_rate_limit_reset_ms: HashMap::new(),
             connecting: false,
             token_refreshing: false,
@@ -540,6 +613,7 @@ impl XFeedState {
             instances,
             author_profiles: HashMap::new(),
             next_profile_image_request_id: 0,
+            profile_image_requests: HashMap::new(),
         }
     }
 
@@ -559,7 +633,7 @@ impl XFeedState {
         self.connecting
             || self.token_refreshing
             || self.lists_loading
-            || !self.source_refresh_request_ids.is_empty()
+            || !self.source_refresh_requests.is_empty()
     }
 
     pub(crate) fn access_token_for_task(&self) -> Zeroizing<String> {
@@ -732,13 +806,17 @@ impl XFeedState {
     pub(crate) fn invalidate_requests(&mut self) {
         self.credential_request = None;
         self.token_refresh_request = None;
-        self.lists_request_id = self.lists_request_id.saturating_add(1);
-        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
+        self.lists_request = None;
+        self.source_refresh_requests.clear();
+        self.profile_image_requests.clear();
         self.connecting = false;
         self.token_refreshing = false;
         self.lists_loading = false;
-        self.source_refresh_request_ids.clear();
         self.source_rate_limit_reset_ms.clear();
+        for profile in self.author_profiles.values_mut() {
+            profile.image_loading_url = None;
+            profile.image_request_id = 0;
+        }
     }
 
     fn begin_credential_request(&mut self, kind: XCredentialRequestKind) -> XCredentialRequest {
@@ -761,23 +839,25 @@ impl XFeedState {
         self.token_refresh_request = None;
         self.clear_pending_oauth_credentials();
         self.connecting = true;
-        Some(
-            self.begin_credential_request(XCredentialRequestKind::AuthContext)
-                .request_id,
-        )
+        let request = self.begin_credential_request(XCredentialRequestKind::AuthContext);
+        self.begin_auth_context_lists_request(request.request_id);
+        Some(request.request_id)
     }
 
-    pub(crate) fn finish_auth_request(&mut self, request_id: u64) -> bool {
+    /// Claim the exact auth request and report whether its bundled List result
+    /// still owns List state. A newer explicit List refresh may supersede only
+    /// that nested result without invalidating the authenticated user result.
+    pub(crate) fn finish_auth_request(&mut self, request_id: u64) -> Option<bool> {
         let request = XCredentialRequest {
             request_id,
             kind: XCredentialRequestKind::AuthContext,
         };
         if self.credential_request != Some(request) {
-            return false;
+            return None;
         }
         self.credential_request = None;
         self.connecting = false;
-        true
+        Some(self.finish_auth_context_lists_request(request_id))
     }
 
     /// Begin a token refresh with immutable dispatch-time fallback credentials.
@@ -793,6 +873,12 @@ impl XFeedState {
 
         self.clear_pending_access_token();
         self.connecting = false;
+        if let Some(auth_request) = self
+            .credential_request
+            .filter(|request| request.kind == XCredentialRequestKind::AuthContext)
+        {
+            self.cancel_auth_context_lists_request(auth_request.request_id);
+        }
         let owner = self.begin_credential_request(XCredentialRequestKind::TokenRefresh);
         self.token_refresh_request = Some(XTokenRefreshRequest {
             owner,
@@ -827,12 +913,25 @@ impl XFeedState {
             .map(XTokenRefreshRequest::into_credentials)
     }
 
-    pub(crate) fn credential_request_allocator(&self) -> u64 {
-        self.next_credential_request_id
+    pub(crate) fn request_allocators(&self) -> XFeedRequestAllocators {
+        XFeedRequestAllocators {
+            credential: self.next_credential_request_id,
+            lists: self.next_lists_request_id,
+            source: self.next_source_refresh_request_id,
+            profile_image: self.next_profile_image_request_id,
+        }
     }
 
-    pub(crate) fn restore_credential_request_allocator(&mut self, request_id: u64) {
-        self.next_credential_request_id = request_id;
+    pub(crate) fn restore_request_allocators(&mut self, allocators: XFeedRequestAllocators) {
+        self.next_credential_request_id = allocators.credential;
+        self.next_lists_request_id = allocators.lists;
+        self.next_source_refresh_request_id = allocators.source;
+        self.next_profile_image_request_id = allocators.profile_image;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn credential_request_allocator(&self) -> u64 {
+        self.next_credential_request_id
     }
 
     #[cfg(test)]
@@ -849,35 +948,202 @@ impl XFeedState {
             .map(|request| request.request_id)
     }
 
-    pub(crate) fn next_lists_request_id(&mut self) -> u64 {
-        self.lists_request_id = self.lists_request_id.saturating_add(1);
-        self.lists_request_id
-    }
-
-    pub(crate) fn begin_source_refresh(&mut self, source: &XFeedSource) -> u64 {
-        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
-        let request_id = self.refresh_request_id;
-        self.source_refresh_request_ids
-            .insert(source.key(), request_id);
-        request_id
-    }
-
-    pub(crate) fn finish_source_refresh(&mut self, source: &XFeedSource, request_id: u64) -> bool {
-        let key = source.key();
-        if self
-            .source_refresh_request_ids
-            .get(&key)
-            .is_some_and(|current_id| *current_id == request_id)
-        {
-            self.source_refresh_request_ids.remove(&key);
-            true
-        } else {
-            false
+    fn allocate_lists_request_id(&mut self) -> u64 {
+        loop {
+            self.next_lists_request_id = self.next_lists_request_id.wrapping_add(1);
+            let request_id = self.next_lists_request_id;
+            if !self
+                .lists_request
+                .as_ref()
+                .is_some_and(|request| request.request_id == request_id)
+            {
+                return request_id;
+            }
         }
     }
 
+    fn begin_auth_context_lists_request(&mut self, credential_request_id: u64) {
+        let request_id = self.allocate_lists_request_id();
+        self.lists_request = Some(XListsRequest {
+            request_id,
+            kind: XListsRequestKind::AuthContext {
+                credential_request_id,
+            },
+            user_id: None,
+        });
+        self.lists_loading = false;
+    }
+
+    fn finish_auth_context_lists_request(&mut self, credential_request_id: u64) -> bool {
+        if !self.lists_request.as_ref().is_some_and(|request| {
+            matches!(
+                request.kind,
+                XListsRequestKind::AuthContext {
+                    credential_request_id: owner_id
+                } if owner_id == credential_request_id
+            )
+        }) {
+            return false;
+        }
+
+        self.lists_request = None;
+        true
+    }
+
+    fn cancel_auth_context_lists_request(&mut self, credential_request_id: u64) {
+        let _ = self.finish_auth_context_lists_request(credential_request_id);
+    }
+
+    pub(crate) fn begin_lists_request(&mut self, user_id: &str) -> u64 {
+        let request_id = self.allocate_lists_request_id();
+        self.lists_request = Some(XListsRequest {
+            request_id,
+            kind: XListsRequestKind::ListsRefresh,
+            user_id: Some(user_id.to_string()),
+        });
+        self.lists_loading = true;
+        request_id
+    }
+
+    pub(crate) fn finish_lists_request(
+        &mut self,
+        request_id: u64,
+        current_user_id: Option<&str>,
+    ) -> bool {
+        if !self.lists_request.as_ref().is_some_and(|request| {
+            request.request_id == request_id && request.kind == XListsRequestKind::ListsRefresh
+        }) {
+            return false;
+        }
+
+        let request = self
+            .lists_request
+            .take()
+            .expect("matching X Lists request must be present");
+        self.lists_loading = false;
+        current_user_id == request.user_id.as_deref()
+    }
+
+    fn allocate_source_refresh_request_id(&mut self) -> u64 {
+        loop {
+            self.next_source_refresh_request_id =
+                self.next_source_refresh_request_id.wrapping_add(1);
+            let request_id = self.next_source_refresh_request_id;
+            if !self
+                .source_refresh_requests
+                .values()
+                .any(|request| request.request_id == request_id)
+            {
+                return request_id;
+            }
+        }
+    }
+
+    pub(crate) fn begin_source_refresh(&mut self, source: &XFeedSource, user_id: &str) -> u64 {
+        let request_id = self.allocate_source_refresh_request_id();
+        self.source_refresh_requests.insert(
+            source.key(),
+            XSourceRefreshRequest {
+                request_id,
+                source: source.clone(),
+                user_id: user_id.to_string(),
+            },
+        );
+        request_id
+    }
+
+    pub(crate) fn finish_source_refresh(
+        &mut self,
+        source: &XFeedSource,
+        request_id: u64,
+        current_user_id: Option<&str>,
+    ) -> bool {
+        let key = source.key();
+        if !self
+            .source_refresh_requests
+            .get(&key)
+            .is_some_and(|request| request.request_id == request_id && &request.source == source)
+        {
+            return false;
+        }
+
+        let request = self
+            .source_refresh_requests
+            .remove(&key)
+            .expect("matching X source request must be present");
+        current_user_id == Some(request.user_id.as_str())
+    }
+
     pub(crate) fn source_refresh_in_flight(&self, source: &XFeedSource) -> bool {
-        self.source_refresh_request_ids.contains_key(&source.key())
+        self.source_refresh_requests.contains_key(&source.key())
+    }
+
+    fn allocate_profile_image_request_id(&mut self) -> u64 {
+        loop {
+            self.next_profile_image_request_id = self.next_profile_image_request_id.wrapping_add(1);
+            let request_id = self.next_profile_image_request_id;
+            if request_id != 0 && !self.profile_image_requests.contains_key(&request_id) {
+                return request_id;
+            }
+        }
+    }
+
+    pub(crate) fn begin_profile_image_request(
+        &mut self,
+        profile_key: &str,
+        image_url: &str,
+    ) -> u64 {
+        let request_id = self.allocate_profile_image_request_id();
+        self.profile_image_requests.insert(
+            request_id,
+            XProfileImageRequest {
+                request_id,
+                profile_key: profile_key.to_string(),
+                image_url: image_url.to_string(),
+            },
+        );
+        request_id
+    }
+
+    pub(crate) fn cancel_profile_image_request(&mut self, request_id: u64) {
+        if request_id != 0 {
+            self.profile_image_requests.remove(&request_id);
+        }
+    }
+
+    pub(crate) fn finish_profile_image_request(
+        &mut self,
+        request_id: u64,
+    ) -> Option<(String, String)> {
+        self.profile_image_requests
+            .remove(&request_id)
+            .map(|request| (request.profile_key, request.image_url))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn current_lists_request_id(&self) -> Option<u64> {
+        self.lists_request
+            .as_ref()
+            .map(|request| request.request_id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn current_source_refresh_request_id(&self, source: &XFeedSource) -> Option<u64> {
+        self.source_refresh_requests
+            .get(&source.key())
+            .map(|request| request.request_id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_noncredential_request_allocators_for_test(
+        &mut self,
+        lists: u64,
+        source: u64,
+        profile_image: u64,
+    ) {
+        self.next_lists_request_id = lists;
+        self.next_source_refresh_request_id = source;
+        self.next_profile_image_request_id = profile_image;
     }
 
     pub(crate) fn source_rate_limited_until(
@@ -1388,14 +1654,33 @@ fn parse_x_timestamp_ms(value: &str) -> Option<u64> {
         .and_then(|ms| u64::try_from(ms).ok())
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct XMeResponse {
     data: XUserPayload,
 }
 
-#[derive(Debug, Deserialize)]
+impl fmt::Debug for XMeResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XMeResponse")
+            .field("data", &self.data)
+            .finish()
+    }
+}
+
+#[derive(Deserialize)]
 struct XListsResponse {
     data: Option<Vec<XListPayload>>,
+}
+
+impl fmt::Debug for XListsResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XListsResponse")
+            .field(
+                "data",
+                &self.data.as_ref().map(|lists| ("<redacted>", lists.len())),
+            )
+            .finish()
+    }
 }
 
 #[derive(Deserialize)]
@@ -1407,31 +1692,73 @@ struct XOAuthTokenPayload {
     expires_in: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct XListPayload {
     id: String,
     name: String,
     private: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+impl fmt::Debug for XListPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XListPayload")
+            .field("id", &"<redacted>")
+            .field("name", &"<redacted>")
+            .field("private", &self.private)
+            .finish()
+    }
+}
+
+#[derive(Deserialize)]
 struct XTimelineResponse {
     data: Option<Vec<XTweetPayload>>,
     includes: Option<XTimelineIncludes>,
     meta: Option<XTimelineMeta>,
 }
 
-#[derive(Debug, Deserialize)]
+impl fmt::Debug for XTimelineResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XTimelineResponse")
+            .field(
+                "data",
+                &self.data.as_ref().map(|posts| ("<redacted>", posts.len())),
+            )
+            .field("includes", &self.includes)
+            .field("meta", &self.meta)
+            .finish()
+    }
+}
+
+#[derive(Deserialize)]
 struct XTimelineIncludes {
     users: Option<Vec<XUserPayload>>,
 }
 
-#[derive(Debug, Deserialize)]
+impl fmt::Debug for XTimelineIncludes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XTimelineIncludes")
+            .field(
+                "users",
+                &self.users.as_ref().map(|users| ("<redacted>", users.len())),
+            )
+            .finish()
+    }
+}
+
+#[derive(Deserialize)]
 struct XTimelineMeta {
     newest_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+impl fmt::Debug for XTimelineMeta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XTimelineMeta")
+            .field("newest_id", &self.newest_id.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
+}
+
+#[derive(Deserialize)]
 struct XTweetPayload {
     id: String,
     text: String,
@@ -1439,12 +1766,40 @@ struct XTweetPayload {
     created_at: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+impl fmt::Debug for XTweetPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XTweetPayload")
+            .field("id", &"<redacted>")
+            .field("text", &"<redacted>")
+            .field("author_id", &self.author_id.as_ref().map(|_| "<redacted>"))
+            .field(
+                "created_at",
+                &self.created_at.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
+}
+
+#[derive(Deserialize)]
 struct XUserPayload {
     id: String,
     username: String,
     name: String,
     profile_image_url: Option<String>,
+}
+
+impl fmt::Debug for XUserPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XUserPayload")
+            .field("id", &"<redacted>")
+            .field("username", &"<redacted>")
+            .field("name", &"<redacted>")
+            .field(
+                "profile_image_url",
+                &self.profile_image_url.as_ref().map(|_| "<url>"),
+            )
+            .finish()
+    }
 }
 
 #[cfg(test)]
@@ -1464,6 +1819,19 @@ mod tests {
         let _request_id = state
             .begin_token_refresh_request("request-client", "request-refresh")
             .expect("token refresh owner");
+        state.begin_lists_request("request-user");
+        state.begin_source_refresh(
+            &XFeedSource::List {
+                id: "request-list-id".to_string(),
+                name: "request-list-name".to_string(),
+                private: true,
+            },
+            "request-source-user",
+        );
+        state.begin_profile_image_request(
+            "request-profile-key",
+            "https://images.invalid/request-profile.png",
+        );
 
         let rendered = format!("{state:?}");
 
@@ -1475,6 +1843,12 @@ mod tests {
         assert!(!rendered.contains("saved-refresh"));
         assert!(!rendered.contains("request-client"));
         assert!(!rendered.contains("request-refresh"));
+        assert!(!rendered.contains("request-user"));
+        assert!(!rendered.contains("request-list-id"));
+        assert!(!rendered.contains("request-list-name"));
+        assert!(!rendered.contains("request-source-user"));
+        assert!(!rendered.contains("request-profile-key"));
+        assert!(!rendered.contains("request-profile.png"));
         assert!(rendered.contains("<redacted>"));
     }
 
@@ -1539,9 +1913,58 @@ mod tests {
 
         assert_eq!(older_request_id, u64::MAX);
         assert_eq!(newer_request_id, 0);
-        assert!(!state.finish_auth_request(older_request_id));
-        assert!(state.finish_auth_request(newer_request_id));
-        assert!(!state.finish_auth_request(newer_request_id));
+        assert_eq!(state.finish_auth_request(older_request_id), None);
+        assert_eq!(state.finish_auth_request(newer_request_id), Some(true));
+        assert_eq!(state.finish_auth_request(newer_request_id), None);
+    }
+
+    #[test]
+    fn source_and_profile_allocators_wrap_without_colliding_with_live_owners() {
+        let mut state = XFeedState::new(&[], "", "", "");
+        state.next_source_refresh_request_id = u64::MAX - 1;
+        state.next_profile_image_request_id = u64::MAX - 1;
+        let following = XFeedSource::Following;
+        let list = XFeedSource::List {
+            id: "list-a".to_string(),
+            name: "List A".to_string(),
+            private: false,
+        };
+
+        let following_request_id = state.begin_source_refresh(&following, "user-a");
+        let list_request_id = state.begin_source_refresh(&list, "user-a");
+        assert_eq!(following_request_id, u64::MAX);
+        assert_eq!(list_request_id, 0);
+        assert_ne!(following_request_id, list_request_id);
+
+        assert!(state.finish_source_refresh(&following, following_request_id, Some("user-a")));
+        let next_following_request_id = state.begin_source_refresh(&following, "user-a");
+        assert_eq!(next_following_request_id, 1);
+        assert_ne!(next_following_request_id, list_request_id);
+        assert!(!state.finish_source_refresh(&following, following_request_id, Some("user-a")));
+        assert!(state.finish_source_refresh(&following, next_following_request_id, Some("user-a")));
+        assert!(!state.finish_source_refresh(
+            &following,
+            next_following_request_id,
+            Some("user-a")
+        ));
+
+        let first_image_request_id =
+            state.begin_profile_image_request("profile-a", "https://images.invalid/a.png");
+        let second_image_request_id =
+            state.begin_profile_image_request("profile-b", "https://images.invalid/b.png");
+        assert_eq!(first_image_request_id, u64::MAX);
+        assert_eq!(second_image_request_id, 1);
+        assert_ne!(first_image_request_id, second_image_request_id);
+        assert!(
+            state
+                .finish_profile_image_request(first_image_request_id)
+                .is_some()
+        );
+        assert!(
+            state
+                .finish_profile_image_request(first_image_request_id)
+                .is_none()
+        );
     }
 
     #[test]
@@ -1619,6 +2042,122 @@ mod tests {
             Some("https://example.com/alice.jpg")
         );
         assert_eq!(page.posts[0].author_profile_key(), "id:42");
+    }
+
+    #[test]
+    fn private_feed_models_keep_exact_values_out_of_debug_output() {
+        const PRIVATE: &str = "private-x-value-sentinel";
+        const PRIVATE_TIME: u64 = 9_876_543_210;
+        let post = XFeedPost {
+            id: PRIVATE.to_string(),
+            author_id: Some(PRIVATE.to_string()),
+            author_name: PRIVATE.to_string(),
+            author_username: PRIVATE.to_string(),
+            author_profile_image_url: Some(format!("https://images.invalid/{PRIVATE}.png")),
+            text: PRIVATE.to_string(),
+            created_at_ms: PRIVATE_TIME,
+            received_at_ms: PRIVATE_TIME,
+            url: format!("https://x.invalid/{PRIVATE}"),
+        };
+        let page = XFeedPage {
+            source: XFeedSource::List {
+                id: PRIVATE.to_string(),
+                name: PRIVATE.to_string(),
+                private: true,
+            },
+            posts: vec![post.clone()],
+            newest_id: Some(PRIVATE.to_string()),
+            rate_limited_until_ms: None,
+        };
+        let me = XMeResponse {
+            data: XUserPayload {
+                id: PRIVATE.to_string(),
+                username: PRIVATE.to_string(),
+                name: PRIVATE.to_string(),
+                profile_image_url: Some(format!("https://images.invalid/{PRIVATE}.png")),
+            },
+        };
+        let lists = XListsResponse {
+            data: Some(vec![XListPayload {
+                id: PRIVATE.to_string(),
+                name: PRIVATE.to_string(),
+                private: Some(true),
+            }]),
+        };
+        let timeline = XTimelineResponse {
+            data: Some(vec![XTweetPayload {
+                id: PRIVATE.to_string(),
+                text: PRIVATE.to_string(),
+                author_id: Some(PRIVATE.to_string()),
+                created_at: Some(PRIVATE.to_string()),
+            }]),
+            includes: Some(XTimelineIncludes {
+                users: Some(vec![XUserPayload {
+                    id: PRIVATE.to_string(),
+                    username: PRIVATE.to_string(),
+                    name: PRIVATE.to_string(),
+                    profile_image_url: Some(format!("https://images.invalid/{PRIVATE}.png")),
+                }]),
+            }),
+            meta: Some(XTimelineMeta {
+                newest_id: Some(PRIVATE.to_string()),
+            }),
+        };
+
+        for rendered in [
+            format!("{post:?}"),
+            format!("{page:?}"),
+            format!("{me:?}"),
+            format!("{lists:?}"),
+            format!("{timeline:?}"),
+            format!(
+                "{:?}",
+                XListPayload {
+                    id: PRIVATE.to_string(),
+                    name: PRIVATE.to_string(),
+                    private: Some(true),
+                }
+            ),
+            format!(
+                "{:?}",
+                XTimelineIncludes {
+                    users: Some(vec![XUserPayload {
+                        id: PRIVATE.to_string(),
+                        username: PRIVATE.to_string(),
+                        name: PRIVATE.to_string(),
+                        profile_image_url: Some(format!("https://images.invalid/{PRIVATE}.png")),
+                    }]),
+                }
+            ),
+            format!(
+                "{:?}",
+                XTimelineMeta {
+                    newest_id: Some(PRIVATE.to_string()),
+                }
+            ),
+            format!(
+                "{:?}",
+                XTweetPayload {
+                    id: PRIVATE.to_string(),
+                    text: PRIVATE.to_string(),
+                    author_id: Some(PRIVATE.to_string()),
+                    created_at: Some(PRIVATE.to_string()),
+                }
+            ),
+            format!(
+                "{:?}",
+                XUserPayload {
+                    id: PRIVATE.to_string(),
+                    username: PRIVATE.to_string(),
+                    name: PRIVATE.to_string(),
+                    profile_image_url: Some(format!("https://images.invalid/{PRIVATE}.png")),
+                }
+            ),
+        ] {
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(PRIVATE), "{rendered}");
+            assert!(!rendered.contains(&PRIVATE_TIME.to_string()), "{rendered}");
+        }
     }
 
     fn test_post(id: &str, created_at_ms: u64) -> XFeedPost {

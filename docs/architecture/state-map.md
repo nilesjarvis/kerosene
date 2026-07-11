@@ -269,7 +269,8 @@ Representative fields:
 - tracked trades and de-duplication state
 - HyperDash key and liquidation/heatmap state
 - OpenRouter key generation plus runtime key-check sequence and exact owner
-- X OAuth credentials, exact credential-operation owner, and feed instances
+- X OAuth credentials, exact credential/List/source/image owners, and feed
+  instances
 - Telegram feed channels, fast-mode auth state, notifications
 - calendar events and retry state
 - screener state and loaded contexts/history

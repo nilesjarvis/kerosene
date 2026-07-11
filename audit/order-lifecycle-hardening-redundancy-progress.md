@@ -6336,6 +6336,128 @@ target-specific cancellation policy, not HTTP replay.
   config-reset aliasing, replay/wrap behavior, result recovery, and diagnostics
   are a separate confirmed remaining X audit.
 
+### F-79 — X List/page/image completions can alias or cross private identity
+
+- Status: addressed in Turn 72; focused source controls added, but executable
+  validation is blocked before Kerosene compilation by the missing system ALSA
+  package
+- Severity: Medium private-feed ownership, identity, and diagnostic hardening;
+  no exchange consumer exists, but stale work can replace a private List set,
+  put one source's posts/rate limit into another source lane, or install one
+  author's image bytes on another profile
+- Scope: bundled auth-context List discovery, manual List refresh, Following and
+  List source-page polling, `since_id` selection, same-source fan-out, page and
+  rate-limit acceptance, profile metadata/image URL caching and retry backoff,
+  result messages/wrappers, credential/config clear, layout/pane recreation,
+  restart/shutdown, private model diagnostics, persistence, views, docs, and
+  focused coverage
+- Preconditions/event ordering:
+  1. Manual List refreshes use a saturating scalar as both allocator and current
+     owner. The scalar remains current after completion, so a duplicate result
+     can rewrite List/status state; at `u64::MAX`, two reversed refreshes have
+     the same ID. Bundled auth-context discovery independently writes the same
+     List state, so response order—not dispatch order—can also choose between an
+     auth result and a manual result when the credential itself is unchanged.
+  2. Source pages remove a per-source owner after settlement, but their global
+     scalar saturates. Once it reaches `MAX`, a replay from the preceding same-
+     source request can claim a new request. The owner captures only a source
+     key and ID, not the authenticated user; the handler also trusts the outer
+     message source without independently requiring `page.source` to match
+     before it applies posts or a rate-limit reset.
+  3. Profile image requests increment a saturating global ID and the handler
+     finds the recipient with `author_profiles.values_mut().find`. At `MAX`, two
+     concurrently scheduled authors receive the same ID. A result can therefore
+     update whichever matching map value iteration returns, without proving the
+     dispatch profile key or URL.
+  4. In-process config clear replaces `XFeedState` and previously preserved only
+     the credential allocator. Old List, source, and image tasks can all reuse
+     ID `1` against freshly authenticated state. Profile-image reuse is concrete
+     within the six-second request window: old bytes can match a different new
+     author after clear/reconnect.
+  5. List, page, and image wrappers are recovered in the root update match
+     before an owner check. Accepted List/page errors rely solely on producer
+     sanitization. `XFeedPost` exposes exact post ID and timestamps in `Debug`;
+     `XFeedPage` exposes `newest_id`; response wire models derive raw `Debug`;
+     and a successful profile-image wrapper exposes byte length.
+- Evidence: `request_x_feed_lists_refresh` and `handle_x_feed_auth_loaded` are
+  the two List-state producers. `request_x_feed_refresh` derives the Following
+  cursor from the greatest parsed post ID across matching instances, dedupes by
+  `XFeedSource::key`, and publishes outer source plus scalar ID. The handler
+  applies the returned page to every exactly matching instance and owns source-
+  keyed rate-limit state. `schedule_x_profile_image_fetches` stores URL/loading/
+  scalar fields per author, while the completion carries only the scalar. Clear
+  config is the sole in-process whole-X-state replacement; layout restore
+  replaces only pane instances, leaving global source work deliberately shared.
+  Plain snapshots persist only pane IDs and public source metadata, with private
+  Lists normalized to Following. Repository-wide searches again found no X
+  value in preparation, signing, one-shot/Chase/TWAP, cluster execution, account
+  reconciliation, or another exchange mutation.
+- Violated invariant: every private integration result must claim one exact,
+  terminal-lifetime owner before value recovery. List-state producers must share
+  dispatch ordering; manual work and source pages must remain bound to the
+  authenticated user; page payload source must equal dispatched source before
+  posts/rate limits change; image bytes must prove the captured profile key and
+  URL. Clear may remove owners/content but not reset allocators while old tasks
+  can still publish. Private content/identity must be value-neutral in generic
+  diagnostics, with accepted external errors redacted independently.
+- Risk: a replay or reset race can show an old/private List catalog, Following
+  or List posts under the wrong selected source, a stale rate-limit status, or
+  the wrong avatar beside an author. The image collision at scalar saturation
+  is immediate for multiple authors; config-clear reuse makes the same class of
+  collision possible without exhausting the counter. These are private-content
+  integrity/privacy failures, not financial mutations: X state has no order or
+  signing consumer.
+- Why existing checks did not cover it: prior X tests characterized post
+  dedupe/sort, source-option dedupe, profile URL parsing, credential ownership,
+  and value-neutral result errors. They did not reverse auth/manual List
+  discovery, replay a completed List/page result, wrap each allocator, change
+  authenticated user, mismatch outer/payload source, supersede one profile URL,
+  reuse IDs across config clear, prove same-source task fan-out, or format the
+  successful page/image and nested private wire models.
+- Implemented fix: give bundled auth List discovery and manual List refresh one
+  typed latest-result sequence; manual owners capture user identity, while auth
+  and List acceptance remain independently settleable. Give source work a
+  wrapping allocator that skips live concurrent IDs and an exact context of
+  request ID, source, and user. Give image work a nonzero wrapping allocator
+  that skips live IDs plus exact profile-key/URL contexts, canceling a context
+  when its URL is superseded. Claim/take each exact owner before wrapper
+  recovery, settle once, require exact page source before any page/rate-limit
+  mutation, and re-redact accepted List/page errors. Preserve all four X
+  allocators—but no owner, credential, private content, or image context—across
+  config clear. Make private post/page/wire diagnostics value-neutral and hide
+  successful image size.
+- Regression coverage: controls prove latest manual List ownership, one-time
+  success/status settlement, ordinary error equality, final secret redaction,
+  `MAX`-to-zero wrap, auth-newer/manual-newer List permutations, and user change
+  rejection. Source controls prove one task fans out unchanged to two matching
+  panes, duplicate settlement is inert, user and payload-source mismatches
+  cannot mutate posts/status/rate limits, ordinary and sensitive errors retain
+  their exact intended boundary, and wrap skips live sources. Image controls
+  force URL supersession at `MAX`, require distinct nonzero IDs and exact
+  profile/URL acceptance, preserve successful cache behavior, reject replay,
+  and combine all three old/new noncredential domains across config clear.
+  Message/model controls format the successful parent, standalone post/page,
+  all nested response types, owner state, and image payload while proving exact
+  wrapper recovery remains available to accepted handlers.
+- Smallest behavior-preserving fix: three local typed owner domains, one shared
+  allocator snapshot used by the existing config-clear handoff, three reject-
+  before-recovery handlers, one source equality check, two final-redaction
+  calls, custom diagnostics, focused tests, and docs. Normal endpoints, bearer
+  auth, query fields, max results, six-second timeout, Following `since_id`,
+  List re-fetch behavior, ten-second polling, source-key dedup, exact-source
+  fan-out, page merge/sort/100-post limit, rate-limit timing/copy, profile image
+  body/type/size validation, retry backoff/cache/rendering, status strings,
+  pane/layout config, secret storage, and every trading semantic are unchanged.
+- Residual uncertainty: Kerosene has not type-checked or launched on this host.
+  Rustfmt, exhaustive owner/caller/reset/persistence/view/financial tracing, and
+  source controls establish the intended boundary, but tests cannot execute
+  until ALSA development metadata is available. Full allocator-cycle reuse is
+  theoretical. `reqwest`/iced-owned response and decoded-image buffers are not
+  guaranteed erased. Sources with one List ID but differing display/private
+  metadata retain the existing source-key request dedup plus exact-source apply
+  behavior; the next poll repairs a metadata-transition miss without crossing
+  content identity, and changing that observable timing is outside this batch.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -11159,6 +11281,98 @@ target-specific cancellation policy, not HTTP replay.
   source policy, and every trading semantic; then audit Telegram integration
   completion ownership.
 
+## Turn 72 — Preserve X Private-Feed Result Ownership
+
+- Status: F-79 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: auth/manual List discovery ordering, source-page user/source identity,
+  same-source fan-out, pagination/rate-limit application, profile-key/URL image
+  ownership, clear/config-clear/layout/restart lifecycles, result recovery and
+  diagnostics, private model formatting, persistence/views, docs, and
+  adversarial source controls
+- Invariant: every List/page/image result claims one exact terminal-lifetime
+  owner before value recovery and settles once. List producers share dispatch
+  ordering; source results retain user and exact source and require matching
+  payload source; image results retain profile key and URL. Clear drops owners
+  and content without resetting in-process allocators. Accepted external errors
+  receive final redaction and generic diagnostics do not traverse private feed
+  identity/content.
+- Protected behavior: exact `/users/me`, owned/followed List, Following timeline,
+  List tweet, and profile-image requests; bearer auth, query fields, poll size,
+  timeout and body limits; Following-only `since_id`; ten-second cadence;
+  logical-source dedup and exact-source pane fan-out; distinct-source
+  concurrency; post merge/dedup/sort/limit; rate-limit detection/timing/status;
+  image metadata/cache/backoff/fallback rendering; every normal status/error
+  string and task/follow-up point; secure credentials; pane/layout schema and
+  private-List persistence policy; all order/signing/automation behavior.
+- Preconditions/event ordering: completed or saturated List scalars accept
+  replay and cannot order bundled auth versus manual discovery; source scalars
+  saturate/reset and omit user/payload-source checks; image IDs saturate/reset
+  and use an ID-only unordered profile search; config clear can reuse all three
+  domains; wrappers are recovered before ownership; accepted List/page errors
+  and nested private model diagnostics lack final/value-neutral boundaries.
+- Evidence: F-79 records every dispatch publisher, task closure, result variant/
+  wrapper/handler, source cursor/key/fan-out rule, List/page/image state owner,
+  rate-limit and profile consumer, credential invalidation, whole-state reset,
+  layout/pane close/recreation path, timer/boot entry, config snapshot, view,
+  diagnostic model, and negative exchange-consumer search. Source work is
+  intentionally global by logical source rather than pane incarnation; no X
+  state reaches a financial mutation.
+- Change: share one wrapping List-result sequence across auth discovery and the
+  manual Lists task, with typed kind and manual user identity. Replace source
+  scalar values with typed user/source contexts and a live-ID-skipping wrapping
+  allocator. Add exact nonzero profile-image allocation and profile-key/URL
+  contexts, cancel superseded URLs, and take exact owners before wrapper
+  recovery. Require page source equality, settle once, re-redact accepted List/
+  page errors, preserve all X allocators through config clear, and make private
+  post/page/wire/image diagnostics value-neutral. Add focused controls and
+  lifecycle/security documentation.
+- Tests/checks:
+  - Baseline `cargo test --package kerosene --bin kerosene x_feed` and
+    `cargo check` stopped in `alsa-sys` before Kerosene compilation because
+    `pkg-config` could not find `alsa.pc`.
+  - The pre-fix `feed_update::x::tests` attempt containing latest/replay/wrap,
+    user/source/profile/URL, config-reset, and diagnostic controls stopped at
+    the same dependency boundary before demonstrating expected failures.
+  - Post-fix X update/state controls, exact secret-bearing and image-message
+    diagnostics, X routing, config-clear, and X config-serialization suites all
+    stopped at that same boundary before executing.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed; final
+    source, call-site, owner, endpoint/query/pagination, rate-limit, pane/layout/
+    clear/restart, model/message diagnostic, persistence/view, financial-
+    consumer, secret/artifact, and compatibility reviews are recorded in the
+    validation summary below.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` stopped at the
+    same pre-existing dependency boundary before Kerosene compilation. Startup
+    smoke was not run because boot can dispatch credential-bearing X work and
+    this host could not be guaranteed credential-free. No X/network, image,
+    credential store/config, private-feed, exchange, or other external action
+    ran.
+- Compatibility/UX assessment: ordinary auth and manual discovery retain the
+  same returned Lists and status strings; only reversed concurrent producers
+  now obey dispatch order. Normal source requests retain the same single task,
+  captured token/user/source/cursor, exact same-source fan-out, page application,
+  rate-limit mutation, status, and image follow-ups. Normal image success/error
+  retains the same handle/backoff fields and rendering. Allocators/owners are
+  runtime-only; serde models and snapshots are unchanged. Only stale, replayed,
+  mismatched, wrapped, and reset contexts plus generic diagnostics differ. No
+  normal control/copy/data/timing, persisted value/default, signed bytes, order
+  behavior, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-79 is source-
+  hardened; complete-cycle reuse, dependency-owned buffer erasure, same-List-ID
+  metadata-transition timing, and executable validation remain residual.
+  Telegram public/private/fast integration result lifecycles, independently
+  formattable nested account/order types, classified external-status paths, and
+  the remainder of Track 9 still require review.
+- Prior turn commit hash: `081163b37e97b386222f729ab75a6ac4e5ce187d`
+- Next candidate: audit Telegram public refresh, private-channel discovery,
+  avatar/media requests, fast-auth tasks/events, session/channel generations,
+  reconnect/topology changes, terminal allocation/reset/replay, wrapper recovery,
+  final error redaction, and parent/model diagnostics. Preserve exact public and
+  MTProto requests, cursor/dedupe/order/media/avatar behavior, notifications,
+  session/credential storage, pane/settings UX, and every trading semantic.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -11200,26 +11414,24 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline X, exact X-routing, private-
-  integration-message tests and `cargo check`; pre-fix cross-stage order,
-  mutable refresh-fallback, pending clear, and config-reset controls; post-fix
-  exact credential owner/precedence/capture, automatic-work, persistence/status,
-  replay, clear/reset/wrap, diagnostic and final-redaction controls; full X
-  update/state, routing, message, config-clear and credential-serialization
-  suites; `cargo check`; full `cargo test`; and strict clippy at `alsa-sys`
-  system dependency discovery, before Kerosene was compiled.
-- Startup smoke was not run because the host could not be guaranteed credential-
-  free; the existing boot auth-refresh entry and unchanged normal dispatch were
-  source-audited instead. No secret backend/config mutation, X or other live
-  request, private-feed action, config clear, exchange mutation, or credential-
-  bearing operation was run.
+- Environment-blocked this turn: baseline X tests and `cargo check`; pre-fix
+  List latest/replay/wrap, auth/manual ordering, source user/payload/rate-limit,
+  profile/URL, config-reset, and private-diagnostic controls; post-fix full X
+  update/state, exact secret-bearing/image-message, routing, config-clear, and X
+  config-serialization suites; `cargo check`; full `cargo test`; and strict
+  clippy at `alsa-sys` system dependency discovery, before Kerosene was compiled.
+- Startup smoke was not run because boot can dispatch credential-bearing X work
+  and the host could not be guaranteed credential-free. Normal boot/timer/task
+  entry and unchanged requests were source-audited instead. No secret backend/
+  config mutation, X or image request, private-feed action, config clear,
+  exchange mutation, or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-78
+  F-40, and F-42 through F-79
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -11320,7 +11532,11 @@ target-specific cancellation policy, not HTTP replay.
   auth/refresh credential ownership, immutable secret capture, reset allocation,
   result diagnostics, and final errors are source-hardened by F-78 while exact
   normal requests, persistence, feed UX, and trading behavior remain unchanged.
-  X List/page/image and other private-integration result lifecycles,
-  independently formattable nested account/order types, and classified external-
-  status paths, plus the rest of Track 9, require completion before a final
-  verdict.
+  X auth/manual List ordering, source-page user/source/rate-limit ownership,
+  profile-key/URL image ownership, reset allocation, and private model/message/
+  error diagnostics are source-hardened by F-79 while exact normal requests,
+  cursor/dedup/cache/rendering behavior, persistence, feed UX, and trading
+  behavior remain unchanged. Telegram and other private-integration result
+  lifecycles, independently formattable nested account/order types, and
+  classified external-status paths, plus the rest of Track 9, require completion
+  before a final verdict.

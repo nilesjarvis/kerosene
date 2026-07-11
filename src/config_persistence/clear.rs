@@ -215,7 +215,7 @@ impl TradingTerminal {
         &mut self,
         summary: config::ClearConfigSummary,
     ) -> Task<Message> {
-        let x_feed_credential_request_allocator = self.x_feed.credential_request_allocator();
+        let x_feed_request_allocators = self.x_feed.request_allocators();
         let defaults = KeroseneConfig::default();
 
         self.config_clear_requested = false;
@@ -434,7 +434,7 @@ impl TradingTerminal {
         );
         self.x_feed = crate::x_feed::XFeedState::new(&defaults.x_feeds, "", "", "");
         self.x_feed
-            .restore_credential_request_allocator(x_feed_credential_request_allocator);
+            .restore_request_allocators(x_feed_request_allocators);
         self.order_presets = defaults.order_presets;
         self.order_quantity_is_usd = defaults.order_quantity_is_usd;
         self.preset_is_usd = defaults.preset_is_usd;

@@ -1113,10 +1113,7 @@ impl XProfileImageMessageResult {
 impl fmt::Debug for XProfileImageMessageResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0.as_ref() {
-            Ok(bytes) => f
-                .debug_struct("XProfileImageMessageResult")
-                .field("bytes", &bytes.len())
-                .finish(),
+            Ok(_) => f.write_str("Ok(<redacted>)"),
             Err(_) => f.write_str("Err(<redacted>)"),
         }
     }
@@ -2282,7 +2279,10 @@ mod tests {
         HydromancerWsMessage, TrackedTradeEvent, WsUserData, WsUserDataStreamParams,
         WsUserDataStreamPurpose,
     };
-    use crate::x_feed::{XAuthenticatedUser, XListOwnerKind, XListSummary, XListsFetchOutcome};
+    use crate::x_feed::{
+        XAuthenticatedUser, XFeedPage, XFeedPost, XFeedSource, XListOwnerKind, XListSummary,
+        XListsFetchOutcome,
+    };
 
     #[test]
     fn secret_input_debug_redacts_value() {
@@ -3338,6 +3338,36 @@ mod tests {
                     "sentinel-secret",
                 ))),
             ),
+            Message::XFeedLoaded(
+                XFeedSource::List {
+                    id: "sentinel-secret".to_string(),
+                    name: "sentinel-secret".to_string(),
+                    private: true,
+                },
+                10,
+                XFeedPageMessageResult::new(Ok(XFeedPage {
+                    source: XFeedSource::List {
+                        id: "sentinel-secret".to_string(),
+                        name: "sentinel-secret".to_string(),
+                        private: true,
+                    },
+                    posts: vec![XFeedPost {
+                        id: "sentinel-secret".to_string(),
+                        author_id: Some("sentinel-secret".to_string()),
+                        author_name: "sentinel-secret".to_string(),
+                        author_username: "sentinel-secret".to_string(),
+                        author_profile_image_url: Some(
+                            "https://images.invalid/sentinel-secret.png".to_string(),
+                        ),
+                        text: "sentinel-secret".to_string(),
+                        created_at_ms: 1,
+                        received_at_ms: 2,
+                        url: "https://x.invalid/sentinel-secret".to_string(),
+                    }],
+                    newest_id: Some("sentinel-secret".to_string()),
+                    rate_limited_until_ms: None,
+                })),
+            ),
             Message::XProfileImageLoaded(
                 5,
                 XProfileImageMessageResult::new(Err("sentinel-secret".to_string())),
@@ -3407,6 +3437,49 @@ mod tests {
                 "debug output leaked a secret: {rendered}"
             );
         }
+    }
+
+    #[test]
+    fn x_profile_image_message_debug_hides_success_payload_size() {
+        let message = Message::XProfileImageLoaded(
+            17,
+            XProfileImageMessageResult::new(Ok(vec![0_u8; 91_237])),
+        );
+
+        let rendered = format!("{message:?}");
+
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        assert!(!rendered.contains("91237"), "{rendered}");
+    }
+
+    #[test]
+    fn x_noncredential_result_wrappers_preserve_exact_values() {
+        let page = XFeedPage {
+            source: XFeedSource::Following,
+            posts: vec![XFeedPost {
+                id: "exact-post-id".to_string(),
+                author_id: Some("exact-author-id".to_string()),
+                author_name: "Exact Author".to_string(),
+                author_username: "exact-author".to_string(),
+                author_profile_image_url: Some("https://images.invalid/exact.png".to_string()),
+                text: "exact post text".to_string(),
+                created_at_ms: 123,
+                received_at_ms: 456,
+                url: "https://x.invalid/exact-post-id".to_string(),
+            }],
+            newest_id: Some("exact-post-id".to_string()),
+            rate_limited_until_ms: Some(789),
+        };
+        let image_bytes = vec![1_u8, 2, 3, 4, 5];
+
+        assert_eq!(
+            XFeedPageMessageResult::new(Ok(page.clone())).into_result(),
+            Ok(page)
+        );
+        assert_eq!(
+            XProfileImageMessageResult::new(Ok(image_bytes.clone())).into_result(),
+            Ok(image_bytes)
+        );
     }
 
     #[test]

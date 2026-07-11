@@ -57,6 +57,23 @@ task cannot alias the first post-clear request. Restart begins a fresh allocator
 because no task survives process exit. Accepted errors pass a final sensitive-
 text redaction boundary without changing ordinary error text.
 
+List discovery, source-page polling, and profile-image loads also use exact
+runtime owners. Bundled auth-context discovery and manual List refresh share
+one latest-result sequence; manual work captures the authenticated user and
+only the latest request may settle once. Source requests capture the
+authenticated user and exact source; distinct sources remain concurrent, while
+one in-flight request per source still fans out to every matching pane. A page
+must report the same source before posts or rate-limit state can change. Image
+requests capture the exact author-profile key and image URL, preventing
+delayed bytes from an old URL or reset from being installed on another profile.
+Their wrapping allocators skip live owners where requests can be concurrent
+and, like the credential allocator, survive in-process config clear without
+preserving owners or private content. Stale results are rejected before their
+wrappers are recovered;
+accepted List/page errors receive a final redaction pass. Private post, page,
+wire-response, and image-result diagnostics are value-neutral. These owners are
+not persisted, and restart begins fresh because no task survives process exit.
+
 Production OAuth should use X OAuth 2.0 Authorization Code Flow with PKCE and
 scopes such as `tweet.read`, `users.read`, `list.read`, and `offline.access`
 when refresh tokens are needed. Access tokens, Client IDs, and refresh tokens

@@ -7,8 +7,8 @@ use crate::message::{
 use crate::pane_state::PaneKind;
 use crate::x_feed::{
     X_PROFILE_IMAGE_RETRY_BACKOFF_MS, XAuthorProfile, XFeedId, XFeedInstance, XFeedPage, XFeedPost,
-    XFeedRequestError, XFeedSource, XListsFetchOutcome, fetch_x_auth_context, fetch_x_feed_page,
-    fetch_x_lists, fetch_x_profile_image_bytes, refresh_x_access_token,
+    XFeedSource, fetch_x_auth_context, fetch_x_feed_page, fetch_x_lists,
+    fetch_x_profile_image_bytes, refresh_x_access_token,
 };
 use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
@@ -50,7 +50,7 @@ impl TradingTerminal {
             }
             Message::XFeedListsRefresh => self.request_x_feed_lists_refresh(),
             Message::XFeedListsLoaded(request_id, result) => {
-                self.handle_x_feed_lists_loaded(request_id, result.into_result());
+                self.handle_x_feed_lists_loaded(request_id, result);
                 Task::none()
             }
             Message::XFeedSourceSelected(id, option) => {
@@ -67,10 +67,10 @@ impl TradingTerminal {
             Message::RefreshXFeed(id) => self.request_x_feed_refresh(id, true),
             Message::XFeedRefreshTick => self.request_x_feed_open_refresh(false),
             Message::XFeedLoaded(source, request_id, result) => {
-                self.handle_x_feed_loaded(source, request_id, result.into_result())
+                self.handle_x_feed_loaded(source, request_id, result)
             }
             Message::XProfileImageLoaded(request_id, result) => {
-                self.handle_x_profile_image_loaded(request_id, result.into_result());
+                self.handle_x_profile_image_loaded(request_id, result);
                 Task::none()
             }
             _ => Task::none(),
@@ -207,18 +207,19 @@ impl TradingTerminal {
         request_id: u64,
         result: XAuthContextMessageResult,
     ) -> Task<Message> {
-        if !self.x_feed.finish_auth_request(request_id) {
+        let Some(owns_lists_result) = self.x_feed.finish_auth_request(request_id) else {
             return Task::none();
-        }
+        };
         match result.into_result() {
             Ok((user, outcome)) => {
+                let mut credentials_changed = false;
                 if let Some(token) = self.x_feed.pending_access_token_for_secret() {
                     if !self.persist_x_oauth_credentials_secret_from_keys(token.as_str(), "", "") {
                         self.x_feed.clear_pending_access_token();
                         self.x_feed.status = self.secret_store_status.clone();
                         return Task::none();
                     }
-                    self.x_feed.commit_access_token(token.as_str());
+                    credentials_changed = self.x_feed.commit_access_token(token.as_str());
                     self.persist_config();
                 }
                 self.x_feed.clear_pending_oauth_credentials();
@@ -226,7 +227,9 @@ impl TradingTerminal {
                 let list_count = outcome.lists.len();
                 let status_suffix = outcome.status_suffix();
                 self.x_feed.auth_user = Some(user);
-                self.x_feed.lists = outcome.lists;
+                if owns_lists_result || credentials_changed {
+                    self.x_feed.lists = outcome.lists;
+                }
                 self.x_feed.status = Some((
                     format!("Connected @{username}; {list_count} Lists available{status_suffix}"),
                     false,
@@ -258,24 +261,22 @@ impl TradingTerminal {
         }
 
         let token = self.x_feed.access_token_for_task();
-        let request_id = self.x_feed.next_lists_request_id();
-        self.x_feed.lists_loading = true;
+        let request_id = self.x_feed.begin_lists_request(&user_id);
         self.x_feed.status = Some(("Refreshing X Lists".to_string(), false));
         Task::perform(fetch_x_lists(token, user_id), move |result| {
             Message::XFeedListsLoaded(request_id, XListsMessageResult::new(result))
         })
     }
 
-    fn handle_x_feed_lists_loaded(
-        &mut self,
-        request_id: u64,
-        result: Result<XListsFetchOutcome, String>,
-    ) {
-        if request_id != self.x_feed.lists_request_id {
+    fn handle_x_feed_lists_loaded(&mut self, request_id: u64, result: XListsMessageResult) {
+        let current_user_id = self.x_feed.auth_user.as_ref().map(|user| user.id.clone());
+        if !self
+            .x_feed
+            .finish_lists_request(request_id, current_user_id.as_deref())
+        {
             return;
         }
-        self.x_feed.lists_loading = false;
-        match result {
+        match result.into_result() {
             Ok(outcome) => {
                 let count = outcome.lists.len();
                 let status_suffix = outcome.status_suffix();
@@ -284,7 +285,9 @@ impl TradingTerminal {
                     .status
                     .replace((format!("Loaded {count} X Lists{status_suffix}"), false));
             }
-            Err(err) => self.x_feed.status = Some((err, true)),
+            Err(err) => {
+                self.x_feed.status = Some((redact_sensitive_response_text(&err), true));
+            }
         }
     }
 
@@ -363,7 +366,7 @@ impl TradingTerminal {
             })
             .flatten();
         let token = self.x_feed.access_token_for_task();
-        let request_id = self.x_feed.begin_source_refresh(&source);
+        let request_id = self.x_feed.begin_source_refresh(&source, &user_id);
         Task::perform(
             fetch_x_feed_page(token, user_id, source.clone(), since_id),
             move |result| {
@@ -380,15 +383,22 @@ impl TradingTerminal {
         &mut self,
         source: XFeedSource,
         request_id: u64,
-        result: Result<XFeedPage, XFeedRequestError>,
+        result: XFeedPageMessageResult,
     ) -> Task<Message> {
-        if !self.x_feed.finish_source_refresh(&source, request_id) {
+        let current_user_id = self.x_feed.auth_user.as_ref().map(|user| user.id.clone());
+        if !self
+            .x_feed
+            .finish_source_refresh(&source, request_id, current_user_id.as_deref())
+        {
             return Task::none();
         }
 
         let now_ms = Self::now_ms();
-        match result {
+        match result.into_result() {
             Ok(page) => {
+                if page.source != source {
+                    return Task::none();
+                }
                 if let Some(reset_ms) = page.rate_limited_until_ms {
                     self.x_feed.set_source_rate_limit(&source, reset_ms);
                 }
@@ -410,7 +420,8 @@ impl TradingTerminal {
                 }
                 self.schedule_x_profile_image_fetches(&page)
             }
-            Err(err) => {
+            Err(mut err) => {
+                err.message = redact_sensitive_response_text(&err.message);
                 if let Some(reset_ms) = err.rate_limited_until_ms {
                     self.x_feed.set_source_rate_limit(&source, reset_ms);
                 }
@@ -449,6 +460,8 @@ impl TradingTerminal {
             profile.name = post.author_name.clone();
             profile.initials = post.author_initials();
             if profile.profile_image_url.as_deref() != Some(image_url.as_str()) {
+                self.x_feed
+                    .cancel_profile_image_request(profile.image_request_id);
                 profile.profile_image_url = Some(image_url.clone());
                 profile.image_handle = None;
                 profile.image_loading_url = None;
@@ -462,9 +475,8 @@ impl TradingTerminal {
                     now_ms.saturating_sub(failed_at_ms) < X_PROFILE_IMAGE_RETRY_BACKOFF_MS
                 });
             if should_fetch {
-                self.x_feed.next_profile_image_request_id =
-                    self.x_feed.next_profile_image_request_id.saturating_add(1);
-                profile.image_request_id = self.x_feed.next_profile_image_request_id;
+                profile.image_request_id =
+                    self.x_feed.begin_profile_image_request(&key, &image_url);
                 profile.image_loading_url = Some(image_url.clone());
                 profile.image_failed_at_ms = None;
                 let request_id = profile.image_request_id;
@@ -498,22 +510,27 @@ impl TradingTerminal {
         profile.initials = post.author_initials();
     }
 
-    fn handle_x_profile_image_loaded(&mut self, request_id: u64, result: Result<Vec<u8>, String>) {
-        let Some(profile) = self
-            .x_feed
-            .author_profiles
-            .values_mut()
-            .find(|profile| profile.image_request_id == request_id)
+    fn handle_x_profile_image_loaded(
+        &mut self,
+        request_id: u64,
+        result: XProfileImageMessageResult,
+    ) {
+        let Some((profile_key, image_url)) = self.x_feed.finish_profile_image_request(request_id)
         else {
             return;
         };
+        let Some(profile) = self.x_feed.author_profiles.get_mut(&profile_key) else {
+            return;
+        };
 
-        if profile.image_loading_url.is_none() {
+        if profile.image_request_id != request_id
+            || profile.image_loading_url.as_deref() != Some(image_url.as_str())
+        {
             return;
         }
         profile.image_loading_url = None;
 
-        match result {
+        match result.into_result() {
             Ok(bytes) => {
                 profile.image_handle = Some(ImageHandle::from_bytes(bytes));
                 profile.image_request_id = 0;
