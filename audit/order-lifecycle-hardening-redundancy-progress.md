@@ -1813,6 +1813,61 @@ target-specific cancellation policy, not HTTP replay.
   final-save failure still relinquishes ownership because resolving its
   durability/window policy requires approval.
 
+### F-27 — Ghost-profile cluster invalidation is owned by the wrong lifecycle
+
+- Status: addressed in Turn 24; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium; the current source cannot type-check, while the intended
+  stale-stream safeguard has no executable binary until corrected
+- Scope: ghost-account creation/removal, selected wallet-cluster profile
+  bindings, user-data stream generation rotation, and queued cluster frames
+- Preconditions/event ordering:
+  1. The Turn 17 stream-generation change is compiled after system dependencies
+     are available.
+  2. `ghost_wallet_task` creates a new profile or
+     `forget_ghost_account_task` removes an existing ghost profile.
+  3. The selected cluster may reference the removed profile and must replace
+     its subscription recipe before queued frames can be trusted.
+- Evidence: the prior change computed `selected_cluster_profile_removed` in
+  `ghost_wallet_task` using a brand-new secret ID before that profile could
+  belong to any cluster, then referenced the function-local value from
+  `forget_ghost_account_task`. Rust item formatting accepts the syntax, but the
+  removal function has no binding in scope and the creation binding is unused.
+  This is explicit in prior commit `2cbd350d38f08989f21e3305e1f2b0355c2afba0`.
+  The intended saved-profile deletion path computes the same predicate in the
+  correct function before removal (`ghost_wallet_task`,
+  `forget_ghost_account_task`,
+  `src/account_state/switching/saved_delete.rs:206-315`).
+- Violated invariant: the operation that changes selected-cluster profile
+  topology must own its pre-removal membership check and generation rotation;
+  creation must not claim removal state for an unrelated new identity.
+- Risk: the checkout fails compilation once dependency discovery reaches
+  Kerosene, preventing validation and release. Merely deleting the undefined
+  branch would instead omit the intended recipe-generation invalidation when a
+  selected cluster loses a ghost profile, weakening stale queued-frame defense.
+  Because the broken source cannot produce a running binary, no live financial
+  mutation from this exact revision is claimed.
+- Why existing checks did not cover it: all Rust test/check/clippy attempts stop
+  in `alsa-sys` before the crate is parsed or type-checked. `cargo fmt` validates
+  syntax/format only. Stream-generation regressions covered cluster edits and
+  saved-profile deletion, but not ghost-profile removal.
+- Implemented fix: remove the impossible creation-time membership calculation
+  and compute it inside `forget_ghost_account_task` after all blocking gates but
+  immediately before profile removal. Keep the existing conditional rotation
+  exactly where removal commits (`src/account_state/switching/ghost.rs:82-98`).
+- Regression coverage: a selected cluster references an inactive ghost
+  profile, the profile is forgotten, and the test proves account removal plus
+  one wrapping generation increment. The inactive profile avoids unrelated
+  account-switch/disconnect tasks (`src/account_state/switching/ghost/tests.rs:202-232`).
+- Smallest behavior-preserving fix: two lines move between adjacent lifecycle
+  functions and one focused test. No account/profile data, cluster membership,
+  subscriptions, status copy, view, order preparation, trading policy,
+  persistence, or secret handling changes outside the already-intended
+  removal-time invalidation.
+- Residual uncertainty: source inspection, rustfmt, and diff checks pass, but
+  the compiler and test remain blocked by ALSA metadata. The broader Track 9
+  disconnect/profile/key lifetime audit remains incomplete.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -3273,6 +3328,74 @@ target-specific cancellation policy, not HTTP replay.
   toast/error, snapshot, and progress-log paths for sensitive order/account
   material without changing visible trading semantics.
 
+## Turn 24 — Repair Ghost-Profile Stream Invalidation Ownership
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: Medium (F-27)
+- Scope: initial Track 9 disconnect/switch/profile/clear key-owner inventory;
+  ghost-profile create/forget lifecycle; selected wallet-cluster user-data
+  generation; prior Turn 17 stale-stream hardening integrity
+- Invariant: a profile-removal operation must compute and apply selected-cluster
+  stream invalidation before removing that exact profile; a newly created
+  unrelated ghost identity must not own removal state, and the checkout must
+  remain type-correct.
+- Protected behavior: all account-switch/disconnect/pending-request/automation
+  gates, ghost profile creation/removal, active-account fallback, cluster
+  membership/config, generation arithmetic, subscription parameters, queued
+  frame validation, persistence, UI/status copy, and all trading semantics.
+- Preconditions/event ordering: Turn 17 added generation rotation for selected-
+  cluster profile binding changes; its ghost-path predicate was inserted in the
+  creation function, while its conditional use was inserted in the removal
+  function. The system ALSA discovery failure prevented Rust from resolving the
+  out-of-scope name.
+- Evidence: pending one-shot, NUKE, leverage, cancel/move status/context, cluster
+  execution, indicator, and HUD owners are included in the shared pending gate;
+  account switch, disconnect, profile delete, ghost forget, and config clear
+  call that gate before destructive cleanup. Chase and uncertain TWAP gates
+  retain captured-key owners; safely stoppable TWAPs archive and scrub their
+  captured key. During that inventory, `git blame` and the current source
+  isolated F-27 to the prior user-stream generation commit.
+- Change: moved `selected_cluster_profile_removed` from ghost creation to
+  `forget_ghost_account_task` immediately after all refusal gates and before
+  removal. Added a focused regression proving a selected-cluster ghost removal
+  advances the runtime recipe generation once. No documentation contract
+  changed because the already-documented Turn 17 behavior is restored, not
+  extended.
+- Tests/checks:
+  - The pre-edit focused
+    `forget_ghost_wallet_is_blocked_while_twap_order_is_active` attempt stopped
+    in `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    the system `alsa.pc` package.
+  - Post-edit focused attempts for
+    `forgetting_selected_cluster_ghost_rotates_cluster_stream_generation` and
+    `account_state::switching::ghost::tests` stopped at the same dependency
+    boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: this profile-generation repair does not
+    change startup/window plumbing, and compilation is already blocked. No live
+    exchange or credential-bearing operation ran.
+- Compatibility/UX assessment: creation loses an unused always-false local
+  calculation. Removal performs the exact intended pre-removal predicate and
+  existing conditional wrapping increment. No visible output, interaction,
+  config, profile/cluster contents, subscription address, order data, timing,
+  or secret lifetime changes.
+- Residual risk: Kerosene still has not type-checked on this host, so the repair
+  and regression require execution where ALSA development metadata is present.
+  The initial key-owner inventory found no safe source change beyond F-27, but
+  Track 9 is not complete: terminal/nonterminal automation key scrubbing,
+  profile deletion rollback lifetimes, and repository-wide diagnostic redaction
+  need dedicated follow-up.
+- Prior turn commit hash: `52451751c8545ece90f13675b95b2aa39322b2e8`
+- Next candidate: resume Track 9 at captured-key terminalization. Enumerate
+  every Chase/TWAP terminal assignment and removal/archive call, then
+  adversarially exercise disconnect, switch, profile deletion, config clear,
+  and delayed result delivery to prove keys persist only while exact cleanup or
+  uncertainty still needs them. Follow with repository-wide order/account
+  `Debug` and external-error redaction once key lifetime is closed.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -3287,25 +3410,25 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused fresh-intent classification/root-route
-  and config-clear exit-ownership tests; `cargo check`; full `cargo test`; and
-  strict clippy at `alsa-sys` system dependency discovery, before Kerosene was
-  compiled.
+- Environment-blocked this turn: focused ghost-profile removal/cluster-stream
+  tests; `cargo check`; full `cargo test`; and strict clippy at `alsa-sys`
+  system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20, F-22/F-23, and F-25/F-26 have source fixes and regression
-  coverage but await executable validation on a host with ALSA development
-  metadata.
+- F-01 through F-20, F-22/F-23, and F-25 through F-27 have source fixes and
+  regression coverage but await executable validation on a host with ALSA
+  development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
   financial invariants have characterization coverage.
 - F-24 is explicitly deferred for a main-window/final-save failure policy; its
   successful save/clear intervals are independently fenced by F-23/F-25/F-26.
 - TWAP terminalization plus successful save/clear final-exit fencing across all
   current mutation intents are source-audited with focused coverage but cannot
-  be executed on this host. Remaining disconnect/profile secret lifetimes,
-  local planning/state diagnostic redaction, and the rest of Track 9 require
-  completion before a final verdict.
+  be executed on this host. Ghost-profile cluster stream invalidation is
+  source-repaired but likewise uncompiled. Remaining disconnect/profile secret
+  lifetimes, local planning/state diagnostic redaction, and the rest of Track 9
+  require completion before a final verdict.

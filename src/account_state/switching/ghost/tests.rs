@@ -1,6 +1,7 @@
 use super::*;
 use crate::signing::{ChaseLifecycle, ChaseOrder};
 use crate::twap_state::{TwapOrder, TwapOrderInit, TwapPauseReason};
+use crate::wallet_cluster_state::{WalletCluster, WalletClusterMember};
 
 use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
@@ -195,4 +196,36 @@ fn forget_ghost_wallet_is_blocked_while_twap_order_is_active() {
         .expect("blocked ghost forget should toast");
     assert!(toast.is_error);
     assert!(toast.message.contains("Stop active TWAP orders"));
+}
+
+#[test]
+fn forgetting_selected_cluster_ghost_rotates_cluster_stream_generation() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.accounts = vec![
+        account("saved", "Saved", WALLET, "agent-key"),
+        account("ghost", "Ghost", OTHER_WALLET, ""),
+    ];
+    terminal.ghost_account_secret_ids = HashSet::from(["ghost".to_string()]);
+    terminal.active_account_index = 0;
+    terminal.wallet_clusters.clusters = vec![WalletCluster {
+        id: "cluster".to_string(),
+        name: "Cluster".to_string(),
+        members: vec![WalletClusterMember {
+            profile_secret_id: "ghost".to_string(),
+            weight: 1.0,
+            weight_input: "1".to_string(),
+        }],
+    }];
+    terminal.wallet_clusters.selected_cluster_id = Some("cluster".to_string());
+    let previous_generation = terminal.wallet_cluster_user_data_stream_generation;
+
+    let task = terminal.forget_ghost_account_task(1);
+
+    assert_eq!(task.units(), 0);
+    assert_eq!(terminal.accounts.len(), 1);
+    assert!(terminal.ghost_account_secret_ids.is_empty());
+    assert_eq!(
+        terminal.wallet_cluster_user_data_stream_generation,
+        previous_generation.wrapping_add(1)
+    );
 }
