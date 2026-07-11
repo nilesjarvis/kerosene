@@ -401,6 +401,13 @@ runtime chart incarnation, preserving all existing source/provider/key/
 timeframe/session guards. Exact public calculations, caches, visible errors,
 rendering, and interaction remain unchanged.
 
+Economic-calendar completions use the same public-market result boundary.
+Generic Elm diagnostics retain the runtime request ID and `Ok`/`Err` shape but
+do not recursively format event titles, dates, impact/forecast values, or a
+pre-handler external response excerpt. The Calendar update arm immediately
+recovers the exact result after its active-owner check, preserving event data,
+error sanitization, retry cadence, filters, status copy, and rendering.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

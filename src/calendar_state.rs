@@ -41,7 +41,7 @@ impl TradingTerminal {
         }
 
         Task::perform(api::fetch_economic_calendar(), move |result| {
-            Message::CalendarLoaded(request_id, result)
+            Message::CalendarLoaded(request_id, result.into())
         })
     }
 

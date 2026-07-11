@@ -1304,7 +1304,10 @@ pub(crate) enum Message {
     ),
     AddTradingJournal,
     RefreshCalendar,
-    CalendarLoaded(u64, Result<Vec<api::CalendarEvent>, String>),
+    CalendarLoaded(
+        u64,
+        RedactedPublicMarketMessageResult<Vec<api::CalendarEvent>>,
+    ),
     RefreshHypeEtfs,
     HypeEtfsRefreshTick,
     HypeEtfsViewChanged(HypeEtfView),
@@ -3681,6 +3684,16 @@ mod tests {
             daily: candles(),
             intraday: candles(),
         };
+        let calendar_events = || {
+            vec![crate::api::CalendarEvent {
+                title: PAYLOAD_SYMBOL.to_string(),
+                country: "US".to_string(),
+                date: "2026-06-12T12:00:00+00:00".to_string(),
+                impact: "High".to_string(),
+                forecast: DAY_VALUE.to_string(),
+                previous: WEEK_VALUE.to_string(),
+            }]
+        };
         let spaghetti_request = || crate::spaghetti_state::SpaghettiCandleFetch {
             chart_id: 9,
             chart_instance_generation: 7,
@@ -3841,6 +3854,18 @@ mod tests {
                 "827364.25",
                 "736455.375",
             ] {
+                assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
+            }
+        }
+
+        for message in [
+            Message::CalendarLoaded(7, Ok(calendar_events()).into()),
+            Message::CalendarLoaded(7, Err(ERROR.to_string()).into()),
+        ] {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains('7'), "{rendered}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for hidden in [PAYLOAD_SYMBOL, ERROR, "918273.125", "827364.25"] {
                 assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
             }
         }

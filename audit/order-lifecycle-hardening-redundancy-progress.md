@@ -5255,6 +5255,93 @@ target-specific cancellation policy, not HTTP replay.
   completion ownership and diagnostics remain the next separate public-data
   lifecycle for review.
 
+### F-69 — Calendar completion diagnostics traverse exact external results
+
+- Status: addressed in Turn 62; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium diagnostic-boundary hardening; the event feed is public and
+  no wrong-order or automatic-mutation path was found, but an external response
+  or error must not become incidental derived message output
+- Scope: economic-calendar request allocation/publication, pane and layout
+  lifecycle, manual/timer/retry scheduling, stale/duplicate result acceptance,
+  exact event/error handling, filters/rendering, parent diagnostics, routing,
+  boot state, docs, and focused characterization tests
+- Preconditions/event ordering:
+  1. The public calendar request returns a collection containing event title,
+     country, date, impact, forecast, and previous values, or an error carrying
+     a bounded but otherwise external HTTP/content/parse response excerpt.
+  2. The task moves that raw `Result<Vec<CalendarEvent>, String>` into
+     `CalendarLoaded`, whose parent `Message` derives `Debug`.
+  3. Generic message formatting can recursively traverse every event field or
+     the pre-handler external error before `update_calendar` reaches its
+     existing error sanitizer.
+  4. Independently, an old result can affect state only if it passes the
+     existing active-loading and exact global-request-ID checks. Pane close,
+     reopen, or runtime layout reconstruction does not reset those fields.
+- Evidence: `TradingTerminal` owns one runtime-only calendar cache, error,
+  fetch timestamp, loading flag, request ID, retry count/deadline, and two view
+  filters (`src/app_state.rs`, `src/app_boot/state.rs`). Boot, layout restore,
+  pane add/focus, manual refresh, 15-minute tick refresh, and status-tick retry
+  all converge on `request_calendar_refresh`; it refuses concurrent work,
+  wrapping-allocates the next global ID, and is the only `CalendarLoaded`
+  publisher (`src/app_boot/boot.rs`, `src/layout_persistence.rs`,
+  `src/pane_update/widgets.rs`, `src/calendar_state.rs`,
+  `src/calendar_update.rs`, `src/chrome_update/status_tick.rs`). The sole
+  result consumer returns before mutation unless loading is active and the ID
+  matches, then preserves exact event storage/scrolling or sanitizes the error
+  and schedules the established backoff. Pane close has no Calendar reset;
+  filters affect rendering only. `api/calendar.rs` exposes the raw event model
+  and response excerpts, and the raw result field in `src/message.rs` was the
+  only pre-handler diagnostic traversal. Searches across order preparation,
+  signing, account, Chase/TWAP, wallet-cluster, history, and risk modules found
+  no Calendar consumer or signed-mutation caller.
+- Violated invariant: generic Elm diagnostics may retain public request
+  correlation and result shape, but must not recursively format a complete
+  external payload or unsanitized upstream error. State mutation independently
+  requires the exact currently active request owner.
+- Risk: logs, panic context, or test diagnostics between task completion and
+  update handling can expose an arbitrary upstream response excerpt and copy a
+  potentially large event collection. This bypasses the repository's
+  value-neutral public-result convention. Calendar values can inform a user's
+  manual decisions, but the feed neither seeds an order price nor submits,
+  retries, reconciles, or settles an exchange mutation.
+- Why existing checks did not cover it: the June request-ID hardening already
+  guarded stale and duplicate state transitions and added timer tests, while
+  later error sanitization protected visible state only after the message was
+  consumed. `CalendarLoaded` had not been migrated with the other public-market
+  completion families, and its tests did not assert exact accepted payload
+  preservation, stale-error retry-state preservation, pane reconstruction, or
+  rollover coalescing as one lifecycle contract.
+- Implemented fix: replace only the parent result field with the existing
+  `RedactedPublicMarketMessageResult<Vec<CalendarEvent>>`. The sole publisher
+  moves the exact result into it; the first consumer checks loading and request
+  ownership while the value remains opaque, then recovers the original
+  `Result` immediately before the unchanged success/error branches. No state,
+  allocator, endpoint, task, timer, filter, view, sanitizer, retry, or routing
+  logic changed.
+- Regression coverage: the shared public-market parent-message test now proves
+  both Calendar success and error diagnostics retain the request ID and
+  `Ok`/`Err` shape while omitting event titles, forecast/previous values, and
+  external error text. Calendar controls characterize wrapping from
+  `u64::MAX`, forced-refresh coalescing without replacing an active owner, owner
+  survival across close/reopen-style pane reconstruction, stale success and
+  reversed stale error rejection, duplicate post-completion rejection, exact
+  accepted event fields, accepted error sanitization/backoff, and the existing
+  tick clock boundary.
+- Smallest behavior-preserving fix: one existing wrapper at the enum field, one
+  producer conversion, one first-consumer conversion, focused tests, and docs.
+  No event, timestamp, impact, forecast/previous value, sort/scroll/filter rule,
+  status/error copy, request body/cadence, retry count/delay, pane/layout wire
+  value, persistence, order input, signed bytes, or trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  exhaustive definition/publisher/consumer/state-writer/pane/view/trading-
+  consumer tracing, existing request fences, and the mechanical wrapper change
+  establish the source boundary, but focused and nearby suites cannot execute
+  until ALSA development metadata is available. An already-completed duplicate
+  would need to survive a complete `u64` sequence of non-overlapping Calendar
+  requests before request-ID reuse could make it current; no finite counter can
+  eliminate that theoretical case.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -9155,6 +9242,81 @@ target-specific cancellation policy, not HTTP replay.
   events, cadence, filters, visible status, persistence, and every trading/UX
   semantic.
 
+## Turn 62 — Bound Calendar Completion Diagnostics
+
+- Status: F-69 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: Calendar request allocation and publication, boot/layout/pane/manual/
+  timer/retry entry points, active ownership and rollover, pane close/reopen,
+  stale/duplicate success/error ordering, exact event/cache/error state,
+  filters/rendering, parent diagnostics, routes, trading consumers, docs, and
+  focused characterization coverage
+- Invariant: only the exact actively loading Calendar request may mutate cache
+  or retry state, and generic Elm diagnostics must expose only its public
+  request ID plus `Ok`/`Err` shape—not event fields or a pre-handler upstream
+  error.
+- Protected behavior: every event field and timestamp; API endpoint, response
+  parsing/sorting, pane-open/manual/15-minute/retry request timing, retry delays
+  and cap, close/reopen cache retention, success scroll position, loading/error/
+  last-good status copy, impact/window filters, visible rows/summary, boot and
+  layout behavior, config/schema/persistence, order preparation/signing, and
+  every trading/UI semantic.
+- Preconditions/event ordering: a Calendar task returns exact public events or
+  an external error while the raw result sits inside derived `Message::Debug`.
+  Before this turn, formatting can traverse it prior to update-time
+  sanitization. State ownership is already global and sound: concurrent forced
+  and timer/retry requests are suppressed, pane/layout reconstruction does not
+  reset the active ID, and stale or duplicate completions return before state
+  mutation. The patch closes only the diagnostic handoff while characterization
+  tests lock those established ownership and UX semantics.
+- Evidence: F-69 records every runtime field, request trigger, only publisher,
+  first consumer, retry scheduler, pane/layout/reset path, API error/payload
+  shape, view/filter/storage consumer, route, tests, and repository-wide order/
+  signing/automation search. No second publisher, direct result-state writer,
+  persisted request owner, order-price input, automatic mutation consumer, or
+  missing practical stale-result check was found.
+- Change: carry `CalendarLoaded` through the existing public-market result
+  wrapper; restore the exact result only after the unchanged active-loading and
+  request-ID gate; add rollover/coalescing, pane reconstruction, stale error,
+  exact accepted payload, and parent diagnostic controls; document the
+  established owner and diagnostic boundary.
+- Tests/checks:
+  - Baseline Calendar update, public-message, and routing suites plus
+    `cargo check` stopped in `alsa-sys` before Kerosene compilation because
+    `pkg-config` could not find the system `alsa.pc` file.
+  - The pre-fix parent-message regression stopped at that same dependency
+    boundary before demonstrating its expected diagnostic assertion failure.
+  - Post-fix Calendar update, exact public-message, routing, and calendar API
+    suites stopped at the same dependency boundary.
+  - `cargo fmt` passed after the Rust edits; final formatting and diff checks
+    are recorded in the current validation summary below.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no view, window/subscription identity,
+    endpoint/request timing, interaction, exchange mutation, or credential path
+    changed; compilation is already blocked, and no live Calendar request,
+    exchange call, or credential-bearing operation ran.
+- Compatibility/UX assessment: the first consumer receives the byte-for-byte
+  same success/error after the same owner gate and enters the unchanged event,
+  scroll, sanitizer, retry, cache, status, filter, and render paths. Only parent
+  diagnostic traversal changes; standalone public `CalendarEvent` formatting
+  remains available. No visible copy/data/timing, enabled state, interaction,
+  persisted value, signed bytes, order preparation, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-69 is source-
+  hardened; full-`u64` completed-message survival and executable validation
+  remain residual. HYPE ETF/unstaking, SEC earnings/funding/context, file/config/
+  screenshot, and private-integration result classes; independently formattable
+  nested account/order types; classified external-status paths; and the rest of
+  Track 9 still require review.
+- Prior turn commit hash: `c0cc4eb4e3f66292e21e2cbcfc71def4760ea8a6`
+- Next candidate: audit `HypeEtfsLoaded` and
+  `HypeUnstakingQueueLoaded` across boot/pane/timer/manual refresh ownership,
+  active/loading and request-ID rollover, stale/duplicate success/error
+  acceptance, data pruning/filters, external-error sanitization, model/parent
+  diagnostics, and every trading consumer; preserve exact public data, cadence,
+  visible status, filters, persistence, and all trading/UX semantics.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -9196,22 +9358,21 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline Session Data, spaghetti, and related
-  layout suites plus `cargo check`; the pre-fix Session Data recreation and
-  spaghetti replacement-owner regressions; post-fix exact regressions plus
-  Session Data, spaghetti update/state, layout-instance, risk-scrub, public-
-  message, and routing suites;
+- Environment-blocked this turn: baseline Calendar update, public-message, and
+  routing suites plus `cargo check`; the pre-fix Calendar parent-diagnostic
+  regression; post-fix Calendar update, exact public-message, routing, and
+  calendar API suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
-- No live market request, exchange mutation, or credential-bearing operation was
-  run.
+- No live Calendar/market request, exchange mutation, or credential-bearing
+  operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-68
+  F-40, and F-42 through F-69
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -9276,7 +9437,10 @@ target-specific cancellation policy, not HTTP replay.
   preserving exact candle/cache/backfill/interaction behavior. Session Data and
   spaghetti historical completion ownership now survives pane/series/layout
   recreation and parent diagnostics are source-hardened by F-68 while preserving
-  exact aggregation/cache/rendering behavior. Remaining calendar and other
-  public/private result lifecycles, independently formattable nested account/
-  order types, and classified external-status paths, plus the rest of Track 9,
-  require completion before a final verdict.
+  exact aggregation/cache/rendering behavior. Calendar completion ownership is
+  fully characterized and its parent diagnostics are source-hardened by F-69
+  while exact events, retry/filter/status, and pane/layout behavior remain
+  unchanged. Remaining HYPE ETF/unstaking and other public/private result
+  lifecycles, independently formattable nested account/order types, and
+  classified external-status paths, plus the rest of Track 9, require
+  completion before a final verdict.

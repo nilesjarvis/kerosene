@@ -277,7 +277,13 @@ Key modules:
 - `api/calendar.rs`
 
 Calendar fetches are one-shot tasks triggered by pane open, manual refresh, or
-timer/retry behavior.
+timer/retry behavior. One terminal-wide request ID and an active-loading flag
+own the completion across pane close/reopen and runtime layout reconstruction;
+stale or duplicate results cannot replace cached events or alter retry state.
+The owner is runtime-only. Generic Elm diagnostics retain its request ID and
+`Ok`/`Err` shape without traversing event fields or an upstream error, while the
+Calendar update path receives the exact result for unchanged storage, error
+sanitization, retry scheduling, and rendering.
 
 ## Screener
 
