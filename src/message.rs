@@ -617,6 +617,35 @@ impl<T> fmt::Debug for RedactedHyperdashMarketMessageResult<T> {
     }
 }
 
+/// Exact public market refresh result carried through the Elm message boundary.
+///
+/// Request IDs, requested symbols, and timestamps remain visible correlation
+/// context. Generic message diagnostics expose only success/error shape and
+/// never traverse a potentially large payload or pre-handler external error.
+#[derive(Clone)]
+pub(crate) struct RedactedPublicMarketMessageResult<T>(Box<Result<T, String>>);
+
+impl<T> RedactedPublicMarketMessageResult<T> {
+    pub(crate) fn into_result(self) -> Result<T, String> {
+        *self.0
+    }
+}
+
+impl<T> From<Result<T, String>> for RedactedPublicMarketMessageResult<T> {
+    fn from(value: Result<T, String>) -> Self {
+        Self(Box::new(value))
+    }
+}
+
+impl<T> fmt::Debug for RedactedPublicMarketMessageResult<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 /// Exact trading-journal task result carried through the Elm message boundary.
 ///
 /// Update handlers recover the original fills, candles, or external error.
@@ -1100,13 +1129,13 @@ pub(crate) enum Message {
         u64,
         Vec<String>,
         u64,
-        Result<crate::api::WatchlistContextsResponse, String>,
+        RedactedPublicMarketMessageResult<crate::api::WatchlistContextsResponse>,
     ),
     LiveWatchlistHistoryLoaded(
         u64,
         Vec<String>,
         u64,
-        Result<HashMap<String, (f64, f64, f64)>, String>,
+        RedactedPublicMarketMessageResult<HashMap<String, (f64, f64, f64)>>,
     ),
     LiveWatchlistAddSymbol(LiveWatchlistId, String),
     LiveWatchlistRemoveSymbol(LiveWatchlistId, String),
@@ -1204,7 +1233,7 @@ pub(crate) enum Message {
         u64,
         Vec<String>,
         u64,
-        Result<crate::api::WatchlistContextsResponse, String>,
+        RedactedPublicMarketMessageResult<crate::api::WatchlistContextsResponse>,
     ),
     // Add widget menu
     ToggleAddWidgetMenu,
@@ -1234,13 +1263,13 @@ pub(crate) enum Message {
         u64,
         Vec<String>,
         u64,
-        Result<crate::api::WatchlistContextsResponse, String>,
+        RedactedPublicMarketMessageResult<crate::api::WatchlistContextsResponse>,
     ),
     ScreenerHistoryLoaded(
         u64,
         Vec<String>,
         u64,
-        Result<HashMap<String, (f64, f64)>, String>,
+        RedactedPublicMarketMessageResult<HashMap<String, (f64, f64)>>,
     ),
     SettingsTabSelected(SettingsTab),
     ThemeSettingsPageSelected(ThemeSettingsPage),
@@ -2077,12 +2106,13 @@ mod tests {
         RedactedHyperdashMarketMessageResult, RedactedJournalMessageResult,
         RedactedLayoutMessageResult, RedactedOrderId, RedactedOrderInput,
         RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput,
-        RedactedPnlCardMessageResult, RedactedPositioningMessageResult, RedactedTelegramChannelKey,
-        RedactedWalletClusterId, RedactedWalletClusterName, RedactedWalletLabel,
-        RedactedWalletLabelsMessageResult, SchwabAccountsMessageResult,
-        SchwabTokenRefreshMessageResult, SecretInput, TelegramFastAuthMessageResult,
-        TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult, XAuthContextMessageResult,
-        XFeedPageMessageResult, XListsMessageResult, XProfileImageMessageResult,
+        RedactedPnlCardMessageResult, RedactedPositioningMessageResult,
+        RedactedPublicMarketMessageResult, RedactedTelegramChannelKey, RedactedWalletClusterId,
+        RedactedWalletClusterName, RedactedWalletLabel, RedactedWalletLabelsMessageResult,
+        SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult, SecretInput,
+        TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult,
+        XAuthContextMessageResult, XFeedPageMessageResult, XListsMessageResult,
+        XProfileImageMessageResult,
     };
     use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
     use crate::api::{
@@ -2717,6 +2747,38 @@ mod tests {
         let restored = success.into_result().expect("synthetic heatmap");
         assert_eq!(restored.rects[0].price_lo.to_bits(), PRICE_BITS);
         assert_eq!(restored.rects[0].amount_coins.to_bits(), AMOUNT_BITS);
+    }
+
+    #[test]
+    fn public_market_message_result_wrapper_preserves_exact_payloads() {
+        const ERROR: &str = "public-market-result-error-sentinel";
+        const DAY_BITS: u64 = 0x7ff8_0000_0000_0055;
+        const WEEK_BITS: u64 = 0x8000_0000_0000_0000;
+        let error: RedactedPublicMarketMessageResult<
+            std::collections::HashMap<String, (f64, f64, f64)>,
+        > = Err(ERROR.to_string()).into();
+        let success: RedactedPublicMarketMessageResult<
+            std::collections::HashMap<String, (f64, f64, f64)>,
+        > = Ok(std::collections::HashMap::from([(
+            "payload-only-symbol".to_string(),
+            (f64::from_bits(DAY_BITS), f64::from_bits(WEEK_BITS), 3.0),
+        )]))
+        .into();
+
+        let error_debug = format!("{error:?}");
+        let success_debug = format!("{success:?}");
+
+        assert!(error_debug.contains("Err(<redacted>)"), "{error_debug}");
+        assert!(success_debug.contains("Ok(<redacted>)"), "{success_debug}");
+        assert!(!error_debug.contains(ERROR), "{error_debug}");
+        assert!(
+            !success_debug.contains("payload-only-symbol"),
+            "{success_debug}"
+        );
+        assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
+        let restored = success.into_result().expect("synthetic market history");
+        assert_eq!(restored["payload-only-symbol"].0.to_bits(), DAY_BITS);
+        assert_eq!(restored["payload-only-symbol"].1.to_bits(), WEEK_BITS);
     }
 
     #[test]
@@ -3552,6 +3614,115 @@ mod tests {
                     !rendered.contains(sensitive),
                     "{sensitive} leaked in {rendered}"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn public_market_refresh_result_message_debug_is_value_neutral() {
+        const REQUEST_SYMBOL: &str = "PUBLIC-REQUEST-SYMBOL";
+        const PAYLOAD_SYMBOL: &str = "PAYLOAD-ONLY-SYMBOL";
+        const ERROR: &str = "private-public-market-result-error-sentinel";
+        const PARTIAL_ERROR: &str = "private-public-market-partial-error-sentinel";
+        const DAY_VALUE: f64 = 918_273.125;
+        const WEEK_VALUE: f64 = 827_364.25;
+        const MONTH_VALUE: f64 = 736_455.375;
+        let contexts_response = || crate::api::WatchlistContextsResponse {
+            contexts: std::collections::HashMap::from([(
+                PAYLOAD_SYMBOL.to_string(),
+                crate::api::WatchlistContext {
+                    funding: Some(DAY_VALUE),
+                    prev_day_px: Some(WEEK_VALUE),
+                    day_vlm: Some(MONTH_VALUE),
+                },
+            )]),
+            partial_errors: vec![PARTIAL_ERROR.to_string()],
+        };
+        let request_symbols = || vec![REQUEST_SYMBOL.to_string()];
+        let messages = vec![
+            Message::LiveWatchlistContextsLoaded(
+                7,
+                request_symbols(),
+                1_778_357_590_000,
+                Ok(contexts_response()).into(),
+            ),
+            Message::LiveWatchlistContextsLoaded(
+                7,
+                request_symbols(),
+                1_778_357_590_000,
+                Err(ERROR.to_string()).into(),
+            ),
+            Message::LiveWatchlistHistoryLoaded(
+                7,
+                request_symbols(),
+                1_778_357_590_000,
+                Ok(std::collections::HashMap::from([(
+                    PAYLOAD_SYMBOL.to_string(),
+                    (DAY_VALUE, WEEK_VALUE, MONTH_VALUE),
+                )]))
+                .into(),
+            ),
+            Message::LiveWatchlistHistoryLoaded(
+                7,
+                request_symbols(),
+                1_778_357_590_000,
+                Err(ERROR.to_string()).into(),
+            ),
+            Message::TickerTapeContextsLoaded(
+                7,
+                request_symbols(),
+                1_778_357_590_000,
+                Ok(contexts_response()).into(),
+            ),
+            Message::TickerTapeContextsLoaded(
+                7,
+                request_symbols(),
+                1_778_357_590_000,
+                Err(ERROR.to_string()).into(),
+            ),
+            Message::ScreenerContextsLoaded(
+                7,
+                request_symbols(),
+                1_778_357_590_000,
+                Ok(contexts_response()).into(),
+            ),
+            Message::ScreenerContextsLoaded(
+                7,
+                request_symbols(),
+                1_778_357_590_000,
+                Err(ERROR.to_string()).into(),
+            ),
+            Message::ScreenerHistoryLoaded(
+                7,
+                request_symbols(),
+                1_778_357_590_000,
+                Ok(std::collections::HashMap::from([(
+                    PAYLOAD_SYMBOL.to_string(),
+                    (DAY_VALUE, WEEK_VALUE),
+                )]))
+                .into(),
+            ),
+            Message::ScreenerHistoryLoaded(
+                7,
+                request_symbols(),
+                1_778_357_590_000,
+                Err(ERROR.to_string()).into(),
+            ),
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains(REQUEST_SYMBOL), "{rendered}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for hidden in [
+                PAYLOAD_SYMBOL,
+                ERROR,
+                PARTIAL_ERROR,
+                "918273.125",
+                "827364.25",
+                "736455.375",
+            ] {
+                assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
             }
         }
     }

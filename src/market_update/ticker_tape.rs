@@ -52,7 +52,12 @@ impl TradingTerminal {
         self.ticker_tape_contexts_refresh_pending = false;
         self.ticker_tape_contexts_loading = true;
         Task::perform(api::fetch_watchlist_contexts(symbols), move |result| {
-            Message::TickerTapeContextsLoaded(request_id, requested_symbols.clone(), now_ms, result)
+            Message::TickerTapeContextsLoaded(
+                request_id,
+                requested_symbols.clone(),
+                now_ms,
+                result.into(),
+            )
         })
     }
 
@@ -68,7 +73,7 @@ impl TradingTerminal {
                 request_id,
                 requested_symbols,
                 requested_at,
-                result,
+                result.into_result(),
             ),
             _ => Task::none(),
         }
@@ -209,7 +214,7 @@ mod tests {
             stale_request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()).into(),
         ));
 
         assert!(
@@ -233,13 +238,13 @@ mod tests {
             request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()).into(),
         ));
         let _task = terminal.update_ticker_tape_market(Message::TickerTapeContextsLoaded(
             request_id,
             vec!["BTC".to_string()],
             11,
-            Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()).into(),
         ));
 
         assert!(!terminal.ticker_tape_contexts_loading);
@@ -271,7 +276,8 @@ mod tests {
                 ("BTC".to_string(), context(1.0)),
                 ("DOGE".to_string(), context(3.0)),
             ])
-            .into()),
+            .into())
+            .into(),
         ));
 
         assert_eq!(terminal.ticker_tape_ctxs.len(), 2);
@@ -309,7 +315,8 @@ mod tests {
             Ok(api::WatchlistContextsResponse {
                 contexts: HashMap::from([("BTC".to_string(), context(1.0))]),
                 partial_errors: vec!["spot: HTTP 503".to_string()],
-            }),
+            })
+            .into(),
         ));
 
         assert_eq!(
@@ -339,7 +346,7 @@ mod tests {
             stale_request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()).into(),
         ));
 
         assert!(terminal.ticker_tape_ctxs.is_empty());
@@ -357,7 +364,7 @@ mod tests {
             1,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()).into(),
         ));
 
         assert!(terminal.ticker_tape_contexts_loading);
@@ -387,7 +394,7 @@ mod tests {
             request_id,
             vec!["BTC".to_string()],
             10,
-            Err("temporary failure".to_string()),
+            Err("temporary failure".to_string()).into(),
         ));
 
         assert!(
@@ -420,7 +427,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             10,
-            Err("temporary failure".to_string()),
+            Err("temporary failure".to_string()).into(),
         ));
 
         assert!(!terminal.ticker_tape_contexts_loading);

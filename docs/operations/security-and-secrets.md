@@ -332,6 +332,17 @@ parsing and caps, shared-request fan-out, stale-result guards, cache contents,
 distribution validation, status/toast sanitization, rendering, and visible data
 remain exact and unchanged.
 
+Live-watchlist, ticker-tape, and screener context/history completions follow the
+same public-market boundary with `RedactedPublicMarketMessageResult<T>`.
+Generic Elm diagnostics retain request IDs, requested symbols, timestamps, and
+`Ok`/`Err` shape without traversing context/history maps, financial values,
+partial-family errors, or top-level upstream errors. Each market update arm
+restores the exact result before its existing request-ID/symbol-scope guard and
+unchanged partial-data, refresh, cache, or sanitized-status handling. API
+requests, public market values, refresh cadence, stale/duplicate behavior,
+visible statuses, and all rendered watchlist, tape, and screener data remain
+exact and unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

@@ -4589,6 +4589,89 @@ target-specific cancellation policy, not HTTP replay.
   is available. Remaining raw public-market, file/config, and private-
   integration result classes still require type-by-type Track 9 review.
 
+### F-62 — Watchlist-family refresh messages traverse public payloads and errors
+
+- Status: addressed in Turn 55; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium diagnostic-boundary hardening; no watchlist, ticker-tape,
+  screener, refresh, cache, status, routing, or trading defect was found
+- Scope: `WatchlistContext`, `WatchlistContextsResponse`, live-watchlist
+  context/history refreshes, ticker-tape context refreshes, screener context/
+  history refreshes, all five task publications and first consumers, request
+  ownership/stale guards, partial-family handling, refresh coalescing, error
+  sanitization, state application, and focused tests
+- Preconditions/event ordering:
+  1. Context and history values are public market data. Their exact symbols,
+     funding, prior prices, volumes, and history values remain required by the
+     three established surfaces; request IDs, requested symbol scopes, and
+     timestamps are useful correlation context.
+  2. Each task captures that request context and moves a success/error result
+     into `LiveWatchlistContextsLoaded`, `LiveWatchlistHistoryLoaded`,
+     `TickerTapeContextsLoaded`, `ScreenerContextsLoaded`, or
+     `ScreenerHistoryLoaded`.
+  3. Derived `Message::Debug` traversed the raw result before the first market
+     update arm could reject a stale request/scope and, where errors are shown,
+     run the established response-text sanitizer. Context success formatting
+     was already structural, but raw history maps and every top-level error
+     remained recursively formattable from the parent message.
+- Evidence: parent commit
+  `856d5b66415085a9277e46b937f9fc75ad46892e` has the five raw result fields at
+  `src/message.rs:1099-1111`, `src/message.rs:1203-1208`, and
+  `src/message.rs:1233-1245`. Publishers are
+  `src/market_state/live_watchlist.rs:65-102`,
+  `src/market_update/ticker_tape.rs:54-55`, and
+  `src/screener_update.rs:142-143,203-213`; first consumers are
+  `src/market_update/live_watchlist.rs:121-142`,
+  `src/market_update/ticker_tape.rs:62-77`, and
+  `src/screener_update.rs:36-53`. Request ownership and application remain in
+  those update modules; live-watchlist status sanitization is in
+  `src/market_update/live_watchlist/results.rs:17-84`, and screener sanitization
+  remains in `src/screener_update.rs:395-400`.
+- Violated invariant: exact public market values and useful request correlation
+  must remain available to their established consumers, but a generic
+  asynchronous `Message` should expose only result shape rather than recursively
+  formatting a potentially large payload or pre-handler external error.
+- Risk: an unrouted-message assertion, framework instrumentation, test failure,
+  or future message log could reproduce public financial maps or upstream error
+  details before the existing handler sanitizer. `WatchlistContext` and
+  `WatchlistContextsResponse` already have structural formatters, visible error
+  paths sanitize again, and no account data, secret task input, signed mutation,
+  retry, or known production message-log sink is implicated.
+- Why existing checks did not cover it: model tests protect structural context
+  formatting and partial-error hiding; feature tests cover stale/duplicate
+  results, symbol-scope changes, partial-family retention, queued refreshes,
+  history filtering, freshness markers, and sanitized visible errors after
+  destructuring the raw message result. No test formatted these parent variants
+  or proved value-neutral diagnostics with exact result recovery.
+- Implemented fix: add boxed `RedactedPublicMarketMessageResult<T>`, whose
+  formatter reports only `Ok(<redacted>)`/`Err(<redacted>)`, and use it for the
+  five selected completion fields (`src/message.rs:620-647,1128-1139,1232-1237,
+  1262-1273`). Each task converts at publication; the first market update arm
+  immediately restores the exact `Result<T, String>` before the existing
+  request-ID/symbol-scope checks and source-identical application logic.
+- Regression coverage: wrapper recovery preserves a non-canonical float bit
+  pattern, negative zero, map identity, and exact error while formatting only
+  result shape (`src/message.rs:2752-2782`). A ten-message success/error control
+  covers all five variants, retains requested-symbol correlation, and rejects
+  payload-only symbols, exact financial values, partial errors, and top-level
+  errors (`src/message.rs:3621-3728`). Existing live-watchlist, ticker-tape, and
+  screener stale/scope/partial/error tests now enter through the wrapper.
+- Smallest behavior-preserving fix: one generic boxed result newtype, five field
+  substitutions, five publication conversions, five first-consumer recoveries,
+  and mechanical test construction changes. No API request, parser/model,
+  cache read/write, float value/bit, request ID, requested symbol/timestamp,
+  stale/duplicate guard, partial-data rule, refresh cadence/coalescing, state
+  value, status text/sanitizer, route, view, config/schema, signed bytes, or
+  trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete selected-lifecycle tracing, exact recovery/parent-message controls,
+  existing behavior coverage, and the mechanical diff establish the intended
+  boundary, but focused and nearby suites cannot execute until ALSA development
+  metadata is available. `SymbolSearchContextsLoaded` deliberately remains a
+  separate request/generation lifecycle for the next type-specific review;
+  other raw public-market, file/config, and private-integration result classes
+  also remain.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -7959,6 +8042,74 @@ target-specific cancellation policy, not HTTP replay.
   request/model diagnostics from pre-handler external errors, then close one
   cohesive result class without changing feeds, charts, or refresh behavior.
 
+## Turn 55 — Bound Watchlist-Family Refresh Diagnostics
+
+- Status: F-62 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: live-watchlist context/history, ticker-tape context, and screener
+  context/history result flow from API/model formatting through task
+  publication, parent messages, first-consumer recovery, request ownership,
+  scope/freshness checks, partial-data handling, refresh coalescing, visible
+  error sanitization, state application, routing, and focused tests
+- Invariant: exact public market results and useful request correlation must
+  reach the established consumers unchanged, while generic completion-message
+  diagnostics expose only result shape and never traverse payload maps,
+  financial values, partial-family errors, or pre-handler external errors.
+- Protected behavior: API request inputs, context/history values and float bits,
+  cache use, request IDs, requested symbols/timestamps, stale and duplicate
+  rejection, scope filtering, partial-family last-known retention, loaded/fresh
+  markers, queued refreshes and cadence, context/history status precedence,
+  error sanitization/copy, routes, state, tables/tape rows, persistence, and all
+  user-visible behavior.
+- Preconditions/event ordering: each task retains the existing request ID,
+  requested-symbol snapshot, and timestamp beside the wrapper. The first market
+  update arm restores the exact result; the existing apply path then checks the
+  active request ID/symbol ownership before changing loading state, freshness,
+  cached values, follow-up refresh ownership, or visible error state.
+- Evidence: F-62 records the model/result classification, all five parent
+  fields, task publishers and first consumers, request/scope owners, partial-
+  response behavior, sanitizers, prior behavior tests, and new exact controls.
+  `SymbolSearchContextsLoaded` was traced as a separate search-generation
+  lifecycle and intentionally left for its own cohesive review.
+- Change: add boxed `RedactedPublicMarketMessageResult<T>`; apply it to the five
+  selected completion variants; mechanically convert at task publication and
+  recover in the first update arm; route all existing direct message fixtures
+  through the wrapper; add exact bit/error recovery and ten-case parent-message
+  diagnostic controls; document the boundary.
+- Tests/checks:
+  - Baseline Message suite and `cargo check` stopped in `alsa-sys` before
+    Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - The pre-fix exact parent-message diagnostic regression stopped at that same
+    boundary before it could demonstrate the expected assertion failure.
+  - Post-fix exact wrapper and parent-message controls plus complete Message,
+    market-update, screener-update, and routing suites stopped at the same
+    dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, subscription identity, window,
+    view, cache timing, request timing, or interaction behavior changed;
+    compilation is already blocked, and no live market request, exchange
+    mutation, or credential-bearing operation ran.
+- Compatibility/UX assessment: the wrapper recovery control preserves exact
+  map identity, non-canonical float bits, negative zero, and errors; existing
+  stale/scope/partial/error tests now cover the boundary while retaining their
+  prior state and status assertions. No visible behavior, request content or
+  timing, config/schema, persistence, signed bytes, order state, or trading
+  semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-62 is source-
+  hardened, but symbol-search/outcome-volume/symbol-bootstrap/order-book and
+  chart/session/calendar public-result classes, file/config/screenshot results,
+  private-integration results, and the remainder of Track 9 still require
+  type-specific review.
+- Prior turn commit hash: `856d5b66415085a9277e46b937f9fc75ad46892e`
+- Next candidate: audit `SymbolSearchContextsLoaded` together with its exchange-
+  symbol generation/request ownership, then classify `OutcomeVolumesLoaded`,
+  `SymbolsLoaded`, and `BookLoaded` as separate public-market result lifecycles;
+  close one cohesive class without changing search, refresh, or book behavior.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -8000,22 +8151,21 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline liquidation, distribution, heatmap-
-  update, and Message suites plus `cargo check`; the pre-fix exact parent-
-  message diagnostic regression; post-fix exact public-model/wrapper/parent-
-  message controls and complete HyperDash API/update, chart-heatmap, Message,
-  market-update, and routing suites;
+- Environment-blocked this turn: baseline Message suite and `cargo check`; the
+  pre-fix exact parent-message diagnostic regression; post-fix exact wrapper/
+  parent-message controls and complete Message, market-update, screener-update,
+  and routing suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
-- No live exchange mutation, HyperDash request, or credential-bearing operation
-  was run.
+- No live market request, exchange mutation, or credential-bearing operation was
+  run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-61
+  F-40, and F-42 through F-62
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -8064,7 +8214,10 @@ target-specific cancellation policy, not HTTP replay.
   positioning models and completion messages are source-hardened by F-60 while
   retaining public aggregate diagnostics. HyperDash liquidation/distribution/
   heatmap completion messages are source-hardened by F-61 while their public
-  market models and correlation context remain diagnosable. Remaining
+  market models and correlation context remain diagnosable. Live-watchlist,
+  ticker-tape, and screener context/history completion messages are source-
+  hardened by F-62 while their exact public data and request/scope behavior
+  remain unchanged. Remaining
   independently formattable nested account/order types and classified external-
   status paths, plus the rest of Track 9, require completion before a final
   verdict.

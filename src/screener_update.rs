@@ -42,14 +42,14 @@ impl TradingTerminal {
                 request_id,
                 requested_symbols,
                 requested_at,
-                result,
+                result.into_result(),
             ),
             Message::ScreenerHistoryLoaded(request_id, requested_symbols, requested_at, result) => {
                 self.apply_screener_history_loaded(
                     request_id,
                     requested_symbols,
                     requested_at,
-                    result,
+                    result.into_result(),
                 )
             }
             _ => Task::none(),
@@ -140,7 +140,12 @@ impl TradingTerminal {
                 || message.starts_with(SCREENER_CONTEXT_PARTIAL_PREFIX)
         });
         Task::perform(api::fetch_watchlist_contexts(symbols), move |result| {
-            Message::ScreenerContextsLoaded(request_id, requested_symbols.clone(), now_ms, result)
+            Message::ScreenerContextsLoaded(
+                request_id,
+                requested_symbols.clone(),
+                now_ms,
+                result.into(),
+            )
         })
     }
 
@@ -207,7 +212,7 @@ impl TradingTerminal {
                     request_id,
                     requested_symbols.clone(),
                     now_ms,
-                    result,
+                    result.into(),
                 )
             },
         )
@@ -465,7 +470,8 @@ mod tests {
                 ("BTC".to_string(), context(1.0)),
                 ("xyz:ETH".to_string(), context(2.0)),
             ])
-            .into()),
+            .into())
+            .into(),
         ));
 
         assert!(
@@ -492,7 +498,7 @@ mod tests {
             1,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()).into(),
         ));
 
         assert!(terminal.screener.contexts_loading);
@@ -523,7 +529,8 @@ mod tests {
             Ok(api::WatchlistContextsResponse {
                 contexts: HashMap::from([("BTC".to_string(), context(1.0))]),
                 partial_errors: vec!["spot: HTTP 503".to_string()],
-            }),
+            })
+            .into(),
         ));
 
         assert!(terminal.screener.contexts.contains_key("BTC"));
@@ -569,7 +576,8 @@ mod tests {
                 ("xyz:ETH".to_string(), context(2.0)),
                 ("DOGE".to_string(), context(3.0)),
             ])
-            .into()),
+            .into())
+            .into(),
         ));
 
         assert_eq!(
@@ -599,7 +607,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::new().into()),
+            Ok(HashMap::new().into()).into(),
         ));
 
         assert!(!terminal.screener.contexts_loading);
@@ -623,7 +631,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             20,
-            Err("network".to_string()),
+            Err("network".to_string()).into(),
         ));
 
         assert!(!terminal.screener.contexts_loading);
@@ -657,7 +665,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             20,
-            Err("provider error: api_key=key-secret cursor=cursor-secret".to_string()),
+            Err("provider error: api_key=key-secret cursor=cursor-secret".to_string()).into(),
         ));
 
         let status = terminal.screener.status.as_ref().expect("status");
@@ -681,7 +689,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()).into(),
         ));
 
         assert_eq!(
@@ -733,7 +741,7 @@ mod tests {
             stale_request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()).into(),
         ));
 
         assert!(terminal.screener.contexts.is_empty());
@@ -759,7 +767,7 @@ mod tests {
             stale_request_id,
             stale_symbols,
             10,
-            Err("temporary failure".to_string()),
+            Err("temporary failure".to_string()).into(),
         ));
 
         assert!(
@@ -823,7 +831,8 @@ mod tests {
                 ("BTC".to_string(), (1.0, 2.0)),
                 ("xyz:ETH".to_string(), (3.0, 4.0)),
                 ("DOGE".to_string(), (5.0, 6.0)),
-            ])),
+            ]))
+            .into(),
         ));
 
         assert!(!terminal.screener.history.contains_key("BTC"));
@@ -857,7 +866,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::new()),
+            Ok(HashMap::new()).into(),
         ));
 
         assert!(!terminal.screener.history_loading);
@@ -886,7 +895,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             10,
-            Err("network".to_string()),
+            Err("network".to_string()).into(),
         ));
 
         assert!(!terminal.screener.history_loading);
@@ -914,7 +923,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             10,
-            Err("history failed: auth_token=token-secret signature=sig-secret".to_string()),
+            Err("history failed: auth_token=token-secret signature=sig-secret".to_string()).into(),
         ));
 
         let status = terminal.screener.status.as_ref().expect("status");
@@ -937,7 +946,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), (1.0, 2.0))])),
+            Ok(HashMap::from([("BTC".to_string(), (1.0, 2.0))])).into(),
         ));
 
         assert_eq!(

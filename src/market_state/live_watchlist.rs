@@ -69,7 +69,7 @@ impl TradingTerminal {
                             request_id,
                             requested_symbols.clone(),
                             requested_at,
-                            result,
+                            result.into(),
                         )
                     },
                 ));
@@ -97,7 +97,7 @@ impl TradingTerminal {
                             request_id,
                             requested_symbols.clone(),
                             requested_at,
-                            result,
+                            result.into(),
                         )
                     },
                 ));

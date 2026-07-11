@@ -127,7 +127,7 @@ impl TradingTerminal {
                 request_id,
                 requested_symbols,
                 requested_at,
-                result,
+                result.into_result(),
             ),
             Message::LiveWatchlistHistoryLoaded(
                 request_id,
@@ -138,7 +138,7 @@ impl TradingTerminal {
                 request_id,
                 requested_symbols,
                 requested_at,
-                result,
+                result.into_result(),
             ),
             _ => Task::none(),
         }
@@ -355,7 +355,7 @@ mod tests {
             stale_request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()).into(),
         ));
 
         assert!(
@@ -388,7 +388,7 @@ mod tests {
             request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), (1.0, 2.0, 3.0))])),
+            Ok(HashMap::from([("BTC".to_string(), (1.0, 2.0, 3.0))])).into(),
         ));
 
         assert!(!terminal.live_watchlist_history_loading);
@@ -418,7 +418,8 @@ mod tests {
                 ("BTC".to_string(), context(1.0)),
                 ("DOGE".to_string(), context(3.0)),
             ])
-            .into()),
+            .into())
+            .into(),
         ));
 
         assert_eq!(terminal.live_watchlist_ctxs.len(), 2);
@@ -457,7 +458,8 @@ mod tests {
             Ok(crate::api::WatchlistContextsResponse {
                 contexts: HashMap::from([("BTC".to_string(), context(1.0))]),
                 partial_errors: vec!["spot: HTTP 503".to_string()],
-            }),
+            })
+            .into(),
         ));
 
         assert_eq!(
@@ -483,7 +485,8 @@ mod tests {
             Ok(HashMap::from([
                 ("BTC".to_string(), (1.0, 2.0, 3.0)),
                 ("ETH".to_string(), (4.0, 5.0, 6.0)),
-            ])),
+            ]))
+            .into(),
         ));
 
         assert_eq!(
@@ -526,7 +529,7 @@ mod tests {
             7,
             vec!["BTC".to_string(), "ETH".to_string()],
             10,
-            Ok(HashMap::from([("ETH".to_string(), (7.0, 8.0, 9.0))])),
+            Ok(HashMap::from([("ETH".to_string(), (7.0, 8.0, 9.0))])).into(),
         ));
 
         assert!(!terminal.live_watchlist_history_loading);
@@ -555,13 +558,13 @@ mod tests {
             request_id,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()).into(),
         ));
         let _task = terminal.update_live_watchlist_market(Message::LiveWatchlistContextsLoaded(
             request_id,
             vec!["BTC".to_string()],
             11,
-            Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(2.0))]).into()).into(),
         ));
 
         assert!(!terminal.live_watchlist_contexts_loading);
@@ -586,7 +589,7 @@ mod tests {
             1,
             vec!["BTC".to_string()],
             10,
-            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()),
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))]).into()).into(),
         ));
 
         assert!(terminal.live_watchlist_contexts_loading);
@@ -611,7 +614,7 @@ mod tests {
             7,
             vec!["BTC".to_string()],
             20,
-            Err("network".to_string()),
+            Err("network".to_string()).into(),
         ));
 
         assert!(!terminal.live_watchlist_contexts_loading);
