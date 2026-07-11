@@ -271,9 +271,68 @@ impl fmt::Debug for GqlError {
 
 #[cfg(test)]
 mod tests {
-    use super::{GqlError, PerpDeltaEntry, PerpDeltas, TickerPositionEntry, TickerPositions};
+    use super::{
+        GqlError, HeatmapRect, LiquidationEntry, LiquidationHeatmap, LiquidationLevel,
+        PerpDeltaEntry, PerpDeltas, TickerPositionEntry, TickerPositions,
+    };
 
     const TEST_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+
+    #[test]
+    fn public_liquidation_models_keep_exact_structural_debug_values() {
+        const LEVEL_MIN_BITS: u64 = 0x40f8_1cd6_e978_d4fe;
+        const LEVEL_MAX_BITS: u64 = 0x4108_1cd6_e978_d4fe;
+        const AMOUNT_BITS: u64 = 0xc093_4a45_6d5c_fa12;
+        const PRICE_BITS: u64 = 0x40f2_3456_789a_bcde;
+        const MAX_USD_BITS: u64 = 0x4123_4567_89ab_cdef;
+        let level = LiquidationLevel {
+            coin: "PUBLIC-PERP".to_string(),
+            min: f64::from_bits(LEVEL_MIN_BITS),
+            max: f64::from_bits(LEVEL_MAX_BITS),
+            liquidations: vec![LiquidationEntry {
+                amount: f64::from_bits(AMOUNT_BITS),
+                price: f64::from_bits(PRICE_BITS),
+            }],
+        };
+        let heatmap = LiquidationHeatmap {
+            rects: vec![HeatmapRect {
+                timestamp_ms: 1_778_357_590_000,
+                duration_ms: 3_600_000,
+                price_lo: level.min,
+                price_hi: level.max,
+                amount_coins: level.liquidations[0].amount,
+                amount_usd: f64::from_bits(MAX_USD_BITS),
+            }],
+            max_abs_usd: f64::from_bits(MAX_USD_BITS),
+        };
+
+        let level_debug = format!("{level:?}");
+        let heatmap_debug = format!("{heatmap:?}");
+
+        assert!(level_debug.contains("PUBLIC-PERP"), "{level_debug}");
+        for value in [
+            level.min,
+            level.max,
+            level.liquidations[0].amount,
+            level.liquidations[0].price,
+        ] {
+            assert!(level_debug.contains(&format!("{value:?}")), "{level_debug}");
+        }
+        assert!(heatmap_debug.contains("1778357590000"), "{heatmap_debug}");
+        assert!(
+            heatmap_debug.contains(&format!("{:?}", heatmap.max_abs_usd)),
+            "{heatmap_debug}"
+        );
+        assert_eq!(level.min.to_bits(), LEVEL_MIN_BITS);
+        assert_eq!(level.max.to_bits(), LEVEL_MAX_BITS);
+        assert_eq!(level.liquidations[0].amount.to_bits(), AMOUNT_BITS);
+        assert_eq!(level.liquidations[0].price.to_bits(), PRICE_BITS);
+        assert_eq!(heatmap.max_abs_usd.to_bits(), MAX_USD_BITS);
+        assert_eq!(heatmap.rects[0].price_lo.to_bits(), LEVEL_MIN_BITS);
+        assert_eq!(heatmap.rects[0].price_hi.to_bits(), LEVEL_MAX_BITS);
+        assert_eq!(heatmap.rects[0].amount_coins.to_bits(), AMOUNT_BITS);
+        assert_eq!(heatmap.rects[0].amount_usd.to_bits(), MAX_USD_BITS);
+    }
 
     #[test]
     fn ticker_positions_debug_separates_public_aggregates_from_wallet_rows() {

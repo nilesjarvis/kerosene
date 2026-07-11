@@ -4,6 +4,7 @@ use super::planning::{
 };
 use crate::chart_state::ChartInstance;
 use crate::hyperdash_api::LiquidationLevel;
+use crate::message::Message;
 use crate::timeframe::Timeframe;
 
 #[test]
@@ -89,7 +90,7 @@ fn stale_hyperdash_generation_liquidation_result_keeps_current_pending_request()
         .liquidation_pending_charts
         .insert(request_key.clone(), vec![7]);
 
-    let _task = terminal.apply_chart_liquidation_loaded(
+    let _task = terminal.update_hyperdash(Message::ChartLiquidationLoaded(
         request_key.clone(),
         1,
         Ok(LiquidationLevel {
@@ -97,8 +98,9 @@ fn stale_hyperdash_generation_liquidation_result_keeps_current_pending_request()
             min: 0.0,
             max: 200_000.0,
             liquidations: Vec::new(),
-        }),
-    );
+        })
+        .into(),
+    ));
 
     assert_eq!(
         terminal.liquidation_pending_charts.get(&request_key),
@@ -124,7 +126,7 @@ fn late_same_coin_liquidation_result_for_old_request_does_not_clear_current_requ
         .liquidation_pending_charts
         .insert(stale_key.clone(), vec![chart_id]);
 
-    let _task = terminal.apply_chart_liquidation_loaded(
+    let _task = terminal.update_hyperdash(Message::ChartLiquidationLoaded(
         stale_key,
         generation,
         Ok(LiquidationLevel {
@@ -132,8 +134,9 @@ fn late_same_coin_liquidation_result_for_old_request_does_not_clear_current_requ
             min: 0.0,
             max: 200_000.0,
             liquidations: Vec::new(),
-        }),
-    );
+        })
+        .into(),
+    ));
 
     let instance = terminal.charts.get(&chart_id).expect("chart");
     assert!(instance.liquidation_fetching);
@@ -196,11 +199,11 @@ fn current_liquidation_error_redacts_toast_detail() {
         .liquidation_pending_charts
         .insert(request_key.clone(), vec![chart_id]);
 
-    let _task = terminal.apply_chart_liquidation_loaded(
+    let _task = terminal.update_hyperdash(Message::ChartLiquidationLoaded(
         request_key,
         generation,
-        Err("liquidations rejected: api_key=key-secret signature=sig-secret".to_string()),
-    );
+        Err("liquidations rejected: api_key=key-secret signature=sig-secret".to_string()).into(),
+    ));
 
     let instance = terminal.charts.get(&chart_id).expect("chart");
     assert!(!instance.liquidation_fetching);

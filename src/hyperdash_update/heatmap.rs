@@ -9,7 +9,7 @@ impl TradingTerminal {
         match message {
             Message::ToggleHeatmapOverlay(chart_id) => self.toggle_heatmap_overlay(chart_id),
             Message::ChartHeatmapLoaded(cache_key, generation, result) => {
-                self.apply_chart_heatmap_loaded(cache_key, generation, *result);
+                self.apply_chart_heatmap_loaded(cache_key, generation, result.into_result());
                 Task::none()
             }
             Message::RefreshHeatmap => self.refresh_heatmap(),
@@ -168,14 +168,15 @@ mod tests {
             .heatmap_pending_charts
             .insert(cache_key.clone(), vec![7]);
 
-        terminal.apply_chart_heatmap_loaded(
+        let _task = terminal.update_hyperdash(Message::ChartHeatmapLoaded(
             cache_key.clone(),
             1,
             Ok(LiquidationHeatmap {
                 rects: Vec::new(),
                 max_abs_usd: 0.0,
-            }),
-        );
+            })
+            .into(),
+        ));
 
         assert_eq!(
             terminal.heatmap_pending_charts.get(&cache_key),
@@ -189,19 +190,20 @@ mod tests {
         let cache_key = "BTC:1.00000000:2.00000000:10:20".to_string();
         let generation = terminal.hyperdash_key_generation;
 
-        terminal.apply_chart_heatmap_loaded(
+        let _task = terminal.update_hyperdash(Message::ChartHeatmapLoaded(
             cache_key.clone(),
             generation,
             Ok(LiquidationHeatmap {
                 rects: Vec::new(),
                 max_abs_usd: 0.0,
-            }),
-        );
-        terminal.apply_chart_heatmap_loaded(
+            })
+            .into(),
+        ));
+        let _task = terminal.update_hyperdash(Message::ChartHeatmapLoaded(
             cache_key.clone(),
             generation,
-            Err("late failure".to_string()),
-        );
+            Err("late failure".to_string()).into(),
+        ));
 
         assert!(!terminal.heatmap_data_cache.contains_key(&cache_key));
         assert!(terminal.toasts.is_empty());
@@ -224,11 +226,11 @@ mod tests {
             .insert(cache_key.clone(), vec![chart_id]);
 
         let _task = terminal.toggle_heatmap_overlay(chart_id);
-        terminal.apply_chart_heatmap_loaded(
+        let _task = terminal.update_hyperdash(Message::ChartHeatmapLoaded(
             cache_key.clone(),
             generation,
-            Err("late failure".to_string()),
-        );
+            Err("late failure".to_string()).into(),
+        ));
 
         assert!(!terminal.heatmap_pending_charts.contains_key(&cache_key));
         assert!(terminal.toasts.is_empty());
@@ -270,7 +272,11 @@ mod tests {
             .heatmap_pending_charts
             .insert(stale_key.clone(), vec![chart_id]);
 
-        terminal.apply_chart_heatmap_loaded(stale_key, generation, Err("late failure".to_string()));
+        let _task = terminal.update_hyperdash(Message::ChartHeatmapLoaded(
+            stale_key,
+            generation,
+            Err("late failure".to_string()).into(),
+        ));
 
         assert!(terminal.toasts.is_empty());
         let instance = terminal.charts.get(&chart_id).expect("chart");
@@ -316,11 +322,11 @@ mod tests {
             .heatmap_pending_charts
             .insert(cache_key.clone(), vec![chart_id]);
 
-        terminal.apply_chart_heatmap_loaded(
+        let _task = terminal.update_hyperdash(Message::ChartHeatmapLoaded(
             cache_key,
             generation,
-            Err("heatmap rejected: api_key=key-secret signature=sig-secret".to_string()),
-        );
+            Err("heatmap rejected: api_key=key-secret signature=sig-secret".to_string()).into(),
+        ));
 
         let instance = terminal.charts.get(&chart_id).expect("chart");
         assert!(!instance.heatmap_fetching);

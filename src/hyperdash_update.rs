@@ -17,7 +17,11 @@ impl TradingTerminal {
                 return self.toggle_liquidation_overlay(chart_id);
             }
             Message::ChartLiquidationLoaded(request_key, generation, result) => {
-                return self.apply_chart_liquidation_loaded(request_key, generation, *result);
+                return self.apply_chart_liquidation_loaded(
+                    request_key,
+                    generation,
+                    result.into_result(),
+                );
             }
             Message::RefreshLiquidations => return self.refresh_liquidations(),
             message @ (Message::LiquidationsDistributionLoaded(_, _, _)

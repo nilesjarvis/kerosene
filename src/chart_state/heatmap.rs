@@ -90,7 +90,7 @@ impl TradingTerminal {
                 request.end_time,
                 api_key,
             ),
-            move |r| Message::ChartHeatmapLoaded(key, generation, Box::new(r)),
+            move |result| Message::ChartHeatmapLoaded(key, generation, result.into()),
         )
     }
 }

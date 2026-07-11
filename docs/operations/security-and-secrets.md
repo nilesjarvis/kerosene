@@ -321,6 +321,17 @@ parsing, size caps, request keys/generations, coalescing, stale-result handling,
 stored values, widget errors, and every rendered aggregate and wallet row remain
 exact and unchanged.
 
+HyperDash liquidation-level and heatmap models contain public market data, so
+their standalone diagnostics retain exact coin, range, timestamp, amount, and
+cell structure. Their three asynchronous completion messages instead use
+`RedactedHyperdashMarketMessageResult<T>` and expose only `Ok`/`Err` shape,
+preventing generic Elm diagnostics from recursively formatting large public
+payloads or pre-handler external errors. Public request/cache keys and key
+generations remain available for correlation. Fetch parameters, response
+parsing and caps, shared-request fan-out, stale-result guards, cache contents,
+distribution validation, status/toast sanitization, rendering, and visible data
+remain exact and unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

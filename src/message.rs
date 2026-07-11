@@ -588,6 +588,35 @@ impl<T> fmt::Debug for RedactedPositioningMessageResult<T> {
     }
 }
 
+/// Exact public-market HyperDash result carried through the Elm message boundary.
+///
+/// Standalone liquidation and heatmap models remain structurally diagnosable.
+/// Generic message diagnostics expose only success/error shape, however, and
+/// never traverse a potentially large payload or pre-handler external error.
+#[derive(Clone)]
+pub(crate) struct RedactedHyperdashMarketMessageResult<T>(Box<Result<T, String>>);
+
+impl<T> RedactedHyperdashMarketMessageResult<T> {
+    pub(crate) fn into_result(self) -> Result<T, String> {
+        *self.0
+    }
+}
+
+impl<T> From<Result<T, String>> for RedactedHyperdashMarketMessageResult<T> {
+    fn from(value: Result<T, String>) -> Self {
+        Self(Box::new(value))
+    }
+}
+
+impl<T> fmt::Debug for RedactedHyperdashMarketMessageResult<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 /// Exact trading-journal task result carried through the Elm message boundary.
 ///
 /// Update handlers recover the original fills, candles, or external error.
@@ -2005,9 +2034,17 @@ pub(crate) enum Message {
     HyperdashKeyInputChanged(SecretInput),
     SaveHyperdashKey,
     ToggleLiquidationOverlay(ChartId),
-    ChartLiquidationLoaded(String, u64, Box<Result<LiquidationLevel, String>>),
+    ChartLiquidationLoaded(
+        String,
+        u64,
+        RedactedHyperdashMarketMessageResult<LiquidationLevel>,
+    ),
     RefreshLiquidations,
-    LiquidationsDistributionLoaded(String, u64, Box<Result<LiquidationLevel, String>>),
+    LiquidationsDistributionLoaded(
+        String,
+        u64,
+        RedactedHyperdashMarketMessageResult<LiquidationLevel>,
+    ),
     RefreshLiquidationsDistribution,
     LiquidationsDistributionSearchChanged(String),
     ToggleLiquidationsDistributionSymbolPicker,
@@ -2019,7 +2056,11 @@ pub(crate) enum Message {
     ResetLiquidationsDistributionZoom,
     // HyperDash historical liquidation heatmap
     ToggleHeatmapOverlay(ChartId),
-    ChartHeatmapLoaded(String, u64, Box<Result<LiquidationHeatmap, String>>),
+    ChartHeatmapLoaded(
+        String,
+        u64,
+        RedactedHyperdashMarketMessageResult<LiquidationHeatmap>,
+    ),
     RefreshHeatmap,
     // OpenRouter AI integration
     OpenRouterKeyInputChanged(SecretInput),
@@ -2032,7 +2073,8 @@ pub(crate) enum Message {
 mod tests {
     use super::{
         Message, RedactedAccountLabel, RedactedAccountMessageResult, RedactedAccountProfileId,
-        RedactedAdvancedOrderHistoryId, RedactedClientOrderId, RedactedJournalMessageResult,
+        RedactedAdvancedOrderHistoryId, RedactedClientOrderId,
+        RedactedHyperdashMarketMessageResult, RedactedJournalMessageResult,
         RedactedLayoutMessageResult, RedactedOrderId, RedactedOrderInput,
         RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput,
         RedactedPnlCardMessageResult, RedactedPositioningMessageResult, RedactedTelegramChannelKey,
@@ -2048,7 +2090,10 @@ mod tests {
     };
     use crate::chart_state::ChartSurfaceId;
     use crate::config::{ChartBackfillSource, MarketUniverseConfig, ReadDataProvider};
-    use crate::hyperdash_api::{PerpDeltaEntry, PerpDeltas, TickerPositionEntry, TickerPositions};
+    use crate::hyperdash_api::{
+        HeatmapRect, LiquidationEntry, LiquidationHeatmap, LiquidationLevel, PerpDeltaEntry,
+        PerpDeltas, TickerPositionEntry, TickerPositions,
+    };
     use crate::order_execution::{
         OneShotPlacementContext, OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext,
         QuickOrderForm, QuickOrderQuantityProvenance, QuickOrderRecovery,
@@ -2638,6 +2683,40 @@ mod tests {
         let restored = success.into_result().expect("synthetic positioning data");
         assert_eq!(restored.deltas[0].current.to_bits(), CURRENT_BITS);
         assert_eq!(restored.deltas[0].delta.to_bits(), DELTA_BITS);
+    }
+
+    #[test]
+    fn hyperdash_market_message_result_wrapper_preserves_exact_payloads() {
+        const ERROR: &str = "hyperdash-market-result-error-sentinel";
+        const PRICE_BITS: u64 = 0x7ff8_0000_0000_0054;
+        const AMOUNT_BITS: u64 = 0x8000_0000_0000_0000;
+        let error: RedactedHyperdashMarketMessageResult<LiquidationHeatmap> =
+            Err(ERROR.to_string()).into();
+        let success: RedactedHyperdashMarketMessageResult<LiquidationHeatmap> =
+            Ok(LiquidationHeatmap {
+                rects: vec![HeatmapRect {
+                    timestamp_ms: 1_778_357_590_000,
+                    duration_ms: 3_600_000,
+                    price_lo: f64::from_bits(PRICE_BITS),
+                    price_hi: 2.0,
+                    amount_coins: f64::from_bits(AMOUNT_BITS),
+                    amount_usd: 3.0,
+                }],
+                max_abs_usd: 3.0,
+            })
+            .into();
+
+        let error_debug = format!("{error:?}");
+        let success_debug = format!("{success:?}");
+
+        assert!(error_debug.contains("Err(<redacted>)"), "{error_debug}");
+        assert!(success_debug.contains("Ok(<redacted>)"), "{success_debug}");
+        assert!(!error_debug.contains(ERROR), "{error_debug}");
+        assert!(!success_debug.contains("1778357590000"), "{success_debug}");
+        assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
+        let restored = success.into_result().expect("synthetic heatmap");
+        assert_eq!(restored.rects[0].price_lo.to_bits(), PRICE_BITS);
+        assert_eq!(restored.rects[0].amount_coins.to_bits(), AMOUNT_BITS);
     }
 
     #[test]
@@ -3400,6 +3479,75 @@ mod tests {
                 "918273.125",
                 "-827364.25",
             ] {
+                assert!(
+                    !rendered.contains(sensitive),
+                    "{sensitive} leaked in {rendered}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hyperdash_public_market_result_message_debug_is_value_neutral() {
+        const PUBLIC_REQUEST_KEY: &str = "PUBLIC-HYPERDASH-REQUEST-CONTEXT";
+        const ERROR: &str = "private-hyperdash-market-result-error-sentinel";
+        const AMOUNT: f64 = 918_273.125;
+        const PRICE: f64 = 827_364.25;
+        const MAX_USD: f64 = 736_455.375;
+        let level = LiquidationLevel {
+            coin: "PUBLIC-PERP".to_string(),
+            min: 0.0,
+            max: PRICE,
+            liquidations: vec![LiquidationEntry {
+                amount: AMOUNT,
+                price: PRICE,
+            }],
+        };
+        let heatmap = LiquidationHeatmap {
+            rects: vec![HeatmapRect {
+                timestamp_ms: 1_778_357_590_000,
+                duration_ms: 3_600_000,
+                price_lo: 0.0,
+                price_hi: PRICE,
+                amount_coins: AMOUNT,
+                amount_usd: MAX_USD,
+            }],
+            max_abs_usd: MAX_USD,
+        };
+        let messages = vec![
+            Message::ChartLiquidationLoaded(
+                PUBLIC_REQUEST_KEY.to_string(),
+                7,
+                Ok(level.clone()).into(),
+            ),
+            Message::ChartLiquidationLoaded(
+                PUBLIC_REQUEST_KEY.to_string(),
+                7,
+                Err(ERROR.to_string()).into(),
+            ),
+            Message::LiquidationsDistributionLoaded(
+                PUBLIC_REQUEST_KEY.to_string(),
+                7,
+                Ok(level).into(),
+            ),
+            Message::LiquidationsDistributionLoaded(
+                PUBLIC_REQUEST_KEY.to_string(),
+                7,
+                Err(ERROR.to_string()).into(),
+            ),
+            Message::ChartHeatmapLoaded(PUBLIC_REQUEST_KEY.to_string(), 7, Ok(heatmap).into()),
+            Message::ChartHeatmapLoaded(
+                PUBLIC_REQUEST_KEY.to_string(),
+                7,
+                Err(ERROR.to_string()).into(),
+            ),
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains(PUBLIC_REQUEST_KEY), "{rendered}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for sensitive in [ERROR, "918273.125", "827364.25", "736455.375"] {
                 assert!(
                     !rendered.contains(sensitive),
                     "{sensitive} leaked in {rendered}"

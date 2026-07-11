@@ -27,9 +27,12 @@ impl TradingTerminal {
             Message::RefreshLiquidationsDistribution => {
                 self.request_liquidation_distribution_refresh(true)
             }
-            Message::LiquidationsDistributionLoaded(request_key, generation, result) => {
-                self.apply_liquidation_distribution_loaded(request_key, generation, *result)
-            }
+            Message::LiquidationsDistributionLoaded(request_key, generation, result) => self
+                .apply_liquidation_distribution_loaded(
+                    request_key,
+                    generation,
+                    result.into_result(),
+                ),
             Message::LiquidationsDistributionSearchChanged(query) => {
                 self.liquidation_distribution.symbol_search_query = query;
                 self.liquidation_distribution.symbol_picker_open = true;
@@ -108,7 +111,7 @@ impl TradingTerminal {
                 Message::LiquidationsDistributionLoaded(
                     request.key.clone(),
                     generation,
-                    Box::new(result),
+                    result.into(),
                 )
             },
         )
@@ -283,8 +286,11 @@ mod tests {
         terminal.liquidation_distribution.error = Some("current error".to_string());
         terminal.liquidation_distribution.pending_request = Some(request.clone());
 
-        let _task =
-            terminal.apply_liquidation_distribution_loaded(request.key.clone(), 1, Ok(level()));
+        let _task = terminal.update_hyperdash(Message::LiquidationsDistributionLoaded(
+            request.key.clone(),
+            1,
+            Ok(level()).into(),
+        ));
 
         assert!(terminal.liquidation_distribution.loading);
         assert_eq!(
@@ -306,11 +312,11 @@ mod tests {
         terminal.liquidation_distribution.loading = true;
         terminal.liquidation_distribution.pending_request = Some(request.clone());
 
-        let _task = terminal.apply_liquidation_distribution_loaded(
+        let _task = terminal.update_hyperdash(Message::LiquidationsDistributionLoaded(
             request.key.clone(),
             1,
-            Err("old key rejected".to_string()),
-        );
+            Err("old key rejected".to_string()).into(),
+        ));
 
         assert!(terminal.liquidation_distribution.loading);
         assert_eq!(
@@ -329,8 +335,11 @@ mod tests {
         terminal.liquidation_distribution.loading = true;
         terminal.liquidation_distribution.pending_request = Some(request.clone());
 
-        let _task =
-            terminal.apply_liquidation_distribution_loaded(request.key.clone(), 2, Ok(level()));
+        let _task = terminal.update_hyperdash(Message::LiquidationsDistributionLoaded(
+            request.key.clone(),
+            2,
+            Ok(level()).into(),
+        ));
 
         assert!(!terminal.liquidation_distribution.loading);
         assert!(terminal.liquidation_distribution.pending_request.is_none());
@@ -352,11 +361,12 @@ mod tests {
         terminal.liquidation_distribution.loading = true;
         terminal.liquidation_distribution.pending_request = Some(request.clone());
 
-        let _task = terminal.apply_liquidation_distribution_loaded(
+        let _task = terminal.update_hyperdash(Message::LiquidationsDistributionLoaded(
             request.key.clone(),
             2,
-            Err("distribution rejected: api_key=key-secret signature=sig-secret".to_string()),
-        );
+            Err("distribution rejected: api_key=key-secret signature=sig-secret".to_string())
+                .into(),
+        ));
 
         assert!(!terminal.liquidation_distribution.loading);
         assert!(terminal.liquidation_distribution.pending_request.is_none());

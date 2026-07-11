@@ -4508,6 +4508,87 @@ target-specific cancellation policy, not HTTP replay.
   other classified public/private external-result groups require separate
   Track 9 review.
 
+### F-61 — HyperDash public-market completion messages traverse payloads and errors
+
+- Status: addressed in Turn 54; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium diagnostic-boundary hardening; no public market-data,
+  request-sharing, stale-result, cache, rendering, or trading defect was found
+- Scope: `LiquidationLevel`/`LiquidationEntry`, `LiquidationHeatmap`/
+  `HeatmapRect`, `HeatmapFetchParams`, `ChartLiquidationLoaded`,
+  `LiquidationsDistributionLoaded`, `ChartHeatmapLoaded`, all three task
+  publishers and first consumers, response/error sanitization, request/cache
+  keys and HyperDash-key generations, shared waiters, distribution validation,
+  chart/cache application, state, views, and focused tests
+- Preconditions/event ordering:
+  1. HyperDash liquidation levels and heatmap cells are deliberately public
+     market data: coin, price/time ranges, amounts, notionals, timestamps, and
+     cell structure are useful standalone diagnostics and contain no wallet or
+     account identity.
+  2. Chart liquidation, liquidation-distribution, and heatmap tasks capture a
+     public request/cache key plus the HyperDash-key generation, then move a
+     boxed success/error result into their completion message.
+  3. Derived `Message::Debug` recursively traversed the entire level/cell vector
+     or external error before the root/feature update handler could reject a
+     stale generation/key and run the established second error sanitizer.
+- Evidence: parent commit
+  `7e647d4204c3cd0d08361ef475b8f49456db30f4` has the three raw boxed result
+  fields at `src/message.rs:2008-2022`. Publishers are
+  `src/hyperdash_update/liquidations/requests.rs:62-68`,
+  `src/hyperdash_update/liquidations_distribution.rs:100-114`, and
+  `src/chart_state/heatmap.rs:81-94`; first consumers are
+  `src/hyperdash_update.rs:19-20`,
+  `src/hyperdash_update/liquidations_distribution.rs:30-31`, and
+  `src/hyperdash_update/heatmap.rs:11-12`. Generation/key ownership and result
+  application live in `src/hyperdash_update/liquidations/apply.rs:22-104`,
+  `src/hyperdash_update/liquidations_distribution.rs:192-247`, and
+  `src/hyperdash_update/heatmap.rs:73-126`.
+- Violated invariant: exact public market models should remain independently
+  formattable, but a generic asynchronous `Message` must expose only safe
+  correlation context and result shape rather than recursively formatting a
+  potentially large payload or pre-handler external error.
+- Risk: an unrouted-message assertion, framework instrumentation, test failure,
+  or future message logging could duplicate tens of thousands of public cells
+  or surface an upstream error before the existing sanitizer. API response
+  snippets already redact common key/address shapes, handlers sanitize again,
+  API-key task values use `Zeroizing`, and no account state, signed exchange
+  mutation, retry, order lifecycle, or known production log sink is implicated.
+- Why existing checks did not cover it: model derives intentionally expose
+  public data; API tests cover GraphQL/HTTP secret redaction, malformed response
+  handling, range normalization, and the heatmap cell cap. Feature tests cover
+  generation/key ownership, late results, disabled overlays, distribution
+  validation, sanitized state/toasts, and cache behavior only after dereferencing
+  the raw message result. No test formatted the parent completion variants.
+- Implemented fix: add boxed `RedactedHyperdashMarketMessageResult<T>`, whose
+  formatter reports only `Ok(<redacted>)`/`Err(<redacted>)`, and use it for all
+  three completion variants (`src/message.rs:591-619`,
+  `src/message.rs:2034-2064`). Each task wraps its existing result at message
+  publication; the first root/feature update arm immediately restores the exact
+  `Result<T, String>` before source-identical generation/key/application logic.
+  Public request/cache keys and generations remain unchanged and visible.
+- Regression coverage: a standalone model control proves exact public coin,
+  range, amount, price, timestamp, and heatmap values remain in `Debug` and
+  retain their float bits (`src/hyperdash_api/models.rs:282-335`). Wrapper
+  recovery preserves a non-canonical float payload, negative zero, and the
+  exact error while formatting only shape (`src/message.rs:2689-2723`). Parent-
+  message controls cover success and error for all three variants, retain the
+  public request key, and reject unique payload/error values
+  (`src/message.rs:3491-3557`). Existing liquidation, distribution, and heatmap
+  stale/error tests now enter through the wrapped root-message path.
+- Smallest behavior-preserving fix: one box-preserving generic result newtype,
+  three field substitutions, three producer conversions, and three first-
+  consumer recoveries changed. No public model formatter/field, API request,
+  response parse/cap, float bit, request/cache key, generation, pending waiter,
+  distribution validator, cache value/order, state field, status/toast text,
+  error sanitizer, view/render value, config/schema, signed bytes, or trading
+  semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete call-site tracing, exact recovery/public-model controls, existing
+  lifecycle coverage, and the mechanical diff establish the intended boundary,
+  but focused and nearby suites cannot execute until ALSA development metadata
+  is available. Remaining raw public-market, file/config, and private-
+  integration result classes still require type-by-type Track 9 review.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -7815,6 +7896,69 @@ target-specific cancellation policy, not HTTP replay.
   messages; preserve market diagnostics while adding only any missing external-
   error/result boundary, then resume the remaining raw result inventory.
 
+## Turn 54 — Bound HyperDash Public-Market Completion Diagnostics
+
+- Status: F-61 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: complete liquidation-level/distribution/heatmap completion graph from
+  public response models and parsing through task publication, parent messages,
+  root/feature update recovery, generation/key ownership, shared waiters,
+  distribution/cache/chart application, errors, state, views, and tests
+- Invariant: exact public market models and correlation context must remain
+  independently diagnosable and reach existing consumers unchanged, while
+  generic completion-message diagnostics expose only result shape and never
+  traverse the payload or pre-handler external error.
+- Protected behavior: coin/range/time/amount/cell values, float bits, request
+  construction and response parsing/caps, request/cache key strings, HyperDash-
+  key generations, pending waiter fan-out, stale/late result rejection,
+  distribution response validation, cache insertion/eviction, chart data,
+  overlay state, statuses/toasts, error sanitization, rendering, routing, and
+  all visible behavior.
+- Preconditions/event ordering: tasks retain the existing public request/cache
+  key and captured generation beside the wrapper. Root/feature update arms
+  restore the exact result first; existing apply helpers then reject stale
+  generations and non-owned keys before changing pending state, cache/data, or
+  user-visible errors.
+- Evidence: F-61 records all public models, formatter classification,
+  publishers, parent fields, first consumers, correlation/application owners,
+  response/error boundaries, prior lifecycle coverage, and exact controls.
+- Change: add `RedactedHyperdashMarketMessageResult<T>` over the existing box;
+  apply it to all three completion variants; mechanically wrap at each task and
+  recover at each first update arm; route existing stale/error tests through the
+  wrapped root-message boundary; add a public-model characterization.
+- Tests/checks:
+  - Baseline liquidation, distribution, heatmap-update, and Message suites plus
+    `cargo check` stopped in `alsa-sys` before Kerosene compilation because
+    `pkg-config` could not find the system `alsa.pc` file.
+  - The pre-fix exact parent-message diagnostic regression stopped at that same
+    boundary before it could demonstrate the expected assertion failure.
+  - Post-fix exact public-model, wrapper-recovery, and three-variant parent-
+    message controls plus complete HyperDash API/update, chart-heatmap, Message,
+    market-update, and routing suites stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, subscription, window, widget,
+    view, cache timing, or interaction behavior changed; compilation is already
+    blocked, and no live exchange, HyperDash request, or credential-bearing
+    operation ran.
+- Compatibility/UX assessment: the standalone model control preserves public
+  diagnostic values and exact bits; wrapper recovery preserves opaque result
+  values/errors; existing lifecycle tests now cover the wrapper while retaining
+  their prior state/toast assertions. No visible behavior, request content or
+  timing, config/schema, persistence, signed bytes, order state, or trading
+  semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-61 is source-
+  hardened, but raw public-market, file/config/screenshot, and private-
+  integration result classes remain for the Track 9 completion inventory.
+- Prior turn commit hash: `7e647d4204c3cd0d08361ef475b8f49456db30f4`
+- Next candidate: inventory the remaining raw public-market `Result<_, String>`
+  messages beginning with live-watchlist contexts/history and chart/account-
+  independent candle/context/order-book fetches; distinguish useful public
+  request/model diagnostics from pre-handler external errors, then close one
+  cohesive result class without changing feeds, charts, or refresh behavior.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -7856,20 +8000,22 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline HyperDash model/positioning-update
-  suites plus `cargo check`; the pre-fix exact model diagnostic regression;
-  post-fix complete HyperDash model/positioning, positioning update/view/state,
-  Message, market-update, routing, and positioning-config suites;
+- Environment-blocked this turn: baseline liquidation, distribution, heatmap-
+  update, and Message suites plus `cargo check`; the pre-fix exact parent-
+  message diagnostic regression; post-fix exact public-model/wrapper/parent-
+  message controls and complete HyperDash API/update, chart-heatmap, Message,
+  market-update, and routing suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
-- No live exchange mutation or credential-bearing operation was run.
+- No live exchange mutation, HyperDash request, or credential-bearing operation
+  was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-60
+  F-40, and F-42 through F-61
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -7916,6 +8062,9 @@ target-specific cancellation policy, not HTTP replay.
   diagnostics are source-hardened by F-58, and saved-account/cluster identity,
   allocation, and message diagnostics by F-59. HyperDash wallet-level
   positioning models and completion messages are source-hardened by F-60 while
-  retaining public aggregate diagnostics. Remaining independently formattable
-  nested account/order types and classified external-status paths, plus the rest
-  of Track 9, require completion before a final verdict.
+  retaining public aggregate diagnostics. HyperDash liquidation/distribution/
+  heatmap completion messages are source-hardened by F-61 while their public
+  market models and correlation context remain diagnosable. Remaining
+  independently formattable nested account/order types and classified external-
+  status paths, plus the rest of Track 9, require completion before a final
+  verdict.

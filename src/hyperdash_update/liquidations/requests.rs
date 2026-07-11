@@ -63,7 +63,7 @@ impl TradingTerminal {
         Task::perform(
             fetch_liquidation_levels_at(coin, min, max, timestamp_secs, api_key),
             move |result| {
-                Message::ChartLiquidationLoaded(response_key.clone(), generation, Box::new(result))
+                Message::ChartLiquidationLoaded(response_key.clone(), generation, result.into())
             },
         )
     }
