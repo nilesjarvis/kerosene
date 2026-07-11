@@ -76,6 +76,81 @@ fn exchange_response_error_status_redacts_sensitive_values() {
 }
 
 #[test]
+fn nested_exchange_response_debug_cannot_bypass_order_redaction() {
+    let response = exchange_response_from_value(
+        serde_json::json!({
+            "status": "ok",
+            "response": {
+                "type": "unexpected-type-detail-123.456",
+                "data": {
+                    "statuses": [
+                        {
+                            "filled": {
+                                "totalSz": "7.654321",
+                                "avgPx": "87654.321",
+                                "oid": 9_876_543_210_123_457_u64
+                            }
+                        },
+                        {
+                            "error": "upstream echoed private_key=nested-secret Authorization: Bearer nested-bearer"
+                        }
+                    ]
+                }
+            }
+        }),
+        "nested diagnostic response should deserialize",
+    );
+    let inner = response.response.as_ref().expect("structured response");
+    let data = inner.data.as_ref().expect("response data");
+
+    let debug = format!("{response:?} {inner:?} {data:?}");
+
+    assert!(debug.contains("ExchangeResponseInner"));
+    assert!(debug.contains("ExchangeResponseData"));
+    assert!(debug.contains("<redacted>"));
+    assert!(debug.contains("status_count: Some(2)"));
+    assert!(debug.contains("count=2"));
+    for sensitive in [
+        "7.654321",
+        "87654.321",
+        "9876543210123457",
+        "unexpected-type-detail-123.456",
+        "nested-secret",
+        "nested-bearer",
+    ] {
+        assert!(
+            !debug.contains(sensitive),
+            "nested response debug leaked {sensitive}"
+        );
+    }
+
+    let type_only_response = exchange_response_from_value(
+        serde_json::json!({
+            "status": "ok",
+            "response": {
+                "type": "unexpected-summary-detail-654.321"
+            }
+        }),
+        "type-only diagnostic response should deserialize",
+    );
+    let safe_summary = type_only_response.summary();
+
+    assert!(safe_summary.contains("<redacted>"));
+    assert!(!safe_summary.contains("unexpected-summary-detail-654.321"));
+
+    let ordinary_type_only_response = exchange_response_from_value(
+        serde_json::json!({
+            "status": "ok",
+            "response": {
+                "type": "default"
+            }
+        }),
+        "ordinary type-only response should deserialize",
+    );
+    assert_eq!(ordinary_type_only_response.summary(), "OK (default)");
+}
+
+#[test]
 fn exchange_response_unknown_status_redacts_sensitive_fallback() {
     let response = exchange_response(serde_json::json!({
         "status": {"api_key": "exchange-secret", "trace": "0x0123456789abcdef0123456789abcdef01234567"}

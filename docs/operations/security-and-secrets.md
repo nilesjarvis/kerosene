@@ -121,6 +121,12 @@ Rules:
   zeroizing-owned values.
 - Tests should use known dummy keys or fixtures, not real keys.
 
+Parsed exchange responses retain exact nested status values for lifecycle
+classification, but every response-model `Debug` layer exposes only allowlisted
+response-type metadata, status counts, and explicit redaction markers. A
+type-only response summary emits the recognized protocol label or a
+value-neutral marker; ordinary protocol copy remains unchanged.
+
 ## API Key Boundaries
 
 Hydromancer, HyperDash, and X keys are only needed in:

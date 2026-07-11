@@ -55,6 +55,14 @@
   also preserve uncertainty whenever an explicit error conflicts with a
   structured possible effect (`src/signing/client.rs:74-232`,
   `src/signing/model/exchange_response/analysis.rs:83-144`).
+- Parsed exchange responses retain exact nested status values for lifecycle
+  classification, but every public response-model `Debug` layer exposes only a
+  recognized response-type label, status counts, and redaction markers. The
+  private wire helper has no `Debug` surface, and the type-only summary replaces
+  an unrecognized external type without changing ordinary protocol copy
+  (`src/signing/model/exchange_response.rs:19-67`,
+  `src/signing/model/exchange_response/analysis.rs:24-31`,
+  `src/signing/model/exchange_response/analysis.rs:227-247`).
 - Order-status REST parsing validates the returned OID/CLOID for concrete order
   bodies before handing a result to lifecycle code. Both public task exits now
   sanitize every error before message mapping; HTTP previews redact before
@@ -308,6 +316,13 @@ serialization. The canonical signing key stays unchanged during the synchronous
 storage callback. A rejected save drops the staged draft; an accepted save moves
 the exact persisted allocation into the original profile and destroys the
 remaining snapshot before the unchanged debounced config save.
+
+Turn 29 begins the repository-wide Track 9 diagnostic audit at the signed
+response boundary. F-10 made the top-level response safe, but its public nested
+inner/data models still derived raw `Debug`, and a type-only summary trusted the
+externally supplied response type. All three diagnostic layers now independently
+retain only allowlisted type/count metadata while exact status values remain
+available to the unchanged classifiers. Safe protocol summaries remain exact.
 
 ### Mutation Transport Phase Audit
 
@@ -2314,6 +2329,72 @@ target-specific cancellation policy, not HTTP replay.
   and remaining-copy inventory; no claim beyond this explicit-save transaction
   is made.
 
+### F-34 — Nested exchange-response diagnostics bypass top-level redaction
+
+- Status: addressed in Turn 29; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium privacy and diagnostic-boundary hardening
+- Scope: `ExchangeResponse`, its public `ExchangeResponseInner` and
+  `ExchangeResponseData` layers, the private deserialization wire helper, and
+  the type-only successful summary path
+- Preconditions/event ordering:
+  1. A structured exchange response contains an OID, size, price, arbitrary
+     error text, or an anomalous `response.type` carrying sensitive content.
+  2. Parsing retains the exact values needed by effect/error classification.
+  3. A diagnostic formats `response.response` or its `data` directly rather
+     than the already-redacted top-level `ExchangeResponse`.
+  4. Separately, a response with a type but no data reaches `summary()` and the
+     prior code interpolates that untrusted type verbatim.
+- Evidence: parent commit
+  `a1a2f0ce202aadd7b33cd43165476f826f1a21fa` has derived `Debug` on both public
+  nested models, so `Vec<Value>` statuses are emitted recursively; the private
+  wire model also derives the same raw formatter. The top-level custom formatter
+  prints `response_type` without the order-aware sanitizer, and the no-data
+  summary does likewise. Current callers inspect the exact nested fields for
+  classification and TWAP fill extraction, not their formatting.
+- Violated invariant: every externally populated response-model layer must be
+  independently safe to format. A top-level redactor is not sufficient when
+  public nested values retain raw derived formatters; externally supplied type
+  text must cross a value-neutral output gate before diagnostics or status
+  state.
+- Risk: diagnostic, panic, or future message formatting can reveal exact order
+  correlation/details or hostile error text by selecting a nested value. A
+  malformed but structured type-only response can also echo secret-shaped text
+  into normal order status. No existing production log call or actual secret
+  disclosure is claimed; this closes a concrete bypass before one is added.
+- Why existing checks did not cover it: F-10 tests formatted only the top-level
+  response. That formatter deliberately avoided traversing nested fields, so
+  its passing redaction assertions could not exercise either nested derived
+  implementation or the no-data summary branch.
+- Implemented fix: replaced nested derived formatters with explicit
+  implementations that expose an allowlisted response type, a data-presence
+  marker, and status counts only; removed `Debug` from the private raw wire
+  helper; applied the same allowlist in the top-level formatter; and emitted a
+  value-neutral marker for an unrecognized type-only summary
+  (`src/signing/model/exchange_response.rs:19-67`,
+  `src/signing/model/exchange_response/analysis.rs:24-31`,
+  `src/signing/model/exchange_response/analysis.rs:227-247`).
+- Regression coverage: one adversarial test formats the top-level, inner, and
+  data models containing a `u64` OID, fill size, price, key-shaped error text,
+  bearer value, and hostile response type, then rejects every raw value while
+  requiring useful type/count/redaction metadata. It separately proves the
+  type-only summary removes the unrecognized value
+  (`src/signing/tests/responses/status.rs:79-151`). Existing response tests
+  preserve exact summaries, classifiers, OID/fill extraction, and safe
+  top-level debug metadata.
+- Smallest behavior-preserving fix: serde fields, exact stored values,
+  `summary()` for ordinary protocol types, all error/effect classifiers,
+  reconciliation decisions, tasks, wire requests, persistence, and UI flow are
+  unchanged. Only diagnostic formatting and unrecognized anomalous type text
+  differ; recognized protocol text is byte-for-byte unchanged.
+- Residual uncertainty: Rust type-checking and tests remain blocked by ALSA
+  metadata. The ongoing inventory found additional local planner/state derived
+  formatters and direct order-intent message fields that require case-by-case
+  redaction review. It also confirmed that `switch_account_task` clones a full
+  credential-bearing profile before no-op/pending/automation gates and that
+  add-account submission has a broader staged-key clone graph; neither owner
+  path is claimed fixed by F-34.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -4102,6 +4183,63 @@ target-specific cancellation policy, not HTTP replay.
   snapshots, and logs. Fix only concrete leakage with redaction tests; include
   switching/add-account key copies in that owner inventory.
 
+## Turn 29 — Close Nested Response Diagnostic Bypass
+
+- Status: F-34 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: all `ExchangeResponse` model formatting layers, externally supplied
+  response-type text, type-only summary, and unchanged classification consumers
+- Invariant: exact nested exchange values remain available to lifecycle code,
+  but no public `Debug` entry point may emit raw statuses, identifiers, order
+  details, or arbitrary external error text. Recognized response-type summaries
+  must remain exact; an unrecognized type must become value-neutral before
+  status state.
+- Protected behavior: JSON deserialization; raw fallback handling; error/effect,
+  fill, cancel, modify, default, ambiguity, and IOC classifiers; OID/fill
+  extraction; ordinary summaries and status copy; task/message shape; all
+  reconciliation; wire requests; persistence; and every normal interaction.
+- Preconditions/event ordering: deserialize first so classification retains the
+  exact response. A diagnostic can then select the top-level value, inner value,
+  or data value independently. Each formatter must summarize without traversing
+  raw statuses. The no-data summary may display only a recognized protocol type
+  or a value-neutral marker.
+- Evidence: source/derive inventory and call-site tracing found nested field use
+  only in response analysis, tests, and TWAP fill extraction; none depends on
+  raw `Debug`. F-34 records the parent source, bypass, current source, and
+  adversarial response shape without storing any real account/order material.
+- Change: added redacted custom formatters to both public nested models, removed
+  the private raw wire formatter, allowlisted response-type metadata at the
+  top-level and summary boundaries, added the adversarial regression, and
+  documented the response-layer policy.
+- Tests/checks:
+  - The pre-edit exact regression attempt stopped in `alsa-sys` before Kerosene
+    compilation because `pkg-config` could not find the system `alsa.pc` file.
+  - Post-edit exact and `signing::tests::responses` attempts stopped at the same
+    dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, subscription, window, or view
+    path changed, compilation is already blocked, and no live exchange or
+    credential-bearing operation was run.
+- Compatibility/UX assessment: recognized top-level and type-only summaries
+  remain byte-for-byte identical. Exact response fields and every consumer are
+  unchanged. Only direct diagnostics and an unrecognized anomalous external
+  type are replaced with a value-neutral marker; no normal copy, timing, state,
+  payload, or behavior changes.
+- Residual risk: Kerosene has not type-checked on this host. Local planner/state
+  `Debug`, direct order-intent message payloads, other external status/error
+  paths, snapshots, and progress logs remain to inspect. The switch-account
+  pre-gate profile clone and add-account staged-key copies are confirmed owner
+  candidates for later narrow allocation regressions.
+- Prior turn commit hash: `a1a2f0ce202aadd7b33cd43165476f826f1a21fa`
+- Next candidate: remove the full credential-profile clone performed before
+  same-index/pending/Chase/TWAP switch gates, proving blocked attempts create no
+  raw key owner and successful switching retains exactly its intentional
+  profile plus key-input owners. Then audit the add-account staging graph and
+  continue the remaining local planner/message diagnostic inventory.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -4124,19 +4262,18 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused explicit agent-key save authority,
-  allocation, encrypted success/failure, and automation-gate tests;
-  `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
-  dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: focused nested exchange-response redaction and
+  nearby signing response tests; `cargo check`; full `cargo test`; and strict
+  clippy at `alsa-sys` system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32, and F-33 have
-  source fixes and regression coverage but await executable validation on a
-  host with ALSA development metadata.
+- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-34
+  have source fixes and regression coverage but await executable validation on
+  a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
   financial invariants have characterization coverage.
 - F-24 is explicitly deferred for a main-window/final-save failure policy; its
@@ -4152,6 +4289,8 @@ target-specific cancellation policy, not HTTP replay.
   source-repaired but likewise uncompiled. TWAP captured-key terminalization is
   source-complete apart from the deferred history decision. Saved-profile
   delete and address-rebind key ownership are source-hardened apart from F-31;
-  explicit credential-save ownership is source-hardened by F-33. Switching/add-
-  account copies, local planning/state diagnostic redaction, and the rest of
-  Track 9 require completion before a final verdict.
+  explicit credential-save ownership is source-hardened by F-33, and nested
+  exchange-response diagnostics are source-hardened by F-34. Switching/add-
+  account copies, local planning/state/message diagnostic redaction, other
+  external-status paths, and the rest of Track 9 require completion before a
+  final verdict.

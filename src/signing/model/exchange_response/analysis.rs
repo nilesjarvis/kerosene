@@ -24,7 +24,7 @@ impl ExchangeResponse {
             return "No response body".to_string();
         };
         let Some(data) = &inner.data else {
-            return format!("OK ({})", inner.response_type);
+            return format!("OK ({})", inner.redacted_response_type());
         };
         if data.statuses.is_empty() {
             return "OK (no statuses)".to_string();
@@ -229,7 +229,7 @@ impl fmt::Debug for ExchangeResponse {
         let response_type = self
             .response
             .as_ref()
-            .map(|response| response.response_type.as_str());
+            .map(|response| response.redacted_response_type());
         let status_count = self
             .response
             .as_ref()

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
+use std::fmt;
 
 mod analysis;
 
@@ -15,19 +16,51 @@ pub struct ExchangeResponse {
     raw_response: Option<Value>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct ExchangeResponseInner {
     #[serde(rename = "type")]
     pub response_type: String,
     pub data: Option<ExchangeResponseData>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+impl ExchangeResponseInner {
+    fn redacted_response_type(&self) -> &str {
+        match self.response_type.as_str() {
+            "order" | "cancel" | "default" => self.response_type.as_str(),
+            _ => "<redacted>",
+        }
+    }
+}
+
+impl fmt::Debug for ExchangeResponseInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let status_count = self.data.as_ref().map(|data| data.statuses.len());
+
+        f.debug_struct("ExchangeResponseInner")
+            .field("response_type", &self.redacted_response_type())
+            .field("data", &self.data.as_ref().map(|_| "<redacted>"))
+            .field("status_count", &status_count)
+            .finish()
+    }
+}
+
+#[derive(Clone, Deserialize)]
 pub struct ExchangeResponseData {
     pub statuses: Vec<Value>,
 }
 
-#[derive(Debug, Deserialize)]
+impl fmt::Debug for ExchangeResponseData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExchangeResponseData")
+            .field(
+                "statuses",
+                &format_args!("<redacted>; count={}", self.statuses.len()),
+            )
+            .finish()
+    }
+}
+
+#[derive(Deserialize)]
 struct ExchangeResponseWire {
     status: String,
     response: Option<Value>,
