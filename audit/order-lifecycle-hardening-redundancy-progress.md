@@ -109,9 +109,12 @@
   Authoritative TWAP fill size, price, fee, remaining target, and completion
   derive from per-child fill metrics independently of that child's display
   status. Terminal TWAPs cannot schedule slices, status checks, cancel retries,
-  or timer ticks; a retryable cancel result that was already in flight still
-  requests immediate account reconciliation but no longer creates a delayed
-  retry trigger after authoritative fills complete the TWAP.
+  or timer ticks. Result/status/fill/deadline terminal paths archive and scrub;
+  final pre-dispatch initial/retry skips preserve their established no-history
+  behavior but now scrub the captured key directly. A retryable cancel result
+  that was already in flight still requests immediate account reconciliation
+  but no longer creates a delayed retry trigger after authoritative fills
+  complete the TWAP.
 - Config snapshots contain terminal advanced-order history but no live
   Chase/TWAP maps, pending order contexts, or captured signing keys; boot
   reconstructs those runtime owners empty. When main-window closure leaves the
@@ -154,7 +157,7 @@
 | Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle + dispatch-time place attempt; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact place-attempt equality + `expects_place_result`; current account, symbol identity, prior-exposure, per-symbol open-order authority, reconciliation, and final-exit progress gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled; final replacement gate repeats origin-lane proof; exit-pending place remains queued | Chase lifecycle/place/result/status tests, duplicate/late direct-result regressions, account stream tests, wrong-scope replacement tests, and exit-fence/resumption tests | F-05/F-16/F-23 addressed in Turns 7/15/22; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact reprice-count/lifecycle/OID match; account, symbol, origin-lane, reconciliation, and final-exit progress checks before correction/replacement | Verification/resting/stop flow; terminal Chase archived only from covering evidence; exit-pending reprice/size correction remains queued | `order_update/chase/modify/tests/**`, including duplicate/late results, wrong-scope refresh, and exit-fence/resumption tests | F-05/F-16/F-23 addressed in Turns 7/15/22; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account-wide fills + origin-symbol account refresh/open-order disappearance | Exact stopping phase/OID; REST archive requires the origin open-order lane; websocket disappearance is dex-scoped | Verifying-cancel then covering-snapshot archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests, and wrong-scope archive regression | F-08/F-16 addressed in Turns 9/15; retry idempotence depends on target-specific cancel semantics; executable validation remains environment-blocked |
-| TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID and armed retry attempt | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending slice/retry for placement; status result requires current CLOID/attempt; current-account, terminal, and final-exit progress guards remain | Finishes attempt once; child status/fills updated; status ownership cleared on result or account-fill resolution; terminal TWAP archived; exit-pending due slice stays unsent | `order_execution/twap/tests/**`, including duplicate/late slice/status results and exit-fence/resumption, plus `twap_state/tests/**` | F-05/F-19/F-23 addressed in Turns 7/18/22; executable regression validation remains environment-blocked by missing ALSA metadata |
+| TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID and armed retry attempt | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending slice/retry for placement; status result requires current CLOID/attempt; current-account, terminal, and final-exit progress guards remain | Finishes attempt once; child status/fills updated; status ownership cleared on result or account-fill resolution; result/status/fill/deadline terminals archive and scrub; final pre-dispatch skip terminalization directly scrubs; exit-pending due slice stays unsent | `order_execution/twap/tests/**`, including duplicate/late slice/status results, terminal initial/retry skip key lifetime, and exit-fence/resumption, plus `twap_state/tests/**` | F-05/F-19/F-23/F-28 addressed in Turns 7/18/22/25; F-29 final-skip history visibility is deferred; executable regression validation remains environment-blocked by missing ALSA metadata |
 | TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + exact armed retry attempt | Pending target plus current retry count and one in-flight attempt; retry and result messages both carry the attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Dispatch atomically requires non-terminal exact target/retry with no existing owner; result requires exact target/retry/owner | Consumes one owner, then clears pending cancel and finishes once or schedules the next bounded attempt; a result arriving after fill terminalization retains refresh but cannot schedule retry work | `order_execution/twap/tests/cancel.rs`, placement/status entry-path tests, fill/cancel and terminal-result characterizations | F-08/F-20/F-22 addressed in Turns 9/19/21; F-21's delivery-order-dependent child label is deferred for an explicit UX/history semantics decision; financial accounting is order-independent |
 | Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution/profile/CLOID plus account, symbol, surface, and order kind | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member user stream | Full origin match; direct requires `Pending`, status requires `Checking`; pending executions are not evicted | First terminal leg outcome is immutable; execution complete when every leg terminal | Cluster planning/member tests plus adversarial result/status tests in `wallet_cluster_update.rs` | F-04 addressed in Turn 5; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Wallet-cluster close child | Same as cluster order, plus fresh per-member position snapshot and reduce-only plan | Same full correlation tuple with `ClusterClose` surface | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member stream | Freshness/side/position preflight plus the shared exact transition guard | Same first-terminal-wins handling as cluster orders | Close sizing/freshness tests and shared adversarial result tests | F-04 addressed by the shared Turn 5 transition guard |
@@ -237,6 +240,17 @@ or redacted failure returns the existing clear work plus `iced::exit()`. A
 clear-start race that discovers already-dispatched trading work honors the close
 with an exit rather than leaving an unfenced headless daemon. Normal in-app
 clear and all exchange/result semantics are unchanged.
+
+Turn 25 completes the captured-key terminal-assignment map. Chase terminality
+is represented by removal, so dropping the removed `CapturedAgentKey` scrubs it.
+TWAP result, status, fill, stop, deadline, and reconciliation-timeout paths all
+reach `archive_twap_if_terminal`, which upserts history and clears the key. The
+two exceptions are final pre-dispatch initial/retry skips: their shared
+`schedule_after_attempt` can terminalize without reaching archive. Those paths
+now clear the key at terminality while preserving the established absence of a
+new visible/persisted history row; nonterminal skips retain the key for later
+slices. Whether final skips should enter history is separately deferred as
+F-29.
 
 ### Mutation Transport Phase Audit
 
@@ -1868,6 +1882,103 @@ target-specific cancellation policy, not HTTP replay.
   the compiler and test remain blocked by ALSA metadata. The broader Track 9
   disconnect/profile/key lifetime audit remains incomplete.
 
+### F-28 — Final pre-dispatch TWAP skips retain a terminal signing key
+
+- Status: addressed in Turn 25; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium; no post-terminal dispatch is currently reachable, but a
+  usable secret survives beyond its lifecycle owner
+- Scope: TWAP initial and retry slice planning, range/minimum/precision skips,
+  `schedule_after_attempt`, terminal status, captured agent-key lifetime, and
+  existing advanced-history visibility
+- Preconditions/event ordering:
+  1. A TWAP reaches its final planned slice, or a retry of that final slice.
+  2. Planning rejects it before mutation dispatch because size precision,
+     allowed price range, rounded IOC marketability, or child minimum notional
+     cannot be satisfied.
+  3. `record_twap_skip` or `record_twap_retry_skip` calls
+     `schedule_after_attempt`; no remaining slots changes the TWAP to `Stopped`
+     or `CompletedPartial`.
+  4. The helper returns directly to `execute_due_twap_slice` without calling
+     `archive_twap_if_terminal`.
+- Evidence: `schedule_after_attempt` has exactly three production callers.
+  `finish_twap_attempt` always follows it with archive; the initial-skip and
+  retry-skip helpers did not. Every other production terminal assignment in
+  cancel, slice-result, status, fills/reconciliation, stop, and deadline code
+  reaches the archive boundary. Terminal predicates prevent later scheduling,
+  but the `CapturedAgentKey` remained nonempty and cloneable in the retained
+  runtime TWAP (`src/twap_state/order/schedule.rs:71-103`,
+  `src/order_execution/twap/execution/lifecycle.rs:13-77`).
+- Violated invariant: a captured signing key may remain usable only while a
+  nonterminal lifecycle or exact in-flight reconciliation/cancel owner can need
+  it; a terminal pre-dispatch skip has neither.
+- Risk: the key remains resident until config clear or process drop despite the
+  TWAP being unable to perform more work. Current terminal gates prevent a new
+  mutation, so no duplicate or wrong-account dispatch is claimed. The excess
+  lifetime still enlarges secret exposure and makes a future terminal-gate
+  regression more consequential.
+- Why existing checks did not cover it: terminal archive tests begin with a
+  terminal TWAP and explicitly call the archive method. Scheduler tests prove
+  terminal status but did not inspect the key. Skip-path tests did not exercise
+  the last initial/retry slot through `execute_due_twap_slice`.
+- Implemented fix: make the canonical scheduler clear the captured key in its
+  two existing terminal branches. All three callers therefore share one owner;
+  nonterminal scheduling performs no clear. The change invokes no archive,
+  persistence, state removal, event, status, or task work beyond the existing
+  terminal branches (`src/twap_state/order/schedule.rs:71-105`).
+- Regression coverage: a nonterminal initial skip proves the key remains for
+  the next slice. Final initial and partially filled retry skips prove
+  `Stopped`/`CompletedPartial`, existing attempt/child cleanup, an empty key,
+  zero exchange tasks, and unchanged empty history
+  (`src/order_execution/twap/tests/terminalization.rs:32-108`).
+- Smallest behavior-preserving fix: a runtime-only `Zeroize` at the scheduler's
+  two terminal assignments. No slice planning, count, cadence, randomization,
+  range, minimum, retry, payload, result, event, status string, view, history,
+  config, or normal nonterminal key lifetime changes.
+- Residual uncertainty: F-29 records the deliberate no-history behavior rather
+  than changing it silently. Rust execution remains blocked by ALSA; source,
+  call-site, formatting, and diff inspection pass.
+
+### F-29 — Final pre-dispatch TWAP skips do not enter advanced history
+
+- Status: deferred in Turn 25; adding a history entry changes visible and
+  persisted behavior and requires explicit approval
+- Severity: Medium for audit continuity; no exchange mutation is unknown on
+  these paths because planning fails before dispatch
+- Scope: final initial/retry range, minimum-notional, rounded-price, and
+  precision skips; terminal events; advanced-order history; config persistence
+- Preconditions/event ordering: the F-28 ordering terminalizes the final
+  pre-dispatch skip. Unlike result/status/fill/stop/deadline terminal paths, the
+  skip helper returns without `archive_twap_if_terminal`.
+- Evidence: both skip helpers call the pure scheduler and return; the caller
+  then returns `Task::none()`. Existing live state contains the terminal status
+  and event, while advanced history remains unchanged. The new characterization
+  tests assert that established behavior explicitly
+  (`src/order_execution/twap/execution.rs:153-205`,
+  `src/order_execution/twap/execution/lifecycle.rs:13-48`,
+  `src/order_execution/twap/tests/terminalization.rs:51-108`).
+- Violated invariant: the architecture describes terminal advanced orders as
+  inspectable history, but this terminal class remains only in the runtime TWAP
+  map and disappears on restart.
+- Risk: a user cannot inspect the completed skip sequence in advanced history
+  after restart, weakening local audit continuity. There is no exchange-side
+  exposure to reconcile because no request was prepared or sent for the final
+  skip.
+- Why deferred: invoking `archive_twap_if_terminal` would add a visible history
+  row and schedule config persistence where the current path does neither. The
+  campaign explicitly cannot change advanced-history visibility or persisted
+  behavior without approval. F-28 independently removes the signing secret and
+  terminal gates already forbid further work.
+- Approval options: (1) archive final pre-dispatch skip exhaustion like every
+  other terminal TWAP, accepting the new visible/persisted entry; or (2) retain
+  the current live-only terminal event. If option 1 is selected, update the
+  characterization tests and document how historical summary/status should
+  represent zero-fill versus partial-fill exhaustion.
+- Protected behavior: Turn 25 does not add/remove history, call persistence,
+  alter the terminal event/status, or change any visible copy.
+- Residual uncertainty: the history/UI meaning requires a product decision;
+  the key-lifetime safety issue is separately closed by F-28.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -3396,6 +3507,69 @@ target-specific cancellation policy, not HTTP replay.
   uncertainty still needs them. Follow with repository-wide order/account
   `Debug` and external-error redaction once key lifetime is closed.
 
+## Turn 25 — Scrub Keys on Final TWAP Planning Skips
+
+- Status: F-28 implemented; F-29 audited and deferred; executable Rust
+  validation environment-blocked
+- Severity: Medium
+- Scope: complete Chase/TWAP captured-key terminal-assignment map; initial and
+  retry slice skip exhaustion; nonterminal scheduling; terminal status/events;
+  advanced-history and persistence compatibility
+- Invariant: a terminal automation state with no in-flight mutation,
+  reconciliation, or target-specific cleanup owner must not retain a usable
+  signing key; a nonterminal TWAP must retain its captured key for later slices.
+- Protected behavior: exact slice sizing/counts, cadence, randomization, price
+  bounds, notional/precision gates, retry state, child status, events and visible
+  strings, zero exchange dispatch on planning skips, terminal predicates,
+  advanced-history visibility, persistence, and all other Chase/TWAP archive
+  semantics.
+- Preconditions/event ordering: an initial final slice or retry of the final
+  slice is rejected before dispatch; the skip helper updates existing
+  attempt/child/event state; `schedule_after_attempt` consumes the last slot and
+  assigns a terminal status; the caller returns without the ordinary archive
+  boundary.
+- Evidence: repository-wide terminal-assignment and scheduler-call searches
+  prove Chase terminality removes/drops its captured key and every TWAP
+  result/status/fill/stop/deadline/reconciliation terminal path archives and
+  scrubs. Only `record_twap_skip` and `record_twap_retry_skip` could terminalize
+  through the scheduler and return without either operation. F-28 and F-29
+  record exact source and behavior evidence.
+- Change: added captured-key clearing to the canonical scheduler's two existing
+  terminal assignments. Added end-to-end initial/retry final-skip tests plus a
+  nonterminal control. Kept the current no-history/no-persistence behavior and
+  documented it accurately; F-29 defers any visible/persisted history change.
+- Tests/checks:
+  - Focused attempts for
+    `nonterminal_slice_skip_retains_key_for_the_next_slice`,
+    `final_initial_slice_skip_scrubs_key_without_changing_history_visibility`,
+    `final_retry_slice_skip_scrubs_key_without_changing_history_visibility`, and
+    the nearby `archive_twap_if_terminal_scrubs_runtime_agent_key` regression
+    stopped in `alsa-sys` before Kerosene compilation because `pkg-config`
+    could not find the system `alsa.pc` package.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup/window/subscription path changed,
+    compilation is already blocked, and no live exchange or credential-bearing
+    operation was run.
+- Compatibility/UX assessment: all planning/scheduler/event/status values are
+  unchanged. The only runtime difference is that the captured key becomes empty
+  when the existing skip transition is terminal; nonterminal skips retain it.
+  Tests pin the established absence of a new advanced-history entry, and no
+  config save, visible copy, task count, timing, or trading policy changes.
+- Residual risk: the crate has not type-checked and tests cannot execute without
+  ALSA development metadata. F-29 requires a decision if complete advanced-
+  history coverage is desired. Track 9 still needs profile-deletion rollback
+  key-copy lifetime and repository-wide account/order diagnostic redaction
+  review before a final safety verdict.
+- Prior turn commit hash: `bca92498666d6ec2beef3e5122bccb23a9d6bf20`
+- Next candidate: finish destructive-profile secret lifetime by tracing every
+  rollback/snapshot clone through encrypted and keychain delete success/failure,
+  proving removed keys are zeroized or still deliberately owned and never enter
+  diagnostics. Then perform the repository-wide order/account `Debug`, external
+  error, toast, snapshot, and progress-log redaction audit.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -3406,29 +3580,36 @@ target-specific cancellation policy, not HTTP replay.
   removed the main window, so automation can resume headlessly. Fixing it
   requires choosing delayed close, reopen-on-error, or exit-with-unsaved-config
   behavior; current window/save-error UX is unchanged pending approval.
+- F-29: final pre-dispatch TWAP skip exhaustion remains absent from advanced
+  history. Archiving it would add a visible persisted row; the captured key is
+  independently scrubbed pending a product decision.
 
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused ghost-profile removal/cluster-stream
-  tests; `cargo check`; full `cargo test`; and strict clippy at `alsa-sys`
-  system dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: focused TWAP initial/retry/nonterminal skip
+  key-lifetime tests and the nearby terminal-archive scrub regression;
+  `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
+  dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20, F-22/F-23, and F-25 through F-27 have source fixes and
+- F-01 through F-20, F-22/F-23, and F-25 through F-28 have source fixes and
   regression coverage but await executable validation on a host with ALSA
   development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
   financial invariants have characterization coverage.
 - F-24 is explicitly deferred for a main-window/final-save failure policy; its
   successful save/clear intervals are independently fenced by F-23/F-25/F-26.
+- F-29 is explicitly deferred for final-skip advanced-history visibility; its
+  secret-lifetime risk is independently addressed by F-28.
 - TWAP terminalization plus successful save/clear final-exit fencing across all
   current mutation intents are source-audited with focused coverage but cannot
   be executed on this host. Ghost-profile cluster stream invalidation is
-  source-repaired but likewise uncompiled. Remaining disconnect/profile secret
-  lifetimes, local planning/state diagnostic redaction, and the rest of Track 9
-  require completion before a final verdict.
+  source-repaired but likewise uncompiled. TWAP captured-key terminalization is
+  source-complete apart from the deferred history decision. Remaining
+  disconnect/profile secret lifetimes, local planning/state diagnostic
+  redaction, and the rest of Track 9 require completion before a final verdict.

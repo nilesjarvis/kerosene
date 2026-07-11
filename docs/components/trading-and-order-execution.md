@@ -323,8 +323,14 @@ Lifecycle messages include:
 - `StopTwap`
 - `OpenTwapDetails`
 
-Terminal TWAPs are archived into advanced order history. Active TWAPs are
-runtime-only and are not resumed as live automation after restart.
+Terminal TWAP paths that reach the lifecycle archive boundary are recorded in
+advanced order history. Active TWAPs are runtime-only and are not resumed as
+live automation after restart. A final pre-dispatch range/minimum/precision
+skip retains the established behavior of not creating a new history row, but
+its terminal transition independently scrubs the captured agent key. A
+nonterminal skip retains that key because later scheduled slices still require
+it. Adding final-skip history is tracked separately as audit finding F-29
+because it would change visible and persisted behavior.
 
 Each in-flight TWAP child-status lookup has one runtime-only retry-attempt
 owner. A result must match the current TWAP, CLOID, and armed attempt before it

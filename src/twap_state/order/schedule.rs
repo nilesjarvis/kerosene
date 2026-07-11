@@ -69,9 +69,13 @@ impl TwapOrder {
     }
 
     pub(crate) fn schedule_after_attempt(&mut self, now: Instant) {
+        // This scheduler is the common terminal owner for result-driven and
+        // pre-dispatch skip attempts. Not every caller archives, so scrub here
+        // whenever no later slice can need the captured signing key.
         if self.remaining_size <= 0.0 {
             self.clear_pause();
             self.status = TwapStatus::Completed;
+            self.agent_key.clear();
             self.push_event(
                 TwapEventKind::Completed,
                 "TWAP completed".to_string(),
@@ -87,6 +91,7 @@ impl TwapOrder {
             } else {
                 TwapStatus::Stopped
             };
+            self.agent_key.clear();
             let message = if self.filled_size > 0.0 {
                 "TWAP ended with unfilled remainder".to_string()
             } else {
