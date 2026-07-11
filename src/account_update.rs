@@ -2,6 +2,7 @@ mod add_window;
 mod connection;
 mod position_pnl;
 mod profile;
+mod profile_rebinding;
 mod schwab;
 mod stream;
 

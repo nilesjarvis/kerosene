@@ -39,6 +39,12 @@ legacy per-profile integration keys are scrubbed before keychain cleanup, which
 receives only the profile secret ID. Encrypted deletion staging continues to
 use zeroizing payload and plaintext buffers.
 
+Wallet-address rebinding likewise moves the active profile key and key-input
+buffer into one rollback owner. Credential persistence receives one short-lived
+account snapshot after the active key has been removed. Failure restores the
+original allocations; success scrubs the rollback keys and sensitive identity
+copies immediately.
+
 Secret-bearing state includes:
 
 - `wallet_key_input`

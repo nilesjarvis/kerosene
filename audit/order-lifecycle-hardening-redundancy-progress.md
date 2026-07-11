@@ -135,6 +135,15 @@
   credential fields. Post-install config-save failure policy remains separately
   deferred as F-31 (`src/account_state/switching/saved_delete.rs:18-95`,
   `src/account_state/switching/saved_delete.rs:235-340`).
+- Wallet-address editing and connect-time address rebinding share one move-only
+  rollback owner for the active profile key and key-input buffer. Persistence
+  receives one short-lived saved-profile snapshot after the active key is
+  absent; ordinary failure restores the exact allocations, while success
+  scrubs old keys plus transient profile identity/address copies. Existing
+  storage ordering and failure feedback remain unchanged
+  (`src/account_update/profile_rebinding.rs:9-69`,
+  `src/account_update/profile.rs:150-234`,
+  `src/account_update/connection.rs:129-216`).
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -270,6 +279,16 @@ No raw profile is cloned for cleanup and no unrelated account key is copied.
 The distinct post-install-save marker can still make runtime and disk disagree;
 F-31 preserves and characterizes that exceptional behavior pending an explicit
 durability/feedback decision.
+
+Turn 27 extends the same one-owner rule to both active-profile address-rebind
+entry points. The old paths each held cloned rollback keys, a complete cloned
+account vector, and another persisted clone. They now move the two canonical
+usable key buffers into a shared rollback owner, mutate only the active binding,
+and build one short-lived persistence snapshot whose active key is already
+empty. Ordinary encrypted/keychain failures move the exact allocations back;
+success scrubs the rollback immediately. F-31 now records the common installed-
+snapshot policy gap across saved deletion and OS-keychain rebinding without
+changing any exceptional feedback.
 
 ### Mutation Transport Phase Audit
 
@@ -2070,66 +2089,141 @@ target-specific cancellation policy, not HTTP replay.
   the already-installed-snapshot branch, where the product must choose which
   outcome is authoritative.
 
-### F-31 — Installed deletion snapshot can disagree with restored runtime state
+### F-31 — Installed profile/credential snapshot can disagree with restored runtime state
 
-- Status: deferred in Turn 26; the current exceptional behavior is
-  characterized because either safe correction changes failure feedback or
-  adds a new durable rollback policy
+- Status: deferred in Turn 26 and expanded in Turn 27; current exceptional
+  behavior is characterized because either safe correction changes failure
+  feedback or adds a new durable rollback policy
 - Severity: Medium; this does not dispatch an exchange mutation or expose a
-  key, but it can make saved-profile and credential-cleanup outcome depend on a
-  later save versus restart
-- Scope: the first durable save in OS-keychain and encrypted-config saved-
-  account deletion; post-install filesystem sync/rollback-sidecar/permission
-  errors; runtime rollback; pending keychain profile deletion; failure feedback
+  key, but saved-profile identity/binding and credential-cleanup outcome can
+  depend on a later save versus restart
+- Scope: the first durable save in saved-account deletion and OS-keychain
+  wallet-address rebinding from both typed edit and connect routes; post-install
+  filesystem sync/rollback-sidecar/permission errors; runtime rollback; pending
+  keychain cleanup; failure feedback
 - Preconditions/event ordering:
-  1. Deletion removes the runtime profile and stages a config snapshot without
-     it; OS-keychain mode also includes the pending cleanup ID.
+  1. Saved deletion stages a snapshot without the profile (plus OS cleanup
+     intent), or address rebinding stages the new wallet metadata with the old
+     agent-key binding removed.
   2. Config replacement installs that snapshot, then parent-directory sync,
      rollback-sidecar cleanup, or post-install permission hardening fails.
   3. `save_config` returns its explicit `config snapshot was installed` marker.
-  4. Saved-account deletion currently treats every `Err` as pre-install
-     failure, restores the runtime profile and prior pending-intent state, skips
-     keychain cleanup, and reports that deletion failed even though disk may
-     already contain the deletion and cleanup intent.
+  4. These lifecycle routes currently treat every first-save `Err` as
+     pre-install failure, restore the old runtime profile/binding and key owner,
+     skip keychain cleanup, and report failure even though disk may already
+     contain the deletion/rebind and cleanup state.
 - Evidence: config replacement distinguishes before-install from after-install
   failure and exposes the marker (`src/config/files/persistence.rs:16-23`,
   `src/config/files/persistence.rs:252-310`). Secret-storage migration paths
-  already treat that marker as committed, but saved-account deletion does not
-  branch on it (`src/secret_storage/encrypted.rs:139-151`,
-  `src/account_state/switching/saved_delete.rs:290-301`).
-- Violated invariant: after a destructive persistence operation has installed
-  its snapshot, runtime identity and cleanup ownership must not claim the
-  opposite outcome without a verified durable rollback.
-- Risk: a user can see the profile restored and a failure toast, then a restart
-  can load the installed deletion and retry keychain cleanup. A later successful
-  config save can instead re-persist the restored profile. No active automation
-  crosses the delete gate, but profile availability and credential deletion are
-  timing-dependent.
+  already treat that marker as committed, but saved deletion and both rebind
+  first-save branches do not (`src/secret_storage/encrypted.rs:139-151`,
+  `src/account_state/switching/saved_delete.rs:290-301`,
+  `src/account_update/profile.rs:169-188`,
+  `src/account_update/connection.rs:151-170`).
+- Violated invariant: after a destructive credential-metadata operation has
+  installed its snapshot, runtime identity and cleanup ownership must not claim
+  the opposite outcome without a verified durable rollback.
+- Risk: a user can see the old profile or wallet binding restored with failure
+  feedback, then restart into the installed deletion/new binding and its pending
+  cleanup. A later successful config save can instead re-persist the restored
+  state. No active automation crosses these gates, but profile availability,
+  wallet-to-key binding, and credential deletion become timing-dependent.
 - Why existing checks did not cover it: save-failure tests returned ordinary
   errors only. Generic config persistence tests prove the marker, while secret-
   storage migration tests cover it in different state machines.
-- Characterization coverage: a marked post-install error currently proves the
-  profile and original key allocation are restored, pending cleanup intent is
-  cleared in memory, keychain cleanup is not called, the established failure
-  toast remains, and injected secret text is redacted
-  (`src/account_state/switching/saved_delete/tests.rs:583-638`).
-- Why deferred: treating the marker as committed would keep the profile deleted,
-  continue cleanup, and replace the current failure result with committed-but-
-  durability-warning semantics. Restoring the current failure outcome instead
-  requires a second verified config replacement plus a policy for failure of
-  that rollback. Both change observable exceptional behavior or durability
-  timing and require explicit approval.
-- Approval options: (1) make the installed deletion authoritative and reuse the
+- Characterization coverage: marked post-install errors prove the original
+  profile/binding and exact key allocations are restored in memory, keychain
+  cleanup is not called, established failure feedback remains, and injected
+  secret text is redacted. Saved deletion additionally restores its prior
+  pending-intent state
+  (`src/account_state/switching/saved_delete/tests.rs:583-638`,
+  `src/account_update/profile.rs:578-619`,
+  `src/account_update/connection.rs:1065-1110`).
+- Why deferred: treating the marker as committed would retain the installed
+  deletion/new binding, continue cleanup, and replace current failure behavior
+  with committed-but-durability-warning semantics. Preserving the current
+  failure result instead requires a second verified config replacement plus a
+  policy for rollback failure. Both change observable exceptional behavior or
+  durability timing and require explicit approval.
+- Approval options: (1) make the installed snapshot authoritative and reuse the
   existing committed-config warning policy; or (2) attempt a durable rollback
   so the current failure result remains authoritative, with an explicit outcome
   for rollback failure.
-- Protected behavior: Turn 26 does not reinterpret the marker, continue
-  keychain cleanup, change account visibility, or change any toast/status copy
-  on this branch.
-- Residual uncertainty: the on-disk snapshot is known to have been installed,
+- Protected behavior: Turns 26-27 do not reinterpret the marker, continue
+  keychain cleanup, change profile/binding visibility, or change any
+  toast/status copy on these branches.
+- Residual uncertainty: the snapshot bytes are known to have been installed,
   but the marker can also report a failed durability sync; the approved policy
-  must state whether runtime follows the installed bytes immediately or tries
-  to restore the prior snapshot.
+  must state whether runtime follows installed bytes immediately or tries to
+  restore the prior snapshot.
+
+### F-32 — Wallet-address rebinding multiplies and over-retains active keys
+
+- Status: addressed in Turn 27; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium; no current diagnostic leak or wrong-account dispatch was
+  found, but usable profile/draft keys were copied beyond the rollback and
+  persistence owners that could legitimately need them
+- Scope: typed wallet-address editing and connect-time active-profile rebinding;
+  OS-keychain and encrypted-config persistence; ordinary failure rollback;
+  profile/key-input ownership; saved-account snapshots; redacted diagnostics
+- Preconditions/event ordering:
+  1. A non-ghost active profile receives a normalized wallet address different
+     from its stored binding after pending-trading and automation gates pass.
+  2. Each prior route cloned `wallet_key_input`, cloned the complete active
+     profile for rollback, cloned the entire account vector to stage the new
+     binding, and cloned that vector again through `persisted_accounts_from`.
+  3. The canonical profile/key input were cleared and credential persistence
+     either succeeded or failed.
+  4. Failure replaced canonical keys with clones; success retained old usable
+     rollback clones until the whole update function returned.
+- Evidence: parent commit
+  `696f467b4487488e691afca8e224ed1f21fa4963` shows the duplicate clone graphs in
+  `update_wallet_address_input_with_hooks` and `connect_wallet_with_hooks`.
+  Both paths need one account snapshot because the persistence hook mutably
+  borrows the terminal, but that snapshot can be built after moving the active
+  key away and can end immediately after the hook returns.
+- Violated invariant: an address rebind may retain the old profile and draft
+  keys only in the exact rollback owner until credential persistence settles;
+  unrelated account keys and duplicate active-key allocations are not rollback
+  state.
+- Risk: every rebind transiently multiplied unrelated saved keys and kept the
+  old active signing key usable after successful removal from credential
+  storage. `Zeroizing` eventually scrubbed the copies and all observed errors
+  were redacted, so no disclosure or extra exchange mutation is claimed. The
+  excess lifetime enlarges the consequence of a future callback/diagnostic bug.
+- Why existing checks did not cover it: tests asserted resulting key values,
+  encrypted/keychain snapshots, save ordering, rollback metadata, trading
+  gates, and redacted status. They did not distinguish restoring original
+  zeroizing allocations from replacing them with clones.
+- Implemented fix: add one shared `ActiveProfileAddressRebindRollback` that
+  moves the active profile key and `wallet_key_input`, changes only the active
+  address, and verifies the exact profile identity on restore. Each route now
+  builds one scoped persisted-account snapshot after the active key is empty.
+  Ordinary failure moves the original buffers back; success explicitly scrubs
+  the old keys, profile ID, and old address. Transient removal-ID/address-input
+  copies are also scrubbed when no longer needed
+  (`src/account_update/profile_rebinding.rs:9-69`,
+  `src/account_update/profile.rs:150-234`,
+  `src/account_update/connection.rs:129-216`).
+- Regression coverage: encrypted-lock and OS-keychain failure paths for both UI
+  entry points capture profile-key and key-input allocation addresses and
+  require those exact owners after rollback. The old clone-based implementation
+  cannot satisfy them while the originals are live. Existing success tests
+  continue to prove the persisted binding is removed and canonical keys are
+  empty (`src/account_update/profile.rs:500-531`,
+  `src/account_update/profile.rs:620-675`,
+  `src/account_update/connection.rs:959-1008`,
+  `src/account_update/connection.rs:1111-1174`).
+- Smallest behavior-preserving fix: storage-mode selection, normalization,
+  encrypted/keychain payloads, first/rollback save ordering, key-removal policy,
+  stream generation, pending/automation gates, account fetch tasks, statuses,
+  toasts, persistence schema, and every success/failure outcome remain
+  unchanged. Only transient ownership and zeroization timing change.
+- Residual uncertainty: Rust type-checking and tests remain blocked by ALSA
+  metadata. Normal explicit agent-key saving still constructs a broader staged
+  account clone and is the next secret-copy owner to audit; F-31 separately owns
+  installed-snapshot authority.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -3790,6 +3884,71 @@ target-specific cancellation policy, not HTTP replay.
   rebinding snapshot scopes for unnecessary raw-key copies. Add redaction
   regressions only for concrete leaks and preserve every visible string.
 
+## Turn 27 — Move and Scrub Address-Rebind Keys
+
+- Status: F-32 implemented; F-31 scope expanded and deferred; executable Rust
+  validation environment-blocked
+- Severity: Medium
+- Scope: both active-profile wallet-address rebind routes; OS-keychain and
+  encrypted-config persistence; active profile/draft key ownership; ordinary
+  and installed-snapshot failures; rollback save; profile/cluster identity;
+  redacted status
+- Invariant: an address rebind has one rollback owner for the original active
+  profile key and draft key. Persistence may receive one snapshot only after the
+  active key is absent; failure must restore the same allocations and success
+  must scrub them before later account/stream/task work.
+- Protected behavior: normalization and case-only edits; all pending request and
+  Chase/TWAP gates; ghost behavior; wallet metadata and key-binding removal;
+  encrypted/keychain payloads and warnings; first/rollback saves; connected
+  address, stream generations, percentage state, chart/account clearing, fetch
+  tasks, status copy, config schema, and every success/failure result.
+- Preconditions/event ordering: the typed edit route starts from the stored
+  address input, while connect normalizes the requested address first. On a true
+  binding change both clear the active key before config/credential persistence;
+  an ordinary failure restores before an optional rollback save, and success
+  continues with established rebind/account-refresh behavior.
+- Evidence: repository-wide clone and persistence-hook searches found the same
+  four-copy pattern in exactly these two rebind transactions. The shared helper
+  and scoped snapshots now make owner transitions explicit. F-31/F-32 record
+  parent-source, failure-phase, and regression evidence.
+- Change: added a private account-update rollback helper, replaced complete
+  account/profile/key-input staging clones with moved owners, bounded the one
+  required persisted-account snapshot to the persistence call, and scrubbed
+  rollback-only key and identity copies at commit. Added allocation-identity
+  assertions across encrypted/keychain failure and installed-snapshot
+  characterizations across both routes. Updated security documentation.
+- Tests/checks:
+  - Pre-edit focused attempts for
+    `wallet_address_edit_os_keychain_failure_rolls_back_saved_metadata` and
+    `connect_wallet_os_keychain_failure_rolls_back_saved_metadata_and_does_not_connect`
+    stopped in `alsa-sys` before Kerosene compilation because `pkg-config`
+    could not find the system `alsa.pc` package.
+  - Post-edit focused attempts for the `wallet_address` profile tests and
+    `connect_wallet` connection tests stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup/window/subscription route changed,
+    compilation is already blocked, and no live exchange or credential-bearing
+    operation was run.
+- Compatibility/UX assessment: the same canonical profile becomes keyless
+  before the same persistence calls. Failure restores identical bytes at the
+  same state boundary, now via the original allocations; success reaches the
+  same storage/status/stream/account tasks after earlier scrubbing. No payload,
+  call order, task, timing policy, visible string, state value, or stored format
+  intentionally changes. F-31 behavior remains characterized and unchanged.
+- Residual risk: Kerosene has not type-checked on this host. F-31 still requires
+  a durability/feedback decision. Explicit agent-key saving retains a separate
+  staged-account clone graph, and repository-wide account/order `Debug` plus
+  external-error/toast redaction remain incomplete.
+- Prior turn commit hash: `696f467b4487488e691afca8e224ed1f21fa4963`
+- Next candidate: finish runtime credential-copy ownership in
+  `save_active_account_credentials` so unrelated saved keys are not cloned more
+  than the one synchronous storage snapshot requires. Then begin the repository-
+  wide account/order `Debug`, external error, toast/status, snapshot, and
+  progress-log redaction pass.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -3803,42 +3962,42 @@ target-specific cancellation policy, not HTTP replay.
 - F-29: final pre-dispatch TWAP skip exhaustion remains absent from advanced
   history. Archiving it would add a visible persisted row; the captured key is
   independently scrubbed pending a product decision.
-- F-31: a config save that reports its snapshot installed but a post-install
-  durability step failed restores saved-delete runtime state while disk may
-  retain the deletion and cleanup intent. Choosing installed-delete authority
-  or a second durable rollback changes exceptional behavior and requires
-  approval.
+- F-31: a config save that reports its profile/credential snapshot installed
+  but a post-install durability step failed restores saved-delete or
+  OS-keychain-rebind runtime state while disk may retain the transition and
+  cleanup intent. Choosing installed-snapshot authority or a second durable
+  rollback changes exceptional behavior and requires approval.
 
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused saved-profile delete rollback and
-  installed-snapshot tests plus the complete saved-delete module; `cargo check`;
-  full `cargo test`; and strict clippy at `alsa-sys` system dependency discovery,
-  before Kerosene was compiled.
+- Environment-blocked this turn: focused address-edit/connect rebind tests,
+  including allocation rollback and installed-snapshot characterizations;
+  `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
+  dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20, F-22/F-23, F-25 through F-28, and F-30 have source fixes and
-  regression coverage but await executable validation on a host with ALSA
-  development metadata.
+- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, and F-32 have source
+  fixes and regression coverage but await executable validation on a host with
+  ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
   financial invariants have characterization coverage.
 - F-24 is explicitly deferred for a main-window/final-save failure policy; its
   successful save/clear intervals are independently fenced by F-23/F-25/F-26.
 - F-29 is explicitly deferred for final-skip advanced-history visibility; its
   secret-lifetime risk is independently addressed by F-28.
-- F-31 is explicitly deferred for post-install saved-profile deletion
-  authority; ordinary failure and successful deletion key ownership are
-  independently hardened by F-30.
+- F-31 is explicitly deferred for post-install saved-profile deletion/rebind
+  authority; ordinary failure and successful key ownership are independently
+  hardened by F-30/F-32.
 - TWAP terminalization plus successful save/clear final-exit fencing across all
   current mutation intents are source-audited with focused coverage but cannot
   be executed on this host. Ghost-profile cluster stream invalidation is
   source-repaired but likewise uncompiled. TWAP captured-key terminalization is
-  source-complete apart from the deferred history decision, and saved-profile
-  delete key ownership is source-hardened apart from F-31. Address-rebinding
-  secret-copy scopes, local planning/state diagnostic redaction, and the rest of
-  Track 9 require completion before a final verdict.
+  source-complete apart from the deferred history decision. Saved-profile
+  delete and address-rebind key ownership are source-hardened apart from F-31.
+  Explicit credential-save copies, local planning/state diagnostic redaction,
+  and the rest of Track 9 require completion before a final verdict.

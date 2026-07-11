@@ -126,11 +126,9 @@ impl TradingTerminal {
             }
             true
         } else if self.active_account_index < self.accounts.len() {
-            let previous_wallet_address = self.accounts[self.active_account_index]
+            let mut previous_wallet_address = self.accounts[self.active_account_index]
                 .wallet_address
                 .clone();
-            let previous_wallet_key_input = self.wallet_key_input.clone();
-            let previous_profile = self.accounts[self.active_account_index].clone();
             let previous_normalized = Self::normalize_wallet_address(&previous_wallet_address);
             let address_binding_changed = previous_normalized.as_deref() != Some(addr.as_str());
 
@@ -140,49 +138,48 @@ impl TradingTerminal {
                         .agent_key
                         .trim()
                         .is_empty();
-                let mut next_accounts = self.accounts.clone();
-                next_accounts[self.active_account_index].wallet_address = addr.clone();
-                next_accounts[self.active_account_index].agent_key.zeroize();
-                let removed_profile_secret_id =
-                    next_accounts[self.active_account_index].secret_id.clone();
-                let persisted_accounts =
-                    Self::persisted_accounts_from(&next_accounts, &self.ghost_account_secret_ids);
-                self.wallet_key_input.zeroize();
-                self.accounts[self.active_account_index] =
-                    next_accounts[self.active_account_index].clone();
+                let mut removed_profile_secret_id =
+                    self.accounts[self.active_account_index].secret_id.clone();
+                let rollback = self
+                    .begin_active_profile_address_rebind(self.active_account_index, addr.clone())
+                    .expect("active profile must exist after the connect bounds check");
 
                 let mut os_metadata_saved = false;
-                let persisted = match self.secret_storage_mode {
-                    config::CredentialStorageMode::OsKeychain => {
-                        match self.persist_config_immediately_with(&mut save_config) {
-                            Ok(()) => {
-                                os_metadata_saved = true;
-                                persist_profile_agent_key_removal(
-                                    self,
-                                    &persisted_accounts,
-                                    &removed_profile_secret_id,
-                                )
-                            }
-                            Err(error) => {
-                                let error = redact_sensitive_response_text(&error);
-                                self.secret_store_status = Some((
-                                    format!(
-                                        "Config save failed: {error}. Wallet was not connected; retry after config persistence is available."
-                                    ),
-                                    true,
-                                ));
-                                false
+                let persisted = {
+                    let persisted_accounts = self.persisted_accounts_snapshot();
+                    match self.secret_storage_mode {
+                        config::CredentialStorageMode::OsKeychain => {
+                            match self.persist_config_immediately_with(&mut save_config) {
+                                Ok(()) => {
+                                    os_metadata_saved = true;
+                                    persist_profile_agent_key_removal(
+                                        self,
+                                        &persisted_accounts,
+                                        &removed_profile_secret_id,
+                                    )
+                                }
+                                Err(error) => {
+                                    let error = redact_sensitive_response_text(&error);
+                                    self.secret_store_status = Some((
+                                        format!(
+                                            "Config save failed: {error}. Wallet was not connected; retry after config persistence is available."
+                                        ),
+                                        true,
+                                    ));
+                                    false
+                                }
                             }
                         }
-                    }
-                    config::CredentialStorageMode::EncryptedConfig => {
-                        persist_profile_agent_key_removal(
-                            self,
-                            &persisted_accounts,
-                            &removed_profile_secret_id,
-                        )
+                        config::CredentialStorageMode::EncryptedConfig => {
+                            persist_profile_agent_key_removal(
+                                self,
+                                &persisted_accounts,
+                                &removed_profile_secret_id,
+                            )
+                        }
                     }
                 };
+                removed_profile_secret_id.zeroize();
                 if !persisted {
                     let detail = self
                         .secret_store_status
@@ -190,8 +187,7 @@ impl TradingTerminal {
                         .map(|(message, _)| message.clone())
                         .unwrap_or_else(|| "Credential storage update failed".to_string());
                     let detail = redact_sensitive_response_text(&detail);
-                    self.accounts[self.active_account_index] = previous_profile;
-                    self.wallet_key_input = previous_wallet_key_input;
+                    rollback.restore(self, previous_wallet_address);
                     if self.secret_storage_mode == config::CredentialStorageMode::OsKeychain
                         && os_metadata_saved
                         && let Err(error) = self
@@ -206,7 +202,6 @@ impl TradingTerminal {
                             ),
                             true,
                         ));
-                        self.wallet_address_input = previous_wallet_address;
                         return Task::none();
                     }
                     self.secret_store_status = Some((
@@ -215,9 +210,10 @@ impl TradingTerminal {
                         ),
                         true,
                     ));
-                    self.wallet_address_input = previous_wallet_address;
                     return Task::none();
                 }
+                rollback.scrub_after_commit();
+                previous_wallet_address.zeroize();
 
                 self.secret_store_status = Some((
                     if had_agent_key {
@@ -971,6 +967,8 @@ mod tests {
             twap
         });
         let original_encrypted = terminal.encrypted_secrets.clone();
+        let profile_key_allocation = terminal.accounts[0].agent_key.as_ptr();
+        let input_key_allocation = terminal.wallet_key_input.as_str().as_ptr();
 
         let _task = terminal.connect_wallet();
 
@@ -981,6 +979,14 @@ mod tests {
         assert_eq!(
             terminal.accounts[0].agent_key.as_str(),
             "old-account-agent-key"
+        );
+        assert_eq!(
+            terminal.accounts[0].agent_key.as_ptr(),
+            profile_key_allocation
+        );
+        assert_eq!(
+            terminal.wallet_key_input.as_str().as_ptr(),
+            input_key_allocation
         );
         assert_eq!(terminal.encrypted_secrets, original_encrypted);
         assert!(terminal.secret_migration_save_blocked);
@@ -1056,6 +1062,52 @@ mod tests {
     }
 
     #[test]
+    fn connect_wallet_installed_snapshot_error_preserves_failure_behavior_pending_policy() {
+        let mut terminal =
+            terminal_with_encrypted_account(TEST_ACCOUNT, "old-account-agent-key", true);
+        terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+        terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.wallet_address_input = OTHER_ACCOUNT.to_string();
+        let keychain_called = Cell::new(false);
+        let profile_key_allocation = terminal.accounts[0].agent_key.as_ptr();
+        let input_key_allocation = terminal.wallet_key_input.as_str().as_ptr();
+
+        let _task = terminal.connect_wallet_with_hooks(
+            |snapshot| {
+                assert_eq!(snapshot.accounts[0].wallet_address, OTHER_ACCOUNT);
+                Err(config::installed_config_save_error_for_test(
+                    "sync failed: api_key=connect-secret",
+                ))
+            },
+            |_terminal, _accounts, _removed_profile_secret_id| {
+                keychain_called.set(true);
+                true
+            },
+        );
+
+        assert!(!keychain_called.get());
+        assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
+        assert_eq!(terminal.wallet_address_input, TEST_ACCOUNT);
+        assert_eq!(terminal.accounts[0].wallet_address, TEST_ACCOUNT);
+        assert_eq!(
+            terminal.accounts[0].agent_key.as_ptr(),
+            profile_key_allocation
+        );
+        assert_eq!(
+            terminal.wallet_key_input.as_str().as_ptr(),
+            input_key_allocation
+        );
+        assert!(!terminal.account_loading);
+        let (message, is_error) = terminal.secret_store_status.as_ref().expect("status");
+        assert!(*is_error);
+        assert!(message.contains("Config save failed"));
+        assert!(message.contains("api_key=<redacted>"));
+        assert!(!message.contains("connect-secret"));
+        assert!(message.contains("Wallet was not connected"));
+    }
+
+    #[test]
     fn connect_wallet_os_keychain_failure_rolls_back_saved_metadata_and_does_not_connect() {
         let mut terminal =
             terminal_with_encrypted_account(TEST_ACCOUNT, "old-account-agent-key", true);
@@ -1065,6 +1117,8 @@ mod tests {
         terminal.wallet_address_input = OTHER_ACCOUNT.to_string();
         let saved_snapshots = RefCell::new(Vec::<config::KeroseneConfig>::new());
         let keychain_called = Cell::new(false);
+        let profile_key_allocation = terminal.accounts[0].agent_key.as_ptr();
+        let input_key_allocation = terminal.wallet_key_input.as_str().as_ptr();
 
         let _task = terminal.connect_wallet_with_hooks(
             |cfg| {
@@ -1097,6 +1151,14 @@ mod tests {
         assert_eq!(
             terminal.accounts[0].agent_key.as_str(),
             "old-account-agent-key"
+        );
+        assert_eq!(
+            terminal.accounts[0].agent_key.as_ptr(),
+            profile_key_allocation
+        );
+        assert_eq!(
+            terminal.wallet_key_input.as_str().as_ptr(),
+            input_key_allocation
         );
         assert!(terminal.secret_migration_save_blocked);
         assert!(!terminal.account_loading);
