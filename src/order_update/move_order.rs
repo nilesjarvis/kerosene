@@ -9,10 +9,16 @@ use iced::Task;
 use super::results::{ExecutionOutcomeKind, PendingMoveStatusRequest, classify_execution_result};
 
 impl TradingTerminal {
-    fn move_order_status_task(account_address: String, coin: String, oid: u64) -> Task<Message> {
+    fn move_order_status_task(
+        request_id: u64,
+        account_address: String,
+        coin: String,
+        oid: u64,
+    ) -> Task<Message> {
         Task::perform(
             fetch_order_status_by_oid(account_address.clone(), oid),
             move |result| Message::MoveOrderStatusLoaded {
+                request_id,
                 account_address: account_address.into(),
                 coin,
                 oid: oid.into(),
@@ -23,6 +29,7 @@ impl TradingTerminal {
 
     pub(super) fn handle_move_order_modify_result(
         &mut self,
+        request_id: u64,
         account_address: String,
         coin: String,
         oid: u64,
@@ -34,17 +41,17 @@ impl TradingTerminal {
             self.sync_all_chart_orders();
             return Task::none();
         };
-        let pending_context_matches_result_account =
-            pending_context.matches_account(&account_address);
+        let pending_context_matches_result =
+            pending_context.matches_result(request_id, &account_address);
         if !self.connected_order_account_matches(&account_address) {
-            if pending_context_matches_result_account {
+            if pending_context_matches_result {
                 self.pending_move_order_contexts.remove(&move_key);
                 self.clear_pending_order_indicator(pending_indicator_id);
             }
             self.sync_all_chart_orders();
             return Task::none();
         }
-        if !pending_context_matches_result_account {
+        if !pending_context_matches_result {
             self.sync_all_chart_orders();
             return Task::none();
         }
@@ -86,6 +93,7 @@ impl TradingTerminal {
             }
             ExecutionOutcomeKind::Ambiguous => {
                 self.pending_move_status_request = Some(PendingMoveStatusRequest::new(
+                    request_id,
                     account_address.clone(),
                     oid,
                     move_key.coin().to_string(),
@@ -99,11 +107,17 @@ impl TradingTerminal {
                 );
                 return Task::batch([
                     self.refresh_account_data(),
-                    Self::move_order_status_task(account_address, move_key.coin().to_string(), oid),
+                    Self::move_order_status_task(
+                        request_id,
+                        account_address,
+                        move_key.coin().to_string(),
+                        oid,
+                    ),
                 ]);
             }
             ExecutionOutcomeKind::TransportUnknown => {
                 self.pending_move_status_request = Some(PendingMoveStatusRequest::new(
+                    request_id,
                     account_address.clone(),
                     oid,
                     move_key.coin().to_string(),
@@ -117,7 +131,12 @@ impl TradingTerminal {
                 );
                 return Task::batch([
                     self.refresh_account_data(),
-                    Self::move_order_status_task(account_address, move_key.coin().to_string(), oid),
+                    Self::move_order_status_task(
+                        request_id,
+                        account_address,
+                        move_key.coin().to_string(),
+                        oid,
+                    ),
                 ]);
             }
             ExecutionOutcomeKind::AcceptedResting
@@ -129,6 +148,7 @@ impl TradingTerminal {
 
     pub(crate) fn handle_move_order_status_result(
         &mut self,
+        request_id: u64,
         account_address: String,
         coin: String,
         oid: u64,
@@ -137,7 +157,7 @@ impl TradingTerminal {
         let request_matches = self
             .pending_move_status_request
             .as_ref()
-            .is_some_and(|pending| pending.matches(&account_address, oid, &coin));
+            .is_some_and(|pending| pending.matches(request_id, &account_address, oid, &coin));
         if !request_matches {
             self.sync_all_chart_orders();
             return Task::none();
@@ -222,6 +242,9 @@ mod tests {
 
     const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
     const OTHER_ACCOUNT: &str = "0xdef0000000000000000000000000000000000000";
+    const MOVE_REQUEST_ID: u64 = 7;
+    const STALE_MOVE_REQUEST_ID: u64 = 6;
+    const NEW_MOVE_REQUEST_ID: u64 = 8;
 
     fn open_order(oid: u64, limit_px: &str) -> crate::account::OpenOrder {
         open_order_for("BTC", oid, limit_px)
@@ -327,6 +350,7 @@ mod tests {
         symbol: &str,
     ) {
         terminal.pending_move_status_request = Some(PendingMoveStatusRequest::new(
+            MOVE_REQUEST_ID,
             account_address.to_string(),
             oid,
             symbol.to_string(),
@@ -362,6 +386,7 @@ mod tests {
         terminal.pending_move_order_contexts.insert(
             MoveOrderKey::new("BTC", 42),
             PendingMoveOrderContext::new(
+                MOVE_REQUEST_ID,
                 TEST_ACCOUNT.to_string(),
                 Zeroizing::new("agent-key".to_string()),
             )
@@ -376,6 +401,7 @@ mod tests {
         let (mut terminal, pending_id) = terminal_with_pending_move();
 
         let _task = terminal.handle_move_order_modify_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "BTC".to_string(),
             42,
@@ -413,6 +439,7 @@ mod tests {
         terminal.pending_move_order_contexts.insert(
             MoveOrderKey::new("ETH", 42),
             PendingMoveOrderContext::new(
+                MOVE_REQUEST_ID,
                 TEST_ACCOUNT.to_string(),
                 Zeroizing::new("agent-key".to_string()),
             )
@@ -420,6 +447,7 @@ mod tests {
         );
 
         let _task = terminal.handle_move_order_modify_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "ETH".to_string(),
             42,
@@ -450,6 +478,7 @@ mod tests {
         // and moves must target the oid from the response, not a dead one
         // (parity with the chase modify handler).
         let _task = terminal.handle_move_order_modify_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "BTC".to_string(),
             42,
@@ -469,6 +498,7 @@ mod tests {
         terminal.order_status = None;
 
         let _task = terminal.handle_move_order_modify_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "BTC".to_string(),
             42,
@@ -493,6 +523,7 @@ mod tests {
         terminal.account_data_address = Some(OTHER_ACCOUNT.to_string());
 
         let _task = terminal.handle_move_order_modify_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "BTC".to_string(),
             42,
@@ -514,6 +545,7 @@ mod tests {
         let (mut terminal, pending_id) = terminal_with_pending_move();
 
         let _task = terminal.handle_move_order_modify_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "BTC".to_string(),
             42,
@@ -544,6 +576,7 @@ mod tests {
         let (mut terminal, pending_id) = terminal_with_pending_move();
 
         let _task = terminal.handle_move_order_modify_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "BTC".to_string(),
             42,
@@ -576,6 +609,7 @@ mod tests {
         arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
 
         let _task = terminal.handle_move_order_status_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "BTC".to_string(),
             42,
@@ -605,6 +639,7 @@ mod tests {
         arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
 
         let _task = terminal.handle_move_order_status_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "BTC".to_string(),
             42,
@@ -633,6 +668,7 @@ mod tests {
         arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
 
         let _task = terminal.handle_move_order_status_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "ETH".to_string(),
             42,
@@ -645,11 +681,33 @@ mod tests {
     }
 
     #[test]
+    fn stale_move_status_result_does_not_settle_new_same_oid_attempt() {
+        let (mut terminal, _pending_id) = terminal_with_pending_move();
+        arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
+        terminal.order_status = None;
+
+        let _task = terminal.handle_move_order_status_result(
+            STALE_MOVE_REQUEST_ID,
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            42,
+            Ok(order_status("filled")),
+        );
+
+        assert!(terminal.pending_move_status_request.is_some());
+        assert!(terminal.order_status.is_none());
+        assert!(!terminal.account_loading);
+        let data = terminal.account_data.as_ref().expect("account data");
+        assert_eq!(data.open_orders[0].limit_px, "100");
+    }
+
+    #[test]
     fn move_order_status_terminal_clears_pending_request() {
         let (mut terminal, _pending_id) = terminal_with_pending_move();
         arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
 
         let _task = terminal.handle_move_order_status_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "BTC".to_string(),
             42,
@@ -671,6 +729,7 @@ mod tests {
         terminal.order_status = None;
 
         let _task = terminal.handle_move_order_status_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "BTC".to_string(),
             42,
@@ -690,6 +749,7 @@ mod tests {
         terminal.order_status = None;
 
         let _task = terminal.handle_move_order_modify_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "BTC".to_string(),
             42,
@@ -705,12 +765,62 @@ mod tests {
     }
 
     #[test]
+    fn stale_move_result_does_not_consume_new_same_oid_attempt() {
+        let (mut terminal, stale_pending_id) = terminal_with_pending_move();
+        let order = terminal
+            .account_data
+            .as_ref()
+            .and_then(|data| data.open_orders.first())
+            .cloned()
+            .expect("open order");
+        let current_pending_id = terminal.add_pending_order_modification_indicator(
+            TEST_ACCOUNT.to_string(),
+            &order,
+            "122".to_string(),
+        );
+        terminal.pending_move_order_contexts.insert(
+            MoveOrderKey::new("BTC", 42),
+            PendingMoveOrderContext::new(
+                NEW_MOVE_REQUEST_ID,
+                TEST_ACCOUNT.to_string(),
+                Zeroizing::new("new-agent-key".to_string()),
+            )
+            .expect("new pending move context"),
+        );
+        terminal.clear_pending_order_indicator(stale_pending_id);
+        terminal.order_status = None;
+
+        let _task = terminal.handle_move_order_modify_result(
+            MOVE_REQUEST_ID,
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            42,
+            stale_pending_id,
+            Ok(resting_response()),
+        );
+
+        assert!(
+            terminal
+                .pending_move_order_contexts
+                .contains_key(&MoveOrderKey::new("BTC", 42))
+        );
+        assert!(
+            current_pending_id
+                .is_some_and(|id| terminal.pending_order_indicators.contains_key(&id))
+        );
+        assert!(terminal.order_status.is_none());
+        let data = terminal.account_data.as_ref().expect("account data");
+        assert_eq!(data.open_orders[0].limit_px, "100");
+    }
+
+    #[test]
     fn stale_move_result_preserves_new_same_oid_pending_move_after_account_change() {
         let (mut terminal, pending_id) = terminal_with_pending_move();
         terminal.connected_address = Some(OTHER_ACCOUNT.to_string());
         terminal.pending_move_order_contexts.insert(
             MoveOrderKey::new("BTC", 42),
             PendingMoveOrderContext::new(
+                NEW_MOVE_REQUEST_ID,
                 OTHER_ACCOUNT.to_string(),
                 Zeroizing::new("other-agent-key".to_string()),
             )
@@ -719,6 +829,7 @@ mod tests {
         terminal.order_status = None;
 
         let _task = terminal.handle_move_order_modify_result(
+            MOVE_REQUEST_ID,
             TEST_ACCOUNT.to_string(),
             "BTC".to_string(),
             42,

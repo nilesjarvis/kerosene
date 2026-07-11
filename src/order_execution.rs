@@ -845,6 +845,7 @@ mod tests {
         terminal.pending_one_shot_status_requests.clear();
 
         terminal.pending_cancel_status_request = Some(PendingCancelStatusRequest::new(
+            7,
             account.to_string(),
             42,
             "BTC".to_string(),
@@ -853,6 +854,7 @@ mod tests {
         terminal.pending_cancel_status_request = None;
 
         terminal.pending_move_status_request = Some(PendingMoveStatusRequest::new(
+            8,
             account.to_string(),
             42,
             "BTC".to_string(),
@@ -863,6 +865,7 @@ mod tests {
         terminal.pending_move_order_contexts.insert(
             MoveOrderKey::new("BTC", 42),
             PendingMoveOrderContext::new(
+                0,
                 account.to_string(),
                 sensitive_string("move-agent").into_zeroizing(),
             )
@@ -986,14 +989,16 @@ impl MoveOrderKey {
 
 #[derive(Clone)]
 pub(crate) struct PendingMoveOrderContext {
+    request_id: u64,
     account_address: String,
     agent_key: CapturedAgentKey,
 }
 
 impl PendingMoveOrderContext {
-    /// Captures the trading identity used to cancel an order so the replacement
-    /// cannot silently switch to a different account/key before placement.
+    /// Captures the dispatch identity for one modify attempt so a result cannot
+    /// silently switch account/key or settle a later attempt on the same OID.
     pub(crate) fn new(
+        request_id: u64,
         account_address: impl Into<String>,
         agent_key: Zeroizing<String>,
     ) -> Result<Self, MoveOrderContextError> {
@@ -1002,9 +1007,14 @@ impl PendingMoveOrderContext {
         };
 
         Ok(Self {
+            request_id,
             account_address: account_address.into(),
             agent_key,
         })
+    }
+
+    pub(crate) fn request_id(&self) -> u64 {
+        self.request_id
     }
 
     pub(crate) fn replacement_agent_key(
@@ -1026,6 +1036,10 @@ impl PendingMoveOrderContext {
 
     pub(crate) fn matches_account(&self, account_address: &str) -> bool {
         self.account_address == account_address
+    }
+
+    pub(crate) fn matches_result(&self, request_id: u64, account_address: &str) -> bool {
+        self.request_id == request_id && self.matches_account(account_address)
     }
 }
 

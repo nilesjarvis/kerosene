@@ -314,7 +314,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) pending_leverage_update: Option<PendingLeverageUpdateContext>,
     // Order status feedback (message, is_error)
     pub(crate) order_status: Option<(String, bool)>,
-    pub(crate) next_one_shot_status_request_id: u64,
+    pub(crate) next_order_lifecycle_request_id: u64,
     pub(crate) pending_one_shot_status_requests: BTreeMap<u64, PendingOneShotStatusRequest>,
     pub(crate) pending_cancel_status_request: Option<PendingCancelStatusRequest>,
     pub(crate) pending_move_status_request: Option<PendingMoveStatusRequest>,

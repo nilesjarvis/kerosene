@@ -81,23 +81,27 @@ impl TradingTerminal {
                 return self.execute_cancel(&coin, oid.into_u64());
             }
             Message::CancelResult {
+                request_id,
                 account_address,
                 pending_indicator_id,
                 result,
             } => {
                 return self.handle_cancel_result(
+                    request_id,
                     account_address.into_string(),
                     pending_indicator_id,
                     *result,
                 );
             }
             Message::CancelOrderStatusLoaded {
+                request_id,
                 account_address,
                 oid,
                 symbol,
                 result,
             } => {
                 return self.handle_cancel_order_status_result(
+                    request_id,
                     account_address.into_string(),
                     oid.into_u64(),
                     symbol,
@@ -400,6 +404,7 @@ impl TradingTerminal {
                 return self.handle_move_order(coin, oid.into_u64(), new_price);
             }
             Message::MoveOrderModifyResult {
+                request_id,
                 account_address,
                 coin,
                 oid,
@@ -407,6 +412,7 @@ impl TradingTerminal {
                 result,
             } => {
                 return self.handle_move_order_modify_result(
+                    request_id,
                     account_address.into_string(),
                     coin,
                     oid.into_u64(),
@@ -415,12 +421,14 @@ impl TradingTerminal {
                 );
             }
             Message::MoveOrderStatusLoaded {
+                request_id,
                 account_address,
                 coin,
                 oid,
                 result,
             } => {
                 return self.handle_move_order_status_result(
+                    request_id,
                     account_address.into_string(),
                     coin,
                     oid.into_u64(),

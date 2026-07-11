@@ -1143,11 +1143,13 @@ pub(crate) enum Message {
         oid: RedactedOrderId,
     },
     CancelResult {
+        request_id: u64,
         account_address: RedactedAddress,
         pending_indicator_id: Option<u64>,
         result: Box<Result<ExchangeResponse, String>>,
     },
     CancelOrderStatusLoaded {
+        request_id: u64,
         account_address: RedactedAddress,
         oid: RedactedOrderId,
         symbol: String,
@@ -1415,6 +1417,7 @@ pub(crate) enum Message {
         new_price: f64,
     },
     MoveOrderModifyResult {
+        request_id: u64,
         account_address: RedactedAddress,
         coin: String,
         oid: RedactedOrderId,
@@ -1422,6 +1425,7 @@ pub(crate) enum Message {
         result: Box<Result<ExchangeResponse, String>>,
     },
     MoveOrderStatusLoaded {
+        request_id: u64,
         account_address: RedactedAddress,
         coin: String,
         oid: RedactedOrderId,
@@ -1629,6 +1633,7 @@ mod tests {
                 oid: OID.into(),
             },
             Message::CancelOrderStatusLoaded {
+                request_id: 1,
                 account_address: "0x0000000000000000000000000000000000000001".into(),
                 oid: OID.into(),
                 symbol: "HYPE".to_string(),
@@ -1686,6 +1691,7 @@ mod tests {
                 new_price: 100.0,
             },
             Message::MoveOrderModifyResult {
+                request_id: 2,
                 account_address: "0x0000000000000000000000000000000000000001".into(),
                 coin: "HYPE".to_string(),
                 oid: OID.into(),
@@ -1693,6 +1699,7 @@ mod tests {
                 result: Box::new(Err("modify failed".to_string())),
             },
             Message::MoveOrderStatusLoaded {
+                request_id: 2,
                 account_address: "0x0000000000000000000000000000000000000001".into(),
                 coin: "HYPE".to_string(),
                 oid: OID.into(),
@@ -2090,17 +2097,20 @@ mod tests {
                 result: Box::new(Err("leverage failed".to_string())),
             },
             Message::CancelResult {
+                request_id: 1,
                 account_address: ADDRESS.into(),
                 pending_indicator_id: None,
                 result: Box::new(Err("cancel failed".to_string())),
             },
             Message::CancelOrderStatusLoaded {
+                request_id: 1,
                 account_address: ADDRESS.into(),
                 oid: 42.into(),
                 symbol: "HYPE".to_string(),
                 result: Box::new(Err("status failed".to_string())),
             },
             Message::MoveOrderModifyResult {
+                request_id: 2,
                 account_address: ADDRESS.into(),
                 coin: "HYPE".to_string(),
                 oid: 42.into(),
@@ -2108,6 +2118,7 @@ mod tests {
                 result: Box::new(Err("modify failed".to_string())),
             },
             Message::MoveOrderStatusLoaded {
+                request_id: 2,
                 account_address: ADDRESS.into(),
                 coin: "HYPE".to_string(),
                 oid: 42.into(),

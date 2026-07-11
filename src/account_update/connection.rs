@@ -457,11 +457,11 @@ mod tests {
     }
 
     fn pending_cancel_status_request(account_address: &str) -> PendingCancelStatusRequest {
-        PendingCancelStatusRequest::new(account_address.to_string(), 42, "BTC".to_string())
+        PendingCancelStatusRequest::new(7, account_address.to_string(), 42, "BTC".to_string())
     }
 
     fn pending_move_status_request(account_address: &str) -> PendingMoveStatusRequest {
-        PendingMoveStatusRequest::new(account_address.to_string(), 42, "BTC".to_string())
+        PendingMoveStatusRequest::new(8, account_address.to_string(), 42, "BTC".to_string())
     }
 
     fn chase_order(account_address: &str) -> ChaseOrder {
@@ -1256,6 +1256,7 @@ mod tests {
         terminal.pending_move_order_contexts.insert(
             MoveOrderKey::new("BTC", 42),
             PendingMoveOrderContext::new(
+                0,
                 TEST_ACCOUNT.to_string(),
                 Zeroizing::new("move-agent".to_string()),
             )

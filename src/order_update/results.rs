@@ -87,28 +87,44 @@ impl PendingOneShotStatusRequest {
 
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct PendingCancelStatusRequest {
+    request_id: u64,
     account_address: String,
     oid: u64,
     symbol: String,
+    phase: PendingCancelRequestPhase,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PendingCancelRequestPhase {
+    AwaitingResult,
+    CheckingStatus,
 }
 
 impl fmt::Debug for PendingCancelStatusRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PendingCancelStatusRequest")
+            .field("request_id", &self.request_id)
             .field("account_address", &"<redacted>")
             .field("oid", &"<redacted>")
             .field("symbol", &self.symbol)
+            .field("phase", &self.phase)
             .finish()
     }
 }
 
 impl PendingCancelStatusRequest {
-    pub(crate) fn new(account_address: String, oid: u64, symbol: String) -> Self {
+    pub(crate) fn new(request_id: u64, account_address: String, oid: u64, symbol: String) -> Self {
         Self {
+            request_id,
             account_address,
             oid,
             symbol,
+            phase: PendingCancelRequestPhase::AwaitingResult,
         }
+    }
+
+    pub(crate) fn request_id(&self) -> u64 {
+        self.request_id
     }
 
     pub(crate) fn oid(&self) -> u64 {
@@ -119,11 +135,38 @@ impl PendingCancelStatusRequest {
         &self.symbol
     }
 
-    fn matches(&self, account_address: &str, oid: u64, symbol: &str) -> bool {
-        crate::order_execution::order_account_addresses_match(
-            &self.account_address,
-            account_address,
-        ) && self.oid == oid
+    fn matches_result(&self, request_id: u64, account_address: &str) -> bool {
+        self.phase == PendingCancelRequestPhase::AwaitingResult
+            && self.request_id == request_id
+            && crate::order_execution::order_account_addresses_match(
+                &self.account_address,
+                account_address,
+            )
+    }
+
+    fn begin_status_check(&mut self, request_id: u64) -> bool {
+        if self.request_id != request_id || self.phase != PendingCancelRequestPhase::AwaitingResult
+        {
+            return false;
+        }
+        self.phase = PendingCancelRequestPhase::CheckingStatus;
+        true
+    }
+
+    fn matches_status(
+        &self,
+        request_id: u64,
+        account_address: &str,
+        oid: u64,
+        symbol: &str,
+    ) -> bool {
+        self.phase == PendingCancelRequestPhase::CheckingStatus
+            && self.request_id == request_id
+            && crate::order_execution::order_account_addresses_match(
+                &self.account_address,
+                account_address,
+            )
+            && self.oid == oid
             && self.symbol == symbol
     }
 
@@ -133,10 +176,16 @@ impl PendingCancelStatusRequest {
             account_address,
         )
     }
+
+    fn is_status_check_for_account(&self, account_address: &str) -> bool {
+        self.phase == PendingCancelRequestPhase::CheckingStatus
+            && self.is_for_account(account_address)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct PendingMoveStatusRequest {
+    request_id: u64,
     account_address: String,
     oid: u64,
     symbol: String,
@@ -145,6 +194,7 @@ pub(crate) struct PendingMoveStatusRequest {
 impl fmt::Debug for PendingMoveStatusRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PendingMoveStatusRequest")
+            .field("request_id", &self.request_id)
             .field("account_address", &"<redacted>")
             .field("oid", &"<redacted>")
             .field("symbol", &self.symbol)
@@ -153,19 +203,32 @@ impl fmt::Debug for PendingMoveStatusRequest {
 }
 
 impl PendingMoveStatusRequest {
-    pub(crate) fn new(account_address: String, oid: u64, symbol: String) -> Self {
+    pub(crate) fn new(request_id: u64, account_address: String, oid: u64, symbol: String) -> Self {
         Self {
+            request_id,
             account_address,
             oid,
             symbol,
         }
     }
 
-    pub(crate) fn matches(&self, account_address: &str, oid: u64, symbol: &str) -> bool {
-        crate::order_execution::order_account_addresses_match(
-            &self.account_address,
-            account_address,
-        ) && self.oid == oid
+    pub(crate) fn request_id(&self) -> u64 {
+        self.request_id
+    }
+
+    pub(crate) fn matches(
+        &self,
+        request_id: u64,
+        account_address: &str,
+        oid: u64,
+        symbol: &str,
+    ) -> bool {
+        self.request_id == request_id
+            && crate::order_execution::order_account_addresses_match(
+                &self.account_address,
+                account_address,
+            )
+            && self.oid == oid
             && self.symbol == symbol
     }
 
@@ -236,6 +299,7 @@ impl TradingTerminal {
     }
 
     fn cancel_order_status_task(
+        request_id: u64,
         account_address: String,
         oid: u64,
         symbol: String,
@@ -243,6 +307,7 @@ impl TradingTerminal {
         Task::perform(
             fetch_order_status_by_oid(account_address.clone(), oid),
             move |result| Message::CancelOrderStatusLoaded {
+                request_id,
                 account_address: account_address.into(),
                 oid: oid.into(),
                 symbol,
@@ -293,46 +358,52 @@ impl TradingTerminal {
 
     pub(crate) fn handle_cancel_result(
         &mut self,
+        request_id: u64,
         account_address: String,
         pending_indicator_id: Option<u64>,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
-        let cancelled_order = self
+        let Some((cancelled_oid, cancelled_symbol)) = self
+            .pending_cancel_status_request
+            .as_ref()
+            .filter(|pending| pending.matches_result(request_id, &account_address))
+            .map(|pending| (pending.oid(), pending.symbol().to_string()))
+        else {
+            return Task::none();
+        };
+        if self
             .pending_cancel_indicator_order(pending_indicator_id)
-            .or_else(|| {
-                self.pending_cancel_status_request
-                    .as_ref()
-                    .filter(|pending| pending.is_for_account(&account_address))
-                    .map(|pending| (pending.oid(), pending.symbol().to_string()))
-            });
-        self.clear_pending_order_indicator(pending_indicator_id);
-        if !self.connected_order_account_matches(&account_address) {
-            if self
-                .pending_cancel_status_request
-                .as_ref()
-                .is_some_and(|pending| pending.is_for_account(&account_address))
-            {
-                self.pending_cancel_status_request = None;
-            }
+            .is_some_and(|(oid, symbol)| {
+                oid != cancelled_oid || symbol.as_str() != cancelled_symbol.as_str()
+            })
+        {
             return Task::none();
         }
-        let cancelled_oid = cancelled_order.as_ref().map(|(oid, _)| *oid);
+        self.clear_pending_order_indicator(pending_indicator_id);
+        if !self.connected_order_account_matches(&account_address) {
+            self.pending_cancel_status_request = None;
+            return Task::none();
+        }
         let outcome = classify_execution_result(result);
         if matches!(
             outcome.kind,
             ExecutionOutcomeKind::Ambiguous | ExecutionOutcomeKind::TransportUnknown
         ) {
-            let status_task = cancelled_order
-                .clone()
-                .map_or_else(Task::none, |(oid, symbol)| {
-                    Self::cancel_order_status_task(account_address.clone(), oid, symbol)
-                });
-            let order_label = cancelled_oid
-                .map(|oid| format!(" for order {oid}"))
-                .unwrap_or_default();
+            let Some(pending) = self.pending_cancel_status_request.as_mut() else {
+                return Task::none();
+            };
+            if !pending.begin_status_check(request_id) {
+                return Task::none();
+            }
+            let status_task = Self::cancel_order_status_task(
+                request_id,
+                account_address.clone(),
+                cancelled_oid,
+                cancelled_symbol.clone(),
+            );
             self.set_order_status(
                 format!(
-                    "Cancel status unknown{order_label}: {}; checking orderStatus and refreshing account data",
+                    "Cancel status unknown for order {cancelled_oid}: {}; checking orderStatus and refreshing account data",
                     outcome.status
                 ),
                 true,
@@ -342,17 +413,21 @@ impl TradingTerminal {
         if outcome.kind == ExecutionOutcomeKind::Rejected
             && chase_terminal_cancel_error(&outcome.status)
         {
-            let status_task = cancelled_order
-                .clone()
-                .map_or_else(Task::none, |(oid, symbol)| {
-                    Self::cancel_order_status_task(account_address.clone(), oid, symbol)
-                });
-            let order_label = cancelled_oid
-                .map(|oid| format!(" for order {oid}"))
-                .unwrap_or_default();
+            let Some(pending) = self.pending_cancel_status_request.as_mut() else {
+                return Task::none();
+            };
+            if !pending.begin_status_check(request_id) {
+                return Task::none();
+            }
+            let status_task = Self::cancel_order_status_task(
+                request_id,
+                account_address.clone(),
+                cancelled_oid,
+                cancelled_symbol.clone(),
+            );
             self.set_order_status(
                 format!(
-                    "Cancel may have already resolved{order_label}: {}; checking orderStatus and refreshing account data",
+                    "Cancel may have already resolved for order {cancelled_oid}: {}; checking orderStatus and refreshing account data",
                     outcome.status
                 ),
                 true,
@@ -363,16 +438,15 @@ impl TradingTerminal {
         // Drop the order from the local snapshot on a confirmed cancel so the
         // ack does not resurrect an interactive line for an order the exchange
         // has already removed; the next authoritative update wins regardless.
-        if outcome.kind == ExecutionOutcomeKind::Cancelled
-            && let Some((oid, symbol)) = cancelled_order
-        {
-            self.remove_local_open_order(&account_address, oid, &symbol);
+        if outcome.kind == ExecutionOutcomeKind::Cancelled {
+            self.remove_local_open_order(&account_address, cancelled_oid, &cancelled_symbol);
         }
         self.apply_execution_outcome(outcome)
     }
 
     pub(crate) fn handle_cancel_order_status_result(
         &mut self,
+        request_id: u64,
         account_address: String,
         oid: u64,
         symbol: String,
@@ -381,7 +455,9 @@ impl TradingTerminal {
         let request_matches = self
             .pending_cancel_status_request
             .as_ref()
-            .is_some_and(|pending| pending.matches(&account_address, oid, &symbol));
+            .is_some_and(|pending| {
+                pending.matches_status(request_id, &account_address, oid, &symbol)
+            });
         if !request_matches {
             return Task::none();
         }
@@ -558,9 +634,36 @@ impl TradingTerminal {
         self.connected_order_account_matches(&context.account_address)
     }
 
+    fn order_lifecycle_request_id_in_use(&self, request_id: u64) -> bool {
+        self.pending_one_shot_status_requests
+            .contains_key(&request_id)
+            || self
+                .pending_cancel_status_request
+                .as_ref()
+                .is_some_and(|pending| pending.request_id() == request_id)
+            || self
+                .pending_move_status_request
+                .as_ref()
+                .is_some_and(|pending| pending.request_id() == request_id)
+            || self
+                .pending_move_order_contexts
+                .values()
+                .any(|pending| pending.request_id() == request_id)
+    }
+
+    pub(crate) fn allocate_order_lifecycle_request_id(&mut self) -> u64 {
+        loop {
+            let request_id = self.next_order_lifecycle_request_id;
+            self.next_order_lifecycle_request_id =
+                self.next_order_lifecycle_request_id.wrapping_add(1);
+            if !self.order_lifecycle_request_id_in_use(request_id) {
+                return request_id;
+            }
+        }
+    }
+
     fn begin_one_shot_status_request(&mut self, context: &OneShotPlacementContext) -> u64 {
-        let request_id = self.next_one_shot_status_request_id;
-        self.next_one_shot_status_request_id = self.next_one_shot_status_request_id.wrapping_add(1);
+        let request_id = self.allocate_order_lifecycle_request_id();
         self.insert_pending_one_shot_status_request(PendingOneShotStatusRequest::new(
             request_id, context,
         ));
@@ -619,7 +722,7 @@ impl TradingTerminal {
         if self
             .pending_cancel_status_request
             .as_ref()
-            .is_some_and(|pending| pending.is_for_account(account_address))
+            .is_some_and(|pending| pending.is_status_check_for_account(account_address))
         {
             self.pending_cancel_status_request = None;
         }

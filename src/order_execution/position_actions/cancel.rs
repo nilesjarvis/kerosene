@@ -80,8 +80,10 @@ impl TradingTerminal {
         };
         let pending_indicator_id =
             self.add_pending_order_cancellation_indicator(account_address.clone(), &order);
+        let request_id = self.allocate_order_lifecycle_request_id();
         self.pending_cancel_status_request =
             Some(crate::order_update::PendingCancelStatusRequest::new(
+                request_id,
                 account_address.clone(),
                 order.oid,
                 order.coin.clone(),
@@ -94,6 +96,7 @@ impl TradingTerminal {
         );
         cancel_order_task(key, prepared.asset, prepared.oid, move |result| {
             Message::CancelResult {
+                request_id,
                 account_address: account_address.into(),
                 pending_indicator_id,
                 result: Box::new(result),
@@ -234,6 +237,7 @@ mod tests {
 
     fn pending_move_context() -> PendingMoveOrderContext {
         PendingMoveOrderContext::new(
+            0,
             TEST_ACCOUNT.to_string(),
             sensitive_string("move-agent").into_zeroizing(),
         )
@@ -373,6 +377,7 @@ mod tests {
     fn execute_cancel_waits_for_pending_cancel_status() {
         let mut terminal = terminal_with_cancelable_order();
         terminal.pending_cancel_status_request = Some(PendingCancelStatusRequest::new(
+            7,
             TEST_ACCOUNT.to_string(),
             42,
             "BTC".to_string(),

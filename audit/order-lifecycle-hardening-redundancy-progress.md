@@ -70,6 +70,13 @@
   exchange types (`src/message.rs:254-308`, `src/message.rs:1141-1429`,
   `src/order_update.rs:80-104`, `src/order_update.rs:205-431`,
   `src/chart_update.rs:218-240`).
+- Cancel and move direct/status callbacks carry a collision-aware runtime
+  request sequence in addition to account, symbol, and OID. Cancel keeps one
+  immutable request owner across its awaiting-result and checking-status
+  phases; move keeps the sequence in both its captured-key context and status
+  request. The sequence is local correlation only and does not change the
+  signed exchange action or add mutation retries (`src/order_update/results.rs:88-232`,
+  `src/order_update/results.rs:359-459`, `src/order_update/move_order.rs:12-160`).
 - Account task results carry read-provider and request-generation context;
   user-data events are address-scoped, and websocket lag forces reconciliation
   (`src/account_update/connection/refresh.rs:94-140`,
@@ -94,8 +101,8 @@
 | HUD place | `HudOrderRequest` captures chart/surface/symbol/side; account context; one-shot context | Market: global action + CLOID. Limit: HUD in-flight ID + indicator + CLOID | Unique one-shot CLOID | Shared classifier | Shared CLOID status + account refresh | Chart/surface/symbol/arm checks; per-account limit tracker; current-account match | Market clears global action; limit finishes its tracker entry; both clear indicator | `order_update/hud.rs` tests, `order_execution/hud.rs` tests | Per-tracker ID wraps without collision handling; practically remote, audit with other allocators |
 | Close-position place (UI or Alfred) | Fresh connected-account position snapshot; account/key; coin/fraction; one-shot context | Global close action + indicator + CLOID context | Unique one-shot CLOID | Shared classifier | Shared CLOID status + account refresh | Pending/reconciliation/freshness/completeness gates; current-account match | Clears close action/indicator; shared one-shot terminal handling | `order_execution/position_actions/close/tests/**`, result tests | No confirmed gap |
 | NUKE child place (UI or Alfred) | Parent execution ID; connected account; planner output; per-child one-shot context | Execution ID + child CLOID in the result context and aggregate settlement set | Unique one-shot CLOID per child; the first terminal transition claims it | Shared classifier | Uncertain child gets CLOID status; parent refreshes after aggregate completion | Current-account and execution-ID checks; duplicate settlement is a no-op | CLOID-keyed confirmed/failed/uncertain totals; parent removed after the unique settled-child count reaches total | `order_execution/position_actions/nuke/tests/**`, direct/status duplicate regressions in `order_update/results/tests.rs` | F-01 addressed in Turn 2; executable regression validation remains environment-blocked by missing ALSA metadata |
-| Cancel by OID | Connected account + symbol + OID; durable pending cancel status context | Account + OID + symbol; indicator is presentation only | Target OID (no separate request token) | Shared classifier plus confirmed-cancel predicate | `orderStatus` by OID + open-order/account refresh | Same-account check and exact pending status tuple | Confirmed/terminal result removes matching local order; complete open-order refresh clears uncertainty | `order_execution/position_actions/cancel.rs` tests, cancel result tests | Audit whether every `Ok` refresh used for cleanup has complete open orders |
-| Move/modify | Connected account + symbol + OID; original key captured in `PendingMoveOrderContext` | Account + symbol + OID; indicator ID | Target OID (no separate request token) | Shared classifier plus confirmed-modify predicate | `orderStatus` by OID + account refresh to confirm price | Exact pending move key/context; account match; status tuple match | Removes move context/indicator; terminal status or complete open-order refresh clears uncertainty | `order_execution/quick_order/move_order/tests/**`, `order_update/move_order.rs` tests | Same OID can be modified repeatedly; audit per-attempt correlation after prior completion |
+| Cancel by OID | Connected account + symbol + OID + runtime request sequence; one request owns awaiting-result/checking-status phases | Request sequence + account + OID + symbol; indicator is presentation only | Target OID; runtime sequence is correlation only | Shared classifier plus confirmed-cancel predicate | `orderStatus` by OID + open-order/account refresh | Exact request/phase/account match for direct result; exact request/account/OID/symbol match for status | Confirmed/terminal result removes matching local order; only status-check phase is refresh-reconcilable | `order_execution/position_actions/cancel.rs` tests, cancel result/status duplicate and stale-attempt tests | F-14 addressed in Turn 13; F-15 must require refresh coverage of the origin symbol lane |
+| Move/modify | Connected account + symbol + OID + runtime request sequence; original key captured in `PendingMoveOrderContext` | Request sequence + account + symbol + OID; indicator ID is presentation/local-price provenance | Target OID; runtime sequence is correlation only | Shared classifier plus confirmed-modify predicate | `orderStatus` by OID + account refresh to confirm price | Exact request/account/move-key context for direct result; exact request/account/OID/symbol for status | Removes only the matching move context/indicator; terminal status or refresh can clear status uncertainty | `order_execution/quick_order/move_order/tests/**`, `order_update/move_order.rs` duplicate/stale-attempt tests | F-14 addressed in Turn 13; F-15 must retain expected price and require target-lane refresh evidence before cleanup |
 | Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle + dispatch-time place attempt; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account refresh + open-order/fill stream reconciliation | Exact place-attempt equality + `expects_place_result`; current account, symbol identity, prior-exposure, and reconciliation gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled | Chase lifecycle/place/result/status tests, duplicate/late direct-result regressions, and account stream Chase tests | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account refresh + open-order/fill stream | Exact reprice-count/lifecycle/OID match; account and symbol/reconciliation checks before dispatch | Verification/resting/stop flow; terminal Chase archived | `order_update/chase/modify/tests/**`, including duplicate/late direct-result regressions, and Chase reprice tests | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account refresh/open-order disappearance | Exact stopping phase/OID; disconnected account is reconciled at origin scope | Verifying-cancel then archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests | F-08 addressed in Turn 9; retry idempotence depends on target-specific cancel semantics |
@@ -753,6 +760,103 @@ target-specific cancellation policy, not HTTP replay.
   persistence, and trading semantics are unchanged. Only diagnostic formatting
   differs.
 
+### F-14 — Cancel and move results can settle a later same-OID attempt
+
+- Status: addressed in Turn 13; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: High
+- Scope: cancel and drag-to-move dispatch, direct-result ownership, status-result
+  ownership, refresh ordering, and runtime request-ID allocation
+- Preconditions/event ordering:
+  1. Cancel attempt A is dispatched and its presentation indicator expires, or
+     a complete refresh clears its account-scoped pending slot before the direct
+     result arrives. A later attempt B is then dispatched for the same account
+     and OID.
+  2. Alternatively, move attempt A leaves direct/status work in flight, its
+     OID-keyed context is cleared by an earlier outcome or account-state reset,
+     and attempt B reuses the same account, symbol, and OID.
+  3. A delayed or duplicate direct/status message from A arrives while B owns
+     the structurally identical account/OID tuple.
+- Evidence: before Turn 13, cancel direct results recovered their target from
+  the indicator and then whichever pending cancel matched only the account;
+  cancel status results matched account/OID/symbol but not an attempt or phase.
+  Move direct results matched the current OID-keyed context only by account,
+  and move status results likewise matched only account/OID/symbol. The refresh
+  cleanup also treated a cancel waiting for its first direct result as though it
+  were already in status reconciliation. The corrected ownership checks are at
+  `src/order_update/results.rs:88-183`,
+  `src/order_update/results.rs:359-459`, and
+  `src/order_update/move_order.rs:30-160`.
+- Violated invariant: a callback may transition, clear, or reconcile only the
+  exact logical mutation attempt that dispatched it; OID reuse and a
+  presentation indicator are not sufficient ownership.
+- Risk: an old cancel result can remove the wrong local order or release the
+  newer cancel blocker; an old move result can consume the newer captured key
+  context, clear its indicator, patch the snapshot with the old target price,
+  or cause the newer true result to be ignored. An old status result can settle
+  either newer attempt before its own outcome is known.
+- Implemented fix: one collision-aware, wrap-safe runtime request sequence is
+  shared by one-shot status, cancel, and move state and skips every live ID.
+  Cancel creates its immutable account/OID/symbol owner before dispatch and
+  explicitly transitions it from `AwaitingResult` to `CheckingStatus`; only the
+  latter phase can be cleared by refresh. Direct and status messages carry the
+  same sequence and must match the current phase. Move captures the sequence in
+  `PendingMoveOrderContext`, propagates it to uncertain status work, and
+  requires it at both handlers (`src/order_execution/position_actions/cancel.rs:81-104`,
+  `src/order_execution/quick_order/move_order.rs:162-200`,
+  `src/order_update/results.rs:637-670`).
+- Regression coverage: stale same-OID direct/status results preserve the newer
+  cancel and move attempt; a duplicate cancel direct result cannot override an
+  active status check; a complete account refresh cannot erase a cancel still
+  awaiting its direct result; indicator expiry does not remove authoritative
+  cancel ownership; and allocator wrap skips live one-shot, cancel, move-status,
+  and move-context IDs (`src/order_update/results/tests.rs:794-826`,
+  `src/order_update/results/tests.rs:1427-1508`,
+  `src/order_update/results/tests.rs:1587-1607`,
+  `src/order_update/move_order.rs:683-702`,
+  `src/order_update/move_order.rs:767-849`).
+- Protected behavior: signed cancel/modify actions, account/key capture, OID,
+  symbol, price and size preparation, response classification, normal status
+  text, refresh/status task timing, local confirmed-price projection, UI,
+  persistence, and retry policy are unchanged. The sequence is runtime-only
+  correlation and is never sent to the exchange.
+
+### F-15 — Cancel/move refresh cleanup is not scoped to sufficient evidence
+
+- Status: confirmed and queued for the next narrow Track 4 turn
+- Severity: High
+- Scope: authoritative fallback cleanup for uncertain cancel and move attempts
+- Preconditions/event ordering: an uncertain cancel/move originates on one
+  main or HIP-3 symbol lane; the visible market universe changes before its
+  refresh is dispatched or completed, or the move target remains open at an
+  unverified price; a successful snapshot then reports its own scoped open-order
+  section as complete.
+- Evidence: refresh scope follows the currently selected market universe
+  (`src/account_update/connection/refresh.rs:81-92`), and `AccountData` already
+  exposes the correct per-symbol lane predicate
+  (`src/account/types/data.rs:198-213`). However, shared cancel/move cleanup
+  checks only the snapshot-wide `open_orders_complete` flag and account before
+  dropping either request (`src/order_update/results.rs:711-735`). The move
+  status request retains no expected target price
+  (`src/order_update/results.rs:186-232`).
+- Violated invariant: uncertainty may be released only by authoritative data
+  that covers the operation's origin lane and distinguishes the relevant
+  terminal/open state; an open move additionally needs evidence of whether its
+  expected price committed.
+- Risk: a complete but unrelated HIP-3 lane can unblock a cancel or move whose
+  exposure remains unknown. A same-lane move refresh can also erase the status
+  request without comparing the live order price to the dispatched target,
+  allowing later actions to proceed without establishing which modification
+  won.
+- Planned remediation/tests: retain the move's exact prepared target price in
+  its runtime-only reconciliation context; require
+  `has_complete_open_orders_for_symbol` for both operations; settle cancel from
+  target OID presence/absence; and settle move only from terminal absence or a
+  parsed live price that can be compared to the expected target under existing
+  numeric semantics. Add selected-dex-switch, unrelated-lane, old-price,
+  expected-price, and terminal-disappearance regressions. Do not alter fetch
+  scope, request cadence, wire payloads, or visible normal-path behavior.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -1376,6 +1480,77 @@ target-specific cancellation policy, not HTTP replay.
   repeated attempts on the same OID, delayed direct/status results, indicator
   disappearance, and authoritative open-order/fill refresh ordering.
 
+## Turn 13 — Correlate Cancel and Move Attempts
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: High
+- Scope: F-14 across cancel/move dispatch, direct and status messages, pending
+  runtime contexts, cancel phases, account-refresh cleanup, and shared request
+  sequence allocation
+- Invariant: only the immutable owner of one dispatched cancel or modify may
+  consume its direct/status callback or clear its pending state; neither a
+  reused OID nor a presentation indicator can identify an attempt by itself.
+- Protected behavior: exact cancel/modify wire mutations, prepared asset/OID,
+  side, size, reduce-only and price values, captured account/key behavior,
+  response classification, normal statuses and refresh scheduling, confirmed
+  local move-price projection, UI, persistence, and all retry policy.
+- Preconditions/event ordering: an old cancel indicator/pending slot disappears
+  or an old move context/status slot is cleared; a new attempt reuses the same
+  account/symbol/OID; then the old direct or status result arrives after the new
+  attempt owns that tuple. A duplicate cancel result can also arrive after its
+  first result has advanced the attempt into status reconciliation.
+- Evidence: the complete pre-change/direct/status call graph matched cancel by
+  account (direct) or account/OID/symbol (status), and move by OID-key plus
+  account (direct) or account/OID/symbol (status). Cancel target recovery could
+  fall through from an expired indicator to the current account-scoped pending
+  request. Account refresh cleanup did not distinguish a cancel awaiting its
+  direct result from one awaiting reconciliation. F-14 records the concrete
+  prior behavior and current source references.
+- Change: renamed the one-shot-only runtime counter into a shared lifecycle
+  request allocator that skips all live one-shot/cancel/move IDs across wrap;
+  allocated an ID before each cancel/move dispatch; propagated it through both
+  direct and status messages; required it in every result owner match; and made
+  cancel's `AwaitingResult` to `CheckingStatus` transition explicit and
+  one-way. Refresh cleanup can no longer erase a cancel whose direct result has
+  not arrived. No field is persisted or sent to Hyperliquid.
+- Tests/checks:
+  - Added stale same-OID direct/status regressions for cancel and move, duplicate
+    cancel direct-result coverage, indicator-expiry ownership coverage, an
+    awaiting-direct-result refresh regression, and collision-aware allocator
+    wrap coverage across all four live-state families.
+  - Updated nearby cancel-status fixtures to enter the status-check phase
+    explicitly and updated all constructor/message/handler call sites.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - Focused `cargo test --package kerosene --bin kerosene stale_cancel_`,
+    `stale_move_`,
+    `duplicate_cancel_result_does_not_override_status_reconciliation`,
+    `account_refresh_does_not_clear_cancel_attempt_awaiting_direct_result`, and
+    `order_lifecycle_request_allocator_skips_live_ids_across_wrap` attempts all
+    stopped in `alsa-sys` before Kerosene compilation because `pkg-config`
+    could not find the system `alsa.pc` package.
+  - Nearby/protected `cancel_order_status_`, `move_order_status_`,
+    `cancel_result_ambiguous_ack_uses_pending_request_after_indicator_expires`,
+    and `move_result_success_carries_confirmed_price_into_local_snapshot` test
+    attempts stopped at the same dependency boundary.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing boundary before checking Kerosene.
+- Compatibility/UX assessment: the request sequence and cancel phase are
+  runtime-only plumbing. The normal successful, rejected, ambiguous, and
+  transport-unknown paths publish the same status text and tasks; only stale,
+  duplicate, or prematurely refreshed ownership is prevented from touching a
+  different attempt.
+- Residual risk: formatting, exact constructor/consumer inventory, phase and
+  state-transition inspection, adversarial tests, and diff review pass, but
+  the crate has not type-checked and the tests/clippy must execute on a host
+  with ALSA development metadata. F-15 remains: refresh fallback must prove the
+  origin symbol lane, and move reconciliation must retain/compare the expected
+  target price before uncertainty is released.
+- Prior turn commit hash: `32b998cf9877efe3a803a320d023450151d70349`
+- Next candidate: address F-15 with symbol-lane-scoped cancel/move cleanup and
+  exact expected-price evidence for an open moved order, preserving the current
+  fetch cadence, wire mutation, normal statuses, and UI.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -1383,9 +1558,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused order-message identifier and
-  stopped-Chase request formatter tests; protected chart/TWAP producer tests;
-  `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
+- Environment-blocked this turn: focused stale/duplicate cancel and move
+  attempt tests, allocator-wrap and awaiting-result phase tests, nearby
+  cancel/move status tests, protected indicator-expiry/confirmed-price tests,
+  `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
@@ -1393,8 +1569,8 @@ target-specific cancellation policy, not HTTP replay.
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-13 have source fixes and regression coverage but await
+- F-01 through F-14 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- Cancel/move repeated-attempt correlation, broader Chase/TWAP and account-stream
+- F-15 cancel/move refresh sufficiency, broader Chase/TWAP and account-stream
   ordering, restart/shutdown cleanup, local planning/state diagnostic
   redaction, and the remaining tracks require completion before a final verdict.

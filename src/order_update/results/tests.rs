@@ -5,13 +5,17 @@ use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartInstance, ChartSurfaceId, DetachedChartWindowState};
 use crate::message::Message;
 use crate::order_execution::{
-    OneShotPlacementContext, OrderSurface, PendingNukeExecution, QuickOrderForm,
+    MoveOrderKey, OneShotPlacementContext, OrderSurface, PendingMoveOrderContext,
+    PendingNukeExecution, QuickOrderForm,
 };
 use crate::signing::ExchangeOrderKind;
 use crate::timeframe::Timeframe;
+use zeroize::Zeroizing;
 
 const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
 const OTHER_ACCOUNT: &str = "0xdef0000000000000000000000000000000000000";
+const CANCEL_REQUEST_ID: u64 = 17;
+const STALE_CANCEL_REQUEST_ID: u64 = 16;
 
 fn exchange_response(statuses: Vec<serde_json::Value>) -> ExchangeResponse {
     serde_json::from_value(serde_json::json!({
@@ -186,7 +190,12 @@ fn pending_one_shot_status_request_debug_redacts_account_and_cloid() {
 
 #[test]
 fn pending_cancel_status_request_debug_redacts_account_and_oid() {
-    let request = PendingCancelStatusRequest::new(TEST_ACCOUNT.to_string(), 42, "BTC".to_string());
+    let request = PendingCancelStatusRequest::new(
+        CANCEL_REQUEST_ID,
+        TEST_ACCOUNT.to_string(),
+        42,
+        "BTC".to_string(),
+    );
 
     let rendered = format!("{request:?}");
 
@@ -198,7 +207,7 @@ fn pending_cancel_status_request_debug_redacts_account_and_oid() {
 
 #[test]
 fn pending_move_status_request_debug_redacts_account_and_oid() {
-    let request = PendingMoveStatusRequest::new(TEST_ACCOUNT.to_string(), 42, "BTC".to_string());
+    let request = PendingMoveStatusRequest::new(7, TEST_ACCOUNT.to_string(), 42, "BTC".to_string());
 
     let rendered = format!("{request:?}");
 
@@ -783,6 +792,40 @@ fn one_shot_status_result_with_stale_request_id_is_ignored() {
 }
 
 #[test]
+fn order_lifecycle_request_allocator_skips_live_ids_across_wrap() {
+    let mut terminal = terminal_with_connected_account();
+    terminal.next_order_lifecycle_request_id = u64::MAX;
+    terminal.insert_pending_one_shot_status_request(PendingOneShotStatusRequest::new(
+        u64::MAX,
+        &one_shot_context(),
+    ));
+    terminal.pending_cancel_status_request = Some(PendingCancelStatusRequest::new(
+        0,
+        TEST_ACCOUNT.to_string(),
+        42,
+        "BTC".to_string(),
+    ));
+    terminal.pending_move_status_request = Some(PendingMoveStatusRequest::new(
+        1,
+        TEST_ACCOUNT.to_string(),
+        43,
+        "ETH".to_string(),
+    ));
+    terminal.pending_move_order_contexts.insert(
+        MoveOrderKey::new("SOL", 44),
+        PendingMoveOrderContext::new(
+            2,
+            TEST_ACCOUNT.to_string(),
+            Zeroizing::new("move-agent-key".to_string()),
+        )
+        .expect("valid move context"),
+    );
+
+    assert_eq!(terminal.allocate_order_lifecycle_request_id(), 3);
+    assert_eq!(terminal.next_order_lifecycle_request_id, 4);
+}
+
+#[test]
 fn older_status_request_survives_newer_unrelated_outcome() {
     // Regression: with one shared slot, a second placement outcome used to
     // clobber the first placement's ambiguity check and its orderStatus
@@ -1258,11 +1301,14 @@ fn arm_pending_cancel_status_request(
     oid: u64,
     symbol: &str,
 ) {
-    terminal.pending_cancel_status_request = Some(PendingCancelStatusRequest::new(
+    let mut request = PendingCancelStatusRequest::new(
+        CANCEL_REQUEST_ID,
         account_address.to_string(),
         oid,
         symbol.to_string(),
-    ));
+    );
+    assert!(request.begin_status_check(CANCEL_REQUEST_ID));
+    terminal.pending_cancel_status_request = Some(request);
 }
 
 fn terminal_with_pending_cancel() -> (TradingTerminal, Option<u64>) {
@@ -1278,7 +1324,12 @@ fn terminal_with_pending_cancel() -> (TradingTerminal, Option<u64>) {
     );
     let pending_id =
         terminal.add_pending_order_cancellation_indicator(TEST_ACCOUNT.to_string(), &order);
-    arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, order.oid, &order.coin);
+    terminal.pending_cancel_status_request = Some(PendingCancelStatusRequest::new(
+        CANCEL_REQUEST_ID,
+        TEST_ACCOUNT.to_string(),
+        order.oid,
+        order.coin.clone(),
+    ));
     assert!(pending_id.is_some());
     (terminal, pending_id)
 }
@@ -1288,6 +1339,7 @@ fn cancel_result_success_clears_indicator_and_removes_order_locally() {
     let (mut terminal, pending_id) = terminal_with_pending_cancel();
 
     let _task = terminal.handle_cancel_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         pending_id,
         Ok(cancel_exchange_response(vec![serde_json::json!("success")])),
@@ -1316,6 +1368,7 @@ fn cancel_result_terminal_error_checks_status_and_keeps_local_order_until_refres
     let (mut terminal, pending_id) = terminal_with_pending_cancel();
 
     let _task = terminal.handle_cancel_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         pending_id,
         Ok(exchange_response(vec![serde_json::json!({
@@ -1347,6 +1400,7 @@ fn cancel_result_ambiguous_ack_is_uncertain_and_keeps_local_order() {
     let (mut terminal, pending_id) = terminal_with_pending_cancel();
 
     let _task = terminal.handle_cancel_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         pending_id,
         Ok(malformed_ok_response()),
@@ -1371,11 +1425,38 @@ fn cancel_result_ambiguous_ack_is_uncertain_and_keeps_local_order() {
 }
 
 #[test]
+fn duplicate_cancel_result_does_not_override_status_reconciliation() {
+    let (mut terminal, pending_id) = terminal_with_pending_cancel();
+
+    let _task = terminal.handle_cancel_result(
+        CANCEL_REQUEST_ID,
+        TEST_ACCOUNT.to_string(),
+        pending_id,
+        Ok(malformed_ok_response()),
+    );
+    let status = terminal.order_status.clone();
+
+    let _task = terminal.handle_cancel_result(
+        CANCEL_REQUEST_ID,
+        TEST_ACCOUNT.to_string(),
+        pending_id,
+        Ok(cancel_exchange_response(vec![serde_json::json!("success")])),
+    );
+
+    assert!(terminal.pending_cancel_status_request.is_some());
+    assert_eq!(terminal.order_status, status);
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert_eq!(data.open_orders.len(), 1);
+    assert_eq!(data.open_orders[0].oid, 42);
+}
+
+#[test]
 fn cancel_result_ambiguous_ack_uses_pending_request_after_indicator_expires() {
     let (mut terminal, pending_id) = terminal_with_pending_cancel();
     terminal.pending_order_indicators.clear();
 
     let _task = terminal.handle_cancel_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         pending_id,
         Ok(malformed_ok_response()),
@@ -1396,10 +1477,43 @@ fn cancel_result_ambiguous_ack_uses_pending_request_after_indicator_expires() {
 }
 
 #[test]
-fn cancel_order_status_open_keeps_cancel_uncertain_and_local_order() {
+fn stale_cancel_result_after_indicator_expiry_does_not_settle_new_attempt() {
+    let (mut terminal, current_pending_id) = terminal_with_pending_cancel();
+    let stale_pending_id = current_pending_id.map(|id| id.wrapping_add(1));
+    terminal.order_status = None;
+
+    let _task = terminal.handle_cancel_result(
+        STALE_CANCEL_REQUEST_ID,
+        TEST_ACCOUNT.to_string(),
+        stale_pending_id,
+        Ok(cancel_exchange_response(vec![serde_json::json!("success")])),
+    );
+
+    assert!(terminal.pending_cancel_status_request.is_some());
+    assert!(terminal.has_pending_cancel_indicator(42));
+    assert!(terminal.order_status.is_none());
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert_eq!(data.open_orders.len(), 1);
+    assert_eq!(data.open_orders[0].oid, 42);
+}
+
+#[test]
+fn account_refresh_does_not_clear_cancel_attempt_awaiting_direct_result() {
     let (mut terminal, _pending_id) = terminal_with_pending_cancel();
 
+    finish_current_account_refresh(&mut terminal);
+
+    assert!(terminal.pending_cancel_status_request.is_some());
+    assert!(terminal.has_pending_trading_request());
+}
+
+#[test]
+fn cancel_order_status_open_keeps_cancel_uncertain_and_local_order() {
+    let (mut terminal, _pending_id) = terminal_with_pending_cancel();
+    arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
+
     let _task = terminal.handle_cancel_order_status_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         42,
         "BTC".to_string(),
@@ -1429,6 +1543,7 @@ fn cancel_order_status_error_redacts_sensitive_text() {
     arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
 
     let _task = terminal.handle_cancel_order_status_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         42,
         "BTC".to_string(),
@@ -1452,8 +1567,10 @@ fn cancel_order_status_error_redacts_sensitive_text() {
 #[test]
 fn cancel_order_status_without_matching_pending_request_is_ignored() {
     let (mut terminal, _pending_id) = terminal_with_pending_cancel();
+    arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
 
     let _task = terminal.handle_cancel_order_status_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         42,
         "ETH".to_string(),
@@ -1468,10 +1585,34 @@ fn cancel_order_status_without_matching_pending_request_is_ignored() {
 }
 
 #[test]
-fn cancel_order_status_terminal_removes_local_order() {
+fn stale_cancel_status_result_does_not_settle_new_same_oid_attempt() {
     let (mut terminal, _pending_id) = terminal_with_pending_cancel();
+    arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
+    terminal.order_status = None;
 
     let _task = terminal.handle_cancel_order_status_result(
+        STALE_CANCEL_REQUEST_ID,
+        TEST_ACCOUNT.to_string(),
+        42,
+        "BTC".to_string(),
+        Ok(order_status("canceled")),
+    );
+
+    assert!(terminal.pending_cancel_status_request.is_some());
+    assert!(terminal.order_status.is_none());
+    assert!(!terminal.account_loading);
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert_eq!(data.open_orders.len(), 1);
+    assert_eq!(data.open_orders[0].oid, 42);
+}
+
+#[test]
+fn cancel_order_status_terminal_removes_local_order() {
+    let (mut terminal, _pending_id) = terminal_with_pending_cancel();
+    arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
+
+    let _task = terminal.handle_cancel_order_status_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         42,
         "BTC".to_string(),
@@ -1502,6 +1643,7 @@ fn cancel_result_after_account_switch_clears_indicator_without_status() {
     terminal.order_status = None;
 
     let _task = terminal.handle_cancel_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         pending_id,
         Ok(cancel_exchange_response(vec![serde_json::json!("success")])),
@@ -1526,8 +1668,15 @@ fn cancel_result_success_removes_only_matching_symbol_for_same_oid() {
     let pending_id =
         terminal.add_pending_order_cancellation_indicator(TEST_ACCOUNT.to_string(), &target_order);
     assert!(pending_id.is_some());
+    terminal.pending_cancel_status_request = Some(PendingCancelStatusRequest::new(
+        CANCEL_REQUEST_ID,
+        TEST_ACCOUNT.to_string(),
+        target_order.oid,
+        target_order.coin.clone(),
+    ));
 
     let _task = terminal.handle_cancel_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         pending_id,
         Ok(cancel_exchange_response(vec![serde_json::json!("success")])),
@@ -1546,6 +1695,7 @@ fn cancel_result_success_ignores_open_orders_from_stale_account_snapshot() {
     terminal.account_data_address = Some(OTHER_ACCOUNT.to_string());
 
     let _task = terminal.handle_cancel_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         pending_id,
         Ok(cancel_exchange_response(vec![serde_json::json!("success")])),
@@ -1570,6 +1720,7 @@ fn cancel_status_terminal_removes_only_matching_symbol_for_same_oid() {
     arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, 42, &target_order.coin);
 
     let _task = terminal.handle_cancel_order_status_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         42,
         target_order.coin,
@@ -1586,9 +1737,11 @@ fn cancel_status_terminal_removes_only_matching_symbol_for_same_oid() {
 #[test]
 fn cancel_status_terminal_ignores_open_orders_from_stale_account_snapshot() {
     let (mut terminal, _pending_id) = terminal_with_pending_cancel();
+    arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
     terminal.account_data_address = Some(OTHER_ACCOUNT.to_string());
 
     let _task = terminal.handle_cancel_order_status_result(
+        CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
         42,
         "BTC".to_string(),

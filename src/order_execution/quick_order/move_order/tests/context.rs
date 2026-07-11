@@ -5,6 +5,7 @@ use zeroize::Zeroizing;
 #[test]
 fn pending_move_context_reuses_captured_agent_key_for_same_account() {
     let context = context_or_panic(PendingMoveOrderContext::new(
+        0,
         "0xabc0000000000000000000000000000000000000",
         Zeroizing::new("original-agent-key".to_string()),
     ));
@@ -22,6 +23,7 @@ fn pending_move_context_reuses_captured_agent_key_for_same_account() {
 #[test]
 fn pending_move_context_rejects_replacement_after_account_change() {
     let context = context_or_panic(PendingMoveOrderContext::new(
+        0,
         "0xabc0000000000000000000000000000000000000",
         Zeroizing::new("original-agent-key".to_string()),
     ));
@@ -44,6 +46,7 @@ fn pending_move_context_rejects_replacement_after_account_change() {
 fn pending_move_context_rejects_empty_agent_key() {
     assert!(matches!(
         PendingMoveOrderContext::new(
+            0,
             "0xabc0000000000000000000000000000000000000",
             Zeroizing::new("   ".to_string()),
         ),

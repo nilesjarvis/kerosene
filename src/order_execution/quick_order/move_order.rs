@@ -164,7 +164,9 @@ impl TradingTerminal {
             format!("Moving {} order to ${}...", display_coin, prepared.price),
             false,
         ));
-        let Ok(context) = PendingMoveOrderContext::new(account_address.clone(), key) else {
+        let request_id = self.allocate_order_lifecycle_request_id();
+        let Ok(context) = PendingMoveOrderContext::new(request_id, account_address.clone(), key)
+        else {
             self.order_status = Some(("Move failed: no agent key".into(), true));
             return Task::none();
         };
@@ -189,6 +191,7 @@ impl TradingTerminal {
             prepared.market_type,
         );
         modify_order_task(key, prepared, move |r| Message::MoveOrderModifyResult {
+            request_id,
             account_address: account_address.clone().into(),
             coin: move_key.coin().to_string(),
             oid: oid.into(),
