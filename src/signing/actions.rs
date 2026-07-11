@@ -34,6 +34,29 @@ pub(super) enum HyperliquidL1Action {
 }
 
 impl HyperliquidL1Action {
+    pub(super) fn validate_wire_structure(&self) -> Result<(), String> {
+        match self {
+            Self::Order(action) => {
+                for order in &action.orders {
+                    validate_order_wire_numbers(order)?;
+                    if !order.c.as_deref().is_some_and(valid_client_order_id) {
+                        return Err(
+                            "Order action blocked: client order ID must be 128-bit hexadecimal"
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+            Self::Modify(action) => {
+                for modify in &action.modifies {
+                    validate_order_wire_numbers(&modify.order)?;
+                }
+            }
+            Self::Cancel(_) | Self::CancelByCloid(_) | Self::UpdateLeverage(_) => {}
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     pub(super) fn order(
         asset: u32,
@@ -102,4 +125,33 @@ impl HyperliquidL1Action {
     pub(super) fn update_leverage(asset: u32, is_cross: bool, leverage: u32) -> Self {
         Self::UpdateLeverage(build_update_leverage_action(asset, is_cross, leverage))
     }
+}
+
+fn validate_order_wire_numbers(order: &wire::OrderWire) -> Result<(), String> {
+    validate_positive_finite_wire_number(
+        &order.p,
+        "Order action blocked: wire price must be a positive finite number",
+    )?;
+    validate_positive_finite_wire_number(
+        &order.s,
+        "Order action blocked: wire size must be a positive finite number",
+    )
+}
+
+fn validate_positive_finite_wire_number(value: &str, error: &'static str) -> Result<(), String> {
+    if value
+        .parse::<f64>()
+        .is_ok_and(|number| number.is_finite() && number > 0.0)
+    {
+        Ok(())
+    } else {
+        Err(error.to_string())
+    }
+}
+
+fn valid_client_order_id(cloid: &str) -> bool {
+    let Some(hex) = cloid.strip_prefix("0x") else {
+        return false;
+    };
+    hex.len() == 32 && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
 }

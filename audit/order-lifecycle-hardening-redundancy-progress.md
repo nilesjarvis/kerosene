@@ -23,8 +23,14 @@
 
 - All signed L1 mutations converge in `src/signing/client.rs` through
   `sign_and_post`. The current action set is place, cancel by OID, cancel by
-  CLOID, modify, and leverage update (`src/signing/actions.rs:25-32`,
-  `src/signing/client.rs:163-221`).
+  CLOID, modify, and leverage update (`src/signing/actions.rs:28-34`,
+  `src/signing/client.rs:165-224`).
+- Place and modify preparation preserves asset, side, price and size strings,
+  TIF/order kind, reduce-only, OID/CLOID, and action field order without a
+  conversion after `PreparedExchangeOrder`/`PreparedModifyOrder`. The final
+  signed-payload boundary now independently rejects non-positive/non-finite
+  numeric strings and a missing or malformed placement CLOID before hashing or
+  posting (`src/signing/actions.rs:36-158`, `src/signing/client.rs:83-104`).
 - User and automation placement paths use `place_order_task`; cancel/modify
   paths use the corresponding task wrappers in `src/order_execution/core.rs`.
   A repository-wide call-site search found no feature-owned signing pipeline.
@@ -77,6 +83,12 @@
 | Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution/profile/CLOID plus account, symbol, surface, and order kind | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member user stream | Full origin match; direct requires `Pending`, status requires `Checking`; pending executions are not evicted | First terminal leg outcome is immutable; execution complete when every leg terminal | Cluster planning/member tests plus adversarial result/status tests in `wallet_cluster_update.rs` | F-04 addressed in Turn 5; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Wallet-cluster close child | Same as cluster order, plus fresh per-member position snapshot and reduce-only plan | Same full correlation tuple with `ClusterClose` surface | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member stream | Freshness/side/position preflight plus the shared exact transition guard | Same first-terminal-wins handling as cluster orders | Close sizing/freshness tests and shared adversarial result tests | F-04 addressed by the shared Turn 5 transition guard |
 | Leverage update | `PendingLeverageUpdateContext` captures account, symbol, asset, dex, margin mode, leverage | Full pending-context equality | None; mutation is not blindly retried | Confirmed-default predicate; other non-error bodies are uncertain | Scoped account refresh for outcomes that may have committed | Pending-context equality + current-account match | Pending context cleared once; matching form updated only on confirmed default | `order_update/leverage.rs` tests, signing action/response tests | No exact mutation status endpoint; verify refresh completeness is sufficient in transport audit |
+
+Turn 8 verified that every placement and modify row above reaches the shared
+signed-action builder. Valid field mapping is direct and covered at both the
+prepared-request and signed JSON/msgpack boundaries. The cross-cutting F-07
+guard applies to every such row without duplicating market, sizing, precision,
+side, reduce-only, or asset/symbol policy in signing.
 
 ## Ranked Findings and Audit Candidates
 
@@ -316,6 +328,60 @@
   (`src/wallet_cluster_state.rs:608-630`).
 - Protected behavior: the view continues reading `leg.message` directly; result
   handling, state, UI copy, order semantics, and persistence are unchanged.
+
+### F-07 — Signed order actions lack independent structural validation
+
+- Status: addressed in Turn 8; focused tests added, but executable validation is
+  blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium invariant hardening
+- Scope: every placement and modify action at the shared signing-payload
+  boundary
+- Preconditions/event ordering:
+  1. An upstream regression, malformed retained automation value, or a new
+     caller constructs a place/modify request with a non-numeric, non-finite,
+     zero, negative-zero, or negative price/size string, or a placement without
+     the repository's 128-bit hexadecimal CLOID.
+  2. The request reaches `HyperliquidL1Action` through the existing builder.
+  3. The prior payload builder serializes, hashes, signs, and posts the malformed
+     action without an independent structural check.
+- Evidence:
+  - `prepare_place_order` and `prepare_modify_order` correctly validate and
+    quantize ordinary intents, and the audited NUKE, Chase, and TWAP direct
+    constructors perform their own positive-finite planning checks.
+  - Nevertheless, `PlaceOrderRequest` and the action constructors retain price,
+    size, and CLOID as unconstrained `String`/`Option<String>` values, and the
+    sole `build_signed_exchange_payload_with_nonce` path previously serialized
+    them without validation (`src/signing/client.rs:17-25`,
+    `src/signing/actions/builders.rs:10-72`, `src/signing/client.rs:83-104`).
+  - Repository-wide searches found no feature-owned `/exchange`, signing, or
+    place/modify path that bypasses this shared payload builder.
+- Violated invariant: Kerosene must never sign or post an order action whose
+  numeric wire values are not positive and finite, and every placement must
+  retain the exact CLOID required for uncertain-outcome correlation.
+- Risk: an upstream plumbing regression could send a malformed financial
+  mutation instead of failing closed. A placement without a valid CLOID would
+  also remove the exact `orderStatus` correlation key used after an ambiguous
+  transport outcome.
+- Implemented fix: `HyperliquidL1Action::validate_wire_structure` checks every
+  order and modify child immediately before msgpack serialization. It parses
+  price/size only to validate positive finiteness, never rewrites the original
+  strings, and requires placement CLOIDs to be `0x` plus exactly 32 hexadecimal
+  digits. Static errors contain no rejected value (`src/signing/actions.rs:36-158`,
+  `src/signing/client.rs:83-104`).
+- Regression coverage: a valid signed IOC placement and GTC modify prove asset,
+  OID, side, exact price/size strings, reduce-only, TIF, and CLOID are unchanged.
+  Adversarial cases reject parse failures, NaN, infinities, zero, negative zero,
+  negative values, invalid modify size, absent CLOID, wrong length, wrong
+  prefix, and non-hex content before signing; synthetic sensitive values are
+  absent from errors (`src/signing/client/tests.rs:86-260`). The prepared
+  request test now explicitly protects side, order kind, and reduce-only mapping
+  in addition to its existing asset/price/size/CLOID assertions
+  (`src/order_execution/core.rs:2183-2210`).
+- Protected behavior: current prepared values already satisfy the guard. The
+  validator borrows wire strings and does not normalize, round, reserialize, or
+  alter valid action bytes. Market capability, symbol/asset selection, sizing,
+  precision, price/slippage, side, reduce-only, TIF, CLOID generation, signing,
+  result handling, UI, timing, and persistence remain unchanged for valid work.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -624,6 +690,67 @@
   market-type/asset identity, side, reduce-only, and order-kind preservation
   before deciding whether production hardening is warranted.
 
+## Turn 8 — Validate Signed Order Wire Structure
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: Medium invariant hardening
+- Scope: Audit Track 2 across all prepared placement and modify surfaces, plus
+  the shared signed-payload boundary
+- Invariant: valid prepared fields must reach the signed action unchanged, while
+  structurally invalid numeric values or an uncorrelatable placement must never
+  be hashed, signed, or posted.
+- Protected behavior: exact valid price/size strings, asset, side, TIF/order
+  kind, reduce-only, OID/CLOID, JSON/msgpack field order, signature inputs,
+  preparation policy, result handling, and user-visible behavior remain
+  unchanged.
+- Evidence: a repository-wide caller trace found that ticket, preset, Alfred,
+  quick, HUD, close, cluster, NUKE, Chase, and TWAP placements all use
+  `place_order_task`, while Move and Chase modify use `modify_order_task`; both
+  converge on `build_signed_exchange_payload_with_nonce`. Ordinary intents use
+  shared preparation; the three direct advanced/emergency constructors validate
+  their planned numeric values before constructing prepared orders. Detailed
+  evidence and the missing boundary invariant are recorded under F-07.
+- Change: added one read-only validation pass at the single signed-action
+  payload builder. Place/modify prices and sizes must parse as positive finite
+  numbers; placements must carry the established 128-bit hexadecimal CLOID.
+  Validation returns static redacted errors and does not mutate the action.
+- Regression tests: added exact valid signed-action parity, invalid place price
+  and size classes including negative zero, invalid modify size, and missing or
+  malformed CLOID cases. Expanded the prepared-request characterization to
+  assert the side, order-kind, and reduce-only fields copied by that handoff.
+- Validation:
+  - `cargo fmt` passed.
+  - `cargo fmt -- --check` passed.
+  - `git diff --check` passed before the ledger update and is rerun during the
+    final review.
+  - The pre-implementation
+    `cargo test --package kerosene --bin kerosene signed_order_payload_rejects_invalid_wire_numbers_before_signing`
+    attempt stopped in `alsa-sys` before compiling Kerosene because
+    `pkg-config` could not find the system `alsa.pc` package.
+  - Post-implementation focused
+    `cargo test --package kerosene --bin kerosene signed_order_payload_`,
+    `cargo test --package kerosene --bin kerosene signed_modify_payload_`,
+    and `cargo test --package kerosene --bin kerosene signing::tests::actions`
+    attempts stopped at the same environment boundary.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    the same pre-existing dependency boundary before checking Kerosene.
+- Compatibility/UX assessment: no valid request or normal result path changes.
+  Only structurally invalid internal actions that previously could reach signing
+  now fail closed before hashing/posting; no schema, dependency, view, copy, or
+  trading-policy change was introduced.
+- Residual risk: source parsing, formatting, exhaustive call-site inspection,
+  and diff checks pass, but the focused tests, Rust type-check, full suite, and
+  clippy must still execute on a host with ALSA development metadata. Signing
+  intentionally cannot revalidate symbol-to-asset or market capability because
+  those identities are absent from the wire action and remain owned by the
+  canonical preparation/state-machine boundaries.
+- Prior turn commit hash: `2cda6c85c6f557c28283a7709e24ede3066b7fb1`
+- Next candidate: audit mutation transport and ambiguity classification (Track
+  3), distinguishing failures before serialization/connect/send from failures
+  after a request may have reached the exchange without adding any automatic
+  mutation retry.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -631,17 +758,19 @@
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: the focused Chase place, Chase modify, and
-  TWAP slice replay regressions plus `cargo check` at `alsa-sys` system
-  dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: focused signed-order/modify structure tests,
+  nearby signing-action tests, `cargo check`, full `cargo test`, and strict
+  clippy at `alsa-sys` system dependency discovery, before Kerosene was
+  compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-06 have source fixes and regression coverage but await
+- F-01 through F-07 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- Signing wire construction, response classification, Chase/TWAP correlation,
-  cluster result handling, account refresh completeness, restart cleanup, and
-  redaction require further track-by-track completion before a final verdict.
+- Mutation transport/response classification, cancel/move correlation,
+  broader Chase/TWAP and account-stream ordering, restart/shutdown cleanup, and
+  the remaining redaction audit require track-by-track completion before a
+  final verdict.

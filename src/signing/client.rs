@@ -86,6 +86,9 @@ fn build_signed_exchange_payload_with_nonce(
     vault_address: Option<&str>,
     nonce: u64,
 ) -> Result<Value, String> {
+    // Preparation owns trading policy. This final independent boundary checks
+    // only that the already-prepared action is structurally safe to sign.
+    action.validate_wire_structure()?;
     let msgpack_bytes =
         rmp_serde::to_vec_named(action).map_err(|e| format!("Msgpack error: {e}"))?;
     let expires_after = nonce.saturating_add(EXCHANGE_EXPIRES_AFTER_MS);

@@ -84,6 +84,182 @@ fn signed_exchange_payload_contains_signed_request_fields_without_private_key() 
 }
 
 #[test]
+fn signed_order_payload_preserves_valid_wire_fields() {
+    const CLOID: &str = "0x1234567890abcdef1234567890abcdef";
+    let action = HyperliquidL1Action::order_with_cloid(
+        7,
+        false,
+        "123.45".to_string(),
+        "0.25".to_string(),
+        ExchangeOrderKind::LimitIoc,
+        true,
+        Some(CLOID.to_string()),
+    );
+
+    let payload = build_signed_exchange_payload_with_nonce(
+        Zeroizing::new(TEST_PRIVATE_KEY.to_string()),
+        &action,
+        None,
+        1_700_000_000_000,
+    )
+    .expect("valid order payload should sign");
+
+    let expected_action = serde_json::json!({
+        "type": "order",
+        "orders": [{
+            "a": 7,
+            "b": false,
+            "p": "123.45",
+            "s": "0.25",
+            "r": true,
+            "t": { "limit": { "tif": "Ioc" } },
+            "c": CLOID
+        }],
+        "grouping": "na"
+    });
+    assert_eq!(exchange_payload_action(&payload), Some(&expected_action));
+}
+
+#[test]
+fn signed_modify_payload_preserves_valid_wire_fields() {
+    let action =
+        HyperliquidL1Action::modify(42, 7, false, "123.45".to_string(), "0.25".to_string(), true);
+
+    let payload = build_signed_exchange_payload_with_nonce(
+        Zeroizing::new(TEST_PRIVATE_KEY.to_string()),
+        &action,
+        None,
+        1_700_000_000_000,
+    )
+    .expect("valid modify payload should sign");
+
+    let expected_action = serde_json::json!({
+        "type": "batchModify",
+        "modifies": [{
+            "oid": 42,
+            "order": {
+                "a": 7,
+                "b": false,
+                "p": "123.45",
+                "s": "0.25",
+                "r": true,
+                "t": { "limit": { "tif": "Gtc" } }
+            }
+        }]
+    });
+    assert_eq!(exchange_payload_action(&payload), Some(&expected_action));
+}
+
+#[test]
+fn signed_order_payload_rejects_invalid_wire_numbers_before_signing() {
+    let invalid_prices = ["", "NaN", "inf", "-inf", "0", "-0", "-1", "wire-secret"];
+    for invalid_price in invalid_prices {
+        let action = HyperliquidL1Action::order_with_cloid(
+            7,
+            true,
+            invalid_price.to_string(),
+            "1".to_string(),
+            ExchangeOrderKind::Limit,
+            false,
+            Some("0x1234567890abcdef1234567890abcdef".to_string()),
+        );
+
+        let error = build_signed_exchange_payload_with_nonce(
+            Zeroizing::new(TEST_PRIVATE_KEY.to_string()),
+            &action,
+            None,
+            1_700_000_000_000,
+        )
+        .expect_err("invalid wire price must fail before signing");
+
+        assert_eq!(
+            error,
+            "Order action blocked: wire price must be a positive finite number"
+        );
+        assert!(!error.contains("wire-secret"));
+    }
+
+    for invalid_size in ["NaN", "inf", "0", "-0", "-1", "size-secret"] {
+        let action = HyperliquidL1Action::order_with_cloid(
+            7,
+            true,
+            "100".to_string(),
+            invalid_size.to_string(),
+            ExchangeOrderKind::Limit,
+            false,
+            Some("0x1234567890abcdef1234567890abcdef".to_string()),
+        );
+
+        let error = build_signed_exchange_payload_with_nonce(
+            Zeroizing::new(TEST_PRIVATE_KEY.to_string()),
+            &action,
+            None,
+            1_700_000_000_000,
+        )
+        .expect_err("invalid wire size must fail before signing");
+
+        assert_eq!(
+            error,
+            "Order action blocked: wire size must be a positive finite number"
+        );
+        assert!(!error.contains("size-secret"));
+    }
+}
+
+#[test]
+fn signed_modify_payload_rejects_invalid_wire_numbers_before_signing() {
+    let action =
+        HyperliquidL1Action::modify(42, 7, false, "100".to_string(), "NaN".to_string(), true);
+
+    let error = build_signed_exchange_payload_with_nonce(
+        Zeroizing::new(TEST_PRIVATE_KEY.to_string()),
+        &action,
+        None,
+        1_700_000_000_000,
+    )
+    .expect_err("invalid modify size must fail before signing");
+
+    assert_eq!(
+        error,
+        "Order action blocked: wire size must be a positive finite number"
+    );
+}
+
+#[test]
+fn signed_order_payload_requires_a_128_bit_hex_cloid() {
+    for cloid in [
+        None,
+        Some("0x1234".to_string()),
+        Some("0x1234567890abcdef1234567890abcdeg".to_string()),
+        Some("1234567890abcdef1234567890abcdef".to_string()),
+    ] {
+        let action = HyperliquidL1Action::order_with_cloid(
+            7,
+            true,
+            "100".to_string(),
+            "1".to_string(),
+            ExchangeOrderKind::Limit,
+            false,
+            cloid,
+        );
+
+        let error = build_signed_exchange_payload_with_nonce(
+            Zeroizing::new(TEST_PRIVATE_KEY.to_string()),
+            &action,
+            None,
+            1_700_000_000_000,
+        )
+        .expect_err("missing or malformed CLOID must fail before signing");
+
+        assert_eq!(
+            error,
+            "Order action blocked: client order ID must be 128-bit hexadecimal"
+        );
+        assert!(!error.contains("1234567890abcdef"));
+    }
+}
+
+#[test]
 fn signed_exchange_payload_error_does_not_echo_private_key() {
     let invalid_key = format!("{TEST_PRIVATE_KEY}ff");
     let action = HyperliquidL1Action::cancel(110_003, 42);

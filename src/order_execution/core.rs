@@ -2198,8 +2198,11 @@ mod tests {
             .place_request_with_existing_cloid("0x11111111111111111111111111111111".to_string());
 
         assert_eq!(request.asset, 0);
+        assert!(request.is_buy);
         assert_eq!(request.price, "100");
         assert_eq!(request.size, "1");
+        assert_eq!(request.order_kind, ExchangeOrderKind::Limit);
+        assert!(!request.reduce_only);
         assert_eq!(
             request.cloid,
             Some("0x11111111111111111111111111111111".to_string())
