@@ -35,11 +35,11 @@ impl fmt::Debug for PendingOrderIndicator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PendingOrderIndicator")
             .field("account_address", &"<redacted>")
-            .field("symbol", &self.symbol)
-            .field("oid", &self.oid)
+            .field("symbol", &"<redacted>")
+            .field("has_oid", &self.oid.is_some())
             .field("is_buy", &self.is_buy)
-            .field("size", &self.size)
-            .field("price", &self.price)
+            .field("size", &"<redacted>")
+            .field("price", &"<redacted>")
             .field("kind", &self.kind)
             .field("created_at_ms", &self.created_at_ms)
             .finish()
@@ -58,18 +58,43 @@ struct PendingOrderIndicatorInput {
 
 /// In-flight decoration for an Orders-tab row, derived from the pending
 /// indicators when optimistic account updates are enabled.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) enum OptimisticOrderRowState {
     Cancelling,
     Modifying { price: String },
 }
 
+impl fmt::Debug for OptimisticOrderRowState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Cancelling => f.write_str("Cancelling"),
+            Self::Modifying { .. } => f
+                .debug_struct("Modifying")
+                .field("price", &"<redacted>")
+                .finish(),
+        }
+    }
+}
+
 /// Net projected position change for one symbol from in-flight market orders.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct ProjectedPositionDelta {
     pub(crate) symbol: String,
     pub(crate) signed_size: f64,
     pub(crate) estimated_price: Option<f64>,
+}
+
+impl fmt::Debug for ProjectedPositionDelta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProjectedPositionDelta")
+            .field("symbol", &"<redacted>")
+            .field("signed_size", &"<redacted>")
+            .field(
+                "estimated_price",
+                &self.estimated_price.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 impl TradingTerminal {
@@ -589,28 +614,72 @@ mod tests {
     }
 
     #[test]
-    fn pending_order_indicator_debug_redacts_account_address() {
-        let mut terminal = terminal_with_chart();
-        let pending_id = terminal
-            .add_pending_order_placement_indicator(
-                TEST_ACCOUNT.to_string(),
-                "BTC".to_string(),
-                true,
-                "1".to_string(),
-                "100".to_string(),
-            )
-            .expect("indicator should be created");
-        let indicator = terminal
-            .pending_order_indicators
-            .get(&pending_id)
-            .expect("indicator should be stored");
+    fn pending_order_indicator_debug_redacts_order_values_without_changing_them() {
+        let indicator = PendingOrderIndicator {
+            account_address: TEST_ACCOUNT.to_string(),
+            symbol: "private-pending-symbol-sentinel".to_string(),
+            oid: Some(98_765_432),
+            is_buy: true,
+            size: "12345.6789".to_string(),
+            price: "98765.4321".to_string(),
+            kind: PendingOrderIndicatorKind::Placing,
+            created_at_ms: 7,
+        };
 
         let rendered = format!("{indicator:?}");
 
         assert!(rendered.contains("PendingOrderIndicator"));
-        assert!(rendered.contains("BTC"));
         assert!(rendered.contains("<redacted>"));
         assert!(!rendered.contains(TEST_ACCOUNT));
+        for value in [
+            "private-pending-symbol-sentinel",
+            "98765432",
+            "12345.6789",
+            "98765.4321",
+        ] {
+            assert!(!rendered.contains(value), "{rendered}");
+        }
+        assert_eq!(indicator.account_address, TEST_ACCOUNT);
+        assert_eq!(indicator.symbol, "private-pending-symbol-sentinel");
+        assert_eq!(indicator.oid, Some(98_765_432));
+        assert_eq!(indicator.size, "12345.6789");
+        assert_eq!(indicator.price, "98765.4321");
+    }
+
+    #[test]
+    fn optimistic_order_helpers_redact_financial_values_without_changing_them() {
+        let row = OptimisticOrderRowState::Modifying {
+            price: "87654.3219".to_string(),
+        };
+        let delta = ProjectedPositionDelta {
+            symbol: "private-projection-symbol-sentinel".to_string(),
+            signed_size: -12_345.678_9,
+            estimated_price: Some(98_765.432_1),
+        };
+
+        let rendered = format!("{row:?} {delta:?}");
+
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        for value in [
+            "87654.3219".to_string(),
+            "private-projection-symbol-sentinel".to_string(),
+            format!("{:?}", delta.signed_size),
+            format!("{:?}", delta.estimated_price.unwrap_or_default()),
+        ] {
+            assert!(!rendered.contains(&value), "{rendered}");
+        }
+        assert_eq!(
+            row,
+            OptimisticOrderRowState::Modifying {
+                price: "87654.3219".to_string()
+            }
+        );
+        assert_eq!(delta.symbol, "private-projection-symbol-sentinel");
+        assert_eq!(delta.signed_size.to_bits(), (-12_345.678_9_f64).to_bits());
+        assert_eq!(
+            delta.estimated_price.map(f64::to_bits),
+            Some(98_765.432_1_f64.to_bits())
+        );
     }
 
     #[test]

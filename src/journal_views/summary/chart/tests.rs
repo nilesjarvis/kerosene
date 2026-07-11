@@ -227,3 +227,42 @@ fn recent_trade_outcomes_apply_fees_when_requested() {
         ]
     );
 }
+
+#[test]
+fn journal_summary_helpers_redact_account_values_without_changing_them() {
+    let tile = super::JournalOutcomeTile {
+        outcome: JournalTradeOutcome::Win,
+        pnl: 98_765.432_1,
+        trade_type: "private-outcome-trade-sentinel".to_string(),
+    };
+    let point = super::ChartPoint {
+        point: iced::Point::new(123.456_7, 234.567_8),
+        timestamp_ms: 9_876_543_210,
+        value: -12_345.678_9,
+    };
+    let layout = super::ChartLayout {
+        pnl_points: vec![point],
+        account_value_points: vec![],
+        zero_y: 345.678_9,
+    };
+
+    let rendered = format!("{tile:?} {point:?} {layout:?}");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(rendered.contains("pnl_points_count: 1"), "{rendered}");
+    for sensitive in [
+        "private-outcome-trade-sentinel",
+        "98765.4321",
+        "123.4567",
+        "234.5678",
+        "9876543210",
+        "-12345.6789",
+        "345.6789",
+    ] {
+        assert!(!rendered.contains(sensitive), "{rendered}");
+    }
+    assert_eq!(tile.trade_type, "private-outcome-trade-sentinel");
+    assert_eq!(tile.pnl.to_bits(), 98_765.432_1_f64.to_bits());
+    assert_eq!(point.timestamp_ms, 9_876_543_210);
+    assert_eq!(layout.zero_y.to_bits(), 345.678_9_f32.to_bits());
+}

@@ -1,12 +1,13 @@
 use crate::signing::OrderKind;
 
 use super::AlfredTradeSide;
+use std::fmt;
 
 // ---------------------------------------------------------------------------
 // Trade Intent Parser
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(super) struct ParsedTradeIntent {
     pub(super) side: Option<AlfredTradeSide>,
     pub(super) amount: Option<f64>,
@@ -17,6 +18,25 @@ pub(super) struct ParsedTradeIntent {
     pub(super) explicit_limit: bool,
     pub(super) limit_price: Option<f64>,
     pub(super) error: Option<String>,
+}
+
+impl fmt::Debug for ParsedTradeIntent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ParsedTradeIntent")
+            .field("side", &self.side)
+            .field("amount", &self.amount.as_ref().map(|_| "<redacted>"))
+            .field("amount_is_usd", &self.amount_is_usd)
+            .field("has_symbol", &self.symbol.is_some())
+            .field("explicit_spot", &self.explicit_spot)
+            .field("explicit_chase", &self.explicit_chase)
+            .field("explicit_limit", &self.explicit_limit)
+            .field(
+                "limit_price",
+                &self.limit_price.as_ref().map(|_| "<redacted>"),
+            )
+            .field("has_error", &self.error.is_some())
+            .finish()
+    }
 }
 
 impl ParsedTradeIntent {

@@ -84,7 +84,10 @@ impl TradingTerminal {
             Message::AccountRefreshBackoffElapsed(due_ms) => {
                 self.handle_account_refresh_backoff_elapsed(due_ms)
             }
-            Message::AllMidsBootstrapLoaded(_dex, Ok(mids)) => self.handle_mids_update(mids),
+            Message::AllMidsBootstrapLoaded(_dex, result) => match result.into_result() {
+                Ok(mids) => self.handle_mids_update(mids),
+                Err(_) => Task::none(),
+            },
             Message::PositionPnlWsBookUpdate {
                 coin,
                 sigfigs,

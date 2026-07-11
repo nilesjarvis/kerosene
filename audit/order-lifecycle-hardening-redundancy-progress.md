@@ -6519,6 +6519,164 @@ target-specific cancellation policy, not HTTP replay.
   nonces, session/channel generations, MTProto event ownership, and accepted
   stream diagnostics remain the next Telegram lifecycle audit.
 
+### F-81 — Telegram completion authority can alias across replay, wrap, and reset
+
+- Status: addressed in Turn 74; focused source controls added, but executable
+  validation is blocked before Kerosene compilation by the missing system ALSA
+  package
+- Severity: Medium private-integration ownership and content-integrity
+  hardening; no order or exchange consumer exists
+- Scope: public channel refresh, private-channel discovery, fast-auth challenge
+  stages, avatar/media follow-ups, fast-stream subscription generation, cursor
+  invalidation, config clear, result recovery order, page identity, diagnostics,
+  persistence/views, and adversarial wrap/replay/reset controls
+- Preconditions/event ordering:
+  1. Public/private/auth/image allocators saturate at `u64::MAX`; private and
+     auth completion IDs remain current after settlement. Replayed or reversed
+     results can therefore reapply state, and concurrent owners can share `MAX`.
+  2. Config clear replaces `TelegramFeedState` with every allocator and the
+     fast reconnect nonce reset to zero while old tasks/subscriptions can still
+     publish. Recreated identical channel, message, and image URL state can
+     accept pre-clear page or image bytes under reused ID `1`; an old stream can
+     match a newly recreated nonce.
+  3. Avatar/media handlers check URL and embedded ID, but unwrap bytes before
+     proving those fields. Public/private/auth handlers likewise recover their
+     wrappers before exact settlement. Public and fast page application trusts
+     the outer channel without independently requiring the profile and every
+     post to match.
+  4. Per-channel and global fast cursor generations saturate, so invalidation
+     stops changing at `MAX`. Fast event diagnostics can traverse arbitrary
+     status/error copy, and standalone private posts expose message IDs and
+     timing.
+- Evidence: all publishers converge through `feed_update/telegram.rs`; public
+  tasks are channel-keyed, private discovery and auth use one shared session
+  operation lock, avatar/media owners live on the target model, and the fast
+  subscription captures `fast_reconnect_nonce`. Config clear is the sole
+  in-process whole-state replacement. Cursor generations are process-global and
+  already gate late writes. Telegram state has no caller in preparation,
+  signing, Chase/TWAP, cluster execution, account reconciliation, or another
+  exchange mutation.
+- Violated invariant: each asynchronous integration result must claim one exact
+  terminal-lifetime owner and settle once before its value is recovered. Whole-
+  state reset may drop owners/content/secrets but must not make old authority
+  reusable. Stream/cursor invalidation must continue at wrap, and page content
+  must prove its dispatched channel identity.
+- Risk: an old/replayed result can replace current public/private posts or
+  candidate/status state, install stale image bytes beside recreated content,
+  revive a stale stream event, or skip reconnect backfill after cursor reuse.
+  Generic diagnostics can additionally disclose private message identity and
+  status copy. These are private-content integrity/privacy failures, not
+  financial mutations.
+- Implemented fix: use nonzero wrapping allocators that skip live owners for
+  public refresh, private discovery, fast auth, avatar, and media. Private and
+  auth results now take one-shot owners; accepted auth challenges retain a
+  distinct exact pending ID so replay cannot delete the live grammers token.
+  Preserve only allocator values across config clear and advance the wrapping
+  stream generation. Reject stale results before wrapper recovery, require the
+  outer/profile/post channel tuple to match, make cursor invalidation wrap, and
+  make fast status/error plus private post timing/media diagnostics
+  value-neutral.
+- Regression coverage: state controls force every allocator through `MAX`, skip
+  live IDs, settle public/private/auth owners once, preserve allocation through
+  reset, and advance the stream nonce. Update controls reject page channel
+  mismatch and replayed private/auth results while retaining accepted status.
+  Config-clear coverage proves all old IDs differ after reset. Cursor coverage
+  forces a per-channel generation wrap, and diagnostic controls cover arbitrary
+  private status text plus private post IDs/timing/media.
+- Smallest behavior-preserving fix: runtime-only typed auth ownership, one-shot
+  scalar/map settlement, allocator handoff at the existing clear boundary,
+  wrapping generation increments, pre-recovery guards, one page identity helper,
+  private diagnostics, focused tests, and docs. Requests, credentials, session
+  files, task count/timing, cursor values, post merge/order/dedup, notifications,
+  image cache/backoff, visible status/error copy, controls, persistence schema,
+  and every trading semantic are unchanged.
+- Residual uncertainty: Kerosene has not type-checked or launched on this host.
+  Full `u64` cycle reuse and dependency-owned grammers/reqwest/image buffers are
+  theoretical residuals. Source and focused controls establish the intended
+  boundary, but executable validation requires ALSA development metadata.
+
+### F-82 — Final raw completion messages traverse config and mids results
+
+- Status: addressed in Turn 74; focused source controls added, but executable
+  validation is blocked before Kerosene compilation by the missing system ALSA
+  package
+- Severity: Medium final Track 9 diagnostic-boundary hardening
+- Scope: config-save, config-clear, and all-mids bootstrap task publishers,
+  derived `Message::Debug`, exact update recovery, routing controls, and the
+  final raw-result inventory
+- Preconditions/event ordering: the three remaining asynchronous message
+  families store raw `Result` values. Generic Elm formatting can therefore
+  traverse a config path/cleanup error or entire public mids map before the
+  established handler receives it.
+- Evidence: a complete `Message` enum search after F-80 finds no other raw
+  asynchronous result field. Config save/clear each have one task publisher and
+  one update consumer; mids bootstrap has one publisher and ignores errors in
+  the account route. None changes exchange state directly.
+- Violated invariant: asynchronous results must be diagnostically safe at
+  publication while preserving their exact handler value.
+- Risk: config filesystem/cleanup detail or large market payloads can enter
+  debug/panic output. This is diagnostic confidentiality/boundedness, not a
+  financial-state defect.
+- Implemented fix: add an exact-value, shape-only config result wrapper and use
+  the established public-market wrapper for mids. Publishers wrap at message
+  construction; consumers restore the exact result at the prior update arm.
+- Regression coverage: the central secret-bearing message test includes all
+  three error families, and a dedicated config-wrapper control proves exact
+  error recovery. Existing routing and handler tests retain their behavior.
+- Smallest behavior-preserving fix: two message type substitutions, immediate
+  extraction, producer mappings, focused controls, and docs. Save/clear/mids
+  work, errors, ownership, toasts, shutdown behavior, market application,
+  persistence, UI, and trading semantics are unchanged.
+- Residual uncertainty: executable Rust validation remains blocked before
+  Kerosene compilation by missing ALSA metadata.
+
+### F-83 — Standalone lifecycle helpers retain raw account/order diagnostics
+
+- Status: addressed in Turn 74; focused source controls added, but executable
+  validation is blocked before Kerosene compilation by the missing system ALSA
+  package
+- Severity: Medium diagnostic-confidentiality hardening; no confirmed mutation
+  or current production logging sink
+- Scope: the remaining independently formattable account cost-basis,
+  completeness, leverage, fill-total, analytics, portfolio, and Schwab models;
+  order sizing/book-selection/pending/NUKE/Chase helpers; Alfred drafts; journal
+  identity, aggregation, snapshot, state, and chart helpers; tracked-trade
+  models; Hydromancer trade events; and derived financial view carriers
+- Preconditions/event ordering: parent result/message wrappers are value-
+  neutral, but direct formatting of one of their nested types can bypass that
+  boundary and reproduce exact account, symbol, order, fill, price, size, PnL,
+  timing, identifier, warning, or external-status data in a future panic,
+  assertion, or instrumentation path.
+- Evidence: the closeout `Debug` derive/custom-implementation inventory traced
+  every remaining account/order-adjacent type independently of its parent.
+  Public-market metadata, state-only enums, counters, and UI geometry were
+  separately classified; the types changed here carry private or financial
+  values. No field, caller, parser, calculation, equality comparison, serde
+  representation, or view consumer required a functional change.
+- Violated invariant: a sensitive lifecycle value must remain exact for its
+  authorized functional consumer while both parent and standalone generic
+  diagnostics expose only safe structure, counts, state, presence, or explicit
+  redaction markers.
+- Risk: future direct formatting can disclose private financial context or
+  create an unbounded diagnostic payload. This is a confidentiality and
+  diagnostic-boundedness defect, not an order-state defect.
+- Implemented fix: replace value-bearing derived diagnostics with narrow custom
+  structural `Debug` implementations, and remove `Debug` only from private
+  drawing/retry helpers that have no diagnostic caller. Retain safe enums,
+  counts, booleans, state shape, and public-market metadata where useful.
+- Regression coverage: synthetic unique values prove standalone and parent
+  formatting cannot recover the original strings or exact numeric bit patterns
+  across the affected account, order, automation, journal, portfolio, feed, and
+  integration models. Existing tests continue to exercise exact functional
+  fields through their unchanged interfaces.
+- Smallest behavior-preserving fix: diagnostics and focused tests only. Stored
+  fields, constructors, parsing, serde, comparisons, computations, chart data,
+  visible copy, task ownership, persistence, signing, and trading semantics are
+  unchanged.
+- Residual uncertainty: Kerosene has not type-checked or executed on this host;
+  the focused diagnostic suite stops at missing ALSA metadata before compiling
+  the application.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -11498,6 +11656,86 @@ target-specific cancellation policy, not HTTP replay.
   every ordinary request, cursor, cache, status, notification, session,
   persistence, UI, and trading behavior.
 
+## Turn 74 — Complete Telegram Ownership and Close the Campaign
+
+- Status: F-81/F-82/F-83 implemented; all audit tracks source-complete; final
+  report written; executable Rust validation environment-blocked
+- Severity: Medium private-integration ownership and final diagnostic hardening
+- Scope: Telegram public/private/auth/image task ownership, stream/cursor
+  generations, config-reset allocation, result recovery and payload identity,
+  private diagnostics, final raw Elm results, independently formattable account/
+  order helpers, all-track completion audit, final report, docs, and repository-
+  wide compatibility/security review
+- Invariant: every remaining asynchronous result claims exact one-shot runtime
+  authority before value recovery; in-process reset cannot reuse old authority;
+  no raw result, private Telegram identity/content, or standalone private
+  financial value crosses generic diagnostics.
+- Protected behavior: all public HTML and MTProto requests, endpoints, limits,
+  cadence, backfill/cursors, post merge/order/dedup, ticker references,
+  notifications, avatar/media caches and retry, auth/session behavior, visible
+  copy/controls, config save/clear, mids application, persistence/defaults,
+  every prepared/signed order value, and every trading/automation semantic.
+- Preconditions/event ordering: F-81 records the exact saturation, replay,
+  config-reset, stream/cursor, pre-recovery, page-identity, and private-debug
+  failures. F-82 records the only raw asynchronous results left by the final
+  `Message` inventory. F-83 records nested types whose independent formatting
+  bypassed otherwise-redacted parent boundaries.
+- Evidence: definitions and every publisher/consumer/reset/view/persistence
+  path for Telegram and the final config/mids results were traced. The final
+  standalone `Debug` inventory separately classified private/account/order
+  values, public market metadata, state enums, counters, and UI geometry. The
+  final mutation-task search still finds only the matrixed ticket/HUD/quick/close/
+  NUKE/cancel/move/Chase/TWAP/cluster/leverage paths converging on shared
+  preparation/signing. The final config search confirms active Chase/TWAP and
+  pending mutation state remain runtime-only. The final report maps each prompt
+  completion criterion to the ledger, source, tests, or recorded environment
+  limitation.
+- Change: implement F-81/F-82/F-83, update architecture/integration/security and
+  Telegram docs, perform the all-track completion audit, and add the required
+  final campaign report. No schema, dependency, endpoint, view, or trading
+  policy changed.
+- Tests/checks:
+  - Baseline Telegram update/fast-feed tests and `cargo check` stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    `alsa.pc`.
+  - Focused allocator wrap/reset, private/auth replay, page identity, cursor
+    generation, config-clear, message-wrapper, diagnostics, and nearby Telegram
+    test attempts plus the final standalone `debug_redacts` controls stopped at
+    the same dependency boundary before executing.
+  - Final `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` stopped at that
+    same boundary before compiling Kerosene.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed. Final
+    producer/consumer, mutation caller, owner/recovery, config/restart, raw
+    result, direct-debug, secret/artifact, persistence, UX, financial-consumer,
+    and full-diff reviews passed by source inspection.
+  - Startup smoke was not run because startup/subscriptions can open local
+    credential-bearing integrations and this host could not be guaranteed
+    credential-free. No network, image, session, secret backend/config, config
+    clear/save, clipboard/file, or exchange mutation ran.
+- Compatibility/UX assessment: normal Telegram and config/mids publishers run
+  the identical futures with identical captures and map only at publication.
+  Accepted handlers restore exact values before their unchanged functional
+  bodies. Allocators/owners/generations are runtime-only. Standalone helper
+  changes affect only `Debug` availability/output. Only stale, replayed,
+  mismatched, wrapped, or reset work and generic diagnostic formatting differ.
+  No normal task count/timing, status copy, rendered data, config field/default,
+  signed bytes, price/size/side/TIF/reduce-only behavior, retry policy, order
+  lifecycle, or user interaction changed.
+- Residual risk: Kerosene has not type-checked or executed on this host; every
+  source fix from F-01 through F-83 awaits executable validation with ALSA
+  development metadata. Six behavior-policy findings remain explicitly
+  deferred, including High F-24, because fixing them would change visible,
+  persisted, or exceptional product semantics. Dependency-owned buffers,
+  hard-kill cleanup, full integer-cycle reuse, and upstream protocol evolution
+  remain documented residuals. The final report gives a qualified source-
+  hardened verdict, not a claim of executable release validation.
+- Prior turn commit hash: `270b8da69a63d415e2983278e0a48d908acc6c98`
+- Next candidate: none inside this campaign. On a credential-free host with ALSA
+  development metadata, run the recorded focused suites, `cargo check`, full
+  tests, strict clippy, and the bounded startup smoke; separately obtain product
+  decisions for F-21/F-24/F-29/F-31/F-39/F-41 before changing their behavior.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -11540,21 +11778,26 @@ target-specific cancellation policy, not HTTP replay.
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
 - Environment-blocked this turn: baseline Telegram and fast-feed tests plus
-  `cargo check`; post-fix message diagnostic/extraction and Telegram update
-  tests; `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
-  dependency discovery, before Kerosene was compiled.
+  `cargo check`; allocator wrap/reset, public/private/auth replay and identity,
+  cursor generation, config-clear, raw-result wrapper, message diagnostic, and
+  nearby Telegram/config/market controls; standalone account/order diagnostic
+  controls; final `cargo check`; full
+  `cargo test`; and strict clippy at `alsa-sys` system dependency discovery,
+  before Kerosene was compiled.
 - Startup smoke was not run because boot can dispatch credential-bearing
   Telegram work and the host could not be guaranteed credential-free. Normal
   boot/timer/task entry and unchanged requests were source-audited instead. No
   secret backend/config mutation, Telegram or image request, private-feed
-  action, config clear, exchange mutation, or credential-bearing operation ran.
+  action, config clear/save, file/clipboard export, exchange mutation, or
+  credential-bearing operation ran.
 
 ## Residual Risk
 
-- The remaining audit tracks are incomplete; no overall safety-completion claim
-  is made.
+- All nine audit tracks are source-complete and the final report records a
+  qualified source-hardened verdict. Executable release validation is not
+  complete on this host.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-80
+  F-40, and F-42 through F-83
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -11662,7 +11905,13 @@ target-specific cancellation policy, not HTTP replay.
   behavior remain unchanged. Telegram public-page, image, and private-channel
   discovery task-result diagnostics are source-hardened by F-80 while exact
   values, normal requests, cache/backoff behavior, feed UX, persistence, and
-  trading behavior remain unchanged. Telegram request/auth/event ownership and
-  remaining private model diagnostics, independently formattable nested
-  account/order types, classified external-status paths, and the rest of Track
-  9 require completion before a final verdict.
+  trading behavior remain unchanged. Telegram public/private/auth/image result
+  ownership, reset allocation, stream/cursor generations, page identity, and
+  private diagnostics are source-hardened by F-81. The final raw config/mids
+  result messages are source-hardened by F-82. Remaining standalone account,
+  order, automation, journal, portfolio, feed, integration, and financial-view
+  diagnostics are source-hardened by F-83 while their exact functional fields
+  remain unchanged. No further confirmed safe implementation finding remains
+  inside this campaign; the final report records deferred product decisions,
+  environment-blocked executable validation, dependency-owned buffers,
+  hard-kill cleanup, integer-cycle reuse, and protocol evolution as residuals.

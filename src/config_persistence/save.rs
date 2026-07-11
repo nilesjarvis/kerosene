@@ -185,7 +185,9 @@ impl TradingTerminal {
 
         let config = self.config_snapshot();
         self.config_save_in_flight = true;
-        Task::perform(save_config_off_thread(config), Message::ConfigSaved)
+        Task::perform(save_config_off_thread(config), |result| {
+            Message::ConfigSaved(result.into())
+        })
     }
 
     fn record_config_save_result(&mut self, result: Result<(), String>) {

@@ -150,6 +150,44 @@ fn margin_order_sizing_uses_one_x_when_leverage_is_only_symbol_limit() {
 }
 
 #[test]
+fn order_sizing_basis_debug_redacts_financial_values_without_changing_them() {
+    const MARGIN_NOTIONAL: f64 = 98_765.432_1;
+    const POSITION_SIZE: f64 = 12_345.678_9;
+    const SELLABLE_SIZE: f64 = 45_678.912_3;
+    let margin = OrderSizingBasis::MarginNotional {
+        max_notional: MARGIN_NOTIONAL,
+    };
+    let reduce_only = OrderSizingBasis::ReduceOnlyPosition {
+        position_size_coin: POSITION_SIZE,
+    };
+    let spot = OrderSizingBasis::SpotSellableBalance {
+        sellable_size_coin: SELLABLE_SIZE,
+    };
+
+    let rendered = format!("{margin:?} {reduce_only:?} {spot:?}");
+
+    assert!(rendered.contains("MarginNotional"), "{rendered}");
+    assert!(rendered.contains("ReduceOnlyPosition"), "{rendered}");
+    assert!(rendered.contains("SpotSellableBalance"), "{rendered}");
+    for value in [MARGIN_NOTIONAL, POSITION_SIZE, SELLABLE_SIZE] {
+        assert!(!rendered.contains(&format!("{value:?}")), "{rendered}");
+    }
+
+    let OrderSizingBasis::MarginNotional { max_notional } = margin else {
+        panic!("expected margin basis");
+    };
+    let OrderSizingBasis::ReduceOnlyPosition { position_size_coin } = reduce_only else {
+        panic!("expected reduce-only basis");
+    };
+    let OrderSizingBasis::SpotSellableBalance { sellable_size_coin } = spot else {
+        panic!("expected spot basis");
+    };
+    assert_eq!(max_notional.to_bits(), MARGIN_NOTIONAL.to_bits());
+    assert_eq!(position_size_coin.to_bits(), POSITION_SIZE.to_bits());
+    assert_eq!(sellable_size_coin.to_bits(), SELLABLE_SIZE.to_bits());
+}
+
+#[test]
 fn order_quantity_change_ignores_stale_account_snapshot_for_percentage() {
     let mut terminal = terminal_with_position("BTC", "0");
     terminal.account_data_address = Some(OTHER_ACCOUNT.to_string());

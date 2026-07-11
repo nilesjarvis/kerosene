@@ -222,6 +222,64 @@ fn schwab_account_envelope_joins_hash_and_parses_positions() {
 }
 
 #[test]
+fn schwab_account_debug_redacts_identity_and_position_values_without_changing_them() {
+    let position = SchwabPositionSummary {
+        symbol: "private-schwab-symbol-sentinel".to_string(),
+        quantity: 12_345.678_9,
+        market_value: Some(98_765.432_1),
+    };
+    let account = SchwabAccountSummary {
+        account_number: Some("private-schwab-account-sentinel".to_string()),
+        account_hash: "private-schwab-hash-sentinel".to_string(),
+        account_type: Some("private-schwab-type-sentinel".to_string()),
+        cash_balance: Some(45_678.912_3),
+        buying_power: Some(33_333.233_4),
+        liquidation_value: Some(22_222.122_3),
+        positions: vec![position],
+    };
+    let snapshot = SchwabAccountsSnapshot {
+        linked_accounts: vec![SchwabLinkedAccount {
+            account_number: Some("private-linked-account-sentinel".to_string()),
+            hash_value: "private-linked-hash-sentinel".to_string(),
+        }],
+        accounts: vec![account],
+    };
+
+    let rendered = format!(
+        "{snapshot:?} {:?} {:?}",
+        &snapshot.accounts[0], &snapshot.accounts[0].positions[0]
+    );
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(rendered.contains("accounts_count: 1"), "{rendered}");
+    for sensitive in [
+        "private-schwab-symbol-sentinel",
+        "private-schwab-account-sentinel",
+        "private-schwab-hash-sentinel",
+        "private-schwab-type-sentinel",
+        "private-linked-account-sentinel",
+        "private-linked-hash-sentinel",
+        "12345.6789",
+        "98765.4321",
+        "45678.9123",
+    ] {
+        assert!(!rendered.contains(sensitive), "{rendered}");
+    }
+    assert_eq!(
+        snapshot.accounts[0].positions[0].symbol,
+        "private-schwab-symbol-sentinel"
+    );
+    assert_eq!(
+        snapshot.accounts[0].positions[0].quantity.to_bits(),
+        12_345.678_9_f64.to_bits()
+    );
+    assert_eq!(
+        snapshot.accounts[0].account_type.as_deref(),
+        Some("private-schwab-type-sentinel")
+    );
+}
+
+#[test]
 fn schwab_state_credential_change_resets_accounts_and_requests() {
     let mut state = SchwabState::new("id", "secret", "access", "refresh");
     state.linked_accounts.push(linked("HASH"));

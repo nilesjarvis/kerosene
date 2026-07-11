@@ -29,6 +29,8 @@ fn position_debug_redacts_financial_payload() {
     assert!(rendered.contains("has_liquidation_px: true"));
     assert!(rendered.contains("has_cum_funding: true"));
     assert!(rendered.contains("leverage_type: \"cross\""));
+    assert!(rendered.contains("value: \"<redacted>\""));
+    assert!(!rendered.contains("value: 7"));
     for secret in [
         "SECRETPOSITIONCOIN",
         "position-size-secret",

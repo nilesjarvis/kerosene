@@ -1,5 +1,5 @@
 use crate::journal::AggregatedTrade;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 // ---------------------------------------------------------------------------
 // Journal cockpit analytics
@@ -35,7 +35,7 @@ pub(crate) fn journal_effective_pnl(trade: &AggregatedTrade, include_fees: bool)
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct JournalKpis {
     pub net_pnl: f64,
     pub total_fees: f64,
@@ -50,6 +50,23 @@ pub(crate) struct JournalKpis {
     pub avg_r: Option<f64>,
     /// Risk unit: mean absolute loss across scored losers. `None` with no losers.
     pub r_unit: Option<f64>,
+}
+
+impl fmt::Debug for JournalKpis {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalKpis")
+            .field("metrics", &"<redacted>")
+            .field("wins", &self.wins)
+            .field("losses", &self.losses)
+            .field("scored", &self.scored)
+            .field("has_profit_factor", &self.profit_factor.is_some())
+            .field("has_expectancy", &self.expectancy.is_some())
+            .field("has_avg_win", &self.avg_win.is_some())
+            .field("has_avg_loss", &self.avg_loss.is_some())
+            .field("has_avg_r", &self.avg_r.is_some())
+            .field("has_r_unit", &self.r_unit.is_some())
+            .finish()
+    }
 }
 
 pub(crate) fn journal_kpis(trades: &[&AggregatedTrade], include_fees: bool) -> JournalKpis {
@@ -125,12 +142,23 @@ pub(crate) fn journal_trade_r_multiple(
     Some(journal_effective_pnl(trade, include_fees) / unit)
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct JournalSegmentStats {
     pub pnl: f64,
     pub count: usize,
     pub closed: usize,
     pub wins: usize,
+}
+
+impl fmt::Debug for JournalSegmentStats {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalSegmentStats")
+            .field("pnl", &"<redacted>")
+            .field("count", &self.count)
+            .field("closed", &self.closed)
+            .field("wins", &self.wins)
+            .finish()
+    }
 }
 
 impl JournalSegmentStats {
@@ -139,11 +167,21 @@ impl JournalSegmentStats {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct JournalDirectionSplit {
     pub long: JournalSegmentStats,
     pub short: JournalSegmentStats,
     pub spot: JournalSegmentStats,
+}
+
+impl fmt::Debug for JournalDirectionSplit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalDirectionSplit")
+            .field("long", &self.long)
+            .field("short", &self.short)
+            .field("spot", &self.spot)
+            .finish()
+    }
 }
 
 pub(crate) fn journal_direction_split(
@@ -172,10 +210,19 @@ pub(crate) fn journal_direction_split(
     split
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct JournalAssetPnl {
     pub coin: String,
     pub pnl: f64,
+}
+
+impl fmt::Debug for JournalAssetPnl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalAssetPnl")
+            .field("coin", &"<redacted>")
+            .field("pnl", &"<redacted>")
+            .finish()
+    }
 }
 
 /// Per-asset net PnL, sorted from most positive to most negative.
@@ -201,17 +248,43 @@ pub(crate) fn journal_asset_pnls(
     assets
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Clone, Copy, Default)]
 pub(crate) struct JournalHeatCell {
     pub count: usize,
     pub pnl: f64,
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for JournalHeatCell {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalHeatCell")
+            .field("count", &self.count)
+            .field("pnl", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone)]
 pub(crate) struct JournalTimeOfDay {
     /// `[weekday Mon..Fri][bucket 00/04/08/12/16/20 UTC]`.
     pub cells: [[JournalHeatCell; TIME_OF_DAY_BUCKETS]; TIME_OF_DAY_WEEKDAYS],
     pub max_abs_pnl: f64,
+}
+
+impl fmt::Debug for JournalTimeOfDay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalTimeOfDay")
+            .field(
+                "populated_cells",
+                &self
+                    .cells
+                    .iter()
+                    .flatten()
+                    .filter(|cell| cell.count > 0)
+                    .count(),
+            )
+            .field("max_abs_pnl", &"<redacted>")
+            .finish()
+    }
 }
 
 impl Default for JournalTimeOfDay {
@@ -401,5 +474,58 @@ mod tests {
         assert_eq!(grid.cells[0][2].count, 1);
         assert!((grid.cells[0][2].pnl - 100.0).abs() < 1e-9);
         assert!((grid.max_abs_pnl - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn journal_analytics_debug_redacts_account_values_without_changing_them() {
+        let kpis = JournalKpis {
+            net_pnl: 98_765.432_1,
+            total_fees: 12_345.678_9,
+            win_rate: 66.678_912_3,
+            wins: 2,
+            losses: 1,
+            scored: 3,
+            profit_factor: Some(8.123_456_7),
+            expectancy: Some(7.234_567_8),
+            avg_win: Some(6.345_678_9),
+            avg_loss: Some(-5.456_789_1),
+            avg_r: Some(4.567_891_2),
+            r_unit: Some(3.678_912_3),
+        };
+        let split = JournalDirectionSplit {
+            long: JournalSegmentStats {
+                pnl: 98_765.432_1,
+                count: 1,
+                closed: 1,
+                wins: 1,
+            },
+            short: JournalSegmentStats::default(),
+            spot: JournalSegmentStats::default(),
+        };
+        let asset = JournalAssetPnl {
+            coin: "private-journal-asset-sentinel".to_string(),
+            pnl: -12_345.678_9,
+        };
+        let mut time = JournalTimeOfDay::default();
+        time.cells[0][0] = JournalHeatCell {
+            count: 1,
+            pnl: 45_678.912_3,
+        };
+        time.max_abs_pnl = 45_678.912_3;
+
+        let rendered = format!("{kpis:?} {split:?} {asset:?} {time:?}");
+
+        assert!(rendered.contains("metrics: \"<redacted>\""), "{rendered}");
+        assert!(rendered.contains("populated_cells: 1"), "{rendered}");
+        assert!(
+            !rendered.contains("private-journal-asset-sentinel"),
+            "{rendered}"
+        );
+        for value in [98_765.432_1, 12_345.678_9, 45_678.912_3] {
+            assert!(!rendered.contains(&format!("{value:?}")), "{rendered}");
+        }
+        assert_eq!(kpis.net_pnl.to_bits(), 98_765.432_1_f64.to_bits());
+        assert_eq!(asset.coin, "private-journal-asset-sentinel");
+        assert_eq!(time.cells[0][0].pnl.to_bits(), 45_678.912_3_f64.to_bits());
     }
 }

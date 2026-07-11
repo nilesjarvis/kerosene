@@ -109,14 +109,14 @@ fn advance_fast_channel_cursor_generation(channel: &str) {
         return;
     };
     let entry = generations.channels.entry(channel.to_string()).or_default();
-    *entry = entry.saturating_add(1);
+    *entry = entry.wrapping_add(1);
 }
 
 fn advance_all_fast_cursor_generations() {
     let Ok(mut generations) = fast_cursor_generations().lock() else {
         return;
     };
-    generations.global = generations.global.saturating_add(1);
+    generations.global = generations.global.wrapping_add(1);
     generations.channels.clear();
 }
 
@@ -1976,6 +1976,33 @@ mod tests {
             12
         );
         clear_all_fast_channel_cursors().await;
+    }
+
+    #[tokio::test]
+    async fn channel_cursor_generation_wrap_still_invalidates_old_owner() {
+        let _guard = fast_channel_cursor_test_lock().lock().await;
+        let channel = "marketfeed_cursor_generation_wrap";
+        let global = fast_cursor_generation(channel).global;
+        {
+            let mut generations = fast_cursor_generations()
+                .lock()
+                .expect("cursor generations lock");
+            generations.channels.insert(channel.to_string(), u64::MAX);
+        }
+        let old_generation = FastCursorGeneration {
+            global,
+            channel: u64::MAX,
+        };
+
+        advance_fast_channel_cursor_generation(channel);
+        let wrapped_generation = fast_cursor_generation(channel);
+
+        assert_eq!(wrapped_generation.global, global);
+        assert_eq!(wrapped_generation.channel, 0);
+        assert_ne!(wrapped_generation, old_generation);
+        if let Ok(mut generations) = fast_cursor_generations().lock() {
+            generations.channels.remove(channel);
+        }
     }
 
     #[tokio::test]

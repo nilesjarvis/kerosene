@@ -1,6 +1,8 @@
 use super::{SpotBalance, UserFill};
 use crate::helpers::parse_finite_number;
 
+use std::fmt;
+
 // ---------------------------------------------------------------------------
 // Spot Cost Basis From Fills
 // ---------------------------------------------------------------------------
@@ -9,9 +11,17 @@ const COST_BASIS_EPSILON: f64 = 1e-12;
 const BALANCE_MATCH_ABS_TOLERANCE: f64 = 1e-8;
 const BALANCE_MATCH_REL_TOLERANCE: f64 = 1e-9;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub(crate) struct SpotCostBasis {
     pub(crate) entry_notional: f64,
+}
+
+impl fmt::Debug for SpotCostBasis {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SpotCostBasis")
+            .field("entry_notional", &"<redacted>")
+            .finish()
+    }
 }
 
 /// Reconstruct a spot entry notional when Hyperliquid omits `entryNtl`.
@@ -81,10 +91,19 @@ pub(crate) fn derive_spot_cost_basis_from_fills(
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 struct FillFeeAmounts {
     base: f64,
     quote: f64,
+}
+
+impl fmt::Debug for FillFeeAmounts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FillFeeAmounts")
+            .field("base", &"<redacted>")
+            .field("quote", &"<redacted>")
+            .finish()
+    }
 }
 
 fn fill_fee_amounts(
@@ -226,5 +245,29 @@ mod tests {
         let fills = vec![fill("A", "120", "1", "0", "USDC", 1)];
 
         assert!(derive_spot_cost_basis_from_fills(&balance("1"), "@142", &fills).is_none());
+    }
+
+    #[test]
+    fn spot_cost_basis_helpers_redact_financial_values_without_changing_them() {
+        const ENTRY_NOTIONAL: f64 = 987_654.321;
+        const BASE_FEE: f64 = 12_345.678_9;
+        const QUOTE_FEE: f64 = 45_678.912_3;
+        let basis = SpotCostBasis {
+            entry_notional: ENTRY_NOTIONAL,
+        };
+        let fees = FillFeeAmounts {
+            base: BASE_FEE,
+            quote: QUOTE_FEE,
+        };
+
+        let rendered = format!("{basis:?} {fees:?}");
+
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        for value in [ENTRY_NOTIONAL, BASE_FEE, QUOTE_FEE] {
+            assert!(!rendered.contains(&format!("{value:?}")), "{rendered}");
+        }
+        assert_eq!(basis.entry_notional.to_bits(), ENTRY_NOTIONAL.to_bits());
+        assert_eq!(fees.base.to_bits(), BASE_FEE.to_bits());
+        assert_eq!(fees.quote.to_bits(), QUOTE_FEE.to_bits());
     }
 }

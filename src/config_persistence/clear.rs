@@ -80,7 +80,7 @@ impl TradingTerminal {
         let profiles = self.keychain_cleanup_profiles_snapshot();
         Task::perform(
             async move { config::clear_all_configs(&profiles) },
-            Message::ConfigsCleared,
+            |result| Message::ConfigsCleared(result.into()),
         )
     }
 
@@ -215,6 +215,7 @@ impl TradingTerminal {
         &mut self,
         summary: config::ClearConfigSummary,
     ) -> Task<Message> {
+        let telegram_feed_request_allocators = self.telegram_feed.request_allocators();
         let x_feed_request_allocators = self.x_feed.request_allocators();
         let defaults = KeroseneConfig::default();
 
@@ -432,6 +433,8 @@ impl TradingTerminal {
             defaults.telegram_feed_include_outcome_markets,
             defaults.telegram_feed_onboarding_dismissed,
         );
+        self.telegram_feed
+            .restore_request_allocators_after_reset(telegram_feed_request_allocators);
         self.x_feed = crate::x_feed::XFeedState::new(&defaults.x_feeds, "", "", "");
         self.x_feed
             .restore_request_allocators(x_feed_request_allocators);
@@ -513,8 +516,9 @@ mod tests {
         set_fast_channel_cursor_for_test,
     };
     use crate::telegram_feed::{
-        TelegramChannelProfile, TelegramFastAuthStage, TelegramFeedPost, TelegramFeedPostSource,
-        TelegramFeedPrivateChannelConfig, default_telegram_feed_channels,
+        TelegramChannelProfile, TelegramFastAuthRequestKind, TelegramFastAuthStage,
+        TelegramFeedPost, TelegramFeedPostSource, TelegramFeedPrivateChannelConfig,
+        default_telegram_feed_channels,
     };
     use crate::timeframe::Timeframe;
     use crate::twap_state::{TwapOrder, TwapOrderInit};
@@ -1134,6 +1138,15 @@ mod tests {
         terminal.telegram_feed.fast_password_hint = Some("secret hint".to_string());
         terminal.telegram_feed.fast_reconnect_nonce = 99;
         terminal.telegram_feed.fast_last_event_ms = Some(123);
+        let old_channel_request_id = terminal.telegram_feed.begin_channel_refresh("privatealpha");
+        let old_private_request_id = terminal
+            .telegram_feed
+            .begin_private_channel_candidates_request();
+        let old_auth_request_id = terminal
+            .telegram_feed
+            .begin_fast_auth_request(TelegramFastAuthRequestKind::SubmitPassword);
+        let old_avatar_request_id = terminal.telegram_feed.allocate_avatar_request_id();
+        let old_media_request_id = terminal.telegram_feed.allocate_media_request_id();
         terminal
             .telegram_feed
             .channel_profiles
@@ -1173,7 +1186,31 @@ mod tests {
         assert!(!terminal.telegram_feed.fast_connected);
         assert_eq!(terminal.telegram_feed.fast_status, None);
         assert_eq!(terminal.telegram_feed.fast_password_hint, None);
-        assert_eq!(terminal.telegram_feed.fast_reconnect_nonce, 0);
+        assert_eq!(terminal.telegram_feed.fast_reconnect_nonce, 100);
+        assert_ne!(
+            terminal.telegram_feed.begin_channel_refresh("privatealpha"),
+            old_channel_request_id
+        );
+        assert_ne!(
+            terminal
+                .telegram_feed
+                .begin_private_channel_candidates_request(),
+            old_private_request_id
+        );
+        assert_ne!(
+            terminal
+                .telegram_feed
+                .begin_fast_auth_request(TelegramFastAuthRequestKind::SubmitPassword),
+            old_auth_request_id
+        );
+        assert_ne!(
+            terminal.telegram_feed.allocate_avatar_request_id(),
+            old_avatar_request_id
+        );
+        assert_ne!(
+            terminal.telegram_feed.allocate_media_request_id(),
+            old_media_request_id
+        );
         assert_eq!(terminal.telegram_feed.fast_last_event_ms, None);
         assert!(terminal.telegram_feed.channel_profiles.is_empty());
         assert!(terminal.telegram_feed.posts.is_empty());

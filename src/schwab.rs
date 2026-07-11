@@ -74,7 +74,7 @@ pub(crate) struct SchwabPositionSummary {
 impl fmt::Debug for SchwabPositionSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SchwabPositionSummary")
-            .field("symbol", &self.symbol)
+            .field("symbol", &"<redacted>")
             .field("quantity", &"<redacted>")
             .field("market_value", &self.market_value.map(|_| "<redacted>"))
             .finish()
@@ -100,7 +100,7 @@ impl fmt::Debug for SchwabAccountSummary {
                 &self.account_number.as_ref().map(|_| "<redacted>"),
             )
             .field("account_hash", &"<redacted>")
-            .field("account_type", &self.account_type)
+            .field("has_account_type", &self.account_type.is_some())
             .field("cash_balance", &self.cash_balance.map(|_| "<redacted>"))
             .field("buying_power", &self.buying_power.map(|_| "<redacted>"))
             .field(
@@ -142,8 +142,8 @@ pub(crate) struct SchwabAccountsSnapshot {
 impl fmt::Debug for SchwabAccountsSnapshot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SchwabAccountsSnapshot")
-            .field("linked_accounts", &self.linked_accounts)
-            .field("accounts", &self.accounts)
+            .field("linked_accounts_count", &self.linked_accounts.len())
+            .field("accounts_count", &self.accounts.len())
             .finish()
     }
 }

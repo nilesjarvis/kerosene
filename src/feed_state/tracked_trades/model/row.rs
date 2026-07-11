@@ -1,5 +1,7 @@
 use crate::ws::TrackedTradeEvent;
 
+use std::fmt;
+
 use super::super::super::TRACKED_TRADE_AGGREGATION_WINDOW_MS;
 use super::intent::TrackedTradeIntent;
 
@@ -10,7 +12,7 @@ mod tests;
 // Tracked Trade Row Model
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct TrackedTradeFeedRow {
     pub(crate) address: String,
     pub(crate) coin: String,
@@ -29,6 +31,23 @@ pub(crate) struct TrackedTradeFeedRow {
     pub(crate) intent: TrackedTradeIntent,
     pub(crate) hash: String,
     pub(crate) oid: Option<u64>,
+}
+
+impl fmt::Debug for TrackedTradeFeedRow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TrackedTradeFeedRow")
+            .field("address", &"<redacted>")
+            .field("coin", &"<redacted>")
+            .field("is_buy", &self.is_buy)
+            .field("time_range", &"<redacted>")
+            .field("metrics", &"<redacted>")
+            .field("fill_count", &self.fill_count)
+            .field("has_start_position", &self.start_position.is_some())
+            .field("intent", &self.intent)
+            .field("hash", &"<redacted>")
+            .field("has_oid", &self.oid.is_some())
+            .finish()
+    }
 }
 
 impl TrackedTradeFeedRow {

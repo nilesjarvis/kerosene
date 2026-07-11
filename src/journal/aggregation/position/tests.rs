@@ -90,3 +90,24 @@ fn settlement_transition_keeps_position_unchanged() {
         }
     );
 }
+
+#[test]
+fn position_transition_debug_redacts_account_values_without_changing_them() {
+    let transition = FillPositionTransition {
+        new_pos: -12_345.678_9,
+        is_flip: true,
+        is_close: false,
+    };
+    let resolved = ResolvedStartPosition {
+        start_pos: 98_765.432_1,
+        same_timestamp_mismatch: true,
+    };
+
+    let rendered = format!("{transition:?} {resolved:?}");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(!rendered.contains("-12345.6789"), "{rendered}");
+    assert!(!rendered.contains("98765.4321"), "{rendered}");
+    assert_eq!(transition.new_pos.to_bits(), (-12_345.678_9_f64).to_bits());
+    assert_eq!(resolved.start_pos.to_bits(), 98_765.432_1_f64.to_bits());
+}

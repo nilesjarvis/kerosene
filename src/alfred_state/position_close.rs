@@ -3,6 +3,8 @@ use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers::{parse_finite_number, trim_decimal_zeros};
 
+use std::fmt;
+
 mod parse;
 
 use parse::{ParsedClosePositionIntent, parse_close_position_intent};
@@ -11,7 +13,7 @@ use parse::{ParsedClosePositionIntent, parse_close_position_intent};
 // Natural Language Position Close
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct AlfredClosePositionDraft {
     pub(crate) coin: Option<String>,
     pub(crate) fraction: f64,
@@ -19,6 +21,19 @@ pub(crate) struct AlfredClosePositionDraft {
     pub(crate) detail: String,
     pub(crate) tag: String,
     pub(crate) error: Option<String>,
+}
+
+impl fmt::Debug for AlfredClosePositionDraft {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AlfredClosePositionDraft")
+            .field("has_coin", &self.coin.is_some())
+            .field("fraction", &"<redacted>")
+            .field("title", &"<redacted>")
+            .field("detail", &"<redacted>")
+            .field("tag", &"<redacted>")
+            .field("has_error", &self.error.is_some())
+            .finish()
+    }
 }
 
 impl AlfredClosePositionDraft {

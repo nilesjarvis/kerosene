@@ -1,11 +1,10 @@
 use crate::api::UserFill;
 
-use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::{cmp::Ordering, collections::HashSet, fmt};
 
 const POSITION_CHAIN_EPSILON: f64 = 1e-6;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct FillIdentity {
     pub time: u64,
     pub tid: u64,
@@ -15,6 +14,21 @@ pub struct FillIdentity {
     pub side: String,
     pub px: String,
     pub sz: String,
+}
+
+impl fmt::Debug for FillIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FillIdentity")
+            .field("time", &"<redacted>")
+            .field("tid", &"<redacted>")
+            .field("oid", &"<redacted>")
+            .field("hash", &"<redacted>")
+            .field("coin", &"<redacted>")
+            .field("side", &"<redacted>")
+            .field("px", &"<redacted>")
+            .field("sz", &"<redacted>")
+            .finish()
+    }
 }
 
 impl From<&UserFill> for FillIdentity {
@@ -32,7 +46,7 @@ impl From<&UserFill> for FillIdentity {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct FillPositionEdge {
     start: f64,
     end: f64,
@@ -188,4 +202,46 @@ fn fill_position_edge(fill: &UserFill) -> Option<FillPositionEdge> {
 
 fn positions_match(a: f64, b: f64) -> bool {
     (a - b).abs() <= POSITION_CHAIN_EPSILON
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FillIdentity;
+
+    #[test]
+    fn fill_identity_debug_redacts_exact_trade_identity_without_changing_it() {
+        let identity = FillIdentity {
+            time: 9_876_543_210,
+            tid: 98_765_432,
+            oid: 12_345_678,
+            hash: "private-fill-hash-sentinel".to_string(),
+            coin: "private-fill-coin-sentinel".to_string(),
+            side: "private-fill-side-sentinel".to_string(),
+            px: "98765.4321".to_string(),
+            sz: "12345.6789".to_string(),
+        };
+
+        let rendered = format!("{identity:?}");
+
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        for sensitive in [
+            "9876543210",
+            "98765432",
+            "12345678",
+            "private-fill-hash-sentinel",
+            "private-fill-coin-sentinel",
+            "private-fill-side-sentinel",
+            "98765.4321",
+            "12345.6789",
+        ] {
+            assert!(!rendered.contains(sensitive), "{rendered}");
+        }
+        assert_eq!(identity.time, 9_876_543_210);
+        assert_eq!(identity.tid, 98_765_432);
+        assert_eq!(identity.oid, 12_345_678);
+        assert_eq!(identity.hash, "private-fill-hash-sentinel");
+        assert_eq!(identity.coin, "private-fill-coin-sentinel");
+        assert_eq!(identity.px, "98765.4321");
+        assert_eq!(identity.sz, "12345.6789");
+    }
 }

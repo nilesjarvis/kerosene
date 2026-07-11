@@ -11,10 +11,19 @@ use std::{
 
 pub(super) const NUKE_CONFIRMATION_WINDOW: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct NukeConfirmation {
     armed_at: Instant,
     fingerprint: NukePlanFingerprint,
+}
+
+impl fmt::Debug for NukeConfirmation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NukeConfirmation")
+            .field("armed_at", &self.armed_at)
+            .field("fingerprint", &self.fingerprint)
+            .finish()
+    }
 }
 
 impl NukeConfirmation {
@@ -41,13 +50,10 @@ struct NukePlanFingerprint {
 impl fmt::Debug for NukePlanFingerprint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NukePlanFingerprint")
-            .field(
-                "account_address",
-                &self.account_address.as_ref().map(|_| "<redacted>"),
-            )
-            .field("ready", &self.ready)
-            .field("skipped", &self.skipped)
-            .field("hidden_skipped", &self.hidden_skipped)
+            .field("has_account_address", &self.account_address.is_some())
+            .field("ready_count", &self.ready.len())
+            .field("skipped_count", &self.skipped.len())
+            .field("hidden_skipped_count", &self.hidden_skipped.len())
             .finish()
     }
 }
@@ -89,7 +95,7 @@ impl NukePlanFingerprint {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct NukeReadyFingerprint {
     coin: String,
     asset: u32,

@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 // Daily Portfolio Rows
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct DayBounds {
     first_ts: u64,
     first_value: f64,

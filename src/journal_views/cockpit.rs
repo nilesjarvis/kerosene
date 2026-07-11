@@ -675,7 +675,7 @@ fn heatmap_cell(
 
 // ---- Win/Loss donut canvas ----
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct JournalDonut {
     win_fraction: f32,
     win_rate: f32,

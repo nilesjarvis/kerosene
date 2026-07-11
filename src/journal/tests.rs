@@ -116,3 +116,33 @@ fn journal_note_debug_summarizes_private_text() {
     assert!(!rendered.contains("private close note sentinel"));
     assert!(!rendered.contains("private cause note sentinel"));
 }
+
+#[test]
+fn journal_sync_debug_redacts_account_timing_and_warning_without_changing_them() {
+    let status = JournalSyncStatus {
+        watermark_ms: Some(9_876_543_210),
+        next_start_ms: Some(9_876_543_211),
+        pages_loaded: 3,
+        fills_loaded: 7,
+        pagination_warning: Some("private-pagination-warning-sentinel".to_string()),
+        complete: false,
+    };
+
+    let rendered = format!("{status:?}");
+
+    assert!(rendered.contains("has_watermark: true"), "{rendered}");
+    assert!(rendered.contains("pages_loaded: 3"), "{rendered}");
+    assert!(rendered.contains("fills_loaded: 7"), "{rendered}");
+    assert!(!rendered.contains("9876543210"), "{rendered}");
+    assert!(!rendered.contains("9876543211"), "{rendered}");
+    assert!(
+        !rendered.contains("private-pagination-warning-sentinel"),
+        "{rendered}"
+    );
+    assert_eq!(status.watermark_ms, Some(9_876_543_210));
+    assert_eq!(status.next_start_ms, Some(9_876_543_211));
+    assert_eq!(
+        status.pagination_warning.as_deref(),
+        Some("private-pagination-warning-sentinel")
+    );
+}

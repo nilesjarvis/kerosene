@@ -76,3 +76,24 @@ fn chase_reprice_limits_stop_after_drift_limit() {
         })
     );
 }
+
+#[test]
+fn chase_limit_debug_redacts_drift_without_changing_it() {
+    const DRIFT_FRACTION: f64 = 0.061_234_567_89;
+    let reason = ChaseLimitReason::Drift {
+        drift_fraction: DRIFT_FRACTION,
+    };
+
+    let rendered = format!("{reason:?}");
+
+    assert!(rendered.contains("Drift"), "{rendered}");
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(
+        !rendered.contains(&format!("{DRIFT_FRACTION:?}")),
+        "{rendered}"
+    );
+    let ChaseLimitReason::Drift { drift_fraction } = reason else {
+        panic!("expected drift reason");
+    };
+    assert_eq!(drift_fraction.to_bits(), DRIFT_FRACTION.to_bits());
+}

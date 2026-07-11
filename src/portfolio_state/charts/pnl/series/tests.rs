@@ -60,3 +60,33 @@ fn tooltip_origin_flips_left_and_clamps_vertically() {
     assert_near(origin.x, 4.0);
     assert_near(origin.y, 4.0);
 }
+
+#[test]
+fn pnl_layout_debug_redacts_account_values_and_derived_geometry() {
+    let point = PnlChartPoint {
+        point: Point::new(123.456_7, 234.567_8),
+        timestamp_ms: 9_876_543_210,
+        pnl: -98_765.432_1,
+    };
+    let layout = PnlChartLayout {
+        points: vec![point],
+        zero_y: 345.678_9,
+    };
+
+    let rendered = format!("{point:?} {layout:?}");
+
+    assert!(rendered.contains("points_count: 1"), "{rendered}");
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    for sensitive in [
+        "123.4567",
+        "234.5678",
+        "9876543210",
+        "-98765.4321",
+        "345.6789",
+    ] {
+        assert!(!rendered.contains(sensitive), "{rendered}");
+    }
+    assert_eq!(point.timestamp_ms, 9_876_543_210);
+    assert_eq!(point.pnl.to_bits(), (-98_765.432_1_f64).to_bits());
+    assert_eq!(layout.zero_y.to_bits(), 345.678_9_f32.to_bits());
+}

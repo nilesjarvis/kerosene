@@ -4,18 +4,39 @@ use crate::signing::{
     ChaseOrder, MAX_CHASE_DRIFT_FRACTION, MAX_CHASE_DURATION, MAX_CHASE_REPRICES,
 };
 
-use std::time::{Duration, Instant};
+use std::{
+    fmt,
+    time::{Duration, Instant},
+};
 
 // ---------------------------------------------------------------------------
 // Chase Reprice Limits
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub(super) enum ChaseLimitReason {
     InvalidPrice,
     Timeout { elapsed: Duration },
     MaxReprices { count: u32 },
     Drift { drift_fraction: f64 },
+}
+
+impl fmt::Debug for ChaseLimitReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidPrice => f.write_str("InvalidPrice"),
+            Self::Timeout { elapsed } => {
+                f.debug_struct("Timeout").field("elapsed", elapsed).finish()
+            }
+            Self::MaxReprices { count } => {
+                f.debug_struct("MaxReprices").field("count", count).finish()
+            }
+            Self::Drift { .. } => f
+                .debug_struct("Drift")
+                .field("drift_fraction", &"<redacted>")
+                .finish(),
+        }
+    }
 }
 
 impl ChaseLimitReason {

@@ -268,7 +268,7 @@ impl canvas::Program<Message> for JournalSnapshotCanvas {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 struct JournalSnapshotCanvasState {
     reset_key: String,
     view_start_ms: u64,
@@ -276,7 +276,7 @@ struct JournalSnapshotCanvasState {
     drag: Option<SnapshotDrag>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct SnapshotDrag {
     start_pos: Point,
     view_start_ms: u64,
@@ -338,7 +338,7 @@ fn draw_snapshot_chart(
     draw_markers(frame, theme, plot, &visible_markers);
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct SnapshotPlot {
     left: f32,
     top: f32,
@@ -923,7 +923,7 @@ fn draw_markers(
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct SnapshotMarkerLayout {
     center: Point,
     radius: f32,

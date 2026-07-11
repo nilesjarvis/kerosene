@@ -2,22 +2,43 @@
 // Position Transition Helpers
 // ---------------------------------------------------------------------------
 
+use std::fmt;
+
 pub(super) const POSITION_EPSILON: f64 = 1e-6;
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub(super) struct FillPositionTransition {
     pub(super) new_pos: f64,
     pub(super) is_flip: bool,
     pub(super) is_close: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+impl fmt::Debug for FillPositionTransition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FillPositionTransition")
+            .field("new_pos", &"<redacted>")
+            .field("is_flip", &self.is_flip)
+            .field("is_close", &self.is_close)
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
 pub(super) struct ResolvedStartPosition {
     pub(super) start_pos: f64,
     pub(super) same_timestamp_mismatch: bool,
+}
+
+impl fmt::Debug for ResolvedStartPosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ResolvedStartPosition")
+            .field("start_pos", &"<redacted>")
+            .field("same_timestamp_mismatch", &self.same_timestamp_mismatch)
+            .finish()
+    }
 }
 
 pub(super) fn is_non_perp_coin(coin: &str) -> bool {

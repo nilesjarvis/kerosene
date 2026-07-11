@@ -52,3 +52,22 @@ fn selection_rejects_missing_or_empty_fixed_books() {
         Err(OrderBookPriceSelectionError::Unavailable)
     );
 }
+
+#[test]
+fn selection_debug_redacts_price_and_symbol_without_changing_them() {
+    let selection = OrderBookPriceSelection {
+        selected_price: "98765.4321".to_string(),
+        target_symbol: "private-book-symbol-sentinel".to_string(),
+    };
+
+    let rendered = format!("{selection:?}");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(!rendered.contains("98765.4321"), "{rendered}");
+    assert!(
+        !rendered.contains("private-book-symbol-sentinel"),
+        "{rendered}"
+    );
+    assert_eq!(selection.selected_price, "98765.4321");
+    assert_eq!(selection.target_symbol, "private-book-symbol-sentinel");
+}

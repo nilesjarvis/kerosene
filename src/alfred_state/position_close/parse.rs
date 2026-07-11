@@ -1,8 +1,20 @@
-#[derive(Debug, Clone, PartialEq)]
+use std::fmt;
+
+#[derive(Clone, PartialEq)]
 pub(super) struct ParsedClosePositionIntent {
     pub(super) symbol: Option<String>,
     pub(super) fraction: Option<f64>,
     pub(super) error: Option<String>,
+}
+
+impl fmt::Debug for ParsedClosePositionIntent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ParsedClosePositionIntent")
+            .field("has_symbol", &self.symbol.is_some())
+            .field("fraction", &self.fraction.as_ref().map(|_| "<redacted>"))
+            .field("has_error", &self.error.is_some())
+            .finish()
+    }
 }
 
 pub(super) fn parse_close_position_intent(query: &str) -> Option<ParsedClosePositionIntent> {

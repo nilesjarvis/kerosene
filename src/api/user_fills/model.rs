@@ -32,10 +32,19 @@ impl fmt::Debug for UserFill {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct UserFillsRequest {
     pub start_time: u64,
     pub end_time: Option<u64>,
+}
+
+impl fmt::Debug for UserFillsRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UserFillsRequest")
+            .field("start_time", &"<redacted>")
+            .field("has_end_time", &self.end_time.is_some())
+            .finish()
+    }
 }
 
 impl UserFillsRequest {
@@ -66,10 +75,10 @@ impl fmt::Debug for UserFillsPage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("UserFillsPage")
             .field("fills", &format_args!("len={}", self.fills.len()))
-            .field("next_request", &self.next_request)
-            .field("requested_end_time", &self.requested_end_time)
+            .field("has_next_request", &self.next_request.is_some())
+            .field("requested_end_time", &"<redacted>")
             .field(
-                "progress_warning",
+                "has_progress_warning",
                 &self.progress_warning.as_ref().map(|_| "<redacted>"),
             )
             .finish()
@@ -101,6 +110,37 @@ mod tests {
     }
 
     #[test]
+    fn fill_pagination_debug_redacts_account_timing_without_changing_it() {
+        let page = UserFillsPage {
+            fills: vec![],
+            next_request: Some(UserFillsRequest {
+                start_time: 9_876_543_210,
+                end_time: Some(9_876_543_211),
+            }),
+            requested_end_time: 9_876_543_212,
+            progress_warning: Some("private-fill-page-warning-sentinel".to_string()),
+        };
+
+        let rendered = format!("{page:?} {:?}", page.next_request);
+
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        assert!(rendered.contains("has_next_request: true"), "{rendered}");
+        assert!(!rendered.contains("9876543210"), "{rendered}");
+        assert!(!rendered.contains("9876543211"), "{rendered}");
+        assert!(!rendered.contains("9876543212"), "{rendered}");
+        assert!(
+            !rendered.contains("private-fill-page-warning-sentinel"),
+            "{rendered}"
+        );
+        assert_eq!(
+            page.next_request
+                .map(|request| (request.start_time, request.end_time)),
+            Some((9_876_543_210, Some(9_876_543_211)))
+        );
+        assert_eq!(page.requested_end_time, 9_876_543_212);
+    }
+
+    #[test]
     fn user_fills_page_debug_summarizes_fills_and_warning() {
         let page = UserFillsPage {
             fills: vec![fill()],
@@ -115,14 +155,16 @@ mod tests {
         let rendered = format!("{page:?}");
 
         assert!(rendered.contains("fills: len=1"));
-        assert!(rendered.contains("start_time: 10"));
-        assert!(rendered.contains("requested_end_time: 30"));
-        assert!(rendered.contains("progress_warning: Some(\"<redacted>\")"));
+        assert!(rendered.contains("has_next_request: true"));
+        assert!(rendered.contains("requested_end_time: \"<redacted>\""));
+        assert!(rendered.contains("has_progress_warning: Some(\"<redacted>\")"));
         for secret in [
             "SECRETCOIN",
             "fill-secret-price",
             "fill-secret-hash",
             "fills-warning-secret",
+            "start_time: 10",
+            "requested_end_time: 30",
         ] {
             assert!(!rendered.contains(secret), "{secret} leaked in {rendered}");
         }

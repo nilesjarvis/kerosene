@@ -138,7 +138,7 @@ impl fmt::Debug for JournalTradeSnapshotRequest {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[allow(dead_code)]
 pub struct JournalTradeSnapshot {
     pub trade_id: String,
@@ -161,7 +161,29 @@ pub struct JournalTradeSnapshot {
     pub status: JournalTradeSnapshotStatus,
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for JournalTradeSnapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalTradeSnapshot")
+            .field("trade_id", &"<redacted>")
+            .field("coin", &"<redacted>")
+            .field("source", &self.source)
+            .field("coverage", &self.coverage)
+            .field("timeframe", &self.timeframe)
+            .field("trade_start_ms", &"<redacted>")
+            .field("trade_end_ms", &"<redacted>")
+            .field("is_open", &self.is_open)
+            .field("live_position", &self.live_position)
+            .field("start_ms", &"<redacted>")
+            .field("end_ms", &"<redacted>")
+            .field("candles_count", &self.candles.len())
+            .field("markers_count", &self.markers.len())
+            .field("metrics", &self.metrics)
+            .field("status", &self.status)
+            .finish()
+    }
+}
+
+#[derive(Clone)]
 pub struct JournalTradeSnapshotMetrics {
     pub timeframe: Timeframe,
     pub candle_count: usize,
@@ -174,10 +196,35 @@ pub struct JournalTradeSnapshotMetrics {
     pub asset_drawdown: f64,
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for JournalTradeSnapshotMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalTradeSnapshotMetrics")
+            .field("timeframe", &self.timeframe)
+            .field("candle_count", &self.candle_count)
+            .field("entry_price", &"<redacted>")
+            .field("exit_price", &"<redacted>")
+            .field("raw_asset_move", &"<redacted>")
+            .field("directional_move", &"<redacted>")
+            .field("max_adverse_excursion", &"<redacted>")
+            .field("max_favorable_excursion", &"<redacted>")
+            .field("asset_drawdown", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone)]
 pub enum JournalTradeSnapshotStatus {
     Loaded,
     Unavailable(String),
+}
+
+impl fmt::Debug for JournalTradeSnapshotStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Loaded => f.write_str("Loaded"),
+            Self::Unavailable(_) => f.debug_tuple("Unavailable").field(&"<redacted>").finish(),
+        }
+    }
 }
 
 pub fn initial_snapshot_request(
@@ -769,6 +816,59 @@ mod tests {
         assert_eq!(request.trade_end_ms, TRADE_END_MS);
         assert_eq!(request.start_ms, START_MS);
         assert_eq!(request.end_ms, END_MS);
+    }
+
+    #[test]
+    fn snapshot_debug_redacts_trade_values_without_changing_them() {
+        const START_MS: u64 = 9_876_543_210;
+        const END_MS: u64 = 9_876_543_211;
+        const ENTRY_PRICE: f64 = 98_765.432_1;
+        let trade_id = "private-snapshot-trade-sentinel";
+        let coin = "private-snapshot-coin-sentinel";
+        let reason = "private-snapshot-error-sentinel";
+        let mut trade = trade(true);
+        trade.id = trade_id.to_string();
+        trade.coin = coin.to_string();
+        trade.start_time = START_MS;
+        trade.end_time = Some(END_MS);
+        trade.avg_entry_price = ENTRY_PRICE;
+        let snapshot = unavailable_snapshot(
+            &trade,
+            ChartBackfillSource::Hyperliquid,
+            END_MS,
+            reason.to_string(),
+        );
+
+        let rendered = format!("{snapshot:?}");
+
+        assert!(rendered.contains("JournalTradeSnapshot"), "{rendered}");
+        assert!(
+            rendered.contains("Unavailable(\"<redacted>\")"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("candles_count: 0"), "{rendered}");
+        for sensitive in [trade_id, coin, reason] {
+            assert!(!rendered.contains(sensitive), "{rendered}");
+        }
+        for sensitive in [
+            START_MS.to_string(),
+            END_MS.to_string(),
+            format!("{ENTRY_PRICE:?}"),
+        ] {
+            assert!(!rendered.contains(&sensitive), "{rendered}");
+        }
+        assert_eq!(snapshot.trade_id, trade_id);
+        assert_eq!(snapshot.coin, coin);
+        assert_eq!(snapshot.trade_start_ms, START_MS);
+        assert_eq!(snapshot.trade_end_ms, END_MS);
+        assert_eq!(
+            snapshot.metrics.entry_price.to_bits(),
+            ENTRY_PRICE.to_bits()
+        );
+        assert!(matches!(
+            snapshot.status,
+            JournalTradeSnapshotStatus::Unavailable(ref stored) if stored == reason
+        ));
     }
 
     #[test]

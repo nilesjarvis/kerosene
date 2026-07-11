@@ -3,6 +3,8 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::format_price;
 use crate::signing::OrderKind;
 
+use std::fmt;
+
 mod display;
 mod parse;
 
@@ -32,7 +34,7 @@ impl AlfredTradeSide {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct AlfredTradeDraft {
     pub(crate) side: Option<AlfredTradeSide>,
     pub(crate) symbol_key: Option<String>,
@@ -46,6 +48,28 @@ pub(crate) struct AlfredTradeDraft {
     pub(crate) detail: String,
     pub(crate) tag: String,
     pub(crate) error: Option<String>,
+}
+
+impl fmt::Debug for AlfredTradeDraft {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AlfredTradeDraft")
+            .field("side", &self.side)
+            .field("has_symbol_key", &self.symbol_key.is_some())
+            .field("has_icon_symbol", &self.icon_symbol.is_some())
+            .field("has_icon_title_anchor", &self.icon_title_anchor.is_some())
+            .field("quantity", &self.quantity.as_ref().map(|_| "<redacted>"))
+            .field("quantity_is_usd", &self.quantity_is_usd)
+            .field("order_kind", &self.order_kind)
+            .field(
+                "limit_price",
+                &self.limit_price.as_ref().map(|_| "<redacted>"),
+            )
+            .field("title", &"<redacted>")
+            .field("detail", &"<redacted>")
+            .field("tag", &"<redacted>")
+            .field("has_error", &self.error.is_some())
+            .finish()
+    }
 }
 
 impl AlfredTradeDraft {

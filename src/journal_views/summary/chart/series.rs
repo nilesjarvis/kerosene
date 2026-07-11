@@ -2,6 +2,7 @@ use super::drawing::JournalSummaryChart;
 use crate::helpers::finite_value;
 
 use iced::Point;
+use std::fmt;
 
 mod account_value;
 mod pnl;
@@ -19,18 +20,41 @@ const Y_PADDING_RATIO: f64 = 0.10;
 // Chart Series
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub(super) struct ChartPoint {
     pub(super) point: Point,
     pub(super) timestamp_ms: u64,
     pub(super) value: f64,
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for ChartPoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ChartPoint")
+            .field("point", &"<redacted>")
+            .field("timestamp_ms", &"<redacted>")
+            .field("value", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone)]
 pub(super) struct ChartLayout {
     pub(super) pnl_points: Vec<ChartPoint>,
     pub(super) account_value_points: Vec<ChartPoint>,
     pub(super) zero_y: f32,
+}
+
+impl fmt::Debug for ChartLayout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ChartLayout")
+            .field("pnl_points_count", &self.pnl_points.len())
+            .field(
+                "account_value_points_count",
+                &self.account_value_points.len(),
+            )
+            .field("zero_y", &"<redacted>")
+            .finish()
+    }
 }
 
 pub(super) fn prepare_chart_layout(

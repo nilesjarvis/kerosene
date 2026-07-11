@@ -1,14 +1,26 @@
 use crate::message::Message;
 
+use std::fmt;
+
 // ---------------------------------------------------------------------------
 // Alfred Model
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct AlfredState {
     pub(crate) open: bool,
     pub(crate) query: String,
     pub(crate) selected_index: usize,
+}
+
+impl fmt::Debug for AlfredState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AlfredState")
+            .field("open", &self.open)
+            .field("has_query", &!self.query.is_empty())
+            .field("selected_index", &self.selected_index)
+            .finish()
+    }
 }
 
 impl AlfredState {
@@ -65,7 +77,7 @@ pub(crate) enum AlfredCommandKind {
     Trading,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct AlfredCommand {
     pub(crate) id: AlfredCommandId,
     pub(crate) title: String,
@@ -78,6 +90,24 @@ pub(crate) struct AlfredCommand {
     pub(crate) disabled_reason: Option<String>,
     pub(crate) message: Option<Message>,
     aliases: &'static [&'static str],
+}
+
+impl fmt::Debug for AlfredCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AlfredCommand")
+            .field("id", &self.id)
+            .field("title", &"<redacted>")
+            .field("detail", &"<redacted>")
+            .field("tag", &"<redacted>")
+            .field("has_icon_symbol", &self.icon_symbol.is_some())
+            .field("has_icon_title_anchor", &self.icon_title_anchor.is_some())
+            .field("kind", &self.kind)
+            .field("enabled", &self.enabled)
+            .field("has_disabled_reason", &self.disabled_reason.is_some())
+            .field("has_message", &self.message.is_some())
+            .field("aliases_count", &self.aliases.len())
+            .finish()
+    }
 }
 
 impl AlfredCommand {

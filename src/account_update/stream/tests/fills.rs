@@ -1,5 +1,6 @@
 use super::super::{
-    apply_fills_update, chase_fill_summary, fill_toast_message, prepend_recent_fills,
+    ChaseFillTotals, apply_fills_update, chase_fill_summary, fill_toast_message,
+    prepend_recent_fills,
 };
 use super::fixtures::{fill, fill_with_oid};
 
@@ -218,4 +219,31 @@ fn chase_fill_summary_ignores_unmatched_or_unparseable_fills() {
         ),
         Some("Chase filled (oid 42)".to_string())
     );
+}
+
+#[test]
+fn chase_fill_totals_debug_redacts_financial_values_without_changing_them() {
+    const FILLED_SIZE: f64 = 12_345.678_9;
+    const TOTAL_NOTIONAL: f64 = 98_765.432_1;
+    let totals = ChaseFillTotals {
+        side: "private-side-sentinel".to_string(),
+        filled_size: FILLED_SIZE,
+        total_notional: TOTAL_NOTIONAL,
+    };
+
+    let rendered = format!("{totals:?}");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(!rendered.contains("private-side-sentinel"), "{rendered}");
+    assert!(
+        !rendered.contains(&format!("{FILLED_SIZE:?}")),
+        "{rendered}"
+    );
+    assert!(
+        !rendered.contains(&format!("{TOTAL_NOTIONAL:?}")),
+        "{rendered}"
+    );
+    assert_eq!(totals.side, "private-side-sentinel");
+    assert_eq!(totals.filled_size.to_bits(), FILLED_SIZE.to_bits());
+    assert_eq!(totals.total_notional.to_bits(), TOTAL_NOTIONAL.to_bits());
 }

@@ -154,6 +154,19 @@ candidate list, bytes, URL, and error without transformation; generic message
 formatting therefore cannot reproduce feed content, private channel metadata,
 image data, URL query material, or upstream error text.
 
+Those Telegram completions use one-shot runtime owners. Config clear preserves
+only their non-secret allocators and advances the fast-stream generation; it
+drops pending auth challenges, owners, content, and credentials. A stale result
+must prove its exact request/channel/URL identity before its value is recovered.
+Private post IDs, timing, media state, fast status copy, and stream errors are
+value-neutral when formatted independently.
+
+Config-save and config-clear completion messages likewise expose only result
+shape in generic diagnostics; their exact error or cleanup summary is restored
+only inside the established handler. The final raw public-mids bootstrap result
+uses the public-market wrapper, preventing its payload or upstream error from
+being recursively formatted without changing mids application.
+
 X direct-token authentication and refresh-token exchange share an exact
 runtime credential-operation owner. A refresh may supersede a read-only auth
 check; once its POST is dispatched it remains owner until settlement because
@@ -609,6 +622,15 @@ Security also includes preventing unintended trades:
 Do not weaken these checks for UI convenience.
 
 ## Logging And Debugging
+
+Standalone diagnostics for account/order lifecycle helpers must be structural,
+not merely protected by a redacted parent message. Cost-basis, leverage,
+position, fill, sizing, pending-order, Chase, NUKE, Alfred, journal, portfolio,
+tracked-trade, and private-integration models should expose only safe state,
+counts, booleans, presence, or explicit redaction markers from `Debug`. Exact
+fields remain available to their functional consumers. Public-market metadata,
+state-only enums, counters, and UI geometry may remain directly diagnosable
+when they do not contain private financial context.
 
 Safe to log:
 

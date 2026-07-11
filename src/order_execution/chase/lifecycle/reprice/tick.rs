@@ -9,7 +9,7 @@ use std::time::Instant;
 // Chase Reprice Tick
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum ChaseStatusRetry {
     Placement,
     Oid { oid: u64 },

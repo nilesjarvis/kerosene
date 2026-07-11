@@ -67,3 +67,67 @@ fn trade_draft_or_panic(terminal: &TradingTerminal, query: &str) -> AlfredTradeD
         None => panic!("missing trade draft for {query}"),
     }
 }
+
+#[test]
+fn trade_draft_and_intent_debug_redact_order_values_without_changing_them() {
+    let intent = ParsedTradeIntent {
+        side: Some(AlfredTradeSide::Buy),
+        amount: Some(12_345.678_9),
+        amount_is_usd: true,
+        symbol: Some("private-trade-symbol-sentinel".to_string()),
+        explicit_spot: false,
+        explicit_chase: false,
+        explicit_limit: true,
+        limit_price: Some(98_765.432_1),
+        error: Some("private-trade-error-sentinel".to_string()),
+    };
+    let draft = AlfredTradeDraft {
+        side: Some(AlfredTradeSide::Buy),
+        symbol_key: Some("private-draft-symbol-sentinel".to_string()),
+        icon_symbol: Some("private-draft-icon-sentinel".to_string()),
+        icon_title_anchor: Some("private-draft-anchor-sentinel".to_string()),
+        quantity: Some(12_345.678_9),
+        quantity_is_usd: true,
+        order_kind: OrderKind::Limit,
+        limit_price: Some(98_765.432_1),
+        title: "private-draft-title-sentinel".to_string(),
+        detail: "private-draft-detail-sentinel".to_string(),
+        tag: "private-draft-tag-sentinel".to_string(),
+        error: Some("private-draft-error-sentinel".to_string()),
+    };
+
+    let rendered = format!("{intent:?} {draft:?}");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    for sensitive in [
+        "private-trade-symbol-sentinel",
+        "private-trade-error-sentinel",
+        "private-draft-symbol-sentinel",
+        "private-draft-icon-sentinel",
+        "private-draft-anchor-sentinel",
+        "private-draft-title-sentinel",
+        "private-draft-detail-sentinel",
+        "private-draft-tag-sentinel",
+        "private-draft-error-sentinel",
+        "12345.6789",
+        "98765.4321",
+    ] {
+        assert!(!rendered.contains(sensitive), "{rendered}");
+    }
+    assert_eq!(
+        intent.symbol.as_deref(),
+        Some("private-trade-symbol-sentinel")
+    );
+    assert_eq!(
+        intent.amount.map(f64::to_bits),
+        Some(12_345.678_9_f64.to_bits())
+    );
+    assert_eq!(
+        draft.symbol_key.as_deref(),
+        Some("private-draft-symbol-sentinel")
+    );
+    assert_eq!(
+        draft.limit_price.map(f64::to_bits),
+        Some(98_765.432_1_f64.to_bits())
+    );
+}

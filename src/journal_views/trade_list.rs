@@ -281,7 +281,7 @@ fn short_timestamp(time_ms: u64) -> String {
 
 // ---- Sparkline canvas ----
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct JournalSparkline {
     values: Vec<f32>,
     color: Color,

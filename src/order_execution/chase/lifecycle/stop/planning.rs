@@ -1,16 +1,35 @@
 use crate::signing::{ChaseLifecycle, ChaseOrder, ChaseStopPhase, ChaseVerificationReason};
 
+use std::fmt;
+
 // ---------------------------------------------------------------------------
 // Stop Planning
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::order_execution::chase::lifecycle) enum StopChaseAction {
     CancelResting { chase_id: u64, asset: u32, oid: u64 },
     AwaitPlaceResult,
     AwaitModifyResult,
     AwaitCancelResult,
     Clear,
+}
+
+impl fmt::Debug for StopChaseAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CancelResting { asset, .. } => f
+                .debug_struct("CancelResting")
+                .field("chase_id", &"<redacted>")
+                .field("asset", asset)
+                .field("oid", &"<redacted>")
+                .finish(),
+            Self::AwaitPlaceResult => f.write_str("AwaitPlaceResult"),
+            Self::AwaitModifyResult => f.write_str("AwaitModifyResult"),
+            Self::AwaitCancelResult => f.write_str("AwaitCancelResult"),
+            Self::Clear => f.write_str("Clear"),
+        }
+    }
 }
 
 #[cfg(test)]

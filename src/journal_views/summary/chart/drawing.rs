@@ -5,6 +5,7 @@ use crate::message::Message;
 
 use iced::widget::canvas;
 use iced::{Color, Point, Rectangle, Renderer, Size, Theme};
+use std::fmt;
 
 mod tooltip;
 use tooltip::draw_hover_state;
@@ -22,13 +23,28 @@ const LINE_WIDTH: f32 = 1.5;
 // Summary Chart Canvas
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(super) struct JournalSummaryChart {
     pub(super) pnl_points: Vec<(u64, f64)>,
     pub(super) account_value_points: Vec<(u64, f64)>,
     pub(super) show_account_value: bool,
     pub(super) denomination: DisplayDenominationContext,
     pub(super) reveal_progress: f32,
+}
+
+impl fmt::Debug for JournalSummaryChart {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalSummaryChart")
+            .field("pnl_points_count", &self.pnl_points.len())
+            .field(
+                "account_value_points_count",
+                &self.account_value_points.len(),
+            )
+            .field("show_account_value", &self.show_account_value)
+            .field("denomination", &"<redacted>")
+            .field("reveal_progress", &self.reveal_progress)
+            .finish()
+    }
 }
 
 impl canvas::Program<Message> for JournalSummaryChart {

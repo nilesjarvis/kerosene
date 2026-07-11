@@ -1,5 +1,7 @@
 use crate::ws::TrackedTradeEvent;
 
+use std::fmt;
+
 #[cfg(test)]
 mod tests;
 
@@ -7,7 +9,7 @@ mod tests;
 // Tracked Trade Aggregation Key
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::feed_state::tracked_trades) enum TrackedTradeAggregationKey<'a> {
     Order {
         address: &'a str,
@@ -27,6 +29,28 @@ pub(in crate::feed_state::tracked_trades) enum TrackedTradeAggregationKey<'a> {
         is_buy: bool,
         dir: &'a str,
     },
+}
+
+impl fmt::Debug for TrackedTradeAggregationKey<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Order { is_buy, .. } => f
+                .debug_struct("Order")
+                .field("identity", &"<redacted>")
+                .field("is_buy", is_buy)
+                .finish(),
+            Self::Hash { is_buy, .. } => f
+                .debug_struct("Hash")
+                .field("identity", &"<redacted>")
+                .field("is_buy", is_buy)
+                .finish(),
+            Self::TimeWindow { is_buy, .. } => f
+                .debug_struct("TimeWindow")
+                .field("identity", &"<redacted>")
+                .field("is_buy", is_buy)
+                .finish(),
+        }
+    }
 }
 
 impl<'a> TrackedTradeAggregationKey<'a> {

@@ -212,20 +212,20 @@ impl fmt::Debug for TrackedTradeEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TrackedTradeEvent")
             .field("address", &"<redacted>")
-            .field("coin", &self.coin)
-            .field("price", &self.price)
-            .field("size", &self.size)
+            .field("coin", &"<redacted>")
+            .field("price", &"<redacted>")
+            .field("size", &"<redacted>")
             .field("is_buy", &self.is_buy)
-            .field("time_ms", &self.time_ms)
-            .field("dir", &self.dir)
-            .field("start_position", &self.start_position)
-            .field("closed_pnl", &self.closed_pnl)
-            .field("fee", &self.fee)
-            .field("fee_token", &self.fee_token)
-            .field("tid", &self.tid)
-            .field("hash", &self.hash)
-            .field("oid", &self.oid)
-            .field("tx_index", &self.tx_index)
+            .field("time_ms", &"<redacted>")
+            .field("dir", &"<redacted>")
+            .field("has_start_position", &self.start_position.is_some())
+            .field("closed_pnl", &"<redacted>")
+            .field("fee", &"<redacted>")
+            .field("fee_token", &"<redacted>")
+            .field("has_tid", &self.tid.is_some())
+            .field("hash", &"<redacted>")
+            .field("has_oid", &self.oid.is_some())
+            .field("tx_index", &"<redacted>")
             .finish()
     }
 }
@@ -386,31 +386,53 @@ mod tests {
     }
 
     #[test]
-    fn hydromancer_tracked_trade_debug_redacts_address() {
+    fn hydromancer_tracked_trade_debug_redacts_account_trade_values() {
         const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+        const PRICE: f64 = 98_765.432_1;
+        const SIZE: f64 = 12_345.678_9;
 
-        let message = HydromancerWsMessage::TrackedTrade(TrackedTradeEvent {
+        let event = TrackedTradeEvent {
             address: ADDRESS.to_string(),
-            coin: "HYPE".to_string(),
-            price: 10.0,
-            size: 1.0,
+            coin: "private-tracked-coin-sentinel".to_string(),
+            price: PRICE,
+            size: SIZE,
             is_buy: true,
-            time_ms: 100,
-            dir: "Open Long".to_string(),
-            start_position: Some(0.0),
-            closed_pnl: 0.0,
-            fee: 0.01,
-            fee_token: "USDC".to_string(),
-            tid: Some(123),
-            hash: "0xabc".to_string(),
-            oid: Some(456),
-            tx_index: 7,
-        });
+            time_ms: 9_876_543_210,
+            dir: "private-tracked-direction-sentinel".to_string(),
+            start_position: Some(-45_678.912_3),
+            closed_pnl: -33_333.233_4,
+            fee: 22_222.122_3,
+            fee_token: "private-tracked-fee-token-sentinel".to_string(),
+            tid: Some(98_765_432),
+            hash: "private-tracked-hash-sentinel".to_string(),
+            oid: Some(12_345_678),
+            tx_index: 87_654_321,
+        };
+        let message = HydromancerWsMessage::TrackedTrade(event.clone());
 
         let debug = format!("{message:?}");
 
         assert!(debug.contains("<redacted>"));
-        assert!(!debug.contains(ADDRESS));
+        for sensitive in [
+            ADDRESS.to_string(),
+            "private-tracked-coin-sentinel".to_string(),
+            format!("{PRICE:?}"),
+            format!("{SIZE:?}"),
+            "9876543210".to_string(),
+            "private-tracked-direction-sentinel".to_string(),
+            "private-tracked-fee-token-sentinel".to_string(),
+            "private-tracked-hash-sentinel".to_string(),
+            "98765432".to_string(),
+            "12345678".to_string(),
+            "87654321".to_string(),
+        ] {
+            assert!(!debug.contains(&sensitive), "{debug}");
+        }
+        assert_eq!(event.address, ADDRESS);
+        assert_eq!(event.coin, "private-tracked-coin-sentinel");
+        assert_eq!(event.price.to_bits(), PRICE.to_bits());
+        assert_eq!(event.size.to_bits(), SIZE.to_bits());
+        assert_eq!(event.oid, Some(12_345_678));
     }
 
     #[test]

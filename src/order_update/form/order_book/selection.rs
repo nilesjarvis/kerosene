@@ -1,14 +1,25 @@
 use crate::helpers::{parse_number, positive_finite_value};
 use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
 
+use std::fmt;
+
 // ---------------------------------------------------------------------------
 // Order Book Selection Planning
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(super) struct OrderBookPriceSelection {
     pub(super) selected_price: String,
     pub(super) target_symbol: String,
+}
+
+impl fmt::Debug for OrderBookPriceSelection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OrderBookPriceSelection")
+            .field("selected_price", &"<redacted>")
+            .field("target_symbol", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -50,7 +50,7 @@ pub enum JournalSort {
     PnlAsc,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct JournalSyncStatus {
     pub watermark_ms: Option<u64>,
     pub next_start_ms: Option<u64>,
@@ -58,6 +58,19 @@ pub struct JournalSyncStatus {
     pub fills_loaded: usize,
     pub pagination_warning: Option<String>,
     pub complete: bool,
+}
+
+impl fmt::Debug for JournalSyncStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalSyncStatus")
+            .field("has_watermark", &self.watermark_ms.is_some())
+            .field("has_next_start", &self.next_start_ms.is_some())
+            .field("pages_loaded", &self.pages_loaded)
+            .field("fills_loaded", &self.fills_loaded)
+            .field("has_pagination_warning", &self.pagination_warning.is_some())
+            .field("complete", &self.complete)
+            .finish()
+    }
 }
 
 // ---------------------------------------------------------------------------

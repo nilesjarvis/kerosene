@@ -710,6 +710,30 @@ impl<T> fmt::Debug for RedactedLayoutMessageResult<T> {
     }
 }
 
+#[derive(Clone)]
+pub(crate) struct RedactedConfigMessageResult<T>(Result<T, String>);
+
+impl<T> RedactedConfigMessageResult<T> {
+    pub(crate) fn into_result(self) -> Result<T, String> {
+        self.0
+    }
+}
+
+impl<T> From<Result<T, String>> for RedactedConfigMessageResult<T> {
+    fn from(value: Result<T, String>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> fmt::Debug for RedactedConfigMessageResult<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 /// Exact wallet-label file result carried through the Elm message boundary.
 ///
 /// Update handlers recover the original export or external error. Generic
@@ -1498,7 +1522,7 @@ pub(crate) enum Message {
     UnlockEncryptedSecrets,
     ApplySecretStorageSelection,
     ClearConfigs,
-    ConfigsCleared(Result<config::ClearConfigSummary, String>),
+    ConfigsCleared(RedactedConfigMessageResult<config::ClearConfigSummary>),
     AddCalendarPane,
     AddLiquidationsPane,
     AddLiquidationsDistributionPane,
@@ -1875,7 +1899,7 @@ pub(crate) enum Message {
     NoOp,
     SpinnerTick,
     StatusBarTick,
-    ConfigSaved(Result<(), String>),
+    ConfigSaved(RedactedConfigMessageResult<()>),
     ToggleSound,
     ToggleDesktopNotifications,
     ToggleOptimisticAccountUpdates(bool),
@@ -2320,7 +2344,10 @@ pub(crate) enum Message {
     RetryTwapReconciliationAccountData(RedactedAddress),
     RefreshAccountData,
     AccountRefreshBackoffElapsed(u64),
-    AllMidsBootstrapLoaded(String, Result<HashMap<String, f64>, String>),
+    AllMidsBootstrapLoaded(
+        String,
+        RedactedPublicMarketMessageResult<HashMap<String, f64>>,
+    ),
     WsUserDataUpdate(
         WsUserDataStreamParams,
         Option<RedactedAddress>,
@@ -2370,7 +2397,7 @@ mod tests {
     use super::{
         Message, OpenRouterKeyCheckMessageResult, RedactedAccountLabel,
         RedactedAccountMessageResult, RedactedAccountProfileId, RedactedAdvancedOrderHistoryId,
-        RedactedChartScreenshotMessageResult, RedactedClientOrderId,
+        RedactedChartScreenshotMessageResult, RedactedClientOrderId, RedactedConfigMessageResult,
         RedactedHyperdashMarketMessageResult, RedactedJournalMessageResult,
         RedactedLayoutMessageResult, RedactedOrderId, RedactedOrderInput,
         RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput,
@@ -3400,6 +3427,12 @@ mod tests {
         let messages = [
             Message::EncryptedSecretPasswordChanged("sentinel-secret".into()),
             Message::EncryptedSecretConfirmChanged("sentinel-secret".into()),
+            Message::ConfigSaved(Err("sentinel-secret".to_string()).into()),
+            Message::ConfigsCleared(Err("sentinel-secret".to_string()).into()),
+            Message::AllMidsBootstrapLoaded(
+                "default".to_string(),
+                Err("sentinel-secret".to_string()).into(),
+            ),
             Message::TelegramFastApiIdChanged("sentinel-secret".into()),
             Message::TelegramFastApiHashChanged("sentinel-secret".into()),
             Message::TelegramFastCodeChanged("sentinel-secret".into()),
@@ -3644,6 +3677,23 @@ mod tests {
         assert_eq!(candidates[0].peer_id, 42);
         assert_eq!(candidates[0].title, "Exact Private Channel");
         assert_eq!(RedactedTelegramAssetUrl::from(URL).into_string(), URL);
+    }
+
+    #[test]
+    fn config_message_result_wrapper_redacts_and_preserves_exact_error() {
+        const ERROR: &str = "config-result-error-sentinel";
+        let result: RedactedConfigMessageResult<()> = Err(ERROR.to_string()).into();
+
+        let rendered = format!("{result:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains(ERROR));
+        assert_eq!(
+            result
+                .into_result()
+                .expect_err("config error should remain exact"),
+            ERROR
+        );
     }
 
     #[test]

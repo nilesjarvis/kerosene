@@ -274,6 +274,13 @@ restores the exact page, candidate list, bytes, URL, or error at the same handle
 boundary, so fetches, parsing, caching, retry backoff, status copy, and rendering
 remain unchanged.
 
+Each public refresh, private discovery, fast-auth, avatar, and media completion
+also claims one exact runtime owner before result recovery. Allocators wrap,
+skip live IDs, and survive config clear without preserving content or secrets;
+the fast subscription generation advances on reset. Replayed, superseded,
+mismatched-channel, and pre-reset values cannot mutate the recreated feed.
+Cursor invalidation likewise wraps rather than saturating.
+
 ## X Feed
 
 X Feed uses local BYOK user-context access for the authenticated account's

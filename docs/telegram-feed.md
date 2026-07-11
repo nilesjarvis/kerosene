@@ -140,6 +140,18 @@ Fast updates are additive: new MTProto posts go through the same `(channel,
 message_id)` merge and dedupe path as public-page refreshes. Public polling
 continues to run so existing no-login behavior remains available.
 
+Public refresh, private-channel discovery, fast-auth, avatar, and media tasks
+each have an exact runtime result owner. Their nonzero request allocators wrap
+while skipping live owners, survive an in-process config clear, and settle once;
+the fast-stream generation is advanced across that reset. Stale, replayed, or
+pre-clear results are rejected before their result wrappers are opened. Public
+and fast pages must also carry the same channel on the outer result, profile,
+and every post before they can enter the shared merge path.
+
+Fast cursor generations use the same wrapping invalidation rule. Removing a
+channel or clearing config therefore prevents a late backfill/media task from
+reinstalling an invalidated cursor, even at integer wrap.
+
 Telegram only pushes channel updates to the signed-in account for channels it
 receives updates for. For channels outside the account's update stream, the
 public HTML polling path remains the fallback source.
@@ -229,12 +241,12 @@ Telegram-authenticated MTProto client.
 
 ## Security and privacy
 
-Telegram Feed does not collect or store Telegram credentials. It only fetches
-public `t.me/s` pages for configured public usernames.
-
-The feature intentionally rejects private invite links and private channel
-identifiers. Supporting private channels would require a separate authenticated
-Telegram integration and secret/session storage.
+Public mode does not collect Telegram credentials and only fetches public
+`t.me/s` pages for normalized usernames. It rejects private invite links and
+private identifiers entered as public channels. Optional fast mode is the
+separate authenticated integration described above: short-lived login inputs
+remain runtime-only, while the MTProto session uses its dedicated restricted
+session file family.
 
 ## Code map
 

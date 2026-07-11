@@ -5,6 +5,7 @@ use crate::message::Message;
 
 use iced::widget::{canvas, container, text};
 use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Size, Theme};
+use std::fmt;
 
 const RECENT_OUTCOME_TILE_LIMIT: usize = 56;
 const OUTCOME_TILE_TOOLTIP_WIDTH: f32 = 128.0;
@@ -21,11 +22,21 @@ pub(crate) enum JournalTradeOutcome {
     Flat,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct JournalOutcomeTile {
     pub(crate) outcome: JournalTradeOutcome,
     pub(crate) pnl: f64,
     pub(crate) trade_type: String,
+}
+
+impl fmt::Debug for JournalOutcomeTile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalOutcomeTile")
+            .field("outcome", &self.outcome)
+            .field("pnl", &"<redacted>")
+            .field("trade_type", &"<redacted>")
+            .finish()
+    }
 }
 
 pub(super) fn journal_outcome_strip(
@@ -105,10 +116,19 @@ fn trade_type_label(trade: &AggregatedTrade) -> String {
     format!("{side} {}", trade.coin)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct JournalOutcomeStrip {
     tiles: Vec<JournalOutcomeTile>,
     denomination: DisplayDenominationContext,
+}
+
+impl fmt::Debug for JournalOutcomeStrip {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalOutcomeStrip")
+            .field("tiles_count", &self.tiles.len())
+            .field("denomination", &"<redacted>")
+            .finish()
+    }
 }
 
 impl canvas::Program<Message> for JournalOutcomeStrip {

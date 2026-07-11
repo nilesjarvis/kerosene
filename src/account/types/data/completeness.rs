@@ -2,7 +2,7 @@
 // Account Data Completeness
 // ---------------------------------------------------------------------------
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccountDataSection {
@@ -13,7 +13,7 @@ pub enum AccountDataSection {
     Fees,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct AccountDataCompleteness {
     /// Whether the spot balance snapshot was fetched and parsed completely.
     /// Percentage-sized spot orders must never infer this from perp position
@@ -36,6 +36,31 @@ pub struct AccountDataCompleteness {
     pub open_orders_fetched_at_ms: Option<u64>,
     pub open_orders_fetched_at_ms_by_dex: HashMap<String, u64>,
     warnings: Vec<(AccountDataSection, String)>,
+}
+
+impl fmt::Debug for AccountDataCompleteness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AccountDataCompleteness")
+            .field("spot_balances_complete", &self.spot_balances_complete)
+            .field("positions_complete", &self.positions_complete)
+            .field("positions_actionable", &self.positions_actionable)
+            .field("open_orders_complete", &self.open_orders_complete)
+            .field("fills_complete", &self.fills_complete)
+            .field("funding_complete", &self.funding_complete)
+            .field("fees_complete", &self.fees_complete)
+            .field(
+                "spot_balances_fetched_at_ms",
+                &self.spot_balances_fetched_at_ms,
+            )
+            .field("positions_fetched_at_ms", &self.positions_fetched_at_ms)
+            .field("open_orders_fetched_at_ms", &self.open_orders_fetched_at_ms)
+            .field(
+                "open_orders_fetched_at_ms_by_dex_count",
+                &self.open_orders_fetched_at_ms_by_dex.len(),
+            )
+            .field("warnings_count", &self.warnings.len())
+            .finish()
+    }
 }
 
 impl Default for AccountDataCompleteness {

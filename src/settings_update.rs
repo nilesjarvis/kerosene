@@ -78,7 +78,9 @@ impl TradingTerminal {
             Message::ClearConfigs => {
                 return self.request_config_clear();
             }
-            Message::ConfigsCleared(result) => return self.handle_config_clear_result(result),
+            Message::ConfigsCleared(result) => {
+                return self.handle_config_clear_result(result.into_result());
+            }
             _ => {}
         }
 

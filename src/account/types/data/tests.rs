@@ -183,6 +183,27 @@ fn account_data_debug_summarizes_account_payloads() {
     }
 }
 
+#[test]
+fn account_completeness_debug_redacts_warning_values_without_changing_them() {
+    let warning = "private-account-warning-sentinel";
+    let mut completeness = AccountDataCompleteness::default();
+    completeness.mark_incomplete(AccountDataSection::Positions, warning);
+
+    let rendered = format!("{completeness:?}");
+
+    assert!(rendered.contains("positions_complete: false"), "{rendered}");
+    assert!(
+        rendered.contains("positions_actionable: false"),
+        "{rendered}"
+    );
+    assert!(rendered.contains("warnings_count: 1"), "{rendered}");
+    assert!(!rendered.contains(warning), "{rendered}");
+    assert_eq!(
+        completeness.section_warning(AccountDataSection::Positions),
+        Some(warning.to_string())
+    );
+}
+
 fn perp_symbol(key: &str, max_leverage: u32) -> ExchangeSymbol {
     ExchangeSymbol {
         key: key.to_string(),

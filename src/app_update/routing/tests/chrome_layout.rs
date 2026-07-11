@@ -8,7 +8,7 @@ fn chrome_layout_calendar_and_portfolio_routes_cover_shared_shell_messages() {
         UpdateRoute::Chrome,
     );
     assert_route(Message::ToggleHidePnl, UpdateRoute::Chrome);
-    assert_route(Message::ConfigSaved(Ok(())), UpdateRoute::Chrome);
+    assert_route(Message::ConfigSaved(Ok(()).into()), UpdateRoute::Chrome);
     assert_route(Message::EnterApplication, UpdateRoute::Chrome);
     assert_route(
         Message::SetPortfolioPnlValueMode(PnlValueDisplayMode::Percent),

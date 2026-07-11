@@ -231,3 +231,47 @@ fn ignores_non_close_queries() {
     assert_eq!(parse_close_position_intent("buy HYPE"), None);
     assert_eq!(parse_close_position_intent("nuke"), None);
 }
+
+#[test]
+fn close_draft_and_intent_debug_redact_order_values_without_changing_them() {
+    let intent = ParsedClosePositionIntent {
+        symbol: Some("private-close-symbol-sentinel".to_string()),
+        fraction: Some(0.123_456_789),
+        error: Some("private-close-error-sentinel".to_string()),
+    };
+    let draft = AlfredClosePositionDraft {
+        coin: Some("private-close-coin-sentinel".to_string()),
+        fraction: 0.987_654_321,
+        title: "private-close-title-sentinel".to_string(),
+        detail: "private-close-detail-sentinel".to_string(),
+        tag: "private-close-tag-sentinel".to_string(),
+        error: Some("private-close-draft-error-sentinel".to_string()),
+    };
+
+    let rendered = format!("{intent:?} {draft:?}");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    for sensitive in [
+        "private-close-symbol-sentinel",
+        "private-close-error-sentinel",
+        "private-close-coin-sentinel",
+        "private-close-title-sentinel",
+        "private-close-detail-sentinel",
+        "private-close-tag-sentinel",
+        "private-close-draft-error-sentinel",
+        "0.123456789",
+        "0.987654321",
+    ] {
+        assert!(!rendered.contains(sensitive), "{rendered}");
+    }
+    assert_eq!(
+        intent.symbol.as_deref(),
+        Some("private-close-symbol-sentinel")
+    );
+    assert_eq!(
+        intent.fraction.map(f64::to_bits),
+        Some(0.123_456_789_f64.to_bits())
+    );
+    assert_eq!(draft.coin.as_deref(), Some("private-close-coin-sentinel"));
+    assert_eq!(draft.fraction.to_bits(), 0.987_654_321_f64.to_bits());
+}

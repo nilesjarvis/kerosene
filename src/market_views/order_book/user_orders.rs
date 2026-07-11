@@ -1,16 +1,25 @@
 use crate::account::OpenOrder;
 use crate::helpers;
 
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt};
 
 // ---------------------------------------------------------------------------
 // User Order Levels
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Default, Clone, PartialEq, Eq)]
 pub(in crate::market_views) struct UserOrderBookLevels {
     pub(super) bids: HashSet<i64>,
     pub(super) asks: HashSet<i64>,
+}
+
+impl fmt::Debug for UserOrderBookLevels {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UserOrderBookLevels")
+            .field("bid_count", &self.bids.len())
+            .field("ask_count", &self.asks.len())
+            .finish()
+    }
 }
 
 impl UserOrderBookLevels {
@@ -81,4 +90,27 @@ fn displayed_price_key(price: f64, tick: f64) -> Option<i64> {
     let price = helpers::positive_finite_value(price)?;
     let scaled = price / tick;
     helpers::finite_value(scaled).map(|scaled| scaled.round() as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::UserOrderBookLevels;
+    use std::collections::HashSet;
+
+    #[test]
+    fn user_order_levels_debug_hides_price_buckets_without_changing_them() {
+        let levels = UserOrderBookLevels {
+            bids: HashSet::from([98_765_432]),
+            asks: HashSet::from([12_345_678]),
+        };
+
+        let rendered = format!("{levels:?}");
+
+        assert!(rendered.contains("bid_count: 1"), "{rendered}");
+        assert!(rendered.contains("ask_count: 1"), "{rendered}");
+        assert!(!rendered.contains("98765432"), "{rendered}");
+        assert!(!rendered.contains("12345678"), "{rendered}");
+        assert!(levels.bids.contains(&98_765_432));
+        assert!(levels.asks.contains(&12_345_678));
+    }
 }

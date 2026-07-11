@@ -100,21 +100,34 @@ fn nuke_confirmation_is_only_armed_inside_window() {
 }
 
 #[test]
-fn nuke_confirmation_debug_redacts_account_address() {
+fn nuke_confirmation_debug_redacts_exact_fingerprint_without_changing_matching() {
     let account_address = "0xabc0000000000000000000000000000000000000";
-    let confirmation = NukeConfirmation::new(
-        Instant::now(),
-        Some(account_address),
-        &NukePlan {
-            ready: vec![("BTC".to_string(), order())],
-            skipped: vec![],
-            hidden_skipped: vec![],
-        },
-    );
+    let coin = "private-nuke-symbol-sentinel";
+    let size = "98765.4321";
+    let plan = NukePlan {
+        ready: vec![(
+            coin.to_string(),
+            NukePositionOrder {
+                size: size.to_string(),
+                ..order()
+            },
+        )],
+        skipped: vec![],
+        hidden_skipped: vec![],
+    };
+    let confirmation = NukeConfirmation::new(Instant::now(), Some(account_address), &plan);
 
     let rendered = format!("{confirmation:?}");
 
     assert!(!rendered.contains(account_address));
-    assert!(rendered.contains("<redacted>"));
-    assert!(rendered.contains("BTC"));
+    assert!(!rendered.contains(coin));
+    assert!(!rendered.contains(size));
+    assert!(rendered.contains("has_account_address: true"));
+    assert!(rendered.contains("ready_count: 1"));
+    assert!(confirmation.matches_plan(Some(account_address), &plan));
+    assert!(!confirmation.matches_plan(Some("0xdef"), &plan));
+
+    let mut changed_plan = plan.clone();
+    changed_plan.ready[0].1.size = "98765.4322".to_string();
+    assert!(!confirmation.matches_plan(Some(account_address), &changed_plan));
 }

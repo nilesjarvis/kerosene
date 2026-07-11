@@ -134,7 +134,7 @@ impl TradingTerminal {
                 return self.handle_status_bar_tick();
             }
             Message::ConfigSaved(result) => {
-                return self.handle_config_save_result(result);
+                return self.handle_config_save_result(result.into_result());
             }
             Message::CalendarImpactFilterChanged(filter) => {
                 self.calendar_impact_filter = filter;

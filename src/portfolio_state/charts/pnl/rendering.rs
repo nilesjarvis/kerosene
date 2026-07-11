@@ -27,13 +27,13 @@ enum PnlAreaSide {
     Negative,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct PnlAreaSegment {
     side: PnlAreaSide,
     points: Vec<Point>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 struct PnlAreaGradientExtents {
     positive_top_y: f32,
     negative_bottom_y: f32,

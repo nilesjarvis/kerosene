@@ -1,6 +1,7 @@
 use crate::account_analytics::{IncomeSnapshot, PortfolioHistory};
 use crate::portfolio_state::PnlValueDisplayMode;
 use chrono::{Datelike, TimeZone, Utc};
+use std::fmt;
 
 // ---------------------------------------------------------------------------
 // Portfolio Selection State
@@ -83,7 +84,7 @@ pub(crate) const PORTFOLIO_WINDOWS: &[PortfolioWindow] = &[
     PortfolioWindow::AllTime,
 ];
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct PortfolioState {
     pub(crate) loading: bool,
     pub(crate) refresh_request_id: u64,
@@ -93,6 +94,21 @@ pub(crate) struct PortfolioState {
     pub(crate) pnl_value_display_mode: PnlValueDisplayMode,
     pub(crate) data: Option<PortfolioHistory>,
     pub(crate) last_error: Option<String>,
+}
+
+impl fmt::Debug for PortfolioState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PortfolioState")
+            .field("loading", &self.loading)
+            .field("refresh_request_id", &self.refresh_request_id)
+            .field("refresh_followup_pending", &self.refresh_followup_pending)
+            .field("scope", &self.scope)
+            .field("window", &self.window)
+            .field("pnl_value_display_mode", &self.pnl_value_display_mode)
+            .field("has_data", &self.data.is_some())
+            .field("has_last_error", &self.last_error.is_some())
+            .finish()
+    }
 }
 
 impl Default for PortfolioState {
@@ -112,13 +128,25 @@ impl Default for PortfolioState {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct IncomeState {
     pub(crate) loading: bool,
     pub(crate) refresh_request_id: u64,
     pub(crate) refresh_followup_pending: bool,
     pub(crate) data: Option<IncomeSnapshot>,
     pub(crate) last_error: Option<String>,
+}
+
+impl fmt::Debug for IncomeState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IncomeState")
+            .field("loading", &self.loading)
+            .field("refresh_request_id", &self.refresh_request_id)
+            .field("refresh_followup_pending", &self.refresh_followup_pending)
+            .field("has_data", &self.data.is_some())
+            .field("has_last_error", &self.last_error.is_some())
+            .finish()
+    }
 }
 
 impl PortfolioState {
@@ -220,6 +248,36 @@ mod tests {
         assert_eq!(
             labels,
             vec!["1D", "1W", "MTD", "1M", "3M", "6M", "YTD", "1Y", "ALL"]
+        );
+    }
+
+    #[test]
+    fn portfolio_runtime_debug_hides_account_data_and_errors() {
+        let mut portfolio = PortfolioState::default();
+        portfolio.data = Some(PortfolioHistory::default());
+        portfolio.last_error = Some("private-portfolio-error-sentinel".to_string());
+        let mut income = IncomeState::default();
+        income.last_error = Some("private-income-error-sentinel".to_string());
+
+        let rendered = format!("{portfolio:?} {income:?}");
+
+        assert!(rendered.contains("has_data: true"), "{rendered}");
+        assert!(rendered.contains("has_last_error: true"), "{rendered}");
+        assert!(
+            !rendered.contains("private-portfolio-error-sentinel"),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("private-income-error-sentinel"),
+            "{rendered}"
+        );
+        assert_eq!(
+            portfolio.last_error.as_deref(),
+            Some("private-portfolio-error-sentinel")
+        );
+        assert_eq!(
+            income.last_error.as_deref(),
+            Some("private-income-error-sentinel")
         );
     }
 }

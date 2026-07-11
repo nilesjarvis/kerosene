@@ -2,7 +2,7 @@ use crate::account::{UserFill, dedupe_user_fills_preserving_order};
 use crate::helpers::positive_finite_value;
 use crate::signing::ChaseOrder;
 
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt};
 
 // ---------------------------------------------------------------------------
 // Recent Fills
@@ -76,11 +76,26 @@ pub(super) fn fill_toast_message(fill: &UserFill, coin_label: &str, size_label: 
 // Chase Fill Summaries
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(super) struct ChaseFillTotals {
     pub(super) side: String,
     pub(super) filled_size: f64,
     pub(super) total_notional: f64,
+}
+
+impl fmt::Debug for ChaseFillTotals {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let side = match self.side.as_str() {
+            "BUY" => "BUY",
+            "SELL" => "SELL",
+            _ => "<unrecognized>",
+        };
+        f.debug_struct("ChaseFillTotals")
+            .field("side", &side)
+            .field("filled_size", &"<redacted>")
+            .field("total_notional", &"<redacted>")
+            .finish()
+    }
 }
 
 #[cfg(test)]

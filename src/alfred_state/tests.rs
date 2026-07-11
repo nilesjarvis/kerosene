@@ -444,3 +444,45 @@ fn alfred_shows_only_close_position_command_for_close_queries() {
     assert_eq!(commands.len(), 1);
     assert_eq!(commands[0].id, AlfredCommandId::ClosePosition);
 }
+
+#[test]
+fn alfred_state_and_command_debug_redact_order_text_without_changing_it() {
+    let state = super::AlfredState {
+        open: true,
+        query: "buy 12345.6789 private-alfred-symbol-sentinel at 98765.4321".to_string(),
+        selected_index: 3,
+    };
+    let command = super::AlfredCommand::new(
+        AlfredCommandId::NaturalLanguageTrading,
+        "title",
+        "detail",
+        "tag",
+        AlfredCommandKind::Trading,
+        Some(crate::message::Message::AlfredSubmit),
+        &["trade"],
+    )
+    .with_dynamic_text(
+        "private-alfred-title-sentinel".to_string(),
+        "private-alfred-detail-sentinel".to_string(),
+        "private-alfred-tag-sentinel".to_string(),
+    );
+
+    let rendered = format!("{state:?} {command:?}");
+
+    assert!(rendered.contains("has_query: true"), "{rendered}");
+    assert!(rendered.contains("has_message: true"), "{rendered}");
+    for sensitive in [
+        "12345.6789",
+        "98765.4321",
+        "private-alfred-symbol-sentinel",
+        "private-alfred-title-sentinel",
+        "private-alfred-detail-sentinel",
+        "private-alfred-tag-sentinel",
+    ] {
+        assert!(!rendered.contains(sensitive), "{rendered}");
+    }
+    assert!(state.query.contains("private-alfred-symbol-sentinel"));
+    assert_eq!(command.title, "private-alfred-title-sentinel");
+    assert_eq!(command.detail, "private-alfred-detail-sentinel");
+    assert_eq!(command.tag, "private-alfred-tag-sentinel");
+}

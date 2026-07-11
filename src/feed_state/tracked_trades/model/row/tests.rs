@@ -67,3 +67,34 @@ fn row_add_event_tracks_mixed_fee_token_direction_and_earlier_start() {
     assert_eq!(row.dir, "Mixed");
     assert_eq!(row.start_position, Some(-3.0));
 }
+
+#[test]
+fn tracked_trade_row_debug_redacts_account_trade_values_without_changing_them() {
+    let mut trade = event();
+    trade.address = "private-row-address-sentinel".to_string();
+    trade.coin = "private-row-coin-sentinel".to_string();
+    trade.price = 98_765.432_1;
+    trade.size = 12_345.678_9;
+    trade.hash = "private-row-hash-sentinel".to_string();
+    trade.oid = Some(98_765_432);
+    let row = TrackedTradeFeedRow::from_event(&trade);
+
+    let rendered = format!("{row:?}");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    for sensitive in [
+        "private-row-address-sentinel",
+        "private-row-coin-sentinel",
+        "private-row-hash-sentinel",
+        "98765.4321",
+        "12345.6789",
+        "98765432",
+    ] {
+        assert!(!rendered.contains(sensitive), "{rendered}");
+    }
+    assert_eq!(row.address, "private-row-address-sentinel");
+    assert_eq!(row.coin, "private-row-coin-sentinel");
+    assert_eq!(row.avg_price.to_bits(), 98_765.432_1_f64.to_bits());
+    assert_eq!(row.size.to_bits(), 12_345.678_9_f64.to_bits());
+    assert_eq!(row.oid, Some(98_765_432));
+}

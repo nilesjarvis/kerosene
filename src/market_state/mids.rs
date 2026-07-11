@@ -63,7 +63,7 @@ impl TradingTerminal {
         let dex_name = dex.to_string();
         Task::perform(fetch_all_mids(dex_name.clone()), move |result| {
             let parsed = result.map(parse_mids_response);
-            Message::AllMidsBootstrapLoaded(dex_name.clone(), parsed)
+            Message::AllMidsBootstrapLoaded(dex_name.clone(), parsed.into())
         })
     }
 

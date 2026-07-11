@@ -5,11 +5,13 @@ mod position;
 pub(in crate::order_update) use position::position_size_for_symbol;
 use position::{percentage_for_position_quantity, position_quantity_for_percentage};
 
+use std::fmt;
+
 // ---------------------------------------------------------------------------
 // Order Sizing Basis
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub(in crate::order_update) enum OrderSizingBasis {
     MarginNotional {
         max_notional: f64,
@@ -22,6 +24,25 @@ pub(in crate::order_update) enum OrderSizingBasis {
     SpotSellableBalance {
         sellable_size_coin: f64,
     },
+}
+
+impl fmt::Debug for OrderSizingBasis {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MarginNotional { .. } => f
+                .debug_struct("MarginNotional")
+                .field("max_notional", &"<redacted>")
+                .finish(),
+            Self::ReduceOnlyPosition { .. } => f
+                .debug_struct("ReduceOnlyPosition")
+                .field("position_size_coin", &"<redacted>")
+                .finish(),
+            Self::SpotSellableBalance { .. } => f
+                .debug_struct("SpotSellableBalance")
+                .field("sellable_size_coin", &"<redacted>")
+                .finish(),
+        }
+    }
 }
 
 impl OrderSizingBasis {

@@ -10,7 +10,7 @@ mod tests;
 // ---------------------------------------------------------------------------
 
 /// How Hyperliquid currently abstracts a user's spot/perp balances.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub enum AccountAbstractionMode {
     Disabled,
     #[default]
@@ -19,6 +19,19 @@ pub enum AccountAbstractionMode {
     PortfolioMargin,
     DexAbstraction,
     Unknown(String),
+}
+
+impl fmt::Debug for AccountAbstractionMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Disabled => f.write_str("Disabled"),
+            Self::Default => f.write_str("Default"),
+            Self::UnifiedAccount => f.write_str("UnifiedAccount"),
+            Self::PortfolioMargin => f.write_str("PortfolioMargin"),
+            Self::DexAbstraction => f.write_str("DexAbstraction"),
+            Self::Unknown(_) => f.debug_tuple("Unknown").field(&"<redacted>").finish(),
+        }
+    }
 }
 
 impl AccountAbstractionMode {
@@ -111,11 +124,25 @@ impl fmt::Debug for Position {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct PositionLeverage {
     #[serde(rename = "type")]
     pub leverage_type: String,
     pub value: u32,
+}
+
+impl fmt::Debug for PositionLeverage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let leverage_type = match self.leverage_type.as_str() {
+            "cross" => "cross",
+            "isolated" => "isolated",
+            _ => "<unrecognized>",
+        };
+        f.debug_struct("PositionLeverage")
+            .field("leverage_type", &leverage_type)
+            .field("value", &"<redacted>")
+            .finish()
+    }
 }
 
 /// Wrapper for the position in assetPositions array.

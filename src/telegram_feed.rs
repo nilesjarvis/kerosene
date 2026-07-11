@@ -141,24 +141,49 @@ pub(crate) struct TelegramFeedPost {
 
 impl fmt::Debug for TelegramFeedPost {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let private = telegram_private_channel_peer_id_from_key(&self.channel).is_some();
         f.debug_struct("TelegramFeedPost")
             .field(
                 "channel",
                 &redacted_telegram_channel_debug_value(&self.channel),
             )
-            .field("message_id", &self.message_id)
+            .field(
+                "message_id",
+                &PrivateTelegramDebugValue(private, &self.message_id),
+            )
             .field("text", &"<redacted>")
-            .field("timestamp_ms", &self.timestamp_ms)
+            .field(
+                "timestamp_ms",
+                &PrivateTelegramDebugValue(private, &self.timestamp_ms),
+            )
             .field("source", &self.source)
-            .field("received_at_ms", &self.received_at_ms)
-            .field("applied_at_ms", &self.applied_at_ms)
-            .field("fetched_at_ms", &self.fetched_at_ms)
-            .field("request_started_ms", &self.request_started_ms)
-            .field("request_duration_ms", &self.request_duration_ms)
-            .field("first_seen_ms", &self.first_seen_ms)
+            .field(
+                "received_at_ms",
+                &PrivateTelegramDebugValue(private, &self.received_at_ms),
+            )
+            .field(
+                "applied_at_ms",
+                &PrivateTelegramDebugValue(private, &self.applied_at_ms),
+            )
+            .field(
+                "fetched_at_ms",
+                &PrivateTelegramDebugValue(private, &self.fetched_at_ms),
+            )
+            .field(
+                "request_started_ms",
+                &PrivateTelegramDebugValue(private, &self.request_started_ms),
+            )
+            .field(
+                "request_duration_ms",
+                &PrivateTelegramDebugValue(private, &self.request_duration_ms),
+            )
+            .field(
+                "first_seen_ms",
+                &PrivateTelegramDebugValue(private, &self.first_seen_ms),
+            )
             .field("url", &redacted_telegram_url_debug_value(&self.url))
             .field("ticker_mentions", &self.ticker_mentions.len())
-            .field("media", &self.media)
+            .field("media", &PrivateTelegramDebugValue(private, &self.media))
             .finish()
     }
 }
@@ -280,12 +305,12 @@ impl fmt::Debug for TelegramFastFeedEvent {
             Self::Status {
                 connected,
                 auth_required,
-                message,
+                message: _,
             } => f
                 .debug_struct("Status")
                 .field("connected", connected)
                 .field("auth_required", auth_required)
-                .field("message", &redact_sensitive_response_text(message))
+                .field("message", &"<redacted>")
                 .finish(),
             Self::Loaded(channel, result) => {
                 let result_summary = match result.as_ref() {
@@ -294,7 +319,7 @@ impl fmt::Debug for TelegramFastFeedEvent {
                         redacted_telegram_channel_debug_value(&page.profile.channel),
                         page.posts.len()
                     ),
-                    Err(error) => format!("Err({})", redact_sensitive_response_text(error)),
+                    Err(_) => "Err(<redacted>)".to_string(),
                 };
                 f.debug_tuple("Loaded")
                     .field(&redacted_telegram_channel_debug_value(channel))
@@ -395,13 +420,47 @@ impl TelegramFeedPost {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TelegramFastAuthRequestKind {
+    RequestCode,
+    SubmitCode,
+    SubmitPassword,
+    SignOut,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct TelegramFastAuthRequest {
+    request_id: u64,
+    kind: TelegramFastAuthRequestKind,
+}
+
+impl fmt::Debug for TelegramFastAuthRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TelegramFastAuthRequest")
+            .field("request_id", &self.request_id)
+            .field("kind", &self.kind)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct TelegramFeedRequestAllocators {
+    channel_refresh: u64,
+    private_channels: u64,
+    fast_auth: u64,
+    avatar: u64,
+    media: u64,
+    fast_reconnect: u64,
+}
+
 #[derive(Clone)]
 pub(crate) struct TelegramFeedState {
     pub(crate) channels: Vec<String>,
     pub(crate) private_channels: Vec<TelegramFeedPrivateChannelConfig>,
     pub(crate) private_channel_candidates: Vec<TelegramPrivateChannelCandidate>,
     pub(crate) private_channel_candidates_loading: bool,
-    pub(crate) private_channel_candidates_request_id: u64,
+    private_channel_candidates_request_id: Option<u64>,
+    next_private_channel_candidates_request_id: u64,
     pub(crate) private_channel_candidates_expanded: bool,
     pub(crate) notifications_enabled: bool,
     pub(crate) include_outcome_markets: bool,
@@ -423,7 +482,9 @@ pub(crate) struct TelegramFeedState {
     pub(crate) fast_code_input: SensitiveString,
     pub(crate) fast_password_input: SensitiveString,
     pub(crate) fast_auth_stage: TelegramFastAuthStage,
-    pub(crate) fast_auth_request_id: u64,
+    next_fast_auth_request_id: u64,
+    fast_auth_request: Option<TelegramFastAuthRequest>,
+    fast_auth_challenge_request_id: Option<u64>,
     pub(crate) fast_auth_in_flight: bool,
     pub(crate) fast_connected: bool,
     pub(crate) fast_status: Option<(String, bool)>,
@@ -442,8 +503,8 @@ pub(crate) struct TelegramFeedState {
     next_channel_refresh_request_id: u64,
     pub(crate) loading_channels: Vec<String>,
     pub(crate) background_loading_channels: Vec<String>,
-    pub(crate) next_avatar_request_id: u64,
-    pub(crate) next_media_request_id: u64,
+    next_avatar_request_id: u64,
+    next_media_request_id: u64,
     pub(crate) last_error: Option<String>,
     pub(crate) last_refresh_ms: Option<u64>,
 }
@@ -470,6 +531,10 @@ impl fmt::Debug for TelegramFeedState {
                 &self.private_channel_candidates_request_id,
             )
             .field(
+                "next_private_channel_candidates_request_id",
+                &self.next_private_channel_candidates_request_id,
+            )
+            .field(
                 "private_channel_candidates_expanded",
                 &self.private_channel_candidates_expanded,
             )
@@ -487,7 +552,12 @@ impl fmt::Debug for TelegramFeedState {
             .field("fast_code_input", &"<redacted>")
             .field("fast_password_input", &"<redacted>")
             .field("fast_auth_stage", &self.fast_auth_stage)
-            .field("fast_auth_request_id", &self.fast_auth_request_id)
+            .field("next_fast_auth_request_id", &self.next_fast_auth_request_id)
+            .field("fast_auth_request", &self.fast_auth_request)
+            .field(
+                "fast_auth_challenge_request_id",
+                &self.fast_auth_challenge_request_id,
+            )
             .field("fast_auth_in_flight", &self.fast_auth_in_flight)
             .field("fast_connected", &self.fast_connected)
             .field("fast_status", &fast_status)
@@ -621,6 +691,18 @@ impl fmt::Debug for TelegramRefreshRequestIdsDebug<'_> {
     }
 }
 
+struct PrivateTelegramDebugValue<'a, T: ?Sized>(bool, &'a T);
+
+impl<T: fmt::Debug + ?Sized> fmt::Debug for PrivateTelegramDebugValue<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.0 {
+            f.write_str("<redacted>")
+        } else {
+            self.1.fmt(f)
+        }
+    }
+}
+
 fn redacted_telegram_channel_debug_value(value: &str) -> &str {
     if telegram_private_channel_peer_id_from_key(value).is_some() {
         "<private>"
@@ -641,6 +723,15 @@ fn redacted_private_telegram_debug_value(private: bool, value: &str) -> &str {
     if private { "<redacted>" } else { value }
 }
 
+fn next_nonzero_request_id(allocator: &mut u64) -> u64 {
+    loop {
+        *allocator = (*allocator).wrapping_add(1);
+        if *allocator != 0 {
+            return *allocator;
+        }
+    }
+}
+
 impl TelegramFeedState {
     pub(crate) fn new(
         channels: &[String],
@@ -657,7 +748,8 @@ impl TelegramFeedState {
             private_channels: normalized_private_channel_list(private_channels),
             private_channel_candidates: Vec::new(),
             private_channel_candidates_loading: false,
-            private_channel_candidates_request_id: 0,
+            private_channel_candidates_request_id: None,
+            next_private_channel_candidates_request_id: 0,
             private_channel_candidates_expanded: false,
             notifications_enabled,
             include_outcome_markets,
@@ -675,7 +767,9 @@ impl TelegramFeedState {
             fast_code_input: sensitive_string(String::new()),
             fast_password_input: sensitive_string(String::new()),
             fast_auth_stage: TelegramFastAuthStage::Idle,
-            fast_auth_request_id: 0,
+            next_fast_auth_request_id: 0,
+            fast_auth_request: None,
+            fast_auth_challenge_request_id: None,
             fast_auth_in_flight: false,
             fast_connected: false,
             fast_status: None,
@@ -712,9 +806,16 @@ impl TelegramFeedState {
     }
 
     pub(crate) fn begin_channel_refresh(&mut self, channel: &str) -> u64 {
-        self.next_channel_refresh_request_id =
-            self.next_channel_refresh_request_id.saturating_add(1);
-        let request_id = self.next_channel_refresh_request_id;
+        let request_id = loop {
+            let request_id = next_nonzero_request_id(&mut self.next_channel_refresh_request_id);
+            if !self
+                .channel_refresh_request_ids
+                .values()
+                .any(|live_id| *live_id == request_id)
+            {
+                break request_id;
+            }
+        };
         self.channel_refresh_request_ids
             .insert(channel.to_string(), request_id);
         request_id
@@ -737,26 +838,150 @@ impl TelegramFeedState {
         self.channel_refresh_request_ids.remove(channel);
     }
 
+    pub(crate) fn begin_private_channel_candidates_request(&mut self) -> u64 {
+        let request_id = loop {
+            let request_id =
+                next_nonzero_request_id(&mut self.next_private_channel_candidates_request_id);
+            if self.private_channel_candidates_request_id != Some(request_id) {
+                break request_id;
+            }
+        };
+        self.private_channel_candidates_request_id = Some(request_id);
+        self.private_channel_candidates_loading = true;
+        request_id
+    }
+
+    pub(crate) fn finish_private_channel_candidates_request(&mut self, request_id: u64) -> bool {
+        if self.private_channel_candidates_request_id != Some(request_id) {
+            return false;
+        }
+        self.private_channel_candidates_request_id = None;
+        self.private_channel_candidates_loading = false;
+        true
+    }
+
+    #[cfg(test)]
     pub(crate) fn next_private_channel_candidates_request_id(&mut self) -> u64 {
-        self.private_channel_candidates_request_id =
-            self.private_channel_candidates_request_id.saturating_add(1);
-        self.private_channel_candidates_request_id
+        self.begin_private_channel_candidates_request()
     }
 
     pub(crate) fn invalidate_private_channel_candidates_request(&mut self) {
-        self.private_channel_candidates_request_id =
-            self.private_channel_candidates_request_id.saturating_add(1);
+        self.private_channel_candidates_request_id = None;
         self.private_channel_candidates_loading = false;
     }
 
+    pub(crate) fn begin_fast_auth_request(&mut self, kind: TelegramFastAuthRequestKind) -> u64 {
+        let request_id = loop {
+            let request_id = next_nonzero_request_id(&mut self.next_fast_auth_request_id);
+            let owns_result = self
+                .fast_auth_request
+                .is_some_and(|request| request.request_id == request_id);
+            if !owns_result && self.fast_auth_challenge_request_id != Some(request_id) {
+                break request_id;
+            }
+        };
+        self.fast_auth_request = Some(TelegramFastAuthRequest { request_id, kind });
+        self.fast_auth_challenge_request_id = Some(request_id);
+        self.fast_auth_in_flight = true;
+        request_id
+    }
+
+    pub(crate) fn finish_fast_auth_request(
+        &mut self,
+        request_id: u64,
+    ) -> Option<TelegramFastAuthRequestKind> {
+        let request = self
+            .fast_auth_request
+            .filter(|request| request.request_id == request_id)?;
+        self.fast_auth_request = None;
+        self.fast_auth_in_flight = false;
+        Some(request.kind)
+    }
+
+    #[cfg(test)]
     pub(crate) fn next_fast_auth_request_id(&mut self) -> u64 {
-        self.fast_auth_request_id = self.fast_auth_request_id.saturating_add(1);
-        self.fast_auth_request_id
+        self.begin_fast_auth_request(TelegramFastAuthRequestKind::RequestCode)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn current_fast_auth_request_id(&self) -> Option<u64> {
+        self.fast_auth_request.map(|request| request.request_id)
+    }
+
+    pub(crate) fn fast_auth_challenge_request_id(&self) -> u64 {
+        self.fast_auth_challenge_request_id.unwrap_or_default()
+    }
+
+    pub(crate) fn is_fast_auth_challenge_request(&self, request_id: u64) -> bool {
+        self.fast_auth_challenge_request_id == Some(request_id)
+    }
+
+    pub(crate) fn set_fast_auth_challenge_request(&mut self, request_id: Option<u64>) {
+        self.fast_auth_challenge_request_id = request_id;
     }
 
     pub(crate) fn invalidate_fast_auth_request(&mut self) {
-        self.fast_auth_request_id = self.fast_auth_request_id.saturating_add(1);
+        self.fast_auth_request = None;
+        self.fast_auth_challenge_request_id = None;
         self.fast_auth_in_flight = false;
+    }
+
+    pub(crate) fn allocate_avatar_request_id(&mut self) -> u64 {
+        loop {
+            let request_id = next_nonzero_request_id(&mut self.next_avatar_request_id);
+            if !self
+                .channel_profiles
+                .values()
+                .any(|profile| profile.avatar_request_id == request_id)
+            {
+                return request_id;
+            }
+        }
+    }
+
+    pub(crate) fn allocate_media_request_id(&mut self) -> u64 {
+        loop {
+            let request_id = next_nonzero_request_id(&mut self.next_media_request_id);
+            if !self.posts.iter().any(|post| {
+                post.media
+                    .as_ref()
+                    .is_some_and(|media| media.request_id == request_id)
+            }) {
+                return request_id;
+            }
+        }
+    }
+
+    pub(crate) fn advance_fast_reconnect_nonce(&mut self) -> u64 {
+        self.fast_reconnect_nonce = self.fast_reconnect_nonce.wrapping_add(1);
+        self.fast_reconnect_nonce
+    }
+
+    pub(crate) fn request_allocators(&self) -> TelegramFeedRequestAllocators {
+        TelegramFeedRequestAllocators {
+            channel_refresh: self.next_channel_refresh_request_id,
+            private_channels: self.next_private_channel_candidates_request_id,
+            fast_auth: self.next_fast_auth_request_id,
+            avatar: self.next_avatar_request_id,
+            media: self.next_media_request_id,
+            fast_reconnect: self.fast_reconnect_nonce,
+        }
+    }
+
+    /// Preserve terminal-lifetime allocation across an in-process state reset.
+    /// Advancing the stream nonce prevents an old subscription from matching
+    /// an immediately recreated feed, including when fast mode defaults on.
+    pub(crate) fn restore_request_allocators_after_reset(
+        &mut self,
+        allocators: TelegramFeedRequestAllocators,
+    ) {
+        self.next_channel_refresh_request_id = allocators.channel_refresh;
+        self.next_private_channel_candidates_request_id = allocators.private_channels;
+        self.next_fast_auth_request_id = allocators.fast_auth;
+        self.next_avatar_request_id = allocators.avatar;
+        self.next_media_request_id = allocators.media;
+        self.fast_reconnect_nonce = allocators.fast_reconnect;
+        self.advance_fast_reconnect_nonce();
     }
 
     // `posts` is kept sorted newest-first and truncated to the render limit by
@@ -1645,6 +1870,109 @@ mod tests {
     }
 
     #[test]
+    fn telegram_request_allocators_wrap_skip_live_owners_and_settle_once() {
+        let mut state = TelegramFeedState::new(&[], &[], false, false, None, true, false);
+
+        state.next_channel_refresh_request_id = u64::MAX;
+        let first_channel = state.begin_channel_refresh("first");
+        let second_channel = state.begin_channel_refresh("second");
+        assert_eq!(first_channel, 1);
+        assert_eq!(second_channel, 2);
+        assert!(state.finish_channel_refresh("first", first_channel));
+        assert!(!state.finish_channel_refresh("first", first_channel));
+
+        state.next_private_channel_candidates_request_id = u64::MAX;
+        let stale_private = state.begin_private_channel_candidates_request();
+        let current_private = state.begin_private_channel_candidates_request();
+        assert_eq!(stale_private, 1);
+        assert_eq!(current_private, 2);
+        assert!(!state.finish_private_channel_candidates_request(stale_private));
+        assert!(state.finish_private_channel_candidates_request(current_private));
+        assert!(!state.finish_private_channel_candidates_request(current_private));
+
+        state.next_fast_auth_request_id = u64::MAX;
+        let stale_auth = state.begin_fast_auth_request(TelegramFastAuthRequestKind::RequestCode);
+        let current_auth = state.begin_fast_auth_request(TelegramFastAuthRequestKind::SubmitCode);
+        assert_eq!(stale_auth, 1);
+        assert_eq!(current_auth, 2);
+        assert_eq!(state.finish_fast_auth_request(stale_auth), None);
+        assert_eq!(
+            state.finish_fast_auth_request(current_auth),
+            Some(TelegramFastAuthRequestKind::SubmitCode)
+        );
+        assert_eq!(state.finish_fast_auth_request(current_auth), None);
+
+        state.next_avatar_request_id = u64::MAX;
+        let first_avatar = state.allocate_avatar_request_id();
+        state.channel_profiles.insert(
+            "public".to_string(),
+            TelegramChannelProfile {
+                channel: "public".to_string(),
+                title: "Public".to_string(),
+                initials: "P".to_string(),
+                avatar_url: None,
+                avatar_handle: None,
+                avatar_loading_url: None,
+                avatar_request_id: first_avatar,
+                avatar_failed_at_ms: None,
+            },
+        );
+        assert_eq!(first_avatar, 1);
+        assert_eq!(state.allocate_avatar_request_id(), 2);
+
+        state.next_media_request_id = u64::MAX;
+        let first_media = state.allocate_media_request_id();
+        let mut media = TelegramPostMedia::placeholder(TelegramMediaKind::Photo);
+        media.request_id = first_media;
+        state.posts.push(TelegramFeedPost {
+            channel: "public".to_string(),
+            message_id: 1,
+            text: String::new(),
+            timestamp_ms: 1,
+            source: TelegramFeedPostSource::PublicPoll,
+            received_at_ms: 1,
+            applied_at_ms: 1,
+            fetched_at_ms: 1,
+            request_started_ms: 1,
+            request_duration_ms: 1,
+            first_seen_ms: 1,
+            url: String::new(),
+            ticker_mentions: Vec::new(),
+            media: Some(media),
+        });
+        assert_eq!(first_media, 1);
+        assert_eq!(state.allocate_media_request_id(), 2);
+    }
+
+    #[test]
+    fn telegram_request_allocators_survive_reset_and_advance_stream_generation() {
+        let mut old = TelegramFeedState::new(&[], &[], false, false, None, true, false);
+        let old_channel = old.begin_channel_refresh("public");
+        let old_private = old.begin_private_channel_candidates_request();
+        let old_auth = old.begin_fast_auth_request(TelegramFastAuthRequestKind::RequestCode);
+        let old_avatar = old.allocate_avatar_request_id();
+        let old_media = old.allocate_media_request_id();
+        old.fast_reconnect_nonce = 41;
+
+        let allocators = old.request_allocators();
+        let mut reset = TelegramFeedState::new(&[], &[], false, false, None, true, false);
+        reset.restore_request_allocators_after_reset(allocators);
+
+        assert_ne!(reset.begin_channel_refresh("public"), old_channel);
+        assert_ne!(
+            reset.begin_private_channel_candidates_request(),
+            old_private
+        );
+        assert_ne!(
+            reset.begin_fast_auth_request(TelegramFastAuthRequestKind::RequestCode),
+            old_auth
+        );
+        assert_ne!(reset.allocate_avatar_request_id(), old_avatar);
+        assert_ne!(reset.allocate_media_request_id(), old_media);
+        assert_eq!(reset.fast_reconnect_nonce, 42);
+    }
+
+    #[test]
     fn telegram_fast_auth_outcome_debug_redacts_password_hint() {
         let outcome = TelegramFastAuthOutcome::PasswordRequired {
             hint: Some("hint-secret".to_string()),
@@ -1661,7 +1989,7 @@ mod tests {
         let status = TelegramFastFeedEvent::Status {
             connected: false,
             auth_required: true,
-            message: "api_hash=hash-secret phone_code=code-secret".to_string(),
+            message: "Private Alpha api_hash=hash-secret phone_code=code-secret".to_string(),
         };
         let loaded_error = TelegramFastFeedEvent::Loaded(
             "private:42".to_string(),
@@ -1673,7 +2001,12 @@ mod tests {
         let rendered = format!("{status:?} {loaded_error:?}");
 
         assert!(rendered.contains("<redacted>"));
-        for secret in ["hash-secret", "code-secret", "password-secret"] {
+        for secret in [
+            "Private Alpha",
+            "hash-secret",
+            "code-secret",
+            "password-secret",
+        ] {
             assert!(!rendered.contains(secret), "debug leaked {secret}");
         }
         assert!(!rendered.contains("private:42"));
@@ -1745,19 +2078,21 @@ mod tests {
 
     #[test]
     fn telegram_feed_post_debug_redacts_body_and_private_source() {
+        const PRIVATE_MESSAGE_ID: u64 = 9_876_543_210;
+        const PRIVATE_TIMESTAMP: u64 = 8_765_432_109;
         let post = TelegramFeedPost {
             channel: "private:42".to_string(),
-            message_id: 7,
+            message_id: PRIVATE_MESSAGE_ID,
             text: "private post text".to_string(),
-            timestamp_ms: 1,
+            timestamp_ms: PRIVATE_TIMESTAMP,
             source: TelegramFeedPostSource::FastLive,
-            received_at_ms: 2,
-            applied_at_ms: 2,
-            fetched_at_ms: 2,
-            request_started_ms: 1,
-            request_duration_ms: 1,
-            first_seen_ms: 2,
-            url: "https://t.me/c/42/7".to_string(),
+            received_at_ms: PRIVATE_TIMESTAMP + 1,
+            applied_at_ms: PRIVATE_TIMESTAMP + 2,
+            fetched_at_ms: PRIVATE_TIMESTAMP + 3,
+            request_started_ms: PRIVATE_TIMESTAMP + 4,
+            request_duration_ms: PRIVATE_TIMESTAMP + 5,
+            first_seen_ms: PRIVATE_TIMESTAMP + 6,
+            url: format!("https://t.me/c/42/{PRIVATE_MESSAGE_ID}"),
             ticker_mentions: vec![TelegramTickerMention {
                 symbol: "BTC".to_string(),
                 ticker: "BTC".to_string(),
@@ -1774,8 +2109,14 @@ mod tests {
 
         assert!(rendered.contains("<private>"));
         assert!(rendered.contains("ticker_mentions: 1"));
-        for secret in ["private:42", "private post text", "https://t.me/c/42/7"] {
-            assert!(!rendered.contains(secret), "debug leaked {secret}");
+        for secret in [
+            "private:42".to_string(),
+            "private post text".to_string(),
+            format!("https://t.me/c/42/{PRIVATE_MESSAGE_ID}"),
+            PRIVATE_MESSAGE_ID.to_string(),
+            PRIVATE_TIMESTAMP.to_string(),
+        ] {
+            assert!(!rendered.contains(&secret), "debug leaked {secret}");
         }
     }
 

@@ -68,3 +68,43 @@ fn tooltip_width_and_position_are_clamped_to_bounds() {
     assert_near(tooltip.origin.x, 4.0);
     assert_near(tooltip.origin.y, 4.0);
 }
+
+#[test]
+fn income_layout_debug_redacts_account_values_and_derived_geometry() {
+    let bar = IncomeBarLayout {
+        label: "private-income-label-sentinel".to_string(),
+        value: 98_765.432_1,
+        center_x: 11.123_45,
+        x: 22.234_56,
+        y: 33.345_67,
+        width: 44.456_78,
+        height: 55.567_89,
+        scaled: 66.678_91,
+        show_axis_label: true,
+    };
+    let layout = IncomeChartLayout {
+        bars: vec![bar.clone()],
+        left_pad: 77.789_12,
+        top_pad: 88.891_23,
+        bottom_pad: 99.912_34,
+        plot_width: 111.123_45,
+        plot_height: 222.234_56,
+        zero_y: 333.345_67,
+        group_width: 444.456_8,
+    };
+
+    let rendered = format!("{bar:?} {layout:?}");
+
+    assert!(rendered.contains("bars_count: 1"), "{rendered}");
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(
+        !rendered.contains("private-income-label-sentinel"),
+        "{rendered}"
+    );
+    for value in [98_765.432_1_f64, 11.123_45, 55.567_89] {
+        assert!(!rendered.contains(&format!("{value:?}")), "{rendered}");
+    }
+    assert_eq!(bar.label, "private-income-label-sentinel");
+    assert_eq!(bar.value.to_bits(), 98_765.432_1_f64.to_bits());
+    assert_eq!(layout.zero_y.to_bits(), 333.345_67_f32.to_bits());
+}

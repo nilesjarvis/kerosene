@@ -63,3 +63,27 @@ fn total_pnl_percent_uses_overall_account_balance() {
     assert_eq!(position_total_pnl_percent(Some(50.0), Some(0.0)), None);
     assert_eq!(position_total_pnl_percent(Some(50.0), None), None);
 }
+
+#[test]
+fn summary_total_debug_redacts_account_values_without_changing_them() {
+    let mut totals = PositionSummaryTotals::default();
+    totals.add_position(
+        Some(true),
+        Some(98_765.432_1),
+        Some(12_345.678_9),
+        Some(-45_678.912_3),
+        Some(-33_333.233_4),
+    );
+
+    let rendered = format!("{totals:?}");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    for value in [98_765.432_1, 12_345.678_9, -45_678.912_3, -33_333.233_4] {
+        assert!(!rendered.contains(&format!("{value:?}")), "{rendered}");
+    }
+    assert_eq!(totals.long_notional.to_bits(), 98_765.432_1_f64.to_bits());
+    assert_eq!(
+        totals.total_pnl.value().map(f64::to_bits),
+        Some((-33_333.233_4_f64).to_bits())
+    );
+}

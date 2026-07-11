@@ -2,6 +2,7 @@ use crate::message::Message;
 
 use iced::widget::{canvas as canvas_widget, slider};
 use iced::{Color, Event, Point, Rectangle, Renderer, Size, Theme, mouse};
+use std::fmt;
 
 // ---------------------------------------------------------------------------
 // Size Preset Marks
@@ -54,9 +55,17 @@ pub(super) fn size_slider_style(theme: &Theme, status: slider::Status) -> slider
     style
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub(super) struct SizePresetMarks {
     pub(super) current_pct: f32,
+}
+
+impl fmt::Debug for SizePresetMarks {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SizePresetMarks")
+            .field("current_pct", &"<redacted>")
+            .finish()
+    }
 }
 
 impl canvas_widget::Program<Message> for SizePresetMarks {
@@ -174,4 +183,22 @@ fn size_preset_pct_at_position(bounds: Rectangle, position: Point) -> Option<f32
             && position.y >= 0.0
             && position.y <= bounds.height
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SizePresetMarks;
+
+    #[test]
+    fn size_preset_debug_redacts_order_percentage_without_changing_it() {
+        let marks = SizePresetMarks {
+            current_pct: 42.424_244,
+        };
+
+        let rendered = format!("{marks:?}");
+
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        assert!(!rendered.contains("42.424244"), "{rendered}");
+        assert_eq!(marks.current_pct.to_bits(), 42.424_244_f32.to_bits());
+    }
 }

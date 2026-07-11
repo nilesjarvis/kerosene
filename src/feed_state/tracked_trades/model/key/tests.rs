@@ -69,3 +69,26 @@ fn aggregation_key_falls_back_to_time_window_when_hash_is_blank() {
         }
     );
 }
+
+#[test]
+fn aggregation_key_debug_redacts_account_and_order_identity() {
+    let trade = event();
+    let key = TrackedTradeAggregationKey::from_event(&trade);
+
+    let rendered = format!("{key:?}");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(rendered.contains("is_buy: true"), "{rendered}");
+    for sensitive in ["0xabc", "HYPE", "oid: 9", "0xhash"] {
+        assert!(!rendered.contains(sensitive), "{rendered}");
+    }
+    assert_eq!(
+        key,
+        TrackedTradeAggregationKey::Order {
+            address: "0xabc",
+            coin: "HYPE",
+            is_buy: true,
+            oid: 9,
+        }
+    );
+}
