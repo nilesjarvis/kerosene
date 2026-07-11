@@ -5342,6 +5342,114 @@ target-specific cancellation policy, not HTTP replay.
   requests before request-ID reuse could make it current; no finite counter can
   eliminate that theoretical case.
 
+### F-70 — HYPE data diagnostics bypass bounded result and wallet boundaries
+
+- Status: addressed in Turn 63; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium privacy and diagnostic-boundary hardening; both feeds are
+  informational and no wrong-order or automatic-mutation path was found, but
+  upstream response text and wallet-specific values must not become incidental
+  diagnostics or bypass the established sanitizer
+- Scope: HYPE ETF and unstaking-queue boot/pane/manual/timer refresh scheduling,
+  request ownership and rollover, stale/duplicate completion handling, exact
+  model/cache values, ETF partial-source warnings, unstaking pruning/filters/
+  summaries, pane and layout reconstruction, parent/model/helper/view
+  diagnostics, API errors, rendering, routing, persistence, and all trading
+  consumers
+- Preconditions/event ordering:
+  1. Either request returns exact data or a multi-source HTTP/parse error while
+     its raw boxed `Result` is held by a parent `Message` that derives `Debug`.
+     Generic formatting can traverse the payload or pre-handler error before
+     the update arm applies its top-level sanitizer.
+  2. An ETF request can instead partially succeed. Per-endpoint failures then
+     enter `HypeEtfData::warnings` inside `Ok`, bypass the top-level `Err`
+     sanitizer, remain in state, and are rendered directly in the pane.
+  3. A mine-only unstaking filter can hold the connected wallet address, while
+     its derived `Debug` prints that address. A derived summary formatter prints
+     wallet-specific total/largest amounts and next-unlock time.
+  4. Private HYPE view carriers derived `Debug` over exact formatted metric or
+     chart-scale values even though repository-wide searches found no formatter
+     or trait-bound consumer requiring those implementations.
+  5. Independently, a result may mutate state only while loading is active and
+     its request ID is the exact singleton owner. Pane close/reopen or layout
+     reconstruction does not reset either owner.
+- Evidence: `HypeEtfState` and `HypeUnstakingQueueState` are runtime-only
+  singleton owners initialized at boot, with one loading flag, wrapping request
+  ID, cache, error, and freshness timestamp (`src/hype_etf_state.rs`,
+  `src/hype_unstaking_state.rs`, `src/app_boot/state.rs`). Boot, pane add,
+  manual refresh, and five-minute timers converge on the two request helpers;
+  each suppresses concurrent work and has one completion publisher and one
+  first consumer (`src/app_boot/boot.rs`, `src/pane_update/widgets.rs`,
+  `src/subscription_state/timers/app.rs`, `src/market_update/hype_etfs.rs`,
+  `src/market_update/hype_unstaking_queue.rs`). Both consumers already reject
+  stale and duplicate results before mutation. `api/hype_etfs` combines THYP,
+  BHYP, and Farside and records partial endpoint errors in `warnings`; API
+  failure construction can retain bounded external response excerpts, and the
+  ETF body renders each accepted warning. The unstaking filter and summary
+  helpers carry the wallet-specific values described above. Config/layout code
+  persists only pane identity, not these runtime owners or filters. Searches
+  across order preparation, signing, Chase/TWAP, wallet cluster, account
+  reconciliation, history, and risk code found no HYPE feed consumer or signed-
+  mutation caller; component documentation identifies both panes as
+  informational.
+- Violated invariant: generic Elm and helper/view diagnostics may retain public
+  correlation, result shape, aggregate counts, and structural presence, but
+  must not recursively format upstream payload/error text, a connected wallet,
+  or wallet-specific financial/timing values. Any accepted partial-source
+  warning must cross the same sensitive-response boundary as a top-level error.
+  Exact state mutation independently requires the current active owner.
+- Risk: logs, panic context, test failures, or the partial-warning UI path can
+  expose arbitrary upstream response excerpts, a connected address, or wallet-
+  specific amount/timing context. This is a concrete privacy and diagnostic-
+  policy bypass, but neither feed prepares an order price, signs, submits,
+  retries, reconciles, or settles an exchange mutation.
+- Why existing checks did not cover it: June ownership work already supplied
+  the practical loading/request-ID fences, and prior diagnostic work made the
+  ETF/unstaking state, data, event, and raw API-response types structural. The
+  two parent completion fields, unstaking filter/summary helpers, private view
+  carriers, and `Ok`-with-warnings branch were outside those changes. Existing
+  top-level error tests could not exercise the partial-success bypass.
+- Implemented fix: carry both completion results through the existing
+  `RedactedPublicMarketMessageResult<T>` and recover the unchanged `Result` only
+  after the existing active-loading and exact-request-ID gates. Sanitize each
+  accepted ETF warning with `redact_sensitive_response_text`; ordinary safe
+  warning text remains byte-for-byte unchanged. Replace the unstaking filter
+  and summary derived formatters with structural custom implementations that
+  retain non-sensitive filter/count context plus presence flags, and remove
+  unused `Debug` derives from six private HYPE metric/chart/amount carriers.
+  No request, owner, data, calculation, filter, pruning, view, or routing logic
+  changed.
+- Regression coverage: the shared public-market parent-message control proves
+  ETF and unstaking success/error diagnostics retain request IDs and redacted
+  result shape while hiding payload, wallet, amount/timing, structural model,
+  and upstream-error text. Helper controls prove exact filter/summary values
+  remain available while their diagnostics omit the connected address and
+  wallet-specific amounts/timestamp. Lifecycle controls characterize request-ID
+  rollover, forced-refresh coalescing, ETF owner survival across close/reopen-
+  style pane reconstruction, stale success and reversed stale error rejection,
+  duplicate result rejection, exact accepted data, unstaking pruning with exact
+  surviving amount, safe-warning preservation, sensitive-warning redaction,
+  failed-refresh freshness behavior, and closed-pane tick behavior. Existing
+  model, API, view, and route suites remain in the validation ladder.
+- Smallest behavior-preserving fix: reuse one existing wrapper at two message
+  fields, two producer and two first-consumer conversions, one warning
+  sanitization loop, two custom helper formatters, six private derive removals,
+  focused tests, and docs. No endpoint, response parsing, THYP/BHYP/Farside
+  aggregation, exact public value, freshness cadence, cache rule, unstaking
+  pruning/filter/sort/denomination calculation, safe warning/status copy,
+  interaction, pane/layout wire value, persistence, order input, signed bytes,
+  or trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  exhaustive definition/publisher/consumer/reset/view/persistence/trading-
+  consumer tracing, established owner gates, and the mechanical wrapper and
+  formatter changes establish the source boundary, but focused and nearby
+  suites cannot execute until ALSA development metadata is available. A
+  completed result would need to survive a complete `u64` cycle of non-
+  overlapping requests before an ID could be reused. Warning sanitization is
+  limited to the repository's recognized sensitive-text patterns; deliberately
+  safe warnings remain exact. SEC earnings completion ownership and diagnostics
+  are the next separate public-data lifecycle for review.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -9317,6 +9425,99 @@ target-specific cancellation policy, not HTTP replay.
   diagnostics, and every trading consumer; preserve exact public data, cadence,
   visible status, filters, persistence, and all trading/UX semantics.
 
+## Turn 63 — Bound HYPE Data Diagnostics
+
+- Status: F-70 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: HYPE ETF and unstaking-queue boot/pane/manual/timer request entry
+  points, singleton ownership and rollover, pane close/reopen and layout
+  reconstruction, stale/duplicate success/error ordering, exact cache and
+  freshness state, ETF multi-source warnings, unstaking pruning/filter/sort/
+  summary behavior, parent/model/helper/view diagnostics, API error surfaces,
+  rendering, routes, persistence, all trading consumers, docs, and focused
+  characterization coverage
+- Invariant: only the exact actively loading singleton request may mutate either
+  HYPE cache, and generic diagnostics must expose only correlation/result shape
+  and deliberately structural context—not upstream result text, a connected
+  mine-only wallet, or wallet-specific amount/timing values. Accepted partial-
+  source warnings must cross the established sensitive-response sanitizer.
+- Protected behavior: every parsed HYPE ETF and unstaking value; THYP, BHYP,
+  Farside, and unstaking endpoints and response handling; aggregation and
+  denomination calculations; boot/add/manual/five-minute refresh scheduling;
+  cache/freshness/error/loading behavior; upcoming-event pruning; time/amount/
+  mine-only filters and sorting; exact safe warning and status copy; pane/layout
+  reconstruction, metrics/charts/rows/interactions, config/schema/persistence,
+  order preparation/signing, and every trading semantic.
+- Preconditions/event ordering: either task can return an exact public payload
+  or multi-source external error while the raw result is still inside derived
+  parent-message diagnostics. An ETF `Ok` can additionally retain endpoint
+  failures in warnings that are rendered without entering the top-level error
+  arm. Unstaking filter/summary and private view carriers can independently be
+  formatted. The production state owners themselves were already sound:
+  concurrent requests are suppressed, IDs wrapping-allocate, pane/layout
+  reconstruction does not replace the owner, and stale/duplicate completions
+  return before mutation. This turn closes the diagnostic and partial-warning
+  boundaries while locking those existing lifecycle semantics.
+- Evidence: F-70 records both singleton state definitions and initialization,
+  every request trigger, both sole publishers and first consumers, timer and
+  pane/layout/reset behavior, endpoint/error/warning construction, cache,
+  pruning/filter/sort/summary and render consumers, message routes, persisted
+  pane boundary, helper/view formatter surface, and repository-wide order/
+  signing/automation search. No second publisher, result-state writer,
+  persisted request owner/filter, order-price input, automatic mutation
+  consumer, or practical stale-result acceptance defect was found.
+- Change: use the existing public-market result wrapper for
+  `HypeEtfsLoaded` and `HypeUnstakingQueueLoaded`, restoring exact results only
+  after their unchanged owner gates; sanitize accepted ETF partial warnings;
+  make unstaking filter and summary diagnostics structural; remove unused
+  private view-carrier `Debug` implementations; add owner/order, exact-value,
+  warning, helper, and parent-diagnostic controls; document the established
+  runtime and privacy boundaries.
+- Tests/checks:
+  - Baseline HYPE ETF and unstaking update, state, API, public-message, and
+    routing suites plus `cargo check` stopped in `alsa-sys` before Kerosene
+    compilation because `pkg-config` could not find the system `alsa.pc` file.
+  - The pre-fix unstaking filter, unstaking summary, and parent-message
+    regressions stopped at that same dependency boundary before demonstrating
+    their expected diagnostic assertion failures.
+  - Post-fix HYPE ETF and unstaking update, state, view, and API suites, the
+    exact public-message test, and routing suite stopped at the same dependency
+    boundary.
+  - `cargo fmt` passed after the Rust edits; final formatting and diff checks
+    are recorded in the current validation summary below.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, subscription identity,
+    endpoint/request timing, view behavior, interaction, exchange mutation, or
+    credential path changed; compilation is already blocked, and no live HYPE/
+    market request, exchange call, or credential-bearing operation ran.
+- Compatibility/UX assessment: both first consumers receive the byte-for-byte
+  same success/error after the same owner gate and enter the unchanged cache,
+  freshness, error, pruning, filter/sort, calculation, and render paths. Safe
+  partial warning copy remains byte-for-byte exact; only substrings already
+  classified sensitive by the shared sanitizer are redacted before storage and
+  rendering. Parent/helper/view diagnostics become value-neutral without
+  changing runtime values. No ordinary visible copy/data/timing, enabled state,
+  interaction, persisted value, signed bytes, order preparation, or trading
+  semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-70 is source-
+  hardened; theoretical full-`u64` completed-message survival, sanitizer
+  coverage beyond recognized sensitive patterns, and executable validation
+  remain residual. SEC earnings/funding/context, file/config/screenshot, and
+  private-integration result classes; independently formattable nested account/
+  order types; classified external-status paths; and the remainder of Track 9
+  still require review.
+- Prior turn commit hash: `08ff03aa2552a33b0c59eace5c07a9afca416a77`
+- Next candidate: audit `ChartEarningsEventsLoaded`,
+  `ChartEarningsFilingSummaryLoaded`, and
+  `ChartEarningsFilingOpenResult` across per-chart/symbol/request ownership,
+  pane close/reopen and layout reconstruction, cache/marker/data acceptance,
+  stale/duplicate success/error ordering, external-error and parent diagnostics,
+  URL-open completion handling, and chart/order interactions; preserve exact
+  earnings and filing content, cadence, markers, UI, persistence, and every
+  trading semantic.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -9358,13 +9559,13 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline Calendar update, public-message, and
-  routing suites plus `cargo check`; the pre-fix Calendar parent-diagnostic
-  regression; post-fix Calendar update, exact public-message, routing, and
-  calendar API suites;
-  `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
-  dependency discovery, before Kerosene was compiled.
-- No live Calendar/market request, exchange mutation, or credential-bearing
+- Environment-blocked this turn: baseline HYPE ETF and unstaking update, state,
+  API, public-message, and routing suites plus `cargo check`; the pre-fix
+  unstaking filter, summary, and parent-diagnostic regressions; post-fix HYPE
+  ETF and unstaking update, state, view, and API suites, exact public-message
+  and routing suites; `cargo check`, full `cargo test`, and strict clippy at
+  `alsa-sys` system dependency discovery, before Kerosene was compiled.
+- No live HYPE/market request, exchange mutation, or credential-bearing
   operation was run.
 
 ## Residual Risk
@@ -9372,7 +9573,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-69
+  F-40, and F-42 through F-70
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -9440,7 +9641,10 @@ target-specific cancellation policy, not HTTP replay.
   exact aggregation/cache/rendering behavior. Calendar completion ownership is
   fully characterized and its parent diagnostics are source-hardened by F-69
   while exact events, retry/filter/status, and pane/layout behavior remain
-  unchanged. Remaining HYPE ETF/unstaking and other public/private result
-  lifecycles, independently formattable nested account/order types, and
-  classified external-status paths, plus the rest of Track 9, require
-  completion before a final verdict.
+  unchanged. HYPE ETF/unstaking completion ownership is fully characterized and
+  its parent/helper/view diagnostics plus partial-warning boundary are source-
+  hardened by F-70 while exact data, calculation, pruning, filtering, timing,
+  and safe warning behavior remain unchanged. Remaining SEC earnings/funding/
+  context and other public/private result lifecycles, independently formattable
+  nested account/order types, and classified external-status paths, plus the
+  rest of Track 9, require completion before a final verdict.

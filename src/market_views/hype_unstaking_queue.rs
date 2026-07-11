@@ -32,13 +32,13 @@ struct HypeUnstakingRowContext<'a> {
     theme: &'a Theme,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct HypeUnstakingAmountScale {
     min_ln: f64,
     max_ln: f64,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct HypeUnstakingAmountHeat {
     fill_pct: f32,
     alpha: f32,
@@ -459,7 +459,7 @@ fn hype_unstaking_summary_grid(
     metric_grid(metrics, available_width, theme)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct Metric {
     label: &'static str,
     value: String,

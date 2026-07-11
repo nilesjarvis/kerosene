@@ -1311,7 +1311,7 @@ pub(crate) enum Message {
     RefreshHypeEtfs,
     HypeEtfsRefreshTick,
     HypeEtfsViewChanged(HypeEtfView),
-    HypeEtfsLoaded(u64, Box<Result<HypeEtfData, String>>),
+    HypeEtfsLoaded(u64, RedactedPublicMarketMessageResult<HypeEtfData>),
     RefreshHypeUnstakingQueue,
     HypeUnstakingQueueRefreshTick,
     HypeUnstakingWindowChanged(HypeUnstakingWindowFilter),
@@ -1319,7 +1319,10 @@ pub(crate) enum Message {
     HypeUnstakingSortChanged(HypeUnstakingSortField),
     ToggleHypeUnstakingMineOnly,
     ClearHypeUnstakingFilters,
-    HypeUnstakingQueueLoaded(u64, Box<Result<HypeUnstakingQueueData, String>>),
+    HypeUnstakingQueueLoaded(
+        u64,
+        RedactedPublicMarketMessageResult<HypeUnstakingQueueData>,
+    ),
     CalendarImpactFilterChanged(CalendarImpactFilter),
     CalendarWindowFilterChanged(CalendarWindowFilter),
     Tick,
@@ -3694,6 +3697,19 @@ mod tests {
                 previous: WEEK_VALUE.to_string(),
             }]
         };
+        let hype_etf_data = || crate::hype_etf_state::HypeEtfData {
+            funds: Vec::new(),
+            warnings: vec![PAYLOAD_SYMBOL.to_string()],
+        };
+        let hype_unstaking_data = || {
+            crate::hype_unstaking_state::HypeUnstakingQueueData::new(vec![
+                crate::hype_unstaking_state::HypeUnstakingEvent {
+                    unlock_time_ms: 1_778_365_432_109,
+                    user: "hype-wallet-payload-sentinel".to_string(),
+                    amount_wei: 987_654_321,
+                },
+            ])
+        };
         let spaghetti_request = || crate::spaghetti_state::SpaghettiCandleFetch {
             chart_id: 9,
             chart_instance_generation: 7,
@@ -3866,6 +3882,31 @@ mod tests {
             assert!(rendered.contains('7'), "{rendered}");
             assert!(rendered.contains("<redacted>"), "{rendered}");
             for hidden in [PAYLOAD_SYMBOL, ERROR, "918273.125", "827364.25"] {
+                assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
+            }
+        }
+
+        for message in [
+            Message::HypeEtfsLoaded(17, Ok(hype_etf_data()).into()),
+            Message::HypeEtfsLoaded(17, Err(ERROR.to_string()).into()),
+            Message::HypeUnstakingQueueLoaded(19, Ok(hype_unstaking_data()).into()),
+            Message::HypeUnstakingQueueLoaded(19, Err(ERROR.to_string()).into()),
+        ] {
+            let rendered = format!("{message:?}");
+            assert!(
+                rendered.contains("17") || rendered.contains("19"),
+                "{rendered}"
+            );
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for hidden in [
+                ERROR,
+                PAYLOAD_SYMBOL,
+                "hype-wallet-payload-sentinel",
+                "1778365432109",
+                "987654321",
+                "funds_len",
+                "events_len",
+            ] {
                 assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
             }
         }

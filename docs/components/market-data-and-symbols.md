@@ -337,7 +337,16 @@ Unstaking queue state supports window filters, amount filters, sorting, and
 mine-only filtering.
 
 These panes are informational. They are refreshed by timers and manual refresh
-messages, not by trading-order state.
+messages, not by trading-order state. Each singleton state owns one runtime
+loading flag and wrapping request ID across pane close/reopen and layout
+reconstruction. A completion must match both before it can replace data or
+error/freshness state; duplicate and stale results are ignored. Exact results
+are recovered after that gate, while generic Elm diagnostics retain only the
+request ID and `Ok`/`Err` shape. Unstaking mine-only filter and summary
+diagnostics hide the selected wallet and wallet-specific timing/amount values.
+Accepted ETF partial-source warnings pass through the same sensitive-response
+sanitizer as top-level errors; safe warning text remains unchanged. These
+runtime owners and filters are not persisted.
 
 ## Hidden Symbols And Market Universe
 

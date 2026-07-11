@@ -408,6 +408,19 @@ pre-handler external response excerpt. The Calendar update arm immediately
 recovers the exact result after its active-owner check, preserving event data,
 error sanitization, retry cadence, filters, status copy, and rendering.
 
+HYPE ETF and unstaking-queue completions also use the public-market result
+boundary. Their parent diagnostics retain request IDs and result shape without
+traversing data summaries or multi-source upstream errors; update restores the
+exact result only after the existing active-loading and exact-ID gate. HYPE ETF
+state models remain structurally diagnosable. Unstaking filter diagnostics
+replace the mine-only address with a presence flag, and summary diagnostics
+retain counts while hiding wallet-specific total/largest amounts and next-
+unlock time. Private HYPE view carriers for formatted metrics and chart/amount
+scales do not implement `Debug`. Exact parsing, calculations, filtering,
+pruning, rendering, and freshness remain unchanged. Accepted ETF partial-source
+warnings now receive the same sensitive-text sanitization as top-level errors
+before state/rendering; ordinary safe warning copy remains exact.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

@@ -36,8 +36,11 @@ impl TradingTerminal {
                 }
 
                 self.hype_etfs.loading = false;
-                match *result {
-                    Ok(data) => {
+                match result.into_result() {
+                    Ok(mut data) => {
+                        for warning in &mut data.warnings {
+                            *warning = redact_sensitive_response_text(warning);
+                        }
                         self.hype_etfs.last_fetch = Some(Instant::now());
                         self.hype_etfs.data = Some(data);
                         self.hype_etfs.error = None;
@@ -73,7 +76,7 @@ impl TradingTerminal {
         self.hype_etfs.refresh_request_id = self.hype_etfs.refresh_request_id.wrapping_add(1);
         let request_id = self.hype_etfs.refresh_request_id;
         Task::perform(fetch_hype_etfs(), move |result| {
-            Message::HypeEtfsLoaded(request_id, Box::new(result))
+            Message::HypeEtfsLoaded(request_id, result.into())
         })
     }
 }

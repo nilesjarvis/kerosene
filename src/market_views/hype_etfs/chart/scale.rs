@@ -25,7 +25,7 @@ pub(in crate::market_views::hype_etfs) fn cumulative_inflows(
         .collect()
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub(in crate::market_views::hype_etfs) struct FlowChartScale {
     pub(in crate::market_views::hype_etfs) zero_y: f32,
     pub(in crate::market_views::hype_etfs) positive_height: f32,

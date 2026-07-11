@@ -7,7 +7,7 @@ use iced::{Color, Element, Fill, Theme, color};
 // HYPE ETF Metric Cards
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(super) struct Metric {
     label: &'static str,
     value: String,

@@ -220,7 +220,7 @@ impl fmt::Debug for HypeUnstakingEvent {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub(crate) struct HypeUnstakingFilter<'a> {
     pub(crate) now_ms: u64,
     pub(crate) window: HypeUnstakingWindowFilter,
@@ -228,13 +228,39 @@ pub(crate) struct HypeUnstakingFilter<'a> {
     pub(crate) mine_address: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+impl fmt::Debug for HypeUnstakingFilter<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HypeUnstakingFilter")
+            .field("now_ms", &self.now_ms)
+            .field("window", &self.window)
+            .field("amount", &self.amount)
+            .field("has_mine_address", &self.mine_address.is_some())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Default)]
 pub(crate) struct HypeUnstakingSummary {
     pub(crate) event_count: usize,
     pub(crate) unique_wallet_count: usize,
     pub(crate) total_wei: u128,
     pub(crate) next_unlock_time_ms: Option<u64>,
     pub(crate) largest_amount_wei: Option<u64>,
+}
+
+impl fmt::Debug for HypeUnstakingSummary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HypeUnstakingSummary")
+            .field("event_count", &self.event_count)
+            .field("unique_wallet_count", &self.unique_wallet_count)
+            .field("total_wei", &"<redacted>")
+            .field(
+                "has_next_unlock_time_ms",
+                &self.next_unlock_time_ms.is_some(),
+            )
+            .field("has_largest_amount_wei", &self.largest_amount_wei.is_some())
+            .finish()
+    }
 }
 
 pub(crate) fn summarize_unstaking_events(events: &[&HypeUnstakingEvent]) -> HypeUnstakingSummary {
@@ -436,6 +462,51 @@ mod tests {
         assert!(!rendered.contains(secret_address));
         assert!(!rendered.contains("987654321"));
         assert!(!rendered.contains("unstaking state secret"));
+    }
+
+    #[test]
+    fn hype_unstaking_filter_debug_redacts_mine_address() {
+        let mine_address = "mine-wallet-address-sentinel";
+        let filter = HypeUnstakingFilter {
+            now_ms: 1_779_301_327_387,
+            window: HypeUnstakingWindowFilter::Week,
+            amount: HypeUnstakingAmountFilter::AtLeast1k,
+            mine_address: Some(mine_address),
+        };
+
+        let rendered = format!("{filter:?}");
+
+        assert!(rendered.contains("now_ms: 1779301327387"));
+        assert!(rendered.contains("window: Week"));
+        assert!(rendered.contains("amount: AtLeast1k"));
+        assert!(rendered.contains("has_mine_address: true"));
+        assert!(!rendered.contains(mine_address));
+        assert_eq!(filter.mine_address, Some(mine_address));
+    }
+
+    #[test]
+    fn hype_unstaking_summary_debug_redacts_wallet_specific_values() {
+        let summary = HypeUnstakingSummary {
+            event_count: 7,
+            unique_wallet_count: 3,
+            total_wei: 987_654_321_012_345,
+            next_unlock_time_ms: Some(1_779_301_327_387),
+            largest_amount_wei: Some(876_543_210_123),
+        };
+
+        let rendered = format!("{summary:?}");
+
+        assert!(rendered.contains("event_count: 7"));
+        assert!(rendered.contains("unique_wallet_count: 3"));
+        assert!(rendered.contains("total_wei: \"<redacted>\""));
+        assert!(rendered.contains("has_next_unlock_time_ms: true"));
+        assert!(rendered.contains("has_largest_amount_wei: true"));
+        for hidden in ["987654321012345", "1779301327387", "876543210123"] {
+            assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
+        }
+        assert_eq!(summary.total_wei, 987_654_321_012_345);
+        assert_eq!(summary.next_unlock_time_ms, Some(1_779_301_327_387));
+        assert_eq!(summary.largest_amount_wei, Some(876_543_210_123));
     }
 
     #[test]

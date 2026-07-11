@@ -8,7 +8,7 @@ use iced::{Color, Point, Rectangle, Renderer, Theme};
 // Cumulative Inflow Line
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(super) struct CumulativeInflowLine {
     pub(super) values: Vec<f64>,
     pub(super) scale: FlowChartScale,
