@@ -66,9 +66,12 @@ pub struct WalletLabelsExport {
 impl fmt::Debug for WalletLabelsExport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WalletLabelsExport")
-            .field("schema", &self.schema)
-            .field("exported_at_ms", &self.exported_at_ms)
-            .field("labels", &self.labels)
+            .field(
+                "schema_supported",
+                &(self.schema == WALLET_LABELS_EXPORT_SCHEMA),
+            )
+            .field("exported_at_ms", &format_args!("<redacted>"))
+            .field("labels_len", &self.labels.len())
             .finish()
     }
 }
@@ -351,26 +354,41 @@ mod tests {
     }
 
     #[test]
-    fn wallet_labels_export_debug_redacts_entry_addresses() {
+    fn wallet_labels_export_debug_is_structural_and_preserves_wire_payload() {
+        const EXPORTED_AT_MS: u64 = 9_123_456_789;
+        const LABEL: &str = "private-wallet-label-sentinel";
+        const COLOR: &str = "#a1b2c3";
+        const TAG: &str = "private-wallet-tag-sentinel";
         let export = WalletLabelsExport {
             schema: WALLET_LABELS_EXPORT_SCHEMA.to_string(),
-            exported_at_ms: 42,
+            exported_at_ms: EXPORTED_AT_MS,
             labels: vec![AddressBookEntryConfig {
                 address: ADDRESS_A.to_string(),
-                label: ADDRESS_B.to_string(),
-                color: Some("#ff00ff".to_string()),
-                tags: vec!["desk".to_string(), ADDRESS_C.to_string()],
+                label: LABEL.to_string(),
+                color: Some(COLOR.to_string()),
+                tags: vec![TAG.to_string(), ADDRESS_C.to_string()],
             }],
         };
+        let wire_before = serde_json::to_value(&export).expect("serialize wallet labels");
 
         let rendered = format!("{export:?}");
 
+        assert!(rendered.contains("schema_supported: true"), "{rendered}");
+        assert!(rendered.contains("labels_len: 1"), "{rendered}");
+        assert!(
+            rendered.contains("exported_at_ms: <redacted>"),
+            "{rendered}"
+        );
         assert!(!rendered.contains(ADDRESS_A));
-        assert!(!rendered.contains(ADDRESS_B));
         assert!(!rendered.contains(ADDRESS_C));
-        assert!(!rendered.contains("desk"));
-        assert!(rendered.contains("<redacted>"));
-        assert!(rendered.contains("tags: <2 redacted>"));
-        assert!(rendered.contains("#ff00ff"));
+        assert!(!rendered.contains(LABEL));
+        assert!(!rendered.contains(COLOR));
+        assert!(!rendered.contains(TAG));
+        assert!(!rendered.contains(&EXPORTED_AT_MS.to_string()));
+        assert!(!rendered.contains(WALLET_LABELS_EXPORT_SCHEMA));
+        assert_eq!(
+            serde_json::to_value(&export).expect("serialize wallet labels after formatting"),
+            wire_before
+        );
     }
 }

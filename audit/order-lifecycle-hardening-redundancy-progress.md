@@ -4152,6 +4152,88 @@ target-specific cancellation policy, not HTTP replay.
   preference/file/screenshot operations; and private integration content/key-
   status paths. Each class needs a separate sensitivity and behavior audit.
 
+### F-57 — Wallet-label I/O diagnostics expose identity metadata and raw errors
+
+- Status: addressed in Turn 50; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account-identity privacy and diagnostic-boundary hardening;
+  no import merge, config-clear fence, persistence, subscription, tracker, or
+  visible-error defect was found
+- Scope: `WalletLabelsExport`, `WalletLabelsExported`, and
+  `WalletLabelsImported`; export snapshot/serialization, file dialogs, import
+  parsing, clear-config fences, label merge/sync/persistence, cancellation,
+  routing, toasts, and wallet/config/message tests
+- Preconditions/event ordering:
+  1. Export snapshots exact schema/time/address/label/color/tag data and
+     serializes it before opening the save dialog. Its completion publishes
+     either unit success, the exact cancellation marker, or a raw external
+     serialization/write error.
+  2. Import reads and parses an arbitrary selected JSON file into the same
+     export type, then publishes the exact object, cancellation marker, or raw
+     file/parse error. Derived `Message::Debug` traversed the raw `Result` before
+     the update route could recognize cancellation or sanitize an error.
+  3. The export model's prior formatter traversed every entry. Addresses and
+     tags had nested protection, but ordinary user labels, colors, schema, and
+     export time remained visible. A successful completion is then fenced by
+     current clear-config state before merge, tracker/subscription sync, queued
+     refreshes, and persistence scheduling.
+- Evidence: parent commit
+  `b5b9f195b41faa79365588269846e14d38cd6b75` shows the raw result variants at
+  `src/message.rs:873-874`, the entry-traversing export formatter at
+  `src/config/wallets.rs:59-73`, and all publishers/consumers at
+  `src/layout_update/wallet_labels.rs:8-130`. Snapshot construction and exact
+  merge rules are `src/wallet_state/address_book/labels/import_export.rs:11-108`;
+  routing is `src/app_update/routing.rs:40-52`. Existing tests covered address-
+  like labels/tags, post-routing toast sanitization, config-clear fences, and
+  pure merge behavior.
+- Violated invariant: wallet-label files must retain exact account identity
+  metadata and external failures for established import/export behavior, while
+  generic runtime diagnostics must neither reproduce that metadata nor bypass
+  the cancellation/sanitizer boundary.
+- Risk: a state dump, assertion failure, or future message instrumentation
+  could reveal a user's wallet naming scheme, display metadata, export timing,
+  or raw filesystem/parse error details. Wallet addresses were already
+  redacted in the nested entry formatter; no key, signed payload, exchange
+  mutation, order retry, or known production logging sink is implicated.
+- Why existing checks did not cover it: the export-model regression used a
+  wallet address as its label, so the address detector hid it, and explicitly
+  allowed the color. Toast tests began only after update-layer sanitization;
+  clear-config and merge tests never formatted the completion message. No
+  control proved both exact cancellation markers remained silent through the
+  transient boundary.
+- Implemented fix: make `WalletLabelsExport::Debug` structural, retaining only
+  schema-compatibility, a redacted timestamp, and label count
+  (`src/config/wallets.rs:59-76`). Add
+  `RedactedWalletLabelsMessageResult<T>`, whose formatter emits only result
+  shape, and apply it to both completion variants
+  (`src/message.rs:484-511`, `src/message.rs:890-903`). Both tasks wrap only at
+  publication and both update arms recover the original result before their
+  source-identical branches (`src/layout_update/wallet_labels.rs:8-125`).
+- Regression coverage: the export control rejects unique address, label,
+  color, tag, schema, and timestamp values while comparing identical serde JSON
+  before/after formatting (`src/config/wallets.rs:356-393`). The wrapper control
+  rejects payload/error sentinels and compares the full recovered JSON plus
+  exact error (`src/message.rs:2490-2525`); the parent-message control covers
+  import success/error and export error (`src/message.rs:2982-3020`). Layout-
+  update controls preserve successful merge/tracker/persistence/toast behavior,
+  clear-config discard/start fences, sanitized errors, and exact silent
+  cancellations (`src/layout_update/wallet_labels.rs:153-286`). Existing pure
+  merge/export tests remain unchanged.
+- Smallest behavior-preserving fix: one custom formatter and one unboxed
+  transient result newtype changed. No serde field/attribute, JSON data,
+  timestamp, address, label, color, tag, schema validation, merge precedence,
+  normalization, file dialog, cancellation string, config-clear gate,
+  subscription refresh, tracker queue, persistence schedule, toast copy, UI, or
+  trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete publisher/consumer/routing tracing, exact JSON/error recovery, and
+  mechanical raw-field absence checks establish the intended boundary, but
+  focused and nearby suites cannot execute until ALSA development metadata is
+  available. Independently formattable live/config wallet types still need a
+  separate audit because some deliberately redact only address-shaped label
+  values; public market, ordinary file/config/screenshot, and private
+  integration result classes also remain.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -7210,6 +7292,65 @@ target-specific cancellation policy, not HTTP replay.
   dedicated exact shape-only result wrapper closes that account-identity file-
   I/O class without altering labels, addresses, wire format, or UX.
 
+## Turn 50 — Redact Wallet-Label I/O Diagnostics
+
+- Status: F-57 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: wallet-label export model and JSON; import/export completion messages;
+  file-dialog tasks; config-clear gates; merge, tracker/subscription sync, and
+  persistence handling; cancellation/error toasts; routing and focused controls
+- Invariant: every wallet-label file field and external result must remain exact
+  for wire compatibility and established account-label behavior, while generic
+  diagnostics expose only safe schema/count/result-shape metadata.
+- Protected behavior: export filtering/sorting and pretty JSON; import parsing,
+  schema validation, address normalization, trim/dedup, non-overwriting merge
+  precedence, summary counts, tracked-address synchronization, subscription
+  refresh, tracker queueing, config persistence, config-clear start/completion
+  fences, exact cancellation markers, toast copy, and all UI/trading behavior.
+- Preconditions/event ordering: export still snapshots and serializes before
+  the save dialog. Import still parses before message publication and checks
+  current config-clear state again before applying. Wrapping occurs only at
+  task completion; each update arm immediately restores the original result
+  before cancellation, clear-config, merge, or sanitizer logic.
+- Evidence: F-57 records the prior raw variants, nested formatter behavior,
+  exact snapshot/merge graph, publisher/consumer/routing chain, test gap, and
+  the value-transparent formatter/wrapper diff.
+- Change: replace the export model's nested formatter with a structural one;
+  add a dedicated exact wallet-label result wrapper; mechanically convert both
+  task mappings, consumers, and test constructors; add exact wire/recovery,
+  normal import, cancellation, error, and parent-message controls.
+- Tests/checks:
+  - Baseline export-formatter and wallet-label update suites plus `cargo check`
+    stopped in `alsa-sys` before Kerosene compilation because `pkg-config`
+    could not find the system `alsa.pc` file.
+  - Post-fix focused export-model, exact wrapper, parent-message, complete
+    wallet-label update, pure wallet-label merge/export, and routing suites
+    stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, view, window, dialog, task
+    timing, state transition, or user interaction changed; compilation is
+    already blocked, and no live exchange or credential-bearing operation ran.
+- Compatibility/UX assessment: controls compare full serde values before and
+  after formatting and after wrapper recovery; normal import still adds the
+  same address/label, syncs tracker state, schedules persistence, and emits the
+  exact summary toast; both cancellation strings remain silent. No visible
+  behavior, timing, JSON schema/content, normalization, merge precedence,
+  persistence, signed bytes, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-57 is source-
+  hardened, but other independently formattable wallet config/live/display
+  types need a type-by-type label/address audit. Other classified raw-result
+  groups—public market data, config/preference/file/screenshot operations, and
+  private integrations—also remain open.
+- Prior turn commit hash: `b5b9f195b41faa79365588269846e14d38cd6b75`
+- Next candidate: trace `TrackedWalletConfig`, `AddressBookEntryConfig`, live
+  `AddressBookEntry`, `WalletDisplay`, and `WalletTrackerRow` through config,
+  runtime state, views, tests, and parent diagnostics; determine which ordinary
+  label/color/address values should be structurally redacted without changing
+  stored metadata or display behavior.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -7251,10 +7392,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: the baseline journal parent-message
-  diagnostic; post-fix exact journal-result recovery, snapshot-request and
-  parent-message diagnostics, complete journal-update, Message, and routing
-  suites;
+- Environment-blocked this turn: baseline wallet-label export diagnostics,
+  wallet-label update tests, and `cargo check`; post-fix export-model, exact
+  wallet-label-result recovery, parent-message, complete wallet-label update,
+  pure merge/export, and routing suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
@@ -7264,7 +7405,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-56
+  F-40, and F-42 through F-57
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -7306,7 +7447,7 @@ target-specific cancellation policy, not HTTP replay.
   source-hardened by F-52, and PnL-card model/image/export diagnostics by F-53.
   Ticket percentage-sizing provenance diagnostics are source-hardened by F-54.
   Preset/saved-layout model and I/O-result diagnostics are source-hardened by
-  F-55, and journal completion request/result diagnostics by F-56. Remaining
-  independently formattable nested account/order types and classified external-
-  status paths, plus the rest of Track 9, require completion before a final
-  verdict.
+  F-55, journal completion request/result diagnostics by F-56, and wallet-label
+  export/I/O-result diagnostics by F-57. Remaining independently formattable
+  nested account/order types and classified external-status paths, plus the rest
+  of Track 9, require completion before a final verdict.

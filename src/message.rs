@@ -481,6 +481,35 @@ impl<T> fmt::Debug for RedactedLayoutMessageResult<T> {
     }
 }
 
+/// Exact wallet-label file result carried through the Elm message boundary.
+///
+/// Update handlers recover the original export or external error. Generic
+/// message diagnostics expose only success/error shape and never traverse
+/// account identity metadata or unsanitized file/parse errors.
+#[derive(Clone)]
+pub(crate) struct RedactedWalletLabelsMessageResult<T>(Result<T, String>);
+
+impl<T> RedactedWalletLabelsMessageResult<T> {
+    pub(crate) fn into_result(self) -> Result<T, String> {
+        self.0
+    }
+}
+
+impl<T> From<Result<T, String>> for RedactedWalletLabelsMessageResult<T> {
+    fn from(value: Result<T, String>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> fmt::Debug for RedactedWalletLabelsMessageResult<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 /// Exact PnL-card export result carried through the Elm message boundary.
 ///
 /// Update handlers recover the original saved path or external error. Generic
@@ -870,8 +899,8 @@ pub(crate) enum Message {
     LayoutExported(RedactedLayoutMessageResult<()>),
     ExportWalletLabels,
     ImportWalletLabels,
-    WalletLabelsExported(Result<(), String>),
-    WalletLabelsImported(Result<config::WalletLabelsExport, String>),
+    WalletLabelsExported(RedactedWalletLabelsMessageResult<()>),
+    WalletLabelsImported(RedactedWalletLabelsMessageResult<config::WalletLabelsExport>),
     LayoutInputChanged(String),
     LiveWatchlistSearchChanged(LiveWatchlistId, String),
     LiveWatchlistContextsLoaded(
@@ -1838,10 +1867,10 @@ mod tests {
         RedactedClientOrderId, RedactedJournalMessageResult, RedactedLayoutMessageResult,
         RedactedOrderId, RedactedOrderInput, RedactedOrderMessageResult, RedactedOrderSymbol,
         RedactedOrderValue, RedactedPhoneInput, RedactedPnlCardMessageResult,
-        RedactedTelegramChannelKey, SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult,
-        SecretInput, TelegramFastAuthMessageResult, TelegramFastAuthOutcome,
-        XAccessTokenRefreshMessageResult, XAuthContextMessageResult, XFeedPageMessageResult,
-        XListsMessageResult, XProfileImageMessageResult,
+        RedactedTelegramChannelKey, RedactedWalletLabelsMessageResult, SchwabAccountsMessageResult,
+        SchwabTokenRefreshMessageResult, SecretInput, TelegramFastAuthMessageResult,
+        TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult, XAuthContextMessageResult,
+        XFeedPageMessageResult, XListsMessageResult, XProfileImageMessageResult,
     };
     use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
     use crate::api::{
@@ -2459,6 +2488,43 @@ mod tests {
     }
 
     #[test]
+    fn wallet_labels_message_result_wrapper_preserves_exact_export_and_error() {
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+        const LABEL: &str = "wallet-label-result-label-sentinel";
+        const ERROR: &str = "wallet-label-result-error-sentinel";
+        let export = crate::config::WalletLabelsExport {
+            schema: crate::config::WALLET_LABELS_EXPORT_SCHEMA.to_string(),
+            exported_at_ms: 9_123_456_789,
+            labels: vec![crate::config::AddressBookEntryConfig {
+                address: ADDRESS.to_string(),
+                label: LABEL.to_string(),
+                color: Some("#a1b2c3".to_string()),
+                tags: vec!["wallet-label-result-tag-sentinel".to_string()],
+            }],
+        };
+        let wire = serde_json::to_value(&export).expect("serialize synthetic wallet labels");
+        let error: RedactedWalletLabelsMessageResult<crate::config::WalletLabelsExport> =
+            Err(ERROR.to_string()).into();
+        let success: RedactedWalletLabelsMessageResult<crate::config::WalletLabelsExport> =
+            Ok(export).into();
+
+        let error_debug = format!("{error:?}");
+        let success_debug = format!("{success:?}");
+
+        assert!(error_debug.contains("Err(<redacted>)"), "{error_debug}");
+        assert!(success_debug.contains("Ok(<redacted>)"), "{success_debug}");
+        assert!(!error_debug.contains(ERROR), "{error_debug}");
+        assert!(!success_debug.contains(ADDRESS), "{success_debug}");
+        assert!(!success_debug.contains(LABEL), "{success_debug}");
+        assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
+        let restored = success.into_result().expect("synthetic wallet labels");
+        assert_eq!(
+            serde_json::to_value(restored).expect("serialize restored wallet labels"),
+            wire
+        );
+    }
+
+    #[test]
     fn leverage_message_debug_redacts_mutation_parameters() {
         const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
         const SYMBOL: &str = "leverage-symbol-sentinel";
@@ -2910,6 +2976,46 @@ mod tests {
             assert!(!rendered.contains(ERROR), "{rendered}");
             assert!(!rendered.contains("98765.4321"), "{rendered}");
             assert!(!rendered.contains("7.654321"), "{rendered}");
+        }
+    }
+
+    #[test]
+    fn wallet_label_message_debug_redacts_import_payload_and_external_errors() {
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+        const LABEL: &str = "private-wallet-message-label-sentinel";
+        const COLOR: &str = "#c3b2a1";
+        const TAG: &str = "private-wallet-message-tag-sentinel";
+        const ERROR: &str = "private-wallet-label-io-error-sentinel";
+        const EXPORTED_AT_MS: u64 = 9_876_543_210;
+        let export = crate::config::WalletLabelsExport {
+            schema: crate::config::WALLET_LABELS_EXPORT_SCHEMA.to_string(),
+            exported_at_ms: EXPORTED_AT_MS,
+            labels: vec![crate::config::AddressBookEntryConfig {
+                address: ADDRESS.to_string(),
+                label: LABEL.to_string(),
+                color: Some(COLOR.to_string()),
+                tags: vec![TAG.to_string()],
+            }],
+        };
+        let messages = [
+            Message::WalletLabelsImported(Ok(export).into()),
+            Message::WalletLabelsImported(Err(ERROR.to_string()).into()),
+            Message::WalletLabelsExported(Err(ERROR.to_string()).into()),
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for sensitive in [ADDRESS, LABEL, COLOR, TAG, ERROR] {
+                assert!(
+                    !rendered.contains(sensitive),
+                    "{sensitive} leaked in {rendered}"
+                );
+            }
+            assert!(
+                !rendered.contains(&EXPORTED_AT_MS.to_string()),
+                "timestamp leaked in {rendered}"
+            );
         }
     }
 

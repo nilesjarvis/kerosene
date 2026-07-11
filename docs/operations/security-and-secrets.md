@@ -280,6 +280,16 @@ snapshot handling recovers the exact candles or error for the unchanged request
 and provider-generation checks. Pagination, fill aggregation, snapshot
 coverage, cache behavior, and visible sanitized errors remain unchanged.
 
+Wallet-label import/export keeps its exact schema, timestamp, addresses, labels,
+colors, and tags for the established JSON wire format and merge rules, but the
+export model's diagnostics report only schema compatibility, a redacted time,
+and entry count. `RedactedWalletLabelsMessageResult<T>` makes import/export
+completion diagnostics expose only `Ok`/`Err` shape; the layout update path
+recovers the original payload or error before the existing config-clear fences,
+merge/sync/persistence work, cancellation checks, and toast sanitizer. File
+contents, normalization and precedence, tracked-address refreshes, both silent
+cancellation strings, and visible success/error behavior remain unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

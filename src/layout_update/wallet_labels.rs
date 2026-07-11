@@ -27,7 +27,7 @@ impl TradingTerminal {
                             Err("Export cancelled".to_string())
                         }
                     },
-                    Message::WalletLabelsExported,
+                    |result| Message::WalletLabelsExported(result.into()),
                 );
             }
             Message::ImportWalletLabels => {
@@ -56,10 +56,10 @@ impl TradingTerminal {
                             Err("Import cancelled".to_string())
                         }
                     },
-                    Message::WalletLabelsImported,
+                    |result| Message::WalletLabelsImported(result.into()),
                 );
             }
-            Message::WalletLabelsExported(result) => match result {
+            Message::WalletLabelsExported(result) => match result.into_result() {
                 Ok(_) => self.push_toast("Wallet labels exported successfully".to_string(), false),
                 Err(e) => {
                     if e != "Export cancelled" {
@@ -73,7 +73,7 @@ impl TradingTerminal {
                     }
                 }
             },
-            Message::WalletLabelsImported(result) => match result {
+            Message::WalletLabelsImported(result) => match result.into_result() {
                 Ok(export) => {
                     if self.config_clear_requested || self.config_cleared_this_session {
                         self.push_toast(
@@ -156,8 +156,9 @@ mod tests {
         terminal.config_cleared_this_session = true;
         terminal.wallet_tracker.open = true;
 
-        let _task = terminal
-            .update_wallet_label_io(Message::WalletLabelsImported(Ok(wallet_label_export())));
+        let _task = terminal.update_wallet_label_io(Message::WalletLabelsImported(
+            Ok(wallet_label_export()).into(),
+        ));
 
         assert!(terminal.address_book.is_empty());
         assert!(terminal.wallet_tracker.tracked_addresses.is_empty());
@@ -177,8 +178,9 @@ mod tests {
         terminal.config_clear_requested = true;
         terminal.wallet_tracker.open = true;
 
-        let _task = terminal
-            .update_wallet_label_io(Message::WalletLabelsImported(Ok(wallet_label_export())));
+        let _task = terminal.update_wallet_label_io(Message::WalletLabelsImported(
+            Ok(wallet_label_export()).into(),
+        ));
 
         assert!(terminal.address_book.is_empty());
         assert!(terminal.wallet_tracker.tracked_addresses.is_empty());
@@ -209,12 +211,42 @@ mod tests {
     }
 
     #[test]
+    fn completed_wallet_label_import_preserves_merge_and_persist_behavior() {
+        let (mut terminal, _) = TradingTerminal::boot();
+
+        let _task = terminal.update_wallet_label_io(Message::WalletLabelsImported(
+            Ok(wallet_label_export()).into(),
+        ));
+
+        assert_eq!(
+            terminal
+                .address_book
+                .get(TEST_ADDRESS)
+                .map(|entry| entry.label.as_str()),
+            Some("Imported")
+        );
+        assert!(
+            terminal
+                .wallet_tracker
+                .tracked_addresses
+                .iter()
+                .any(|address| address == TEST_ADDRESS)
+        );
+        assert!(terminal.config_save_due_at.is_some());
+        assert!(terminal.toasts.last().is_some_and(|toast| {
+            !toast.is_error
+                && toast.message
+                    == "Wallet labels imported: 1 added, 0 updated, 0 preserved, 0 skipped"
+        }));
+    }
+
+    #[test]
     fn wallet_label_export_error_redacts_toast_detail() {
         let (mut terminal, _) = TradingTerminal::boot();
 
-        let _task = terminal.update_wallet_label_io(Message::WalletLabelsExported(Err(
-            "write failed: auth_token=token-secret".to_string(),
-        )));
+        let _task = terminal.update_wallet_label_io(Message::WalletLabelsExported(
+            Err("write failed: auth_token=token-secret".to_string()).into(),
+        ));
 
         let toast = terminal.toasts.last().expect("toast");
         assert!(toast.is_error);
@@ -226,13 +258,30 @@ mod tests {
     fn wallet_label_import_error_redacts_toast_detail() {
         let (mut terminal, _) = TradingTerminal::boot();
 
-        let _task = terminal.update_wallet_label_io(Message::WalletLabelsImported(Err(
-            "parse failed: client_secret=secret-value".to_string(),
-        )));
+        let _task = terminal.update_wallet_label_io(Message::WalletLabelsImported(
+            Err("parse failed: client_secret=secret-value".to_string()).into(),
+        ));
 
         let toast = terminal.toasts.last().expect("toast");
         assert!(toast.is_error);
         assert!(toast.message.contains("client_secret=<redacted>"));
         assert!(!toast.message.contains("secret-value"));
+    }
+
+    #[test]
+    fn cancelled_wallet_label_file_dialogs_remain_silent() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let toast_count = terminal.toasts.len();
+
+        let _task = terminal.update_wallet_label_io(Message::WalletLabelsExported(
+            Err("Export cancelled".to_string()).into(),
+        ));
+        let _task = terminal.update_wallet_label_io(Message::WalletLabelsImported(
+            Err("Import cancelled".to_string()).into(),
+        ));
+
+        assert_eq!(terminal.toasts.len(), toast_count);
+        assert!(terminal.address_book.is_empty());
+        assert!(terminal.config_save_due_at.is_none());
     }
 }
