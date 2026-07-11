@@ -23,7 +23,7 @@ impl TradingTerminal {
                 self.apply_chart_secondary_candles_loaded(request, result.into_result())
             }
             Message::ChartFundingHistoryLoaded(request, result) => {
-                self.apply_chart_funding_history_loaded(request, *result)
+                self.apply_chart_funding_history_loaded(request, result)
             }
             Message::ChartWsCandleUpdate(id, symbol, interval, source_context, candle) => {
                 self.apply_chart_ws_candle_update(id, symbol, interval, source_context, candle)

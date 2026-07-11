@@ -1,6 +1,8 @@
 use crate::app_state::TradingTerminal;
 use crate::chart::HudSelectorKind;
-use crate::chart_state::{ChartId, ChartInstance};
+use crate::chart_state::{
+    ChartAssetContextRestRequest, ChartId, ChartInstance, ChartSpotAssetContextsRestRequest,
+};
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 use crate::sound;
@@ -26,6 +28,13 @@ fn asset_context_error_is_rate_limit(error: &str) -> bool {
 }
 
 impl TradingTerminal {
+    fn allocate_chart_asset_context_rest_request_id(&mut self) -> u64 {
+        self.next_chart_asset_context_rest_request_id = self
+            .next_chart_asset_context_rest_request_id
+            .wrapping_add(1);
+        self.next_chart_asset_context_rest_request_id
+    }
+
     fn reset_spot_asset_context_rest_retry(&mut self) {
         self.spot_asset_context_rest_failures = 0;
         self.spot_asset_context_rest_next_attempt_at_ms = None;
@@ -294,16 +303,22 @@ impl TradingTerminal {
                     }
                 }
             }
-            Message::ChartAssetContextRestFetched(id, symbol, result) => {
-                let hidden = self.symbol_key_is_hidden(&symbol);
+            Message::ChartAssetContextRestFetched(request, result) => {
+                if request.chart_instance_generation != self.chart_instance_generation {
+                    return Task::none();
+                }
+                let hidden = self.symbol_key_is_hidden(&request.symbol);
                 let now_ms = Self::now_ms();
-                if let Some(instance) = self.charts.get_mut(&id) {
-                    instance.asset_ctx_rest_in_flight = false;
-                    if instance.symbol != symbol || hidden {
+                if let Some(instance) = self.charts.get_mut(&request.chart_id) {
+                    if instance.asset_ctx_rest_request.as_ref() != Some(&request) {
+                        return Task::none();
+                    }
+                    instance.asset_ctx_rest_request = None;
+                    if instance.symbol != request.symbol || hidden {
                         instance.reset_asset_context_rest_retry();
                         return Task::none();
                     }
-                    match result {
+                    match result.into_result() {
                         Ok(Some(ctx)) => {
                             // Fill only when there is no context, or the existing
                             // one is itself REST-sourced — never clobber a live
@@ -322,8 +337,12 @@ impl TradingTerminal {
                     }
                 }
             }
-            Message::ChartSpotAssetContextsRestFetched(targets, result) => {
-                self.spot_asset_context_rest_in_flight = false;
+            Message::ChartSpotAssetContextsRestFetched(request, result) => {
+                if self.spot_asset_context_rest_request.as_ref() != Some(&request) {
+                    return Task::none();
+                }
+                self.spot_asset_context_rest_request = None;
+                let result = result.into_result();
                 let now_ms = Self::now_ms();
                 let rate_limited = result
                     .as_ref()
@@ -333,22 +352,59 @@ impl TradingTerminal {
                 if request_failed {
                     self.record_spot_asset_context_rest_failure(now_ms, rate_limited);
                 }
+                if request.chart_instance_generation != self.chart_instance_generation {
+                    if !request_failed {
+                        // Preserve the prior global endpoint outcome without
+                        // allowing the old batch to mutate reconstructed chart
+                        // state. Before chart-incarnation fencing, a successful
+                        // response backed off globally only when a still-
+                        // matching chart lacked both a response context and a
+                        // live WebSocket winner.
+                        let missing_current_target = result.as_ref().ok().is_some_and(|contexts| {
+                            request.targets.iter().any(|target| {
+                                if self.symbol_key_is_hidden(&target.symbol) {
+                                    return false;
+                                }
+                                let Some(instance) = self.charts.get(&target.chart_id) else {
+                                    return false;
+                                };
+                                if instance.symbol != target.symbol {
+                                    return false;
+                                }
+                                let response_has_context =
+                                    contexts.iter().any(|(key, _)| key == &target.symbol);
+                                !response_has_context
+                                    && (instance.asset_ctx.is_none()
+                                        || instance.asset_ctx_from_rest)
+                            })
+                        });
+                        if missing_current_target {
+                            self.record_spot_asset_context_rest_failure(now_ms, false);
+                        } else {
+                            self.reset_spot_asset_context_rest_retry();
+                        }
+                    }
+                    return Task::none();
+                }
                 let contexts = result.ok();
                 let mut failed_chart_ids = Vec::new();
-                for (id, symbol) in targets {
-                    let hidden = self.symbol_key_is_hidden(&symbol);
-                    let Some(instance) = self.charts.get_mut(&id) else {
+                for target in request.targets {
+                    let hidden = self.symbol_key_is_hidden(&target.symbol);
+                    let Some(instance) = self.charts.get_mut(&target.chart_id) else {
                         continue;
                     };
-                    instance.asset_ctx_rest_in_flight = false;
-                    if instance.symbol != symbol || hidden {
+                    if instance.asset_ctx_rest_request.as_ref() != Some(&target) {
+                        continue;
+                    }
+                    instance.asset_ctx_rest_request = None;
+                    if instance.symbol != target.symbol || hidden {
                         instance.reset_asset_context_rest_retry();
                         continue;
                     }
                     let context = contexts.as_ref().and_then(|contexts| {
-                        contexts
-                            .iter()
-                            .find_map(|(key, context)| (key == &symbol).then_some(context.clone()))
+                        contexts.iter().find_map(|(key, context)| {
+                            (key == &target.symbol).then_some(context.clone())
+                        })
                     });
                     if let Some(context) = context {
                         if instance.asset_ctx.is_none() || instance.asset_ctx_from_rest {
@@ -361,7 +417,7 @@ impl TradingTerminal {
                         instance.reset_asset_context_rest_retry();
                     } else {
                         instance.record_asset_context_rest_failure(now_ms, rate_limited);
-                        failed_chart_ids.push(id);
+                        failed_chart_ids.push(target.chart_id);
                     }
                 }
                 // Every missing chart shared one response. Give them the same
@@ -484,38 +540,60 @@ impl TradingTerminal {
         let spot_global_backoff_elapsed = self
             .spot_asset_context_rest_next_attempt_at_ms
             .is_none_or(|next_attempt_ms| now_ms >= next_attempt_ms);
-        if !self.spot_asset_context_rest_in_flight
+        if self.spot_asset_context_rest_request.is_none()
             && spot_global_backoff_elapsed
             && !spot_targets.is_empty()
         {
-            self.spot_asset_context_rest_in_flight = true;
-            for (id, _) in &spot_targets {
-                if let Some(instance) = self.charts.get_mut(id) {
-                    instance.asset_ctx_rest_in_flight = true;
+            let request_id = self.allocate_chart_asset_context_rest_request_id();
+            let targets = spot_targets
+                .into_iter()
+                .map(|(chart_id, symbol)| ChartAssetContextRestRequest {
+                    chart_id,
+                    chart_instance_generation: self.chart_instance_generation,
+                    request_id,
+                    symbol,
+                })
+                .collect::<Vec<_>>();
+            let request = ChartSpotAssetContextsRestRequest {
+                chart_instance_generation: self.chart_instance_generation,
+                request_id,
+                targets,
+            };
+            for target in &request.targets {
+                if let Some(instance) = self.charts.get_mut(&target.chart_id) {
+                    instance.asset_ctx_rest_request = Some(target.clone());
                 }
             }
-            let fetch_symbols = spot_targets
+            let fetch_symbols = request
+                .targets
                 .iter()
-                .map(|(_, symbol)| symbol.clone())
+                .map(|target| target.symbol.clone())
                 .collect();
+            self.spot_asset_context_rest_request = Some(request.clone());
             tasks.push(Task::perform(
                 crate::api::fetch_spot_chart_asset_contexts(fetch_symbols),
                 move |result| {
-                    Message::ChartSpotAssetContextsRestFetched(spot_targets.clone(), result)
+                    Message::ChartSpotAssetContextsRestFetched(request.clone(), result.into())
                 },
             ));
         }
 
-        tasks.extend(other_targets.into_iter().map(|(id, symbol)| {
-            if let Some(instance) = self.charts.get_mut(&id) {
-                instance.asset_ctx_rest_in_flight = true;
+        for (chart_id, symbol) in other_targets {
+            let request = ChartAssetContextRestRequest {
+                chart_id,
+                chart_instance_generation: self.chart_instance_generation,
+                request_id: self.allocate_chart_asset_context_rest_request_id(),
+                symbol,
+            };
+            if let Some(instance) = self.charts.get_mut(&request.chart_id) {
+                instance.asset_ctx_rest_request = Some(request.clone());
             }
-            let fetch_symbol = symbol.clone();
-            Task::perform(
+            let fetch_symbol = request.symbol.clone();
+            tasks.push(Task::perform(
                 crate::api::fetch_chart_asset_context(fetch_symbol),
-                move |result| Message::ChartAssetContextRestFetched(id, symbol.clone(), result),
-            )
-        }));
+                move |result| Message::ChartAssetContextRestFetched(request.clone(), result.into()),
+            ));
+        }
         tasks
     }
 
@@ -789,21 +867,68 @@ mod tests {
         terminal
     }
 
+    fn install_asset_context_rest_request(
+        terminal: &mut TradingTerminal,
+        chart_id: ChartId,
+        symbol: &str,
+        request_id: u64,
+    ) -> ChartAssetContextRestRequest {
+        let request = ChartAssetContextRestRequest {
+            chart_id,
+            chart_instance_generation: terminal.chart_instance_generation,
+            request_id,
+            symbol: symbol.to_string(),
+        };
+        terminal
+            .charts
+            .get_mut(&chart_id)
+            .expect("asset-context target chart")
+            .asset_ctx_rest_request = Some(request.clone());
+        request
+    }
+
+    fn install_spot_asset_context_rest_request(
+        terminal: &mut TradingTerminal,
+        targets: &[(ChartId, &str)],
+        request_id: u64,
+    ) -> ChartSpotAssetContextsRestRequest {
+        let targets = targets
+            .iter()
+            .map(|(chart_id, symbol)| ChartAssetContextRestRequest {
+                chart_id: *chart_id,
+                chart_instance_generation: terminal.chart_instance_generation,
+                request_id,
+                symbol: (*symbol).to_string(),
+            })
+            .collect::<Vec<_>>();
+        for target in &targets {
+            terminal
+                .charts
+                .get_mut(&target.chart_id)
+                .expect("spot asset-context target chart")
+                .asset_ctx_rest_request = Some(target.clone());
+        }
+        let request = ChartSpotAssetContextsRestRequest {
+            chart_instance_generation: terminal.chart_instance_generation,
+            request_id,
+            targets,
+        };
+        terminal.spot_asset_context_rest_request = Some(request.clone());
+        request
+    }
+
     #[test]
     fn rest_fetch_fills_missing_hip3_asset_context() {
         let mut terminal = terminal_with_hip3_chart();
-        if let Some(instance) = terminal.charts.get_mut(&7) {
-            instance.asset_ctx_rest_in_flight = true;
-        }
+        let request = install_asset_context_rest_request(&mut terminal, 7, "xyz:NVDA", 1);
 
         let _task = terminal.update_chart(Message::ChartAssetContextRestFetched(
-            7,
-            "xyz:NVDA".to_string(),
-            Ok(Some(asset_ctx_with_metrics("11560.744", "987654.0"))),
+            request,
+            Ok(Some(asset_ctx_with_metrics("11560.744", "987654.0"))).into(),
         ));
 
         let instance = &terminal.charts[&7];
-        assert!(!instance.asset_ctx_rest_in_flight);
+        assert!(instance.asset_ctx_rest_request.is_none());
         let ctx = instance.asset_ctx.as_ref().expect("rest-filled asset_ctx");
         assert_eq!(ctx.open_interest.as_deref(), Some("11560.744"));
         assert_eq!(ctx.day_ntl_vlm.as_deref(), Some("987654.0"));
@@ -813,6 +938,7 @@ mod tests {
     #[test]
     fn rest_fetch_does_not_clobber_live_ws_context() {
         let mut terminal = terminal_with_hip3_chart();
+        let request = install_asset_context_rest_request(&mut terminal, 7, "xyz:NVDA", 1);
         let now_ms = TradingTerminal::now_ms();
         if let Some(instance) = terminal.charts.get_mut(&7) {
             // Live WebSocket context (set_asset_context_at marks it WS-sourced).
@@ -820,9 +946,8 @@ mod tests {
         }
 
         let _task = terminal.update_chart(Message::ChartAssetContextRestFetched(
-            7,
-            "xyz:NVDA".to_string(),
-            Ok(Some(asset_ctx_with_metrics("9999.0", "8888.0"))),
+            request,
+            Ok(Some(asset_ctx_with_metrics("9999.0", "8888.0"))).into(),
         ));
 
         let instance = &terminal.charts[&7];
@@ -834,20 +959,63 @@ mod tests {
     #[test]
     fn rest_fetch_ignored_after_symbol_change() {
         let mut terminal = terminal_with_hip3_chart();
-        if let Some(instance) = terminal.charts.get_mut(&7) {
-            instance.asset_ctx_rest_in_flight = true;
-        }
+        let request = install_asset_context_rest_request(&mut terminal, 7, "xyz:TSLA", 1);
 
         // The fetch resolves for a symbol the chart no longer displays.
         let _task = terminal.update_chart(Message::ChartAssetContextRestFetched(
-            7,
-            "xyz:TSLA".to_string(),
-            Ok(Some(asset_ctx_with_metrics("1.0", "2.0"))),
+            request,
+            Ok(Some(asset_ctx_with_metrics("1.0", "2.0"))).into(),
         ));
 
         let instance = &terminal.charts[&7];
         assert!(instance.asset_ctx.is_none());
-        assert!(!instance.asset_ctx_rest_in_flight);
+        assert!(instance.asset_ctx_rest_request.is_none());
+    }
+
+    #[test]
+    fn recreated_chart_rejects_prior_layout_rest_context_result() {
+        let mut terminal = terminal_with_hip3_chart();
+        terminal.chart_instance_generation = 2;
+        let prior_request = ChartAssetContextRestRequest {
+            chart_id: 7,
+            chart_instance_generation: 1,
+            request_id: 1,
+            symbol: "xyz:NVDA".to_string(),
+        };
+        let current_request = install_asset_context_rest_request(&mut terminal, 7, "xyz:NVDA", 2);
+
+        let _task = terminal.update_chart(Message::ChartAssetContextRestFetched(
+            prior_request,
+            Ok(Some(asset_ctx_with_metrics("11560.744", "987654.0"))).into(),
+        ));
+
+        let recreated = &terminal.charts[&7];
+        assert_eq!(
+            recreated.asset_ctx_rest_request.as_ref(),
+            Some(&current_request)
+        );
+        assert!(recreated.asset_ctx.is_none());
+    }
+
+    #[test]
+    fn newer_individual_rest_request_rejects_older_same_incarnation_result() {
+        let mut terminal = terminal_with_hip3_chart();
+        let prior_request = install_asset_context_rest_request(&mut terminal, 7, "xyz:NVDA", 1);
+        let current_request = install_asset_context_rest_request(&mut terminal, 7, "xyz:NVDA", 2);
+
+        let _task = terminal.update_chart(Message::ChartAssetContextRestFetched(
+            prior_request,
+            Err("stale request was rate limited (HTTP 429)".to_string()).into(),
+        ));
+
+        let instance = &terminal.charts[&7];
+        assert_eq!(
+            instance.asset_ctx_rest_request.as_ref(),
+            Some(&current_request)
+        );
+        assert!(instance.asset_ctx.is_none());
+        assert_eq!(instance.asset_ctx_rest_failures, 0);
+        assert_eq!(instance.asset_ctx_rest_next_attempt_at_ms, None);
     }
 
     #[test]
@@ -857,11 +1025,31 @@ mod tests {
 
         let tasks = terminal.queue_chart_asset_context_rest_fetches(now_ms);
         assert_eq!(tasks.len(), 1);
-        assert!(terminal.charts[&7].asset_ctx_rest_in_flight);
+        assert!(terminal.charts[&7].asset_ctx_rest_request.is_some());
 
         // A fetch already in flight is not duplicated.
         let tasks = terminal.queue_chart_asset_context_rest_fetches(now_ms);
         assert!(tasks.is_empty());
+    }
+
+    #[test]
+    fn individual_rest_request_allocator_wraps_with_full_owner_context() {
+        let mut terminal = terminal_with_hip3_chart();
+        terminal.next_chart_asset_context_rest_request_id = u64::MAX;
+        let expected_generation = terminal.chart_instance_generation;
+
+        let tasks = terminal.queue_chart_asset_context_rest_fetches(TradingTerminal::now_ms());
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(terminal.next_chart_asset_context_rest_request_id, 0);
+        let request = terminal.charts[&7]
+            .asset_ctx_rest_request
+            .as_ref()
+            .expect("active individual REST owner");
+        assert_eq!(request.chart_id, 7);
+        assert_eq!(request.chart_instance_generation, expected_generation);
+        assert_eq!(request.request_id, 0);
+        assert_eq!(request.symbol.as_str(), "xyz:NVDA");
     }
 
     #[test]
@@ -872,9 +1060,19 @@ mod tests {
         let tasks = terminal.queue_chart_asset_context_rest_fetches(now_ms);
 
         assert_eq!(tasks.len(), 1, "one full-universe spot request is enough");
-        assert!(terminal.spot_asset_context_rest_in_flight);
-        assert!(terminal.charts[&7].asset_ctx_rest_in_flight);
-        assert!(terminal.charts[&8].asset_ctx_rest_in_flight);
+        let request = terminal
+            .spot_asset_context_rest_request
+            .as_ref()
+            .expect("active coalesced spot request");
+        assert!(
+            request
+                .targets
+                .iter()
+                .all(|target| target.request_id == request.request_id
+                    && target.chart_instance_generation == request.chart_instance_generation)
+        );
+        assert!(terminal.charts[&7].asset_ctx_rest_request.is_some());
+        assert!(terminal.charts[&8].asset_ctx_rest_request.is_some());
         assert!(
             terminal
                 .queue_chart_asset_context_rest_fetches(now_ms + 1_000)
@@ -888,7 +1086,10 @@ mod tests {
         let mut terminal = terminal_with_spot_charts();
         let now_ms = TradingTerminal::now_ms();
         let _tasks = terminal.queue_chart_asset_context_rest_fetches(now_ms);
-        assert!(terminal.spot_asset_context_rest_in_flight);
+        let request = terminal
+            .spot_asset_context_rest_request
+            .clone()
+            .expect("active spot request");
 
         terminal.charts.clear();
         terminal
@@ -902,10 +1103,10 @@ mod tests {
         );
 
         let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
-            vec![(7, "@107".to_string()), (8, "PURR/USDC".to_string())],
-            Ok(Vec::new()),
+            request,
+            Ok(Vec::new()).into(),
         ));
-        assert!(!terminal.spot_asset_context_rest_in_flight);
+        assert!(terminal.spot_asset_context_rest_request.is_none());
         assert_eq!(
             terminal
                 .queue_chart_asset_context_rest_fetches(now_ms + 2)
@@ -915,26 +1116,235 @@ mod tests {
     }
 
     #[test]
+    fn recreated_spot_charts_reject_prior_layout_batch_result() {
+        let mut terminal = terminal_with_spot_charts();
+        terminal.chart_instance_generation = 2;
+        let prior_targets = vec![
+            ChartAssetContextRestRequest {
+                chart_id: 7,
+                chart_instance_generation: 1,
+                request_id: 1,
+                symbol: "@107".to_string(),
+            },
+            ChartAssetContextRestRequest {
+                chart_id: 8,
+                chart_instance_generation: 1,
+                request_id: 1,
+                symbol: "PURR/USDC".to_string(),
+            },
+        ];
+        let prior_request = ChartSpotAssetContextsRestRequest {
+            chart_instance_generation: 1,
+            request_id: 1,
+            targets: prior_targets,
+        };
+        let current_request = install_spot_asset_context_rest_request(
+            &mut terminal,
+            &[(7, "@107"), (8, "PURR/USDC")],
+            2,
+        );
+
+        let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
+            prior_request,
+            Ok(vec![
+                ("@107".to_string(), asset_ctx("25.0")),
+                ("PURR/USDC".to_string(), asset_ctx("0.2")),
+            ])
+            .into(),
+        ));
+
+        assert_eq!(
+            terminal.spot_asset_context_rest_request.as_ref(),
+            Some(&current_request)
+        );
+        for target in &current_request.targets {
+            let id = target.chart_id;
+            let recreated = &terminal.charts[&id];
+            assert_eq!(recreated.asset_ctx_rest_request.as_ref(), Some(target));
+            assert!(recreated.asset_ctx.is_none());
+        }
+    }
+
+    #[test]
+    fn newer_spot_batch_rejects_older_same_incarnation_result() {
+        let mut terminal = terminal_with_spot_charts();
+        let prior_request = install_spot_asset_context_rest_request(
+            &mut terminal,
+            &[(7, "@107"), (8, "PURR/USDC")],
+            1,
+        );
+        let current_request = install_spot_asset_context_rest_request(
+            &mut terminal,
+            &[(7, "@107"), (8, "PURR/USDC")],
+            2,
+        );
+
+        let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
+            prior_request,
+            Err("stale batch was rate limited (HTTP 429)".to_string()).into(),
+        ));
+
+        assert_eq!(
+            terminal.spot_asset_context_rest_request.as_ref(),
+            Some(&current_request)
+        );
+        assert_eq!(terminal.spot_asset_context_rest_failures, 0);
+        assert_eq!(terminal.spot_asset_context_rest_next_attempt_at_ms, None);
+        for target in &current_request.targets {
+            let instance = &terminal.charts[&target.chart_id];
+            assert_eq!(instance.asset_ctx_rest_request.as_ref(), Some(target));
+            assert!(instance.asset_ctx.is_none());
+            assert_eq!(instance.asset_ctx_rest_failures, 0);
+            assert_eq!(instance.asset_ctx_rest_next_attempt_at_ms, None);
+        }
+    }
+
+    #[test]
+    fn prior_layout_spot_success_terminalizes_only_global_endpoint_state() {
+        let mut terminal = terminal_with_spot_charts();
+        let prior_request = install_spot_asset_context_rest_request(
+            &mut terminal,
+            &[(7, "@107"), (8, "PURR/USDC")],
+            1,
+        );
+        terminal.spot_asset_context_rest_failures = 2;
+        terminal.spot_asset_context_rest_next_attempt_at_ms = Some(u64::MAX);
+
+        terminal.chart_instance_generation = terminal.chart_instance_generation.wrapping_add(1);
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(7, ChartInstance::new(7, "@107".to_string(), Timeframe::H1));
+        terminal.charts.insert(
+            8,
+            ChartInstance::new(8, "PURR/USDC".to_string(), Timeframe::H1),
+        );
+
+        let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
+            prior_request,
+            Ok(vec![
+                ("@107".to_string(), asset_ctx("25.0")),
+                ("PURR/USDC".to_string(), asset_ctx("0.2")),
+            ])
+            .into(),
+        ));
+
+        assert!(terminal.spot_asset_context_rest_request.is_none());
+        assert_eq!(terminal.spot_asset_context_rest_failures, 0);
+        assert_eq!(terminal.spot_asset_context_rest_next_attempt_at_ms, None);
+        for id in [7, 8] {
+            let instance = &terminal.charts[&id];
+            assert!(instance.asset_ctx_rest_request.is_none());
+            assert!(instance.asset_ctx.is_none());
+        }
+    }
+
+    #[test]
+    fn prior_layout_spot_rate_limit_updates_only_global_endpoint_backoff() {
+        let mut terminal = terminal_with_spot_charts();
+        let prior_request = install_spot_asset_context_rest_request(
+            &mut terminal,
+            &[(7, "@107"), (8, "PURR/USDC")],
+            1,
+        );
+
+        terminal.chart_instance_generation = terminal.chart_instance_generation.wrapping_add(1);
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(7, ChartInstance::new(7, "@107".to_string(), Timeframe::H1));
+        terminal.charts.insert(
+            8,
+            ChartInstance::new(8, "PURR/USDC".to_string(), Timeframe::H1),
+        );
+
+        let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
+            prior_request,
+            Err("spotMetaAndAssetCtxs rate limited (HTTP 429)".to_string()).into(),
+        ));
+
+        assert!(terminal.spot_asset_context_rest_request.is_none());
+        assert_eq!(terminal.spot_asset_context_rest_failures, 1);
+        assert!(
+            terminal
+                .spot_asset_context_rest_next_attempt_at_ms
+                .is_some()
+        );
+        for id in [7, 8] {
+            let instance = &terminal.charts[&id];
+            assert!(instance.asset_ctx_rest_request.is_none());
+            assert!(instance.asset_ctx.is_none());
+            assert_eq!(instance.asset_ctx_rest_failures, 0);
+            assert_eq!(instance.asset_ctx_rest_next_attempt_at_ms, None);
+        }
+    }
+
+    #[test]
+    fn prior_layout_partial_spot_success_preserves_only_global_backoff() {
+        let mut terminal = terminal_with_spot_charts();
+        let prior_request = install_spot_asset_context_rest_request(
+            &mut terminal,
+            &[(7, "@107"), (8, "PURR/USDC")],
+            1,
+        );
+
+        terminal.chart_instance_generation = terminal.chart_instance_generation.wrapping_add(1);
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(7, ChartInstance::new(7, "@107".to_string(), Timeframe::H1));
+        terminal.charts.insert(
+            8,
+            ChartInstance::new(8, "PURR/USDC".to_string(), Timeframe::H1),
+        );
+
+        let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
+            prior_request,
+            Ok(vec![("@107".to_string(), asset_ctx("25.0"))]).into(),
+        ));
+
+        assert!(terminal.spot_asset_context_rest_request.is_none());
+        assert_eq!(terminal.spot_asset_context_rest_failures, 1);
+        assert!(
+            terminal
+                .spot_asset_context_rest_next_attempt_at_ms
+                .is_some()
+        );
+        for id in [7, 8] {
+            let instance = &terminal.charts[&id];
+            assert!(instance.asset_ctx_rest_request.is_none());
+            assert!(instance.asset_ctx.is_none());
+            assert_eq!(instance.asset_ctx_rest_failures, 0);
+            assert_eq!(instance.asset_ctx_rest_next_attempt_at_ms, None);
+        }
+    }
+
+    #[test]
     fn coalesced_spot_result_fills_each_target_and_clears_backoff() {
         let mut terminal = terminal_with_spot_charts();
+        let request = install_spot_asset_context_rest_request(
+            &mut terminal,
+            &[(7, "@107"), (8, "PURR/USDC")],
+            1,
+        );
         for instance in terminal.charts.values_mut() {
-            instance.asset_ctx_rest_in_flight = true;
             instance.record_asset_context_rest_failure(1_000, false);
         }
 
         let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
-            vec![(7, "@107".to_string()), (8, "PURR/USDC".to_string())],
+            request,
             Ok(vec![
                 ("@107".to_string(), asset_ctx("25.0")),
                 ("PURR/USDC".to_string(), asset_ctx("0.2")),
-            ]),
+            ])
+            .into(),
         ));
 
         for id in [7, 8] {
             let instance = &terminal.charts[&id];
             assert!(instance.asset_ctx.is_some());
             assert!(instance.asset_ctx_from_rest);
-            assert!(!instance.asset_ctx_rest_in_flight);
+            assert!(instance.asset_ctx_rest_request.is_none());
             assert_eq!(instance.asset_ctx_rest_failures, 0);
             assert_eq!(instance.asset_ctx_rest_next_attempt_at_ms, None);
         }
@@ -972,13 +1382,15 @@ mod tests {
     #[test]
     fn missing_symbol_in_successful_spot_batch_does_not_retry_each_second() {
         let mut terminal = terminal_with_spot_charts();
-        for instance in terminal.charts.values_mut() {
-            instance.asset_ctx_rest_in_flight = true;
-        }
+        let request = install_spot_asset_context_rest_request(
+            &mut terminal,
+            &[(7, "@107"), (8, "PURR/USDC")],
+            1,
+        );
 
         let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
-            vec![(7, "@107".to_string()), (8, "PURR/USDC".to_string())],
-            Ok(vec![("@107".to_string(), asset_ctx("25.0"))]),
+            request,
+            Ok(vec![("@107".to_string(), asset_ctx("25.0"))]).into(),
         ));
 
         assert!(terminal.charts[&7].asset_ctx.is_some());
@@ -1006,14 +1418,15 @@ mod tests {
     #[test]
     fn empty_successful_spot_batch_sets_global_backoff() {
         let mut terminal = terminal_with_spot_charts();
-        terminal.spot_asset_context_rest_in_flight = true;
-        for instance in terminal.charts.values_mut() {
-            instance.asset_ctx_rest_in_flight = true;
-        }
+        let request = install_spot_asset_context_rest_request(
+            &mut terminal,
+            &[(7, "@107"), (8, "PURR/USDC")],
+            1,
+        );
 
         let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
-            vec![(7, "@107".to_string()), (8, "PURR/USDC".to_string())],
-            Ok(Vec::new()),
+            request,
+            Ok(Vec::new()).into(),
         ));
 
         assert_eq!(terminal.spot_asset_context_rest_failures, 1);
@@ -1035,13 +1448,15 @@ mod tests {
     #[test]
     fn spot_endpoint_rate_limit_sets_global_guard_for_new_charts() {
         let mut terminal = terminal_with_spot_charts();
-        for instance in terminal.charts.values_mut() {
-            instance.asset_ctx_rest_in_flight = true;
-        }
+        let request = install_spot_asset_context_rest_request(
+            &mut terminal,
+            &[(7, "@107"), (8, "PURR/USDC")],
+            1,
+        );
 
         let _task = terminal.update_chart(Message::ChartSpotAssetContextsRestFetched(
-            vec![(7, "@107".to_string()), (8, "PURR/USDC".to_string())],
-            Err("spotMetaAndAssetCtxs rate limited (HTTP 429)".to_string()),
+            request,
+            Err("spotMetaAndAssetCtxs rate limited (HTTP 429)".to_string()).into(),
         ));
 
         assert_eq!(terminal.spot_asset_context_rest_failures, 1);
@@ -1073,7 +1488,7 @@ mod tests {
 
         let tasks = terminal.queue_chart_asset_context_rest_fetches(now_ms);
         assert!(tasks.is_empty());
-        assert!(!terminal.charts[&7].asset_ctx_rest_in_flight);
+        assert!(terminal.charts[&7].asset_ctx_rest_request.is_none());
     }
 
     #[test]
@@ -1096,7 +1511,12 @@ mod tests {
 
         // An in-flight fetch suppresses duplicates.
         instance.set_asset_context(None);
-        instance.asset_ctx_rest_in_flight = true;
+        instance.asset_ctx_rest_request = Some(ChartAssetContextRestRequest {
+            chart_id: 7,
+            chart_instance_generation: 1,
+            request_id: 1,
+            symbol: "xyz:NVDA".to_string(),
+        });
         assert!(!instance.needs_rest_asset_context(now_ms, refresh_ms));
     }
 }

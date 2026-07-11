@@ -92,6 +92,8 @@ impl ChartBackfillFetchContext {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FundingFetchRequest {
     pub(crate) chart_id: ChartId,
+    pub(crate) chart_instance_generation: u64,
+    pub(crate) request_id: u64,
     pub(crate) symbol: String,
     pub(crate) coin: String,
     pub(crate) hydromancer_key_generation: u64,
@@ -104,6 +106,21 @@ pub(crate) struct FundingFetchRequest {
 pub(crate) enum FundingFetchMode {
     Snapshot,
     Incremental,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ChartAssetContextRestRequest {
+    pub(crate) chart_id: ChartId,
+    pub(crate) chart_instance_generation: u64,
+    pub(crate) request_id: u64,
+    pub(crate) symbol: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ChartSpotAssetContextsRestRequest {
+    pub(crate) chart_instance_generation: u64,
+    pub(crate) request_id: u64,
+    pub(crate) targets: Vec<ChartAssetContextRestRequest>,
 }
 
 /// Per-chart instance state. Each chart pane has its own symbol, timeframe,
@@ -123,9 +140,10 @@ pub(crate) struct ChartInstance {
     /// context is refreshed on a timer and is always superseded by a live WS
     /// push; it is never allowed to clobber WS data.
     pub(crate) asset_ctx_from_rest: bool,
-    /// Whether a REST asset-context fetch is currently in flight for this chart
-    /// (dedupes the status-tick poller).
-    pub(crate) asset_ctx_rest_in_flight: bool,
+    /// Exact REST asset-context owner for this chart. This dedupes the status-
+    /// tick poller and prevents stale layout/request completions from clearing
+    /// or replacing newer context work.
+    pub(crate) asset_ctx_rest_request: Option<ChartAssetContextRestRequest>,
     /// Consecutive REST fallback failures and the earliest retry time. Missing
     /// symbols, transport failures, and rate limits back off instead of being
     /// retried by every one-second status tick.
@@ -218,6 +236,8 @@ pub(crate) struct ChartInstance {
     pub(crate) earnings_pending_ticker: Option<String>,
     /// Latest in-flight funding history request for stale-response guards.
     pub(crate) funding_fetch_request: Option<FundingFetchRequest>,
+    /// Latest allocated funding request ID for this chart incarnation.
+    pub(crate) funding_request_id: u64,
     /// Last time this chart attempted a funding history fetch.
     pub(crate) funding_last_attempt_ms: Option<u64>,
     /// Latest macro candle request batch for stale-response guards.

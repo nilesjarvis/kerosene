@@ -120,7 +120,9 @@ Persisted through:
 Representative fields:
 
 - `charts: HashMap<ChartId, ChartInstance>`
-- `next_chart_id`, `primary_chart_id`
+- `next_chart_id`, `primary_chart_id`, and the runtime chart-incarnation
+  generation
+- the chart asset-context REST request allocator and coalesced spot owner
 - `chart_surface_viewports`
 - detached chart window state
 - `spaghetti_charts: HashMap<SpaghettiChartId, SpaghettiChartInstance>`

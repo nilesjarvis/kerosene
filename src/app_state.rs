@@ -7,7 +7,10 @@ use crate::api::{self, ExchangeSymbol};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart::ChartViewport;
 use crate::chart_screenshot::ChartScreenshotState;
-use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId, DetachedChartWindowState};
+use crate::chart_state::{
+    ChartId, ChartInstance, ChartSpotAssetContextsRestRequest, ChartSurfaceId,
+    DetachedChartWindowState,
+};
 use crate::hype_etf_state::HypeEtfState;
 use crate::hype_unstaking_state::HypeUnstakingQueueState;
 use crate::hyperdash_api::LiquidationHeatmap;
@@ -374,10 +377,13 @@ pub(crate) struct TradingTerminal {
     /// loaded spot markets remain visible, but new orders are fail-closed
     /// until a complete `spotMeta` response is verified.
     pub(crate) spot_metadata_degraded: bool,
-    /// Global guard for the full-universe spot chart-context endpoint. This is
-    /// separate from per-chart missing-symbol backoff so an endpoint outage or
-    /// HTTP 429 cannot be bypassed by opening another chart.
-    pub(crate) spot_asset_context_rest_in_flight: bool,
+    /// Runtime-only allocator shared by individual and coalesced chart-context
+    /// REST requests across chart reconstruction.
+    pub(crate) next_chart_asset_context_rest_request_id: u64,
+    /// Exact global owner for the full-universe spot chart-context endpoint.
+    /// This is separate from per-chart missing-symbol backoff so an endpoint
+    /// outage or HTTP 429 cannot be bypassed by opening another chart.
+    pub(crate) spot_asset_context_rest_request: Option<ChartSpotAssetContextsRestRequest>,
     pub(crate) spot_asset_context_rest_failures: u8,
     pub(crate) spot_asset_context_rest_next_attempt_at_ms: Option<u64>,
     /// Persisted display labels for outcome trade coins ("#NNN" -> label) so

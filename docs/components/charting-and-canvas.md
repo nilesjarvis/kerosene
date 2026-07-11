@@ -121,15 +121,31 @@ Funding state is split between:
 - `chart_update/macro_indicators.rs`
 - `chart/candle_layer/funding/`
 
-Funding fetch requests include chart ID, symbol, coin, range, and mode
-(`Snapshot` or `Incremental`). Funding panels have their own range and chrome,
-and can be resized through chart messages.
+Funding fetch requests include chart ID, the runtime chart incarnation, a
+per-chart wrapping request ID, symbol, coin, Hydromancer-key generation, range,
+and mode (`Snapshot` or `Incremental`). A completion must equal the stored
+request before it can clear loading state or apply data. The incarnation keeps
+an old layout task away from a reconstructed chart with the same ID, while the
+request ID separates otherwise identical work reissued after a funding toggle
+or refresh. Funding panels have their own range and chrome, and can be resized
+through chart messages.
 
 ## Asset Context And Header Metrics
 
 Asset context streams supply mark/oracle/mid/open-interest/funding-like metadata
 for chart headers and overlays. `ChartWsAssetCtxUpdate` applies matching
 contexts to chart instances unless the symbol is hidden.
+
+REST asset-context fallback work has an exact runtime owner containing chart
+ID, chart incarnation, request ID, and symbol. Spot charts share one coalesced
+full-universe owner whose target records are also installed on the individual
+charts. Only the matching completion may release either owner, update retry
+state, or fill a context. A surviving prior-layout spot task terminalizes its
+own global endpoint guard and complete/partial/error backoff outcome but cannot
+touch reconstructed charts, and an older same-incarnation completion cannot
+clear newer work. The established source precedence remains unchanged: a live
+websocket context always wins a race with REST, and REST retains its existing
+refresh and backoff cadence.
 
 Header metric display modes can show values as raw or USD notional depending on
 the market and user preference.

@@ -432,6 +432,16 @@ registered source waiter, preventing both a stranded copied loading state and
 cross-request attachment. Exact public content, status/toast copy, filing URL,
 cache behavior, markers, and chart interaction remain unchanged.
 
+Funding-history and chart asset-context REST completions use the same
+public-market result boundary. Parent diagnostics retain public request
+correlation and `Ok`/`Err` shape without traversing funding points, asset
+contexts, batch maps, or upstream errors. Funding results are recovered only
+after chart-incarnation, Hydromancer-key-generation, and exact stored-request
+checks. Individual and coalesced asset-context results are recovered only after
+their exact runtime owners accept them; the existing live-websocket-wins rule
+then governs context application. Exact public values, retry timing, header and
+overlay rendering, and chart/order interaction remain unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

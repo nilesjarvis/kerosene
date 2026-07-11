@@ -27,7 +27,7 @@ impl ChartInstance {
             asset_ctx: None,
             asset_ctx_updated_at_ms: None,
             asset_ctx_from_rest: false,
-            asset_ctx_rest_in_flight: false,
+            asset_ctx_rest_request: None,
             asset_ctx_rest_failures: 0,
             asset_ctx_rest_next_attempt_at_ms: None,
             editor_open: false,
@@ -73,6 +73,7 @@ impl ChartInstance {
             earnings_status: None,
             earnings_pending_ticker: None,
             funding_fetch_request: None,
+            funding_request_id: 0,
             funding_last_attempt_ms: None,
             macro_candles_request_id: 0,
             macro_indicators: config::MacroIndicatorsConfig::default(),
@@ -139,7 +140,7 @@ impl ChartInstance {
             asset_ctx: self.asset_ctx.clone(),
             asset_ctx_updated_at_ms: self.asset_ctx_updated_at_ms,
             asset_ctx_from_rest: self.asset_ctx_from_rest,
-            asset_ctx_rest_in_flight: false,
+            asset_ctx_rest_request: None,
             asset_ctx_rest_failures: 0,
             asset_ctx_rest_next_attempt_at_ms: None,
             editor_open: false,
@@ -185,6 +186,7 @@ impl ChartInstance {
             earnings_status: self.earnings_status.clone(),
             earnings_pending_ticker: None,
             funding_fetch_request: None,
+            funding_request_id: 0,
             funding_last_attempt_ms: self.funding_last_attempt_ms,
             macro_candles_request_id: 0,
             macro_indicators: self.macro_indicators.clone(),
@@ -271,7 +273,7 @@ impl ChartInstance {
     /// `MARKET_ASSET_CONTEXT_MAX_AGE_MS` to avoid a flicker between expiry and
     /// the refreshed fetch landing.
     pub(crate) fn needs_rest_asset_context(&self, now_ms: u64, refresh_ms: u64) -> bool {
-        if self.asset_ctx_rest_in_flight
+        if self.asset_ctx_rest_request.is_some()
             || self.symbol.is_empty()
             || self
                 .asset_ctx_rest_next_attempt_at_ms
@@ -326,7 +328,7 @@ impl ChartInstance {
             asset_ctx: None,
             asset_ctx_updated_at_ms: None,
             asset_ctx_from_rest: false,
-            asset_ctx_rest_in_flight: false,
+            asset_ctx_rest_request: None,
             asset_ctx_rest_failures: 0,
             asset_ctx_rest_next_attempt_at_ms: None,
             editor_open: true,
@@ -372,6 +374,7 @@ impl ChartInstance {
             earnings_status: None,
             earnings_pending_ticker: None,
             funding_fetch_request: None,
+            funding_request_id: 0,
             funding_last_attempt_ms: None,
             macro_candles_request_id: 0,
             macro_indicators: config::MacroIndicatorsConfig::default(),

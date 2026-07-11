@@ -2,7 +2,7 @@ use super::{ChartId, ChartInstance, FundingFetchMode, FundingFetchRequest};
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::hydromancer_api::{FundingRatePoint, fetch_funding_history};
-use crate::message::Message;
+use crate::message::{Message, RedactedPublicMarketMessageResult};
 use iced::Task;
 
 mod planning;
@@ -46,6 +46,8 @@ impl TradingTerminal {
                 self.symbol_key_is_hidden(&instance.symbol),
                 self.hyperdash_coin_for_symbol(&instance.symbol),
                 now_ms,
+                self.chart_instance_generation,
+                instance.funding_request_id.wrapping_add(1),
                 hydromancer_key_generation,
                 false,
             );
@@ -65,6 +67,7 @@ impl TradingTerminal {
         };
 
         if let Some(instance) = self.charts.get_mut(&chart_id) {
+            instance.funding_request_id = planned.request_id;
             instance.funding_fetch_request = Some(planned.clone());
             instance.funding_last_attempt_ms = Some(now_ms);
             instance
@@ -79,7 +82,7 @@ impl TradingTerminal {
                 planned.end_ms,
                 api_key,
             ),
-            move |result| Message::ChartFundingHistoryLoaded(planned.clone(), Box::new(result)),
+            move |result| Message::ChartFundingHistoryLoaded(planned.clone(), result.into()),
         )
     }
 
@@ -130,8 +133,11 @@ impl TradingTerminal {
     pub(crate) fn apply_chart_funding_history_loaded(
         &mut self,
         request: FundingFetchRequest,
-        result: Result<Vec<FundingRatePoint>, String>,
+        result: RedactedPublicMarketMessageResult<Vec<FundingRatePoint>>,
     ) -> Task<Message> {
+        if request.chart_instance_generation != self.chart_instance_generation {
+            return Task::none();
+        }
         if !self.hydromancer_key_generation_is_current(request.hydromancer_key_generation) {
             return Task::none();
         }
@@ -157,7 +163,7 @@ impl TradingTerminal {
             }
 
             instance.funding_fetch_request = None;
-            match result {
+            match result.into_result() {
                 Ok(points) => match request.mode {
                     FundingFetchMode::Snapshot => instance.chart.set_funding_history(points),
                     FundingFetchMode::Incremental => {

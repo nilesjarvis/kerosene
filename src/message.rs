@@ -7,7 +7,10 @@ use crate::api::{self, Candle, OrderBook};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart::ChartViewport;
 use crate::chart_screenshot::ChartScreenshotState;
-use crate::chart_state::{CandleFetchRequest, ChartId, ChartSurfaceId, FundingFetchRequest};
+use crate::chart_state::{
+    CandleFetchRequest, ChartAssetContextRestRequest, ChartId, ChartSpotAssetContextsRestRequest,
+    ChartSurfaceId, FundingFetchRequest,
+};
 use crate::config;
 use crate::hydromancer_api::FundingRatePoint;
 use crate::hype_etf_state::{HypeEtfData, HypeEtfView};
@@ -1842,7 +1845,7 @@ pub(crate) enum Message {
     ),
     ChartFundingHistoryLoaded(
         FundingFetchRequest,
-        Box<Result<Vec<FundingRatePoint>, String>>,
+        RedactedPublicMarketMessageResult<Vec<FundingRatePoint>>,
     ),
     MacroCandlesLoaded(
         ChartId,
@@ -1872,14 +1875,17 @@ pub(crate) enum Message {
     ChartEarningsMarkerHoverAnimationTick,
     ChartWsAssetCtxUpdate(ChartId, String, MarketDataSourceContext, AssetContext),
     ChartWsAssetCtxLagged(ChartId, String, MarketDataSourceContext, u64),
-    /// Result of the REST `metaAndAssetCtxs` fallback fetch for a chart symbol
-    /// (chart id, symbol the fetch was issued for, fetched context).
-    ChartAssetContextRestFetched(ChartId, String, Result<Option<AssetContext>, String>),
+    /// Result of the REST `metaAndAssetCtxs` fallback fetch for one exact chart
+    /// incarnation/request owner.
+    ChartAssetContextRestFetched(
+        ChartAssetContextRestRequest,
+        RedactedPublicMarketMessageResult<Option<AssetContext>>,
+    ),
     /// Result of one coalesced `spotMetaAndAssetCtxs` request for every due
     /// spot chart (targets, contexts keyed by symbol).
     ChartSpotAssetContextsRestFetched(
-        Vec<(ChartId, String)>,
-        Result<Vec<(String, AssetContext)>, String>,
+        ChartSpotAssetContextsRestRequest,
+        RedactedPublicMarketMessageResult<Vec<(String, AssetContext)>>,
     ),
     ChartViewportChanged(ChartId, ChartSurfaceId, ChartViewport),
     ChartFundingPanelHeightChanged(ChartId, u16, bool),
@@ -3695,6 +3701,42 @@ mod tests {
             daily: candles(),
             intraday: candles(),
         };
+        let funding_request = || crate::chart_state::FundingFetchRequest {
+            chart_id: 31,
+            chart_instance_generation: 7,
+            request_id: 29,
+            symbol: REQUEST_SYMBOL.to_string(),
+            coin: "PUBLIC-FUNDING-COIN".to_string(),
+            hydromancer_key_generation: 3,
+            start_ms: 1_778_357_590_000,
+            end_ms: 1_778_361_190_000,
+            mode: crate::chart_state::FundingFetchMode::Snapshot,
+        };
+        let asset_context = || crate::account::AssetContext {
+            funding: Some("0.000918273125".to_string()),
+            open_interest: Some("827364.25".to_string()),
+            oracle_px: Some("736455.375".to_string()),
+            mark_px: Some("918273.125".to_string()),
+            mid_px: Some(PAYLOAD_SYMBOL.to_string()),
+            prev_day_px: None,
+            day_ntl_vlm: None,
+            day_base_vlm: None,
+            impact_pxs: Some(vec!["827364.25".to_string(), "918273.125".to_string()]),
+        };
+        let asset_context_request = || crate::chart_state::ChartAssetContextRestRequest {
+            chart_id: 31,
+            chart_instance_generation: 7,
+            request_id: 37,
+            symbol: REQUEST_SYMBOL.to_string(),
+        };
+        let spot_asset_context_request = || crate::chart_state::ChartSpotAssetContextsRestRequest {
+            chart_instance_generation: 7,
+            request_id: 41,
+            targets: vec![crate::chart_state::ChartAssetContextRestRequest {
+                request_id: 41,
+                ..asset_context_request()
+            }],
+        };
         let calendar_events = || {
             vec![crate::api::CalendarEvent {
                 title: PAYLOAD_SYMBOL.to_string(),
@@ -3934,6 +3976,51 @@ mod tests {
                 "987654321",
                 "funds_len",
                 "events_len",
+            ] {
+                assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
+            }
+        }
+
+        for message in [
+            Message::ChartFundingHistoryLoaded(
+                funding_request(),
+                Ok(vec![crate::hydromancer_api::FundingRatePoint {
+                    time_ms: 1_778_359_390_000,
+                    rate: DAY_VALUE,
+                }])
+                .into(),
+            ),
+            Message::ChartFundingHistoryLoaded(funding_request(), Err(ERROR.to_string()).into()),
+            Message::ChartAssetContextRestFetched(
+                asset_context_request(),
+                Ok(Some(asset_context())).into(),
+            ),
+            Message::ChartAssetContextRestFetched(
+                asset_context_request(),
+                Err(ERROR.to_string()).into(),
+            ),
+            Message::ChartSpotAssetContextsRestFetched(
+                spot_asset_context_request(),
+                Ok(vec![(PAYLOAD_SYMBOL.to_string(), asset_context())]).into(),
+            ),
+            Message::ChartSpotAssetContextsRestFetched(
+                spot_asset_context_request(),
+                Err(ERROR.to_string()).into(),
+            ),
+        ] {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains(REQUEST_SYMBOL), "{rendered}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for hidden in [
+                ERROR,
+                PAYLOAD_SYMBOL,
+                "1778359390000",
+                "0.000918273125",
+                "918273.125",
+                "827364.25",
+                "736455.375",
+                "has_mid_px",
+                "impact_pxs_count",
             ] {
                 assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
             }

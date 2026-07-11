@@ -59,11 +59,31 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::Chart,
     );
     assert_route(
-        Message::ChartAssetContextRestFetched(7, "xyz:NVDA".to_string(), Ok(None)),
+        Message::ChartAssetContextRestFetched(
+            crate::chart_state::ChartAssetContextRestRequest {
+                chart_id: 7,
+                chart_instance_generation: 1,
+                request_id: 2,
+                symbol: "xyz:NVDA".to_string(),
+            },
+            Ok(None).into(),
+        ),
         UpdateRoute::Chart,
     );
     assert_route(
-        Message::ChartSpotAssetContextsRestFetched(vec![(7, "@107".to_string())], Ok(Vec::new())),
+        Message::ChartSpotAssetContextsRestFetched(
+            crate::chart_state::ChartSpotAssetContextsRestRequest {
+                chart_instance_generation: 1,
+                request_id: 3,
+                targets: vec![crate::chart_state::ChartAssetContextRestRequest {
+                    chart_id: 7,
+                    chart_instance_generation: 1,
+                    request_id: 3,
+                    symbol: "@107".to_string(),
+                }],
+            },
+            Ok(Vec::new()).into(),
+        ),
         UpdateRoute::Chart,
     );
     assert_route(

@@ -5580,6 +5580,132 @@ target-specific cancellation policy, not HTTP replay.
   inert rather than crossing owners. Funding-history and asset-context
   completion ownership form the next chart-data lifecycle for review.
 
+### F-72 — Funding and REST asset-context completions lack complete runtime ownership
+
+- Status: addressed in Turn 65; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium analytical lifecycle and diagnostic-boundary hardening;
+  stale funding or REST context can reach a reconstructed chart and an older
+  completion can consume newer ownership, but no order preparation, signing,
+  reconciliation, automation, or automatic exchange-mutation path was found
+- Scope: funding-history planning, publication, per-chart owner state, key
+  rotation, toggle/refresh/symbol/layout/detached paths, merge/status/toast and
+  parent diagnostics; individual HIP-3 and coalesced spot asset-context REST
+  planning, publication, global/per-chart guards, retry/backoff, symbol/risk/
+  pane/layout paths, REST-versus-websocket precedence, header/spread/
+  liquidation consumers, routes, persistence, all order consumers, docs, and
+  focused characterization coverage
+- Preconditions/event ordering:
+  1. A funding task returns points or an external error inside a raw boxed
+     result in derived `Message::Debug`. The stored request previously included
+     chart ID, symbol, coin, Hydromancer-key generation, range, and mode, but no
+     chart incarnation or request sequence. A runtime layout can reconstruct
+     the same ID/symbol/range, or a funding toggle/forced refresh can reissue
+     otherwise identical work in the same incarnation; the older completion is
+     then indistinguishable from the current owner.
+  2. An individual `metaAndAssetCtxs` fallback stores only a per-chart Boolean.
+     Its completion carries chart ID and symbol, clears that Boolean before any
+     exact task-owner comparison, and can therefore settle a reconstructed
+     same-ID/symbol chart or clear/apply after newer work.
+  3. A coalesced `spotMetaAndAssetCtxs` fallback likewise stores one global
+     Boolean plus per-chart Booleans. A prior-layout batch can release the
+     shared guard and apply to reconstructed matching IDs/symbols; an older
+     same-incarnation batch can clear a newer global/per-target owner and alter
+     retry state.
+  4. The existing REST handlers correctly refuse to clobber a live websocket
+     context, but that source-precedence rule runs after the missing task-owner
+     boundary. All three raw result fields can also traverse funding points,
+     context structure, batch content, or upstream errors in parent diagnostics
+     before any update-handler check.
+- Evidence: funding has one planner/publisher in `src/chart_state/funding.rs`
+  and one first consumer through `src/chart_update/candles.rs`; candle loads,
+  websocket candles, the funding timer, indicator toggle, Hydromancer refresh,
+  config clear, symbol/timeframe reset, detached construction, and layout
+  reconstruction cover its scheduling and invalidation paths. Asset-context
+  REST work has one status-tick planner and the two sole publishers/consumers in
+  `src/chart_update.rs`; `ChartInstance::needs_rest_asset_context` owns the
+  per-chart cadence, while terminal state owns the shared spot endpoint backoff.
+  The websocket source context already fences provider/key generations and the
+  REST result arms already implement live-stream precedence. Runtime layout
+  restoration advances `chart_instance_generation` before replacing charts,
+  but none of these three completion families previously carried it. Funding
+  data renders only in its analytical panel. Asset context feeds header metrics,
+  spread history, and liquidation overlay planning; chart HUD/order reference
+  prices come from the existing live-mids path. Repository-wide order,
+  signing, Chase/TWAP, wallet-cluster, reconciliation, and risk searches found
+  no funding-history or REST asset-context result used for price, size, nonce,
+  signature, pending mutation, or exchange dispatch. No runtime owner is
+  persisted.
+- Violated invariant: only the exact task owner for the current chart
+  incarnation may release loading state, alter retry state, or apply funding/
+  REST context. A surviving prior-layout coalesced task may terminalize only
+  its own global endpoint guard and complete/partial/error backoff outcome
+  before its chart targets are rejected. Generic Elm diagnostics may retain public
+  correlation and result shape but must not recursively format result payloads
+  or pre-handler external errors. Live websocket context remains authoritative
+  over REST.
+- Risk: a delayed completion can replace current funding history, fill or
+  refresh the wrong reconstructed chart's REST-sourced context, erase a newer
+  request guard, or impose/reset backoff from the wrong attempt. The visible
+  effect is stale analytical funding, header, spread, or liquidation context;
+  live websocket data still wins. Separately, generic logs, panic context, and
+  test diagnostics can traverse large public market payloads or upstream error
+  excerpts. No trading mutation or signed-value path is reachable.
+- Why existing checks did not cover it: funding's detailed request equality and
+  Hydromancer-key generation handled ordinary symbol/range/key races, while
+  asset-context symbol checks and websocket provenance handled ordinary data-
+  source races. Boolean in-flight tests covered deduplication and endpoint
+  backoff, and layout tests covered candle incarnations, but no test reused a
+  chart ID/symbol across layout reconstruction or reversed two exact funding/
+  context owners. The completion variants also predated the shared public-
+  market diagnostic wrapper.
+- Implemented fix: add the terminal chart incarnation and a per-chart wrapping
+  request ID to funding ownership, retaining the per-chart sequence across
+  toggle/symbol clears and resetting it only for a genuinely new chart. Add a
+  typed individual REST-context owner containing chart ID, incarnation,
+  terminal-wide wrapping request ID, and symbol; store the exact owner instead
+  of a Boolean. Add a typed coalesced spot owner containing the same batch ID,
+  incarnation, and exact per-target owners; keep it in terminal state across
+  layout replacement until its own completion releases the endpoint guard.
+  Individual and per-target completions now require exact stored equality, and
+  the batch requires exact global equality before any result/backoff work. Reuse
+  `RedactedPublicMarketMessageResult<T>` for all three messages and recover the
+  exact result only after their owner gates.
+- Regression coverage: funding controls distinguish a prior-layout result and
+  an older otherwise-identical same-incarnation request from the current owner,
+  characterize per-chart ID rollover with retained incarnation/key context,
+  retain stale-key rejection, and preserve exact sanitized failure behavior.
+  Individual and spot controls cover prior-layout ID/symbol reuse, reversed
+  same-incarnation owners, exact old global complete/partial/error
+  terminalization without reconstructed-chart mutation, terminal allocator
+  rollover, coalesced target-owner identity, target-close guard survival,
+  coalescing, live-websocket precedence, successful exact values, missing-symbol
+  and empty-response backoff, endpoint rate limiting, eligibility, and duplicate
+  suppression. The
+  shared public-message control requires public request correlation and redacted
+  success/error shape while hiding funding/context payload and error sentinels.
+  Existing API, subscription, layout-incarnation, and route suites remain in the
+  validation ladder.
+- Smallest behavior-preserving fix: two runtime request-context types, one
+  terminal request allocator/global owner, replacement of per-chart/global
+  Booleans with exact owners, one per-chart funding sequence, three result-
+  wrapper fields, sole producer/consumer conversions, focused tests, and docs.
+  No endpoint, parameter, exact market value, funding range/mode, merge rule,
+  retry/backoff duration or jitter, request cadence, websocket authority,
+  visible status/toast, interaction, layout/config wire value, persistence,
+  order input, signed bytes, or trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  exhaustive definition/publisher/consumer/reset/view/persistence/order-
+  consumer tracing, exact-owner design, and focused source controls establish
+  the intended boundary, but tests cannot execute until ALSA development
+  metadata is available. A canceled result would need to survive a complete
+  `u64` request cycle (and, for layout reuse, a complete incarnation cycle)
+  before theoretical identity reuse. Detached clones deliberately retain the
+  established copied funding data/status and reset task ownership; auditing any
+  copied loading-delay semantics would require a separate visible-timing review.
+  Screenshot/file/config and private-integration completion families remain for
+  later Track 9 review.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -9740,6 +9866,112 @@ target-specific cancellation policy, not HTTP replay.
   asset-context data, websocket precedence, fallback cadence, UI, persistence,
   and every trading semantic.
 
+## Turn 65 — Preserve Funding And Asset-Context Request Ownership
+
+- Status: F-72 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: funding-history planning, per-chart sequencing and owner acceptance,
+  Hydromancer generation, toggle/refresh/symbol/layout/detached paths,
+  merge/status/toast and diagnostics; individual HIP-3 and coalesced spot REST
+  asset-context planning, global/per-target ownership, retry/backoff, symbol/
+  risk/layout paths, REST/websocket ordering, header/spread/liquidation and all
+  order consumers; messages, routes, state initialization, docs, and focused
+  characterization coverage
+- Invariant: only an exact active request in the current chart incarnation may
+  apply funding or REST asset context, clear its per-chart owner, or alter its
+  retry state. A prior-layout spot batch may terminalize only its own retained
+  global endpoint guard and complete/partial/error backoff outcome before its chart
+  targets are rejected. Generic Elm diagnostics retain public request
+  correlation and result shape without traversing payload or task-error
+  content, and live websocket context remains authoritative.
+- Protected behavior: every funding point and asset-context field; endpoints,
+  symbols/coins, ranges, modes, pagination, parsing, request timing, refresh
+  cadence, exponential/rate-limit backoff and jitter; funding replace/merge,
+  exact sanitized failure toast, REST provenance, live-websocket precedence,
+  header values, spread history, liquidation planning, pane/detached/layout
+  behavior, persisted chart preferences and compatibility, chart quick-order/
+  HUD/order-line interaction, order preparation/signing, and all trading
+  semantics.
+- Preconditions/event ordering: funding's prior detailed request omitted both
+  the runtime chart incarnation and a per-chart sequence, so a reconstructed
+  same-ID/symbol/range request or an otherwise identical toggle/refresh reissue
+  could accept the older task. Individual and spot REST context used Boolean
+  in-flight guards, allowing a prior-layout or older completion to clear newer
+  ownership and, when no live context had won, apply stale REST data or retry
+  effects. The raw success/error fields were also formattable in the parent
+  before any owner check. The existing websocket-source context and
+  `asset_ctx_from_rest` rule otherwise correctly rejected stale stream sources
+  and prevented REST from clobbering live data.
+- Evidence: F-72 records all three state-owner families, their initialization,
+  every task trigger, sole publishers and first consumers, funding planning and
+  key/range/mode identity, individual/spot partition and coalescing, global and
+  per-chart retry state, symbol/risk/toggle/candle/provider/layout/detached
+  resets, stream source precedence, result application, headers/spread/
+  liquidation consumers, parent routes, persisted chart boundary, and
+  repository-wide order/signing/automation searches. No alternate publisher,
+  persisted runtime owner, direct result-state writer, order-price/size input,
+  pending mutation, signer, reconciliation consumer, or automatic exchange
+  mutation was found. Chart market reference prices used by the order-facing
+  HUD remain sourced from the established live-mids path, not these REST
+  completions.
+- Change: add chart incarnation and a per-chart wrapping request ID to funding
+  requests and compare the complete stored owner before result recovery. Add
+  exact typed individual and coalesced REST-context owners with one terminal-
+  lifetime wrapping allocator; install the batch both globally and on every
+  target, require global and per-target equality, and let a matching old-layout
+  batch settle only its own global complete/partial/error endpoint state before the
+  incarnation gate. Replace the three raw completion results with the existing
+  public-market result wrapper and recover exact values only after owner
+  acceptance. Document the runtime, source-precedence, and diagnostic
+  boundaries.
+- Tests/checks:
+  - Baseline funding, chart update, asset-context API, chart subscription,
+    layout-instance, and routing suites plus `cargo check` stopped in `alsa-sys`
+    before Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - The pre-fix exact funding recreation, individual-context recreation, spot-
+    batch recreation, and public-message diagnostic regressions each stopped at
+    that same dependency boundary before demonstrating their expected failures.
+  - Post-fix exact funding reissue, individual-owner, old-layout spot complete/
+    partial/rate-limit terminalization, and public-message controls, plus funding,
+    chart-update, asset-context API, Hydromancer API, chart-subscription,
+    layout-instance, and routing suites all stopped at the same dependency
+    boundary.
+  - `cargo fmt` passed after the Rust edits; final formatting and diff checks
+    are recorded in the current validation summary below.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - `timeout 20s xvfb-run -a cargo run` stopped at the same dependency boundary
+    before app startup. No live Hydromancer/Hyperliquid/market request, exchange
+    mutation, clipboard/file action, or credential-bearing operation ran.
+- Compatibility/UX assessment: accepted completions recover the byte-for-byte
+  same result after the new owner boundary and enter the unchanged funding
+  replace/merge, status/toast, REST fill, live-stream precedence, retry/backoff,
+  rendering, and overlay paths. Request IDs and typed owners are runtime-only;
+  endpoint parameters, scheduling and retry deadlines are unchanged. A prior-
+  layout spot result settles the same global complete/partial/error state as before,
+  without applying target data or retry state to replacements. Only stale
+  ownership and generic diagnostic traversal change. No ordinary visible copy/
+  data/timing,
+  interaction, persisted value/default, signed bytes, order preparation, or
+  trading semantic changed.
+- Residual risk: Kerosene has not type-checked or launched on this host. F-72 is
+  source-hardened; theoretical full-`u64` request/incarnation-cycle message
+  survival, the established detached copied-funding loading-delay edge, and
+  executable validation remain residual. Screenshot/file/config and private-
+  integration result classes; independently formattable nested account/order
+  types; classified external-status paths; and the remainder of Track 9 still
+  require review.
+- Prior turn commit hash: `12dfae37608ebc78dba6e33ede9668a0d2c5dee0`
+- Next candidate: audit `ChartScreenshotCaptured`, `ChartScreenshotCopied`, and
+  `ChartScreenshotSaved` across capture generation/request ownership, chart and
+  window close/reopen/layout reconstruction, privacy-toggle snapshot authority,
+  stale/duplicate success/error ordering, bitmap/path/error parent diagnostics,
+  clipboard/file side-effect terminalization, persistence, and chart/order
+  interactions; preserve exact pixels, filename/path behavior, visible status,
+  UI, privacy settings, and every trading semantic.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -9781,22 +10013,23 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline SEC earnings update, SEC API, chart
-  earnings-rendering, and routing suites plus `cargo check`; the pre-fix parent-
-  diagnostic and detached-owner regressions; post-fix exact public-message,
-  detached-owner, earnings update, detached-chart, pane/layout cleanup, SEC API,
-  chart earnings-rendering, and routing suites; `cargo check`, full
-  `cargo test`, strict clippy, and the headless GUI smoke command at `alsa-sys`
-  system dependency discovery, before Kerosene was compiled or launched.
-- No live SEC/market request, filing-open command, exchange mutation, or
-  credential-bearing operation was run.
+- Environment-blocked this turn: baseline funding, chart update, asset-context
+  API, chart subscription, layout-instance, and routing suites plus
+  `cargo check`; the pre-fix funding/context owner and parent-diagnostic
+  regressions; post-fix exact funding/context owner and public-message controls,
+  funding, chart-update, asset-context and Hydromancer API, chart-subscription,
+  layout-instance, and routing suites; `cargo check`, full `cargo test`, strict
+  clippy, and the headless GUI smoke command at `alsa-sys` system dependency
+  discovery, before Kerosene was compiled or launched.
+- No live Hydromancer/Hyperliquid/market request, exchange mutation, clipboard/
+  file action, or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-71
+  F-40, and F-42 through F-72
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -9871,7 +10104,11 @@ target-specific cancellation policy, not HTTP replay.
   ownership now survives detached runtime cloning and its event, summary, and
   filing-open parent diagnostics are source-hardened by F-71 while exact public
   content, caches, markers, status/toast copy, filing links, and interactions
-  remain unchanged. Remaining funding/context and other public/private result
-  lifecycles, independently formattable nested account/order types, and
-  classified external-status paths, plus the rest of Track 9, require
-  completion before a final verdict.
+  remain unchanged. Funding and individual/coalesced REST asset-context
+  completion ownership now survives chart reconstruction and same-incarnation
+  reissue ordering, and their parent diagnostics are source-hardened by F-72
+  while exact public data, key/source precedence, retry cadence, chart metrics,
+  and interactions remain unchanged. Remaining screenshot/file/config and
+  private-integration result lifecycles, independently formattable nested
+  account/order types, and classified external-status paths, plus the rest of
+  Track 9, require completion before a final verdict.
