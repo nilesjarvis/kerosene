@@ -63,6 +63,13 @@
   (`src/signing/model/exchange_response.rs:19-67`,
   `src/signing/model/exchange_response/analysis.rs:24-31`,
   `src/signing/model/exchange_response/analysis.rs:227-247`).
+- Every shared one-shot/cancel/move result is normalized into an
+  `ExecutionOutcome` whose exact status remains available to unchanged visible
+  status, cancellation heuristics, and reconciliation consumers. Its independent
+  `Debug` boundary exposes only the classifier kind, error/refresh flags, and a
+  redaction marker, not the normalized OID, fill size/price, or external status
+  copy (`src/order_update/results.rs:17-44`,
+  `src/order_update/results.rs:304-347`).
 - The leverage-mutation diagnostic chain preserves exact input, symbol,
   account-correlation, asset, dex, margin-mode, and leverage values for the
   unchanged validation, equality, signing, result handling, and UI paths. The
@@ -267,6 +274,12 @@ wallet-cluster results, and explicitly to Chase place/modify/cancel plus TWAP
 child-place/unexpected-cancel handling. Pure errors, unambiguous successes,
 transport failures, and unstructured malformed responses retain their prior
 paths; only simultaneous error/effect claims reconcile.
+
+Turn 36 hardens the diagnostic handoff immediately after that shared
+classification. Normalized status remains byte-for-byte available to all
+one-shot, quick/HUD, cancel, move, NUKE, and wallet-cluster consumers, while the
+local `ExecutionOutcome` formatter now reports only kind and control flags. It
+does not alter classification, visible copy, or reconciliation behavior.
 
 Turn 16 adds a causal precondition to every matrix row that uses the connected
 account snapshot as authoritative fallback: a successful REST result may reach
@@ -2930,6 +2943,72 @@ target-specific cancellation policy, not HTTP replay.
   development metadata is available. Remaining local planner/state diagnostics
   and other external-status paths still require Track 9 audit.
 
+### F-43 — Normalized execution-outcome diagnostics reveal exact order status
+
+- Status: addressed in Turn 36; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium order-privacy and diagnostic-boundary hardening; no current
+  production formatter/log sink or known disclosure was found
+- Scope: shared `ExchangeResponse`/transport-error normalization into
+  `ExecutionOutcome`; one-shot ticket/preset/quick/HUD/close, cancel, move,
+  NUKE, and wallet-cluster result consumers; direct diagnostics; unchanged
+  status copy and reconciliation decisions
+- Preconditions/event ordering:
+  1. A shared mutation result reaches `classify_execution_result` after the
+     message/result boundary has retained its exact response.
+  2. The normalized status deliberately contains an exact resting OID or filled
+     size/average price/OID, or sanitized external text required by existing
+     user feedback and cancellation/reconciliation decisions.
+  3. The local `ExecutionOutcome` derived `Debug`, so formatting it directly in
+     a panic/assertion or future instrumentation recursively emitted that status
+     even though the source response-model diagnostics are independently safe.
+- Evidence: parent commit
+  `d3b24fd77aedec777172a3c9348f403a0952274c` shows the derived formatter on
+  `ExecutionOutcome` while the classifier stores `response.summary()` or a
+  redacted transport error (`src/order_update/results.rs:17-36`,
+  `src/order_update/results.rs:293-346`). Response summary construction retains
+  fill size, average price, and OID by design
+  (`src/signing/model/exchange_response/analysis.rs:317-340`). Exhaustive
+  call-site inspection covers the shared results module, quick/HUD/move, and
+  wallet-cluster handlers; the type is not placed in `Message`, persisted, or
+  currently formatted by production code.
+- Violated invariant: exact normalized copy may remain available to explicit
+  lifecycle consumers, but a generic diagnostic representation should expose
+  only the classification/control metadata needed to diagnose state-machine
+  routing. Safe response-model `Debug` is not sufficient once exact values have
+  been re-materialized in a downstream local type.
+- Risk: future logging or a failure diagnostic could expose the user's exact
+  order OID, fill size, and fill price, or more external status detail than the
+  diagnostic caller needs. This finding does not involve private keys,
+  signatures, payload serialization, or a current emitted log.
+- Why existing checks did not cover it: F-34 constrained every exchange-
+  response model layer, while the earlier order-result error hardening verified
+  that secret-shaped external text was sanitized before visible state. Existing
+  classifier tests intentionally assert exact normalized status but never
+  format the containing outcome, leaving the downstream formatter outside both
+  protections.
+- Implemented fix: replace derived `ExecutionOutcome::Debug` with an explicit
+  representation containing the outcome kind, `is_error`, and
+  `refresh_account`, while rendering `status` only as `<redacted>`. Retain the
+  original `String` field, derives for clone/equality, constructors, and every
+  consumer unchanged (`src/order_update/results.rs:17-44`).
+- Regression coverage: construct a classified filled response with synthetic
+  sentinel size, price, and OID; require the stored normalized status to retain
+  all three exact values; require classification and flags to remain exact; and
+  require the diagnostic representation to retain useful kind/control metadata
+  while omitting every sentinel (`src/order_update/results/tests.rs:578-609`).
+- Smallest behavior-preserving fix: response parsing/summary, error sanitation,
+  classification order, outcome equality, cancellation text inspection, move
+  status prefixing, form recovery, visible order/cluster status, unexpected-
+  resting handling, refresh choice, status-task dispatch, task ordering, and
+  every user-facing string remain unchanged. No message, config, persistence,
+  signed request, timing, trading policy, or view code changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt and
+  source/call-site inspection establish the intended narrow boundary, but the
+  exact regression and existing classifier/result modules cannot execute until
+  ALSA development metadata is available. TWAP event/planning diagnostics,
+  `MoveOrderKey`, and other local/external-status types remain to audit.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -5154,6 +5233,63 @@ target-specific cancellation policy, not HTTP replay.
   correlation helpers; then resume remaining external-status and shutdown/
   restart diagnostics.
 
+## Turn 36 — Redact Shared Execution-Outcome Diagnostics
+
+- Status: F-43 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: shared normalized execution results and every one-shot, cancel, move,
+  quick/HUD, NUKE, and wallet-cluster consumer of classification status and
+  refresh/error controls
+- Invariant: exact normalized order status must remain available to deliberate
+  lifecycle and visible-status consumers, while generic diagnostics expose only
+  the state-machine classification/control metadata they need.
+- Protected behavior: response summaries; secret-shaped external-error
+  sanitation; classifier ordering and all outcome kinds; exact status strings;
+  clone/equality; cancellation heuristic; move prefix/correlation; quick-form
+  recovery; one-shot/NUKE/cluster visible feedback; unexpected-resting handling;
+  pending transitions; refresh choice; task construction/order; all message,
+  persistence, view, and trading behavior.
+- Preconditions/event ordering: parse or receive the same result, normalize it
+  through the same classifier, and retain the same exact status/kind/flags.
+  Existing handlers read or move those fields exactly as before. Only a direct
+  `Debug` request substitutes a redaction marker for the status field.
+- Evidence: F-43 records the parent source, response-summary construction,
+  complete shared-classifier producer/consumer inventory, absence from
+  messages/persistence and current production formatters, earlier redaction-
+  coverage boundary, and exact-value diagnostic regression.
+- Change: removed only the derived `Debug` implementation from
+  `ExecutionOutcome` and added an explicit formatter that preserves kind,
+  `is_error`, and `refresh_account` while redacting status; documented the
+  normalized-result diagnostic boundary.
+- Tests/checks:
+  - The pre-fix exact diagnostic regression stopped in `alsa-sys` before
+    Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - Post-fix exact regression, the focused `execution_result_classifier_`
+    family, and the full `order_update::results::tests` module stopped at the
+    same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, subscription, window, view, or
+    task behavior changed, compilation is already blocked, and no live exchange
+    or credential-bearing external operation was run.
+- Compatibility/UX assessment: stored status is the identical `String` from the
+  identical classifier and remains exact in the regression before it is
+  formatted. All consumers, messages, error/status copy, response parsing,
+  equality, task branches, and refresh decisions are source-identical. No
+  visible behavior, timing, schema, signed bytes, or trading semantics changed.
+- Residual risk: Kerosene has not type-checked on this host. F-43 is source-
+  hardened, but TWAP event/planning-skip diagnostics, move-order correlation
+  keys, and other local/external-status types remain to audit before Track 9
+  can close.
+- Prior turn commit hash: `d3b24fd77aedec777172a3c9348f403a0952274c`
+- Next candidate: audit the complete TWAP activity-message path from
+  `TwapPlannedSliceSkip` and result/error producers through `TwapEvent`, visible
+  activity/history consumers, and both independent `Debug` surfaces; then
+  inspect `MoveOrderKey` and remaining local correlation helpers.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -5195,8 +5331,8 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: pre- and post-fix leverage-message diagnostics,
-  post-fix leverage-action diagnostics, complete message/signing test modules,
+- Environment-blocked this turn: pre- and post-fix exact execution-outcome
+  diagnostics, the classifier-focused family, complete order-result tests,
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
@@ -5206,7 +5342,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42
+  F-40, F-42, and F-43
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -5236,6 +5372,7 @@ target-specific cancellation policy, not HTTP replay.
   deferred runtime legacy-key ownership is source-hardened by F-37, and startup
   partial-bundle cleanup by F-38. Storage-selection and cleanup ownership are
   source-hardened by F-40. Leverage input/submission/result/action diagnostics
-  are source-hardened by F-42. Remaining local planner/state diagnostics, other
+  are source-hardened by F-42, and shared normalized execution-outcome
+  diagnostics by F-43. Remaining local planner/state diagnostics, other
   external-status paths, and the rest of Track 9 require completion before a
   final verdict.

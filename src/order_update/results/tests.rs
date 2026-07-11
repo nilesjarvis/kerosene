@@ -576,6 +576,39 @@ fn execution_result_classifier_redacts_sensitive_external_errors() {
 }
 
 #[test]
+fn execution_outcome_debug_redacts_exact_order_status_without_changing_it() {
+    const SIZE: &str = "7.123456789";
+    const PRICE: &str = "42001.7654321";
+    const OID: u64 = 9_876_543_210_123_457;
+    let oid = OID.to_string();
+    let outcome = classify_execution_result(Ok(exchange_response(vec![serde_json::json!({
+        "filled": {
+            "totalSz": SIZE,
+            "avgPx": PRICE,
+            "oid": OID
+        }
+    })])));
+
+    assert_eq!(outcome.kind, ExecutionOutcomeKind::Filled);
+    assert!(!outcome.is_error);
+    assert!(outcome.refresh_account);
+    for exact_value in [SIZE, PRICE, oid.as_str()] {
+        assert!(outcome.status.contains(exact_value));
+    }
+
+    let rendered = format!("{outcome:?}");
+    assert!(rendered.contains("ExecutionOutcome"), "{rendered}");
+    assert!(rendered.contains("Filled"), "{rendered}");
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    for exact_value in [SIZE, PRICE, oid.as_str()] {
+        assert!(
+            !rendered.contains(exact_value),
+            "{exact_value} leaked: {rendered}"
+        );
+    }
+}
+
+#[test]
 fn one_shot_ambiguous_outcome_sets_cloid_reconciliation_status() {
     let mut terminal = terminal_with_connected_account();
 

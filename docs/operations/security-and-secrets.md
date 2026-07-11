@@ -173,6 +173,13 @@ response-type metadata, status counts, and explicit redaction markers. A
 type-only response summary emits the recognized protocol label or a
 value-neutral marker; ordinary protocol copy remains unchanged.
 
+The shared order-result classifier likewise retains its exact normalized status
+for existing UI, cancellation checks, and reconciliation decisions. Formatting
+an `ExecutionOutcome` exposes only its outcome kind and control flags; the
+status is represented by a redaction marker so OIDs, fill size, fill price, and
+sanitized-but-still-sensitive external copy do not become diagnostic output.
+The stored status and every downstream consumer remain unchanged.
+
 Leverage updates retain their exact input, symbol, account-correlation, asset,
 margin-mode, and leverage values for validation, stale-result checks, signing,
 and user feedback. Those values must not become a diagnostic payload: the Elm

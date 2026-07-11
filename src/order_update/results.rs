@@ -24,12 +24,23 @@ pub(crate) enum ExecutionOutcomeKind {
     TransportUnknown,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct ExecutionOutcome {
     pub(crate) kind: ExecutionOutcomeKind,
     pub(crate) status: String,
     pub(crate) is_error: bool,
     pub(crate) refresh_account: bool,
+}
+
+impl fmt::Debug for ExecutionOutcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExecutionOutcome")
+            .field("kind", &self.kind)
+            .field("status", &"<redacted>")
+            .field("is_error", &self.is_error)
+            .field("refresh_account", &self.refresh_account)
+            .finish()
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
