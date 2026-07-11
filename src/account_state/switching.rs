@@ -106,8 +106,8 @@ impl TradingTerminal {
     fn load_deferred_legacy_account_key_with(
         &mut self,
         index: usize,
-        mut load_profile_secrets: impl FnMut(&mut AccountProfile) -> Result<(), String>,
-        mut persist_profile_secrets: impl FnMut(&mut Self) -> bool,
+        load_profile_secrets: impl FnOnce(&mut AccountProfile) -> Result<(), String>,
+        persist_profile_secrets: impl FnOnce(&mut Self) -> bool,
     ) {
         if self.secret_storage_mode != config::CredentialStorageMode::OsKeychain
             || self.account_index_is_ghost(index)
@@ -122,27 +122,40 @@ impl TradingTerminal {
             return;
         }
 
-        let mut legacy_profile = profile.clone();
+        // Legacy keychain lookup needs the profile ID and must preserve any
+        // already-loaded per-profile Hydromancer fallback. It does not need a
+        // clone of account metadata or the canonical agent-key owner.
+        let mut legacy_profile = AccountProfile {
+            secret_id: profile.secret_id.clone(),
+            name: String::new(),
+            wallet_address: String::new(),
+            agent_key: String::new().into(),
+            hydromancer_api_key: profile.hydromancer_api_key.clone(),
+        };
         match load_profile_secrets(&mut legacy_profile) {
             Ok(()) if !legacy_profile.agent_key.trim().is_empty() => {
-                let agent_key = legacy_profile.agent_key.clone();
-                let migrated_hydromancer_key =
-                    match self.merge_deferred_legacy_profile_hydromancer_key(&legacy_profile) {
-                        Ok(migrated) => migrated,
-                        Err(error) => {
-                            self.secret_store_status = Some((
-                                format!("{error}; legacy account credentials were left unchanged"),
-                                true,
-                            ));
-                            return;
-                        }
-                    };
+                let agent_key = std::mem::take(&mut legacy_profile.agent_key);
+                let profile_hydromancer_key =
+                    std::mem::take(&mut legacy_profile.hydromancer_api_key);
+                let migrated_hydromancer_key = match self
+                    .merge_deferred_legacy_profile_hydromancer_key(profile_hydromancer_key)
+                {
+                    Ok(migrated) => migrated,
+                    Err(error) => {
+                        self.secret_store_status = Some((
+                            format!("{error}; legacy account credentials were left unchanged"),
+                            true,
+                        ));
+                        return;
+                    }
+                };
+                let key_input = agent_key.clone();
                 if let Some(profile) = self.accounts.get_mut(index) {
                     profile.agent_key.zeroize();
-                    profile.agent_key = agent_key.clone();
+                    profile.agent_key = agent_key;
                 }
                 self.wallet_key_input.zeroize();
-                self.wallet_key_input = agent_key.into();
+                self.wallet_key_input = key_input.into();
                 if persist_profile_secrets(self) {
                     let message = if migrated_hydromancer_key {
                         "Legacy account key and Hydromancer key migrated to the OS keychain bundle"
@@ -163,15 +176,14 @@ impl TradingTerminal {
 
     fn merge_deferred_legacy_profile_hydromancer_key(
         &mut self,
-        legacy_profile: &AccountProfile,
+        profile_hydromancer_key: Zeroizing<String>,
     ) -> Result<bool, String> {
-        let profile_hydromancer_key = legacy_profile.hydromancer_api_key.trim();
-        if profile_hydromancer_key.is_empty() {
+        if profile_hydromancer_key.trim().is_empty() {
             return Ok(false);
         }
 
         let current_hydromancer_key = self.hydromancer_api_key.trim();
-        if current_hydromancer_key == profile_hydromancer_key {
+        if current_hydromancer_key == profile_hydromancer_key.trim() {
             return Ok(false);
         }
         if !current_hydromancer_key.is_empty() {
@@ -181,8 +193,14 @@ impl TradingTerminal {
             );
         }
 
+        let profile_hydromancer_key =
+            if profile_hydromancer_key.trim().len() == profile_hydromancer_key.len() {
+                profile_hydromancer_key
+            } else {
+                Zeroizing::new(profile_hydromancer_key.trim().to_string())
+            };
         self.hydromancer_api_key.zeroize();
-        self.hydromancer_api_key = profile_hydromancer_key.to_string().into();
+        self.hydromancer_api_key = profile_hydromancer_key.into();
         self.hydromancer_key_input.zeroize();
         self.hydromancer_key_input = self.hydromancer_api_key.clone();
         self.bump_hydromancer_key_generation();

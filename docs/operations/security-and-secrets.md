@@ -68,6 +68,15 @@ staged profile into canonical state. A first saved account also moves the
 verified, normalized draft allocation into the key-input owner, while ordinary
 switch-on-add continues through the post-gate account-switch capture.
 
+Deferred legacy keychain loading constructs a lookup shell from the profile
+secret ID and any existing per-profile Hydromancer fallback; it does not clone
+the account's name, address, or canonical agent-key owner. A loaded agent-key
+allocation moves into the canonical profile and is copied once for the active
+key input. A newly migrated, normalized Hydromancer allocation moves into
+global runtime state and is copied once for its input. Conflict, trimming,
+persistence, and legacy-cleanup behavior remain owned by the existing migration
+path.
+
 Secret-bearing state includes:
 
 - `wallet_key_input`

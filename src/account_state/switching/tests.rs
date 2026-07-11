@@ -646,15 +646,40 @@ fn deferred_legacy_account_key_migrates_profile_hydromancer_key_before_cleanup()
     terminal.hydromancer_api_key.zeroize();
     terminal.hydromancer_key_input.zeroize();
     let saved_payload = RefCell::new(None);
+    let loaded_agent_allocation = Cell::new(std::ptr::null::<u8>());
+    let loaded_hydromancer_allocation = Cell::new(std::ptr::null::<u8>());
 
     terminal.load_deferred_legacy_account_key_with(
         0,
         |profile| {
+            assert_eq!(profile.secret_id, "account-a");
+            assert!(profile.name.is_empty());
+            assert!(profile.wallet_address.is_empty());
+            assert!(profile.agent_key.is_empty());
+            assert!(profile.hydromancer_api_key.is_empty());
             profile.agent_key = sensitive_string("legacy-agent").into_zeroizing();
             profile.hydromancer_api_key = sensitive_string("legacy-hydro").into_zeroizing();
+            loaded_agent_allocation.set(profile.agent_key.as_ptr());
+            loaded_hydromancer_allocation.set(profile.hydromancer_api_key.as_ptr());
             Ok(())
         },
         |terminal| {
+            assert_eq!(
+                terminal.accounts[0].agent_key.as_ptr(),
+                loaded_agent_allocation.get()
+            );
+            assert_ne!(
+                terminal.wallet_key_input.as_str().as_ptr(),
+                loaded_agent_allocation.get()
+            );
+            assert_eq!(
+                terminal.hydromancer_api_key.as_str().as_ptr(),
+                loaded_hydromancer_allocation.get()
+            );
+            assert_ne!(
+                terminal.hydromancer_key_input.as_str().as_ptr(),
+                loaded_hydromancer_allocation.get()
+            );
             saved_payload.replace(Some(config::SecretPayload::from_credentials(
                 &terminal.persisted_accounts_snapshot(),
                 &terminal.hydromancer_api_key,
@@ -669,6 +694,14 @@ fn deferred_legacy_account_key_migrates_profile_hydromancer_key_before_cleanup()
     assert_eq!(terminal.hydromancer_api_key.as_str(), "legacy-hydro");
     assert_eq!(terminal.hydromancer_key_input.as_str(), "legacy-hydro");
     assert_eq!(terminal.hydromancer_key_generation, 1);
+    assert_eq!(
+        terminal.accounts[0].agent_key.as_ptr(),
+        loaded_agent_allocation.get()
+    );
+    assert_eq!(
+        terminal.hydromancer_api_key.as_str().as_ptr(),
+        loaded_hydromancer_allocation.get()
+    );
     let payload = saved_payload
         .borrow()
         .clone()
@@ -698,11 +731,18 @@ fn deferred_legacy_account_key_blocks_conflicting_profile_hydromancer_key_cleanu
     terminal.hydromancer_api_key = sensitive_string("current-hydro").into_zeroizing().into();
     terminal.hydromancer_key_input = terminal.hydromancer_api_key.clone();
     terminal.hydromancer_key_generation = 7;
+    let current_hydromancer_allocation = terminal.hydromancer_api_key.as_str().as_ptr();
+    let current_hydromancer_input_allocation = terminal.hydromancer_key_input.as_str().as_ptr();
     let persist_called = Cell::new(false);
 
     terminal.load_deferred_legacy_account_key_with(
         0,
         |profile| {
+            assert_eq!(profile.secret_id, "account-a");
+            assert!(profile.name.is_empty());
+            assert!(profile.wallet_address.is_empty());
+            assert!(profile.agent_key.is_empty());
+            assert!(profile.hydromancer_api_key.is_empty());
             profile.agent_key = sensitive_string("legacy-agent").into_zeroizing();
             profile.hydromancer_api_key = sensitive_string("legacy-hydro").into_zeroizing();
             Ok(())
@@ -719,6 +759,14 @@ fn deferred_legacy_account_key_blocks_conflicting_profile_hydromancer_key_cleanu
     assert_eq!(terminal.hydromancer_api_key.as_str(), "current-hydro");
     assert_eq!(terminal.hydromancer_key_input.as_str(), "current-hydro");
     assert_eq!(terminal.hydromancer_key_generation, 7);
+    assert_eq!(
+        terminal.hydromancer_api_key.as_str().as_ptr(),
+        current_hydromancer_allocation
+    );
+    assert_eq!(
+        terminal.hydromancer_key_input.as_str().as_ptr(),
+        current_hydromancer_input_allocation
+    );
     let (status, is_error) = terminal
         .secret_store_status
         .as_ref()
@@ -726,6 +774,148 @@ fn deferred_legacy_account_key_blocks_conflicting_profile_hydromancer_key_cleanu
     assert!(*is_error);
     assert!(status.contains("Multiple legacy Hydromancer API keys"));
     assert!(status.contains("legacy account credentials were left unchanged"));
+}
+
+#[test]
+fn deferred_legacy_loader_preserves_existing_profile_hydromancer_fallback() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+    terminal.accounts = vec![account(
+        "account-a",
+        "Account A",
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    )];
+    terminal.accounts[0].agent_key.zeroize();
+    terminal.accounts[0].hydromancer_api_key = sensitive_string("profile-hydro").into_zeroizing();
+    terminal.active_account_index = 0;
+    terminal.wallet_key_input.zeroize();
+    terminal.hydromancer_api_key.zeroize();
+    terminal.hydromancer_key_input.zeroize();
+    let canonical_profile_hydromancer_allocation =
+        terminal.accounts[0].hydromancer_api_key.as_ptr();
+    let loaded_hydromancer_allocation = Cell::new(std::ptr::null::<u8>());
+
+    terminal.load_deferred_legacy_account_key_with(
+        0,
+        |profile| {
+            assert_eq!(profile.secret_id, "account-a");
+            assert!(profile.name.is_empty());
+            assert!(profile.wallet_address.is_empty());
+            assert!(profile.agent_key.is_empty());
+            assert_eq!(profile.hydromancer_api_key.as_str(), "profile-hydro");
+            assert_ne!(
+                profile.hydromancer_api_key.as_ptr(),
+                canonical_profile_hydromancer_allocation
+            );
+            loaded_hydromancer_allocation.set(profile.hydromancer_api_key.as_ptr());
+            profile.agent_key = sensitive_string("legacy-agent").into_zeroizing();
+            Ok(())
+        },
+        |terminal| {
+            assert_eq!(
+                terminal.hydromancer_api_key.as_str().as_ptr(),
+                loaded_hydromancer_allocation.get()
+            );
+            true
+        },
+    );
+
+    assert_eq!(terminal.accounts[0].agent_key.as_str(), "legacy-agent");
+    assert_eq!(
+        terminal.accounts[0].hydromancer_api_key.as_ptr(),
+        canonical_profile_hydromancer_allocation
+    );
+    assert_eq!(terminal.hydromancer_api_key.as_str(), "profile-hydro");
+    assert_eq!(
+        terminal.hydromancer_api_key.as_str().as_ptr(),
+        loaded_hydromancer_allocation.get()
+    );
+    assert_eq!(terminal.hydromancer_key_input.as_str(), "profile-hydro");
+    assert_eq!(terminal.hydromancer_key_generation, 1);
+}
+
+#[test]
+fn deferred_legacy_hydromancer_key_preserves_trimmed_migration_value() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+    terminal.accounts = vec![account(
+        "account-a",
+        "Account A",
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    )];
+    terminal.accounts[0].agent_key.zeroize();
+    terminal.active_account_index = 0;
+    terminal.wallet_key_input.zeroize();
+    terminal.hydromancer_api_key.zeroize();
+    terminal.hydromancer_key_input.zeroize();
+
+    terminal.load_deferred_legacy_account_key_with(
+        0,
+        |profile| {
+            profile.agent_key = sensitive_string("legacy-agent").into_zeroizing();
+            profile.hydromancer_api_key = sensitive_string("  legacy-hydro\n").into_zeroizing();
+            Ok(())
+        },
+        |_| true,
+    );
+
+    assert_eq!(terminal.hydromancer_api_key.as_str(), "legacy-hydro");
+    assert_eq!(terminal.hydromancer_key_input.as_str(), "legacy-hydro");
+}
+
+#[test]
+fn deferred_legacy_bundle_failure_keeps_loaded_runtime_key_owners() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+    terminal.accounts = vec![account(
+        "account-a",
+        "Account A",
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    )];
+    terminal.accounts[0].agent_key.zeroize();
+    terminal.active_account_index = 0;
+    terminal.wallet_key_input.zeroize();
+    let loaded_agent_allocation = Cell::new(std::ptr::null::<u8>());
+
+    terminal.load_deferred_legacy_account_key_with(
+        0,
+        |profile| {
+            profile.agent_key = sensitive_string("legacy-agent").into_zeroizing();
+            loaded_agent_allocation.set(profile.agent_key.as_ptr());
+            Ok(())
+        },
+        |terminal| {
+            assert_eq!(
+                terminal.accounts[0].agent_key.as_ptr(),
+                loaded_agent_allocation.get()
+            );
+            terminal.secret_store_status = Some((
+                "Keychain save failed; credentials were not committed".into(),
+                true,
+            ));
+            false
+        },
+    );
+
+    assert_eq!(terminal.accounts[0].agent_key.as_str(), "legacy-agent");
+    assert_eq!(
+        terminal.accounts[0].agent_key.as_ptr(),
+        loaded_agent_allocation.get()
+    );
+    assert_eq!(terminal.wallet_key_input.as_str(), "legacy-agent");
+    assert_eq!(
+        terminal
+            .secret_store_status
+            .as_ref()
+            .map(|status| status.0.as_str()),
+        Some("Keychain save failed; credentials were not committed")
+    );
+    assert!(
+        terminal
+            .secret_store_status
+            .as_ref()
+            .is_some_and(|status| status.1)
+    );
 }
 
 #[test]

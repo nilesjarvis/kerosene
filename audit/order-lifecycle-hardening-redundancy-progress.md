@@ -167,7 +167,7 @@
   intentional key-input owner; rejected and ghost switches copy no key. All
   switch callers converge on this boundary
   (`src/account_state/switching.rs:15-35`,
-  `src/account_state/switching.rs:306-381`).
+  `src/account_state/switching.rs:324-399`).
 - Keyed add-account submission validates against the window draft, moves one
   key-bearing profile into the credential-storage snapshot, and exposes only a
   keyless canonical metadata shell during synchronous persistence so encrypted
@@ -178,6 +178,16 @@
   switch-on-add still uses the post-gate switch boundary
   (`src/account_update/add_window.rs:24-30`,
   `src/account_update/add_window.rs:88-289`).
+- Deferred legacy account-key loading is an OS-keychain-only step after an
+  authorized switch finds no bundled key. Its lookup shell contains only the
+  profile secret ID and the pre-existing per-profile Hydromancer fallback that
+  affects legacy precedence. A loaded agent allocation moves into the canonical
+  profile and is copied once for the active input; a newly migrated normalized
+  Hydromancer allocation moves into global runtime state and is copied once for
+  its input.
+  Conflict, trimming, generation/cache invalidation, bundle persistence, and
+  cleanup ordering retain their established owners
+  (`src/account_state/switching.rs:98-210`).
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -2467,7 +2477,7 @@ target-specific cancellation policy, not HTTP replay.
   clone the canonical key once and move it into `wallet_key_input`; ghost
   targets construct an empty key and then retain the established canonical
   scrub (`src/account_state/switching.rs:15-35`,
-  `src/account_state/switching.rs:306-381`).
+  `src/account_state/switching.rs:324-399`).
 - Regression coverage: an injected capture boundary must remain untouched for
   same-profile, pending-NUKE, active-Chase, and uncertain-TWAP rejection while
   both canonical target and active-input allocations remain identical. The
@@ -2567,9 +2577,87 @@ target-specific cancellation policy, not HTTP replay.
   provisional signing authority, and zeroization timing change.
 - Residual uncertainty: Rust type-checking and tests remain blocked by ALSA
   metadata. Backend-required payload/encryption/keychain buffers remain their
-  existing synchronous zeroizing copies. Deferred legacy-profile key loading
-  still clones a full profile and then its key; local planner/message and other
-  diagnostic paths remain to audit.
+  existing synchronous zeroizing copies. Deferred runtime legacy-profile key
+  loading is separately addressed by F-37; startup legacy migration and local
+  planner/message plus other diagnostic paths remain to audit.
+
+### F-37 — Deferred legacy loading retains source keys beyond migration
+
+- Status: addressed in Turn 32; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium secret-lifetime hardening; the active profile and input were
+  correlated correctly, but loaded signing/integration buffers gained
+  unnecessary owners through migration and persistence
+- Scope: deferred non-active legacy account migration after account switch;
+  OS-keychain/ghost/existing-key gates; legacy profile field lookup; optional
+  per-profile Hydromancer fallback; agent and Hydromancer runtime installation;
+  conflict, read failure, bundle persistence/cleanup, and status behavior
+- Preconditions/event ordering:
+  1. A saved-profile switch has passed all financial gates, made the target
+     active, and found its bundled agent key empty in OS-keychain mode.
+  2. The prior loader cloned the complete canonical `AccountProfile`, including
+     name, address, and any legacy per-profile integration key, solely to read
+     two legacy keychain fields by secret ID.
+  3. Once the reader populated the cloned agent/Hydromancer fields, the path
+     cloned the loaded agent into a local owner, cloned it again into canonical
+     state, and moved the local clone into the active input. Hydromancer
+     migration likewise allocated global and input copies while the loaded
+     source remained alive.
+  4. Bundle persistence and legacy cleanup then ran synchronously while those
+     redundant loaded owners remained in scope; a persistence failure retained
+     the two intended runtime owners under the established behavior.
+- Evidence: parent commit
+  `47061c87f5b0b06acba2a614f6141e39e93c6407` shows
+  `profile.clone()`, `legacy_profile.agent_key.clone()`, a second canonical
+  clone, and Hydromancer `trim().to_string()` before persistence. The production
+  keychain reader consults only `secret_id` and pre-seeded secret fields; its
+  name/address fields are unused (`src/config/secrets/keychain.rs:69-80`,
+  `src/config/secrets/keychain.rs:282-312`).
+- Violated invariant: legacy lookup may own one loaded agent buffer and one
+  loaded Hydromancer buffer; one pre-seeded fallback copy is additionally
+  required when the canonical profile already carries a legacy Hydromancer
+  value. The agent must become exactly the canonical profile owner plus one
+  active-input copy; a newly accepted normalized Hydromancer key must become
+  exactly the global runtime owner plus one input copy. Unrelated profile
+  metadata and canonical keys must not be cloned into the lookup boundary.
+- Risk: switching to each deferred legacy profile transiently multiplied a
+  signing key and integration key across keychain bundle construction and
+  cleanup. Every secret allocation was zeroizing and no wrong-account dispatch,
+  persistence loss, or disclosure was found. The extra owners increased the
+  impact of a future callback, panic, or diagnostic defect.
+- Why existing checks did not cover it: migration tests compared values,
+  payload contents, conflict state, generation, and redacted failures. They did
+  not constrain what the legacy reader could observe, identify which loaded
+  allocation became canonical, or characterize bundle-write failure after
+  runtime installation.
+- Implemented fix: build a lookup `AccountProfile` shell with the secret ID,
+  empty name/address/agent fields, and only the existing per-profile
+  Hydromancer fallback needed to preserve legacy precedence. Make both
+  synchronous callbacks single-use. Move the loaded agent allocation into the
+  canonical profile and create one active-input copy. Consume the loaded
+  Hydromancer value, retain exact trim/equality/conflict rules, move the
+  normalized allocation into global state, and create one input copy
+  (`src/account_state/switching.rs:98-210`).
+- Regression coverage: the primary migration test requires the loader shell to
+  expose only identity/empty metadata and requires the loaded agent and
+  Hydromancer allocations to become the exact canonical/global owners before
+  persistence. Additional controls preserve an existing per-profile
+  Hydromancer fallback and its canonical allocation, whitespace trimming,
+  conflict-time global/input allocations, runtime keys after bundle-write
+  failure, payload contents, generation/cache behavior, success status, and
+  redacted read failure (`src/account_state/switching/tests.rs:635-954`).
+- Smallest behavior-preserving fix: account switch order, lookup secret ID,
+  keychain prompt/read behavior, OS-keychain/ghost/existing-key gates,
+  agent-required migration, canonical/input values, Hydromancer precedence,
+  trimming, conflict/error/success strings, generation/cache clearing, bundle
+  payload/cleanup timing, persistence-failure runtime authority, connect task,
+  and every visible behavior remain unchanged. Only lookup breadth, allocation
+  provenance, callback capability, and zeroization timing change.
+- Residual uncertainty: Rust type-checking and tests remain blocked by ALSA
+  metadata. Startup's active-legacy payload merge independently clones a full
+  profile and loaded agent, and storage-selection snapshots have separate
+  ownership needs; F-37 makes no claim about those paths. The remaining
+  diagnostic inventory is also incomplete.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -4498,13 +4586,13 @@ target-specific cancellation policy, not HTTP replay.
   tasks, active source, and toasts; no schema, view, or normal interaction
   change.
 - Preconditions/event ordering: validate while borrowing the draft, then create
-  one caller-staged profile. For a key, clone existing saved profiles once
-  for the required storage bundle, append the staged profile by move, and push
-  only its keyless metadata shell into canonical state. Storage resolves
-  synchronously. Remove/drop on failure or identity-check and replace the shell
-  with the staged profile on success; only then schedule the established config
-  save and close the draft window. The first-account special case claims the
-  verified draft; ordinary switch-on-add continues through
+  one caller-staged profile. For a keyed submission, clone existing saved
+  profiles once for the required storage bundle, append the staged profile by
+  move, and push only its keyless metadata shell into canonical state. Storage
+  resolves synchronously. Remove/drop on failure or identity-check and replace
+  the shell with the staged profile on success; only then schedule the
+  established config save and close the draft window. The first-account special
+  case claims the verified draft; ordinary switch-on-add continues through
   `switch_account_task` after the window draft is dropped.
 - Evidence: F-36 records the parent/current owner graphs, atomic encrypted-save
   constraint, source boundaries, and focused allocation assertions. Call-site
@@ -4547,6 +4635,67 @@ target-specific cancellation policy, not HTTP replay.
   changing migration/storage outcomes, then resume the remaining account/order
   diagnostic inventory and Track 9 completion audit.
 
+## Turn 32 — Move Deferred Legacy Keys Into Runtime Owners
+
+- Status: F-37 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: the runtime deferred-legacy account-key migration reached after an
+  authorized OS-keychain profile switch, including Hydromancer migration and
+  bundle persistence outcomes
+- Invariant: legacy lookup receives only the profile identity and any existing
+  legacy Hydromancer fallback. The loaded agent and normalized Hydromancer
+  allocations must become their canonical runtime owners by move, with one
+  intentional input copy each; conflict/read failure creates no runtime key
+  owner.
+- Protected behavior: mode/ghost/index/existing-key gates; lookup identity and
+  legacy fallback precedence; agent-required migration; exact agent and
+  Hydromancer values; trimming/equality/conflict rules; key generation and
+  journal cache clearing; bundle persistence and legacy cleanup timing;
+  persistence-failure runtime values; all statuses; switch/connect behavior;
+  no view, schema, or trading change.
+- Preconditions/event ordering: the normal switch installs the target profile
+  and discovers an empty bundled input, then calls the deferred loader. Build a
+  narrow lookup shell, synchronously read legacy fields, require a nonempty
+  agent, resolve Hydromancer conflict before installing either agent owner,
+  move/copy only the final owners, then invoke the unchanged active-profile
+  bundle persistence boundary.
+- Evidence: F-37 records the parent clone graph, exact keychain reader inputs,
+  current source, and allocation-sensitive controls. Repository search confirms
+  `switch_account_task` is the only production caller and invokes this path only
+  after its target is active with an empty input.
+- Change: replaced the full profile clone with an identity/fallback shell,
+  narrowed loader/persistence callbacks to `FnOnce`, moved loaded agent and
+  normalized Hydromancer buffers into canonical state, retained one input copy
+  for each, expanded fallback/conflict/trim/failure tests, and documented the
+  ownership contract.
+- Tests/checks:
+  - The pre-fix exact primary migration regression stopped in `alsa-sys` before
+    Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - Post-fix exact primary migration, pre-existing Hydromancer fallback, and
+    bundle-failure tests plus the full `account_state::switching::tests` module
+    stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, subscription, view, or window
+    path changed, compilation is already blocked, and no live exchange or
+    credential-bearing external operation was run.
+- Compatibility/UX assessment: identical legacy values reach the same runtime
+  fields and persistence bundle in the same order. Existing fallback and
+  whitespace behavior are explicitly retained; conflict/read/storage failure
+  leaves the same state and status. No copy, task, prompt, timing, persistence,
+  trading, or interaction change is intentional.
+- Residual risk: Kerosene has not type-checked on this host. Startup active-
+  legacy profile merging and storage-selection snapshots remain separate owner
+  graphs to inspect before closing Track 9. Local planner/state/message and
+  other diagnostic paths also remain incomplete.
+- Prior turn commit hash: `47061c87f5b0b06acba2a614f6141e39e93c6407`
+- Next candidate: audit and, if safe, harden the startup active-legacy profile
+  merge in `config/files/storage.rs`, including binding, partial-bundle failure,
+  and cleanup semantics; then resume the remaining diagnostic inventory.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -4569,8 +4718,8 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused add-account success/failure/allocation
-  and switch-on-add tests plus the nearby module; `cargo check`; full
+- Environment-blocked this turn: focused deferred-legacy allocation, fallback,
+  conflict, trim, bundle-failure, and nearby switch tests; `cargo check`; full
   `cargo test`; and strict clippy at `alsa-sys` system dependency discovery,
   before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
@@ -4579,7 +4728,7 @@ target-specific cancellation policy, not HTTP replay.
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-36
+- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-37
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -4600,6 +4749,7 @@ target-specific cancellation policy, not HTTP replay.
   explicit credential-save ownership is source-hardened by F-33, and nested
   exchange-response diagnostics are source-hardened by F-34. Ordinary switching
   key ownership is source-hardened by F-35, and add-account ownership by F-36;
-  deferred-legacy copies, local planning/state/message diagnostic redaction,
-  other external-status paths, and the rest of Track 9 require completion
-  before a final verdict.
+  deferred runtime legacy-key ownership is source-hardened by F-37. Startup
+  legacy migration/storage-selection copies, local planning/state/message
+  diagnostic redaction, other external-status paths, and the rest of Track 9
+  require completion before a final verdict.
