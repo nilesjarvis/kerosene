@@ -3750,6 +3750,84 @@ target-specific cancellation policy, not HTTP replay.
   order/account state diagnostics and non-mutation external result/status
   messages remain for the final Track 9 inventory.
 
+### F-52 — Boxed account-result messages expose external errors and financial payloads
+
+- Status: addressed in Turn 45; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account privacy and diagnostic-boundary hardening; no
+  incorrect reconciliation, routing, or known production disclosure was found
+- Scope: the complete seven-variant boxed account-result class in `Message`:
+  `WalletClusterMemberLoaded`, `WalletDetailsLoaded`, `WalletTrackerLoaded`,
+  `WalletTrackerOrdersLoaded`, `PortfolioLoaded`, `IncomeLoaded`, and
+  `AccountDataLoaded`; every task publisher, immediate consumer, and existing
+  nearby staleness/error regression
+- Preconditions/event ordering:
+  1. Account, cluster, detail, tracker, portfolio, and income tasks return an
+     exact `Result<T, String>` through the Elm message boundary.
+  2. Each affected field was an ordinary `Box<Result<T, String>>`, so derived
+     `Message::Debug` traversed `Err(String)` before the update-layer
+     `redact_sensitive_response_text` call. `PortfolioHistory` and
+     `IncomeSnapshot` also derived field-complete `Debug`, exposing successful
+     account-value, PnL, volume, balance, income, health, and token-row data.
+  3. Request IDs, provider/key generations, address/window identity, and
+     cluster member identity were checked only after the message reached its
+     established update handler; those guards correctly controlled state
+     application but did not protect parent-message diagnostics.
+- Evidence: parent commit
+  `335ca73f08f28f138102b23c4a7db9433b67f119` shows all seven raw fields at
+  `src/message.rs:1022-1028`, `src/message.rs:1063-1068`,
+  `src/message.rs:1145-1159`, and `src/message.rs:1671-1675`. The established
+  consumers dereferenced the box immediately in account, cluster, wallet-
+  detail, tracker, portfolio, and income updates
+  (`src/account_update.rs:75-77`, `src/wallet_cluster_update.rs:79-91`,
+  `src/wallet_update/details.rs:15-36`,
+  `src/wallet_update/tracker/results.rs:12-44`,
+  `src/portfolio_update.rs:51-69`, `src/portfolio_update.rs:84-102`). Existing
+  handlers sanitized external errors only after this diagnostic boundary.
+- Violated invariant: exact account results may cross transient Elm plumbing
+  for request correlation and authoritative state application, but generic
+  diagnostics must not traverse financial/account snapshots or untrusted
+  upstream error strings.
+- Risk: the debug-only unrouted-message assertion, a test failure, framework
+  instrumentation, or future message logging could expose portfolio/income
+  values or an upstream error containing an address, request material, or
+  credential-like text. No key, signature, signed payload, exchange mutation,
+  or known live diagnostic is implicated.
+- Why existing checks did not cover it: account addresses and tracker batches
+  already used redacted wrappers, and several successful snapshot models had
+  safe custom `Debug`; however, the surrounding ordinary `Result` still
+  formatted every error. Portfolio and income success models remained raw as
+  well. Existing state-error tests verified sanitization after routing, not
+  formatting of the parent message before routing.
+- Implemented fix: add `RedactedAccountMessageResult<T>`, retaining the same
+  boxed `Result<T, String>` ownership and exposing only `Ok(<redacted>)` or
+  `Err(<redacted>)` in `Debug` (`src/message.rs:398-425`). Apply it to exactly
+  the seven account-result fields (`src/message.rs:1051-1057`,
+  `src/message.rs:1092-1097`, `src/message.rs:1174-1196`,
+  `src/message.rs:1708-1712`). Task closures move their unchanged results into
+  the wrapper; each existing update arm calls `into_result()` at the same point
+  where it previously dereferenced the box.
+- Regression coverage: format all seven affected variants with a unique raw-
+  error sentinel and a successful portfolio payload containing exact account-
+  value/PnL/volume sentinels, requiring only redacted result shape
+  (`src/message.rs:2676-2746`). A separate recovery control proves the exact
+  error string and a non-canonical floating-point bit pattern survive the
+  wrapper unchanged (`src/message.rs:2255-2284`). Existing wallet-detail,
+  tracker, portfolio/income, account, cluster, and routing tests retain their
+  established lifecycle assertions after mechanical constructor conversion.
+- Smallest behavior-preserving fix: the wrapper preserves the prior heap box
+  and moves, rather than clones or transforms, the result. No request identity,
+  generation, stale-result guard, account completeness/revision, cluster
+  sizing, tracker retry state, portfolio/income calculation, follow-up refresh,
+  error sanitizer, task order, visible copy, persistence, or trading behavior
+  changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete raw-field/call-site searches, and the mechanical diff establish the
+  intended boundary, but focused and nearby suites cannot execute until ALSA
+  development metadata is available. Independently formattable nested types
+  such as `PnlCardTarget`, ticket quantity provenance, and order-preset config
+  remain for the next Track 9 diagnostic audit.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -6500,6 +6578,69 @@ target-specific cancellation policy, not HTTP replay.
   provenance, preset config diagnostics, account refresh, and user-data paths),
   distinguish deliberately public market data, and close one evidenced subset.
 
+## Turn 45 — Redact Boxed Account Result Messages
+
+- Status: F-52 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: all seven boxed account-result `Message` variants spanning connected-
+  account reconciliation, wallet-cluster member loading, wallet details,
+  tracker snapshots/order counts, portfolio history, and income snapshots;
+  every producer, immediate consumer, diagnostic control, and nearby lifecycle
+  test
+- Invariant: exact success/error results must reach the established account
+  handler unchanged, while generic message diagnostics expose neither external
+  error text nor nested financial/account payloads.
+- Protected behavior: request IDs, addresses and account keys, provider/key
+  generations, window/cluster/member identity, stale-result rejection,
+  completeness and revision state, cluster sizing/readiness, tracker retries,
+  portfolio/income refresh coalescing and follow-ups, exact financial values,
+  user-visible sanitized error copy, task order, routing, persistence, and all
+  trading semantics.
+- Preconditions/event ordering: each async task moves its existing result into
+  a wrapper at `Message` construction; the account, cluster, wallet, tracker, or
+  portfolio update arm restores the original `Result<T, String>` at the same
+  point where it previously dereferenced the box. Existing identity/staleness
+  gates remain before state application, and existing error sanitizers remain
+  after result recovery.
+- Evidence: F-52 records the parent raw fields, complete publisher/consumer
+  inventory, pre-routing diagnostic sink, successful financial-payload path,
+  prior coverage gap, exact bit/error recovery control, and repository-wide
+  absence of the seven targeted raw result field types after the patch.
+- Change: added `RedactedAccountMessageResult<T>` over the same boxed result,
+  with value-neutral success/error `Debug`; mechanically converted all seven
+  fields and their producers/consumers without changing any handler signature
+  or result value.
+- Tests/checks:
+  - The pre-fix seven-variant diagnostic regression stopped in `alsa-sys`
+    before Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - Post-fix exact diagnostic and wrapper-recovery tests, complete message,
+    wallet-update, wallet-cluster, portfolio-update, and account-update suites
+    stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: startup, subscriptions, windows, rendering,
+    and task timing are unchanged; compilation is already blocked, and no live
+    exchange or credential-bearing operation was run.
+- Compatibility/UX assessment: the wrapper retains the prior box and exact
+  result ownership; its recovery control preserves a non-canonical float bit
+  pattern and the original error string. Existing state/error tests still
+  exercise the same handlers and expected copy after constructor-only
+  conversion. No visible behavior, timing, schema, signed bytes, precision, or
+  trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-52 is source-
+  hardened, but nested formattable order/account types—including
+  `PnlCardTarget`, ticket quantity provenance, and preset config/layout
+  diagnostics—need a separate, type-by-type Track 9 review. Public market data
+  and UI/control geometry must remain separately classified.
+- Prior turn commit hash: `335ca73f08f28f138102b23c4a7db9433b67f119`
+- Next candidate: inventory independently formattable nested account/order
+  types, starting with `PnlCardTarget`, `OrderQuantityProvenance`, and
+  `OrderPreset`/saved-layout diagnostics; close only one complete class after
+  proving exact state/view behavior and persistence remain unchanged.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -6541,11 +6682,11 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: pre-fix 11-variant financial diagnostics;
-  post-fix exact diagnostic/bit/preset recovery tests, complete message, app-
-  update, order-update, chart-input, wallet-cluster, and preferences suites,
-  `cargo check`, full `cargo test`, and strict clippy at
-  `alsa-sys` system dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: pre-fix seven-variant account-result
+  diagnostics; post-fix exact diagnostic and bit/error recovery tests, complete
+  message, wallet-update, wallet-cluster, portfolio-update, and account-update
+  suites, `cargo check`, full `cargo test`, and strict clippy at `alsa-sys`
+  system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
@@ -6553,7 +6694,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-51
+  F-40, and F-42 through F-52
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -6591,6 +6732,7 @@ target-specific cancellation policy, not HTTP replay.
   message diagnostics by F-48. All remaining mutation-result message payloads
   are source-hardened by F-49; direct order/position symbols and advanced-
   history navigation identity are source-hardened by F-50, and all direct
-  financial message values by F-51. Remaining nested order/account and external-
-  status paths, plus the rest of Track 9, require completion before a final
-  verdict.
+  financial message values by F-51. Boxed account-result diagnostics are
+  source-hardened by F-52. Remaining independently formattable nested account/
+  order types and external-status paths, plus the rest of Track 9, require
+  completion before a final verdict.

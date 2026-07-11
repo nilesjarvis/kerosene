@@ -43,7 +43,7 @@ fn stale_portfolio_result_after_newer_same_address_request_is_ignored() {
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
         address.to_string().into(),
         stale_request_id,
-        Box::new(Ok(portfolio_history(1.0))),
+        Ok(portfolio_history(1.0)).into(),
     ));
 
     assert!(terminal.portfolio.loading);
@@ -52,7 +52,7 @@ fn stale_portfolio_result_after_newer_same_address_request_is_ignored() {
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
         address.to_string().into(),
         current_request_id,
-        Box::new(Ok(portfolio_history(2.0))),
+        Ok(portfolio_history(2.0)).into(),
     ));
 
     assert!(!terminal.portfolio.loading);
@@ -83,7 +83,7 @@ fn refresh_portfolio_is_coalesced_while_request_is_in_flight() {
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
         address.to_string().into(),
         request_id,
-        Box::new(Ok(portfolio_history(2.0))),
+        Ok(portfolio_history(2.0)).into(),
     ));
 
     assert!(terminal.portfolio.loading);
@@ -116,7 +116,7 @@ fn current_portfolio_result_for_previous_address_finishes_without_applying() {
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
         previous_address.to_string().into(),
         request_id,
-        Box::new(Ok(portfolio_history(1.0))),
+        Ok(portfolio_history(1.0)).into(),
     ));
 
     assert!(!terminal.portfolio.loading);
@@ -143,7 +143,7 @@ fn portfolio_error_redacts_last_error() {
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
         address.to_string().into(),
         request_id,
-        Box::new(Err("portfolio failed: api_key=portfolio-secret".to_string())),
+        Err("portfolio failed: api_key=portfolio-secret".to_string()).into(),
     ));
 
     let error = terminal
@@ -166,7 +166,7 @@ fn stale_income_result_after_newer_same_address_request_is_ignored() {
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
         address.to_string().into(),
         stale_request_id,
-        Box::new(Ok(income_snapshot(1, 1.0))),
+        Ok(income_snapshot(1, 1.0)).into(),
     ));
 
     assert!(terminal.income.loading);
@@ -175,7 +175,7 @@ fn stale_income_result_after_newer_same_address_request_is_ignored() {
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
         address.to_string().into(),
         current_request_id,
-        Box::new(Ok(income_snapshot(2, 2.0))),
+        Ok(income_snapshot(2, 2.0)).into(),
     ));
 
     assert!(!terminal.income.loading);
@@ -208,7 +208,7 @@ fn refresh_income_is_coalesced_while_request_is_in_flight() {
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
         address.to_string().into(),
         request_id,
-        Box::new(Ok(income_snapshot(2, 2.0))),
+        Ok(income_snapshot(2, 2.0)).into(),
     ));
 
     assert!(terminal.income.loading);
@@ -239,7 +239,7 @@ fn current_income_result_for_previous_address_finishes_without_applying() {
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
         previous_address.to_string().into(),
         request_id,
-        Box::new(Ok(income_snapshot(1, 1.0))),
+        Ok(income_snapshot(1, 1.0)).into(),
     ));
 
     assert!(!terminal.income.loading);
@@ -264,7 +264,7 @@ fn income_error_redacts_last_error() {
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
         address.to_string().into(),
         request_id,
-        Box::new(Err("income failed: signature=income-secret".to_string())),
+        Err("income failed: signature=income-secret".to_string()).into(),
     ));
 
     let error = terminal.income.last_error.as_deref().expect("income error");
@@ -289,12 +289,12 @@ fn provider_change_invalidates_in_flight_portfolio_and_income_results() {
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
         address.to_string().into(),
         portfolio_request_id,
-        Box::new(Ok(portfolio_history(1.0))),
+        Ok(portfolio_history(1.0)).into(),
     ));
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
         address.to_string().into(),
         income_request_id,
-        Box::new(Ok(income_snapshot(1, 1.0))),
+        Ok(income_snapshot(1, 1.0)).into(),
     ));
 
     assert!(!terminal.portfolio.loading);
@@ -335,12 +335,12 @@ fn hydromancer_key_generation_change_invalidates_in_flight_portfolio_and_income_
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
         address.to_string().into(),
         portfolio_request_id,
-        Box::new(Ok(portfolio_history(1.0))),
+        Ok(portfolio_history(1.0)).into(),
     ));
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
         address.to_string().into(),
         income_request_id,
-        Box::new(Ok(income_snapshot(1, 1.0))),
+        Ok(income_snapshot(1, 1.0)).into(),
     ));
 
     assert!(!terminal.portfolio.loading);

@@ -320,11 +320,7 @@ impl TradingTerminal {
                 hydromancer_key,
             ),
             move |r| {
-                Message::AccountDataLoaded(
-                    account_addr.clone().into(),
-                    account_context,
-                    Box::new(r),
-                )
+                Message::AccountDataLoaded(account_addr.clone().into(), account_context, r.into())
             },
         );
         let mut tasks = vec![account_task];

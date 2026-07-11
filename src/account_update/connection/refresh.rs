@@ -301,11 +301,7 @@ impl TradingTerminal {
         Task::perform(
             fetch_account_data_scoped_with_provider(addr, scope, provider, hydromancer_key),
             move |r| {
-                Message::AccountDataLoaded(
-                    requested_addr.clone().into(),
-                    account_context,
-                    Box::new(r),
-                )
+                Message::AccountDataLoaded(requested_addr.clone().into(), account_context, r.into())
             },
         )
     }
@@ -331,11 +327,7 @@ impl TradingTerminal {
         Task::perform(
             fetch_account_data_scoped_with_provider(addr, scope, provider, hydromancer_key),
             move |r| {
-                Message::AccountDataLoaded(
-                    requested_addr.clone().into(),
-                    account_context,
-                    Box::new(r),
-                )
+                Message::AccountDataLoaded(requested_addr.clone().into(), account_context, r.into())
             },
         )
     }

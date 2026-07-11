@@ -395,6 +395,35 @@ impl fmt::Debug for RedactedAdvancedOrderHistoryId {
     }
 }
 
+/// Exact account task result carried through the Elm message boundary.
+///
+/// Update handlers recover the original value. Generic message diagnostics
+/// expose only success/error shape and never traverse a nested account payload
+/// or external error string.
+#[derive(Clone)]
+pub(crate) struct RedactedAccountMessageResult<T>(Box<Result<T, String>>);
+
+impl<T> RedactedAccountMessageResult<T> {
+    pub(crate) fn into_result(self) -> Result<T, String> {
+        *self.0
+    }
+}
+
+impl<T> From<Result<T, String>> for RedactedAccountMessageResult<T> {
+    fn from(value: Result<T, String>) -> Self {
+        Self(Box::new(value))
+    }
+}
+
+impl<T> fmt::Debug for RedactedAccountMessageResult<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 /// Exact order task result carried through the Elm message boundary.
 ///
 /// Update handlers recover the original value. Generic message diagnostics
@@ -1024,7 +1053,7 @@ pub(crate) enum Message {
         RedactedAccountKey,
         RedactedAddress,
         ReadDataRequestContext,
-        Box<Result<WalletDetailsData, String>>,
+        RedactedAccountMessageResult<WalletDetailsData>,
     ),
     WalletClusterWsUpdate(
         WsUserDataStreamParams,
@@ -1064,7 +1093,7 @@ pub(crate) enum Message {
         window::Id,
         RedactedAddress,
         ReadDataRequestContext,
-        Box<Result<WalletDetailsData, String>>,
+        RedactedAccountMessageResult<WalletDetailsData>,
     ),
     WalletDetailsWsUpdate(
         WsUserDataStreamParams,
@@ -1145,18 +1174,26 @@ pub(crate) enum Message {
     WalletTrackerLoaded(
         RedactedAddress,
         ReadDataRequestContext,
-        Box<Result<WalletTrackerSnapshot, String>>,
+        RedactedAccountMessageResult<WalletTrackerSnapshot>,
     ),
     WalletTrackerBatchLoaded(ReadDataRequestContext, RedactedWalletTrackerBatch),
     WalletTrackerOrdersLoaded(
         RedactedAddress,
         ReadDataRequestContext,
-        Box<Result<usize, String>>,
+        RedactedAccountMessageResult<usize>,
     ),
     RefreshPortfolio,
-    PortfolioLoaded(RedactedAddress, u64, Box<Result<PortfolioHistory, String>>),
+    PortfolioLoaded(
+        RedactedAddress,
+        u64,
+        RedactedAccountMessageResult<PortfolioHistory>,
+    ),
     RefreshIncome,
-    IncomeLoaded(RedactedAddress, u64, Box<Result<IncomeSnapshot, String>>),
+    IncomeLoaded(
+        RedactedAddress,
+        u64,
+        RedactedAccountMessageResult<IncomeSnapshot>,
+    ),
     ToggleIncomeAlerts,
     ToggleLiquidationAlerts,
     ToggleTrackedTradeAlerts,
@@ -1671,7 +1708,7 @@ pub(crate) enum Message {
     AccountDataLoaded(
         RedactedAddress,
         AccountDataRequestContext,
-        Box<Result<AccountData, String>>,
+        RedactedAccountMessageResult<AccountData>,
     ),
     RetryTwapReconciliationAccountData(RedactedAddress),
     RefreshAccountData,
@@ -1712,13 +1749,15 @@ pub(crate) enum Message {
 #[cfg(test)]
 mod tests {
     use super::{
-        Message, RedactedAdvancedOrderHistoryId, RedactedClientOrderId, RedactedOrderId,
-        RedactedOrderInput, RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue,
-        RedactedPhoneInput, RedactedTelegramChannelKey, SchwabAccountsMessageResult,
-        SchwabTokenRefreshMessageResult, SecretInput, TelegramFastAuthMessageResult,
-        TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult, XAuthContextMessageResult,
-        XFeedPageMessageResult, XListsMessageResult, XProfileImageMessageResult,
+        Message, RedactedAccountMessageResult, RedactedAdvancedOrderHistoryId,
+        RedactedClientOrderId, RedactedOrderId, RedactedOrderInput, RedactedOrderMessageResult,
+        RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput, RedactedTelegramChannelKey,
+        SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult, SecretInput,
+        TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult,
+        XAuthContextMessageResult, XFeedPageMessageResult, XListsMessageResult,
+        XProfileImageMessageResult,
     };
+    use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
     use crate::api::{
         BookLevel, ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OrderBook, OutcomeSymbolInfo,
     };
@@ -2214,6 +2253,37 @@ mod tests {
     }
 
     #[test]
+    fn account_message_result_wrapper_preserves_exact_payloads() {
+        const ERROR: &str = "account-result-error-sentinel";
+        const FINANCIAL_BITS: u64 = 0x7ff8_0000_0000_0042;
+        let financial_value = f64::from_bits(FINANCIAL_BITS);
+        let mut history = PortfolioHistory::default();
+        history.buckets.insert(
+            "day".to_string(),
+            PortfolioBucket {
+                account_value_history: vec![(123, financial_value)],
+                ..PortfolioBucket::default()
+            },
+        );
+        let error: RedactedAccountMessageResult<PortfolioHistory> = Err(ERROR.to_string()).into();
+        let success: RedactedAccountMessageResult<PortfolioHistory> = Ok(history).into();
+
+        let error_debug = format!("{error:?}");
+        let success_debug = format!("{success:?}");
+
+        assert!(error_debug.contains("Err(<redacted>)"), "{error_debug}");
+        assert!(success_debug.contains("Ok(<redacted>)"), "{success_debug}");
+        assert!(!error_debug.contains(ERROR), "{error_debug}");
+        assert!(!success_debug.contains("day"), "{success_debug}");
+        assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
+        let restored = success.into_result().expect("synthetic portfolio history");
+        assert_eq!(
+            restored.buckets["day"].account_value_history[0].1.to_bits(),
+            FINANCIAL_BITS
+        );
+    }
+
+    #[test]
     fn leverage_message_debug_redacts_mutation_parameters() {
         const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
         const SYMBOL: &str = "leverage-symbol-sentinel";
@@ -2604,6 +2674,78 @@ mod tests {
     }
 
     #[test]
+    fn boxed_account_result_message_debug_redacts_payloads() {
+        const ERROR_SENTINEL: &str = "raw-provider-account-error-sentinel";
+        const FINANCIAL_SENTINEL: f64 = 918_273_645.125;
+        const FINANCIAL_SENTINEL_TEXT: &str = "918273645.125";
+
+        let read_context = ReadDataRequestContext {
+            provider: ReadDataProvider::Hyperliquid,
+            read_data_provider_generation: 1,
+            hydromancer_key_generation: 2,
+        };
+        let account_context = AccountDataRequestContext::connected_snapshot(read_context, 3, 4);
+        let mut portfolio_history = PortfolioHistory::default();
+        portfolio_history.buckets.insert(
+            "day".to_string(),
+            PortfolioBucket {
+                account_value_history: vec![(100, FINANCIAL_SENTINEL)],
+                pnl_history: vec![(100, -FINANCIAL_SENTINEL)],
+                vlm: Some(FINANCIAL_SENTINEL),
+                ..PortfolioBucket::default()
+            },
+        );
+
+        let messages = vec![
+            Message::WalletClusterMemberLoaded(
+                "cluster-1".to_string(),
+                Some("profile-1".to_string()).into(),
+                "0x1111111111111111111111111111111111111111".into(),
+                read_context,
+                Err(ERROR_SENTINEL.to_string()).into(),
+            ),
+            Message::WalletDetailsLoaded(
+                iced::window::Id::unique(),
+                "0x2222222222222222222222222222222222222222".into(),
+                read_context,
+                Err(ERROR_SENTINEL.to_string()).into(),
+            ),
+            Message::WalletTrackerLoaded(
+                "0x3333333333333333333333333333333333333333".into(),
+                read_context,
+                Err(ERROR_SENTINEL.to_string()).into(),
+            ),
+            Message::WalletTrackerOrdersLoaded(
+                "0x4444444444444444444444444444444444444444".into(),
+                read_context,
+                Err(ERROR_SENTINEL.to_string()).into(),
+            ),
+            Message::PortfolioLoaded(
+                "0x5555555555555555555555555555555555555555".into(),
+                5,
+                Ok(portfolio_history).into(),
+            ),
+            Message::IncomeLoaded(
+                "0x6666666666666666666666666666666666666666".into(),
+                6,
+                Err(ERROR_SENTINEL.to_string()).into(),
+            ),
+            Message::AccountDataLoaded(
+                "0x7777777777777777777777777777777777777777".into(),
+                account_context,
+                Err(ERROR_SENTINEL.to_string()).into(),
+            ),
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(ERROR_SENTINEL), "{rendered}");
+            assert!(!rendered.contains(FINANCIAL_SENTINEL_TEXT), "{rendered}");
+        }
+    }
+
+    #[test]
     fn address_bearing_message_debug_redacts_values() {
         const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
         const ACCOUNT_KEY: &str = "account-key-sentinel";
@@ -2639,7 +2781,7 @@ mod tests {
                 iced::window::Id::unique(),
                 ADDRESS.into(),
                 read_context,
-                Box::new(Err("details failed".to_string())),
+                Err("details failed".to_string()).into(),
             ),
             Message::WalletDetailsWsUpdate(
                 WsUserDataStreamParams::without_mids(Some(ADDRESS.to_string()), Vec::new())
@@ -2670,7 +2812,7 @@ mod tests {
             Message::WalletTrackerLoaded(
                 ADDRESS.into(),
                 read_context,
-                Box::new(Err("tracker failed".to_string())),
+                Err("tracker failed".to_string()).into(),
             ),
             Message::WalletTrackerBatchLoaded(
                 read_context,
@@ -2679,18 +2821,14 @@ mod tests {
             Message::WalletTrackerOrdersLoaded(
                 ADDRESS.into(),
                 read_context,
-                Box::new(Err("orders failed".to_string())),
+                Err("orders failed".to_string()).into(),
             ),
             Message::PortfolioLoaded(
                 ADDRESS.into(),
                 1,
-                Box::new(Err("portfolio failed".to_string())),
+                Err("portfolio failed".to_string()).into(),
             ),
-            Message::IncomeLoaded(
-                ADDRESS.into(),
-                1,
-                Box::new(Err("income failed".to_string())),
-            ),
+            Message::IncomeLoaded(ADDRESS.into(), 1, Err("income failed".to_string()).into()),
             Message::CopyToClipboard(ADDRESS.into()),
             Message::WalletAddressActionsHovered(ADDRESS.into()),
             Message::WalletAddressActionsExited(ADDRESS.into()),
@@ -2800,7 +2938,7 @@ mod tests {
             Message::AccountDataLoaded(
                 ADDRESS.into(),
                 account_context,
-                Box::new(Err("account failed".to_string())),
+                Err("account failed".to_string()).into(),
             ),
             Message::RetryTwapReconciliationAccountData(ADDRESS.into()),
             Message::WsUserDataUpdate(

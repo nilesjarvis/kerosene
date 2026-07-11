@@ -33,7 +33,7 @@ impl TradingTerminal {
                 }
                 state.loading = false;
                 state.loading_context = None;
-                match *result {
+                match result.into_result() {
                     Ok(data) => {
                         let data = Self::filter_wallet_details_for_hidden_symbols_with(
                             &exchange_symbols,
@@ -87,9 +87,7 @@ mod tests {
             window_id,
             TEST_ADDRESS.to_string().into(),
             context,
-            Box::new(Err(
-                "details failed: api_key=wallet-secret signature=sig-secret".to_string(),
-            )),
+            Err("details failed: api_key=wallet-secret signature=sig-secret".to_string()).into(),
         ));
 
         let state = terminal
@@ -123,7 +121,7 @@ mod tests {
             window_id,
             TEST_ADDRESS.to_string().into(),
             stale_context,
-            Box::new(Err("new error".to_string())),
+            Err("new error".to_string()).into(),
         ));
 
         let state = terminal
@@ -159,7 +157,7 @@ mod tests {
             window_id,
             TEST_ADDRESS.to_string().into(),
             stale_context,
-            Box::new(Err("old request failed".to_string())),
+            Err("old request failed".to_string()).into(),
         ));
 
         let state = terminal

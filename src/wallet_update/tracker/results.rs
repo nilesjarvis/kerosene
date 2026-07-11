@@ -15,7 +15,7 @@ impl TradingTerminal {
                     self.clear_stale_wallet_tracker_core_loading(&address, context);
                     return Task::none();
                 }
-                self.apply_wallet_tracker_snapshot_result(address, *result);
+                self.apply_wallet_tracker_snapshot_result(address, result.into_result());
             }
             Message::WalletTrackerBatchLoaded(context, results) => {
                 let results = results.into_vec();
@@ -41,7 +41,7 @@ impl TradingTerminal {
                 let row = self.wallet_tracker.rows.entry(address).or_default();
                 row.order_loading = false;
                 row.order_loading_context = None;
-                match *result {
+                match result.into_result() {
                     Ok(open_order_count) => {
                         row.open_order_count = Some(open_order_count);
                         row.order_error = None;
@@ -193,7 +193,7 @@ mod tests {
         let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerLoaded(
             TEST_ADDRESS.to_string().into(),
             context,
-            Box::new(Err("snapshot failed: api_key=tracker-secret".to_string())),
+            Err("snapshot failed: api_key=tracker-secret".to_string()).into(),
         ));
 
         let row = terminal
@@ -218,7 +218,7 @@ mod tests {
         let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerOrdersLoaded(
             TEST_ADDRESS.to_string().into(),
             context,
-            Box::new(Err("orders failed: auth_token=order-secret".to_string())),
+            Err("orders failed: auth_token=order-secret".to_string()).into(),
         ));
 
         let row = terminal
@@ -251,7 +251,7 @@ mod tests {
         let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerLoaded(
             TEST_ADDRESS.to_string().into(),
             stale_context,
-            Box::new(Ok(snapshot())),
+            Ok(snapshot()).into(),
         ));
 
         let row = terminal
@@ -294,7 +294,7 @@ mod tests {
         let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerOrdersLoaded(
             TEST_ADDRESS.to_string().into(),
             stale_context,
-            Box::new(Ok(7)),
+            Ok(7).into(),
         ));
 
         let row = terminal
@@ -348,12 +348,12 @@ mod tests {
         let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerLoaded(
             TEST_ADDRESS.to_string().into(),
             stale_context,
-            Box::new(Ok(snapshot())),
+            Ok(snapshot()).into(),
         ));
         let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerOrdersLoaded(
             TEST_ADDRESS.to_string().into(),
             stale_context,
-            Box::new(Ok(7)),
+            Ok(7).into(),
         ));
 
         let row = terminal

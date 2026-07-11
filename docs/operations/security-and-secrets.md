@@ -238,6 +238,17 @@ restores each value before existing parsing, clamping, preparation, or state
 changes. Quick-order canvas coordinates remain ordinary control geometry; no
 price, size, preset, slippage, fraction, persistence, or UI behavior changes.
 
+Account refresh results for the connected account, wallet-cluster members,
+wallet details, wallet tracker, portfolio history, and income snapshots retain
+their exact success payloads and upstream errors until the established update
+handler runs. `RedactedAccountMessageResult<T>` keeps the existing boxed result
+ownership while making derived `Message` diagnostics expose only `Ok`/`Err`
+shape. Each update path restores the original result at its prior box-
+consumption point; unchanged request-identity and staleness checks still govern
+state application. Account reconciliation, cluster sizing, tracker state,
+portfolio/income data, retry bookkeeping, and user-visible error sanitization
+remain exact.
+
 Terminal Chase/TWAP history intentionally persists exact account, symbol,
 financial, timing, child-identifier, status, and activity fields for its
 existing views. The persisted entry, child, and log types have independently

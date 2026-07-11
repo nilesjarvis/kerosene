@@ -87,7 +87,7 @@ impl TradingTerminal {
                 profile_key.into_option(),
                 address.into_string(),
                 context,
-                *result,
+                result.into_result(),
             ),
             Message::WalletClusterWsUpdate(params, source_address, data) => {
                 let source_address = source_address.map(|address| address.into_string());
@@ -424,7 +424,7 @@ impl TradingTerminal {
                     Some(profile_secret_id).into(),
                     address.into(),
                     read_context,
-                    Box::new(result),
+                    result.into(),
                 )
             },
         )

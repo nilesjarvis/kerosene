@@ -34,7 +34,7 @@ impl TradingTerminal {
                     window_id,
                     address.clone().into(),
                     read_context,
-                    Box::new(r),
+                    r.into(),
                 )
             },
         )

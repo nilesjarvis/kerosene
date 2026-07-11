@@ -73,7 +73,7 @@ impl TradingTerminal {
             Message::ConnectWallet => self.connect_wallet(),
             Message::DisconnectWallet => self.disconnect_wallet(),
             Message::AccountDataLoaded(address, context, result) => {
-                self.apply_account_data_loaded(address.into_string(), context, *result)
+                self.apply_account_data_loaded(address.into_string(), context, result.into_result())
             }
             Message::RetryTwapReconciliationAccountData(address) => {
                 self.retry_twap_reconciliation_account_data(address.into_string())
