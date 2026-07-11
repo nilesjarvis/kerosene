@@ -232,7 +232,7 @@ impl fmt::Debug for WalletClusterExecutionLeg {
             .field("price", &"<redacted>")
             .field("cloid", &"<redacted>")
             .field("status", &self.status)
-            .field("message", &self.message)
+            .field("message", &"<redacted>")
             .finish()
     }
 }
@@ -603,6 +603,30 @@ mod tests {
         assert_eq!(parse_member_weight("2.25"), Some(2.25));
         assert_eq!(parse_member_weight("-1"), None);
         assert_eq!(parse_member_weight("nan"), None);
+    }
+
+    #[test]
+    fn execution_leg_debug_redacts_lifecycle_message() {
+        const RAW_CLOID: &str = "0x0000000000000000000000000000000f";
+        let message = format!("orderStatus says cancel {RAW_CLOID} if needed");
+        let leg = WalletClusterExecutionLeg {
+            profile_secret_id: "profile-secret".to_string(),
+            address: "0x1111111111111111111111111111111111111111".to_string(),
+            label: "Test member".to_string(),
+            symbol: "BTC".to_string(),
+            is_buy: true,
+            size: "1".to_string(),
+            price: "100".to_string(),
+            cloid: RAW_CLOID.to_string(),
+            status: WalletClusterLegStatus::Uncertain,
+            message: message.clone(),
+        };
+
+        let rendered = format!("{leg:?}");
+
+        assert!(rendered.contains("message: \"<redacted>\""));
+        assert!(!rendered.contains(RAW_CLOID));
+        assert_eq!(leg.message, message, "stored UI message must remain intact");
     }
 
     #[test]

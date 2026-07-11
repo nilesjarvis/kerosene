@@ -254,7 +254,8 @@
 
 ### F-06 — Wallet-cluster leg debug output exposes its lifecycle message
 
-- Status: confirmed during the Turn 5 formatter review; not yet implemented
+- Status: addressed in Turn 6; focused test added, but executable validation is
+  blocked before Kerosene compilation by the missing system ALSA package
 - Severity: Medium privacy hardening
 - Evidence: `WalletClusterExecutionLeg::Debug` redacts the explicit CLOID,
   address, symbol, size, and price fields but formats `message` verbatim
@@ -264,9 +265,15 @@
 - Risk: diagnostic formatting can bypass the explicit field redaction and reveal
   the same order identifier or order-result detail through the derived lifecycle
   message.
-- Smallest fix: redact only the `message` field in `Debug` and add a focused
-  synthetic regression. Keep the stored message unchanged because the existing
-  cluster execution view renders it directly.
+- Implemented fix: the custom formatter now emits `<redacted>` for `message`
+  while retaining the field name and all safe status metadata
+  (`src/wallet_cluster_state.rs:220-236`).
+- Regression coverage: a synthetic leg embeds its CLOID in the stored lifecycle
+  message, proves the formatted output omits it, and independently proves the
+  stored message remains unchanged for the existing view
+  (`src/wallet_cluster_state.rs:608-630`).
+- Protected behavior: the view continues reading `leg.message` directly; result
+  handling, state, UI copy, order semantics, and persistence are unchanged.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -476,6 +483,47 @@
 - Next candidate: implement F-06's diagnostic-only cluster-leg message
   redaction, then resume F-05's Chase and TWAP duplicate/late-result audit.
 
+## Turn 6 — Redact Wallet-Cluster Lifecycle Messages in Debug
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: Medium privacy hardening
+- Scope: `WalletClusterExecutionLeg::Debug` and one focused model regression
+- Invariant: redacting explicit order fields is insufficient if a free-form
+  lifecycle message can carry the same CLOID or exchange detail; diagnostic
+  formatting must redact both paths.
+- Protected behavior: the stored lifecycle message and the cluster execution
+  view remain unchanged. No result classification, transition, refresh,
+  request, signing, UI, schema, or persistence code changed.
+- Evidence: the only non-view consumer of the stored message was its custom
+  formatter, and unexpected-resting handlers can embed the CLOID in that message.
+  Detailed source evidence is recorded under F-06 above.
+- Change: replaced the formatter's raw message value with `<redacted>`.
+- Regression test: formats a synthetic uncertain leg whose message repeats its
+  CLOID, rejects that raw identifier in `Debug`, checks the explicit redaction
+  marker, and verifies the stored message is intact.
+- Validation:
+  - `cargo fmt` passed.
+  - `cargo fmt -- --check` passed.
+  - `git diff --check` passed before the ledger update and is rerun during the
+    final review.
+  - `cargo test --package kerosene --bin kerosene execution_leg_debug_redacts_lifecycle_message`
+    stopped in `alsa-sys` before compiling Kerosene because `pkg-config` could
+    not find the system `alsa.pc` package.
+  - `cargo check` stopped at the same pre-existing environment dependency
+    boundary before checking Kerosene.
+  - The pre-implementation focused-test attempt encountered the same ALSA
+    boundary, so the strengthened regression could not be observed failing on
+    this host.
+- Compatibility/UX assessment: diagnostic-only output change; no user-visible,
+  trading-semantic, timing, schema, or dependency impact.
+- Residual risk: source parsing, formatting, consumer inspection, and the diff
+  pass, but the focused test and Rust type-check must still execute once ALSA
+  development metadata is available.
+- Prior turn commit hash: `47807a313004fec25e53377d1a5198b137bf1d34`
+- Next candidate: resume F-05 with adversarial Chase and TWAP direct-result
+  replay tests, adding per-attempt correlation only if existing phase guards do
+  not already make duplicate and late delivery harmless.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -483,7 +531,7 @@
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: the focused wallet-cluster update tests and
+- Environment-blocked this turn: the focused cluster-leg debug regression and
   `cargo check` at `alsa-sys` system dependency discovery, before Kerosene was
   compiled.
 - No live exchange mutation or credential-bearing operation was run.
@@ -492,9 +540,9 @@
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-04 have source fixes and regression coverage but await
-  executable validation on a host with ALSA development metadata. F-05 and F-06
-  remain open as described above.
+- F-01 through F-04 and F-06 have source fixes and regression coverage but await
+  executable validation on a host with ALSA development metadata. F-05 remains
+  open as described above.
 - Signing wire construction, response classification, Chase/TWAP correlation,
   cluster result handling, account refresh completeness, restart cleanup, and
   redaction require further track-by-track completion before a final verdict.
