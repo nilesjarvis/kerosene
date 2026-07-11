@@ -113,7 +113,9 @@ impl TradingTerminal {
                 }
                 Ok(response) => {
                     let summary = response.summary();
-                    if twap_terminal_cancel_error(&summary) {
+                    if !response.has_conflicting_order_effect()
+                        && twap_terminal_cancel_error(&summary)
+                    {
                         finish_attempt = true;
                         twap.pending_op = None;
                         twap.cancel_retries = 0;

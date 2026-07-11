@@ -129,6 +129,42 @@ fn rejected_initial_place_result_removes_chase_and_clears_owned_pending_action()
 }
 
 #[test]
+fn conflicting_place_result_reconciles_by_cloid_instead_of_failing_chase() {
+    let mut chase = chase();
+    chase.lifecycle = ChaseLifecycle::Placing;
+    chase.current_cloid = Some(TEST_CLOID.to_string());
+    chase.place_attempt_count = 1;
+    let mut terminal = connected_terminal_with_chase(chase);
+    terminal.account_loading = false;
+
+    let response = exchange_response(vec![
+        serde_json::json!({
+            "resting": {
+                "oid": 9001_u64
+            }
+        }),
+        serde_json::json!({
+            "error": "conflicting rejection"
+        }),
+    ]);
+    let _task = terminal.handle_chase_place_result(1, 1, Ok(response));
+
+    let chase = chase_from_terminal(&terminal, 1);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Placement
+        }
+    );
+    assert_eq!(chase.current_oid, None);
+    assert!(terminal.account_loading);
+    assert!(order_status_is_error_containing(
+        &terminal,
+        "response was not confirmed"
+    ));
+}
+
+#[test]
 fn replacement_place_result_preserves_unrelated_pending_order_action() {
     let mut chase = chase();
     chase.lifecycle = ChaseLifecycle::Placing;

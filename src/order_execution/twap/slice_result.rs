@@ -71,16 +71,19 @@ impl TradingTerminal {
                     let summary_text = response.summary();
                     let fill_summary = twap_response_fill_summary(&response);
                     let oid = fill_summary.oid.or_else(|| response.order_oid());
+                    let has_conflicting_order_effect = response.has_conflicting_order_effect();
 
                     if let Some(child) = twap.child_order_mut(pending.index) {
-                        child.oid = oid;
                         child.exchange_summary = summary_text.clone();
-                        child.filled_size = child.filled_size.max(fill_summary.filled_size);
-                        child.avg_price = fill_summary.avg_price.or(child.avg_price);
                         child.cloid = Some(pending.cloid.clone());
+                        if !has_conflicting_order_effect {
+                            child.oid = oid;
+                            child.filled_size = child.filled_size.max(fill_summary.filled_size);
+                            child.avg_price = fill_summary.avg_price.or(child.avg_price);
+                        }
                     }
 
-                    if response.is_ioc_no_match() {
+                    if !has_conflicting_order_effect && response.is_ioc_no_match() {
                         if let Some(child) = twap.child_order_mut(pending.index) {
                             child.status = TwapChildStatus::NoFill;
                         }
@@ -97,7 +100,7 @@ impl TradingTerminal {
                             false,
                         ));
                         twap.retry_slice = None;
-                    } else if response.is_error() {
+                    } else if !has_conflicting_order_effect && response.is_error() {
                         match classify_twap_exchange_error(&summary_text) {
                             TwapExchangeErrorAction::Retry(reason) => {
                                 refresh_policy = TwapAccountRefresh::None;
@@ -205,7 +208,7 @@ impl TradingTerminal {
                                 twap.retry_slice = None;
                             }
                         }
-                    } else if fill_summary.filled_size > 0.0 {
+                    } else if !has_conflicting_order_effect && fill_summary.filled_size > 0.0 {
                         let filled_size = fill_summary.filled_size;
                         if let Some(child) = twap.child_order_mut(pending.index) {
                             child.status = TwapChildStatus::Filled;
@@ -262,7 +265,7 @@ impl TradingTerminal {
                         ));
                         refresh_policy = TwapAccountRefresh::Immediate;
                         status_check_cloid = Some(pending.cloid.clone());
-                    } else if let Some(oid) = oid {
+                    } else if !has_conflicting_order_effect && let Some(oid) = oid {
                         if let Some(child) = twap.child_order_mut(pending.index) {
                             child.status = TwapChildStatus::UnexpectedResting;
                         }

@@ -46,6 +46,14 @@
 - One-shot result classification distinguishes accepted-resting, filled,
   cancelled, rejected, ambiguous, and transport-unknown outcomes
   (`src/order_update/results.rs:15-30`, `src/order_update/results.rs:173-215`).
+- Signed mutation transport currently maps every serialization, connect/send,
+  body-read, and JSON-parse failure to transport-unknown and never retries a
+  placement or modify. Parsed responses now also preserve uncertainty whenever
+  an explicit error conflicts with a structured resting, filled, successful
+  cancel, or otherwise non-error status, including an erroneous top-level
+  envelope
+  (`src/signing/client.rs:65-126`,
+  `src/signing/model/exchange_response/analysis.rs:83-144`).
 - Order-status REST parsing validates the returned OID/CLOID for concrete order
   bodies before handing a result to lifecycle code
   (`src/api/order_status/parsing.rs:10-61`).
@@ -77,9 +85,9 @@
 | Move/modify | Connected account + symbol + OID; original key captured in `PendingMoveOrderContext` | Account + symbol + OID; indicator ID | Target OID (no separate request token) | Shared classifier plus confirmed-modify predicate | `orderStatus` by OID + account refresh to confirm price | Exact pending move key/context; account match; status tuple match | Removes move context/indicator; terminal status or complete open-order refresh clears uncertainty | `order_execution/quick_order/move_order/tests/**`, `order_update/move_order.rs` tests | Same OID can be modified repeatedly; audit per-attempt correlation after prior completion |
 | Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle + dispatch-time place attempt; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account refresh + open-order/fill stream reconciliation | Exact place-attempt equality + `expects_place_result`; current account, symbol identity, prior-exposure, and reconciliation gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled | Chase lifecycle/place/result/status tests, duplicate/late direct-result regressions, and account stream Chase tests | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account refresh + open-order/fill stream | Exact reprice-count/lifecycle/OID match; account and symbol/reconciliation checks before dispatch | Verification/resting/stop flow; terminal Chase archived | `order_update/chase/modify/tests/**`, including duplicate/late direct-result regressions, and Chase reprice tests | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
-| Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account refresh/open-order disappearance | Exact stopping phase/OID; disconnected account is reconciled at origin scope | Verifying-cancel then archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests | No confirmed gap; retry idempotence depends on target-specific cancel semantics |
+| Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account refresh/open-order disappearance | Exact stopping phase/OID; disconnected account is reconciled at origin scope | Verifying-cancel then archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests | F-08 addressed in Turn 9; retry idempotence depends on target-specific cancel semantics |
 | TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending index/retry equality, current account for dispatch, status CLOID, and terminal checks | Finishes attempt once; child status/fills updated; terminal TWAP archived | `order_execution/twap/tests/**`, including duplicate/late slice-result regressions, and `twap_state/tests/**` | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
-| TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + retry attempt | Pending cancel target matches OID or CLOID; retry message includes attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Exact pending target, retry count, and terminal-state checks | Clears pending cancel and finishes attempt, or bounded error terminal | `order_execution/twap/tests/cancel.rs`, status/account tests | No confirmed gap |
+| TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + retry attempt | Pending cancel target matches OID or CLOID; retry message includes attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Exact pending target, retry count, and terminal-state checks | Clears pending cancel and finishes attempt, or bounded error terminal | `order_execution/twap/tests/cancel.rs`, status/account tests | F-08 addressed in Turn 9; contradictory acknowledgements retain the existing bounded target-specific retry path |
 | Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution/profile/CLOID plus account, symbol, surface, and order kind | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member user stream | Full origin match; direct requires `Pending`, status requires `Checking`; pending executions are not evicted | First terminal leg outcome is immutable; execution complete when every leg terminal | Cluster planning/member tests plus adversarial result/status tests in `wallet_cluster_update.rs` | F-04 addressed in Turn 5; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Wallet-cluster close child | Same as cluster order, plus fresh per-member position snapshot and reduce-only plan | Same full correlation tuple with `ClusterClose` surface | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member stream | Freshness/side/position preflight plus the shared exact transition guard | Same first-terminal-wins handling as cluster orders | Close sizing/freshness tests and shared adversarial result tests | F-04 addressed by the shared Turn 5 transition guard |
 | Leverage update | `PendingLeverageUpdateContext` captures account, symbol, asset, dex, margin mode, leverage | Full pending-context equality | None; mutation is not blindly retried | Confirmed-default predicate; other non-error bodies are uncertain | Scoped account refresh for outcomes that may have committed | Pending-context equality + current-account match | Pending context cleared once; matching form updated only on confirmed default | `order_update/leverage.rs` tests, signing action/response tests | No exact mutation status endpoint; verify refresh completeness is sufficient in transport audit |
@@ -89,6 +97,14 @@ signed-action builder. Valid field mapping is direct and covered at both the
 prepared-request and signed JSON/msgpack boundaries. The cross-cutting F-07
 guard applies to every such row without duplicating market, sizing, precision,
 side, reduce-only, or asset/symbol policy in signing.
+
+Turn 9 verified the parsed-response classification for every shared and
+advanced mutation handler. The cross-cutting F-08 guard applies to every caller
+of the shared classifier, including one-shot, quick/HUD, cancel, move, NUKE, and
+wallet-cluster results, and explicitly to Chase place/modify/cancel plus TWAP
+child-place/unexpected-cancel handling. Pure errors, unambiguous successes,
+transport failures, and unstructured malformed responses retain their prior
+paths; only simultaneous error/effect claims reconcile.
 
 ## Ranked Findings and Audit Candidates
 
@@ -382,6 +398,94 @@ side, reduce-only, or asset/symbol policy in signing.
   alter valid action bytes. Market capability, symbol/asset selection, sizing,
   precision, price/slippage, side, reduce-only, TIF, CLOID generation, signing,
   result handling, UI, timing, and persistence remain unchanged for valid work.
+
+### F-08 — Contradictory exchange acknowledgements can be consumed as definitive outcomes
+
+- Status: addressed in Turn 9; focused tests added, but executable validation is
+  blocked before Kerosene compilation by the missing system ALSA package
+- Severity: High
+- Scope: shared response analysis; every shared-classifier caller; and Chase
+  and TWAP parsed mutation-result handling
+- Preconditions/event ordering:
+  1. A mutation receives a syntactically parseable `ExchangeResponse` rather
+     than a transport `Err`.
+  2. The top-level envelope or one structured status explicitly reports an
+     error, while a structured status also reports a possible resting, filled,
+     successful-cancel, or otherwise non-error exchange effect.
+  3. A handler evaluates the error, IOC-no-match, or terminal-cancel signal
+     before recognizing the conflicting effect.
+  4. The handler removes/fails automation, accounts for no fill, or declares a
+     child cancel complete without first resolving the exact CLOID/OID.
+- Evidence:
+  - `ExchangeResponse::is_error` recognizes both top-level and status-level
+    errors. The prior `has_potential_order_effect` returned early for every
+    top-level error even when the parsed body retained a concrete order effect,
+    while the shared one-shot classifier relied on that predicate to separate
+    rejection from ambiguity (`src/signing/model/exchange_response/analysis.rs:83-144`,
+    `src/order_update/results.rs:180-215`).
+  - Shared one-shot handling already treated an inner resting/fill plus error as
+    ambiguous, but Chase place/modify/cancel had earlier `is_error` branches;
+    TWAP child placement evaluated IOC/error/fill paths before its ambiguity
+    branch; and TWAP unexpected-cancel accepted a terminal-error substring even
+    alongside a successful-cancel status.
+  - The fixed guards and ordering are visible at
+    `src/order_update/chase/result.rs:162-175`,
+    `src/order_update/chase/modify.rs:61-85`,
+    `src/order_update/chase/cancel.rs:59-84`,
+    `src/order_execution/twap/slice_result.rs:69-103`,
+    `src/order_execution/twap/slice_result.rs:211-320`, and
+    `src/order_execution/twap/cancel.rs:114-139`.
+- Violated invariant: when explicit error and possible exchange-effect signals
+  disagree, local state must remain uncertain until exact target status or an
+  authoritative account snapshot resolves the mutation.
+- Risk: Kerosene could discard a Chase whose order actually rests, stop or
+  requeue automation despite a modify effect, omit a TWAP fill, or clear an
+  unexpected child while the response itself is internally contradictory. That
+  can lose live child-operation tracking and allow later work to proceed from an
+  incorrect exposure model.
+- Why existing checks were insufficient: strict confirmed-result predicates
+  correctly rejected mixed responses, but the affected handlers consumed an
+  error-specific branch before reaching their existing uncertain-result path.
+  The top-level-envelope early return also hid structured effects from the
+  otherwise conservative shared classifier.
+- Implemented fix: response analysis now detects the conjunction of `is_error`
+  and `has_potential_order_effect` as one explicit conflict category, including a
+  top-level error with a structured effect. Shared classification consequently
+  produces `Ambiguous`; Chase place/modify/cancel route conflicts through their
+  existing CLOID/OID verification; TWAP child placement prevents a conflict
+  from entering its earlier IOC/error/fill/resting branches while preserving
+  the established ordering for every non-conflicting response. It also does not
+  seed child OID/fill/average-price bookkeeping from the contradictory payload,
+  so a later empty refresh cannot credit an unconfirmed fill. Contradictory
+  unexpected-cancel results retain the existing bounded, target-specific
+  reconciliation/retry path. No placement/modify retry, new retry mechanism,
+  identifier, state field, or policy was added.
+- Regression coverage: response-model and shared-classifier tests cover both
+  mixed statuses and a top-level error with a structured resting effect, while
+  an unstructured top-level error remains a definitive rejection
+  (`src/signing/tests/responses/status.rs:116-151`,
+  `src/signing/tests/responses/strings.rs:89-107`,
+  `src/order_update/results/tests.rs:443-509`). Handler tests prove conflicting
+  Chase place, modify, and cancel results retain verification state, and that a
+  conflicting TWAP slice neither retains provisional effect fields nor credits
+  or settles a fill before CLOID status, while a conflicting unexpected-child
+  cancel remains pending
+  (`src/order_update/chase/result/tests.rs:132-166`,
+  `src/order_update/chase/modify/tests/reconciliation.rs:38-77`,
+  `src/order_update/chase/cancel/tests.rs:160-194`,
+  `src/order_execution/twap/tests/place_result.rs:79-150`,
+  `src/order_execution/twap/tests/cancel.rs:97-126`).
+- Protected behavior: existing pure-rejection, valid resting/fill/cancel,
+  unstructured-malformed, transport-unknown, refresh, bounded cancel retry,
+  visible normal-path status, wire, signing, pricing, sizing, timing,
+  persistence, and UI behavior is unchanged. Only a parseable internally
+  contradictory acknowledgement now takes an already-established uncertain
+  reconciliation path.
+- Residual uncertainty: all response-body and transport failures remain
+  conservatively transport-unknown because the current client flattens send and
+  post-send failures into `String`; the next transport pass must decide whether
+  phase typing adds diagnostic precision without weakening this fail-closed
+  classification or exposing external response content.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -751,6 +855,69 @@ side, reduce-only, or asset/symbol policy in signing.
   after a request may have reached the exchange without adding any automatic
   mutation retry.
 
+## Turn 9 — Reconcile Contradictory Exchange Acknowledgements
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: High
+- Scope: Audit Track 3 parsed-response classification at the shared response
+  model and all Chase/TWAP mutation handlers that bypass the shared one-shot
+  classifier
+- Invariant: an explicit error combined with a possible structured exchange
+  effect is not a rejection or terminal success; exact CLOID/OID or account
+  reconciliation must resolve it before local lifecycle state settles.
+- Protected behavior: pure exchange rejection, ordinary resting/fill/cancel
+  success, unstructured malformed response, transport failure, existing
+  bounded cancel retry, pricing, sizing, automation timing, signed payloads,
+  persistence, and normal user-visible status behavior remain unchanged.
+- Evidence: the shared classifier already distinguished mixed inner statuses,
+  but top-level errors hid their structured effects and advanced handlers
+  consumed error/IOC/terminal-cancel branches before ambiguity. Detailed event
+  ordering, source references, and risk are recorded under F-08 above.
+- Change: added one response-analysis conflict predicate, removed the
+  top-level-error exclusion from potential-effect analysis, and ordered every
+  Chase/TWAP parsed-result handler so a conflict reaches its existing uncertain
+  reconciliation path first. The patch adds no automatic place/modify retry,
+  exchange request, state field, identifier, dependency, schema, or visible
+  control.
+- Regression tests: added top-level-envelope and shared-classifier cases; Chase
+  place, modify, and cancel state-machine cases; and TWAP slice and unexpected-
+  child-cancel cases. A separate TWAP characterization proves a
+  non-conflicting filled status without an OID retains its prior fill-accounting
+  path; existing pure-rejection and normal-success tests protect the other
+  unchanged branches.
+- Validation:
+  - `cargo fmt` passed.
+  - `cargo fmt -- --check` and `git diff --check` passed before the ledger
+    update and are rerun during final review.
+  - Pre- and post-implementation
+    `cargo test --package kerosene --bin kerosene conflicting_` attempts stopped
+    in `alsa-sys` before compiling Kerosene because `pkg-config` could not find
+    the system `alsa.pc` package.
+  - `cargo test --package kerosene --bin kerosene signing::tests::responses` and
+    `cargo test --package kerosene --bin kerosene execution_result_classifier_`
+    stopped at the same environment boundary.
+  - `cargo test --package kerosene --bin kerosene non_conflicting_fill_without_oid_preserves_existing_fill_accounting`
+    stopped at the same boundary; this is the explicit unchanged-behavior
+    characterization adjacent to the TWAP conflict guard.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+- Compatibility/UX assessment: valid and purely rejected responses take their
+  former branches with identical status copy and task timing. Only an anomalous
+  internally contradictory response remains uncertain instead of being
+  consumed as definitive; this is lifecycle plumbing, not a product-policy or
+  normal UX change.
+- Residual risk: formatting, source analysis, exhaustive result-handler search,
+  and diff review pass, but all Rust tests/type-check/clippy still require a
+  host with ALSA development metadata. The transport client still deliberately
+  flattens all failures after action construction into conservative
+  transport-unknown strings.
+- Prior turn commit hash: `710139d929d15fce575a4b1e056da8dc6410969f`
+- Next candidate: finish Track 3 by auditing the exact HTTP client boundary for
+  serialization/connect/send/body/parse phase provenance and redaction. Add
+  typed internal context only if it improves diagnostics while every uncertain
+  mutation remains fail-closed and no retry or user-facing behavior changes.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -758,19 +925,19 @@ side, reduce-only, or asset/symbol policy in signing.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused signed-order/modify structure tests,
-  nearby signing-action tests, `cargo check`, full `cargo test`, and strict
-  clippy at `alsa-sys` system dependency discovery, before Kerosene was
-  compiled.
+- Environment-blocked this turn: focused conflicting-response model,
+  classifier, Chase, and TWAP tests; nearby response tests; `cargo check`; full
+  `cargo test`; and strict clippy at `alsa-sys` system dependency discovery,
+  before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-07 have source fixes and regression coverage but await
+- F-01 through F-08 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- Mutation transport/response classification, cancel/move correlation,
-  broader Chase/TWAP and account-stream ordering, restart/shutdown cleanup, and
-  the remaining redaction audit require track-by-track completion before a
-  final verdict.
+- Transport-phase provenance/redaction, cancel/move correlation, broader
+  Chase/TWAP and account-stream ordering, restart/shutdown cleanup, and the
+  remaining redaction audit require track-by-track completion before a final
+  verdict.

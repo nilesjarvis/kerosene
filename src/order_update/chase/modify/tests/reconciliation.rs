@@ -1,5 +1,6 @@
 use super::fixtures::{
     TEST_ACCOUNT, chase, chase_by_id, empty_ok_exchange_response, exchange_response,
+    exchange_response_from_value,
 };
 use crate::app_state::TradingTerminal;
 use crate::signing::{ChaseLifecycle, ChaseVerificationReason};
@@ -31,6 +32,45 @@ fn chase_modify_unknown_response_preserves_target_for_reconciliation() {
     assert!(!*is_error);
     assert!(message.contains("token=<redacted>"));
     assert!(!message.contains("super-secret"));
+}
+
+#[test]
+fn chase_modify_conflicting_response_preserves_target_for_reconciliation() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.account_loading = false;
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal.chase_orders.insert(1, chase());
+
+    let response = exchange_response_from_value(
+        serde_json::json!({
+            "status": "ok",
+            "response": {
+                "type": "order",
+                "data": {
+                    "statuses": [
+                        {"resting": {"oid": 42_u64}},
+                        {"error": "conflicting rejection"}
+                    ]
+                }
+            }
+        }),
+        "conflicting modify response should deserialize",
+    );
+    let _task = terminal.handle_chase_modify_result(1, 42, 1, Ok(response));
+
+    let chase = chase_by_id(&terminal, 1);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Modify
+        }
+    );
+    assert_eq!(chase.desired_price, Some(101.0));
+    assert_eq!(chase.current_oid, Some(42));
+    assert!(terminal.account_loading);
+    let (message, is_error) = terminal.order_status.as_ref().expect("order status");
+    assert!(!*is_error);
+    assert!(message.contains("modify response was not confirmed"));
 }
 
 #[test]

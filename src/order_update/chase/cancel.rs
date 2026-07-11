@@ -58,6 +58,13 @@ impl TradingTerminal {
 
         match result {
             Ok(resp) => {
+                if resp.has_conflicting_order_effect() {
+                    return self.handle_chase_uncertain_cancel_result(
+                        chase_id,
+                        oid,
+                        resp.summary(),
+                    );
+                }
                 if resp.is_error() {
                     let summary = resp.summary();
                     if chase_terminal_cancel_error(&summary) {

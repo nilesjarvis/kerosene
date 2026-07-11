@@ -76,6 +76,80 @@ fn twap_exchange_error_classification_separates_retryable_and_terminal_errors() 
 }
 
 #[test]
+fn conflicting_slice_result_waits_for_cloid_reconciliation() {
+    let now = Instant::now();
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc".to_string());
+    terminal
+        .twap_orders
+        .insert(1, pending_twap(1, "0xaaa", now));
+
+    let response = exchange_response_from_value(
+        serde_json::json!({
+            "status": "ok",
+            "response": {
+                "type": "order",
+                "data": {
+                    "statuses": [
+                        {
+                            "filled": {
+                                "totalSz": "0.5",
+                                "avgPx": "100",
+                                "oid": 77_u64
+                            }
+                        },
+                        {"error": "conflicting rejection"}
+                    ]
+                }
+            }
+        }),
+        "conflicting slice response should deserialize",
+    );
+    let _task = terminal.handle_twap_slice_result(1, 1, 0, Ok(response));
+    terminal.reconcile_twap_fills_for_account_after_refresh("0xabc", &[]);
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(twap.status, TwapStatus::Paused);
+    assert_eq!(twap.pause_reason, Some(TwapPauseReason::StatusUnknown));
+    assert_eq!(twap.status_check_cloid.as_deref(), Some("0xaaa"));
+    assert_eq!(twap.filled_size, 0.0);
+    assert_eq!(twap.remaining_size, 1.0);
+    assert_eq!(twap.child_orders[0].status, TwapChildStatus::StatusUnknown);
+    assert_eq!(twap.child_orders[0].oid, None);
+    assert_eq!(twap.child_orders[0].filled_size, 0.0);
+    assert_eq!(twap.child_orders[0].avg_price, None);
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+}
+
+#[test]
+fn non_conflicting_fill_without_oid_preserves_existing_fill_accounting() {
+    let now = Instant::now();
+    let mut terminal = TradingTerminal::boot().0;
+    terminal
+        .twap_orders
+        .insert(1, pending_twap(1, "0xaaa", now));
+
+    let response = exchange_response(serde_json::json!({
+        "filled": {
+            "totalSz": "0.5",
+            "avgPx": "100"
+        }
+    }));
+    assert!(response.is_ambiguous_order_result());
+    assert!(!response.has_conflicting_order_effect());
+
+    let _task = terminal.handle_twap_slice_result(1, 1, 0, Ok(response));
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(twap.filled_size, 0.5);
+    assert_eq!(twap.remaining_size, 0.5);
+    assert_eq!(twap.child_orders[0].status, TwapChildStatus::Filled);
+    assert_eq!(twap.status_check_cloid, None);
+    assert!(!terminal.account_loading);
+}
+
+#[test]
 fn retryable_slice_error_pauses_active_twap_for_retry() {
     let now = Instant::now();
     let mut terminal = TradingTerminal::boot().0;

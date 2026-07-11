@@ -161,7 +161,9 @@ impl TradingTerminal {
 
         match result {
             Ok(resp) => {
-                if resp.is_error() {
+                if resp.has_conflicting_order_effect() {
+                    return self.check_chase_place_status_by_cloid(chase_id, resp.summary());
+                } else if resp.is_error() {
                     self.finish_definitive_chase_place_failure(
                         chase_id,
                         format!("Chase place failed: {}", resp.summary()),

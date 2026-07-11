@@ -94,6 +94,34 @@ fn ambiguous_ok_unexpected_child_cancel_stays_pending_for_retry() {
 }
 
 #[test]
+fn conflicting_unexpected_child_cancel_stays_pending_for_retry() {
+    let mut terminal = terminal_with_unexpected_cancel();
+
+    let task = terminal.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        Ok(conflicting_cancel_response()),
+    );
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(
+        twap.pending_op,
+        Some(TwapPendingOp::CancelUnexpectedResting {
+            oid: Some(OID),
+            cloid: Some(CLOID.to_string()),
+        })
+    );
+    assert_eq!(twap.cancel_retries, 1);
+    assert_eq!(
+        twap.child_orders[0].status,
+        TwapChildStatus::UnexpectedResting
+    );
+    assert_eq!(twap.pause_reason, Some(TwapPauseReason::UnexpectedResting));
+    assert_eq!(task.units(), 2);
+}
+
+#[test]
 fn transport_unexpected_child_cancel_redacts_child_summary_before_retry() {
     let mut terminal = terminal_with_unexpected_cancel();
 
@@ -293,5 +321,23 @@ fn empty_cancel_response() -> crate::signing::ExchangeResponse {
             }
         }),
         "empty cancel response should deserialize",
+    )
+}
+
+fn conflicting_cancel_response() -> crate::signing::ExchangeResponse {
+    exchange_response_from_value(
+        serde_json::json!({
+            "status": "ok",
+            "response": {
+                "type": "cancel",
+                "data": {
+                    "statuses": [
+                        "success",
+                        {"error": "Order was never placed, already canceled, or filled."}
+                    ]
+                }
+            }
+        }),
+        "conflicting cancel response should deserialize",
     )
 }

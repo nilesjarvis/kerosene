@@ -60,6 +60,16 @@ impl TradingTerminal {
 
         match result {
             Ok(resp) => {
+                if resp.has_conflicting_order_effect() {
+                    return self.check_chase_order_status(
+                        chase_id,
+                        oid,
+                        format!(
+                            "Chase checking order status: modify response was not confirmed ({})",
+                            resp.summary()
+                        ),
+                    );
+                }
                 if resp.is_error() {
                     return self.handle_chase_modify_error(chase_id, oid, resp.summary());
                 }

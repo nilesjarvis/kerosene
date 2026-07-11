@@ -101,6 +101,9 @@ fn exchange_response_error_string_body_reports_exchange_error() {
     );
     assert!(response.is_error());
     assert_eq!(response.order_oid(), None);
+    assert!(!response.has_potential_order_effect());
+    assert!(!response.has_conflicting_order_effect());
+    assert!(!response.is_ambiguous_order_result());
 }
 
 #[test]

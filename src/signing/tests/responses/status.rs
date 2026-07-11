@@ -1,4 +1,4 @@
-use super::{exchange_response, exchange_response_with_statuses};
+use super::{exchange_response, exchange_response_from_value, exchange_response_with_statuses};
 
 #[test]
 fn exchange_response_resting_status_reports_oid_without_error() {
@@ -120,7 +120,34 @@ fn exchange_response_later_error_status_drives_error_transition() {
     );
     assert!(response.is_error());
     assert!(response.has_potential_order_effect());
+    assert!(response.has_conflicting_order_effect());
+    assert!(response.is_ambiguous_order_result());
     assert!(!response.is_fully_filled());
+}
+
+#[test]
+fn top_level_error_with_structured_order_effect_requires_reconciliation() {
+    let response = exchange_response_from_value(
+        serde_json::json!({
+            "status": "err",
+            "response": {
+                "type": "order",
+                "data": {
+                    "statuses": [{
+                        "resting": {
+                            "oid": 42_u64
+                        }
+                    }]
+                }
+            }
+        }),
+        "contradictory response should deserialize",
+    );
+
+    assert!(response.is_error());
+    assert!(response.has_potential_order_effect());
+    assert!(response.has_conflicting_order_effect());
+    assert!(response.is_ambiguous_order_result());
 }
 
 #[test]

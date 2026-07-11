@@ -464,6 +464,36 @@ fn execution_result_classifier_separates_rejected_ambiguous_and_transport_unknow
     assert!(mixed.is_error);
     assert!(mixed.refresh_account);
 
+    let unstructured_top_level_error: ExchangeResponse =
+        serde_json::from_value(serde_json::json!({
+            "status": "err",
+            "response": "request rejected before execution"
+        }))
+        .expect("unstructured error response should deserialize");
+    let top_level_rejected = classify_execution_result(Ok(unstructured_top_level_error));
+    assert_eq!(top_level_rejected.kind, ExecutionOutcomeKind::Rejected);
+    assert!(top_level_rejected.is_error);
+    assert!(!top_level_rejected.refresh_account);
+
+    let top_level_error_with_effect: ExchangeResponse = serde_json::from_value(serde_json::json!({
+        "status": "err",
+        "response": {
+            "type": "order",
+            "data": {
+                "statuses": [{
+                    "resting": {
+                        "oid": 42_u64
+                    }
+                }]
+            }
+        }
+    }))
+    .expect("contradictory response should deserialize");
+    let top_level_mixed = classify_execution_result(Ok(top_level_error_with_effect));
+    assert_eq!(top_level_mixed.kind, ExecutionOutcomeKind::Ambiguous);
+    assert!(top_level_mixed.is_error);
+    assert!(top_level_mixed.refresh_account);
+
     let ambiguous = classify_execution_result(Ok(malformed_ok_response()));
     assert_eq!(ambiguous.kind, ExecutionOutcomeKind::Ambiguous);
     assert_eq!(ambiguous.status, "No response body");

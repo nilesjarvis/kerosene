@@ -157,6 +157,41 @@ fn ambiguous_ok_cancel_response_does_not_reset_retry_budget() {
 }
 
 #[test]
+fn conflicting_cancel_response_uses_uncertain_status_path() {
+    let mut terminal = TradingTerminal::boot().0;
+    let mut chase = chase();
+    chase.cancel_retries = 2;
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.handle_chase_cancel_result(
+        1,
+        42,
+        Ok(cancel_response(vec![
+            serde_json::json!("success"),
+            serde_json::json!({"error": "rate limited"}),
+        ])),
+    );
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.cancel_retries, 3);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Stopping {
+            phase: ChaseStopPhase::VerifyingCancel { oid: 42 }
+        }
+    );
+    assert!(
+        terminal
+            .order_status
+            .as_ref()
+            .is_some_and(|(message, _is_error)| {
+                message.contains("cancel response was not confirmed")
+                    && message.contains("attempt 3/")
+            })
+    );
+}
+
+#[test]
 fn confirmed_cancel_response_keeps_existing_success_path_when_connected() {
     let mut terminal = TradingTerminal::boot().0;
     let mut chase = chase();

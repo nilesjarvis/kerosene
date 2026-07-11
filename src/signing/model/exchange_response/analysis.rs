@@ -98,9 +98,9 @@ impl ExchangeResponse {
     }
 
     /// Whether any status may have committed exchange state even if another
-    /// status made the overall response erroneous.
+    /// status or the top-level envelope made the overall response erroneous.
     pub fn has_potential_order_effect(&self) -> bool {
-        if self.status != "ok" || self.raw_response.is_some() {
+        if self.raw_response.is_some() {
             return false;
         }
         let Some(inner) = &self.response else {
@@ -114,8 +114,16 @@ impl ExchangeResponse {
             .any(|status| potential_order_effect_status(status, &inner.response_type))
     }
 
+    /// Whether explicit error and potential-effect signals disagree.
+    pub fn has_conflicting_order_effect(&self) -> bool {
+        self.is_error() && self.has_potential_order_effect()
+    }
+
     /// Whether an order placement response is too ambiguous to continue automation safely.
     pub fn is_ambiguous_order_result(&self) -> bool {
+        if self.has_conflicting_order_effect() {
+            return true;
+        }
         if self.status != "ok" {
             return false;
         }
