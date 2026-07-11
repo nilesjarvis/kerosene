@@ -187,6 +187,14 @@ formattable runtime layers do not expose that text: `TwapPlannedSliceSkip` and
 but represent the message with a redaction marker. This does not change event
 storage, display, history serialization, scheduling, or retry behavior.
 
+Terminal Chase/TWAP history intentionally persists exact account, symbol,
+financial, timing, child-identifier, status, and activity fields for its
+existing views. The persisted entry, child, and log types have independently
+redacted diagnostics, as does the pre-snapshot Chase fill-metrics helper.
+Formatting exposes only allowlisted kind/source IDs, booleans, presence flags,
+record counts, and redaction markers; serde fields/defaults and view access stay
+exact and unchanged.
+
 Leverage updates retain their exact input, symbol, account-correlation, asset,
 margin-mode, and leverage values for validation, stale-result checks, signing,
 and user feedback. Those values must not become a diagnostic payload: the Elm

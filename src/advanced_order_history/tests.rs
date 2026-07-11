@@ -1,5 +1,6 @@
 use super::{
-    ADVANCED_ORDER_HISTORY_LIMIT, AdvancedOrderHistoryEntry, AdvancedOrderHistoryKind,
+    ADVANCED_ORDER_HISTORY_LIMIT, AdvancedOrderHistoryChild, AdvancedOrderHistoryEntry,
+    AdvancedOrderHistoryKind, AdvancedOrderHistoryLog, ChaseHistoryFillMetrics,
     prune_advanced_order_history, upsert_advanced_order_history,
 };
 use crate::twap_state::{
@@ -9,6 +10,7 @@ use crate::twap_state::{
 use std::time::{Duration, Instant};
 
 mod chase_snapshot;
+mod diagnostics;
 mod pruning;
 mod twap_snapshot;
 

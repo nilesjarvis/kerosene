@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 // ---------------------------------------------------------------------------
 // Advanced Order History Model
@@ -23,7 +24,7 @@ fn default_history_kind() -> AdvancedOrderHistoryKind {
     AdvancedOrderHistoryKind::Twap
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct AdvancedOrderHistoryLog {
     #[serde(default)]
     pub(crate) elapsed_ms: u64,
@@ -35,7 +36,18 @@ pub(crate) struct AdvancedOrderHistoryLog {
     pub(crate) is_error: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl fmt::Debug for AdvancedOrderHistoryLog {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AdvancedOrderHistoryLog")
+            .field("elapsed_ms", &"<redacted>")
+            .field("kind", &"<redacted>")
+            .field("message", &"<redacted>")
+            .field("is_error", &self.is_error)
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct AdvancedOrderHistoryChild {
     #[serde(default)]
     pub(crate) index: u32,
@@ -61,7 +73,25 @@ pub(crate) struct AdvancedOrderHistoryChild {
     pub(crate) exchange_summary: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl fmt::Debug for AdvancedOrderHistoryChild {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AdvancedOrderHistoryChild")
+            .field("index", &self.index)
+            .field("elapsed_ms", &"<redacted>")
+            .field("planned_size", &"<redacted>")
+            .field("limit_price", &"<redacted>")
+            .field("filled_size", &"<redacted>")
+            .field("has_avg_price", &self.avg_price.is_some())
+            .field("fee", &"<redacted>")
+            .field("has_oid", &self.oid.is_some())
+            .field("has_cloid", &self.cloid.is_some())
+            .field("status", &"<redacted>")
+            .field("exchange_summary", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct AdvancedOrderHistoryEntry {
     #[serde(default)]
     pub(crate) id: String,
@@ -121,12 +151,58 @@ pub(crate) struct AdvancedOrderHistoryEntry {
     pub(crate) children: Vec<AdvancedOrderHistoryChild>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+impl fmt::Debug for AdvancedOrderHistoryEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AdvancedOrderHistoryEntry")
+            .field("id", &"<redacted>")
+            .field("kind", &self.kind)
+            .field("source_id", &self.source_id)
+            .field("account_address", &"<redacted>")
+            .field("coin", &"<redacted>")
+            .field("display_coin", &"<redacted>")
+            .field("is_buy", &self.is_buy)
+            .field("target_size", &"<redacted>")
+            .field("filled_size", &"<redacted>")
+            .field("remaining_size", &"<redacted>")
+            .field("has_average_price", &self.average_price.is_some())
+            .field("has_last_working_price", &self.last_working_price.is_some())
+            .field("gross_notional", &"<redacted>")
+            .field("total_fee", &"<redacted>")
+            .field("closed_pnl", &"<redacted>")
+            .field("has_min_price", &self.min_price.is_some())
+            .field("has_max_price", &self.max_price.is_some())
+            .field("reduce_only", &self.reduce_only)
+            .field("randomize", &self.randomize)
+            .field("slice_count", &"<redacted>")
+            .field("slices_sent", &"<redacted>")
+            .field("reprice_count", &"<redacted>")
+            .field("status", &"<redacted>")
+            .field("summary", &"<redacted>")
+            .field("started_at_ms", &"<redacted>")
+            .field("completed_at_ms", &"<redacted>")
+            .field("logs_count", &self.logs.len())
+            .field("children_count", &self.children.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy, Default, PartialEq)]
 pub(crate) struct ChaseHistoryFillMetrics {
     pub(crate) filled_size: f64,
     pub(crate) gross_notional: f64,
     pub(crate) total_fee: f64,
     pub(crate) closed_pnl: f64,
+}
+
+impl fmt::Debug for ChaseHistoryFillMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ChaseHistoryFillMetrics")
+            .field("filled_size", &"<redacted>")
+            .field("gross_notional", &"<redacted>")
+            .field("total_fee", &"<redacted>")
+            .field("closed_pnl", &"<redacted>")
+            .finish()
+    }
 }
 
 impl ChaseHistoryFillMetrics {

@@ -150,6 +150,17 @@
   `src/order_execution/twap/execution/skip.rs:11-25`,
   `src/twap_state/model.rs:43-76`, `src/twap_state/order.rs:150-158`,
   `src/advanced_order_history/snapshots.rs:61-118`).
+- Terminal advanced-order history retains the exact Chase/TWAP account,
+  symbol, financial, timing, identifier, status, activity, and child fields
+  required by its persisted schema and existing views. Each independently
+  formattable entry/log/child layer now exposes only allowlisted kind/source/
+  index, boolean/presence/count metadata, and redaction markers; the temporary
+  Chase fill-metrics helper likewise redacts every financial value. Serde
+  fields/defaults and direct view/snapshot access remain unchanged
+  (`src/advanced_order_history/model.rs:8-217`,
+  `src/advanced_order_history/snapshots.rs:19-243`,
+  `src/config/schema.rs:427-432`,
+  `src/order_views/advanced_history_details/sections.rs:17-215`).
 - Config snapshots contain terminal advanced-order history but no live
   Chase/TWAP maps, pending order contexts, or captured signing keys; boot
   reconstructs those runtime owners empty. When main-window closure leaves the
@@ -297,6 +308,12 @@ event messages still drive the same order status, activity rows, and persisted
 terminal history, while their pre-recording/runtime formatters expose only
 structural metadata. Existing error sanitizers remain the external-text gate;
 no scheduling, result, retry, archive, serialization, or visible copy changes.
+
+Turn 38 closes the persisted successor graph for both Chase and TWAP. Entry,
+log, child, and pre-snapshot fill-metrics diagnostics no longer traverse exact
+account/order/history values; their serde representation and all direct history
+view/snapshot calculations remain exact. Config compatibility and terminal
+archive/upsert/pruning behavior are unchanged.
 
 Turn 16 adds a causal precondition to every matrix row that uses the connected
 account snapshot as authoritative fallback: a successful REST result may reach
@@ -3102,6 +3119,84 @@ target-specific cancellation policy, not HTTP replay.
   derive raw nested `Debug`; that broader Chase/TWAP history diagnostic graph
   requires a cohesive follow-up rather than partial log-only redaction.
 
+### F-45 — Persisted advanced-history diagnostics expose complete order records
+
+- Status: addressed in Turn 38; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account/order privacy and diagnostic-boundary hardening; no
+  current production formatter/log sink or known disclosure was found
+- Scope: terminal Chase/TWAP snapshot construction; `AdvancedOrderHistoryEntry`,
+  nested child/log records, and `ChaseHistoryFillMetrics`; config serialization,
+  defaults, load/save snapshots, archive upsert/pruning, list/details views, and
+  direct diagnostics
+- Preconditions/event ordering:
+  1. A Chase or TWAP terminalizes and creates a bounded history snapshot, or a
+     prior snapshot is deserialized from config.
+  2. The entry intentionally retains an ID embedding account/time/source,
+     account and symbol labels, side/strategy flags, exact target/fill/remaining
+     size, prices, notional, fees/PnL, timing, status/summary, logs, and child
+     OID/CLOID/status/exchange detail for existing history UI and persistence.
+  3. Entry, child, and log all derived `Debug`, so formatting any layer emitted
+     its complete fields; entry formatting recursively traversed both vectors.
+     The temporary Chase fill-metrics helper independently derived its exact
+     filled size, notional, fee, and closed PnL before snapshot creation.
+- Evidence: parent commit
+  `1354c94b2a2fe6a77a3afd0ce7b1969128ae5042` shows raw derives on all four
+  types (`src/advanced_order_history/model.rs:27-137`). Chase/TWAP constructors
+  populate every value directly; config snapshots clone entries into the same
+  serde schema; history list/details views read fields directly
+  (`src/advanced_order_history/snapshots.rs:19-243`,
+  `src/config_persistence/save/snapshot.rs:176`,
+  `src/config/schema.rs:427-432`,
+  `src/order_views/advanced/rows.rs:132-171`,
+  `src/order_views/advanced_history_details/sections.rs:17-215`). Repository
+  search found no current production direct formatter, and `KeroseneConfig`
+  itself does not implement `Debug`, so the confirmed issue is independently
+  reachable model capability rather than an emitted config log.
+- Violated invariant: exact persisted history may be read only by explicit
+  serde, view, and lifecycle consumers. Generic diagnostics should retain enough
+  structural metadata to identify the history kind/source and nested shape,
+  without disclosing account-linked historical financial records or trusting
+  deserialized free-form strings as safe diagnostic labels.
+- Risk: a panic/assertion or future history/config instrumentation could expose
+  account identity, traded symbol, exact historical sizes/prices/fees/PnL,
+  child OIDs/CLOIDs, strategy timing/counts, and activity/exchange copy. No
+  private key or signature is stored in history, and no current emitted log is
+  claimed.
+- Why existing checks did not cover it: snapshot tests verify calculations and
+  exact history copy; config tests verify round-trip/default compatibility; view
+  tests verify formatting. None directly formatted the models. F-44 stopped at
+  the live `TwapEvent` boundary and deliberately preserved the exact terminal
+  history copy, revealing this complete downstream graph rather than masking it
+  with log-only redaction.
+- Implemented fix: replace entry/log/child/metrics derives with explicit
+  formatters. Entry retains typed kind, local source ID, side/strategy booleans,
+  optional-value presence, and nested counts; child retains index and optional-
+  identifier/price presence; log retains only error state; every exact string,
+  identifier, financial value, timing and strategy-count value, status,
+  summary, and metric is represented by a redaction marker.
+  `AdvancedOrderHistoryKind` remains a safe typed formatter
+  (`src/advanced_order_history/model.rs:8-217`).
+- Regression coverage: construct a fully populated synthetic entry with one log
+  and child plus independent Chase metrics; require exact nested JSON values;
+  format all four layers; require allowlisted structural metadata and reject
+  every sentinel string, identifier, financial value, strategy count, and
+  timestamp; then require value-equivalent JSON after formatting
+  (`src/advanced_order_history/tests/diagnostics.rs:1-150`). Existing snapshot,
+  config round-trip/default, pruning, and history-view tests remain controls.
+- Smallest behavior-preserving fix: all struct fields/order/visibility, serde
+  derives/defaults/JSON representation, constructors and calculations, IDs,
+  archive/upsert/pruning limits, config save/load, clone/copy/equality behavior,
+  list/detail rendering, window routing, visible strings, and persisted values
+  remain unchanged. No schema, migration, task, order, timing, or trading-policy
+  code changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt and
+  complete producer/consumer/serde/view tracing establish the narrow boundary,
+  but the new regression and existing history/config/view tests cannot execute
+  until ALSA development metadata is available. `MoveOrderKey`, TWAP form/book
+  helpers, and remaining local/external-status diagnostics still require Track
+  9 audit.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -5443,6 +5538,61 @@ target-specific cancellation policy, not HTTP replay.
   and every history view; then inspect `MoveOrderKey` and remaining correlation
   helpers.
 
+## Turn 38 — Redact Persisted Advanced-History Diagnostics
+
+- Status: F-45 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: complete persisted Chase/TWAP entry/log/child model graph, pre-snapshot
+  Chase fill metrics, snapshot/config/view consumers, and unchanged serde
+- Invariant: terminal history must retain exact values for persistence and
+  deliberate views, but generic formatting of any independently reachable
+  layer must not disclose account-linked historical order data.
+- Protected behavior: Chase/TWAP snapshot construction and all financial
+  calculations; entry IDs and upsert/pruning; every field/default/order/value in
+  JSON; legacy empty default; config snapshot/load; clone/copy/equality; history
+  list/detail formatting and child IDs; window routing; all visible strings,
+  terminalization, archive timing, and trading behavior.
+- Preconditions/event ordering: terminalize and snapshot through the unchanged
+  constructor, clone the same entry into config, and deserialize/render its
+  exact fields as before. Formatting an entry, nested record, or temporary fill
+  metric now reports only allowlisted structural metadata and redaction markers;
+  it does not traverse or mutate persisted values.
+- Evidence: F-45 records the complete constructor/model/config/view graph,
+  parent raw derives, absence of a current production sink, free-form persisted-
+  string risk, all four new formatter policies, and nested serde/diagnostic
+  characterization.
+- Change: replaced derived `Debug` on `AdvancedOrderHistoryEntry`, child, log,
+  and `ChaseHistoryFillMetrics` with explicit non-recursive redacted formatters;
+  retained typed history-kind formatting and narrow structural booleans,
+  presence flags, source/index values, and nested record counts; documented the
+  persisted-history diagnostic boundary.
+- Tests/checks:
+  - The pre-fix exact nested diagnostic/serde regression stopped in `alsa-sys`
+    before Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - Post-fix exact regression, the complete advanced-history suite, the exact
+    config history round-trip/default test, and the history-detail view tests
+    stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no view, startup, subscription, window,
+    task, config, or persistence behavior changed, compilation is already
+    blocked, and no live exchange or credential-bearing operation was run.
+- Compatibility/UX assessment: serde derives and every serialized field remain
+  source-identical; the regression compares the exact nested JSON value before
+  and after all four formatting calls. Existing snapshot/config/view controls
+  remain unchanged. Only diagnostics differ, with no visible behavior, schema,
+  defaults, timing, signed bytes, or trading semantics changed.
+- Residual risk: Kerosene has not type-checked on this host. F-45 is source-
+  hardened, but `MoveOrderKey`, TWAP form/book helpers, and other local/external-
+  status model diagnostics remain to audit before Track 9 can close.
+- Prior turn commit hash: `1354c94b2a2fe6a77a3afd0ce7b1969128ae5042`
+- Next candidate: audit `MoveOrderKey` plus its map/drag/cancel/modify consumers
+  and other nearby order-correlation model diagnostics; then continue TWAP form/
+  book and remaining external-status boundaries.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -5484,10 +5634,11 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: pre- and post-fix exact TWAP planning/event
-  diagnostics, complete planning/TWAP-state/history-snapshot/TWAP-execution
-  suites, `cargo check`, full `cargo test`, and strict clippy at `alsa-sys`
-  system dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: pre- and post-fix exact nested history/serde
+  diagnostics, complete advanced-history tests, exact config history round-trip/
+  default coverage, history-view formatting tests, `cargo check`, full
+  `cargo test`, and strict clippy at `alsa-sys` system dependency discovery,
+  before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
@@ -5495,7 +5646,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-44
+  F-40, and F-42 through F-45
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -5527,6 +5678,6 @@ target-specific cancellation policy, not HTTP replay.
   source-hardened by F-40. Leverage input/submission/result/action diagnostics
   are source-hardened by F-42, and shared normalized execution-outcome
   diagnostics by F-43. TWAP planning/live-event diagnostics are source-hardened
-  by F-44. Persisted advanced-history and remaining local planner/state
-  diagnostics, other external-status paths, and the rest of Track 9 require
-  completion before a final verdict.
+  by F-44, and persisted advanced-history diagnostics by F-45. Remaining local
+  planner/state diagnostics, other external-status paths, and the rest of Track
+  9 require completion before a final verdict.
