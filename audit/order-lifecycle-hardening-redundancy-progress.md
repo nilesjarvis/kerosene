@@ -115,10 +115,15 @@
 - Config snapshots contain terminal advanced-order history but no live
   Chase/TWAP maps, pending order contexts, or captured signing keys; boot
   reconstructs those runtime owners empty. When main-window closure leaves the
-  daemon alive for a final config write, the exit flag now stays armed through
-  the exit task and independently fences new Chase place/modify progress and
-  TWAP slices. Status reconciliation and exposure-reducing cancellation remain
-  available, and a failed save clears the fence so queued automation resumes.
+  daemon alive for final persistence, the exit flag now stays armed through
+  save or clear and the exit task. A root guard rejects fresh order, leverage,
+  move, close/NUKE, cluster, preset/Alfred, and automation-start/adoption
+  intents plus a new config-clear request before feature routing; Chase/TWAP
+  progress gates independently keep autonomous work queued. Result/status
+  reconciliation and explicit exposure-reducing cancellation remain available.
+  A config clear started before close completes its established cleanup/error
+  handling and then exits when the main-window owner is set. A failed final save
+  still clears the fence under the separately deferred F-24 policy.
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -220,6 +225,18 @@ set until process exit; Chase place/reprice/size correction and due TWAP slices
 stay queued, while exact status repair and exposure-reducing cancel paths retain
 their existing authority. A failed final save clears the flag and the same
 queued values resume through their normal gates.
+
+Turn 23 extends that shutdown authority across every fresh signed-mutation
+intent and both persistence modes. The root update boundary fences all direct
+order surfaces plus leverage, presets, Alfred trading, wallet-cluster fan-out,
+and Chase/TWAP start/adoption messages after `WindowClosed`, while cancel/stop
+and result/status messages remain routable. It also rejects a new clear request
+after close. A clear already requested before close no longer clears the same
+owner during deferred-save handoff, start, or partial-result handling; success
+or redacted failure returns the existing clear work plus `iced::exit()`. A
+clear-start race that discovers already-dispatched trading work honors the close
+with an exit rather than leaving an unfenced headless daemon. Normal in-app
+clear and all exchange/result semantics are unchanged.
 
 ### Mutation Transport Phase Audit
 
@@ -1669,6 +1686,133 @@ target-specific cancellation policy, not HTTP replay.
   explicit, but platform-specific window-manager timing should be verified once
   a product policy is approved.
 
+### F-25 — Final exit does not fence fresh non-automation mutation intents
+
+- Status: addressed in Turn 23; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: High
+- Scope: root update routing; ticket/preset/Alfred/quick/HUD/close/NUKE/move,
+  leverage, wallet-cluster order/close, Chase start/adoption, and TWAP start;
+  result/status reconciliation and explicit cancellation cleanup
+- Preconditions/event ordering:
+  1. A click, chart gesture, Alfred submission, cluster action, or other
+     mutation-intent message is already queued but has not reached root update.
+  2. `WindowClosed` for the main window runs first and final save or clear keeps
+     the iced daemon alive.
+  3. The queued intent reaches root update before the process-exit task runs.
+- Evidence: every mutation surface reaches a finite message set in
+  `update_order`, `update_alfred`, or `update_wallet_cluster`; Alfred's trading,
+  close, and NUKE branches call shared execution methods directly after their
+  command message is routed. Before Turn 23, `TradingTerminal::update` selected
+  a feature route without checking exit ownership. Turn 22 guarded autonomous
+  Chase/TWAP progress but did not cover fresh one-shot, modify, leverage, fan-out,
+  or automation-start messages (`src/app_update.rs:18-45`,
+  `src/order_update.rs:54-175,365-450`,
+  `src/alfred_update/submit.rs:21-391`,
+  `src/wallet_cluster_update.rs:134-143`).
+- Violated invariant: once main-window closure transfers ownership to final
+  persistence and exit, no fresh signed exchange mutation may begin. Already-
+  dispatched work must still reconcile, and exact exposure-reducing cleanup
+  must remain authorized.
+- Risk: a queued order, close, modify, leverage change, cluster fan-out, or
+  automation start could reach the exchange after the principal trading window
+  disappeared. The process could then exit without monitoring the new action;
+  active automation is intentionally not persisted. Correct account/payload
+  construction does not make this shutdown ordering safe.
+- Why existing checks did not cover it: per-surface pending, freshness,
+  reconciliation, account, and snapshot guards prove that a request is valid
+  to trade; none grants application-lifecycle authority. The prior exit tests
+  exercised final-save and autonomous progress gates, not queued root intents
+  or direct Alfred/cluster fan-out routes.
+- Implemented fix: classify the complete fresh mutation-intent set at the root
+  update boundary and return `Task::none()` while final exit owns the daemon.
+  The classifier deliberately excludes `CancelOrder`, Chase/TWAP stop messages,
+  all direct results, status lookups, refreshes, and retry/cancel cleanup. It
+  therefore cannot clear uncertainty or suppress target-specific exposure
+  reduction (`src/app_update.rs:18-45`).
+- Regression coverage: one table constructs every fenced message class,
+  including direct Alfred and cluster routes; a complementary table proves
+  representative cancel/stop, direct result, move result, and TWAP result
+  messages remain unfenced. A root integration regression retains the move-drag
+  owner, proving the rejected intent never reaches its feature route
+  (`src/app_update/tests.rs:88-213`).
+- Smallest behavior-preserving fix: one runtime-only root predicate, with no
+  state clearing, replay, persistence, view, status string, payload, price,
+  size, TIF, reduce-only, account/key, timing, or normal interaction change.
+  The only discarded work is a fresh intent delivered after the main window is
+  already closed and final exit still owns the daemon.
+- Residual uncertainty: source and task-call inventory covers every current
+  signing entry. A future signed surface must be added to the classifier; the
+  focused test's explicit table makes that policy visible but cannot enforce it
+  automatically. Rust compilation and test execution remain blocked by ALSA.
+
+### F-26 — Config clear drops final-exit ownership and can strand the daemon
+
+- Status: addressed in Turn 23; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: High
+- Scope: config-clear request/start/result, save-to-clear handoff, main-window
+  close, daemon exit, fresh mutation fencing, runtime/key cleanup, and redacted
+  failure handling
+- Preconditions/event ordering:
+  1. Config clear is requested with no pending trading work or active
+     automation and starts immediately or waits behind an in-flight config save.
+  2. The main window closes before clear completion.
+  3. The old close path sets `config_save_exit_requested`, then the clear branch
+     immediately clears it; start and save-to-clear handoff also clear it.
+  4. A clear result arrives. On ordinary success runtime state is reset but no
+     process exit is returned. If a fresh mutation raced in, the result defers
+     runtime reset to preserve pending uncertainty and also returns no exit.
+- Evidence: before Turn 23, `flush_pending_config_save_and_exit`,
+  `handle_config_save_result`, `request_config_clear`, and
+  `start_config_clear_task` each relinquished the final-exit flag on a clear
+  path. `handle_config_clear_result` had no record that the main window was gone
+  and every success/failure/deferred branch returned only its normal in-app
+  task. The iced daemon is intentionally not configured to exit merely because
+  all windows disappear (`src/config_persistence/save.rs:106-140`,
+  `src/config_persistence/clear.rs:15-111`, `src/window_update.rs:29-35`).
+- Violated invariant: the final persistence operation selected at close must
+  not relinquish daemon ownership. It must keep fresh mutations fenced, apply
+  the same clear result semantics, and terminate after completion.
+- Risk: the common success case could leave a subscription daemon alive with no
+  main window. More seriously, a queued order could dispatch after the flag was
+  cleared; clear completion would then deliberately retain runtime/key and
+  pending uncertainty while persistence was paused, producing an unmonitored
+  headless trading process. A clear error likewise left its redacted feedback
+  in a process with no principal window.
+- Why existing checks did not cover it: clear tests correctly protected runtime
+  secrets and uncertainty when trading appeared during deletion, while save
+  tests correctly modeled final-save exit. No test composed clear ownership
+  with `WindowClosed`, deferred-save handoff, or result completion.
+- Implemented fix: config-clear request/start and save handoff preserve an
+  already-set final-exit owner, while root routing discards a new clear request
+  delivered only after close. A start-time trading/automation race keeps the
+  owner and returns `iced::exit()` after the existing refusal. Clear results run
+  their unchanged success, partial-warning, deferred-runtime, or redacted-error
+  branch; when exit-owned, the returned task batches that work with `iced::exit()`
+  and keeps the fence armed until execution
+  (`src/config_persistence/save.rs:106-140`,
+  `src/config_persistence/clear.rs:15-111`).
+- Regression coverage: root tests prove a newly delivered clear message is
+  rejected before routing. Save tests cover immediate clear and save-to-clear
+  handoff ownership. Clear tests prove the request helper cannot clear an
+  existing owner and cover a start-time pending-trading race, successful runtime
+  reset plus exit, and redacted failure plus exit
+  (`src/app_update/tests.rs:216-227`,
+  `src/config_persistence/save/tests.rs:105-134`,
+  `src/config_persistence/clear.rs:731-743,833-847,1295-1334`).
+- Smallest behavior-preserving fix: reuse the existing final-exit flag; add no
+  schema or persisted state. In-app clear begins with the flag false and keeps
+  all established UI/status/runtime behavior. Exit-owned clear differs only
+  after the main window is already closed: it remains fenced and terminates as
+  the user requested. Unlike F-24's failed save, exiting after a clear failure
+  does not discard an unsaved config snapshot; the old config remains or
+  persistence is already paused according to the existing clear branch.
+- Residual uncertainty: real iced task ordering and auxiliary-window teardown
+  cannot be smoke-tested on this host. F-24 remains distinct and deferred:
+  final-save failure still relinquishes ownership because resolving its
+  durability/window policy requires approval.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -3053,6 +3197,82 @@ target-specific cancellation policy, not HTTP replay.
   reconciliation and cleanup cancellation. Keep F-24 deferred until its visible
   failed-save policy is approved.
 
+## Turn 23 — Preserve Final-Exit Ownership Across All Mutation Intents and Clear
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: High (F-25 and F-26)
+- Scope: root message routing for every current signed mutation entry and new
+  config-clear requests; direct Alfred and wallet-cluster fan-out; one-shot,
+  close/NUKE, move, leverage,
+  Chase/TWAP start/adoption; explicit cancel/stop and result reconciliation;
+  config-clear request/start/result; deferred save-to-clear handoff; daemon exit
+- Invariant: after `WindowClosed` transfers the main daemon to final
+  persistence, no fresh signed mutation intent may enter a feature route, the
+  same owner must survive either save or clear until `iced::exit()`, and work
+  already sent must retain exact result/status/cancel authority.
+- Protected behavior: all pre-close order validation, payloads, identifiers,
+  account/key capture, prices, sizes, TIF/reduce-only policy, Chase/TWAP timing,
+  cancellation and retry rules, result/status reconciliation, config-clear
+  success/partial/deferred/error state handling, redaction, in-app clear UX,
+  persistence/schema, views, and user-visible copy.
+- Preconditions/event ordering: a fresh intent or clear command is queued; the
+  main-window closed event runs first; final save or clear leaves the daemon
+  alive; then the queued message, save-to-clear transition, clear-start race,
+  or clear result runs before the process-exit task.
+- Evidence: the repository-wide signed-task inventory still has only shared
+  place/cancel/modify wrappers and leverage update. Their initiating routes are
+  the explicit message variants now enumerated by the root predicate, plus
+  Alfred and cluster direct calls reached by their enumerated command messages.
+  Cancel/stop and every result/status producer are outside the predicate. F-25
+  and F-26 record the exact old ordering gaps and file/symbol evidence.
+- Change: added a root fresh-mutation/destructive-persistence classifier and
+  final-exit early return. Preserved exit ownership through any clear requested
+  before close, direct start, save-result handoff, start-time refusal, and every
+  result branch. An
+  exit-owned clear result batches its unchanged normal task with `iced::exit()`;
+  an exit-owned start refusal exits after retaining any already-dispatched
+  trading owner. Updated the runtime field and trading architecture docs.
+- Tests/checks:
+  - The pre-edit focused
+    `successful_exit_keeps_automation_fence_armed_until_runtime_exits` attempt
+    stopped in `alsa-sys` before Kerosene compilation because `pkg-config`
+    could not find the system `alsa.pc` package.
+  - Post-edit focused attempts for `final_exit_fence`,
+    `pending_config_clear_keeps_exit_fence_armed_until_clear_finishes`, and
+    `exit_owned_config_clear` stopped at the same dependency boundary.
+  - Added explicit classification coverage for every fresh mutation surface,
+  complementary reconciliation/cleanup coverage, and root pre-route regressions
+  for exchange and new-clear intents. Added clear ownership coverage for
+  immediate/deferred start, a request helper with an existing owner, a new-
+  pending-work start race, successful result, and redacted error result.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test could not be run because compilation is blocked by ALSA
+    metadata; no live exchange request or credential-bearing operation ran.
+- Compatibility/UX assessment: normal in-app routes and config clear start with
+  no exit owner and are byte-for-byte/branch-for-branch unchanged. Result,
+  status, cancel, and stop messages remain routable during final exit. Only a
+  fresh exchange mutation or new clear request delivered after the main window
+  has already closed is discarded. A clear already in progress when that close
+  occurs now terminates the daemon as requested, including after existing
+  redacted failure handling. No visible string, control, schema, stored value,
+  order policy, or normal timing changed.
+- Residual risk: the crate has not type-checked and focused tests cannot execute
+  without ALSA development metadata. Future signed mutation message classes
+  must join the explicit root classifier. Real close/clear/auxiliary-window task
+  ordering remains GUI smoke-test debt. F-24's failed-final-save policy is
+  unchanged and still requires approval. Remaining Track 9 secret-lifetime and
+  diagnostic-redaction work is incomplete.
+- Prior turn commit hash: `94b291bbed96d03036f779bbd7e653cde9cd43c6`
+- Next candidate: continue Track 9 through account disconnect/switch, saved-
+  profile deletion, config clear, and pending result contexts. Prove captured
+  keys and account/order identities are scrubbed only after their uncertainty
+  owner is safely terminal or intentionally abandoned, then audit `Debug`,
+  toast/error, snapshot, and progress-log paths for sensitive order/account
+  material without changing visible trading semantics.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -3067,24 +3287,25 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused final-exit flag, Chase place, queued
-  Chase correction, and TWAP slice fence/resumption tests; `cargo check`; full
-  `cargo test`; and strict clippy at `alsa-sys` system dependency discovery,
-  before Kerosene was compiled.
+- Environment-blocked this turn: focused fresh-intent classification/root-route
+  and config-clear exit-ownership tests; `cargo check`; full `cargo test`; and
+  strict clippy at `alsa-sys` system dependency discovery, before Kerosene was
+  compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20 and F-22/F-23 have source fixes and regression coverage but
-  await executable validation on a host with ALSA development metadata.
+- F-01 through F-20, F-22/F-23, and F-25/F-26 have source fixes and regression
+  coverage but await executable validation on a host with ALSA development
+  metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
   financial invariants have characterization coverage.
 - F-24 is explicitly deferred for a main-window/final-save failure policy; its
-  successful-exit automation interval is independently fenced by F-23.
-- TWAP terminalization and advanced-automation final-exit fencing are
-  source-audited with focused coverage but cannot be executed on this host.
-  Remaining shutdown/config-clear/one-shot paths, local planning/state
-  diagnostic redaction, and the rest of Track 9 require completion before a
-  final verdict.
+  successful save/clear intervals are independently fenced by F-23/F-25/F-26.
+- TWAP terminalization plus successful save/clear final-exit fencing across all
+  current mutation intents are source-audited with focused coverage but cannot
+  be executed on this host. Remaining disconnect/profile secret lifetimes,
+  local planning/state diagnostic redaction, and the rest of Track 9 require
+  completion before a final verdict.

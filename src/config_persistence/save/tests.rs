@@ -102,6 +102,34 @@ fn pending_exit_flag_remains_armed_while_existing_save_finishes() {
 }
 
 #[test]
+fn pending_config_clear_keeps_exit_fence_armed_until_clear_finishes() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.config_clear_requested = true;
+
+    let task = terminal.flush_pending_config_save_and_exit();
+
+    assert_eq!(task.units(), 1);
+    assert!(terminal.config_clear_requested);
+    assert!(terminal.config_save_exit_requested);
+}
+
+#[test]
+fn deferred_config_clear_inherits_exit_fence_from_completed_save() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.config_clear_requested = true;
+    terminal.config_save_in_flight = true;
+
+    let close_task = terminal.flush_pending_config_save_and_exit();
+    assert_eq!(close_task.units(), 0);
+
+    let clear_task = terminal.handle_config_save_result(Ok(()));
+
+    assert_eq!(clear_task.units(), 1);
+    assert!(terminal.config_clear_requested);
+    assert!(terminal.config_save_exit_requested);
+}
+
+#[test]
 fn successful_exit_keeps_automation_fence_armed_until_runtime_exits() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.config_save_exit_requested = true;

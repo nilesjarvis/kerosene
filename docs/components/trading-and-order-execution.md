@@ -341,13 +341,18 @@ the TWAP terminal while a cancel is in flight, a retryable cancel result keeps
 the immediate account refresh but does not schedule a retry trigger that
 terminal state can only reject.
 
-After the main window closes, a final config write can briefly keep the daemon
-alive. While that exit save is pending, Chase retains queued place/reprice/size
-correction work and TWAP retains due slices without dispatching them. Status
-reconciliation and exposure-reducing Chase/TWAP cancellations remain available;
-if the save fails and exit is canceled, the queued automation resumes through
-its normal gates. The main-window policy for that failed-save case is tracked
-separately as deferred audit finding F-24.
+After the main window closes, a final config save or clear can briefly keep the
+daemon alive. While final exit owns the daemon, fresh order, leverage, move,
+close/NUKE, wallet-cluster, preset, Alfred-trading, Chase-start/adoption, and
+TWAP-start intents, plus any new config-clear request, are discarded before
+feature routing. A config clear already started before close is allowed to
+finish. Chase retains queued place/reprice/size-correction work and TWAP retains
+due slices without dispatching them. Results and status reconciliation for
+already-sent work plus explicit order/Chase/TWAP cancellation remain available.
+Successful config save or clear completion keeps the fence armed through the
+process-exit task. If a save fails and exit is canceled, queued automation
+resumes through its normal gates. The main-window policy for that failed-save
+case is tracked separately as deferred audit finding F-24.
 
 ## Advanced Order History
 

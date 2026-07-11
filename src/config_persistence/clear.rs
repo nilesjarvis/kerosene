@@ -37,7 +37,6 @@ impl TradingTerminal {
 
         self.config_clear_requested = true;
         self.config_save_due_at = None;
-        self.config_save_exit_requested = false;
 
         if self.config_save_in_flight {
             let message =
@@ -58,20 +57,25 @@ impl TradingTerminal {
         if self.account_change_blocked_by_pending_trading_request("clearing configs") {
             self.config_clear_requested = false;
             self.config_save_due_at = None;
-            self.config_save_exit_requested = false;
-            return Task::none();
+            return if self.config_save_exit_requested {
+                iced::exit()
+            } else {
+                Task::none()
+            };
         }
 
         if self.account_change_blocked_by_active_automation("clearing configs") {
             self.config_clear_requested = false;
             self.config_save_due_at = None;
-            self.config_save_exit_requested = false;
-            return Task::none();
+            return if self.config_save_exit_requested {
+                iced::exit()
+            } else {
+                Task::none()
+            };
         }
 
         self.config_clear_requested = true;
         self.config_save_due_at = None;
-        self.config_save_exit_requested = false;
 
         let profiles = self.keychain_cleanup_profiles_snapshot();
         Task::perform(
@@ -81,6 +85,22 @@ impl TradingTerminal {
     }
 
     pub(crate) fn handle_config_clear_result(
+        &mut self,
+        result: Result<config::ClearConfigSummary, String>,
+    ) -> Task<Message> {
+        let exit_requested = self.config_save_exit_requested;
+        let clear_task = self.handle_config_clear_result_inner(result);
+        if exit_requested {
+            // Keep final-exit ownership explicit until the returned exit task
+            // runs, including partial-clear and runtime-reset branches.
+            self.config_save_exit_requested = true;
+            Task::batch([clear_task, iced::exit()])
+        } else {
+            clear_task
+        }
+    }
+
+    fn handle_config_clear_result_inner(
         &mut self,
         result: Result<config::ClearConfigSummary, String>,
     ) -> Task<Message> {
@@ -108,7 +128,6 @@ impl TradingTerminal {
                 if summary.files_removed > 0 {
                     self.config_cleared_this_session = true;
                     self.config_save_due_at = None;
-                    self.config_save_exit_requested = false;
                 }
                 let keychain_cleanup_failed = summary
                     .warnings
@@ -174,7 +193,6 @@ impl TradingTerminal {
         self.config_clear_requested = false;
         self.config_cleared_this_session = true;
         self.config_save_due_at = None;
-        self.config_save_exit_requested = false;
 
         let item_label = if summary.files_removed == 1 {
             "item"
@@ -710,6 +728,18 @@ mod tests {
     }
 
     #[test]
+    fn clear_request_does_not_clear_existing_final_exit_ownership() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_save_exit_requested = true;
+
+        let task = terminal.request_config_clear();
+
+        assert_eq!(task.units(), 1);
+        assert!(terminal.config_clear_requested);
+        assert!(terminal.config_save_exit_requested);
+    }
+
+    #[test]
     fn clear_request_blocks_while_chase_order_is_active() {
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
@@ -797,6 +827,21 @@ mod tests {
         assert!(toast.message.contains(
             "Stop active TWAP orders and wait for cancellation to finish before clearing configs"
         ));
+    }
+
+    #[test]
+    fn exit_owned_clear_start_blocked_by_new_trading_work_exits_without_dropping_fence() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_clear_requested = true;
+        terminal.config_save_exit_requested = true;
+        terminal.pending_order_action = Some(PendingOrderAction::Buy);
+
+        let task = terminal.start_config_clear_task();
+
+        assert_eq!(task.units(), 1);
+        assert!(!terminal.config_clear_requested);
+        assert!(terminal.config_save_exit_requested);
+        assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
     }
 
     #[test]
@@ -1244,6 +1289,45 @@ mod tests {
         let toast = terminal.toasts.last().expect("clear failure toast");
         assert!(toast.message.contains("auth_token=<redacted>"));
         assert!(!toast.message.contains("clear-secret"));
+    }
+
+    #[test]
+    fn exit_owned_config_clear_result_keeps_fence_and_exits_after_success() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_clear_requested = true;
+        terminal.config_save_exit_requested = true;
+
+        let task = terminal.handle_config_clear_result(Ok(ClearConfigSummary {
+            files_removed: 1,
+            file_cleanup_failed: false,
+            keychain_entries_cleared: 0,
+            warnings: Vec::new(),
+        }));
+
+        assert!(task.units() >= 1);
+        assert!(terminal.config_cleared_this_session);
+        assert!(terminal.config_save_exit_requested);
+    }
+
+    #[test]
+    fn exit_owned_config_clear_result_exits_after_redacted_failure() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_clear_requested = true;
+        terminal.config_save_exit_requested = true;
+
+        let task = terminal.handle_config_clear_result(Err(
+            "clear failed: auth_token=exit-clear-secret".to_string(),
+        ));
+
+        assert_eq!(task.units(), 1);
+        assert!(terminal.config_save_exit_requested);
+        let (status, is_error) = terminal
+            .secret_store_status
+            .as_ref()
+            .expect("clear failure status");
+        assert!(*is_error);
+        assert!(status.contains("auth_token=<redacted>"));
+        assert!(!status.contains("exit-clear-secret"));
     }
 
     #[test]

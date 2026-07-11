@@ -107,7 +107,6 @@ impl TradingTerminal {
         self.config_save_exit_requested = true;
         if self.config_clear_requested {
             self.config_save_due_at = None;
-            self.config_save_exit_requested = false;
             return if self.config_save_in_flight {
                 Task::none()
             } else {
@@ -138,7 +137,6 @@ impl TradingTerminal {
         self.config_save_in_flight = false;
         if self.config_clear_requested && !self.config_cleared_this_session {
             self.config_save_due_at = None;
-            self.config_save_exit_requested = false;
             return self.start_config_clear_task();
         }
 
