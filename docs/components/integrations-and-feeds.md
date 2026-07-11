@@ -181,8 +181,19 @@ gate features on `openrouter_configured()`. Results returned from tasks should
 be checked against `openrouter_key_generation_is_current` so responses that
 arrive after a key change are dropped.
 
+Key validation has an additional runtime-only request owner containing the key
+generation and a separate wrapping check ID. Each successful nonempty save
+replaces that owner, including repeated saves of the same key, so only the exact
+newest check may publish credit/limit or error status. Settings-window close
+does not cancel this app-global check; key change, key clear, config clear, and
+accepted completion invalidate it. The owner is not persisted and does not
+change request timing or visible status text.
+
 The OpenRouter key is secret-bearing. The default model slug is plain,
-non-secret config (`openrouter_model`).
+non-secret config (`openrouter_model`). Key-check messages and standalone
+credit/limit status diagnostics redact values, while the accepted update path
+recovers and renders the exact values. Result errors receive a second redaction
+pass before entering visible runtime status.
 
 ## Liquidation Feed
 

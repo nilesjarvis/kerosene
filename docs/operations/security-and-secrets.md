@@ -146,6 +146,14 @@ Saved account profiles persist secret IDs and wallet metadata, not raw agent
 keys. Secret payloads map secret IDs to agent keys and global integration
 tokens inside the selected secret storage backend.
 
+OpenRouter key validation captures the configured key only in a `Zeroizing`
+task value. Its completion carries safe runtime request correlation and a
+value-neutral result wrapper; generic diagnostics do not traverse key-check
+errors or credit/limit values. Only the exact current request recovers the
+result, and the update boundary redacts sensitive key/value patterns again
+before storing an error for Settings. The exact accepted success amounts and
+ordinary error text remain unchanged in the UI.
+
 ## Ghost Wallets
 
 Ghost wallets are in-memory only. They should not cause agent keys or ghost

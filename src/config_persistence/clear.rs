@@ -1345,6 +1345,12 @@ mod tests {
         terminal.openrouter_api_key = sensitive_string("openrouter-key");
         terminal.openrouter_key_input = sensitive_string("openrouter-key");
         terminal.openrouter_key_status = Some(("Key valid".to_string(), false));
+        terminal.openrouter_key_check_next_request_id = 44;
+        terminal.openrouter_key_check_request =
+            Some(crate::openrouter_update::OpenRouterKeyCheckRequest::new(
+                44,
+                terminal.openrouter_key_generation,
+            ));
         terminal.openrouter_model = "anthropic/claude-sonnet-4.5".to_string();
         terminal.accounts = vec![AccountProfile {
             secret_id: "acct-a".to_string(),
@@ -1374,6 +1380,8 @@ mod tests {
         assert!(terminal.openrouter_api_key.is_empty());
         assert!(terminal.openrouter_key_input.is_empty());
         assert!(terminal.openrouter_key_status.is_none());
+        assert!(terminal.openrouter_key_check_request.is_none());
+        assert_eq!(terminal.openrouter_key_check_next_request_id, 44);
         assert!(terminal.openrouter_model.is_empty());
         assert_eq!(terminal.accounts.len(), 1);
         assert_eq!(terminal.accounts[0].name, "Main Trading");

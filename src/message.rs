@@ -26,6 +26,7 @@ use crate::market_state::{
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
 use crate::openrouter_api::OpenRouterKeyStatus;
+use crate::openrouter_update::OpenRouterKeyCheckRequest;
 use crate::order_execution::{
     AdvancedOrderStartSnapshot, HudOrderRequest, OneShotPlacementContext,
     OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext, QuickOrderRecovery,
@@ -1171,6 +1172,36 @@ impl fmt::Debug for SchwabAccountsMessageResult {
     }
 }
 
+/// Key-check result that preserves the exact value for the accepted update
+/// handler without traversing credit data or external errors in diagnostics.
+#[derive(Clone)]
+pub(crate) struct OpenRouterKeyCheckMessageResult(Box<Result<OpenRouterKeyStatus, String>>);
+
+impl OpenRouterKeyCheckMessageResult {
+    pub(crate) fn new(result: Result<OpenRouterKeyStatus, String>) -> Self {
+        Self(Box::new(result))
+    }
+
+    pub(crate) fn into_result(self) -> Result<OpenRouterKeyStatus, String> {
+        *self.0
+    }
+}
+
+impl From<Result<OpenRouterKeyStatus, String>> for OpenRouterKeyCheckMessageResult {
+    fn from(result: Result<OpenRouterKeyStatus, String>) -> Self {
+        Self::new(result)
+    }
+}
+
+impl fmt::Debug for OpenRouterKeyCheckMessageResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum Message {
     SaveLayout(String),
@@ -2210,16 +2241,17 @@ pub(crate) enum Message {
     // OpenRouter AI integration
     OpenRouterKeyInputChanged(SecretInput),
     SaveOpenRouterKey,
-    OpenRouterKeyChecked(u64, Result<OpenRouterKeyStatus, String>),
+    OpenRouterKeyChecked(OpenRouterKeyCheckRequest, OpenRouterKeyCheckMessageResult),
     OpenRouterModelChanged(String),
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        Message, RedactedAccountLabel, RedactedAccountMessageResult, RedactedAccountProfileId,
-        RedactedAdvancedOrderHistoryId, RedactedChartScreenshotMessageResult,
-        RedactedClientOrderId, RedactedHyperdashMarketMessageResult, RedactedJournalMessageResult,
+        Message, OpenRouterKeyCheckMessageResult, RedactedAccountLabel,
+        RedactedAccountMessageResult, RedactedAccountProfileId, RedactedAdvancedOrderHistoryId,
+        RedactedChartScreenshotMessageResult, RedactedClientOrderId,
+        RedactedHyperdashMarketMessageResult, RedactedJournalMessageResult,
         RedactedLayoutMessageResult, RedactedOrderId, RedactedOrderInput,
         RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput,
         RedactedPnlCardMessageResult, RedactedPositioningMessageResult,
@@ -3314,6 +3346,11 @@ mod tests {
             Message::AddAccountKeyChanged("sentinel-secret".into()),
             Message::HydromancerKeyInputChanged("sentinel-secret".into()),
             Message::HyperdashKeyInputChanged("sentinel-secret".into()),
+            Message::OpenRouterKeyInputChanged("sentinel-secret".into()),
+            Message::OpenRouterKeyChecked(
+                crate::openrouter_update::OpenRouterKeyCheckRequest::new(10, 4),
+                Err("sentinel-secret".to_string()).into(),
+            ),
             Message::SchwabClientIdChanged("sentinel-secret".into()),
             Message::SchwabClientSecretChanged("sentinel-secret".into()),
             Message::SchwabAccessTokenChanged("sentinel-secret".into()),
@@ -3370,6 +3407,45 @@ mod tests {
                 "debug output leaked a secret: {rendered}"
             );
         }
+    }
+
+    #[test]
+    fn openrouter_key_check_message_debug_hides_credit_values() {
+        let message = Message::OpenRouterKeyChecked(
+            crate::openrouter_update::OpenRouterKeyCheckRequest::new(11, 4),
+            Ok(crate::openrouter_api::OpenRouterKeyStatus {
+                usage_usd: 91_234.56,
+                limit_usd: Some(87_654.32),
+                limit_remaining_usd: Some(76_543.21),
+                is_free_tier: false,
+            })
+            .into(),
+        );
+
+        let rendered = format!("{message:?}");
+
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        for hidden in ["91234.56", "87654.32", "76543.21"] {
+            assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
+        }
+    }
+
+    #[test]
+    fn openrouter_key_check_wrapper_preserves_exact_status_and_error() {
+        const ERROR: &str = "openrouter-key-check-error-sentinel";
+        let status = crate::openrouter_api::OpenRouterKeyStatus {
+            usage_usd: 12.5,
+            limit_usd: Some(50.0),
+            limit_remaining_usd: Some(37.5),
+            is_free_tier: false,
+        };
+        let error: OpenRouterKeyCheckMessageResult = Err(ERROR.to_string()).into();
+        let success: OpenRouterKeyCheckMessageResult = Ok(status).into();
+
+        assert_eq!(format!("{error:?}"), "Err(<redacted>)");
+        assert_eq!(format!("{success:?}"), "Ok(<redacted>)");
+        assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
+        assert_eq!(success.into_result().expect("synthetic status"), status);
     }
 
     #[test]

@@ -356,6 +356,8 @@ impl TradingTerminal {
                 cfg.openrouter_api_key.trim().to_string(),
             ),
             openrouter_key_status: None,
+            openrouter_key_check_next_request_id: 0,
+            openrouter_key_check_request: None,
             openrouter_model: cfg.openrouter_model.trim().to_string(),
             toasts: Vec::new(),
             next_toast_id: 0,

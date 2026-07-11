@@ -201,6 +201,23 @@ fn key_status_response_without_data_is_an_error() {
     assert!(error.contains("key check parse failed"));
 }
 
+#[test]
+fn key_status_debug_hides_credit_and_usage_values() {
+    let status = OpenRouterKeyStatus {
+        usage_usd: 91_234.56,
+        limit_usd: Some(87_654.32),
+        limit_remaining_usd: Some(76_543.21),
+        is_free_tier: false,
+    };
+
+    let rendered = format!("{status:?}");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    for hidden in ["91234.56", "87654.32", "76543.21"] {
+        assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // HTTP Error Mapping
 // ---------------------------------------------------------------------------

@@ -20,6 +20,7 @@ use crate::market_state::{
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
 use crate::notification_state::Toast;
+use crate::openrouter_update::OpenRouterKeyCheckRequest;
 use crate::order_execution::{
     HudPlacementTracker, MoveOrderKey, PendingLeverageUpdateContext, PendingMoveOrderContext,
     PendingNukeExecution, PendingOrderAction, SpotAutomationSymbolIdentity,
@@ -229,6 +230,7 @@ impl TradingTerminal {
     pub(crate) fn bump_openrouter_key_generation(&mut self) {
         self.openrouter_key_generation = self.openrouter_key_generation.wrapping_add(1);
         self.openrouter_key_status = None;
+        self.openrouter_key_check_request = None;
     }
 
     pub(crate) fn openrouter_key_generation_is_current(&self, generation: u64) -> bool {
@@ -560,6 +562,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) openrouter_key_generation: u64,
     pub(crate) openrouter_key_input: SensitiveString,
     pub(crate) openrouter_key_status: Option<(String, bool)>,
+    pub(crate) openrouter_key_check_next_request_id: u64,
+    pub(crate) openrouter_key_check_request: Option<OpenRouterKeyCheckRequest>,
     pub(crate) openrouter_model: String,
     // Toast notification queue
     pub(crate) toasts: Vec<Toast>,

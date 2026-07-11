@@ -54,7 +54,10 @@ fn openrouter_routes_stay_on_openrouter_module() {
     );
     assert_route(Message::SaveOpenRouterKey, UpdateRoute::OpenRouter);
     assert_route(
-        Message::OpenRouterKeyChecked(0, Err("key check failed".to_string())),
+        Message::OpenRouterKeyChecked(
+            crate::openrouter_update::OpenRouterKeyCheckRequest::new(0, 0),
+            Err("key check failed".to_string()).into(),
+        ),
         UpdateRoute::OpenRouter,
     );
     assert_route(

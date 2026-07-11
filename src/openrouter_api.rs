@@ -247,12 +247,18 @@ fn parse_chat_completion_response(text: &str) -> Result<ChatCompletion, String> 
 
 /// Credit/limit state of the configured key, used to validate a key when it
 /// is saved in Settings > Integrations.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub(crate) struct OpenRouterKeyStatus {
     pub(crate) usage_usd: f64,
     pub(crate) limit_usd: Option<f64>,
     pub(crate) limit_remaining_usd: Option<f64>,
     pub(crate) is_free_tier: bool,
+}
+
+impl std::fmt::Debug for OpenRouterKeyStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("OpenRouterKeyStatus { <redacted> }")
+    }
 }
 
 #[derive(Deserialize)]

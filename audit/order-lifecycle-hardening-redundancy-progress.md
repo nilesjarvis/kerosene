@@ -6038,6 +6038,115 @@ target-specific cancellation policy, not HTTP replay.
   reported as uncertain rather than treated as success. Cross-process external
   writers are outside the runtime owner model.
 
+### F-76 — OpenRouter same-key checks share ownership and expose result values
+
+- Status: addressed in Turn 69; focused source controls added, but executable
+  validation is blocked before Kerosene compilation by the missing system ALSA
+  package
+- Severity: Medium request-owner and diagnostic hardening; an older validation
+  can replace the newest visible key status and generic diagnostics can expose
+  external errors or account credit/usage values, but the result cannot commit a
+  key, dispatch an AI request, or affect an exchange mutation
+- Scope: OpenRouter key input/save/persistence, task-key capture, key generation
+  and repeated-check allocation, result routing/acceptance, key clear, encrypted
+  payload change, config clear, settings close, shutdown/restart, API parsing and
+  error sanitization, standalone/parent diagnostics, visible status, config
+  snapshots, docs, and focused coverage
+- Preconditions/event ordering:
+  1. Saving a nonempty key persists it and launches `GET /api/v1/key` with the
+     current `openrouter_key_generation`. The generation changes only when the
+     configured key changes. If the user saves the same key twice, checks A and
+     B carry the same scalar generation. B can return a current success or error,
+     then older A can return later and overwrite that newer visible status.
+  2. Because a completed generation remained current, a duplicate or replayed
+     result context could likewise settle status more than once. Key change and
+     clear fenced different-key results correctly, but they could not distinguish
+     concurrent checks of the same credential.
+  3. `OpenRouterKeyChecked` carried a raw
+     `Result<OpenRouterKeyStatus, String>` through derived `Message::Debug`.
+     This exposed pre-handler external error text and exact usage, credit limit,
+     and remaining-credit amounts. `OpenRouterKeyStatus` independently derived
+     the same value-bearing formatter.
+  4. The API boundary already reduces HTTP bodies with
+     `sensitive_response_snippet`, but the update handler stored any result error
+     directly. There was no independent final redaction boundary for a future or
+     synthetic producer that returned unsanitized key/value text.
+- Evidence: the sole Save publisher is the secure Settings integration input;
+  routing reaches `openrouter_update.rs`, which first persists the trimmed key
+  through the selected OS-keychain or encrypted-config backend, commits runtime
+  `SensitiveString` state, schedules the existing config save, sets the exact
+  `Checking key...` status, and launches one task with
+  `openrouter_api_key_for_task()` as `Zeroizing<String>`. `openrouter_api.rs`
+  owns the sole key-status GET, 120-second client timeout, bearer header, typed
+  response/error parsing, and credit status model. Key save/clear, encrypted
+  payload application, and successful config clear are the only runtime key-
+  generation transitions. Settings close does not clear integration state.
+  Plain snapshots persist only the non-secret model slug and intentionally empty
+  key fields; no request owner is in `KeroseneConfig`. The chat-completion
+  foundation currently has no caller, and repository-wide order/signing/Chase/
+  TWAP/cluster/reconciliation searches found no OpenRouter key, status, request,
+  amount, or error used by a financial mutation.
+- Violated invariant: one key generation identifies one configured credential,
+  but every validation intent within that generation must also have a distinct
+  terminal-lifetime owner. Only the exact newest owner may recover and publish a
+  result, and it may settle once. Generic diagnostics must preserve safe request
+  correlation and result shape without traversing credit values or external
+  errors; the final UI-state boundary must independently remove recognized
+  secret material while preserving ordinary error text.
+- Risk: reversed same-key checks can display an older transient failure after a
+  newer success, or older credit data after a newer response. Raw diagnostics
+  can disclose the user's OpenRouter usage/limit position or unsanitized error
+  context. The configured key was already committed before either check and is
+  never recovered from the result, so this cannot select a different key,
+  create an AI request, place/duplicate an order, or settle financial state.
+- Why existing checks did not cover it: generation tests changed the key before
+  delivering a stale result, and the existing status test delivered multiple
+  synthetic results under one generation as if all remained current. API tests
+  covered parsing, body sanitization, and exact display formatting but not
+  repeated same-key intent, terminal sequence wrap, replay settlement, Settings
+  close, config-clear owner cleanup, parent result formatting, standalone status
+  formatting, wrapper recovery, or handler-boundary redaction.
+- Implemented fix: add a runtime-only `OpenRouterKeyCheckRequest` containing the
+  immutable key generation plus an independent wrapping check ID. Maintain one
+  terminal-lifetime allocator and exact current owner. Every successful nonempty
+  save replaces the owner even when the key is unchanged; persistence failure
+  preserves an existing still-valid check. Key generation change and empty-key
+  save clear ownership, accepted completion clears it once, and stale/replayed
+  contexts are rejected before result recovery. Carry results in a dedicated
+  value-neutral wrapper, replace standalone credit-status `Debug` with a
+  redacted formatter, and apply `redact_sensitive_response_text` immediately
+  before storing an accepted error. Keep safe request IDs/generation diagnosable.
+- Regression coverage: source controls cover successful persistence and first
+  owner allocation, persistence-failure preservation of the prior key/owner,
+  key-clear invalidation, stale different-generation rejection without clearing
+  the current owner, two same-key checks allocated across `u64::MAX` to zero,
+  older-first and older-after-newer result ordering, one-time settlement and
+  replay rejection, exact success amount and ordinary error strings, final error
+  redaction, Settings-close survival, config-clear owner cleanup without
+  allocator reset, key input/error and success parent diagnostics, standalone
+  credit-status diagnostics, exact wrapper recovery, API parsing/sanitization,
+  route ownership, and secret/config serialization.
+- Smallest behavior-preserving fix: one two-scalar request type, two runtime
+  state fields, boot defaults, owner invalidation in the existing generation
+  bump, allocation/acceptance at the sole task boundary, one result wrapper, one
+  model formatter, one final redaction call, focused tests, and docs. No key
+  trimming/copy, persistence order/backend/result, endpoint/header/timeout,
+  request count, normal task timing, success/error amount or text, Settings
+  control/status, model slug, config field/default/wire value, AI request, order
+  input, signed bytes, or trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked or launched on this host.
+  Rustfmt, exhaustive producer/consumer/key-transition/persistence/window/order
+  tracing, exact typed ownership, and source controls establish the intended
+  boundary, but tests cannot execute until ALSA development metadata is
+  available. A surviving result would need a complete `u64` check-ID cycle
+  without a key change, or complete cycles of both the check ID and key
+  generation after changes, to reuse an owner. The `reqwest` request internally
+  owns its authorization header until the request drops; the application-owned
+  task key remains `Zeroizing`, but dependency-internal buffer erasure is not
+  provable here. OpenRouter prompt/request/completion diagnostic types are a
+  separate remaining audit, and future AI task consumers must carry their own
+  key-generation/request ownership rather than reuse key-check status.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -10600,6 +10709,101 @@ target-specific cancellation policy, not HTTP replay.
   storage compatibility, and every trading semantic; then continue the X and
   Telegram private-integration completion inventory.
 
+## Turn 69 — Preserve OpenRouter Key-Check Ownership
+
+- Status: F-76 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: OpenRouter secure key input and persistence authority, key generation,
+  repeated validation intent and terminal allocation, `Zeroizing` task capture,
+  API request/response/error boundary, stale/reversed/replayed result handling,
+  key/encrypted/config clear, Settings close, shutdown/restart, parent/model
+  diagnostics, visible status, snapshots, docs, and adversarial source controls
+- Invariant: key generation identifies the exact configured credential, while a
+  separate terminal-lifetime check ID identifies the newest validation of that
+  credential. Only the complete current owner may recover and publish one
+  result. Persistence failure must not invalidate an older check for the still-
+  current key; key change/clear must invalidate it. Diagnostics retain only safe
+  request correlation and result shape, and accepted errors pass a second
+  redaction boundary before visible state.
+- Protected behavior: exact input trimming and secure control, OS-keychain and
+  encrypted-config candidate authority/feedback, runtime key commit and
+  zeroization, config-save scheduling, key generation semantics, one GET task
+  after every successful nonempty Save, endpoint/header/timeouts, API parsing
+  and status-code hints, `Checking key...` timing, exact accepted usage/limit/
+  free-tier and ordinary error text, Settings close/reopen, model selection,
+  config schema/defaults/serialization, future AI interface, order preparation/
+  signing, and every trading semantic.
+- Preconditions/event ordering: two successful saves of the same key did not
+  bump key generation, so their independent tasks published indistinguishable
+  results. An older completion or replay could overwrite a newer status. The raw
+  result and standalone model also exposed credit amounts and errors in generic
+  diagnostics, while only the API producer—not the final state boundary—was
+  responsible for error sanitization.
+- Evidence: F-76 records the sole view intent, route, save/task publisher and
+  result consumer; keychain/encrypted persistence-before-runtime-commit rule;
+  every key assignment/generation transition; clear and Settings-window paths;
+  `Zeroizing` task helper; HTTP client, request, parse, timeout and sanitizer;
+  status view; state boot and snapshot schema; current absence of chat callers;
+  and repository-wide order/signing/automation/reconciliation searches. No
+  alternate publisher, persisted owner, result-derived key mutation, AI request
+  trigger, order price/size/account input, pending exchange mutation, signer, or
+  reconciliation consumer was found.
+- Change: introduce a key-generation-plus-check-ID request, a wrapping terminal
+  allocator, and one runtime owner. Allocate after the unchanged successful
+  persistence/key/status path; replace ownership on every same-key recheck;
+  clear it on key generation/empty save and exact completion; reject non-current
+  contexts before result recovery. Wrap the result with value-neutral `Debug`,
+  redact standalone credit status, and re-redact accepted errors at the update
+  boundary. Preserve the allocator across in-process config clear, omit all new
+  state from snapshots, adapt routing, and document the lifecycle/security
+  boundary.
+- Tests/checks:
+  - Baseline OpenRouter update/API, private-integration message, feature routing,
+    secret-storage and `cargo check` commands stopped in `alsa-sys` before
+    Kerosene compilation because `pkg-config` could not find `alsa.pc`.
+  - The pre-fix reversed same-key, handler-redaction, parent credit diagnostic,
+    and standalone credit diagnostic controls stopped at the same dependency
+    boundary before demonstrating their expected assertion failures.
+  - Post-fix OpenRouter update/API, secret message, key-check wrapper/message,
+    exact routing, config-clear owner, and credential-serialization suites all
+    stopped at that same dependency boundary before executing.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed; final
+    source, call-site, task-secret, diagnostic, snapshot, UI/trading consumer,
+    and compatibility reviews are recorded in the validation summary below.
+  - `cargo check`, full `cargo test`,
+    `cargo clippy --all-targets --all-features -- -D warnings`, and
+    `timeout 20s xvfb-run -a cargo run` stopped at the same pre-existing system
+    dependency boundary before Kerosene compilation or startup. No secret
+    backend write, OpenRouter/network request, AI action, config clear, live
+    exchange mutation, or credential-bearing operation ran.
+- Compatibility/UX assessment: one ordinary successful Save still persists and
+  commits the same trimmed key, schedules the same config save, installs
+  `Checking key...`, captures the same `Zeroizing` key, and starts the same task
+  at the same point. Its exact accepted success/error is recovered after the
+  owner gate and enters the same amount/text/color view; the added redaction is
+  byte-for-byte neutral for ordinary errors. Repeated same-key tasks still all
+  run, but only the newest intent may settle status. Key-change, empty-key,
+  persistence-failure, Settings-close, encrypted payload, and config-clear
+  behavior remain exact. IDs/owners are runtime-only. No normal visible copy/
+  data/timing, control, persisted value/default, AI behavior, signed bytes,
+  order behavior, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked or launched on this host. F-76 is
+  source-hardened; theoretical complete check-ID-cycle reuse, dependency-
+  internal authorization-header erasure, and executable validation remain
+  residual. OpenRouter chat prompt/request/completion diagnostics, X/Telegram
+  private-integration result lifecycles, independently formattable nested
+  account/order types, classified external-status paths, and the remainder of
+  Track 9 still require review.
+- Prior turn commit hash: `2090ed1d220cb4d45f9d1030156bfdc45b75cd20`
+- Next candidate: audit `ChatMessage`, `ChatCompletionRequest`,
+  `ChatCompletion`, and `TokenUsage` diagnostics together with the currently
+  unused chat task interface, request-key/model capture, error/result
+  sanitization, future generation/owner requirements, and any actual callers
+  added in the current checkout. Preserve exact serialized request JSON,
+  response content/usage, endpoint/header/timeouts, model selection, UI, secret
+  lifetime, and every trading semantic; then continue X and Telegram private-
+  integration completion ownership.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -10641,27 +10845,28 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline preference-update, config-clear and
-  routing suites plus `cargo check`; exact last-lease drop, bounded sidecar name,
-  same-final-name commit, collision rollback/restoration, prepared/model/message
-  diagnostic, reversed sound/font completion, newer cancellation, wrong-target,
-  independent target, settings-close, config-clear/pending-clear, promotion-
-  error, duplicate message and exact-feedback controls; full preference-update,
-  config-clear, preference-message, font-serialization, routing and HUD-order suites;
-  `cargo check`; full `cargo test`; strict clippy; and the headless GUI smoke
-  command at `alsa-sys` system dependency discovery, before Kerosene was
-  compiled or launched.
-- No picker, imported font/sound or platform config operation, config save/
-  clear, audio playback, live request, exchange mutation, or credential-bearing
-  operation was run. Test fixture filesystem operations also did not run because
-  compilation stopped first.
+- Environment-blocked this turn: baseline OpenRouter update/API, private-
+  integration message, feature-routing and secret suites plus `cargo check`;
+  pre-fix reversed same-key owner, handler-redaction, parent-result and
+  standalone credit-diagnostic controls; post-fix exact persistence success/
+  failure, first owner, `MAX`-to-zero allocation, older-first/older-last,
+  replay, key-clear, config-clear, Settings-close, exact status/error, final
+  redaction, wrapper/model/message diagnostic and recovery controls; full
+  OpenRouter update/API, secret-message, routing, clear and credential-
+  serialization suites; `cargo check`; full `cargo test`; strict clippy; and the
+  headless GUI smoke command at `alsa-sys` system dependency discovery, before
+  Kerosene was compiled or launched.
+- No secret backend/config mutation, OpenRouter or other live request, AI
+  action, config clear, exchange mutation, or credential-bearing operation was
+  run. Test fixture persistence also did not run because compilation stopped
+  first.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-75
+  F-40, and F-42 through F-76
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -10752,6 +10957,10 @@ target-specific cancellation policy, not HTTP replay.
   ownership and accepted-handler finalization with same-name rollback under
   F-75, preserving exact public filenames and lookup behavior; hard-kill/
   cleanup-denial sidecars and cross-platform executable validation remain
-  residual. Private-integration result lifecycles, independently formattable
-  nested account/order types, and classified external-status paths, plus the
-  rest of Track 9, require completion before a final verdict.
+  residual. OpenRouter key-check ownership now distinguishes repeated validation
+  of one key and its parent/model/error diagnostics are source-hardened by F-76
+  while exact persistence, request, visible status, and all trading behavior
+  remain unchanged. OpenRouter chat-model diagnostics, other private-integration
+  result lifecycles, independently formattable nested account/order types, and
+  classified external-status paths, plus the rest of Track 9, require completion
+  before a final verdict.

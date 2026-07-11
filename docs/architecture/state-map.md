@@ -268,6 +268,7 @@ Representative fields:
 - liquidation feed and summary buckets
 - tracked trades and de-duplication state
 - HyperDash key and liquidation/heatmap state
+- OpenRouter key generation plus runtime key-check sequence and exact owner
 - Telegram feed channels, fast-mode auth state, notifications
 - calendar events and retry state
 - screener state and loaded contexts/history
@@ -277,6 +278,7 @@ Primary modules:
 - `feed_state/`, `feed_update/`, `feed_views/`
 - `hydromancer_api/`
 - `hyperdash_api/`, `hyperdash_update/`
+- `openrouter_api.rs`, `openrouter_update.rs`
 - `telegram_feed.rs`, `telegram_fast_feed.rs`
 - `calendar_state.rs`, `calendar_update.rs`, `calendar_views/`
 - `screener_state.rs`, `screener_update.rs`, `screener_views.rs`
