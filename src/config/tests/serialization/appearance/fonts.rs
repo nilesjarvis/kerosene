@@ -6,6 +6,29 @@ use super::{
 use crate::config::take_config_warnings;
 
 #[test]
+fn font_config_debug_hides_custom_asset_identity() {
+    const FAMILY: &str = "private-font-config-family-sentinel";
+    const FILE_NAME: &str = "private-font-config-file-sentinel.ttf";
+    let custom_font = CustomFontConfig {
+        family: FAMILY.to_string(),
+        file_name: FILE_NAME.to_string(),
+    };
+    let selection = DisplayFontConfig::Custom {
+        family: FAMILY.to_string(),
+    };
+
+    let custom_debug = format!("{custom_font:?}");
+    let selection_debug = format!("{selection:?}");
+
+    assert!(custom_debug.contains("<redacted>"), "{custom_debug}");
+    assert!(selection_debug.contains("<redacted>"), "{selection_debug}");
+    assert!(!custom_debug.contains(FAMILY), "{custom_debug}");
+    assert!(!custom_debug.contains(FILE_NAME), "{custom_debug}");
+    assert!(!selection_debug.contains(FAMILY), "{selection_debug}");
+    assert_eq!(format!("{:?}", DisplayFontConfig::System), "System");
+}
+
+#[test]
 fn display_and_monospace_fonts_round_trip_and_legacy_defaults() {
     let config = KeroseneConfig {
         display_font: DisplayFontConfig::Custom {

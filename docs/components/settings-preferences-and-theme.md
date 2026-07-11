@@ -105,6 +105,14 @@ Key paths:
 Imported fonts are copied to the platform config directory and referenced by a
 safe stored file name. Do not persist arbitrary user-supplied paths.
 
+Display-font and monospace-font imports have independent runtime request owners.
+Repeated imports for one target replace only that target's owner, so an older
+picker/copy completion cannot overwrite the newer selection, schedule its
+config save, or emit terminal feedback. Closing and reopening Settings does not
+cancel an app-global import intent. The shared custom-family registry, font
+validation, generated file names, restart requirement, and persistence format
+remain unchanged.
+
 ## Pane Chrome And UI Scale
 
 User-adjustable chrome includes:
@@ -152,6 +160,11 @@ Sound state includes:
 `sound.rs` queues audio, uses `rodio` where available, and falls back to
 platform sounds where needed. Imported sounds are copied to the config sound
 directory and referenced safely.
+
+Custom HUD-order-sound import uses the same runtime latest-request boundary.
+Only its exact current completion may select `CustomWav` and persist the stored
+file name. This owner does not alter HUD submit-time sound playback, order
+dispatch, volume, picker validation, or visible import feedback.
 
 Desktop notifications use `notify-rust` and are controlled by notification
 toggles. Notification text should not include secrets.

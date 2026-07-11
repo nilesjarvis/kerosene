@@ -5824,6 +5824,112 @@ target-specific cancellation policy, not HTTP replay.
   config/asset-import and private-integration completion families still require
   Track 9 review.
 
+### F-74 — Preference asset imports lack target request ownership and expose asset identity
+
+- Status: addressed in Turn 67; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium runtime-owner and diagnostic hardening; a superseded custom
+  HUD sound can alter order-submit feedback and a superseded font can alter the
+  next-start UI, but no order preparation, signing, reconciliation, automation,
+  or exchange-mutation input was found
+- Scope: custom HUD-order-sound, display-font, and monospace-font picker intent;
+  file limits, read/validation/copy, generated stored names, completion routing,
+  repeated/canceled/out-of-order result handling, settings-window lifecycle,
+  config-clear fences, font registry/normalization, persistence, diagnostics,
+  views, HUD order sound consumption, docs, and focused coverage
+- Preconditions/event ordering:
+  1. Each import button directly spawned a picker/read/validate/copy task. No
+     request ID or pending target owner was stored. If imports A then B were
+     started for one target, B could complete and select/persist its asset, then
+     A could complete later and replace it, schedule another save, and emit a
+     second terminal toast. If B was canceled, A could likewise revive despite
+     the newer cancellation.
+  2. Display and monospace shared the custom-font registry but represented
+     independent user targets. Any fix that serialized or globally rejected one
+     target would lose valid concurrent imports; each target needed its own
+     completion owner while retaining the existing shared-family upsert rule.
+  3. Settings-window close only removes the window ID. Imports are app-global
+     config intents, and their established completion behavior survives close/
+     reopen; window ownership must not be substituted for request ownership.
+  4. `ChartHudOrderSoundImported`, `DisplayFontImported`, and
+     `MonospaceFontImported` carried raw results through derived
+     `Message::Debug`, exposing generated sound names, font family/file identity,
+     and upstream errors before their handlers. `CustomFontConfig` and custom
+     `DisplayFontConfig` also derived value-bearing `Debug` independently.
+- Evidence: the three import messages originate only from the settings views
+  and are routed through `preferences_update.rs` to the sole task publishers and
+  result consumers in `preferences_update/sounds.rs` and
+  `preferences_update/fonts.rs`. Before F-74, `TradingTerminal` stored selected
+  sound/font config but no import sequence or owner (`app_state.rs`,
+  `app_boot/state.rs`). Both tasks enforce existing byte limits, read the chosen
+  file, validate RIFF/WAVE or parse a font family, generate a timestamped safe
+  stored name, and copy bytes before publishing the result. Accepted handlers
+  retain config-clear fences, normalization/upsert, persistence, and exact
+  toasts. Settings close does not clear preference state (`settings_update.rs`,
+  `window_update.rs`). Snapshots persist only selected names/families and custom
+  font entries; runtime owners are absent from the wire schema. HUD submit reads
+  the selected sound path only for the established pre-dispatch audio side
+  effect (`order_update/hud.rs`, `sound.rs`). Repository-wide order/signing,
+  Chase/TWAP, cluster, account, and reconciliation searches found no font or
+  imported filename used in price, size, identity, pending state, signed bytes,
+  result classification, or exchange dispatch.
+- Violated invariant: only the newest exact request for a given preference-asset
+  target may recover its task result, select or normalize an asset, schedule
+  persistence, or emit terminal feedback. Display and monospace owners must
+  remain independent. A request must identify its immutable target as well as
+  its terminal-lifetime sequence. Generic diagnostics must not traverse a font,
+  stored filename, or pre-handler error.
+- Risk: reversed completions can persist and display an older file despite a
+  newer import or cancellation. For custom HUD sound this changes which audio
+  is played when a chart HUD order is submitted; it does not change whether or
+  how the order is submitted. Raw diagnostics can disclose selected asset
+  identity and local naming context. No exchange exposure can be created,
+  duplicated, retargeted, or falsely reconciled by these results.
+- Why existing checks did not cover it: config-clear guards rejected results
+  only while persistence was paused, size/path checks protected input files,
+  and toast sanitizers ran only after handler entry. Existing tests covered
+  clear-time discard, oversize rejection, and post-handler error redaction, but
+  not repeated intent order, cancellation authority, target mismatch, terminal
+  sequence wrap, window close, independent font targets, parent diagnostics, or
+  exact wrapper recovery.
+- Implemented fix: add one runtime wrapping preference-asset request allocator
+  and an immutable request containing its sequence and sound/display/monospace
+  target. Store independent active owners for all three targets. Every task
+  publishes its exact request; handlers verify both target and owner before
+  recovering the value-neutral result wrapper, clear only the accepted owner,
+  and otherwise leave all state, persistence, and feedback untouched. Make
+  generic import-result diagnostics expose only `Ok`/`Err` shape. Give custom
+  font registry/selection types redacted `Debug` implementations while leaving
+  serde and `Display` exact.
+- Regression coverage: controls cover sound and display-font request allocation
+  through `u64::MAX` to zero, reversed newer/older successes, newer cancellation
+  followed by an older success, ordinary cancellation silence/owner cleanup,
+  target mismatch rejection, independent display/monospace owners, settings-window
+  close survival, config-clear discard, exact success/error feedback, wrapper
+  value recovery, parent diagnostics, standalone font-config diagnostics,
+  routing, and existing serialization/default behavior. No picker or platform
+  config directory is touched by the owner tests because returned iced tasks are
+  not executed.
+- Smallest behavior-preserving fix: one target/request type, one shared runtime
+  allocator, three pending owner fields, producer/consumer request propagation,
+  one result wrapper, two custom formatters, focused tests, and docs. No picker
+  filter, byte limit, file read/validation/copy, generated name, family rule,
+  selected value, config field/default/wire output, restart requirement, toast,
+  settings lifecycle, HUD sound timing/volume, order input, signed bytes, or
+  trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked or launched on this host.
+  Rustfmt, exhaustive publisher/consumer/storage/window/persistence/order tracing,
+  exact target owners, and source controls establish the intended result
+  boundary, but tests cannot execute until ALSA development metadata is
+  available. A surviving result would need a complete `u64` request cycle to
+  reuse an owner. The copy occurs before result acceptance and stored names use
+  millisecond timestamps; superseded/post-clear tasks can leave unreferenced
+  files, and same-name/same-millisecond tasks can theoretically share a path.
+  Moving finalization behind ownership without changing the visible stored name,
+  feedback, or timing requires a separate phased-copy audit. Cross-target imports
+  of different files reporting the same font family intentionally retain the
+  established completion-ordered shared-family upsert semantics.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -10189,6 +10295,104 @@ target-specific cancellation policy, not HTTP replay.
   preserve exact accepted assets, filenames, visible status/toasts, settings,
   persistence compatibility, and every trading semantic.
 
+## Turn 67 — Preserve Preference Asset Import Ownership
+
+- Status: F-74 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: HUD-order-sound, display-font, and monospace-font import intent,
+  terminal allocation and immutable target identity, repeated/canceled/reversed
+  completion order, settings close/reopen, config-clear fences, picker/read/
+  validation/copy boundary, generated names, font normalization/shared registry,
+  persistence, model/message diagnostics, routing, views, HUD order sound and all
+  order consumers, docs, and focused characterization coverage
+- Invariant: only the exact newest request for its immutable sound/display/
+  monospace target may recover a result, clear that target's owner, select an
+  asset, schedule config persistence, or emit terminal feedback. Display and
+  monospace imports remain independently valid. Generic diagnostics expose safe
+  request correlation and result shape without generated filenames, font family/
+  file identity, or pre-handler error text.
+- Protected behavior: exact picker filters and cancellation, byte limits, WAV
+  header/font-family validation, file reads and copies, timestamp-derived stored
+  names, safe path rules, custom-family upsert/normalization, selected config,
+  restart requirement, config-clear feedback, every success/error/cancel toast,
+  settings-window lifecycle, persisted schema/defaults/JSON, font rendering,
+  HUD sound selection/volume/submit-time playback, order preparation/signing,
+  and all trading semantics.
+- Preconditions/event ordering: same-target imports had no allocator or owner,
+  so an older task completing after a newer success or cancellation could apply
+  and persist stale selection with additional feedback. Display and monospace
+  needed separate owners because both may legitimately proceed while sharing the
+  family registry. Settings close does not cancel global preference work. The
+  three raw result fields, custom-font config, and custom font selection exposed
+  asset/error identity through derived parent or standalone diagnostics.
+- Evidence: F-74 records the three sole view intents, route/update arms, task
+  publishers and first consumers; picker filters, input limits, validation,
+  file-name generation and copy; per-target state and boot initialization;
+  settings-window and config-clear ordering; config normalization, snapshots,
+  paths, defaults and serialization; font loading/views; HUD sound resolution
+  and its sole order-submit consumer; and repository-wide order/signing/
+  automation/reconciliation searches. No alternate publisher, persisted runtime
+  owner, direct selection writer, order price/size/account input, pending
+  mutation, signer, result classifier, or exchange trigger was found.
+- Change: introduce a target-bearing runtime import request and one wrapping
+  terminal allocator, plus independent current owners for sound, display font,
+  and monospace font. Capture the exact request in each task publisher; reject a
+  mismatched target or non-current owner before result recovery; clear only an
+  accepted owner. Wrap all three results in a value-neutral diagnostic type.
+  Redact independent custom-font registry/selection formatters and document the
+  runtime/diagnostic boundary. Preserve copy-before-result and shared-family
+  behavior for this batch.
+- Tests/checks:
+  - Baseline sound/font preference, routing, appearance-config suites and
+    `cargo check` stopped in `alsa-sys` before Kerosene compilation because
+    `pkg-config` could not find the system `alsa.pc` file.
+  - The pre-fix exact reversed sound/display completion and parent import-
+    diagnostic regressions stopped at that same dependency boundary before
+    demonstrating their expected assertion failures.
+  - Post-fix exact sound/display `MAX`-to-zero ordering, newer-cancel authority,
+    ordinary cancellation, cross-target rejection, independent font targets,
+    settings-close survival, config-clear discard, result recovery, parent and
+    model diagnostics controls all stopped at the same boundary.
+  - Post-fix sound/font preference, import-message, font-serialization, routing,
+    config-clear, and HUD-order suites plus `cargo check` stopped at the same
+    boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed; final
+    static review is recorded in the validation summary below.
+  - Full `cargo test`,
+    `cargo clippy --all-targets --all-features -- -D warnings`, and
+    `timeout 20s xvfb-run -a cargo run` stopped at the same pre-existing system
+    dependency boundary before Kerosene compilation or startup. No picker, font/
+    sound read or write, config save/clear, audio playback, live request,
+    exchange mutation, or credential-bearing operation ran.
+- Compatibility/UX assessment: one ordinary import performs the byte-for-byte
+  same picker/read/validation/copy, recovers the exact result after its owner
+  check, and enters unchanged selection, normalization, persistence and toast
+  code. Generated and displayed names are unchanged. Latest-target ownership
+  affects only superseded/out-of-order races; the latest cancellation remains
+  silent. Display and monospace can still complete independently, including the
+  established completion-ordered behavior for an identical reported family.
+  Settings close/reopen and config-clear messages remain exact. Runtime owners
+  are not serialized. Font rendering and HUD submit-time sound playback are
+  unchanged; no normal visible copy/data/timing, order behavior, signed bytes,
+  or trading semantic changed.
+- Residual risk: Kerosene has not type-checked or launched on this host. F-74 is
+  source-hardened; theoretical full-`u64` owner reuse and executable validation
+  remain residual. Picker tasks still copy before result acceptance, so rejected
+  tasks may leave unreferenced assets and millisecond-derived names can
+  theoretically collide. A behavior-preserving phased-finalization and clear-
+  cleanup design remains to be audited separately. Private-integration result
+  fields, independently formattable nested account/order types, classified
+  external-status paths, and the remainder of Track 9 still require review.
+- Prior turn commit hash: `f209c37a5c2d31f765c66f199667d83e3aaa2a22`
+- Next candidate: audit preference-asset write/finalization ownership across
+  same-millisecond stored-name collision, stale or canceled task copies,
+  config-clear success/failure and settings close/reopen, partial write and
+  cleanup failure, exact file-reference authority, persistence, diagnostics,
+  and HUD/font consumers. Preserve exact displayed/stored filename behavior,
+  picker/copy timing, feedback, config compatibility, sound/font selection,
+  and every trading semantic; defer rather than change those semantics if a
+  safe phased design is not provable.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -10230,23 +10434,26 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline screenshot and routing suites plus
-  `cargo check`; the pre-fix terminal-ID collision and premature-result
-  regressions; post-fix exact allocation, close/reopen, phase, layout-bounds,
-  duplicate-bounds, post-render-layout, privacy-snapshot, state/message
-  diagnostic, and wrapper-recovery controls; screenshot, screenshot-message,
-  routing, screenshot-config, and window-update suites; `cargo check`, full
-  `cargo test`, strict clippy, and the headless GUI smoke command at `alsa-sys`
-  system dependency discovery, before Kerosene was compiled or launched.
-- No clipboard call, file dialog/write, live market request, exchange mutation,
-  or credential-bearing operation was run.
+- Environment-blocked this turn: baseline sound/font preference, routing and
+  appearance-config suites plus `cargo check`; the pre-fix reversed sound/font
+  completion and parent-diagnostic regressions; post-fix exact `MAX`-to-zero,
+  reversed success, newer cancellation, ordinary cancellation, target mismatch,
+  independent-target, settings-close, config-clear, wrapper/model/message
+  diagnostic and exact-feedback controls; sound/font, import-message,
+  font-serialization, routing, config-clear and HUD-order suites; `cargo check`,
+  full `cargo test`, strict clippy, and the headless GUI smoke command at
+  `alsa-sys` system dependency discovery, before Kerosene was compiled or
+  launched.
+- No picker, imported font/sound read or write, config save/clear, audio
+  playback, live request, exchange mutation, or credential-bearing operation
+  was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-73
+  F-40, and F-42 through F-74
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -10329,7 +10536,11 @@ target-specific cancellation policy, not HTTP replay.
   close/reopen terminal allocation, bounds/render phase ordering, and unresolved
   layout reconstruction; artifact/path/error diagnostics are source-hardened by
   F-73 while exact pixels, privacy timing, copy/save effects, and feedback remain
-  unchanged. Remaining file/config/asset-import and private-integration result
-  lifecycles, independently formattable nested account/order types, and
-  classified external-status paths, plus the rest of Track 9, require completion
-  before a final verdict.
+  unchanged. Preference-asset result ownership now survives same-target reissue,
+  terminal sequence wrap, reversed success and newer cancellation, while
+  target/result/font-config diagnostics are source-hardened by F-74; exact
+  picker/copy, config, feedback, font rendering, HUD sound timing, and order
+  behavior remain unchanged. Pre-result asset-write/finalization and config-
+  clear cleanup ownership, private-integration result lifecycles, independently
+  formattable nested account/order types, and classified external-status paths,
+  plus the rest of Track 9, require completion before a final verdict.

@@ -1,3 +1,4 @@
+use super::PreferenceAssetImportTarget;
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::helpers::redact_sensitive_response_text;
@@ -32,39 +33,51 @@ impl TradingTerminal {
                     );
                     return Task::none();
                 }
-                return Task::perform(
-                    import_hud_order_sound(),
-                    Message::ChartHudOrderSoundImported,
+                let request = self.next_preference_asset_import_request(
+                    PreferenceAssetImportTarget::ChartHudOrderSound,
                 );
+                self.chart_hud_order_sound_import_request = Some(request);
+                return Task::perform(import_hud_order_sound(), move |result| {
+                    Message::ChartHudOrderSoundImported(request, result.into())
+                });
             }
-            Message::ChartHudOrderSoundImported(result) => match result {
-                Ok(Some(file_name)) => {
-                    if self.config_clear_requested || self.config_cleared_this_session {
-                        self.push_toast(
-                            "HUD order sound import was discarded because config persistence is paused until restart."
-                                .to_string(),
-                            true,
-                        );
-                        return Task::none();
-                    }
-                    self.chart_hud_order_sound_file = Some(file_name);
-                    self.chart_hud_order_sound = config::ChartHudOrderSound::CustomWav;
-                    self.persist_config();
-                    self.push_toast("HUD order sound imported".to_string(), false);
+            Message::ChartHudOrderSoundImported(request, result) => {
+                if !request.is_for(PreferenceAssetImportTarget::ChartHudOrderSound)
+                    || self.chart_hud_order_sound_import_request != Some(request)
+                {
+                    return Task::none();
                 }
-                Ok(None) => {}
-                Err(e) => {
-                    if e != "Import cancelled" {
-                        self.push_toast(
-                            format!(
-                                "HUD order sound import failed: {}",
-                                redact_sensitive_response_text(&e)
-                            ),
-                            true,
-                        );
+                self.chart_hud_order_sound_import_request = None;
+
+                match result.into_result() {
+                    Ok(Some(file_name)) => {
+                        if self.config_clear_requested || self.config_cleared_this_session {
+                            self.push_toast(
+                                "HUD order sound import was discarded because config persistence is paused until restart."
+                                    .to_string(),
+                                true,
+                            );
+                            return Task::none();
+                        }
+                        self.chart_hud_order_sound_file = Some(file_name);
+                        self.chart_hud_order_sound = config::ChartHudOrderSound::CustomWav;
+                        self.persist_config();
+                        self.push_toast("HUD order sound imported".to_string(), false);
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        if e != "Import cancelled" {
+                            self.push_toast(
+                                format!(
+                                    "HUD order sound import failed: {}",
+                                    redact_sensitive_response_text(&e)
+                                ),
+                                true,
+                            );
+                        }
                     }
                 }
-            },
+            }
             Message::TestChartHudOrderSound => {
                 sound::play_hud_order(
                     self.chart_hud_order_sound,
@@ -168,17 +181,118 @@ mod tests {
     #[test]
     fn completed_hud_sound_import_is_discarded_after_config_clear() {
         let (mut terminal, _) = TradingTerminal::boot();
+        let _task = terminal.update_sound_preferences(Message::ImportChartHudOrderSound);
+        let request = terminal
+            .chart_hud_order_sound_import_request
+            .expect("sound import owner");
         terminal.config_cleared_this_session = true;
 
-        let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(Ok(
-            Some("after-clear.wav".to_string()),
-        )));
+        let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
+            request,
+            Ok(Some("after-clear.wav".to_string())).into(),
+        ));
 
         assert_eq!(terminal.chart_hud_order_sound_file, None);
         assert_eq!(
             terminal.chart_hud_order_sound,
             ChartHudOrderSound::default()
         );
+        assert!(terminal.config_save_due_at.is_none());
+        assert!(terminal.chart_hud_order_sound_import_request.is_none());
+    }
+
+    #[test]
+    fn newer_hud_sound_import_cannot_be_overwritten_by_older_completion() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.preference_asset_import_next_request_id = u64::MAX - 1;
+
+        let _task = terminal.update_sound_preferences(Message::ImportChartHudOrderSound);
+        let older_request = terminal
+            .chart_hud_order_sound_import_request
+            .expect("older sound import owner");
+        let _task = terminal.update_sound_preferences(Message::ImportChartHudOrderSound);
+        let newer_request = terminal
+            .chart_hud_order_sound_import_request
+            .expect("newer sound import owner");
+        assert_eq!(older_request.request_id(), u64::MAX);
+        assert_eq!(newer_request.request_id(), 0);
+
+        let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
+            newer_request,
+            Ok(Some("newer.wav".to_string())).into(),
+        ));
+        let toast_count = terminal.toasts.len();
+        let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
+            older_request,
+            Ok(Some("older.wav".to_string())).into(),
+        ));
+
+        assert_eq!(
+            terminal.chart_hud_order_sound_file.as_deref(),
+            Some("newer.wav")
+        );
+        assert_eq!(
+            terminal.chart_hud_order_sound,
+            ChartHudOrderSound::CustomWav
+        );
+        assert_eq!(terminal.toasts.len(), toast_count);
+        assert!(terminal.config_save_due_at.is_some());
+        let toast = terminal.toasts.last().expect("import success toast");
+        assert!(!toast.is_error);
+        assert_eq!(toast.message, "HUD order sound imported");
+    }
+
+    #[test]
+    fn current_hud_sound_import_cancellation_clears_owner_without_feedback() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let sound_before = terminal.chart_hud_order_sound;
+        let file_before = terminal.chart_hud_order_sound_file.clone();
+        let toast_count = terminal.toasts.len();
+
+        let _task = terminal.update_sound_preferences(Message::ImportChartHudOrderSound);
+        let request = terminal
+            .chart_hud_order_sound_import_request
+            .expect("sound import owner");
+        let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
+            request,
+            Err("Import cancelled".to_string()).into(),
+        ));
+
+        assert!(terminal.chart_hud_order_sound_import_request.is_none());
+        assert_eq!(terminal.chart_hud_order_sound, sound_before);
+        assert_eq!(terminal.chart_hud_order_sound_file, file_before);
+        assert_eq!(terminal.toasts.len(), toast_count);
+        assert!(terminal.config_save_due_at.is_none());
+    }
+
+    #[test]
+    fn newer_cancellation_prevents_older_sound_import_from_reviving() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let sound_before = terminal.chart_hud_order_sound;
+        let file_before = terminal.chart_hud_order_sound_file.clone();
+        let toast_count = terminal.toasts.len();
+
+        let _task = terminal.update_sound_preferences(Message::ImportChartHudOrderSound);
+        let older_request = terminal
+            .chart_hud_order_sound_import_request
+            .expect("older sound import owner");
+        let _task = terminal.update_sound_preferences(Message::ImportChartHudOrderSound);
+        let newer_request = terminal
+            .chart_hud_order_sound_import_request
+            .expect("newer sound import owner");
+        let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
+            newer_request,
+            Err("Import cancelled".to_string()).into(),
+        ));
+        let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
+            older_request,
+            Ok(Some("older.wav".to_string())).into(),
+        ));
+
+        assert!(terminal.chart_hud_order_sound_import_request.is_none());
+        assert_eq!(terminal.chart_hud_order_sound, sound_before);
+        assert_eq!(terminal.chart_hud_order_sound_file, file_before);
+        assert_eq!(terminal.toasts.len(), toast_count);
         assert!(terminal.config_save_due_at.is_none());
     }
 
@@ -203,10 +317,15 @@ mod tests {
     #[test]
     fn hud_order_sound_import_error_redacts_toast_detail() {
         let (mut terminal, _) = TradingTerminal::boot();
+        let _task = terminal.update_sound_preferences(Message::ImportChartHudOrderSound);
+        let request = terminal
+            .chart_hud_order_sound_import_request
+            .expect("sound import owner");
 
-        let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(Err(
-            "copy failed: auth_token=token-secret".to_string(),
-        )));
+        let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
+            request,
+            Err("copy failed: auth_token=token-secret".to_string()).into(),
+        ));
 
         let toast = terminal.toasts.last().expect("toast");
         assert!(toast.is_error);

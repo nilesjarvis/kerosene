@@ -38,6 +38,7 @@ use crate::positioning_state::{
     PositioningInfoChangeTimeframe, PositioningInfoId, PositioningInfoPage, PositioningInfoSide,
     PositioningInfoSortField,
 };
+use crate::preferences_update::PreferenceAssetImportRequest;
 use crate::read_data_provider::{
     AccountDataRequestContext, MarketDataSourceContext, ReadDataRequestContext,
 };
@@ -792,6 +793,36 @@ impl<T> fmt::Debug for RedactedChartScreenshotMessageResult<T> {
     }
 }
 
+/// Exact imported preference asset or import error carried through the Elm
+/// message boundary.
+///
+/// Update handlers recover the original generated file name, font config, or
+/// error only after accepting the current import request. Generic diagnostics
+/// expose only success/error shape.
+#[derive(Clone)]
+pub(crate) struct RedactedPreferenceAssetImportResult<T>(Result<T, String>);
+
+impl<T> RedactedPreferenceAssetImportResult<T> {
+    pub(crate) fn into_result(self) -> Result<T, String> {
+        self.0
+    }
+}
+
+impl<T> From<Result<T, String>> for RedactedPreferenceAssetImportResult<T> {
+    fn from(value: Result<T, String>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> fmt::Debug for RedactedPreferenceAssetImportResult<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 /// Exact order task result carried through the Elm message boundary.
 ///
 /// Update handlers recover the original value. Generic message diagnostics
@@ -1387,7 +1418,10 @@ pub(crate) enum Message {
     ChartHudOrderSoundChanged(config::ChartHudOrderSound),
     ChartHudOrderSoundVolumeChanged(f32),
     ImportChartHudOrderSound,
-    ChartHudOrderSoundImported(Result<Option<String>, String>),
+    ChartHudOrderSoundImported(
+        PreferenceAssetImportRequest,
+        RedactedPreferenceAssetImportResult<Option<String>>,
+    ),
     TestChartHudOrderSound,
     ToggleChartHudUiSounds(bool),
     ReadDataProviderChanged(config::ReadDataProvider),
@@ -1396,9 +1430,15 @@ pub(crate) enum Message {
     DisplayFontChanged(config::DisplayFontConfig),
     MonospaceFontChanged(config::DisplayFontConfig),
     ImportDisplayFont,
-    DisplayFontImported(Result<config::CustomFontConfig, String>),
+    DisplayFontImported(
+        PreferenceAssetImportRequest,
+        RedactedPreferenceAssetImportResult<config::CustomFontConfig>,
+    ),
     ImportMonospaceFont,
-    MonospaceFontImported(Result<config::CustomFontConfig, String>),
+    MonospaceFontImported(
+        PreferenceAssetImportRequest,
+        RedactedPreferenceAssetImportResult<config::CustomFontConfig>,
+    ),
     PaneBorderThicknessChanged(f32),
     PaneCornerRadiusChanged(f32),
     ToggleOuterWidgetBorder(bool),
@@ -2181,12 +2221,12 @@ mod tests {
         RedactedLayoutMessageResult, RedactedOrderId, RedactedOrderInput,
         RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput,
         RedactedPnlCardMessageResult, RedactedPositioningMessageResult,
-        RedactedPublicMarketMessageResult, RedactedTelegramChannelKey, RedactedWalletClusterId,
-        RedactedWalletClusterName, RedactedWalletLabel, RedactedWalletLabelsMessageResult,
-        SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult, SecretInput,
-        TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult,
-        XAuthContextMessageResult, XFeedPageMessageResult, XListsMessageResult,
-        XProfileImageMessageResult,
+        RedactedPreferenceAssetImportResult, RedactedPublicMarketMessageResult,
+        RedactedTelegramChannelKey, RedactedWalletClusterId, RedactedWalletClusterName,
+        RedactedWalletLabel, RedactedWalletLabelsMessageResult, SchwabAccountsMessageResult,
+        SchwabTokenRefreshMessageResult, SecretInput, TelegramFastAuthMessageResult,
+        TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult, XAuthContextMessageResult,
+        XFeedPageMessageResult, XListsMessageResult, XProfileImageMessageResult,
     };
     use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
     use crate::api::{BookLevel, ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OrderBook};
@@ -2935,6 +2975,32 @@ mod tests {
     }
 
     #[test]
+    fn preference_asset_import_wrapper_preserves_exact_font_and_error() {
+        const FAMILY: &str = "preference-import-result-family-sentinel";
+        const FILE_NAME: &str = "preference-import-result-file-sentinel.ttf";
+        const ERROR: &str = "preference-import-result-error-sentinel";
+        let font = crate::config::CustomFontConfig {
+            family: FAMILY.to_string(),
+            file_name: FILE_NAME.to_string(),
+        };
+        let error: RedactedPreferenceAssetImportResult<crate::config::CustomFontConfig> =
+            Err(ERROR.to_string()).into();
+        let success: RedactedPreferenceAssetImportResult<crate::config::CustomFontConfig> =
+            Ok(font.clone()).into();
+
+        let error_debug = format!("{error:?}");
+        let success_debug = format!("{success:?}");
+
+        assert!(error_debug.contains("Err(<redacted>)"), "{error_debug}");
+        assert!(success_debug.contains("Ok(<redacted>)"), "{success_debug}");
+        assert!(!error_debug.contains(ERROR), "{error_debug}");
+        assert!(!success_debug.contains(FAMILY), "{success_debug}");
+        assert!(!success_debug.contains(FILE_NAME), "{success_debug}");
+        assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
+        assert_eq!(success.into_result().expect("synthetic font"), font);
+    }
+
+    #[test]
     fn layout_message_result_wrapper_preserves_exact_layout_and_error() {
         const NAME: &str = "layout-result-name-sentinel";
         const SYMBOL: &str = "layout-result-symbol-sentinel";
@@ -3450,6 +3516,71 @@ mod tests {
             assert!(rendered.contains("<redacted>"), "{rendered}");
             assert!(!rendered.contains(ERROR), "{rendered}");
             assert!(!rendered.contains(PATH_COMPONENT), "{rendered}");
+        }
+    }
+
+    #[test]
+    fn preference_asset_import_message_debug_hides_files_families_and_errors() {
+        const FAMILY: &str = "private-import-font-family-sentinel";
+        const FILE_NAME: &str = "private-import-file-name-sentinel.ttf";
+        const SOUND_FILE_NAME: &str = "private-import-sound-name-sentinel.wav";
+        const ERROR: &str = "private-import-error-sentinel";
+        let sound_request = crate::preferences_update::PreferenceAssetImportRequest::new(
+            36,
+            crate::preferences_update::PreferenceAssetImportTarget::ChartHudOrderSound,
+        );
+        let display_request = crate::preferences_update::PreferenceAssetImportRequest::new(
+            37,
+            crate::preferences_update::PreferenceAssetImportTarget::DisplayFont,
+        );
+        let monospace_request = crate::preferences_update::PreferenceAssetImportRequest::new(
+            38,
+            crate::preferences_update::PreferenceAssetImportTarget::MonospaceFont,
+        );
+
+        for message in [
+            Message::ChartHudOrderSoundImported(
+                sound_request,
+                Ok(Some(SOUND_FILE_NAME.to_string())).into(),
+            ),
+            Message::ChartHudOrderSoundImported(sound_request, Err(ERROR.to_string()).into()),
+            Message::DisplayFontImported(
+                display_request,
+                Ok(crate::config::CustomFontConfig {
+                    family: FAMILY.to_string(),
+                    file_name: FILE_NAME.to_string(),
+                })
+                .into(),
+            ),
+            Message::DisplayFontImported(display_request, Err(ERROR.to_string()).into()),
+            Message::MonospaceFontImported(
+                monospace_request,
+                Ok(crate::config::CustomFontConfig {
+                    family: FAMILY.to_string(),
+                    file_name: FILE_NAME.to_string(),
+                })
+                .into(),
+            ),
+            Message::MonospaceFontImported(monospace_request, Err(ERROR.to_string()).into()),
+            Message::DisplayFontChanged(crate::config::DisplayFontConfig::Custom {
+                family: FAMILY.to_string(),
+            }),
+            Message::MonospaceFontChanged(crate::config::DisplayFontConfig::Custom {
+                family: FAMILY.to_string(),
+            }),
+        ] {
+            let rendered = format!("{message:?}");
+            assert!(
+                ["36", "37", "38"]
+                    .into_iter()
+                    .any(|request_id| rendered.contains(request_id))
+                    || rendered.contains("FontChanged"),
+                "{rendered}"
+            );
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for hidden in [FAMILY, FILE_NAME, SOUND_FILE_NAME, ERROR] {
+                assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
+            }
         }
     }
 

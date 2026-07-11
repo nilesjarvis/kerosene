@@ -34,6 +34,7 @@ use crate::pane_state::PaneKind;
 use crate::pnl_card::PnlCardWindowState;
 use crate::portfolio_state::{IncomeState, PortfolioState};
 use crate::positioning_state::{PositioningInfoId, PositioningInfoInstance};
+use crate::preferences_update::PreferenceAssetImportRequest;
 use crate::schwab::SchwabState;
 use crate::screener_state::ScreenerState;
 use crate::session_data_state::{SessionDataId, SessionDataInstance};
@@ -281,6 +282,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) chart_crosshair_scale: f32,
     pub(crate) chart_hud_order_sound: config::ChartHudOrderSound,
     pub(crate) chart_hud_order_sound_file: Option<String>,
+    pub(crate) chart_hud_order_sound_import_request: Option<PreferenceAssetImportRequest>,
     pub(crate) chart_hud_order_sound_volume: f32,
     pub(crate) chart_hud_ui_sounds: bool,
     pub(crate) chart_hud_readout: config::ChartHudReadoutConfig,
@@ -291,6 +293,9 @@ pub(crate) struct TradingTerminal {
     pub(crate) display_font: config::DisplayFontConfig,
     pub(crate) monospace_font: config::DisplayFontConfig,
     pub(crate) custom_fonts: Vec<config::CustomFontConfig>,
+    pub(crate) preference_asset_import_next_request_id: u64,
+    pub(crate) display_font_import_request: Option<PreferenceAssetImportRequest>,
+    pub(crate) monospace_font_import_request: Option<PreferenceAssetImportRequest>,
     pub(crate) pane_border_thickness: f32,
     pub(crate) pane_corner_radius: f32,
     pub(crate) outer_widget_border_enabled: bool,

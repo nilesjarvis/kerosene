@@ -453,6 +453,16 @@ filename, pixels, and PNG content. The exact state/path/error is recovered only
 at the established update boundary; privacy settings, rendered bytes,
 clipboard/file behavior, saved-path toast text, and UI remain unchanged.
 
+Imported preference assets use the same value-neutral diagnostic boundary.
+HUD-order-sound, display-font, and monospace-font completion messages retain
+only a safe runtime request number plus redacted `Ok`/`Err` shape; generated
+file names, font families, and pre-handler errors are recovered only after the
+current per-target owner accepts the result. `CustomFontConfig` and custom
+`DisplayFontConfig` diagnostics also hide family/file identity. Exact import
+bytes, picker filters, validation, generated names, config serialization,
+visible feedback, font selection, HUD sound timing, and order behavior remain
+unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

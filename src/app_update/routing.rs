@@ -287,7 +287,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartHudOrderSoundChanged(_)
         | Message::ChartHudOrderSoundVolumeChanged(_)
         | Message::ImportChartHudOrderSound
-        | Message::ChartHudOrderSoundImported(_)
+        | Message::ChartHudOrderSoundImported(_, _)
         | Message::TestChartHudOrderSound
         | Message::ToggleChartHudUiSounds(_)
         | Message::ReadDataProviderChanged(_)
@@ -296,9 +296,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::DisplayFontChanged(_)
         | Message::MonospaceFontChanged(_)
         | Message::ImportDisplayFont
-        | Message::DisplayFontImported(_)
+        | Message::DisplayFontImported(_, _)
         | Message::ImportMonospaceFont
-        | Message::MonospaceFontImported(_)
+        | Message::MonospaceFontImported(_, _)
         | Message::PaneBorderThicknessChanged(_)
         | Message::PaneCornerRadiusChanged(_)
         | Message::ToggleOuterWidgetBorder(_)

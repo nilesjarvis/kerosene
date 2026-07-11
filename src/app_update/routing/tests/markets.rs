@@ -13,6 +13,19 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         1,
         crate::chart_state::ChartSurfaceId::Docked(7),
     );
+    let sound_import_request = crate::preferences_update::PreferenceAssetImportRequest::new(
+        6,
+        crate::preferences_update::PreferenceAssetImportTarget::ChartHudOrderSound,
+    );
+    let display_font_import_request = crate::preferences_update::PreferenceAssetImportRequest::new(
+        7,
+        crate::preferences_update::PreferenceAssetImportTarget::DisplayFont,
+    );
+    let monospace_font_import_request =
+        crate::preferences_update::PreferenceAssetImportRequest::new(
+            8,
+            crate::preferences_update::PreferenceAssetImportTarget::MonospaceFont,
+        );
 
     assert_route(
         Message::ClearDrawingTool(7, crate::chart_state::ChartSurfaceId::Docked(7)),
@@ -119,6 +132,27 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
     );
     assert_route(
         Message::ToggleChartHudUiSounds(true),
+        UpdateRoute::Preferences,
+    );
+    assert_route(
+        Message::ChartHudOrderSoundImported(
+            sound_import_request,
+            Ok(Some("synthetic.wav".to_string())).into(),
+        ),
+        UpdateRoute::Preferences,
+    );
+    assert_route(
+        Message::DisplayFontImported(
+            display_font_import_request,
+            Err("synthetic font error".to_string()).into(),
+        ),
+        UpdateRoute::Preferences,
+    );
+    assert_route(
+        Message::MonospaceFontImported(
+            monospace_font_import_request,
+            Err("synthetic font error".to_string()).into(),
+        ),
         UpdateRoute::Preferences,
     );
     assert_route(

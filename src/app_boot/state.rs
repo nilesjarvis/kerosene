@@ -110,6 +110,7 @@ impl TradingTerminal {
             ),
             chart_hud_order_sound: cfg.chart_hud_order_sound,
             chart_hud_order_sound_file: cfg.chart_hud_order_sound_file.clone(),
+            chart_hud_order_sound_import_request: None,
             chart_hud_order_sound_volume: config::normalize_chart_hud_order_sound_volume(
                 cfg.chart_hud_order_sound_volume,
             ),
@@ -122,6 +123,9 @@ impl TradingTerminal {
             display_font: cfg.display_font.clone(),
             monospace_font: cfg.monospace_font.clone(),
             custom_fonts: cfg.custom_fonts.clone(),
+            preference_asset_import_next_request_id: 0,
+            display_font_import_request: None,
+            monospace_font_import_request: None,
             pane_border_thickness: cfg.pane_border_thickness,
             pane_corner_radius: cfg.pane_corner_radius,
             outer_widget_border_enabled: cfg.outer_widget_border_enabled,

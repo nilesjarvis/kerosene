@@ -58,6 +58,7 @@ Representative fields:
   fisheye, chromatic aberration, edge blur, crosshair style/guides/scale
 - chart HUD preferences: sound, volume, readout elements, UI sounds
 - font preferences and imported custom fonts
+- runtime preference-asset import sequence and per-target completion owners
 - `hotkeys`, `chart_timeframe_hotkey_prefix`, `recording_hotkey_for`
 - toast, sound, desktop notification, status bar, and muted ticker state
 

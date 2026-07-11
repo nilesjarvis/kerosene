@@ -151,6 +151,13 @@ names are checked to reject:
 
 Persist config references, not arbitrary original user paths.
 
+Sound, display-font, and monospace-font picker tasks publish results with
+runtime-only request owners. Owners are independent per target and are omitted
+from config snapshots; only the newest completion for a target may update its
+existing persisted reference. Stored bytes, file-name generation, custom-font
+family normalization, schema fields, defaults, and restart behavior are
+unchanged.
+
 ## Journal Cache
 
 Journal fill cache is per wallet and separate from `config.json`. It is

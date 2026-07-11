@@ -29,13 +29,22 @@ pub(crate) fn default_display_font_config() -> DisplayFontConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CustomFontConfig {
     pub family: String,
     pub file_name: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
+impl fmt::Debug for CustomFontConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CustomFontConfig")
+            .field("family", &format_args!("<redacted>"))
+            .field("file_name", &format_args!("<redacted>"))
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, PartialEq, Eq, Default)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum DisplayFontConfig {
     #[default]
@@ -43,6 +52,18 @@ pub enum DisplayFontConfig {
     Custom {
         family: String,
     },
+}
+
+impl fmt::Debug for DisplayFontConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::System => f.write_str("System"),
+            Self::Custom { .. } => f
+                .debug_struct("Custom")
+                .field("family", &format_args!("<redacted>"))
+                .finish(),
+        }
+    }
 }
 
 #[derive(Deserialize)]

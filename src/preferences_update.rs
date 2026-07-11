@@ -23,6 +23,34 @@ const IMPORT_MIB: u64 = 1024 * 1024;
 pub(super) const MAX_IMPORTED_FONT_BYTES: u64 = 64 * IMPORT_MIB;
 pub(super) const MAX_IMPORTED_HUD_SOUND_BYTES: u64 = 16 * IMPORT_MIB;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PreferenceAssetImportTarget {
+    ChartHudOrderSound,
+    DisplayFont,
+    MonospaceFont,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PreferenceAssetImportRequest {
+    request_id: u64,
+    target: PreferenceAssetImportTarget,
+}
+
+impl PreferenceAssetImportRequest {
+    pub(crate) fn new(request_id: u64, target: PreferenceAssetImportTarget) -> Self {
+        Self { request_id, target }
+    }
+
+    pub(crate) fn is_for(self, target: PreferenceAssetImportTarget) -> bool {
+        self.target == target
+    }
+
+    #[cfg(test)]
+    pub(crate) fn request_id(self) -> u64 {
+        self.request_id
+    }
+}
+
 pub(super) fn ensure_import_file_within_limit(
     path: &Path,
     kind: &str,
@@ -50,6 +78,15 @@ pub(super) fn import_io_failure(action: &str, error: &std::io::Error) -> String 
 }
 
 impl TradingTerminal {
+    pub(super) fn next_preference_asset_import_request(
+        &mut self,
+        target: PreferenceAssetImportTarget,
+    ) -> PreferenceAssetImportRequest {
+        self.preference_asset_import_next_request_id =
+            self.preference_asset_import_next_request_id.wrapping_add(1);
+        PreferenceAssetImportRequest::new(self.preference_asset_import_next_request_id, target)
+    }
+
     pub(crate) fn update_preferences(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ThemeChanged(theme_name) => {
@@ -205,7 +242,7 @@ impl TradingTerminal {
             message @ (Message::ChartHudOrderSoundChanged(_)
             | Message::ChartHudOrderSoundVolumeChanged(_)
             | Message::ImportChartHudOrderSound
-            | Message::ChartHudOrderSoundImported(_)
+            | Message::ChartHudOrderSoundImported(_, _)
             | Message::TestChartHudOrderSound
             | Message::ToggleChartHudUiSounds(_)) => {
                 return self.update_sound_preferences(message);
@@ -246,9 +283,9 @@ impl TradingTerminal {
             message @ (Message::DisplayFontChanged(_)
             | Message::MonospaceFontChanged(_)
             | Message::ImportDisplayFont
-            | Message::DisplayFontImported(_)
+            | Message::DisplayFontImported(_, _)
             | Message::ImportMonospaceFont
-            | Message::MonospaceFontImported(_)) => {
+            | Message::MonospaceFontImported(_, _)) => {
                 return self.update_font_preferences(message);
             }
             Message::PaneBorderThicknessChanged(value) => {
