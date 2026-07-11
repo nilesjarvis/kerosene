@@ -35,6 +35,12 @@ fn planned_slice_validation_preserves_range_skip_message() {
         "TWAP slice skipped: book cannot fill 1 inside 99.00-101.00"
     );
     assert!(!skip.is_error);
+
+    let rendered = format!("{skip:?}");
+    assert!(rendered.contains("TwapPlannedSliceSkip"), "{rendered}");
+    assert!(rendered.contains("SkippedRange"), "{rendered}");
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(!rendered.contains(skip.message.as_str()), "{rendered}");
 }
 
 #[test]

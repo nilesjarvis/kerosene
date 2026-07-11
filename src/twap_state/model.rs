@@ -56,12 +56,23 @@ pub(crate) enum TwapEventKind {
     Error,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct TwapEvent {
     pub(crate) at: Instant,
     pub(crate) kind: TwapEventKind,
     pub(crate) message: String,
     pub(crate) is_error: bool,
+}
+
+impl fmt::Debug for TwapEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TwapEvent")
+            .field("at", &self.at)
+            .field("kind", &self.kind)
+            .field("message", &"<redacted>")
+            .field("is_error", &self.is_error)
+            .finish()
+    }
 }
 
 #[derive(Clone, PartialEq)]

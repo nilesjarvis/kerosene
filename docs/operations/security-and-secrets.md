@@ -180,6 +180,13 @@ status is represented by a redaction marker so OIDs, fill size, fill price, and
 sanitized-but-still-sensitive external copy do not become diagnostic output.
 The stored status and every downstream consumer remain unchanged.
 
+TWAP planning and activity messages also remain exact for the order-status UI,
+live activity log, and terminal advanced-order history. Their independently
+formattable runtime layers do not expose that text: `TwapPlannedSliceSkip` and
+`TwapEvent` diagnostics retain kind, timing where applicable, and error state,
+but represent the message with a redaction marker. This does not change event
+storage, display, history serialization, scheduling, or retry behavior.
+
 Leverage updates retain their exact input, symbol, account-correlation, asset,
 margin-mode, and leverage values for validation, stale-result checks, signing,
 and user feedback. Those values must not become a diagnostic payload: the Elm

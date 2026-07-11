@@ -6,16 +6,26 @@ use crate::twap_state::{
     MIN_EXCHANGE_ORDER_NOTIONAL_USD, TwapEventKind, twap_limit_price_for_slice,
     twap_order_notional_meets_minimum,
 };
+use std::fmt;
 
 // ---------------------------------------------------------------------------
 // TWAP Slice Planning
 // ---------------------------------------------------------------------------
 
-#[derive(Debug)]
 pub(super) struct TwapPlannedSliceSkip {
     pub(super) kind: TwapEventKind,
     pub(super) message: String,
     pub(super) is_error: bool,
+}
+
+impl fmt::Debug for TwapPlannedSliceSkip {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TwapPlannedSliceSkip")
+            .field("kind", &self.kind)
+            .field("message", &"<redacted>")
+            .field("is_error", &self.is_error)
+            .finish()
+    }
 }
 
 pub(super) fn validate_twap_planned_slice(

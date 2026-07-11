@@ -1,11 +1,11 @@
 use super::{
     MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_MAX_AGGREGATE_SLICE_RATE, TWAP_RECONCILIATION_TIMEOUT,
-    TwapChildOrder, TwapChildStatus, TwapOrder, TwapOrderInit, TwapPauseReason, TwapPendingOp,
-    TwapPendingSlice, TwapStatus, parse_twap_duration_minutes, parse_twap_slice_count,
-    quantize_twap_slice_size, twap_aggregate_schedule_has_capacity, twap_aggregate_slice_rate,
-    twap_child_cloid, twap_limit_price_for_slice, twap_min_quantized_child_notional,
-    twap_order_notional_meets_minimum, twap_required_slice_rate, twap_response_fill_summary,
-    twap_target_size_from_quantity, validate_twap_interval,
+    TwapChildOrder, TwapChildStatus, TwapEvent, TwapEventKind, TwapOrder, TwapOrderInit,
+    TwapPauseReason, TwapPendingOp, TwapPendingSlice, TwapStatus, parse_twap_duration_minutes,
+    parse_twap_slice_count, quantize_twap_slice_size, twap_aggregate_schedule_has_capacity,
+    twap_aggregate_slice_rate, twap_child_cloid, twap_limit_price_for_slice,
+    twap_min_quantized_child_notional, twap_order_notional_meets_minimum, twap_required_slice_rate,
+    twap_response_fill_summary, twap_target_size_from_quantity, validate_twap_interval,
 };
 use crate::account::UserFill;
 use crate::api::{BookLevel, OrderBook};
@@ -165,6 +165,27 @@ fn twap_order_debug_redacts_agent_key_and_account_address() {
         assert!(!debug.contains("5.55555"));
         assert!(!debug.contains("stop reason with"));
     }
+}
+
+#[test]
+fn twap_event_debug_redacts_exact_activity_message_without_changing_it() {
+    const MESSAGE: &str = "Slice 17 filled 7.123456789 @ 42001.7654321 (oid 9876543210123457)";
+    let event = TwapEvent {
+        at: Instant::now(),
+        kind: TwapEventKind::Filled,
+        message: MESSAGE.to_string(),
+        is_error: false,
+    };
+
+    assert_eq!(event.message, MESSAGE);
+
+    let rendered = format!("{event:?}");
+    assert!(rendered.contains("TwapEvent"), "{rendered}");
+    assert!(rendered.contains("at:"), "{rendered}");
+    assert!(rendered.contains("Filled"), "{rendered}");
+    assert!(rendered.contains("is_error: false"), "{rendered}");
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(!rendered.contains(MESSAGE), "{rendered}");
 }
 
 fn next_slice(twap: &mut TwapOrder, context: &str) -> f64 {

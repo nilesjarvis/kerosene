@@ -139,6 +139,17 @@
   that was already in flight still requests immediate account reconciliation
   but no longer creates a delayed retry trigger after authoritative fills
   complete the TWAP.
+- TWAP planning/activity text remains exact as it moves from planned-slice
+  validation or sanitized result/status handling into order status,
+  `TwapEvent`, the live activity view, and terminal advanced-order history.
+  Independent `Debug` formatting of the pre-recording skip and live event
+  exposes only kind, timing where applicable, error state, and a redaction
+  marker. The root `TwapOrder` formatter still reports only the event count;
+  event/history fields and serialization are unchanged
+  (`src/order_execution/twap/execution/planning.rs:15-86`,
+  `src/order_execution/twap/execution/skip.rs:11-25`,
+  `src/twap_state/model.rs:43-76`, `src/twap_state/order.rs:150-158`,
+  `src/advanced_order_history/snapshots.rs:61-118`).
 - Config snapshots contain terminal advanced-order history but no live
   Chase/TWAP maps, pending order contexts, or captured signing keys; boot
   reconstructs those runtime owners empty. When main-window closure leaves the
@@ -255,7 +266,7 @@
 | Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle + dispatch-time place attempt; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact place-attempt equality + `expects_place_result`; current account, symbol identity, prior-exposure, per-symbol open-order authority, reconciliation, and final-exit progress gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled; final replacement gate repeats origin-lane proof; exit-pending place remains queued | Chase lifecycle/place/result/status tests, duplicate/late direct-result regressions, account stream tests, wrong-scope replacement tests, and exit-fence/resumption tests | F-05/F-16/F-23 addressed in Turns 7/15/22; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact reprice-count/lifecycle/OID match; account, symbol, origin-lane, reconciliation, and final-exit progress checks before correction/replacement | Verification/resting/stop flow; terminal Chase archived only from covering evidence; exit-pending reprice/size correction remains queued | `order_update/chase/modify/tests/**`, including duplicate/late results, wrong-scope refresh, and exit-fence/resumption tests | F-05/F-16/F-23 addressed in Turns 7/15/22; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account-wide fills + origin-symbol account refresh/open-order disappearance | Exact stopping phase/OID; REST archive requires the origin open-order lane; websocket disappearance is dex-scoped | Verifying-cancel then covering-snapshot archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests, and wrong-scope archive regression | F-08/F-16 addressed in Turns 9/15; retry idempotence depends on target-specific cancel semantics; executable validation remains environment-blocked |
-| TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID and armed retry attempt | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending slice/retry for placement; status result requires current CLOID/attempt; current-account, terminal, and final-exit progress guards remain | Finishes attempt once; child status/fills updated; status ownership cleared on result or account-fill resolution; result/status/fill/deadline terminals archive and scrub; final pre-dispatch skip terminalization directly scrubs; exit-pending due slice stays unsent | `order_execution/twap/tests/**`, including duplicate/late slice/status results, terminal initial/retry skip key lifetime, and exit-fence/resumption, plus `twap_state/tests/**` | F-05/F-19/F-23/F-28 addressed in Turns 7/18/22/25; F-29 final-skip history visibility is deferred; executable regression validation remains environment-blocked by missing ALSA metadata |
+| TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID and armed retry attempt | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending slice/retry for placement; status result requires current CLOID/attempt; current-account, terminal, and final-exit progress guards remain | Finishes attempt once; child status/fills updated; status ownership cleared on result or account-fill resolution; result/status/fill/deadline terminals archive and scrub; final pre-dispatch skip terminalization directly scrubs; exit-pending due slice stays unsent | `order_execution/twap/tests/**`, including duplicate/late slice/status results, terminal initial/retry skip key lifetime, exit-fence/resumption, and activity diagnostic redaction, plus `twap_state/tests/**` | F-05/F-19/F-23/F-28/F-44 addressed in Turns 7/18/22/25/37; F-29 final-skip history visibility is deferred; executable regression validation remains environment-blocked by missing ALSA metadata |
 | TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + exact armed retry attempt | Pending target plus current retry count and one in-flight attempt; retry and result messages both carry the attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Dispatch atomically requires non-terminal exact target/retry with no existing owner; result requires exact target/retry/owner | Consumes one owner, then clears pending cancel and finishes once or schedules the next bounded attempt; a result arriving after fill terminalization retains refresh but cannot schedule retry work | `order_execution/twap/tests/cancel.rs`, placement/status entry-path tests, fill/cancel and terminal-result characterizations | F-08/F-20/F-22 addressed in Turns 9/19/21; F-21's delivery-order-dependent child label is deferred for an explicit UX/history semantics decision; financial accounting is order-independent |
 | Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution/profile/CLOID plus account, symbol, surface, and order kind | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member user stream | Full origin match; direct requires `Pending`, status requires `Checking`; pending executions are not evicted | First terminal leg outcome is immutable; execution complete when every leg terminal | Cluster planning/member tests plus adversarial result/status tests in `wallet_cluster_update.rs` | F-04 addressed in Turn 5; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Wallet-cluster close child | Same as cluster order, plus fresh per-member position snapshot and reduce-only plan | Same full correlation tuple with `ClusterClose` surface | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member stream | Freshness/side/position preflight plus the shared exact transition guard | Same first-terminal-wins handling as cluster orders | Close sizing/freshness tests and shared adversarial result tests | F-04 addressed by the shared Turn 5 transition guard |
@@ -280,6 +291,12 @@ classification. Normalized status remains byte-for-byte available to all
 one-shot, quick/HUD, cancel, move, NUKE, and wallet-cluster consumers, while the
 local `ExecutionOutcome` formatter now reports only kind and control flags. It
 does not alter classification, visible copy, or reconciliation behavior.
+
+Turn 37 closes the equivalent live TWAP activity gap. Exact planned-skip and
+event messages still drive the same order status, activity rows, and persisted
+terminal history, while their pre-recording/runtime formatters expose only
+structural metadata. Existing error sanitizers remain the external-text gate;
+no scheduling, result, retry, archive, serialization, or visible copy changes.
 
 Turn 16 adds a causal precondition to every matrix row that uses the connected
 account snapshot as authoritative fallback: a successful REST result may reach
@@ -3009,6 +3026,82 @@ target-specific cancellation policy, not HTTP replay.
   ALSA development metadata is available. TWAP event/planning diagnostics,
   `MoveOrderKey`, and other local/external-status types remain to audit.
 
+### F-44 — TWAP planning and activity diagnostics expose exact event text
+
+- Status: addressed in Turn 37; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium order-privacy and diagnostic-boundary hardening; no current
+  production formatter/log sink or known disclosure was found
+- Scope: planned-slice validation failures; initial/retry skip recording; every
+  TWAP event producer; transport/account error sanitizers; live activity and
+  order-status consumers; terminal advanced-history snapshot copy; direct
+  `TwapPlannedSliceSkip`/`TwapEvent` diagnostics
+- Preconditions/event ordering:
+  1. Planning can produce an exact child size, allowed price range, or child
+     notional message before a slice is sent; runtime result/status/fill/cancel
+     paths can produce exact size, price, OID/CLOID, or sanitized external text.
+  2. The planning failure moves its message into skip/retry recording; events
+     retain their message for the live activity view and terminal history, and
+     order status receives the same intentional visible copy.
+  3. Both the pre-recording skip and runtime event derived `Debug`, so direct
+     formatting independently emitted the exact message. The root `TwapOrder`
+     formatter avoided this only by reporting an event count rather than the
+     event vector.
+- Evidence: parent commit
+  `7e923e1332f330cea4b0b72f6f30d9d500d91dcc` shows both raw derives and exact
+  planner messages (`src/order_execution/twap/execution/planning.rs:14-72`,
+  `src/twap_state/model.rs:43-65`). Planning skip recording moves the same
+  string into event and order status; `push_event` stores it; the live view and
+  history snapshot read or clone it directly
+  (`src/order_execution/twap/execution/skip.rs:11-25`,
+  `src/order_execution/twap/execution/lifecycle.rs:13-46`,
+  `src/twap_state/order.rs:150-158`,
+  `src/order_views/twap_details/sections/activity.rs:72-119`,
+  `src/advanced_order_history/snapshots.rs:61-118`). Result transport and
+  account-refresh errors cross `redact_sensitive_response_text` before event
+  construction; structured exchange/order-status summaries have their own
+  redacted model boundaries. Repository search found no production direct
+  formatter for either affected type.
+- Violated invariant: exact activity copy is appropriate only at explicit
+  state/UI/history consumers. Generic diagnostics should retain event kind,
+  timing, and error state without exposing account-linked order quantities,
+  prices, identifiers, or external status detail.
+- Risk: a test/panic diagnostic or future instrumentation could expose exact
+  TWAP strategy bounds, child size/notional, fill price, or child identifiers.
+  No raw agent key/signature is present in either type, external secret-shaped
+  errors are already sanitized, and no current emitted log is claimed.
+- Why existing checks did not cover it: the earlier TWAP runtime-debug hardening
+  (`e2a29e93660556427fbd395cd892cc389f763ef0`) covered the order root, pending
+  slices/operations, and child rows but omitted `TwapEvent`; its root test never
+  added or directly formatted an event. Planner tests asserted exact skip copy
+  and relied on derived `Debug` for successful-result `unwrap`, but never
+  constrained that formatter.
+- Implemented fix: replace both derives with explicit `Debug` implementations.
+  Planned skips expose kind and `is_error`; events expose timestamp, kind, and
+  `is_error`; both render `message` only as `<redacted>`. Keep every field,
+  constructor, clone, and direct consumer unchanged
+  (`src/order_execution/twap/execution/planning.rs:15-29`,
+  `src/twap_state/model.rs:43-76`).
+- Regression coverage: the existing planned-range test still requires the
+  exact established skip string, then requires its formatter to retain type/
+  kind metadata and omit that string. A runtime-event test likewise requires
+  exact stored synthetic fill activity, useful timing/kind/error metadata, and
+  no activity text in `Debug` (`src/order_execution/twap/execution/planning/tests.rs:26-44`,
+  `src/twap_state/tests.rs:170-189`). Existing history-snapshot coverage still
+  requires exact recent activity and summary copy.
+- Smallest behavior-preserving fix: planning values and decisions, skip kind/
+  error flags, slice-attempt accounting, retry scheduling, event timestamp and
+  retention, status/toast copy, live activity rows, child summaries, terminal
+  snapshot/log/summary values, serde schema/bytes, archive timing, task flow,
+  exchange mutations, and every visible string remain unchanged. No view,
+  persistence, message, or trading-policy code changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt and
+  source/call-site tracing establish the intended boundary, but exact and nearby
+  TWAP/history tests cannot execute until ALSA development metadata is
+  available. Persisted `AdvancedOrderHistoryLog`, child, and entry types still
+  derive raw nested `Debug`; that broader Chase/TWAP history diagnostic graph
+  requires a cohesive follow-up rather than partial log-only redaction.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -5290,6 +5383,66 @@ target-specific cancellation policy, not HTTP replay.
   activity/history consumers, and both independent `Debug` surfaces; then
   inspect `MoveOrderKey` and remaining local correlation helpers.
 
+## Turn 37 — Redact TWAP Activity Diagnostics
+
+- Status: F-44 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: planned-slice skip values; every TWAP activity/error producer and
+  sanitizer; exact order-status/live-activity/history consumers; independent
+  planning-skip and event diagnostics
+- Invariant: exact TWAP activity belongs in the deliberate visible and terminal-
+  history fields, while generic formatters retain only state-machine metadata
+  and cannot reveal strategy/order values.
+- Protected behavior: planning size/range/notional calculations and established
+  skip copy; initial/retry accounting; event timestamps/kinds/error flags and
+  retention limit; external-error sanitization; slice result/status/fill/cancel
+  text; order status/toasts; live activity rows; child summaries; terminal
+  history logs/summary and serialization; scheduling, retry, terminalization,
+  archive, task ordering, exchange requests, and every visible string.
+- Preconditions/event ordering: the planner constructs and returns the same
+  exact skip; recording moves it into the same event/status owners. Runtime
+  producers sanitize external failures where required, then push exact events.
+  Live/history consumers continue reading the message field directly. Only a
+  direct `Debug` request receives a redaction marker in place of that field.
+- Evidence: F-44 records the entire producer/sanitizer/consumer path, parent
+  source, earlier runtime-redaction omission, no current production formatting
+  sink, exact planner/event characterizations, and the separately discovered
+  persisted-history diagnostic graph.
+- Change: replaced derived formatters for `TwapPlannedSliceSkip` and
+  `TwapEvent` with explicit structural diagnostics that preserve kind, error
+  state, and event timestamp while redacting only the message; documented the
+  live activity boundary.
+- Tests/checks:
+  - Both pre-fix exact diagnostic regressions stopped in `alsa-sys` before
+    Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - Post-fix exact regressions, the complete planning/TWAP-state suites, the
+    terminal history-snapshot suite, and the existing TWAP execution suite
+    stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no view, startup, subscription, window,
+    task, or persistence behavior changed, compilation is already blocked, and
+    no live exchange or credential-bearing external operation was run.
+- Compatibility/UX assessment: the tests require exact message storage before
+  formatting, and the existing planner/history assertions continue to protect
+  established copy. Only `Debug` derives changed; fields, constructors, clone,
+  direct UI/history reads, serialized history models, and all lifecycle code are
+  source-identical. No visible behavior, timing, schema, signed bytes, or
+  trading semantics changed.
+- Residual risk: Kerosene has not type-checked on this host. F-44 is source-
+  hardened, but the persisted advanced-history model graph independently
+  derives raw `Debug` over account/order/log/child fields. `MoveOrderKey` and
+  remaining local/external-status types also still require audit before Track 9
+  can close.
+- Prior turn commit hash: `7e923e1332f330cea4b0b72f6f30d9d500d91dcc`
+- Next candidate: audit and, if safely cohesive, harden the complete persisted
+  `AdvancedOrderHistoryEntry`/child/log diagnostic graph while preserving serde
+  and every history view; then inspect `MoveOrderKey` and remaining correlation
+  helpers.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -5331,10 +5484,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: pre- and post-fix exact execution-outcome
-  diagnostics, the classifier-focused family, complete order-result tests,
-  `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
-  dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: pre- and post-fix exact TWAP planning/event
+  diagnostics, complete planning/TWAP-state/history-snapshot/TWAP-execution
+  suites, `cargo check`, full `cargo test`, and strict clippy at `alsa-sys`
+  system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
@@ -5342,7 +5495,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, F-42, and F-43
+  F-40, and F-42 through F-44
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -5373,6 +5526,7 @@ target-specific cancellation policy, not HTTP replay.
   partial-bundle cleanup by F-38. Storage-selection and cleanup ownership are
   source-hardened by F-40. Leverage input/submission/result/action diagnostics
   are source-hardened by F-42, and shared normalized execution-outcome
-  diagnostics by F-43. Remaining local planner/state diagnostics, other
-  external-status paths, and the rest of Track 9 require completion before a
-  final verdict.
+  diagnostics by F-43. TWAP planning/live-event diagnostics are source-hardened
+  by F-44. Persisted advanced-history and remaining local planner/state
+  diagnostics, other external-status paths, and the rest of Track 9 require
+  completion before a final verdict.
