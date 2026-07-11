@@ -68,7 +68,9 @@ impl TradingTerminal {
                     self.wallet_clusters.open = false;
                     self.persist_config();
                 }
-                self.wallet_detail_windows.remove(&id);
+                if let Some(state) = self.wallet_detail_windows.remove(&id) {
+                    self.remove_wallet_detail_user_data_stream(&state.address);
+                }
                 if Some(id) == self.journal.window_id {
                     self.journal.window_id = None;
                     self.journal.open = false;

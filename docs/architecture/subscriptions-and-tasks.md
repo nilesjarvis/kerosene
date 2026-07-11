@@ -66,14 +66,22 @@ The stream covers:
 - connected account private user data when a wallet is connected
 - all-mids subscriptions for visible dexes
 - wallet detail windows for addresses different from the connected address
+- selected wallet-cluster member addresses
 
 Results become:
 
 - `Message::WsUserDataUpdate`
 - `Message::WalletDetailsWsUpdate`
+- `Message::WalletClusterWsUpdate`
 
 The stream filters private subscriptions internally when no address is
-connected.
+connected. Each result also carries the subscription parameters (whose debug
+output redacts the address) and a runtime-only consumer generation. Account,
+wallet-detail, and wallet-cluster handlers require that exact recipe generation
+and normalized source address before applying a queued frame. This rejects a
+frame already pulled by an old iced subscription when an account session,
+watched-window topology, cluster topology, or visible-dex scope replaces the
+recipe.
 
 ## Integration Subscriptions
 

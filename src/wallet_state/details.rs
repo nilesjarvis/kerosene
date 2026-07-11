@@ -63,6 +63,7 @@ impl TradingTerminal {
         let mut state = WalletDetailsWindowState::new(address.clone());
         state.loading_context = Some(read_context);
         self.wallet_detail_windows.insert(window_id, state);
+        self.rotate_wallet_detail_user_data_stream(&address);
 
         let scope = self.account_data_fetch_scope();
         Task::batch([

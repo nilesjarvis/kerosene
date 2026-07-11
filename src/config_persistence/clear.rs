@@ -240,6 +240,7 @@ impl TradingTerminal {
         self.pending_keychain_cleanup_all = false;
         self.wallet_key_input.zeroize();
         self.wallet_address_input.clear();
+        self.rotate_all_user_data_streams();
         self.connected_address = None;
         self.account_data = None;
         self.account_data_address = None;
@@ -327,6 +328,7 @@ impl TradingTerminal {
             .collect::<Vec<_>>();
         let wallet_clusters_window_id = self.wallet_clusters.window_id;
         self.wallet_detail_windows.clear();
+        self.wallet_detail_user_data_stream_generations.clear();
         self.wallet_clusters =
             crate::wallet_cluster_state::WalletClusterState::from_config(&defaults.wallet_clusters);
         self.wallet_tracker.add_input.clear();

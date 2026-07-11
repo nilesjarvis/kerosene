@@ -11,7 +11,9 @@ impl TradingTerminal {
             message @ (Message::OpenWalletDetailsWindow(_)
             | Message::RefreshWalletDetails(_)
             | Message::WalletDetailsLoaded(_, _, _, _)
-            | Message::WalletDetailsWsUpdate(_, _)) => return self.update_wallet_details(message),
+            | Message::WalletDetailsWsUpdate(_, _, _)) => {
+                return self.update_wallet_details(message);
+            }
             message @ (Message::OpenWalletTrackerWindow
             | Message::WalletTrackerInputChanged(_)
             | Message::WalletTrackerLabelInputChanged(_)

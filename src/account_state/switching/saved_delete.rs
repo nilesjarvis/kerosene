@@ -203,6 +203,8 @@ impl TradingTerminal {
         }
 
         let secret_id = profile_snapshot.secret_id.clone();
+        let selected_cluster_profile_removed =
+            self.selected_wallet_cluster_uses_profile(&secret_id);
         let account_label = profile_snapshot.name.clone();
         let was_active = self.active_account_index == index;
         let os_keychain_delete =
@@ -308,6 +310,9 @@ impl TradingTerminal {
 
         if let Some(active_index) = active_index_before_durable_save {
             self.active_account_index = active_index;
+        }
+        if selected_cluster_profile_removed {
+            self.rotate_wallet_cluster_user_data_streams();
         }
 
         if !deletion_status_toast_shown {

@@ -61,6 +61,10 @@ impl TradingTerminal {
                 self.invalidate_account_data_requests();
                 self.clear_percentage_order_quantity();
                 self.bump_account_data_revision();
+                self.rotate_account_user_data_stream();
+                if let Some(previous_address) = self.connected_address.clone() {
+                    self.rotate_wallet_detail_user_data_stream_if_open(&previous_address);
+                }
                 self.connected_address = None;
                 self.account_data = None;
                 self.account_data_address = None;
@@ -95,10 +99,12 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let changing_account_context = self
+        let previous_connected_address = self
             .connected_address
             .as_deref()
-            .and_then(Self::normalize_wallet_address)
+            .and_then(Self::normalize_wallet_address);
+        let changing_account_context = previous_connected_address
+            .as_deref()
             .is_none_or(|current| current != addr);
         if changing_account_context
             && self.account_change_blocked_by_active_chase("connecting another wallet")
@@ -112,6 +118,7 @@ impl TradingTerminal {
         }
 
         let mut rebinding_config_already_persisted = false;
+        let mut profile_address_binding_changed = false;
         let credentials_persisted = if self.active_account_is_ghost() {
             self.wallet_key_input.zeroize();
             if let Some(profile) = self.accounts.get_mut(self.active_account_index) {
@@ -222,6 +229,7 @@ impl TradingTerminal {
                     true,
                 ));
                 rebinding_config_already_persisted = true;
+                profile_address_binding_changed = true;
                 true
             } else {
                 self.accounts[self.active_account_index].wallet_address = addr.clone();
@@ -253,6 +261,23 @@ impl TradingTerminal {
             .collect();
         for id in stop_twap_ids {
             let _ = self.stop_twap_with_reason(id, "TWAP stopped: wallet address changed", false);
+        }
+        self.rotate_account_user_data_stream();
+        if changing_account_context {
+            if let Some(previous_address) = previous_connected_address {
+                self.rotate_wallet_detail_user_data_stream_if_open(&previous_address);
+            }
+            self.rotate_wallet_detail_user_data_stream_if_open(&addr);
+        }
+        let selected_cluster_profile_binding_changed = profile_address_binding_changed
+            && self
+                .accounts
+                .get(self.active_account_index)
+                .is_some_and(|profile| {
+                    self.selected_wallet_cluster_uses_profile(&profile.secret_id)
+                });
+        if selected_cluster_profile_binding_changed {
+            self.rotate_wallet_cluster_user_data_streams();
         }
         self.connected_address = Some(addr.clone());
         self.clear_percentage_order_quantity();
@@ -349,6 +374,10 @@ impl TradingTerminal {
         self.invalidate_account_data_requests();
         self.clear_percentage_order_quantity();
         self.bump_account_data_revision();
+        self.rotate_account_user_data_stream();
+        if let Some(previous_address) = self.connected_address.clone() {
+            self.rotate_wallet_detail_user_data_stream_if_open(&previous_address);
+        }
         self.connected_address = None;
         self.account_data = None;
         self.account_data_address = None;
@@ -814,6 +843,7 @@ mod tests {
         terminal.chase_orders.insert(42, chase_order(TEST_ACCOUNT));
         terminal.account_loading = true;
         let stale_context = terminal.current_account_data_request_context();
+        let previous_stream_generation = terminal.account_user_data_stream_generation;
 
         let _task = terminal.connect_wallet();
 
@@ -821,6 +851,10 @@ mod tests {
         assert!(terminal.chase_orders.contains_key(&42));
         assert!(terminal.account_loading);
         assert!(!terminal.account_data_request_generation_is_current(TEST_ACCOUNT, stale_context));
+        assert_ne!(
+            terminal.account_user_data_stream_generation,
+            previous_stream_generation
+        );
         assert!(terminal.toasts.is_empty());
     }
 

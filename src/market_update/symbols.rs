@@ -396,6 +396,7 @@ impl TradingTerminal {
         self.exchange_symbols_refresh_inflight = false;
         match result {
             Ok(payload) => {
+                let previous_user_data_dexes = self.visible_mids_dexes();
                 let loaded_from_cache = payload.loaded_from_cache;
                 let perp_meta_failed = payload.perp_meta_failed;
                 let spot_meta_failed = payload.spot_meta_failed;
@@ -483,6 +484,9 @@ impl TradingTerminal {
                         true,
                     );
                     self.persist_config();
+                }
+                if self.visible_mids_dexes() != previous_user_data_dexes {
+                    self.rotate_all_user_data_streams();
                 }
                 match self.market_universe.selected_hip3_dex() {
                     Some(dex) => {

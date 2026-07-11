@@ -114,6 +114,15 @@ spot snapshot and use the selected pair's verified base/quote token identities.
 Websocket updates should not blindly override newer local verification state.
 Tests cover stale websocket behavior for advanced order reconciliation.
 
+User-data messages retain their complete `WsUserDataStreamParams`, including a
+runtime-only generation. Update routes compare those parameters and the
+normalized emitted address with the currently requested account,
+wallet-detail, or cluster recipe before touching state. Consumer generations
+rotate when a same-address account session or other recipe input is replaced,
+so an old iced task cannot apply its one already-queued frame to a newly
+created session. The generation is local plumbing and is never sent to the
+exchange or persisted.
+
 A targeted `spotState` frame replaces balances, marks them fresh, and advances
 the spot-balance revision. A spot fill can arrive before that frame, so any live
 spot fill first marks balances incomplete. Signed spot dispatches do the same;

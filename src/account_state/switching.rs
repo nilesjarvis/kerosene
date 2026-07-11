@@ -31,6 +31,10 @@ impl TradingTerminal {
         self.invalidate_account_data_requests();
         self.clear_percentage_order_quantity();
         self.bump_account_data_revision();
+        self.rotate_account_user_data_stream();
+        if let Some(previous_address) = self.connected_address.clone() {
+            self.rotate_wallet_detail_user_data_stream_if_open(&previous_address);
+        }
         self.connected_address = None;
         self.account_data = None;
         self.account_data_address = None;

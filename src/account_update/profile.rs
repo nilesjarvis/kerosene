@@ -125,6 +125,13 @@ impl TradingTerminal {
             .and_then(|profile| Self::normalize_wallet_address(&profile.wallet_address));
         let next_normalized = Self::normalize_wallet_address(&value);
         let address_binding_changed = previous_normalized != next_normalized;
+        let selected_cluster_profile_binding_changed = address_binding_changed
+            && self
+                .accounts
+                .get(self.active_account_index)
+                .is_some_and(|profile| {
+                    self.selected_wallet_cluster_uses_profile(&profile.secret_id)
+                });
         let is_ghost = self.active_account_is_ghost();
         if !is_ghost
             && address_binding_changed
@@ -232,6 +239,9 @@ impl TradingTerminal {
         self.wallet_address_input = value;
         self.accounts[self.active_account_index].wallet_address = self.wallet_address_input.clone();
         if address_binding_changed {
+            if selected_cluster_profile_binding_changed {
+                self.rotate_wallet_cluster_user_data_streams();
+            }
             self.clear_percentage_order_quantity();
         }
         if should_remove_agent_key {

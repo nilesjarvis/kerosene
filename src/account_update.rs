@@ -94,10 +94,13 @@ impl TradingTerminal {
                 source_context,
                 skipped,
             } => self.apply_position_pnl_book_lag(coin, sigfigs, source_context, skipped),
-            Message::WsUserDataUpdate(source_address, ws_data) => self.apply_ws_user_data_update(
-                source_address.map(|address| address.into_string()),
-                *ws_data,
-            ),
+            Message::WsUserDataUpdate(params, source_address, ws_data) => {
+                let source_address = source_address.map(|address| address.into_string());
+                if !self.user_data_stream_message_is_current(&params, source_address.as_deref()) {
+                    return Task::none();
+                }
+                self.apply_ws_user_data_update(source_address, *ws_data)
+            }
             _ => Task::none(),
         }
     }

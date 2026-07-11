@@ -89,11 +89,13 @@ impl TradingTerminal {
                 context,
                 *result,
             ),
-            Message::WalletClusterWsUpdate(source_address, data) => self
-                .apply_wallet_cluster_ws_update(
-                    source_address.map(|address| address.into_string()),
-                    *data,
-                ),
+            Message::WalletClusterWsUpdate(params, source_address, data) => {
+                let source_address = source_address.map(|address| address.into_string());
+                if !self.user_data_stream_message_is_current(&params, source_address.as_deref()) {
+                    return Task::none();
+                }
+                self.apply_wallet_cluster_ws_update(source_address, *data)
+            }
             Message::WalletClusterOrderPriceChanged(value) => {
                 self.wallet_clusters.order_price = value.into_string();
                 Task::none()
@@ -195,6 +197,7 @@ impl TradingTerminal {
             members: Vec::new(),
         });
         self.wallet_clusters.selected_cluster_id = Some(id);
+        self.rotate_wallet_cluster_user_data_streams();
         self.wallet_clusters.new_cluster_name_input.clear();
         self.wallet_clusters.status = None;
         self.persist_config();
@@ -208,7 +211,12 @@ impl TradingTerminal {
             .iter()
             .any(|cluster| cluster.id == cluster_id)
         {
+            let selection_changed =
+                self.wallet_clusters.selected_cluster_id.as_deref() != Some(&cluster_id);
             self.wallet_clusters.selected_cluster_id = Some(cluster_id);
+            if selection_changed {
+                self.rotate_wallet_cluster_user_data_streams();
+            }
             self.wallet_clusters.status = None;
             self.persist_config();
             self.refresh_selected_wallet_cluster()
@@ -246,12 +254,15 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        if self.wallet_clusters.selected_cluster_id.as_deref() == Some(&cluster_id) {
+        let selected_cluster_deleted =
+            self.wallet_clusters.selected_cluster_id.as_deref() == Some(&cluster_id);
+        if selected_cluster_deleted {
             self.wallet_clusters.selected_cluster_id = self
                 .wallet_clusters
                 .clusters
                 .first()
                 .map(|cluster| cluster.id.clone());
+            self.rotate_wallet_cluster_user_data_streams();
         }
         self.wallet_clusters.member_data.clear();
         self.wallet_clusters.status = None;
@@ -315,6 +326,7 @@ impl TradingTerminal {
             weight: crate::config::default_wallet_cluster_member_weight(),
             weight_input: format_weight_input(crate::config::default_wallet_cluster_member_weight()),
         });
+        self.rotate_wallet_cluster_user_data_streams();
         self.persist_config();
         self.refresh_wallet_cluster_member(profile_secret_id)
     }
@@ -335,10 +347,15 @@ impl TradingTerminal {
         else {
             return Task::none();
         };
+        let before = cluster.members.len();
         cluster
             .members
             .retain(|member| member.profile_secret_id != profile_secret_id);
+        let removed = cluster.members.len() != before;
         self.wallet_clusters.member_data.remove(&profile_secret_id);
+        if removed && self.wallet_clusters.selected_cluster_id.as_deref() == Some(&cluster_id) {
+            self.rotate_wallet_cluster_user_data_streams();
+        }
         self.persist_config();
         Task::none()
     }
@@ -2124,6 +2141,59 @@ mod tests {
     }
 
     #[test]
+    fn queued_position_frame_from_replaced_cluster_stream_cannot_mark_snapshot_fresh() {
+        use crate::config::AccountProfile;
+        use crate::wallet_cluster_state::{WalletCluster, WalletClusterMember};
+
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.accounts = vec![AccountProfile {
+            secret_id: "member-profile".to_string(),
+            name: "Member".to_string(),
+            wallet_address: ADDRESS.to_string(),
+            agent_key: "agent-key".to_string().into(),
+            hydromancer_api_key: String::new().into(),
+        }];
+        terminal.wallet_clusters.clusters = vec![WalletCluster {
+            id: "cluster".to_string(),
+            name: "Cluster".to_string(),
+            members: vec![WalletClusterMember {
+                profile_secret_id: "member-profile".to_string(),
+                weight: 1.0,
+                weight_input: "1".to_string(),
+            }],
+        }];
+        terminal.wallet_clusters.selected_cluster_id = Some("cluster".to_string());
+        let mut data = member_data_at(ADDRESS, Some(1_000_000), true);
+        data.data = Some(empty_details());
+        terminal
+            .wallet_clusters
+            .member_data
+            .insert("member-profile".to_string(), data);
+        let stale_params = terminal
+            .user_data_subscription_params()
+            .2
+            .into_iter()
+            .next()
+            .expect("cluster stream params");
+
+        terminal.rotate_wallet_cluster_user_data_streams();
+        let _task = terminal.update_wallet_cluster(Message::WalletClusterWsUpdate(
+            stale_params,
+            Some(ADDRESS.to_string().into()),
+            Box::new(WsUserData::AllDexPositions {
+                main_state: Box::new(empty_details().clearinghouse),
+                states_by_dex: std::collections::HashMap::new(),
+                all_positions: Vec::new(),
+                position_details: Vec::new(),
+            }),
+        ));
+
+        let state = &terminal.wallet_clusters.member_data["member-profile"];
+        assert_eq!(state.positions_refreshed_ms, Some(1_000_000));
+        assert!(state.stale);
+    }
+
+    #[test]
     fn cluster_trading_members_excludes_zero_weight_members_when_required() {
         use crate::config::AccountProfile;
         use crate::wallet_cluster_state::{WalletCluster, WalletClusterMember};
@@ -2206,5 +2276,35 @@ mod tests {
             .expect("a rejection status should be set");
         assert!(is_error);
         assert!(message.contains("agent key"));
+    }
+
+    #[test]
+    fn adding_selected_cluster_member_rotates_stream_generation() {
+        use crate::config::AccountProfile;
+        use crate::wallet_cluster_state::WalletCluster;
+
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.accounts = vec![AccountProfile {
+            secret_id: "member-profile".to_string(),
+            name: "Member".to_string(),
+            wallet_address: ADDRESS.to_string(),
+            agent_key: "agent-key".to_string().into(),
+            hydromancer_api_key: String::new().into(),
+        }];
+        terminal.wallet_clusters.clusters = vec![WalletCluster {
+            id: "cluster".to_string(),
+            name: "Cluster".to_string(),
+            members: Vec::new(),
+        }];
+        terminal.wallet_clusters.selected_cluster_id = Some("cluster".to_string());
+        let previous_generation = terminal.wallet_cluster_user_data_stream_generation;
+
+        let _task = terminal.add_wallet_cluster_member("member-profile".to_string());
+
+        assert_eq!(terminal.wallet_clusters.clusters[0].members.len(), 1);
+        assert_eq!(
+            terminal.wallet_cluster_user_data_stream_generation,
+            previous_generation.wrapping_add(1)
+        );
     }
 }

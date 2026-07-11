@@ -83,6 +83,28 @@ fn lagged_connected_user_stream_queues_followup_when_refresh_in_flight() {
 }
 
 #[test]
+fn queued_same_address_frame_from_replaced_account_stream_is_ignored() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    let stale_params = terminal.user_data_subscription_params().0;
+
+    // A same-address reconnect replaces the iced recipe. Its canceled task can
+    // still have one frame waiting on the application queue.
+    terminal.rotate_account_user_data_stream();
+    let _task = terminal.update_account(Message::WsUserDataUpdate(
+        stale_params,
+        Some(address.into()),
+        Box::new(WsUserData::Lagged { skipped: 3 }),
+    ));
+
+    assert!(!terminal.account_loading);
+    assert!(!terminal.account_reconciliation_required);
+}
+
+#[test]
 fn non_position_ws_updates_do_not_refresh_position_snapshot_timestamp() {
     let (mut terminal, _) = TradingTerminal::boot();
     let address = "0xabc0000000000000000000000000000000000000".to_string();

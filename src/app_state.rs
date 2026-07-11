@@ -452,6 +452,12 @@ pub(crate) struct TradingTerminal {
     // (long_notional, short_notional)
     pub(crate) liquidation_chart_buckets: BTreeMap<u64, (f64, f64)>,
     pub(crate) connected_address: Option<String>,
+    /// Runtime-only recipe incarnations used to reject already-queued frames
+    /// after iced replaces a user-data subscription.
+    pub(crate) account_user_data_stream_generation: u64,
+    pub(crate) wallet_detail_user_data_stream_generations: HashMap<String, u64>,
+    pub(crate) next_wallet_detail_user_data_stream_generation: u64,
+    pub(crate) wallet_cluster_user_data_stream_generation: u64,
     pub(crate) account_data: Option<AccountData>,
     pub(crate) account_data_address: Option<String>,
     pub(crate) account_data_revision: u64,

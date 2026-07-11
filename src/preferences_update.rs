@@ -322,6 +322,7 @@ impl TradingTerminal {
                 if self.market_universe == universe {
                     return Task::none();
                 }
+                let previous_user_data_dexes = self.visible_mids_dexes();
 
                 let status = match universe.selected_hip3_dex() {
                     Some(dex) => {
@@ -337,6 +338,9 @@ impl TradingTerminal {
                 };
 
                 self.market_universe = universe;
+                if self.visible_mids_dexes() != previous_user_data_dexes {
+                    self.rotate_all_user_data_streams();
+                }
                 self.clear_percentage_order_quantity();
                 self.muted_ticker_status = Some((status.clone(), false));
                 self.push_toast(status, false);
@@ -387,8 +391,12 @@ impl TradingTerminal {
                 if self.display_denomination == denomination {
                     return Task::none();
                 }
+                let previous_user_data_dexes = self.visible_mids_dexes();
 
                 self.display_denomination = denomination;
+                if self.visible_mids_dexes() != previous_user_data_dexes {
+                    self.rotate_all_user_data_streams();
+                }
                 self.sync_chart_display_denominations();
                 self.persist_config();
                 let mut tasks = self.mids_bootstrap_tasks();

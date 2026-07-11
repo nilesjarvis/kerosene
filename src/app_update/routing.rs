@@ -429,7 +429,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WalletClusterMemberWeightChanged(_, _, _)
         | Message::WalletClusterRefresh
         | Message::WalletClusterMemberLoaded(_, _, _, _, _)
-        | Message::WalletClusterWsUpdate(_, _)
+        | Message::WalletClusterWsUpdate(_, _, _)
         | Message::WalletClusterOrderPriceChanged(_)
         | Message::WalletClusterOrderQuantityChanged(_)
         | Message::WalletClusterToggleOrderDenomination
@@ -445,7 +445,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::OpenWalletDetailsWindow(_)
         | Message::RefreshWalletDetails(_)
         | Message::WalletDetailsLoaded(_, _, _, _)
-        | Message::WalletDetailsWsUpdate(_, _)
+        | Message::WalletDetailsWsUpdate(_, _, _)
         | Message::WalletTrackerInputChanged(_)
         | Message::WalletTrackerLabelInputChanged(_)
         | Message::WalletTrackerAdd
@@ -582,7 +582,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AllMidsBootstrapLoaded(_, _)
         | Message::PositionPnlWsBookUpdate { .. }
         | Message::PositionPnlWsBookLagged { .. }
-        | Message::WsUserDataUpdate(_, _) => UpdateRoute::Account,
+        | Message::WsUserDataUpdate(_, _, _) => UpdateRoute::Account,
 
         Message::HydromancerKeyInputChanged(_)
         | Message::SaveHydromancerKey

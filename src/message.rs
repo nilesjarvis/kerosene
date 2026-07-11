@@ -54,7 +54,7 @@ use crate::telegram_feed::{
 };
 use crate::timeframe::Timeframe;
 use crate::wallet_cluster_state::WalletClusterCloseSide;
-use crate::ws::WsUserData;
+use crate::ws::{WsUserData, WsUserDataStreamParams};
 use crate::x_feed::{
     XAuthenticatedUser, XFeedId, XFeedPage, XFeedRequestError, XFeedSource, XFeedSourceOption,
     XListsFetchOutcome, XOAuthTokenRefresh,
@@ -905,7 +905,11 @@ pub(crate) enum Message {
         ReadDataRequestContext,
         Box<Result<WalletDetailsData, String>>,
     ),
-    WalletClusterWsUpdate(Option<RedactedAddress>, Box<WsUserData>),
+    WalletClusterWsUpdate(
+        WsUserDataStreamParams,
+        Option<RedactedAddress>,
+        Box<WsUserData>,
+    ),
     WalletClusterOrderPriceChanged(RedactedOrderInput),
     WalletClusterOrderQuantityChanged(RedactedOrderInput),
     WalletClusterToggleOrderDenomination,
@@ -941,7 +945,11 @@ pub(crate) enum Message {
         ReadDataRequestContext,
         Box<Result<WalletDetailsData, String>>,
     ),
-    WalletDetailsWsUpdate(Option<RedactedAddress>, Box<WsUserData>),
+    WalletDetailsWsUpdate(
+        WsUserDataStreamParams,
+        Option<RedactedAddress>,
+        Box<WsUserData>,
+    ),
     WindowOpened(window::Id),
     WindowClosed(window::Id),
     WindowResized(window::Id, Size),
@@ -1538,7 +1546,11 @@ pub(crate) enum Message {
     RefreshAccountData,
     AccountRefreshBackoffElapsed(u64),
     AllMidsBootstrapLoaded(String, Result<HashMap<String, f64>, String>),
-    WsUserDataUpdate(Option<RedactedAddress>, Box<WsUserData>),
+    WsUserDataUpdate(
+        WsUserDataStreamParams,
+        Option<RedactedAddress>,
+        Box<WsUserData>,
+    ),
     // HyperDash liquidation heatmap
     HyperdashKeyInputChanged(SecretInput),
     SaveHyperdashKey,
@@ -1584,7 +1596,10 @@ mod tests {
     };
     use crate::read_data_provider::{AccountDataRequestContext, ReadDataRequestContext};
     use crate::timeframe::Timeframe;
-    use crate::ws::{HydromancerWsMessage, TrackedTradeEvent, WsUserData};
+    use crate::ws::{
+        HydromancerWsMessage, TrackedTradeEvent, WsUserData, WsUserDataStreamParams,
+        WsUserDataStreamPurpose,
+    };
     use crate::x_feed::{XAuthenticatedUser, XListOwnerKind, XListSummary, XListsFetchOutcome};
 
     #[test]
@@ -1997,6 +2012,9 @@ mod tests {
                 Box::new(Err("details failed".to_string())),
             ),
             Message::WalletDetailsWsUpdate(
+                WsUserDataStreamParams::without_mids(Some(ADDRESS.to_string()), Vec::new())
+                    .with_purpose(WsUserDataStreamPurpose::WalletDetail)
+                    .with_generation(1),
                 Some(ADDRESS.into()),
                 Box::new(WsUserData::Lagged { skipped: 1 }),
             ),
@@ -2156,6 +2174,8 @@ mod tests {
             ),
             Message::RetryTwapReconciliationAccountData(ADDRESS.into()),
             Message::WsUserDataUpdate(
+                WsUserDataStreamParams::new(Some(ADDRESS.to_string()), Vec::new())
+                    .with_generation(1),
                 Some(ADDRESS.into()),
                 Box::new(WsUserData::Lagged { skipped: 1 }),
             ),

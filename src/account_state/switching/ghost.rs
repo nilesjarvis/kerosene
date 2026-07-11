@@ -60,6 +60,8 @@ impl TradingTerminal {
             hydromancer_api_key: String::new().into(),
         };
         let secret_id = profile.secret_id.clone();
+        let selected_cluster_profile_removed =
+            self.selected_wallet_cluster_uses_profile(&secret_id);
         self.accounts.push(profile);
         self.ghost_account_secret_ids.insert(secret_id);
         self.switch_account_task(self.accounts.len() - 1)
@@ -91,6 +93,9 @@ impl TradingTerminal {
         self.hidden_positions_by_account.remove(&secret_id);
         self.accounts.remove(index);
         self.ghost_account_secret_ids.remove(&secret_id);
+        if selected_cluster_profile_removed {
+            self.rotate_wallet_cluster_user_data_streams();
+        }
 
         if self.active_account_index > index {
             self.active_account_index -= 1;

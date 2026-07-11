@@ -40,6 +40,10 @@ pub struct WsUserDataStreamParams {
     pub dexes: Vec<String>,
     pub include_mids: bool,
     pub purpose: WsUserDataStreamPurpose,
+    /// Runtime-only incarnation of this consumer's iced recipe. A replacement
+    /// can leave one already-pulled message queued after cancellation, so the
+    /// generation must travel with each emitted application message.
+    pub generation: u64,
 }
 
 impl fmt::Debug for WsUserDataStreamParams {
@@ -49,6 +53,7 @@ impl fmt::Debug for WsUserDataStreamParams {
             .field("dexes", &self.dexes)
             .field("include_mids", &self.include_mids)
             .field("purpose", &self.purpose)
+            .field("generation", &self.generation)
             .finish()
     }
 }
@@ -60,6 +65,7 @@ impl WsUserDataStreamParams {
             dexes,
             include_mids: true,
             purpose: WsUserDataStreamPurpose::Account,
+            generation: 0,
         }
     }
 
@@ -69,6 +75,7 @@ impl WsUserDataStreamParams {
             dexes,
             include_mids: false,
             purpose: WsUserDataStreamPurpose::Account,
+            generation: 0,
         }
     }
 
@@ -76,6 +83,13 @@ impl WsUserDataStreamParams {
     /// (same address/dexes/mids) so iced keeps both alive.
     pub fn with_purpose(mut self, purpose: WsUserDataStreamPurpose) -> Self {
         self.purpose = purpose;
+        self
+    }
+
+    /// Binds the stream to one runtime consumer incarnation. The generation is
+    /// local provenance only and is never included in an exchange payload.
+    pub fn with_generation(mut self, generation: u64) -> Self {
+        self.generation = generation;
         self
     }
 }
@@ -301,13 +315,15 @@ mod tests {
         let params = WsUserDataStreamParams::without_mids(
             Some(ADDRESS.to_string()),
             vec!["".to_string(), "dex-a".to_string()],
-        );
+        )
+        .with_generation(9);
         let rendered = format!("{params:?}");
 
         assert!(rendered.contains("<redacted>"));
         assert!(!rendered.contains(ADDRESS), "{rendered}");
         assert!(rendered.contains("dex-a"), "{rendered}");
         assert!(rendered.contains("include_mids: false"), "{rendered}");
+        assert!(rendered.contains("generation: 9"), "{rendered}");
     }
 
     #[test]

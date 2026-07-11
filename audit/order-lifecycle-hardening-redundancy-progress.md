@@ -89,6 +89,17 @@
   (`src/read_data_provider.rs:23-157`,
   `src/account_update/connection/refresh.rs:94-213`,
   `src/account_update/stream.rs:45-230`).
+- User-data application messages carry their complete stream parameters,
+  including a runtime-only consumer generation whose diagnostics redact the
+  address. Account, wallet-detail, and wallet-cluster routes require an exact
+  current recipe plus its normalized emitted source before applying state.
+  Generation rotation covers same-address account sessions, detail-window
+  disappearance/recreation (including connected-address exclusion), selected
+  cluster topology/profile bindings, and visible-dex changes
+  (`src/ws/user_streams.rs:20-94`,
+  `src/subscription_state/user_data.rs:11-213`,
+  `src/account_update.rs:97-103`,
+  `src/wallet_cluster_update.rs:92-98`).
 - Chase and TWAP retain captured account/key identity and explicit lifecycle or
   pending-operation state. Their active state and in-flight requests are
   runtime-only.
@@ -150,6 +161,13 @@ If a user-data delta advanced it, the current merged state and uncertainty are
 preserved while one sequential post-delta refresh starts. Off-account TWAP fill
 reconciliation remains separately address/generation-scoped and does not
 replace connected account state.
+
+Turn 17 adds a preceding provenance requirement to every row consuming account
+or selected-cluster user data: the frame's address, purpose, dex scope, and
+runtime recipe generation must still equal the subscription requested by
+current application state. An old same-address recipe therefore cannot drive
+order, fill, Chase/TWAP, or cluster-close freshness transitions after account,
+window, cluster, profile, or market-scope replacement.
 
 ### Mutation Transport Phase Audit
 
@@ -1071,6 +1089,102 @@ target-specific cancellation policy, not HTTP replay.
   metadata. Same-address user-stream subscription identity across reconnects
   and channel closure is a separate Track 8 candidate; this REST ownership
   guard does not claim to establish stream-generation provenance.
+
+### F-18 — Replaced same-address user stream can apply one late frame
+
+- Status: addressed in Turn 17; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Critical
+- Scope: iced user-data recipe identity/cancellation, connected-account stream
+  application, wallet-detail streams, selected wallet-cluster streams, account
+  session and consumer-topology changes, dex-scope changes, manager reconnect,
+  lag, and broadcast closure
+- Preconditions/event ordering:
+  1. An account, wallet-detail, or cluster recipe has pulled a valid frame from
+     its shared-manager receiver.
+  2. Before iced can send that frame to the application queue, state replaces
+     or removes the recipe. Real paths include a same-address wallet reconnect,
+     account switch away/back, detail exclusion or close/reopen, selected
+     cluster/member/profile changes, and visible-dex scope changes.
+  3. The old and new recipe use the same normalized wallet address. Before
+     Turn 17, the resulting `Message` carried only that address and data.
+  4. iced cancellation races only with `stream.next()`. Once a message wins,
+     the tracker awaits the application-queue send without selecting
+     cancellation again; the canceled old recipe can therefore enqueue that
+     one frame after state already requests the new recipe.
+  5. The address-only handler accepts the frame as belonging to the new
+     session. Independent old/new recipe tasks can also reverse delivery.
+- Affected order surfaces: every connected-account lifecycle consumer of open
+  orders, fills, positions, balances, or lag—including one-shot, cancel/move,
+  Chase, TWAP, leverage, and overlays—and wallet-cluster close/order planning
+  that relies on member position freshness. Wallet details have the same stale
+  display risk but do not dispatch trades.
+- Evidence: `WsUserDataStreamParams` was hashed into recipe identity but was
+  discarded by each `.map`, leaving only `Option<RedactedAddress>` in the three
+  messages. iced 0.14's tracker selects cancellation against `stream.next()` at
+  lines 96-105 of its `subscription/tracker.rs`, then awaits `receiver.send`
+  without another cancellation check. The shared manager's ordinary socket
+  reconnect remains ordered inside one receiver; its broadcast sender closes
+  only if the singleton manager task/command channel tears down, not on normal
+  reconnect. Thus recipe replacement—not the manager reconnect loop—is the
+  concrete overlap boundary.
+- Violated invariant: a user-data frame may change trading or freshness state
+  only when both its source address and the exact runtime stream incarnation
+  still belong to the current consumer.
+- Risk: an old open-order/fill frame can regress or falsely advance automation
+  reconciliation after a same-address reconnect. A late old cluster position
+  frame can clear `stale`, refresh `positions_refreshed_ms`, and authorize a
+  reduce-only close size from superseded member exposure. That can falsely
+  declare unknown exchange state safe and enable a wrong or duplicate
+  mutation.
+- Why existing checks did not cover it: address normalization proves wallet
+  ownership, and purpose/dex fields distinguish simultaneously live recipes,
+  but none identifies a replacement incarnation with equal parameters.
+  Manager refcounts prevent duplicate wire subscriptions from colliding; they
+  cannot retract an item the old iced task already pulled. REST request
+  generations and Turn 16's revision guard do not identify websocket recipe
+  ownership.
+- Implemented fix: add a runtime-only generation to
+  `WsUserDataStreamParams`, retain the entire params value in each subscription
+  output with `Subscription::with`, and add one shared guard that requires the
+  exact current params plus exact normalized source before any route applies
+  data. Rotate the account generation at successful connect/reconnect,
+  disconnect, switch, invalidation, and clear. Allocate unique per-address
+  detail generations across open/close/reopen and connected-address exclusion,
+  while leaving unrelated detail streams unchanged and clearing retained
+  address keys on config clear. Rotate the selected-cluster generation for
+  topology/profile changes. Rotate all affected consumers only when visible
+  dex inputs change. Generations participate in iced identity but are ignored
+  by exchange subscription construction and are not persisted.
+- Regression coverage: a canceled same-address account recipe queues a lag
+  frame and cannot mark the new account session loading/reconciling
+  (`src/account_update/stream/tests.rs:85-105`). A canceled cluster recipe
+  queues a full position snapshot and cannot clear `stale` or refresh its
+  close-sizing timestamp (`src/wallet_cluster_update.rs:2142-2194`). Parameter
+  tests prove generation and source are both required, a reopened detail gets
+  a unique generation without rotating another address, config clear removes
+  detail provenance addresses, and diagnostics redact the wallet address
+  (`src/subscription_state/user_data.rs:226-348`,
+  `src/ws/user_streams.rs:309-327`, `src/message.rs:1969-2189`). The existing
+  same-account reconnect test now proves the production connect path rotates
+  its generation.
+- Smallest behavior-preserving fix: enrich the existing recipe/message context
+  and reject non-current queued events at update entry. Do not change parsing,
+  wire topics, reconnect policy, manager buffering/refcounts, REST cadence,
+  lifecycle classification, order preparation/signing, or views.
+- Protected behavior: current recipe frames take the identical update paths;
+  normal manager reconnects stay within the same sequential receiver; lag
+  still emits before requesting the existing shared reconnect and REST repair;
+  address/dex subscription payloads, stream cadence outside an actual recipe
+  replacement, order semantics, status copy, UI, persistence, and secrets are
+  unchanged.
+- Residual uncertainty: formatting, exhaustive recipe-input mutation search,
+  manager reconnect/lag/closure tracing, source normalization, redaction, and
+  adversarial ordering review pass. Rust type-check/tests/clippy must execute on
+  a host with ALSA development metadata. A terminal panic/abort of the
+  singleton manager task would close the broadcast channel and is not a normal
+  recoverable reconnect state; startup/shutdown fault handling remains for the
+  later lifecycle-close track.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -2004,6 +2118,86 @@ target-specific cancellation policy, not HTTP replay.
   address plus subscription identity proves stream provenance or whether a
   runtime generation is required; preserve reconnect behavior and stream UX.
 
+## Turn 17 — Reject Frames From Replaced User-Data Recipes
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: Critical
+- Scope: F-18 across user-data recipe identity, account/detail/cluster message
+  context, runtime lifecycle generations, source-address validation, recipe
+  input mutation sites, reconnect/lag/closure audit, docs, and regressions
+- Invariant: a queued user-data frame may change account, automation, wallet,
+  or cluster freshness state only while its exact address/purpose/dex recipe
+  incarnation is still requested by current application state.
+- Protected behavior: websocket topics/payloads, shared-manager refcounts and
+  reconnect backoff, lag signaling and REST repair, account and cluster update
+  semantics for current frames, order preparation/signing, automation policy,
+  stream cadence outside actual consumer replacement, UI/copy, persistence,
+  and secrets.
+- Preconditions/event ordering: an iced recipe pulls a valid frame; an account
+  reconnect or consumer topology/scope change replaces/removes that recipe;
+  cancellation occurs while the old task awaits its application-queue send;
+  the old same-address frame arrives after the new state/recipe. Address-only
+  routing previously accepted it.
+- Evidence: iced 0.14's tracker selects cancellation only against
+  `stream.next()`, then sends a won item without another cancellation select.
+  Independent old/new recipes can therefore overlap for one queued item. The
+  manager's ordinary socket reconnect is different: it retains one broadcast
+  receiver and orders old-socket frames, disconnect, resubscription, and new
+  frames within that stream. Lag emits a reconciliation signal and requests
+  the existing gated reconnect. Broadcast closure requires singleton manager
+  task/command teardown and is not a normal reconnect transition. F-18 records
+  the concrete source and consequences.
+- Change: retained each complete `WsUserDataStreamParams` in subscription
+  output, added its runtime generation to hash/equality, and required exact
+  current params plus normalized source at all three update routes. Account
+  sessions use a monotonic generation. Detail windows use unique per-address
+  generations across close/reopen and connected-address exclusion, without
+  rotating other addresses; config clear removes the runtime address map while
+  preserving the allocator. Selected-cluster topology/profile changes rotate
+  one shared cluster generation. Visible-dex changes rotate only the consumers
+  whose recipe inputs change. No value is persisted or sent to Hyperliquid.
+- Tests/checks:
+  - Added an account regression proving a canceled same-address recipe's queued
+    lag frame cannot mark the new session loading/reconciling.
+  - Added a cluster regression proving a canceled recipe's full position frame
+    cannot clear `stale` or refresh the timestamp used by close-size preflight.
+  - Added parameter/source, detail close/reopen isolation, config-clear address
+    cleanup, production same-account reconnect rotation, selected-cluster
+    member rotation, and diagnostic-redaction coverage.
+  - Focused attempts for
+    `queued_same_address_frame_from_replaced_account_stream_is_ignored`,
+    `queued_position_frame_from_replaced_cluster_stream_cannot_mark_snapshot_fresh`,
+    `reopened_wallet_detail_gets_new_generation_without_rotating_other_address`,
+    and `address_bearing_message_debug_redacts_values` all stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    the system `alsa.pc` package. A broader `queued_` attempt stopped at the
+    same boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: this subscription change does not justify
+    launching the app against an unknown local credential/live-trading config,
+    and the same ALSA dependency blocks compilation first.
+- Compatibility/UX assessment: every current frame follows its identical prior
+  handler. Rotations coincide with a recipe input/session change that already
+  removes or replaces that consumer, except same-address reconnect where the
+  explicit reconnect now creates the required ownership boundary and its
+  existing full REST refresh remains authoritative. No view, string, control,
+  schema, stored config, order field, retry, or timer changed.
+- Residual risk: formatting, message/call-site inventory, every production
+  recipe-input mutation, source normalization, generation lifecycle, manager
+  ordering, lag and closure, redaction, and full diff review pass. The crate
+  has not type-checked; focused/full tests and clippy must execute on a host
+  with ALSA development metadata. Terminal singleton-manager task failure is
+  reserved for the later startup/shutdown fault-handling track.
+- Prior turn commit hash: `8c4bd540d135796c2aa3a20f6757f18848047709`
+- Next candidate: begin the remaining Track 6 TWAP audit by tracing scheduler
+  ticks, pending child creation, deterministic CLOID/retry identity, reconnect
+  and delayed result/status ordering, unexpected resting-child cancellation,
+  fill attribution, stop, completion, and archive. Preserve slice sizes,
+  cadence, price bounds, retry policy, and all visible lifecycle behavior.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -2011,19 +2205,17 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused REST/user-data reversal and
-  initial-load follow-up tests; nearby same-generation, queued-follow-up,
-  stale-generation, scoped-open-order, off-account TWAP, error-redaction, and
-  message-debug tests; `cargo check`; full `cargo test`; and strict clippy at
-  `alsa-sys` system dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: focused same-address account, cluster
+  position-freshness, wallet-detail generation, source/context, and
+  message-redaction tests; `cargo check`; full `cargo test`; and strict clippy
+  at `alsa-sys` system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-17 have source fixes and regression coverage but await
+- F-01 through F-18 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- Same-address user-stream reconnect provenance, TWAP, restart/shutdown cleanup,
-  local planning/state diagnostic redaction, and the remaining tracks require
-  completion before a final verdict.
+- TWAP, restart/shutdown cleanup, local planning/state diagnostic redaction,
+  and the remaining tracks require completion before a final verdict.

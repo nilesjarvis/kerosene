@@ -50,11 +50,12 @@ impl TradingTerminal {
                     }
                 }
             }
-            Message::WalletDetailsWsUpdate(source_address, data) => {
-                return self.apply_wallet_details_ws_update(
-                    source_address.map(|address| address.into_string()),
-                    *data,
-                );
+            Message::WalletDetailsWsUpdate(params, source_address, data) => {
+                let source_address = source_address.map(|address| address.into_string());
+                if !self.user_data_stream_message_is_current(&params, source_address.as_deref()) {
+                    return Task::none();
+                }
+                return self.apply_wallet_details_ws_update(source_address, *data);
             }
             _ => {}
         }
@@ -178,8 +179,15 @@ mod tests {
         state.loading = false;
         state.error = None;
         terminal.wallet_detail_windows.insert(window_id, state);
+        let params = terminal
+            .user_data_subscription_params()
+            .1
+            .into_iter()
+            .next()
+            .expect("wallet detail stream params");
 
         let _task = terminal.update_wallet_details(Message::WalletDetailsWsUpdate(
+            params,
             Some(TEST_ADDRESS.to_string().into()),
             Box::new(WsUserData::Lagged { skipped: 7 }),
         ));
@@ -206,8 +214,15 @@ mod tests {
         state.loading = false;
         state.error = None;
         terminal.wallet_detail_windows.insert(window_id, state);
+        let params = terminal
+            .user_data_subscription_params()
+            .1
+            .into_iter()
+            .next()
+            .expect("wallet detail stream params");
 
         let _task = terminal.update_wallet_details(Message::WalletDetailsWsUpdate(
+            params,
             Some(TEST_ADDRESS.to_string().into()),
             Box::new(WsUserData::Lagged { skipped: 7 }),
         ));
