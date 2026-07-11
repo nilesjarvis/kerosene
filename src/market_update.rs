@@ -15,7 +15,7 @@ impl TradingTerminal {
     pub(crate) fn update_market(&mut self, message: Message) -> Task<Message> {
         match message {
             message @ (Message::ToggleFavourite(_)
-            | Message::SymbolsLoaded(_)
+            | Message::SymbolsLoaded(_, _)
             | Message::ExchangeSymbolsRefreshTick
             | Message::SymbolSearchChanged(_)
             | Message::SymbolSearchSortChanged(_)

@@ -356,6 +356,18 @@ clear the snapshot. Concurrent newest-request-wins behavior, 24-hour candle
 aggregation, requested/current-symbol intersection, retained data on error,
 sanitized error state, outcome grouping, and rendered volume remain unchanged.
 
+Exchange-symbol metadata follows the same message boundary while retaining a
+structural standalone diagnostic summary of symbol-family counts, cache
+provenance, and failure flags. `SymbolsLoaded` carries a runtime request
+generation plus a value-neutral result wrapper, so generic Elm diagnostics show
+correlation and `Ok`/`Err` shape without traversing symbol labels, outcome
+details, or an upstream error. The generation spans cached startup, immediate
+live verification, and periodic refreshes; only the current loading/in-flight
+owner may settle, and acceptance advances the generation before the unchanged
+metadata merge. Cache policy, partial-family retention, fail-closed spot and
+outcome orderability, aliases, refresh cadence, visible statuses, and dependent
+market refreshes remain exact and unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

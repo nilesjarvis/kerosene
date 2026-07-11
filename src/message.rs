@@ -1948,7 +1948,10 @@ pub(crate) enum Message {
         result: RedactedOrderMessageResult<api::OrderStatusResult>,
     },
     // Global messages
-    SymbolsLoaded(Result<api::ExchangeSymbolsPayload, String>),
+    SymbolsLoaded(
+        u64,
+        RedactedPublicMarketMessageResult<api::ExchangeSymbolsPayload>,
+    ),
     ExchangeSymbolsRefreshTick,
     SymbolSearchChanged(String),
     SymbolSearchSortChanged(SymbolSearchSortMode),
@@ -2115,9 +2118,7 @@ mod tests {
         XProfileImageMessageResult,
     };
     use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
-    use crate::api::{
-        BookLevel, ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OrderBook, OutcomeSymbolInfo,
-    };
+    use crate::api::{BookLevel, ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OrderBook};
     use crate::chart_state::ChartSurfaceId;
     use crate::config::{ChartBackfillSource, MarketUniverseConfig, ReadDataProvider};
     use crate::hyperdash_api::{
@@ -3238,63 +3239,43 @@ mod tests {
     }
 
     #[test]
-    fn symbols_loaded_message_debug_summarizes_exchange_metadata() {
-        let message = Message::SymbolsLoaded(Ok(ExchangeSymbolsPayload {
+    fn symbols_loaded_message_debug_is_value_neutral() {
+        const PAYLOAD_SYMBOL: &str = "private-symbol-payload-sentinel";
+        const ERROR: &str = "private-symbol-result-error-sentinel";
+        let payload = ExchangeSymbolsPayload {
             symbols: vec![ExchangeSymbol {
-                key: "#660".to_string(),
-                ticker: "#660".to_string(),
-                category: "outcome".to_string(),
-                display_name: Some("BTC above private threshold".to_string()),
-                keywords: vec!["btc".to_string(), "private-threshold".to_string()],
-                asset_index: 100_000_000,
-                collateral_token: None,
+                key: PAYLOAD_SYMBOL.to_string(),
+                ticker: PAYLOAD_SYMBOL.to_string(),
+                category: "crypto".to_string(),
+                display_name: Some(PAYLOAD_SYMBOL.to_string()),
+                keywords: vec![PAYLOAD_SYMBOL.to_string()],
+                asset_index: 0,
+                collateral_token: Some(0),
                 sz_decimals: 0,
                 max_leverage: 1,
-                only_isolated: true,
-                market_type: MarketType::Outcome,
-                outcome: Some(OutcomeSymbolInfo {
-                    outcome_id: 66,
-                    question_id: Some(12),
-                    question_name: Some("Will BTC close above private threshold?".to_string()),
-                    question_description: Some("Long raw outcome description".to_string()),
-                    question_class: Some("priceBucket".to_string()),
-                    question_underlying: Some("BTC".to_string()),
-                    question_expiry: Some("20260520-0600".to_string()),
-                    question_price_thresholds: vec!["75348.12".to_string()],
-                    question_period: Some("1d".to_string()),
-                    question_named_outcomes: vec![67, 68, 69],
-                    question_settled_named_outcomes: Vec::new(),
-                    question_fallback_outcome: Some(66),
-                    bucket_index: Some(2),
-                    is_question_fallback: false,
-                    side_index: 0,
-                    side_name: "Yes".to_string(),
-                    outcome_name: "BTC above private threshold".to_string(),
-                    description: "Outcome contract description".to_string(),
-                    class: None,
-                    underlying: None,
-                    expiry: None,
-                    target_price: Some("75348.12".to_string()),
-                    period: None,
-                    quote_symbol: "USDH".to_string(),
-                    quote_token_index: Some(crate::api::USDH_TOKEN_INDEX),
-                    encoding: 660,
-                }),
+                only_isolated: false,
+                market_type: MarketType::Perp,
+                outcome: None,
             }],
             loaded_from_cache: false,
             perp_meta_failed: false,
             spot_meta_failed: false,
             outcome_meta_failed: false,
-        }));
+        };
+        let messages = [
+            Message::SymbolsLoaded(7, Ok(payload).into()),
+            Message::SymbolsLoaded(8, Err(ERROR.to_string()).into()),
+        ];
 
-        let rendered = format!("{message:?}");
+        for (message, request_id) in messages.into_iter().zip([7_u64, 8]) {
+            let rendered = format!("{message:?}");
 
-        assert!(rendered.contains("SymbolsLoaded"));
-        assert!(rendered.contains("symbols_len: 1"));
-        assert!(rendered.contains("outcome_count: 1"));
-        assert!(!rendered.contains("private threshold"));
-        assert!(!rendered.contains("Long raw outcome description"));
-        assert!(!rendered.contains("75348.12"));
+            assert!(rendered.contains("SymbolsLoaded"), "{rendered}");
+            assert!(rendered.contains(&request_id.to_string()), "{rendered}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(PAYLOAD_SYMBOL), "{rendered}");
+            assert!(!rendered.contains(ERROR), "{rendered}");
+        }
     }
 
     #[test]

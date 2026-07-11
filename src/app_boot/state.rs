@@ -183,6 +183,7 @@ impl TradingTerminal {
             exchange_symbols: Vec::new(),
             symbols_loading: true,
             exchange_symbols_refresh_inflight: false,
+            exchange_symbols_request_id: 0,
             spot_metadata_degraded: false,
             spot_asset_context_rest_in_flight: false,
             spot_asset_context_rest_failures: 0,

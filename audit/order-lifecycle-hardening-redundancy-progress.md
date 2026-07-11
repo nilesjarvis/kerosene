@@ -4852,6 +4852,96 @@ target-specific cancellation policy, not HTTP replay.
   `BookLoaded` remain separate public-market result/correlation lifecycles for
   subsequent review.
 
+### F-65 — Exchange-symbol completion has no immutable request owner
+
+- Status: addressed in Turn 58; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium correlation and diagnostic hardening; no current duplicate
+  publisher, market-policy defect, or exchange mutation was found
+- Scope: cached-first symbol startup, immediate live verification, periodic
+  metadata refresh, loading/in-flight ownership, request allocation, multi-
+  family merge and retention, fail-closed orderability, alias migration,
+  dependent refresh fan-out, errors, parent diagnostics, routing, boot state,
+  and focused tests
+- Preconditions/event ordering:
+  1. Startup publishes `fetch_exchange_symbols_cached`; a cache hit is applied
+     immediately and dispatches a live verification. Later 120-second ticks
+     publish live refreshes after the loading/in-flight gates open.
+  2. The prior result carried no origin ID. Its first consumer unconditionally
+     cleared `exchange_symbols_refresh_inflight` before distinguishing success,
+     cache provenance, partial-family failure, or error.
+  3. Normal request-side gates make one current task likely, but they cannot
+     authenticate a completion. Duplicate delivery of a cached completion could
+     schedule a second live verification; a late/duplicate completion could
+     clear a newer gate and apply older metadata, enabling another periodic task
+     while the real current task remained outstanding.
+  4. Independently, derived `Message::Debug` traversed the raw result. The
+     successful payload had a bounded structural formatter, but the parent
+     still exposed its counts/flags and a top-level error verbatim before the
+     established handler sanitizer.
+- Evidence: parent commit
+  `1397e68a12504a26b571ae40e7fde140ed724362` retained only
+  `symbols_loading` and `exchange_symbols_refresh_inflight` in
+  `src/app_state.rs`/`src/app_boot/state.rs`. The three publications were the
+  boot cached task in `src/app_boot/boot.rs`, the timer-gated live task in
+  `src/market_update/symbols.rs`, and the cache-success live-verification task
+  in that same handler. All converged on the raw `SymbolsLoaded` field in
+  `src/message.rs`; no other producer, consumer, result-state writer, persisted
+  owner, or signed mutation caller was found. Multi-family fetch/cache rules are
+  in `src/api/exchange_symbols.rs`, and the unchanged merge, status, alias,
+  active-market, stream, and downstream-refresh behavior remains in
+  `src/market_update/symbols.rs`.
+- Violated invariant: only the completion whose immutable generation owns the
+  active initial load or background refresh may mutate metadata, consume that
+  owner, or initiate cache verification. Accepting a completion must also make
+  duplicate delivery stale before any established result handling runs.
+- Risk: an internally duplicated or delayed completion could replace canonical
+  market identity/orderability inputs, rotate streams, migrate aliases, change
+  active-market resolution, fan out dependent public-data refreshes, or release
+  refresh ownership early. Current iced tasks normally deliver once and no
+  mismatching publisher was found, so this is a handoff-hardening risk rather
+  than evidence of current wrong-order construction. Raw parent errors also
+  bypassed the value-neutral diagnostic convention used by adjacent public-
+  market completions.
+- Why existing checks did not cover it: `symbols_loading` and
+  `exchange_symbols_refresh_inflight` prevented ordinary overlapping dispatch,
+  and direct helper tests characterized valid cache/live/partial/error behavior,
+  but the result carried nothing to compare with either flag. No test delivered
+  an older generation while a newer request owned the in-flight gate or
+  duplicated a cache completion after live verification was armed.
+- Implemented fix: add a runtime-only `exchange_symbols_request_id`; allocate
+  and carry it from cached startup and every live request; require exact ID plus
+  active loading/in-flight ownership at the first consumer; advance the ID
+  before invoking the unchanged result helper; and allocate a distinct owner
+  for cache-triggered live verification. The allocator uses wrapping addition,
+  so crossing `u64::MAX` changes the immediate generation instead of pinning it
+  at a saturated value. Replace the raw parent result with the existing
+  `RedactedPublicMarketMessageResult<T>` and restore it only at that consumer.
+- Regression coverage: a stale success must preserve the newer in-flight flag,
+  request ID, symbols, degraded-orderability state, and status before the exact
+  current ID is accepted. A duplicate cached completion must preserve the newly
+  allocated live-verification owner and established cache warning. A boundary
+  test proves the request generation changes from `u64::MAX` to zero while
+  arming one task. The parent-message control retains request IDs and result
+  shape while hiding nested symbol values and raw errors; existing standalone
+  API tests continue to prove the structural payload summary and all valid
+  cache/partial-family semantics.
+- Smallest behavior-preserving fix: one runtime scalar/default, one ID at each
+  of the three publications, one first-consumer fence/invalidation, reuse of an
+  existing wrapper, mechanical route patterns, and focused adversarial tests.
+  No endpoint, request body, cache wire format, family parser, merge policy,
+  symbol key, orderability rule, alias, stream recipe, active-symbol fallback,
+  refresh cadence/fan-out, visible copy, config/schema, persisted value, signed
+  bytes, or order/trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  exhaustive definition/producer/consumer/state tracing, direct helper
+  characterizations, and the mechanical diff establish the intended boundary,
+  but focused and nearby suites cannot execute until ALSA development metadata
+  is available. Generation reuse would require a task to remain alive across a
+  full `u64` cycle; no finite counter can eliminate that theoretical case.
+  `BookLoaded` remains the next separate public-market result/correlation
+  lifecycle for review.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -8429,6 +8519,82 @@ target-specific cancellation policy, not HTTP replay.
   market availability, fail-closed orderability, aliases, and every visible
   symbol behavior.
 
+## Turn 58 — Fence Exchange-Symbol Metadata Completions
+
+- Status: F-65 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: exchange-symbol cached startup/live verification/periodic request
+  ownership, multi-family result consumption, duplicate/stale delivery,
+  generation rollover, message diagnostics, boot state, routing, docs, and
+  focused regressions
+- Invariant: only the immutable generation that owns active initial loading or
+  the current background metadata refresh may mutate the symbol universe,
+  release that owner, or start cache verification; accepting it must invalidate
+  duplicate delivery before the established merge path runs.
+- Protected behavior: cached-first display, immediate live verification,
+  120-second periodic cadence, one ordinary live request at a time, complete-
+  response cacheability, independent perp/spot/outcome fetching, partial-family
+  retention, degraded/fail-closed orderability, exact canonical keys and quote
+  identity, alias migration, active-market and universe fallback, stream
+  rotation, all dependent refresh fan-out, error sanitization, statuses/toasts,
+  config/schema/persistence, and every visible symbol/order behavior.
+- Preconditions/event ordering: boot owns one cached-or-live task while
+  `symbols_loading` is true. A cache completion applies its established visible
+  degraded state and immediately creates a distinct live owner. Periodic ticks
+  remain gated by loading/in-flight state. The first result consumer now checks
+  that active-state predicate and the carried ID, advances the generation, and
+  only then invokes the unchanged helper; stale/duplicate results return without
+  clearing either flag or touching metadata.
+- Evidence: F-65 records the prior state owners, all three publishers, timer,
+  parent field, first consumer, API cache/family construction, merge and
+  retention policy, aliases, orderability boundary, dependent refreshes,
+  statuses/errors, views, routing, and tests. No other producer, direct result-
+  state writer, persisted generation, or signed mutation consumer was found.
+- Change: add and initialize runtime-only
+  `exchange_symbols_request_id`; carry it from boot and live task publications;
+  centralize live request allocation for both cache verification and periodic
+  refresh; require active ownership plus the exact ID; advance on acceptance;
+  use wrapping allocation at the numeric boundary; reuse the public-market
+  result wrapper; update route shapes; add stale/current, duplicate-cache/live-
+  owner, rollover, and parent-diagnostic controls; document the boundary.
+- Tests/checks:
+  - Baseline symbol-update and exchange-symbol API suites plus `cargo check`
+    stopped in `alsa-sys` before Kerosene compilation because `pkg-config`
+    could not find the system `alsa.pc` file.
+  - The pre-fix stale-result, duplicate-cached-result, and parent-message
+    regressions stopped at that same dependency boundary before demonstrating
+    their expected failures.
+  - Post-fix symbol-update, exchange-symbol API, parent-message, and message-
+    routing suites stopped at the same dependency boundary.
+  - `cargo fmt` and `git diff --check` passed; the final formatting check is
+    recorded in the turn's validation summary below.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no subscription identity, timer cadence,
+    view code, user interaction, request body, exchange mutation, or credential
+    path changed; compilation is already blocked, and no live market request or
+    credential-bearing operation ran.
+- Compatibility/UX assessment: valid cached, live, partial-family, unchanged-
+  universe, alias, background-error, and cold-error paths still enter the same
+  helper and retain their direct characterization coverage. The added scalar is
+  runtime-only with no serde/config representation. Parent diagnostics become
+  value-neutral but standalone metadata remains structurally diagnosable. No
+  visible copy/timing/data, market selection, orderability rule, request
+  content, signed bytes, persisted value, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-65 is source-
+  hardened; the theoretical full-`u64` live-task overlap and executable
+  validation remain residual. Order-book, chart/session/calendar, file/config/
+  screenshot, private-integration result classes, independently formattable
+  nested account/order types, classified external-status paths, and the
+  remainder of Track 9 still require review.
+- Prior turn commit hash: `1397e68a12504a26b571ae40e7fde140ed724362`
+- Next candidate: audit `BookLoaded` across per-instance request ownership,
+  symbol/precision context, active-versus-fixed panes, alias migration,
+  duplicate/stale completion handling, error retention/sanitization, and parent
+  diagnostics; preserve order-book data, loading/error behavior, tick sizing,
+  quick-order pricing inputs, and every visible interaction.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -8470,11 +8636,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline outcome-volume suite and `cargo check`;
-  the pre-fix mismatched-scope and parent-message diagnostic
-  regressions; post-fix exact mismatch/public-model/parent-message controls and
-  complete outcome-volume API/update, Message, boot, symbol-update, and routing
-  suites;
+- Environment-blocked this turn: baseline symbol-update and exchange-symbol API
+  suites plus `cargo check`; the pre-fix stale-result, duplicate-cache, and
+  parent-message regressions; post-fix symbol-update, exchange-symbol API,
+  parent-message, and routing suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live market request, exchange mutation, or credential-bearing operation was
@@ -8485,7 +8650,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-64
+  F-40, and F-42 through F-65
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -8540,7 +8705,9 @@ target-specific cancellation policy, not HTTP replay.
   remain unchanged. Symbol-search context completion diagnostics and its
   loading/ID/symbol-scope acceptance fence are source-hardened by F-63. Outcome-
   volume diagnostics and concurrent latest-request scope ownership are source-
-  hardened by F-64. Remaining
+  hardened by F-64. Exchange-symbol cached-startup/live-verification/periodic
+  completion ownership and parent diagnostics are source-hardened by F-65 while
+  preserving metadata policy and all valid fan-out. Remaining
   independently formattable nested account/order types and classified external-
   status paths, plus the rest of Track 9, require completion before a final
   verdict.

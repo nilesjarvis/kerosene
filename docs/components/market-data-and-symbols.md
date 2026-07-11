@@ -60,6 +60,12 @@ universe is displayed while an immediate live verification runs; if live spot
 metadata fails, last-known markets can remain visible but
 `spot_metadata_degraded` disables spot trading until verification succeeds.
 
+Cached startup, its immediate live verification, and periodic live metadata
+refreshes share one runtime request generation. A completion can update the
+symbol universe or release the refresh gate only while its generation still
+owns the active startup/loading or background-refresh state; accepting a result
+invalidates duplicate delivery before applying the established merge path.
+
 Persisted aliases for API-named spot pairs are migrated only after metadata
 proves the mapping. This currently rewrites legacy `@0` to `PURR/USDC` across
 regular chart primary/secondary series, fixed order books, spaghetti charts,

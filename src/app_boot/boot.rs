@@ -148,7 +148,11 @@ impl TradingTerminal {
         let book_task = state.boot_order_book_tasks();
         let positioning_task = state.boot_positioning_info_tasks();
 
-        let symbols_task = Task::perform(fetch_exchange_symbols_cached(), Message::SymbolsLoaded);
+        state.exchange_symbols_request_id = state.exchange_symbols_request_id.wrapping_add(1);
+        let symbols_request_id = state.exchange_symbols_request_id;
+        let symbols_task = Task::perform(fetch_exchange_symbols_cached(), move |result| {
+            Message::SymbolsLoaded(symbols_request_id, result.into())
+        });
 
         let connect_task = if has_boot_wallet {
             Task::done(Message::ConnectWallet)

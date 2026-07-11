@@ -23,7 +23,9 @@ impl TradingTerminal {
     pub(super) fn update_symbol_search_market(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ToggleFavourite(key) => self.toggle_market_favourite(key),
-            Message::SymbolsLoaded(result) => self.apply_symbols_loaded(result),
+            Message::SymbolsLoaded(request_id, result) => {
+                self.apply_symbols_loaded_message(request_id, result.into_result())
+            }
             Message::ExchangeSymbolsRefreshTick => self.request_exchange_symbols_refresh(),
             Message::SymbolSearchChanged(query) => {
                 self.symbol_search_query = query;
@@ -95,8 +97,24 @@ impl TradingTerminal {
         if self.symbols_loading || self.exchange_symbols_refresh_inflight {
             return Task::none();
         }
+
+        self.request_live_exchange_symbols()
+    }
+
+    fn advance_exchange_symbols_request_id(&mut self) -> u64 {
+        // Advancing again when a completion is accepted independently rejects
+        // duplicate delivery. Wrapping keeps the next generation distinct from
+        // its immediate predecessor even at the counter boundary.
+        self.exchange_symbols_request_id = self.exchange_symbols_request_id.wrapping_add(1);
+        self.exchange_symbols_request_id
+    }
+
+    fn request_live_exchange_symbols(&mut self) -> Task<Message> {
         self.exchange_symbols_refresh_inflight = true;
-        Task::perform(crate::api::fetch_exchange_symbols(), Message::SymbolsLoaded)
+        let request_id = self.advance_exchange_symbols_request_id();
+        Task::perform(crate::api::fetch_exchange_symbols(), move |result| {
+            Message::SymbolsLoaded(request_id, result.into())
+        })
     }
 
     /// A failed metadata request leaves that market type absent from the
@@ -418,11 +436,7 @@ impl TradingTerminal {
                             .to_string(),
                         true,
                     ));
-                    self.exchange_symbols_refresh_inflight = true;
-                    initial_tasks.push(Task::perform(
-                        crate::api::fetch_exchange_symbols(),
-                        Message::SymbolsLoaded,
-                    ));
+                    initial_tasks.push(self.request_live_exchange_symbols());
                 } else if spot_meta_failed {
                     let retained = self
                         .exchange_symbols
@@ -672,6 +686,21 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+
+    fn apply_symbols_loaded_message(
+        &mut self,
+        request_id: u64,
+        result: Result<ExchangeSymbolsPayload, String>,
+    ) -> Task<Message> {
+        if request_id != self.exchange_symbols_request_id
+            || (!self.symbols_loading && !self.exchange_symbols_refresh_inflight)
+        {
+            return Task::none();
+        }
+
+        self.advance_exchange_symbols_request_id();
+        self.apply_symbols_loaded(result)
     }
 
     fn select_market_symbol(&mut self, key: String) -> Task<Message> {
@@ -977,6 +1006,84 @@ mod tests {
                 .validate_exchange_symbol_orderable(verified_spot, "Active")
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn stale_symbols_result_does_not_mutate_metadata_or_release_current_request() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.symbols_loading = false;
+        terminal.exchange_symbols = vec![perp_symbol("HYPE")];
+        terminal.exchange_symbols_refresh_inflight = true;
+        terminal.exchange_symbols_request_id = 8;
+        terminal.spot_metadata_degraded = true;
+        terminal.symbol_search_status =
+            Some(("current metadata request pending".to_string(), true));
+
+        let _task = terminal.update_symbol_search_market(Message::SymbolsLoaded(
+            7,
+            Ok(payload(vec![perp_symbol("ETH")])).into(),
+        ));
+
+        assert!(terminal.exchange_symbols_refresh_inflight);
+        assert_eq!(terminal.exchange_symbols_request_id, 8);
+        assert_eq!(terminal.exchange_symbols, vec![perp_symbol("HYPE")]);
+        assert!(terminal.spot_metadata_degraded);
+        assert_eq!(
+            terminal.symbol_search_status,
+            Some(("current metadata request pending".to_string(), true))
+        );
+
+        let _task = terminal.update_symbol_search_market(Message::SymbolsLoaded(
+            8,
+            Ok(payload(vec![perp_symbol("ETH")])).into(),
+        ));
+
+        assert!(!terminal.exchange_symbols_refresh_inflight);
+        assert_ne!(terminal.exchange_symbols_request_id, 8);
+        assert_eq!(terminal.exchange_symbols, vec![perp_symbol("ETH")]);
+    }
+
+    #[test]
+    fn duplicate_cached_symbols_result_cannot_displace_live_verification_owner() {
+        let mut terminal = TradingTerminal::boot().0;
+        let spot = spot_symbol("@107");
+        let mut cached = payload(vec![perp_symbol("HYPE"), spot]);
+        cached.loaded_from_cache = true;
+        terminal.symbols_loading = true;
+        terminal.exchange_symbols_refresh_inflight = false;
+        terminal.exchange_symbols_request_id = 10;
+
+        let task = terminal
+            .update_symbol_search_market(Message::SymbolsLoaded(10, Ok(cached.clone()).into()));
+
+        let live_request_id = terminal.exchange_symbols_request_id;
+        assert_ne!(live_request_id, 10);
+        assert!(terminal.exchange_symbols_refresh_inflight);
+        assert!(terminal.spot_metadata_degraded);
+        assert!(task.units() >= 1, "live verification must be scheduled now");
+        let status = terminal.symbol_search_status.clone();
+
+        let _task =
+            terminal.update_symbol_search_market(Message::SymbolsLoaded(10, Ok(cached).into()));
+
+        assert_eq!(terminal.exchange_symbols_request_id, live_request_id);
+        assert!(terminal.exchange_symbols_refresh_inflight);
+        assert!(terminal.spot_metadata_degraded);
+        assert_eq!(terminal.symbol_search_status, status);
+    }
+
+    #[test]
+    fn exchange_symbols_request_generation_wraps_without_reusing_current_owner() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.symbols_loading = false;
+        terminal.exchange_symbols_refresh_inflight = false;
+        terminal.exchange_symbols_request_id = u64::MAX;
+
+        let task = terminal.request_exchange_symbols_refresh();
+
+        assert_eq!(terminal.exchange_symbols_request_id, 0);
+        assert!(terminal.exchange_symbols_refresh_inflight);
+        assert_eq!(task.units(), 1);
     }
 
     #[test]

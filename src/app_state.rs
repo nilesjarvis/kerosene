@@ -363,6 +363,9 @@ pub(crate) struct TradingTerminal {
     pub(crate) exchange_symbols: Vec<ExchangeSymbol>,
     pub(crate) symbols_loading: bool,
     pub(crate) exchange_symbols_refresh_inflight: bool,
+    /// Runtime-only generation for cached startup, immediate live verification,
+    /// and periodic exchange-symbol metadata requests.
+    pub(crate) exchange_symbols_request_id: u64,
     /// A spot metadata refresh failed validation or transport. Previously
     /// loaded spot markets remain visible, but new orders are fail-closed
     /// until a complete `spotMeta` response is verified.
