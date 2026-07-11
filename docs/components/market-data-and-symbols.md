@@ -282,8 +282,12 @@ Asset-context streams update live mark/mid metadata for matching panes.
 
 ## Session Data
 
-Session data panes are keyed by `SessionDataId`. They fetch daily candles for a
-selected symbol and lookback window to display session-level behavior.
+Session data panes are keyed by `SessionDataId`. They fetch daily and chunked
+intraday candles for a selected symbol and lookback window to display weekday
+and market-session behavior. Every refresh receives a terminal-lifetime request
+ID in addition to its pane/symbol/lookback/timestamp context. The allocator
+outlives runtime layout reconstruction and skips live IDs across wrap, so an old
+pane task cannot consume the replacement pane's loading owner or results.
 
 Key modules:
 
@@ -291,7 +295,8 @@ Key modules:
 - `market_update/session_data.rs`
 - `market_views/session_data.rs`
 
-Session data instances are persisted in layout/widget configs.
+Session data instances are persisted in layout/widget configs. Request IDs and
+pending work remain runtime-only.
 
 ## Outcomes
 

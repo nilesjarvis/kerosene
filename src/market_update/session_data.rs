@@ -44,7 +44,7 @@ impl TradingTerminal {
             }
             Message::RefreshSessionData(id) => self.request_session_data_refresh(id, true),
             Message::SessionDataCandlesLoaded(request, result) => {
-                self.apply_session_data_candles_loaded(request, result)
+                self.apply_session_data_candles_loaded(request, result.into_result())
             }
             _ => Task::none(),
         }
@@ -143,6 +143,27 @@ impl TradingTerminal {
         )
     }
 
+    fn session_data_request_id_in_use(&self, request_id: u64) -> bool {
+        self.session_data.values().any(|instance| {
+            instance
+                .pending_request
+                .as_ref()
+                .is_some_and(|request| request.request_id == request_id)
+        })
+    }
+
+    /// Allocate beyond individual pane incarnations and skip active owners when
+    /// the sequence wraps.
+    fn allocate_session_data_request_id(&mut self) -> u64 {
+        loop {
+            let request_id = self.next_session_data_request_id;
+            self.next_session_data_request_id = self.next_session_data_request_id.wrapping_add(1);
+            if !self.session_data_request_id_in_use(request_id) {
+                return request_id;
+            }
+        }
+    }
+
     pub(crate) fn request_session_data_refresh(
         &mut self,
         id: SessionDataId,
@@ -195,6 +216,7 @@ impl TradingTerminal {
         }
 
         let request = SessionDataRequest {
+            request_id: self.allocate_session_data_request_id(),
             id,
             symbol,
             lookback,
@@ -214,7 +236,7 @@ impl TradingTerminal {
         let symbol = request.symbol.clone();
         Task::perform(
             async move { fetch_session_data_candles(symbol, start_time, now_ms).await },
-            move |result| Message::SessionDataCandlesLoaded(request.clone(), result),
+            move |result| Message::SessionDataCandlesLoaded(request.clone(), result.into()),
         )
     }
 
@@ -390,7 +412,7 @@ fn intraday_chunk_ranges(start_ms: u64, end_ms: u64) -> Vec<(u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::{ExchangeSymbol, MarketType};
+    use crate::api::{Candle, ExchangeSymbol, MarketType};
 
     fn exchange_symbol(key: &str, ticker: &str, market_type: MarketType) -> ExchangeSymbol {
         ExchangeSymbol {
@@ -410,9 +432,123 @@ mod tests {
     }
 
     #[test]
+    fn prior_instance_result_does_not_consume_recreated_session_request() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.session_data.clear();
+
+        let old_request = SessionDataRequest {
+            request_id: 1,
+            id: 7,
+            symbol: "BTC".to_string(),
+            lookback: SessionDataLookback::FourWeeks,
+            requested_at_ms: 123,
+        };
+        let current_request = SessionDataRequest {
+            request_id: 2,
+            ..old_request.clone()
+        };
+        let mut replacement =
+            SessionDataInstance::new(7, "BTC".to_string(), SessionDataLookback::FourWeeks);
+        replacement.loading = true;
+        replacement.pending_request = Some(current_request.clone());
+        terminal.session_data.insert(7, replacement);
+
+        let candles = || SessionDataCandles {
+            daily: vec![Candle::test_ohlcv(
+                1_000,
+                1_999,
+                [100.0, 110.0, 90.0, 105.0],
+                1.0,
+            )],
+            intraday: Vec::new(),
+        };
+
+        let _task = terminal.apply_session_data_candles_loaded(old_request.clone(), Ok(candles()));
+
+        let instance = &terminal.session_data[&7];
+        assert!(instance.loading);
+        assert_eq!(instance.pending_request.as_ref(), Some(&current_request));
+        assert!(instance.candles.is_empty());
+        assert!(instance.bars.is_empty());
+
+        let _task = terminal.apply_session_data_candles_loaded(current_request, Ok(candles()));
+
+        let instance = &terminal.session_data[&7];
+        assert!(!instance.loading);
+        assert!(instance.pending_request.is_none());
+        assert_eq!(instance.candles.len(), 1);
+        assert_eq!(instance.bars.len(), 1);
+
+        let _task = terminal
+            .apply_session_data_candles_loaded(old_request, Err("stale session error".to_string()));
+
+        let instance = &terminal.session_data[&7];
+        assert_eq!(instance.candles.len(), 1);
+        assert_eq!(instance.bars.len(), 1);
+        assert!(instance.error.is_none());
+    }
+
+    #[test]
+    fn session_request_allocator_survives_instance_recreation() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.session_data.clear();
+
+        let old_request_id = terminal.allocate_session_data_request_id();
+        let mut old_instance =
+            SessionDataInstance::new(7, "BTC".to_string(), SessionDataLookback::FourWeeks);
+        old_instance.loading = true;
+        old_instance.pending_request = Some(SessionDataRequest {
+            request_id: old_request_id,
+            id: 7,
+            symbol: "BTC".to_string(),
+            lookback: SessionDataLookback::FourWeeks,
+            requested_at_ms: 123,
+        });
+        terminal.session_data.insert(7, old_instance);
+
+        terminal.session_data.clear();
+        terminal.session_data.insert(
+            7,
+            SessionDataInstance::new(7, "BTC".to_string(), SessionDataLookback::FourWeeks),
+        );
+
+        let task = terminal.request_session_data_refresh(7, false);
+        let current_request = terminal.session_data[&7]
+            .pending_request
+            .as_ref()
+            .expect("replacement request");
+
+        assert_eq!(task.units(), 1);
+        assert_ne!(current_request.request_id, old_request_id);
+    }
+
+    #[test]
+    fn session_request_allocator_skips_live_ids_across_wrap() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.session_data.clear();
+        for (id, request_id) in [(7, u64::MAX), (8, 0), (9, 1)] {
+            let mut instance =
+                SessionDataInstance::new(id, "BTC".to_string(), SessionDataLookback::FourWeeks);
+            instance.pending_request = Some(SessionDataRequest {
+                request_id,
+                id,
+                symbol: "BTC".to_string(),
+                lookback: SessionDataLookback::FourWeeks,
+                requested_at_ms: 123,
+            });
+            terminal.session_data.insert(id, instance);
+        }
+        terminal.next_session_data_request_id = u64::MAX;
+
+        assert_eq!(terminal.allocate_session_data_request_id(), 2);
+        assert_eq!(terminal.next_session_data_request_id, 3);
+    }
+
+    #[test]
     fn session_data_error_redacts_state_error() {
         let mut terminal = TradingTerminal::boot().0;
         let request = SessionDataRequest {
+            request_id: 0,
             id: 7,
             symbol: "BTC".to_string(),
             lookback: SessionDataLookback::FourWeeks,
@@ -440,6 +576,9 @@ mod tests {
             .expect("state error");
         assert!(error.contains("api_key=<redacted>"));
         assert!(!error.contains("session-secret"));
+        let instance = &terminal.session_data[&7];
+        assert!(!instance.loading);
+        assert!(instance.pending_request.is_none());
     }
 
     #[test]
@@ -459,6 +598,7 @@ mod tests {
             ),
         );
         let old_pending = SessionDataRequest {
+            request_id: 0,
             id: 7,
             symbol: "NOT_A_MARKET".to_string(),
             lookback: SessionDataLookback::FourWeeks,
@@ -489,6 +629,7 @@ mod tests {
             SessionDataInstance::new(7, "HYPE".to_string(), SessionDataLookback::FourWeeks),
         );
         let pending = SessionDataRequest {
+            request_id: 0,
             id: 7,
             symbol: "HYPE".to_string(),
             lookback: SessionDataLookback::FourWeeks,
@@ -515,6 +656,7 @@ mod tests {
             SessionDataInstance::new(7, "BTC".to_string(), SessionDataLookback::FourWeeks),
         );
         let pending = SessionDataRequest {
+            request_id: 0,
             id: 7,
             symbol: "HYPE".to_string(),
             lookback: SessionDataLookback::FourWeeks,
@@ -547,6 +689,7 @@ mod tests {
             SessionDataInstance::new(7, "HYPE".to_string(), SessionDataLookback::EightWeeks),
         );
         let pending = SessionDataRequest {
+            request_id: 0,
             id: 7,
             symbol: "HYPE".to_string(),
             lookback: SessionDataLookback::FourWeeks,

@@ -210,12 +210,10 @@ impl TradingTerminal {
                     color,
                     loaded: false,
                 });
-                boot_tasks.push(Self::fetch_spaghetti_candles(
-                    sid,
+                boot_tasks.push(Self::queue_spaghetti_candle_fetch(
+                    &mut inst,
                     &canonical_key,
-                    tf,
-                    inst.canvas.active_session,
-                    inst.session_granularity,
+                    self.chart_instance_generation,
                     None,
                     ChartBackfillFetchContext::new(
                         self.chart_backfill_source,
@@ -375,8 +373,15 @@ mod tests {
         terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
         terminal.chart_instance_generation = 41;
         let config = config::ChartConfig::empty(7, "BTC", "H1");
+        let mut spaghetti_config = config::SpaghettiChartConfig::empty(9);
+        spaghetti_config.symbols.push("BTC".to_string());
 
-        let _tasks = terminal.restore_layout_chart_instances(&[config.clone()], &[], 8, 0);
+        let _tasks = terminal.restore_layout_chart_instances(
+            &[config.clone()],
+            &[spaghetti_config.clone()],
+            8,
+            10,
+        );
 
         assert_eq!(terminal.chart_instance_generation, 42);
         assert_eq!(
@@ -387,8 +392,12 @@ mod tests {
             Some(42)
         );
         assert_eq!(terminal.charts[&7].macro_candles_request_id, 1);
+        assert_eq!(
+            terminal.spaghetti_charts[&9].pending_spaghetti_candle_request_id("BTC"),
+            Some(1)
+        );
 
-        let _tasks = terminal.restore_layout_chart_instances(&[config], &[], 8, 0);
+        let _tasks = terminal.restore_layout_chart_instances(&[config], &[spaghetti_config], 8, 10);
 
         assert_eq!(terminal.chart_instance_generation, 43);
         assert_eq!(
@@ -399,6 +408,10 @@ mod tests {
             Some(43)
         );
         assert_eq!(terminal.charts[&7].macro_candles_request_id, 1);
+        assert_eq!(
+            terminal.spaghetti_charts[&9].pending_spaghetti_candle_request_id("BTC"),
+            Some(1)
+        );
     }
 
     #[test]

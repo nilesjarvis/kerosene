@@ -3,34 +3,37 @@ use crate::app_state::TradingTerminal;
 use crate::app_time::now_ms;
 use crate::chart_state::ChartBackfillFetchContext;
 use crate::message::Message;
-use crate::spaghetti;
-use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiChartId};
-use crate::timeframe::Timeframe;
+use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiChartInstance};
 use iced::Task;
 
 impl TradingTerminal {
     /// Build a Task that fetches candles for a spaghetti chart series.
-    pub(crate) fn fetch_spaghetti_candles(
-        spaghetti_id: SpaghettiChartId,
+    pub(crate) fn queue_spaghetti_candle_fetch(
+        instance: &mut SpaghettiChartInstance,
         coin: &str,
-        tf: Timeframe,
-        session: Option<spaghetti::Session>,
-        session_granularity: Option<Timeframe>,
+        chart_instance_generation: u64,
         cached_start_ms: Option<u64>,
         backfill: ChartBackfillFetchContext,
     ) -> Task<Message> {
         let now_ms = now_ms();
+        let session = instance.canvas.active_session;
+        let session_granularity = instance.session_granularity;
         let (api_tf, mut start) =
-            Self::spaghetti_fetch_plan(tf, session, session_granularity, now_ms);
+            Self::spaghetti_fetch_plan(instance.interval, session, session_granularity, now_ms);
         if let Some(c) = cached_start_ms
             && c > start
         {
             start = c;
         }
-        let sid = spaghetti_id;
+        let Some(request_id) = instance.begin_spaghetti_candle_request(coin) else {
+            return Task::none();
+        };
+        let chart_id = instance.id;
         let coin_str = coin.to_string();
         let request = SpaghettiCandleFetch {
-            chart_id: sid,
+            chart_id,
+            chart_instance_generation,
+            request_id,
             symbol: coin_str.clone(),
             timeframe: api_tf,
             source: backfill.source,
@@ -49,7 +52,7 @@ impl TradingTerminal {
                 start,
                 now_ms,
             ),
-            move |result| Message::SpaghettiCandlesLoaded(request.clone(), result),
+            move |result| Message::SpaghettiCandlesLoaded(request.clone(), result.into()),
         )
     }
 }

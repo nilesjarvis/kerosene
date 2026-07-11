@@ -149,6 +149,7 @@ pub(crate) struct SessionDataCandles {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SessionDataRequest {
+    pub(crate) request_id: u64,
     pub(crate) id: SessionDataId,
     pub(crate) symbol: String,
     pub(crate) lookback: SessionDataLookback,

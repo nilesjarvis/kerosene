@@ -607,6 +607,9 @@ pub(crate) struct TradingTerminal {
     pub(crate) positioning_info_pending: HashMap<String, Vec<PositioningInfoId>>,
     pub(crate) session_data: HashMap<SessionDataId, SessionDataInstance>,
     pub(crate) next_session_data_id: SessionDataId,
+    /// Terminal-lifetime owner sequence for Session Data candle refreshes.
+    /// It deliberately survives runtime pane reconstruction.
+    pub(crate) next_session_data_request_id: u64,
 
     pub(crate) live_watchlist_ctxs: HashMap<String, crate::api::WatchlistContext>,
     pub(crate) live_watchlist_history: HashMap<String, (f64, f64, f64)>,

@@ -225,6 +225,7 @@ impl TradingTerminal {
         let read_data_provider_generation = self.read_data_provider_generation;
         let hydromancer_key_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
+        let chart_instance_generation = self.chart_instance_generation;
         let now_ms = Self::now_ms();
         let mut removed_spaghetti_cache_keys = Vec::new();
         let mut spaghetti_fetches = Vec::new();
@@ -254,17 +255,20 @@ impl TradingTerminal {
                 .canvas
                 .series
                 .retain(|series| seen.insert(series.symbol.clone()));
-            for series in &mut instance.canvas.series {
-                removed_spaghetti_cache_keys.push((series.symbol.clone(), effective_timeframe));
-                series.candles.clear();
-                series.loaded = false;
-                spaghetti_fetches.push((
-                    *chart_id,
-                    series.symbol.clone(),
-                    instance.interval,
-                    instance.canvas.active_session,
-                    instance.session_granularity,
-                ));
+            instance.clear_spaghetti_candle_requests();
+            let symbols = instance
+                .canvas
+                .series
+                .iter_mut()
+                .map(|series| {
+                    removed_spaghetti_cache_keys.push((series.symbol.clone(), effective_timeframe));
+                    series.candles.clear();
+                    series.loaded = false;
+                    series.symbol.clone()
+                })
+                .collect::<Vec<_>>();
+            for symbol in symbols {
+                spaghetti_fetches.push((*chart_id, symbol));
             }
             instance.canvas.cache.clear();
             changed = true;
@@ -324,14 +328,12 @@ impl TradingTerminal {
                 .into_iter()
                 .map(|id| self.order_book_fetch_task_for_id(id)),
         );
-        tasks.extend(spaghetti_fetches.into_iter().map(
-            |(chart_id, symbol, timeframe, session, session_granularity)| {
-                Self::fetch_spaghetti_candles(
-                    chart_id,
+        for (chart_id, symbol) in spaghetti_fetches {
+            if let Some(instance) = self.spaghetti_charts.get_mut(&chart_id) {
+                tasks.push(Self::queue_spaghetti_candle_fetch(
+                    instance,
                     &symbol,
-                    timeframe,
-                    session,
-                    session_granularity,
+                    chart_instance_generation,
                     None,
                     ChartBackfillFetchContext::new(
                         chart_backfill_source,
@@ -339,9 +341,9 @@ impl TradingTerminal {
                         hydromancer_key_generation,
                         hydromancer_api_key.clone(),
                     ),
-                )
-            },
-        ));
+                ));
+            }
+        }
         if watchlist_changed {
             tasks.push(self.request_live_watchlist_refresh(true));
         }

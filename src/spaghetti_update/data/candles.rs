@@ -12,6 +12,9 @@ impl TradingTerminal {
         request: SpaghettiCandleFetch,
         result: Result<Vec<Candle>, String>,
     ) -> Task<Message> {
+        if request.chart_instance_generation != self.chart_instance_generation {
+            return Task::none();
+        }
         if request.source == ChartBackfillSource::Hydromancer
             && !self.hydromancer_key_generation_is_current(request.hydromancer_key_generation)
         {
@@ -28,9 +31,18 @@ impl TradingTerminal {
         let mut remove_cache_data = None;
         let expected_source = self.chart_backfill_source;
 
-        if let Some(inst) = self.spaghetti_charts.get_mut(&request.chart_id)
-            && let Some(series) = inst.canvas.series.iter_mut().find(|s| s.symbol == symbol)
-        {
+        if let Some(inst) = self.spaghetti_charts.get_mut(&request.chart_id) {
+            if inst.pending_spaghetti_candle_request_id(&symbol) != Some(request.request_id) {
+                return Task::none();
+            }
+            let Some(series_index) = inst
+                .canvas
+                .series
+                .iter()
+                .position(|series| series.symbol == symbol)
+            else {
+                return Task::none();
+            };
             let current_tf = Self::spaghetti_effective_timeframe_for(
                 inst.interval,
                 inst.canvas.active_session,
@@ -44,6 +56,10 @@ impl TradingTerminal {
             {
                 return Task::none();
             }
+            if !inst.finish_spaghetti_candle_request(&symbol, request.request_id) {
+                return Task::none();
+            }
+            let series = &mut inst.canvas.series[series_index];
 
             match result {
                 Ok(mut new_candles) => {

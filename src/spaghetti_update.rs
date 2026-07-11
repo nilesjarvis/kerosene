@@ -18,7 +18,7 @@ impl TradingTerminal {
             Message::SpaghettiReload(id) => self.reload_spaghetti_chart(id),
             Message::SpaghettiSwitchTimeframe(id, tf) => self.switch_spaghetti_timeframe(id, tf),
             Message::SpaghettiCandlesLoaded(request, result) => {
-                self.apply_spaghetti_candles_loaded(request, result)
+                self.apply_spaghetti_candles_loaded(request, result.into_result())
             }
             Message::SpaghettiWsCandleUpdate(context, candle) => {
                 self.apply_spaghetti_ws_candle_update(context, candle)
@@ -157,6 +157,178 @@ mod tests {
     }
 
     #[test]
+    fn prior_series_request_does_not_consume_readded_spaghetti_series() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.spaghetti_charts.clear();
+
+        let mut instance = SpaghettiChartInstance::new_empty(7);
+        instance.canvas.series.push(Series {
+            symbol: "BTC".to_string(),
+            display: "BTC".to_string(),
+            candles: Vec::new(),
+            color: Color::BLACK,
+            loaded: false,
+        });
+        let old_request_id = instance
+            .begin_spaghetti_candle_request("BTC")
+            .expect("old request owner");
+        let current_request_id = instance
+            .begin_spaghetti_candle_request("BTC")
+            .expect("replacement request owner");
+        terminal.spaghetti_charts.insert(7, instance);
+
+        let old_request = crate::spaghetti_state::SpaghettiCandleFetch {
+            chart_id: 7,
+            chart_instance_generation: terminal.chart_instance_generation,
+            request_id: old_request_id,
+            symbol: "BTC".to_string(),
+            timeframe: Timeframe::H1,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
+            session: None,
+            session_granularity: None,
+        };
+        let current_request = crate::spaghetti_state::SpaghettiCandleFetch {
+            request_id: current_request_id,
+            ..old_request.clone()
+        };
+
+        let _task = terminal.apply_spaghetti_candles_loaded(
+            old_request.clone(),
+            Ok(vec![Candle::test_flat(1_000, 100.0)]),
+        );
+
+        let instance = &terminal.spaghetti_charts[&7];
+        assert_eq!(
+            instance.pending_spaghetti_candle_request_id("BTC"),
+            Some(current_request_id)
+        );
+        let series = &instance.canvas.series[0];
+        assert!(series.candles.is_empty());
+        assert!(!series.loaded);
+
+        let _task = terminal.apply_spaghetti_candles_loaded(
+            current_request,
+            Ok(vec![Candle::test_flat(2_000, 200.0)]),
+        );
+
+        let instance = &terminal.spaghetti_charts[&7];
+        assert_eq!(instance.pending_spaghetti_candle_request_id("BTC"), None);
+        let series = &instance.canvas.series[0];
+        assert_eq!(series.candles.len(), 1);
+        assert_eq!(series.candles[0].close, 200.0);
+        assert!(series.loaded);
+        assert_eq!(
+            terminal
+                .get_cached_candles("BTC", Timeframe::H1)
+                .and_then(|candles| candles.last().map(|candle| candle.close)),
+            Some(200.0)
+        );
+
+        let _task = terminal
+            .apply_spaghetti_candles_loaded(old_request, Err("stale fetch error".to_string()));
+
+        let series = &terminal.spaghetti_charts[&7].canvas.series[0];
+        assert_eq!(series.candles.len(), 1);
+        assert_eq!(series.candles[0].close, 200.0);
+        assert!(series.loaded);
+        assert_eq!(
+            terminal
+                .get_cached_candles("BTC", Timeframe::H1)
+                .and_then(|candles| candles.last().map(|candle| candle.close)),
+            Some(200.0)
+        );
+    }
+
+    #[test]
+    fn remove_and_readd_spaghetti_series_installs_distinct_request_owner() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.spaghetti_charts.clear();
+        terminal
+            .spaghetti_charts
+            .insert(7, SpaghettiChartInstance::new_empty(7));
+
+        let first_task =
+            terminal.update_spaghetti(Message::SpaghettiAddSymbol(7, "BTC".to_string()));
+        let first_request_id = terminal.spaghetti_charts[&7]
+            .pending_spaghetti_candle_request_id("BTC")
+            .expect("first request owner");
+
+        let _task = terminal.update_spaghetti(Message::SpaghettiRemoveSymbol(7, "BTC".to_string()));
+        assert_eq!(
+            terminal.spaghetti_charts[&7].pending_spaghetti_candle_request_id("BTC"),
+            None
+        );
+
+        let second_task =
+            terminal.update_spaghetti(Message::SpaghettiAddSymbol(7, "BTC".to_string()));
+        let second_request_id = terminal.spaghetti_charts[&7]
+            .pending_spaghetti_candle_request_id("BTC")
+            .expect("replacement request owner");
+
+        assert_eq!(first_task.units(), 1);
+        assert_eq!(second_task.units(), 1);
+        assert_ne!(first_request_id, second_request_id);
+    }
+
+    #[test]
+    fn prior_chart_incarnation_result_does_not_consume_recreated_spaghetti_series() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.spaghetti_charts.clear();
+        terminal.chart_instance_generation = 2;
+
+        let mut replacement = SpaghettiChartInstance::new_empty(7);
+        replacement.canvas.series.push(Series {
+            symbol: "BTC".to_string(),
+            display: "BTC".to_string(),
+            candles: Vec::new(),
+            color: Color::BLACK,
+            loaded: false,
+        });
+        let request_id = replacement
+            .begin_spaghetti_candle_request("BTC")
+            .expect("replacement request owner");
+        terminal.spaghetti_charts.insert(7, replacement);
+
+        let old_request = crate::spaghetti_state::SpaghettiCandleFetch {
+            chart_id: 7,
+            chart_instance_generation: 1,
+            request_id,
+            symbol: "BTC".to_string(),
+            timeframe: Timeframe::H1,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
+            session: None,
+            session_granularity: None,
+        };
+        let current_request = crate::spaghetti_state::SpaghettiCandleFetch {
+            chart_instance_generation: 2,
+            ..old_request.clone()
+        };
+
+        let _task = terminal
+            .apply_spaghetti_candles_loaded(old_request, Ok(vec![Candle::test_flat(1_000, 100.0)]));
+
+        let instance = &terminal.spaghetti_charts[&7];
+        assert_eq!(
+            instance.pending_spaghetti_candle_request_id("BTC"),
+            Some(request_id)
+        );
+        assert!(instance.canvas.series[0].candles.is_empty());
+
+        let _task = terminal.apply_spaghetti_candles_loaded(
+            current_request,
+            Ok(vec![Candle::test_flat(2_000, 200.0)]),
+        );
+
+        let instance = &terminal.spaghetti_charts[&7];
+        assert_eq!(instance.pending_spaghetti_candle_request_id("BTC"), None);
+        assert_eq!(instance.canvas.series[0].candles[0].close, 200.0);
+    }
+
+    #[test]
     fn stale_hydromancer_generation_does_not_update_spaghetti_series() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.spaghetti_charts.clear();
@@ -172,10 +344,15 @@ mod tests {
             color: Color::BLACK,
             loaded: false,
         });
+        let request_id = instance
+            .begin_spaghetti_candle_request("BTC")
+            .expect("request owner");
         terminal.spaghetti_charts.insert(7, instance);
 
         let request = crate::spaghetti_state::SpaghettiCandleFetch {
             chart_id: 7,
+            chart_instance_generation: terminal.chart_instance_generation,
+            request_id,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
             source: ChartBackfillSource::Hydromancer,
@@ -187,7 +364,7 @@ mod tests {
 
         let _task = terminal.update_spaghetti(Message::SpaghettiCandlesLoaded(
             request,
-            Ok(vec![Candle::test_flat(0, 100.0)]),
+            Ok(vec![Candle::test_flat(0, 100.0)]).into(),
         ));
 
         let series = &terminal.spaghetti_charts[&7].canvas.series[0];
@@ -210,10 +387,15 @@ mod tests {
             color: Color::BLACK,
             loaded: false,
         });
+        let request_id = instance
+            .begin_spaghetti_candle_request("BTC")
+            .expect("request owner");
         terminal.spaghetti_charts.insert(7, instance);
 
         let request = crate::spaghetti_state::SpaghettiCandleFetch {
             chart_id: 7,
+            chart_instance_generation: terminal.chart_instance_generation,
+            request_id,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
             source: ChartBackfillSource::Hyperliquid,
@@ -226,7 +408,7 @@ mod tests {
         terminal.bump_read_data_provider_generation();
         let _task = terminal.update_spaghetti(Message::SpaghettiCandlesLoaded(
             request,
-            Ok(vec![Candle::test_flat(0, 100.0)]),
+            Ok(vec![Candle::test_flat(0, 100.0)]).into(),
         ));
 
         let series = &terminal.spaghetti_charts[&7].canvas.series[0];

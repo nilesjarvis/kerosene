@@ -1298,7 +1298,10 @@ pub(crate) enum Message {
     SessionDataSymbolSelected(SessionDataId, String),
     SessionDataLookbackChanged(SessionDataId, SessionDataLookback),
     RefreshSessionData(SessionDataId),
-    SessionDataCandlesLoaded(SessionDataRequest, Result<SessionDataCandles, String>),
+    SessionDataCandlesLoaded(
+        SessionDataRequest,
+        RedactedPublicMarketMessageResult<SessionDataCandles>,
+    ),
     AddTradingJournal,
     RefreshCalendar,
     CalendarLoaded(u64, Result<Vec<api::CalendarEvent>, String>),
@@ -1484,7 +1487,10 @@ pub(crate) enum Message {
     // Spaghetti chart
     SpaghettiSwitchTimeframe(SpaghettiChartId, Timeframe),
     SpaghettiReload(SpaghettiChartId),
-    SpaghettiCandlesLoaded(SpaghettiCandleFetch, Result<Vec<Candle>, String>),
+    SpaghettiCandlesLoaded(
+        SpaghettiCandleFetch,
+        RedactedPublicMarketMessageResult<Vec<Candle>>,
+    ),
     SpaghettiWsCandleUpdate(SpaghettiWsCandleContext, Candle),
     SpaghettiWsCandleLagged(SpaghettiWsCandleContext, u64),
     SpaghettiOpenEditor(SpaghettiChartId),
@@ -3664,6 +3670,29 @@ mod tests {
                 WEEK_VALUE,
             )]
         };
+        let session_request = || crate::session_data_state::SessionDataRequest {
+            request_id: 13,
+            id: 9,
+            symbol: REQUEST_SYMBOL.to_string(),
+            lookback: crate::session_data_state::SessionDataLookback::FourWeeks,
+            requested_at_ms: 1_778_357_590_000,
+        };
+        let session_candles = || crate::session_data_state::SessionDataCandles {
+            daily: candles(),
+            intraday: candles(),
+        };
+        let spaghetti_request = || crate::spaghetti_state::SpaghettiCandleFetch {
+            chart_id: 9,
+            chart_instance_generation: 7,
+            request_id: 11,
+            symbol: REQUEST_SYMBOL.to_string(),
+            timeframe: Timeframe::H1,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: 5,
+            hydromancer_key_generation: 3,
+            session: None,
+            session_granularity: None,
+        };
         let messages = vec![
             Message::BookLoaded {
                 request_id: 7,
@@ -3794,6 +3823,10 @@ mod tests {
                 Timeframe::D1,
                 Err(ERROR.to_string()).into(),
             ),
+            Message::SessionDataCandlesLoaded(session_request(), Ok(session_candles()).into()),
+            Message::SessionDataCandlesLoaded(session_request(), Err(ERROR.to_string()).into()),
+            Message::SpaghettiCandlesLoaded(spaghetti_request(), Ok(candles()).into()),
+            Message::SpaghettiCandlesLoaded(spaghetti_request(), Err(ERROR.to_string()).into()),
         ];
 
         for message in messages {

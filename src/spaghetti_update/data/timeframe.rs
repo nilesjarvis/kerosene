@@ -64,12 +64,13 @@ impl TradingTerminal {
             }
         }
 
-        let mut tasks = Vec::new();
         let mut cached_updates = Vec::new();
+        let mut fetches = Vec::new();
         let chart_backfill_source = self.chart_backfill_source;
         let read_data_provider_generation = self.read_data_provider_generation;
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
+        let chart_instance_generation = self.chart_instance_generation;
         let target_tf = Self::spaghetti_effective_timeframe_for(
             inst_interval,
             inst_active_session,
@@ -83,23 +84,25 @@ impl TradingTerminal {
                 cached_last_time = cached_candles.last().map(|c| c.open_time);
                 cached_updates.push((symbol.clone(), cached_candles));
             }
-            tasks.push(Self::fetch_spaghetti_candles(
-                id,
-                &symbol,
-                inst_interval,
-                inst_active_session,
-                inst_session_granularity,
-                cached_last_time,
-                ChartBackfillFetchContext::new(
-                    chart_backfill_source,
-                    read_data_provider_generation,
-                    hydromancer_generation,
-                    hydromancer_api_key.clone(),
-                ),
-            ));
+            fetches.push((symbol, cached_last_time));
         }
 
+        let mut tasks = Vec::new();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
+            for (symbol, cached_last_time) in &fetches {
+                tasks.push(Self::queue_spaghetti_candle_fetch(
+                    inst,
+                    symbol,
+                    chart_instance_generation,
+                    *cached_last_time,
+                    ChartBackfillFetchContext::new(
+                        chart_backfill_source,
+                        read_data_provider_generation,
+                        hydromancer_generation,
+                        hydromancer_api_key.clone(),
+                    ),
+                ));
+            }
             for series in &mut inst.canvas.series {
                 if let Some((_, candles)) = cached_updates.iter().find(|(s, _)| s == &series.symbol)
                 {

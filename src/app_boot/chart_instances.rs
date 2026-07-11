@@ -255,12 +255,10 @@ impl TradingTerminal {
                     color,
                 });
                 if !defer_legacy_api_named_pair {
-                    boot_tasks.push(Self::fetch_spaghetti_candles(
-                        sid,
+                    boot_tasks.push(Self::queue_spaghetti_candle_fetch(
+                        &mut inst,
                         sym_key,
-                        tf,
-                        inst.canvas.active_session,
-                        inst.session_granularity,
+                        0,
                         cached_start_ms,
                         ChartBackfillFetchContext::new(
                             chart_backfill_source,

@@ -390,6 +390,17 @@ replacement chart. Exact candle values, cache/backfill/retry policy, chart
 errors, macro calculations, rendering, interaction, and order-price behavior
 remain unchanged.
 
+Session Data and spaghetti-chart historical completions also use the
+public-market result boundary. Generic Elm diagnostics retain their public
+pane/chart, request, symbol, timeframe/lookback, source-generation, session,
+and timestamp correlation while exposing only `Ok`/`Err` shape; daily,
+intraday, or per-series OHLCV collections and upstream errors are not traversed.
+Session requests use a terminal-lifetime allocator across pane reconstruction.
+Spaghetti requests combine a per-instance per-series owner with the shared
+runtime chart incarnation, preserving all existing source/provider/key/
+timeframe/session guards. Exact public calculations, caches, visible errors,
+rendering, and interaction remain unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

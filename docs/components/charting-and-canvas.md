@@ -288,7 +288,14 @@ Key modules:
 - `spaghetti_views/`
 
 Spaghetti data uses the shared candle backfill infrastructure where practical
-but keeps its own chart instance map and canvas cache.
+but keeps its own chart instance map and canvas cache. Each per-symbol REST
+fetch atomically installs a runtime request owner on its `SpaghettiChartInstance`.
+Completions must match that owner, the current shared chart-incarnation
+generation, and the existing source/provider/key/timeframe/session context.
+Removing and re-adding a series therefore cannot revive its earlier task, and
+runtime layout restoration cannot retarget a task from the prior chart map.
+Valid cache merging, pair/normalization calculations, websocket updates, and
+rendering behavior are unchanged.
 
 ## Spread Chart
 

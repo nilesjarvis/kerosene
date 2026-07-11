@@ -5142,6 +5142,119 @@ target-specific cancellation policy, not HTTP replay.
   counter can eliminate those theoretical cases. Session-data and spaghetti
   candle completion ownership remain separate lifecycles for review.
 
+### F-68 — Recreated analytical panes can reuse candle-result ownership
+
+- Status: addressed in Turn 61; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium correlation and diagnostic hardening; stale data can replace
+  visible analytics or shared candle-cache context, but neither feature directly
+  submits exchange mutations and no current wrong-order path was found
+- Scope: Session Data daily/intraday request planning and aggregation,
+  spaghetti per-series REST planning/merge/error handling, runtime layout and
+  series reconstruction, provider/key/source/timeframe/session guards, shared
+  candle cache, request rollover, hidden/removed series cleanup, parent
+  diagnostics, boot/routing/call sites, views/interactions, docs, and focused
+  tests
+- Preconditions/event ordering:
+  1. A Session Data pane dispatches request `A`, whose only discriminator beyond
+     pane ID/symbol/lookback is `requested_at_ms`. Before it completes, runtime
+     layout application clears and recreates the same persisted pane and
+     dispatches `B` in the same millisecond. The two request values can compare
+     equal, so `A` can consume `B`'s pending/loading owner and install its daily,
+     intraday, weekday, and market-session results.
+  2. A spaghetti series dispatches `A` with chart ID, symbol, effective
+     timeframe, source/provider/key context, and anchor context, but no logical
+     request owner. Repeated reload, remove/re-add of the same symbol, or
+     identical runtime chart reconstruction dispatches `B` with the same
+     context while `A` survives.
+  3. An older spaghetti success can then merge into the replacement series and
+     shared candle cache. Reversed ordering is also unsafe: after `B` succeeds,
+     an older `A` error can mark the series unloaded and remove that current
+     cache entry.
+  4. Both raw parent results allowed derived `Message::Debug` to traverse
+     daily/intraday or per-series candle collection/timing structure and
+     pre-handler upstream errors, despite standalone candle value redaction.
+- Evidence: parent commit
+  `76e0821b5a6a04a937f34a2255b3c48f846f599f` defined
+  `SessionDataRequest` with pane ID, symbol, lookback, and millisecond timestamp;
+  stored the full value on `SessionDataInstance`; and accepted exact equality at
+  the only result consumer (`src/session_data_state.rs`,
+  `src/market_update/session_data.rs`). `restore_layout_session_data` clears and
+  recreates the map before requesting all panes, while the old iced tasks remain
+  alive (`src/layout_persistence/session_data.rs`). `SpaghettiCandleFetch` had
+  no request ID or incarnation; its only consumer checked conditional
+  Hydromancer generation, read-provider generation, hidden symbol, chart/symbol,
+  effective timeframe, source, anchor, and granularity before merging or
+  failing the series (`src/spaghetti_state.rs`,
+  `src/spaghetti_update/data/candles.rs`). Every boot, layout, add/remove,
+  reload/lag, timeframe, anchor/granularity, source-change, and alias-repair REST
+  publisher was traced. Spaghetti writes the shared candle cache and renders
+  normalized/pair values; Session Data renders public return summaries. Searches
+  of order preparation, signing, automation, and order-view modules found no
+  direct consumer or mutation caller.
+- Violated invariant: an asynchronous public-candle completion may settle
+  loading state, mutate an analytical instance, or update/remove the shared
+  candle cache only when its immutable logical owner still belongs to the
+  current pane/chart/series incarnation. Equal market parameters are necessary
+  context, not sufficient request identity.
+- Risk: an old Session Data result can preempt the intended replacement and
+  display stale weekday/session summaries. An old spaghetti success or error can
+  replace series history, normalized/pair calculations, loaded state, and shared
+  cache content after a newer request. The shared cache can later seed chart
+  history, but an explicit user action and canonical order preparation/signing
+  remain required; neither analytical feature directly seeds or dispatches an
+  order.
+- Why existing checks did not cover it: Session Data tests covered target
+  changes, forced-refresh coalescing, sanitization, and symbol repair, but no
+  distinct owner survived pane reconstruction. Spaghetti tests covered source,
+  provider/key generation, symbol, timeframe, session/granularity, and websocket
+  lag context, but identical REST contexts were indistinguishable. No test
+  reversed an old error after a newer series success or removed/re-added the
+  same series while its task remained alive.
+- Implemented fix: add a runtime-only terminal
+  `next_session_data_request_id`; allocate across pane incarnations with
+  wrapping addition while skipping every active ID; carry it inside the exact
+  stored Session Data request. Add a per-`SpaghettiChartInstance` wrapping
+  sequence and per-symbol pending-owner map; make the sole REST task builder
+  atomically install that owner; require both its ID and F-67's shared runtime
+  chart-incarnation generation before the unchanged source/provider/key/
+  timeframe/session checks; and consume the owner only when all checks match.
+  Removed, hidden, and canonicalized series clear their obsolete owners. Replace
+  both raw parent results with `RedactedPublicMarketMessageResult<T>` and restore
+  exact values only at their first consumers.
+- Regression coverage: a prior Session Data success and later error must
+  preserve the recreated pane's current owner/loading/data before the current
+  request alone installs calculations. The terminal allocator must survive map
+  recreation and skip live IDs across `u64` wrap. A prior spaghetti success must
+  preserve a newer per-series owner; the current result alone may install and
+  cache exact candles; a reversed stale error must preserve that series and
+  cache. Remove/re-add must allocate distinct owners, prior chart-incarnation
+  results must remain inert even when the local ID resets, repeated layout
+  restoration must show reset local IDs under distinct outer generations, and
+  the local sequence must wrap to a distinct immediate owner. Existing
+  aggregation, chunking, source/provider/key, websocket, cache, layout, risk,
+  routing, and parent-diagnostic controls remain applicable.
+- Smallest behavior-preserving fix: one terminal scalar/default and request
+  field for Session Data; two runtime-only fields and narrow owner methods on
+  the spaghetti instance; one owner-installing task boundary used by every
+  existing publisher; two first-consumer fences; cleanup at the existing series
+  removal paths; reuse of one existing diagnostic wrapper; focused adversarial
+  tests; and docs. No endpoint, request range/chunk, OHLCV value, lookback,
+  timeframe, source/provider/key policy, cache merge/trim rule, calculation,
+  loaded/error copy, render/interaction, subscription identity, order input,
+  signed bytes, config/schema/layout representation, persistence, or trading
+  semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  exhaustive definition/publisher/consumer/reset/cache tracing, existing
+  calculation/context tests, and the mechanical call-site conversion establish
+  the intended boundary, but focused and nearby suites cannot execute until ALSA
+  development metadata is available. A removed task surviving a complete
+  terminal Session Data `u64` allocation cycle or the same series surviving a
+  complete local request cycle remains theoretically reusable; a prior layout
+  task additionally requires a full chart-incarnation cycle. Calendar
+  completion ownership and diagnostics remain the next separate public-data
+  lifecycle for review.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -8959,6 +9072,89 @@ target-specific cancellation policy, not HTTP replay.
   preserve exact data, rendering, refresh behavior, persistence, interaction,
   and trading semantics.
 
+## Turn 61 — Preserve Analytical Candle Request Ownership
+
+- Status: F-68 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: Session Data daily/intraday refresh ownership and aggregation;
+  spaghetti REST publication, per-series/runtime-layout ownership, merge/error/
+  cache behavior, context guards, removal and risk cleanup; diagnostics; boot,
+  layout, source/alias repair and all call sites; docs; and focused regressions
+- Invariant: only the current logical request owner for the current Session Data
+  pane or spaghetti chart/series incarnation may consume loading/pending state,
+  install analytical candle data, or update/remove the shared candle cache; all
+  established public-market context checks remain independently required.
+- Protected behavior: exact daily/intraday and per-series OHLCV; Session Data
+  chunk ranges, lookbacks, completed-session cutoff, bars/summaries/verdicts and
+  visible loading/errors; spaghetti cache reuse/merge/trim, normalized and pair
+  calculations, anchors/granularity, reload/lag behavior, websocket updates,
+  labels/colors/view state and interactions; source/provider/key policy; request
+  timing/content; layouts/config/schema/persistence; order preparation/signing;
+  and every trading/UI semantic.
+- Preconditions/event ordering: Session request `A` survives identical pane
+  reconstruction and can previously equal replacement request `B` when both use
+  the same millisecond timestamp. Spaghetti task `A` survives reload,
+  remove/re-add, or identical layout reconstruction and previously has the same
+  complete market context as `B`. The new terminal Session ID and spaghetti
+  local ID plus outer chart incarnation distinguish these tasks. Each first
+  consumer returns before state/cache mutation for `A`, while `B` reaches the
+  exact unchanged calculation/merge/error path.
+- Evidence: F-68 records the full request types, only publishers/consumers,
+  sequential daily/chunked-intraday fetch, pending/loading state, layout and
+  series reconstruction, every spaghetti REST entry point, provider/key/source/
+  timeframe/session and websocket guards, accepted success/error cache effects,
+  hidden/alias removal, views/calculations/interactions, routes, and tests. No
+  second result writer, persisted request owner, direct order-price input,
+  signed mutation caller, or automation consumer was found.
+- Change: add the terminal-lifetime Session Data request allocator with active-ID
+  rollover avoidance and carry its ID in the exact pending request; add a
+  wrapping per-spaghetti-instance sequence and per-symbol pending map; replace
+  all spaghetti publications with one boundary that installs the owner and
+  stamps the current chart incarnation; require both at the first consumer;
+  clear owners with removed/hidden/canonicalized series; wrap both parent
+  results in the existing public-market diagnostic type; add stale success,
+  reversed stale error, recreation, remove/re-add, rollover, layout, cleanup,
+  and diagnostic controls; document the boundaries.
+- Tests/checks:
+  - Baseline `market_update::session_data`, `spaghetti_update`,
+    `layout_persistence::session_data`, and `layout_persistence::instances`
+    suites plus `cargo check` stopped in `alsa-sys` before Kerosene compilation
+    because `pkg-config` could not find the system `alsa.pc` file.
+  - The pre-fix Session Data recreation and spaghetti replacement-owner
+    regressions stopped at that same dependency boundary before demonstrating
+    their expected failures.
+  - Post-fix exact regressions plus the Session Data, spaghetti update/state,
+    layout-instance, risk-scrub, public-message, and routing suites stopped at
+    the same dependency boundary.
+  - `cargo fmt` passed after the Rust edits; final formatting and diff checks are
+    recorded in the current validation summary below.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no view, subscription identity, request
+    content/timing, interaction behavior, or exchange mutation changed;
+    compilation is already blocked, and no live market request, exchange call,
+    or credential-bearing operation ran.
+- Compatibility/UX assessment: valid results are recovered at the same first
+  consumers and enter the identical aggregation, merge, cache, loaded/error,
+  anchor/reset and rendering paths. The owner fields are runtime-only,
+  unrendered, and unserialized. Parent diagnostics become value-neutral while
+  public request correlation and standalone candle diagnostics remain. No exact
+  data/calculation, visible copy/state/timing, interaction, persisted value,
+  signed bytes, order preparation, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-68 is source-
+  hardened; full-`u64` Session/local-series/chart-incarnation reuse and
+  executable validation remain residual. Calendar, file/config/screenshot and
+  private-integration result classes, independently formattable nested account/
+  order types, classified external-status paths, and the remainder of Track 9
+  still require review.
+- Prior turn commit hash: `76e0821b5a6a04a937f34a2255b3c48f846f599f`
+- Next candidate: audit `CalendarLoaded` from global request allocation through
+  pane close/reopen, filter/window changes, refresh/retry timing, stale/error
+  acceptance, event storage/rendering, and parent diagnostics; preserve exact
+  events, cadence, filters, visible status, persistence, and every trading/UX
+  semantic.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -9000,10 +9196,11 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline chart-candle, chart-state candle,
-  macro-indicator, and layout-instance suites plus `cargo check`; the pre-fix
-  primary chart-incarnation regression; post-fix chart-candle, macro-indicator,
-  layout-instance, public-message, routing, and candle-API suites;
+- Environment-blocked this turn: baseline Session Data, spaghetti, and related
+  layout suites plus `cargo check`; the pre-fix Session Data recreation and
+  spaghetti replacement-owner regressions; post-fix exact regressions plus
+  Session Data, spaghetti update/state, layout-instance, risk-scrub, public-
+  message, and routing suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live market request, exchange mutation, or credential-bearing operation was
@@ -9014,7 +9211,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-67
+  F-40, and F-42 through F-68
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -9076,7 +9273,10 @@ target-specific cancellation policy, not HTTP replay.
   hardened by F-66 while preserving exact book/precision/click behavior.
   Primary, comparison, and macro candle history ownership now survives runtime
   chart recreation and parent diagnostics are source-hardened by F-67 while
-  preserving exact candle/cache/backfill/interaction behavior. Remaining
-  session-data/spaghetti candle lifecycles, independently formattable nested
-  account/order types, and classified external-status paths, plus the rest of
-  Track 9, require completion before a final verdict.
+  preserving exact candle/cache/backfill/interaction behavior. Session Data and
+  spaghetti historical completion ownership now survives pane/series/layout
+  recreation and parent diagnostics are source-hardened by F-68 while preserving
+  exact aggregation/cache/rendering behavior. Remaining calendar and other
+  public/private result lifecycles, independently formattable nested account/
+  order types, and classified external-status paths, plus the rest of Track 9,
+  require completion before a final verdict.

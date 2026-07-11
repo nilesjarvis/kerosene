@@ -164,6 +164,7 @@ impl TradingTerminal {
             inst.canvas
                 .series
                 .retain(|series| !is_hidden(&series.symbol));
+            inst.retain_spaghetti_candle_requests_for_current_series();
             inst.editor_search_query.clear();
         }
 
@@ -309,6 +310,7 @@ mod tests {
             let instance = terminal.session_data.get_mut(&4).expect("session data");
             instance.loading = true;
             instance.pending_request = Some(SessionDataRequest {
+                request_id: 0,
                 id: 4,
                 symbol: "HYPE".to_string(),
                 lookback: SessionDataLookback::FourWeeks,

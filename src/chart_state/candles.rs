@@ -516,40 +516,32 @@ impl TradingTerminal {
             )
         }));
 
-        let spaghetti_requests: Vec<_> = self
+        let chart_instance_generation = self.chart_instance_generation;
+        let spaghetti_requests = self
             .spaghetti_charts
             .iter()
             .flat_map(|(chart_id, instance)| {
-                instance.canvas.series.iter().map(|series| {
-                    (
-                        *chart_id,
-                        series.symbol.clone(),
-                        instance.interval,
-                        instance.canvas.active_session,
-                        instance.session_granularity,
-                    )
-                })
+                instance
+                    .canvas
+                    .series
+                    .iter()
+                    .map(|series| (*chart_id, series.symbol.clone()))
             })
-            .collect();
-
-        for (chart_id, _, _, _, _) in &spaghetti_requests {
-            if let Some(instance) = self.spaghetti_charts.get_mut(chart_id) {
-                for series in &mut instance.canvas.series {
-                    series.candles.clear();
-                    series.loaded = false;
-                }
-                instance.canvas.cache.clear();
+            .collect::<Vec<_>>();
+        for instance in self.spaghetti_charts.values_mut() {
+            instance.clear_spaghetti_candle_requests();
+            for series in &mut instance.canvas.series {
+                series.candles.clear();
+                series.loaded = false;
             }
+            instance.canvas.cache.clear();
         }
-
-        tasks.extend(spaghetti_requests.into_iter().map(
-            |(chart_id, symbol, timeframe, session, session_granularity)| {
-                Self::fetch_spaghetti_candles(
-                    chart_id,
+        for (chart_id, symbol) in spaghetti_requests {
+            if let Some(instance) = self.spaghetti_charts.get_mut(&chart_id) {
+                tasks.push(Self::queue_spaghetti_candle_fetch(
+                    instance,
                     &symbol,
-                    timeframe,
-                    session,
-                    session_granularity,
+                    chart_instance_generation,
                     None,
                     ChartBackfillFetchContext::new(
                         source,
@@ -557,9 +549,9 @@ impl TradingTerminal {
                         hydromancer_generation,
                         hydromancer_key.clone(),
                     ),
-                )
-            },
-        ));
+                ));
+            }
+        }
 
         Task::batch(tasks)
     }

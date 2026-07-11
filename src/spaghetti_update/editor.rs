@@ -56,6 +56,7 @@ impl TradingTerminal {
         let read_data_provider_generation = self.read_data_provider_generation;
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
+        let chart_instance_generation = self.chart_instance_generation;
         let mut task = Task::none();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id)
             && !inst.canvas.series.iter().any(|s| s.symbol == key)
@@ -79,12 +80,10 @@ impl TradingTerminal {
                 loaded: false,
             });
             inst.canvas.apply_style_colors(&theme);
-            task = Self::fetch_spaghetti_candles(
-                id,
+            task = Self::queue_spaghetti_candle_fetch(
+                inst,
                 &key,
-                inst.interval,
-                inst.canvas.active_session,
-                inst.session_granularity,
+                chart_instance_generation,
                 None,
                 ChartBackfillFetchContext::new(
                     chart_backfill_source,
@@ -124,6 +123,7 @@ impl TradingTerminal {
 
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             inst.canvas.series.retain(|s| s.symbol != symbol);
+            inst.forget_spaghetti_candle_request(&symbol);
             Self::refresh_spaghetti_session_anchor(inst);
             inst.canvas.cache.clear();
             self.persist_config();

@@ -16,6 +16,7 @@ impl TradingTerminal {
         let read_data_provider_generation = self.read_data_provider_generation;
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
+        let chart_instance_generation = self.chart_instance_generation;
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             inst.canvas.active_session = session;
             Self::normalize_spaghetti_session_granularity(inst, Self::now_ms());
@@ -24,15 +25,17 @@ impl TradingTerminal {
             inst.canvas.cache.clear();
 
             let mut tasks = Vec::new();
-            for series in &mut inst.canvas.series {
-                series.candles.clear();
-                series.loaded = false;
-                tasks.push(Self::fetch_spaghetti_candles(
-                    id,
-                    &series.symbol,
-                    inst.interval,
-                    inst.canvas.active_session,
-                    inst.session_granularity,
+            for index in 0..inst.canvas.series.len() {
+                let symbol = {
+                    let series = &mut inst.canvas.series[index];
+                    series.candles.clear();
+                    series.loaded = false;
+                    series.symbol.clone()
+                };
+                tasks.push(Self::queue_spaghetti_candle_fetch(
+                    inst,
+                    &symbol,
+                    chart_instance_generation,
                     None,
                     ChartBackfillFetchContext::new(
                         chart_backfill_source,
@@ -58,6 +61,7 @@ impl TradingTerminal {
         let read_data_provider_generation = self.read_data_provider_generation;
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
+        let chart_instance_generation = self.chart_instance_generation;
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             if inst.session_granularity.is_none() {
                 return Task::none();
@@ -70,15 +74,17 @@ impl TradingTerminal {
             }
 
             let mut tasks = Vec::new();
-            for series in &mut inst.canvas.series {
-                series.candles.clear();
-                series.loaded = false;
-                tasks.push(Self::fetch_spaghetti_candles(
-                    id,
-                    &series.symbol,
-                    inst.interval,
-                    inst.canvas.active_session,
-                    inst.session_granularity,
+            for index in 0..inst.canvas.series.len() {
+                let symbol = {
+                    let series = &mut inst.canvas.series[index];
+                    series.candles.clear();
+                    series.loaded = false;
+                    series.symbol.clone()
+                };
+                tasks.push(Self::queue_spaghetti_candle_fetch(
+                    inst,
+                    &symbol,
+                    chart_instance_generation,
                     None,
                     ChartBackfillFetchContext::new(
                         chart_backfill_source,

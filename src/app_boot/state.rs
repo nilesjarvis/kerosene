@@ -331,6 +331,7 @@ impl TradingTerminal {
             positioning_info_pending: HashMap::new(),
             session_data: HashMap::new(),
             next_session_data_id: 0,
+            next_session_data_request_id: 0,
             favourite_symbols,
             muted_tickers,
             muted_ticker_input: String::new(),
