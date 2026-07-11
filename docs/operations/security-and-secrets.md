@@ -58,6 +58,16 @@ switch clones the canonical key once into a narrow target and moves that exact
 allocation into the key-input owner. Rejected and ghost switches create no
 target-key copy; ghost cleanup still scrubs any stray canonical key.
 
+Keyed add-account submission keeps the window draft as failure authority and
+places its one caller-owned key copy only in the credential-storage snapshot.
+The provisional canonical profile contains metadata but no signing key, so an
+immediate encrypted-config save can persist the profile atomically without
+making it trading-capable before credential storage accepts it. Failure drops
+the staged copy and preserves the exact draft allocation; success moves the
+staged profile into canonical state. A first saved account also moves the
+verified, normalized draft allocation into the key-input owner, while ordinary
+switch-on-add continues through the post-gate account-switch capture.
+
 Secret-bearing state includes:
 
 - `wallet_key_input`

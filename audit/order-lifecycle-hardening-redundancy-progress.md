@@ -168,6 +168,16 @@
   switch callers converge on this boundary
   (`src/account_state/switching.rs:15-35`,
   `src/account_state/switching.rs:306-381`).
+- Keyed add-account submission validates against the window draft, moves one
+  key-bearing profile into the credential-storage snapshot, and exposes only a
+  keyless canonical metadata shell during synchronous persistence so encrypted
+  config can still commit profile metadata atomically. Failure removes that
+  shell and drops staging while preserving the exact draft; success moves the
+  staged profile into canonical state. First-account synchronization moves the
+  verified normalized draft allocation into the key input, while ordinary
+  switch-on-add still uses the post-gate switch boundary
+  (`src/account_update/add_window.rs:24-30`,
+  `src/account_update/add_window.rs:88-289`).
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -2474,10 +2484,92 @@ target-specific cancellation policy, not HTTP replay.
   state remain unchanged. Only capture timing, snapshot breadth, allocation
   provenance, and zeroization timing differ.
 - Residual uncertainty: Rust type-checking and tests remain blocked by ALSA
-  metadata. Add-account submission still clones its key through input, local
-  profile, persisted bundle, and first-account key-input synchronization.
-  Deferred legacy profile loading separately clones a full profile and key and
-  remains in the owner inventory; F-35 makes no claim about either path.
+  metadata. Add-account ownership is separately addressed by F-36. Deferred
+  legacy profile loading still clones a full profile and key and remains in the
+  owner inventory; F-35 makes no claim about that path.
+
+### F-36 — Add-account submission multiplies keys before credential commit
+
+- Status: addressed in Turn 31; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium secret-lifetime and provisional-authority hardening; the
+  synchronous update route prevented current concurrent signing, but the new
+  profile became key-bearing before storage accepted it
+- Scope: add-window validation and draft lifetime; keyed/watch-only profile
+  construction; OS-keychain and encrypted-config persistence; immediate
+  encrypted metadata snapshot; rollback; first-account input synchronization;
+  ordinary and blocked switch-on-add; config scheduling and feedback
+- Preconditions/event ordering:
+  1. A valid keyed add-account submission retains the key in its window draft.
+  2. The prior route copied a trimmed local key, cloned it into a new canonical
+     profile, and pushed that signing-capable profile before calling storage.
+  3. `persisted_accounts_snapshot` then cloned the profile and every other saved
+     credential into a second caller-owned snapshot; encrypted persistence also
+     synchronously saved canonical metadata from `self.accounts`.
+  4. Failure popped the provisional profile but retained draft/local/snapshot
+     owners through the callback and error path. Success cloned the canonical
+     key again for first-account input synchronization while the local copy
+     remained alive to function return.
+- Evidence: parent commit
+  `cd89a56c4ce57370f00c6be585830d55eb78bc55` shows the draft-to-local copy,
+  local-to-canonical clone, canonical-to-persistence snapshot clone, and
+  canonical-to-first-input clone in `submit_add_account`. The immediate
+  encrypted save builds its config snapshot from canonical `self.accounts`, so
+  omitting the provisional profile entirely would weaken the existing atomic
+  metadata/secret commit (`src/secret_storage/encrypted.rs:97-157`,
+  `src/config_persistence/save.rs:59-84`).
+- Violated invariant: until credential storage accepts a keyed new account, the
+  window draft must remain rollback authority, one caller-owned storage
+  allocation may carry the proposed key, and canonical account state must not
+  be able to sign. Once accepted, that staged allocation should become the
+  canonical key by move; the first-account key input may reuse the independently
+  verified draft allocation rather than create another copy.
+- Risk: the prior synchronous storage callback could observe a usable canonical
+  key before commit, and routine submission transiently multiplied signing
+  material beyond the draft, storage, and final two-owner requirements. No
+  current callback dispatches an order and all buffers were zeroizing, so no
+  wrong mutation or disclosure is claimed. The broader owner graph increased
+  the consequence of a future callback, panic, or diagnostic defect.
+- Why existing checks did not cover it: tests asserted validation errors,
+  encrypted payload contents, failure rollback, active selection, input values,
+  switching, and toasts. They did not inspect canonical key authority during
+  storage or require successful/failing allocations to retain their intended
+  provenance.
+- Implemented fix: validate address/key directly against the draft before
+  allocating a staged key; count saved profiles without cloning them; move the
+  one new key-bearing profile into the ghost-filtered storage snapshot; and
+  place a matching keyless metadata shell in canonical state for the immediate
+  encrypted save. Failure removes the shell, drops staging before feedback, and
+  leaves the exact draft allocation. Success identity-checks and replaces the
+  shell with the exact staged profile. First-account synchronization takes,
+  normalizes, verifies, and moves the draft allocation; later switch-on-add
+  drops the draft first and retains the Turn 30 post-gate capture
+  (`src/account_update/add_window.rs:24-30`,
+  `src/account_update/add_window.rs:88-289`).
+- Regression coverage: watch-only submission proves storage is not called;
+  actual encrypted success and locked failure observe a keyless canonical shell
+  plus a keyed storage snapshot; injected keychain failure requires rollback to
+  preserve the exact draft allocation. First-account success requires the
+  storage-staged allocation to become canonical and the normalized draft
+  allocation to become the input. An adversarial storage callback that changes
+  provisional metadata and the draft after accepting the snapshot must retain
+  the persisted origin profile and fall back to its canonical staged key, never
+  retarget the active input. Successful and Chase-blocked switch-on-add controls
+  preserve canonical allocation, active-key targeting, selection, and
+  established feedback; a whitespace control preserves trimming
+  (`src/account_update/add_window.rs:439-767`).
+- Smallest behavior-preserving fix: validation order/copy, exact errors,
+  normalization, default naming, profile ordering, watch-only behavior, storage
+  backend and payload values, immediate encrypted metadata persistence,
+  migration-block restoration, config debounce, first-account connect task,
+  switch gates, active values, toasts, window closure, persistence schema, and
+  every visible interaction remain unchanged. Only raw credential ownership,
+  provisional signing authority, and zeroization timing change.
+- Residual uncertainty: Rust type-checking and tests remain blocked by ALSA
+  metadata. Backend-required payload/encryption/keychain buffers remain their
+  existing synchronous zeroizing copies. Deferred legacy-profile key loading
+  still clones a full profile and then its key; local planner/message and other
+  diagnostic paths remain to audit.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -4386,6 +4478,75 @@ target-specific cancellation policy, not HTTP replay.
   keychain failure plus switch-on-add behavior before returning to the remaining
   diagnostic inventory.
 
+## Turn 31 — Keep New Accounts Keyless Until Credential Commit
+
+- Status: F-36 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: the complete add-account submission owner graph from draft validation
+  through credential storage, canonical installation, first-account input, and
+  ordinary/blocked switch-on-add
+- Invariant: failed storage leaves the exact draft as authority and no installed
+  keyed profile; storage sees exactly one caller-staged new key while canonical
+  metadata remains unable to sign. Success moves that staging allocation into
+  canonical state and reuses the verified draft only for the intentional first-
+  account input owner.
+- Protected behavior: exact address/key validation and errors; trimming and
+  default name; saved/ghost profile counting; watch-only storage bypass;
+  encrypted/keychain backend selection and payload; immediate encrypted config
+  metadata; failure state/status; profile order; config scheduling; first-
+  account journal/input/connect behavior; switch-on-add gates, state clearing,
+  tasks, active source, and toasts; no schema, view, or normal interaction
+  change.
+- Preconditions/event ordering: validate while borrowing the draft, then create
+  one caller-staged profile. For a key, clone existing saved profiles once
+  for the required storage bundle, append the staged profile by move, and push
+  only its keyless metadata shell into canonical state. Storage resolves
+  synchronously. Remove/drop on failure or identity-check and replace the shell
+  with the staged profile on success; only then schedule the established config
+  save and close the draft window. The first-account special case claims the
+  verified draft; ordinary switch-on-add continues through
+  `switch_account_task` after the window draft is dropped.
+- Evidence: F-36 records the parent/current owner graphs, atomic encrypted-save
+  constraint, source boundaries, and focused allocation assertions. Call-site
+  tracing reconfirmed `Message::AddAccountSubmit` is the only production entry
+  and both storage modes converge on the injected synchronous boundary.
+- Change: added a non-cloneable validated submission owner and private storage
+  hook, installed a keyless provisional metadata shell, replaced it with the
+  successful staged profile by move, moved the verified normalized draft into
+  the first-account input, removed clone-only default counting, expanded
+  failure and switch characterization tests, and documented the ownership
+  contract.
+- Tests/checks:
+  - The pre-fix exact first-account allocation regression stopped in `alsa-sys`
+    before Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - Post-fix exact first-account success, keychain failure, draft-retarget, and
+    Chase-blocked switch-on-add tests plus the full
+    `account_update::add_window::tests` module stopped at the same dependency
+    boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, subscription, view, or window-
+    routing behavior changed, compilation is already blocked, and no live
+    exchange or credential-bearing external operation was run.
+- Compatibility/UX assessment: the same normalized profile/key values reach the
+  same backend and final state. Canonical metadata remains present during the
+  immediate encrypted save exactly as before, but its skipped/non-serialized
+  key field stays empty until acceptance. Every success/failure branch returns
+  the same task, status/error/toast copy, selection, connection behavior, and
+  config timing; only internal allocation provenance and destruction timing
+  differ.
+- Residual risk: Kerosene has not type-checked on this host. The deferred legacy
+  account-key load is the remaining confirmed profile/key clone owner. The
+  repository-wide local planner/state/message, external-error/status,
+  snapshot, and progress-log diagnostic inventory remains incomplete.
+- Prior turn commit hash: `cd89a56c4ce57370f00c6be585830d55eb78bc55`
+- Next candidate: trace and harden deferred legacy-profile key loading without
+  changing migration/storage outcomes, then resume the remaining account/order
+  diagnostic inventory and Track 9 completion audit.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -4408,16 +4569,17 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused account-switch capture/allocation and
-  nearby switch behavior tests; `cargo check`; full `cargo test`; and strict
-  clippy at `alsa-sys` system dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: focused add-account success/failure/allocation
+  and switch-on-add tests plus the nearby module; `cargo check`; full
+  `cargo test`; and strict clippy at `alsa-sys` system dependency discovery,
+  before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-35
+- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-36
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -4437,6 +4599,7 @@ target-specific cancellation policy, not HTTP replay.
   delete and address-rebind key ownership are source-hardened apart from F-31;
   explicit credential-save ownership is source-hardened by F-33, and nested
   exchange-response diagnostics are source-hardened by F-34. Ordinary switching
-  key ownership is source-hardened by F-35; add-account/deferred-legacy copies,
-  local planning/state/message diagnostic redaction, other external-status
-  paths, and the rest of Track 9 require completion before a final verdict.
+  key ownership is source-hardened by F-35, and add-account ownership by F-36;
+  deferred-legacy copies, local planning/state/message diagnostic redaction,
+  other external-status paths, and the rest of Track 9 require completion
+  before a final verdict.

@@ -21,6 +21,14 @@ const ADD_ACCOUNT_WINDOW_MIN_SIZE: Size = Size {
     height: 460.0,
 };
 
+/// Validated add-account values. Its key is the one caller-owned storage
+/// staging allocation and moves into canonical state only after acceptance.
+struct AddAccountSubmission {
+    window_id: window::Id,
+    switch_on_add: bool,
+    profile: config::AccountProfile,
+}
+
 impl TradingTerminal {
     pub(super) fn open_add_account_window(&mut self) -> Task<Message> {
         self.account_picker_open = false;
@@ -78,58 +86,61 @@ impl TradingTerminal {
     }
 
     pub(super) fn submit_add_account(&mut self) -> Task<Message> {
-        let (window_id, switch_on_add, name_input, address_input, agent_key) = {
-            let Some(state) = self.add_account_window.as_ref() else {
+        self.submit_add_account_with(|terminal, accounts| {
+            terminal.persist_profile_secrets_from_accounts(accounts)
+        })
+    }
+
+    fn submit_add_account_with(
+        &mut self,
+        persist_profile_secrets: impl FnOnce(&mut Self, &[config::AccountProfile]) -> bool,
+    ) -> Task<Message> {
+        let submission = match self.prepare_add_account_submission() {
+            Ok(Some(submission)) => submission,
+            Ok(None) => return Task::none(),
+            Err(error) => {
+                self.set_add_account_error(error);
                 return Task::none();
-            };
-            (
-                state.window_id,
-                state.switch_on_add,
-                state.name_input.clone(),
-                state.address_input.clone(),
-                Zeroizing::new(state.key_input.trim().to_string()),
-            )
+            }
         };
 
-        let Some(address) = Self::normalize_wallet_address(&address_input) else {
-            self.set_add_account_error(
-                "Enter a valid master account address (0x followed by 40 hex characters).",
-            );
-            return Task::none();
-        };
-
-        if !agent_key.is_empty()
-            && let Err(error) = signing::validate_agent_key(&agent_key)
-        {
-            self.set_add_account_error(format!("Agent key cannot be used for trading: {error}"));
-            return Task::none();
-        }
-
-        let name = name_input.trim().to_string();
-        let profile = config::AccountProfile {
-            secret_id: config::new_secret_id(),
-            name: if name.is_empty() {
-                format!("Account {}", self.persisted_accounts_snapshot().len() + 1)
-            } else {
-                name
-            },
-            wallet_address: address,
-            agent_key: agent_key.clone(),
-            hydromancer_api_key: String::new().into(),
-        };
+        let AddAccountSubmission {
+            window_id,
+            switch_on_add,
+            profile,
+        } = submission;
         let profile_name = profile.name.clone();
+        let has_agent_key = !profile.agent_key.is_empty();
 
-        // Commit the profile, then persist secrets from the committed
-        // snapshot; roll the push back if credential storage refuses so an
-        // account whose key was never saved cannot appear.
-        self.accounts.push(profile);
-        let new_index = self.accounts.len() - 1;
+        let new_index = if has_agent_key {
+            // The immediate encrypted-config save must see the new profile
+            // metadata in canonical state. Keep that provisional shell unable
+            // to sign while the only staged key is synchronously persisted.
+            let mut persisted_accounts = self.persisted_accounts_snapshot();
+            let staged_profile_index = persisted_accounts.len();
+            let provisional_profile = config::AccountProfile {
+                secret_id: profile.secret_id.clone(),
+                name: profile.name.clone(),
+                wallet_address: profile.wallet_address.clone(),
+                agent_key: String::new().into(),
+                hydromancer_api_key: String::new().into(),
+            };
+            persisted_accounts.push(profile);
+            self.accounts.push(provisional_profile);
+            let new_index = self.accounts.len() - 1;
 
-        if !agent_key.is_empty() {
-            let persisted_accounts = self.persisted_accounts_snapshot();
             let migration_blocked_before = self.secret_migration_save_blocked;
-            if !self.persist_profile_secrets_from_accounts(&persisted_accounts) {
-                self.accounts.pop();
+            if !persist_profile_secrets(self, &persisted_accounts) {
+                let removed_profile = self
+                    .accounts
+                    .pop()
+                    .expect("provisional add-account profile must remain last");
+                assert!(
+                    removed_profile.secret_id == persisted_accounts[staged_profile_index].secret_id,
+                    "provisional add-account profile identity changed during credential persistence"
+                );
+                drop(removed_profile);
+                drop(persisted_accounts);
                 // The failed write only tried to add a key that was never
                 // committed anywhere else, so the last-saved config still
                 // matches the credential store; don't leave config saves
@@ -144,9 +155,30 @@ impl TradingTerminal {
                 self.set_add_account_error(format!("{detail}. The account was not added."));
                 return Task::none();
             }
-        }
+
+            let staged_profile = persisted_accounts
+                .pop()
+                .expect("persisted add-account profile must remain last");
+            let canonical_slot = self
+                .accounts
+                .get_mut(new_index)
+                .expect("provisional add-account profile must survive credential persistence");
+            assert!(
+                canonical_slot.secret_id == staged_profile.secret_id,
+                "add-account profile identity changed during credential persistence"
+            );
+            let provisional_profile = std::mem::replace(canonical_slot, staged_profile);
+            drop(provisional_profile);
+            drop(persisted_accounts);
+            new_index
+        } else {
+            self.accounts.push(profile);
+            self.accounts.len() - 1
+        };
 
         self.persist_config();
+        let prepared_input_key = (new_index == self.active_account_index)
+            .then(|| self.take_verified_add_account_key(new_index));
         self.add_account_window = None;
         let close_task = window::close(window_id);
 
@@ -158,7 +190,9 @@ impl TradingTerminal {
             let secret_id = profile.secret_id.clone();
             self.wallet_address_input = profile.wallet_address.clone();
             self.wallet_key_input.zeroize();
-            self.wallet_key_input = profile.agent_key.clone().into();
+            self.wallet_key_input = prepared_input_key
+                .expect("active add-account profile must retain its prepared key")
+                .into();
             self.last_persisted_active_account_secret_id = Some(secret_id.clone());
             self.journal.switch_active_account(Some(secret_id));
             if switch_on_add {
@@ -187,6 +221,71 @@ impl TradingTerminal {
         close_task
     }
 
+    fn prepare_add_account_submission(&self) -> Result<Option<AddAccountSubmission>, String> {
+        let Some(state) = self.add_account_window.as_ref() else {
+            return Ok(None);
+        };
+        let Some(address) = Self::normalize_wallet_address(&state.address_input) else {
+            return Err(
+                "Enter a valid master account address (0x followed by 40 hex characters)."
+                    .to_string(),
+            );
+        };
+
+        let agent_key = state.key_input.trim();
+        if !agent_key.is_empty()
+            && let Err(error) = signing::validate_agent_key(agent_key)
+        {
+            return Err(format!("Agent key cannot be used for trading: {error}"));
+        }
+
+        let name = state.name_input.trim().to_string();
+        let saved_account_count = self
+            .accounts
+            .iter()
+            .filter(|profile| !self.ghost_account_secret_ids.contains(&profile.secret_id))
+            .count();
+        Ok(Some(AddAccountSubmission {
+            window_id: state.window_id,
+            switch_on_add: state.switch_on_add,
+            profile: config::AccountProfile {
+                secret_id: config::new_secret_id(),
+                name: if name.is_empty() {
+                    format!("Account {}", saved_account_count + 1)
+                } else {
+                    name
+                },
+                wallet_address: address,
+                agent_key: agent_key.to_string().into(),
+                hydromancer_api_key: String::new().into(),
+            },
+        }))
+    }
+
+    fn take_verified_add_account_key(&mut self, profile_index: usize) -> Zeroizing<String> {
+        let raw_key = {
+            let state = self
+                .add_account_window
+                .as_mut()
+                .expect("successful add-account submission must retain its draft window");
+            std::mem::take(&mut state.key_input).into_zeroizing()
+        };
+        let normalized_key = if raw_key.trim().len() == raw_key.len() {
+            raw_key
+        } else {
+            Zeroizing::new(raw_key.trim().to_string())
+        };
+        let profile = self
+            .accounts
+            .get(profile_index)
+            .expect("successful add-account profile must exist before draft transfer");
+        if profile.agent_key.as_str() == normalized_key.as_str() {
+            normalized_key
+        } else {
+            profile.agent_key.clone()
+        }
+    }
+
     fn set_add_account_error(&mut self, message: impl Into<String>) {
         if let Some(state) = self.add_account_window.as_mut() {
             state.error = Some(message.into());
@@ -201,11 +300,14 @@ mod tests {
     use crate::config::AccountProfile;
     use crate::signing::{ChaseLifecycle, ChaseOrder};
 
+    use std::cell::Cell;
     use std::time::Instant;
 
     const ADDRESS_A: &str = "0xabc0000000000000000000000000000000000000";
     const ADDRESS_B: &str = "0xdef0000000000000000000000000000000000000";
     const VALID_KEY: &str = "0x0000000000000000000000000000000000000000000000000000000000000001";
+    const OTHER_VALID_KEY: &str =
+        "0x0000000000000000000000000000000000000000000000000000000000000002";
 
     fn account(secret_id: &str, wallet_address: &str, agent_key: &str) -> AccountProfile {
         AccountProfile {
@@ -340,7 +442,9 @@ mod tests {
         open_window(&mut terminal);
         window_state(&mut terminal).address_input = ADDRESS_B.to_string();
 
-        let _task = terminal.submit_add_account();
+        let _task = terminal.submit_add_account_with(|_, _| {
+            panic!("watch-only add must not invoke credential persistence")
+        });
 
         assert!(terminal.add_account_window.is_none());
         assert_eq!(terminal.accounts.len(), 2);
@@ -366,7 +470,12 @@ mod tests {
             state.key_input = sensitive_string(VALID_KEY);
         }
 
-        let _task = terminal.submit_add_account();
+        let _task = terminal.submit_add_account_with(|terminal, persisted_accounts| {
+            assert_eq!(terminal.accounts.len(), 2);
+            assert!(terminal.accounts[1].agent_key.is_empty());
+            assert_eq!(persisted_accounts[1].agent_key.as_str(), VALID_KEY);
+            terminal.persist_profile_secrets_from_accounts(persisted_accounts)
+        });
 
         assert!(terminal.add_account_window.is_none());
         assert_eq!(terminal.accounts.len(), 2);
@@ -398,16 +507,263 @@ mod tests {
             state.address_input = ADDRESS_B.to_string();
             state.key_input = sensitive_string(VALID_KEY);
         }
+        let draft_key_allocation = window_state(&mut terminal).key_input.as_str().as_ptr();
 
-        let _task = terminal.submit_add_account();
+        let _task = terminal.submit_add_account_with(|terminal, persisted_accounts| {
+            assert_eq!(terminal.accounts.len(), 2);
+            assert!(terminal.accounts[1].agent_key.is_empty());
+            assert_eq!(persisted_accounts[1].agent_key.as_str(), VALID_KEY);
+            terminal.persist_profile_secrets_from_accounts(persisted_accounts)
+        });
 
         assert_eq!(terminal.accounts.len(), 1);
         assert_eq!(terminal.encrypted_secrets, original_encrypted);
         assert!(!terminal.secret_migration_save_blocked);
         let state = window_state(&mut terminal);
+        assert_eq!(state.key_input.as_str().as_ptr(), draft_key_allocation);
         let error = state.error.as_deref().expect("locked store should error");
         assert!(error.contains("Unlock encrypted credentials"));
         assert!(error.contains("The account was not added"));
+    }
+
+    #[test]
+    fn keychain_failure_keeps_exact_draft_and_rolls_back_unsigned_profile_shell() {
+        let mut terminal = terminal_with_encrypted_storage(vec![account("acct-a", ADDRESS_A, "")]);
+        terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+        terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+        open_window(&mut terminal);
+        {
+            let state = window_state(&mut terminal);
+            state.address_input = ADDRESS_B.to_string();
+            state.key_input = sensitive_string(VALID_KEY);
+        }
+        let draft_key_allocation = window_state(&mut terminal).key_input.as_str().as_ptr();
+        let staged_key_allocation = Cell::new(std::ptr::null::<u8>());
+        let persistence_calls = Cell::new(0_u32);
+
+        let _task = terminal.submit_add_account_with(|terminal, persisted_accounts| {
+            persistence_calls.set(persistence_calls.get().saturating_add(1));
+            assert_eq!(terminal.accounts.len(), 2);
+            assert!(terminal.accounts[1].agent_key.is_empty());
+            assert_eq!(persisted_accounts.len(), 2);
+            assert_eq!(persisted_accounts[1].agent_key.as_str(), VALID_KEY);
+            assert_eq!(
+                terminal.accounts[1].secret_id,
+                persisted_accounts[1].secret_id
+            );
+            staged_key_allocation.set(persisted_accounts[1].agent_key.as_ptr());
+            terminal.secret_migration_save_blocked = true;
+            terminal.secret_store_status = Some((
+                "Keychain save failed; credentials were not committed".to_string(),
+                true,
+            ));
+            false
+        });
+
+        assert_eq!(persistence_calls.get(), 1);
+        assert!(!staged_key_allocation.get().is_null());
+        assert_eq!(terminal.accounts.len(), 1);
+        assert!(!terminal.secret_migration_save_blocked);
+        let state = window_state(&mut terminal);
+        assert_eq!(state.key_input.as_str(), VALID_KEY);
+        assert_eq!(state.key_input.as_str().as_ptr(), draft_key_allocation);
+        let error = state
+            .error
+            .as_deref()
+            .expect("keychain failure should error");
+        assert!(error.contains("Keychain save failed"));
+        assert!(error.contains("The account was not added"));
+    }
+
+    #[test]
+    fn first_account_success_moves_staged_and_draft_key_allocations_to_final_owners() {
+        let mut terminal = terminal_with_encrypted_storage(Vec::new());
+        open_window(&mut terminal);
+        {
+            let state = window_state(&mut terminal);
+            state.address_input = ADDRESS_B.to_string();
+            state.key_input = sensitive_string(VALID_KEY);
+        }
+        let draft_key_allocation = window_state(&mut terminal).key_input.as_str().as_ptr();
+        let staged_key_allocation = Cell::new(std::ptr::null::<u8>());
+
+        let _task = terminal.submit_add_account_with(|terminal, persisted_accounts| {
+            assert_eq!(terminal.accounts.len(), 1);
+            assert!(terminal.accounts[0].agent_key.is_empty());
+            assert_eq!(persisted_accounts.len(), 1);
+            assert_eq!(persisted_accounts[0].agent_key.as_str(), VALID_KEY);
+            assert_eq!(
+                terminal.accounts[0].secret_id,
+                persisted_accounts[0].secret_id
+            );
+            staged_key_allocation.set(persisted_accounts[0].agent_key.as_ptr());
+            true
+        });
+
+        assert!(terminal.add_account_window.is_none());
+        assert_eq!(terminal.accounts.len(), 1);
+        assert_eq!(terminal.accounts[0].agent_key.as_str(), VALID_KEY);
+        assert_eq!(
+            terminal.accounts[0].agent_key.as_ptr(),
+            staged_key_allocation.get()
+        );
+        assert_eq!(terminal.wallet_key_input.as_str(), VALID_KEY);
+        assert_eq!(
+            terminal.wallet_key_input.as_str().as_ptr(),
+            draft_key_allocation
+        );
+        assert!(terminal.account_connect_pending);
+    }
+
+    #[test]
+    fn storage_callback_cannot_retarget_first_account_origin_or_key() {
+        let mut terminal = terminal_with_encrypted_storage(Vec::new());
+        open_window(&mut terminal);
+        {
+            let state = window_state(&mut terminal);
+            state.address_input = ADDRESS_B.to_string();
+            state.key_input = sensitive_string(VALID_KEY);
+        }
+        let staged_key_allocation = Cell::new(std::ptr::null::<u8>());
+        let changed_draft_allocation = Cell::new(std::ptr::null::<u8>());
+
+        let _task = terminal.submit_add_account_with(|terminal, persisted_accounts| {
+            staged_key_allocation.set(persisted_accounts[0].agent_key.as_ptr());
+            terminal.accounts[0].name = "Changed by storage callback".to_string();
+            terminal.accounts[0].wallet_address = ADDRESS_A.to_string();
+            let state = terminal
+                .add_account_window
+                .as_mut()
+                .expect("storage callback should retain the draft window");
+            state.key_input = sensitive_string(OTHER_VALID_KEY);
+            changed_draft_allocation.set(state.key_input.as_str().as_ptr());
+            true
+        });
+
+        assert_eq!(terminal.accounts[0].agent_key.as_str(), VALID_KEY);
+        assert_eq!(terminal.accounts[0].name, "Account 1");
+        assert_eq!(terminal.accounts[0].wallet_address, ADDRESS_B);
+        assert_eq!(terminal.wallet_address_input, ADDRESS_B);
+        assert_eq!(
+            terminal.accounts[0].agent_key.as_ptr(),
+            staged_key_allocation.get()
+        );
+        assert_eq!(terminal.wallet_key_input.as_str(), VALID_KEY);
+        assert_ne!(
+            terminal.wallet_key_input.as_str().as_ptr(),
+            changed_draft_allocation.get()
+        );
+    }
+
+    #[test]
+    fn switch_on_add_preserves_authorized_target_and_active_input_values() {
+        let mut terminal =
+            terminal_with_encrypted_storage(vec![account("acct-a", ADDRESS_A, "old-agent-key")]);
+        terminal.wallet_address_input = ADDRESS_A.to_string();
+        terminal.wallet_key_input = sensitive_string("old-agent-key");
+        open_window(&mut terminal);
+        {
+            let state = window_state(&mut terminal);
+            state.address_input = ADDRESS_B.to_string();
+            state.key_input = sensitive_string(VALID_KEY);
+        }
+        let draft_key_allocation = window_state(&mut terminal).key_input.as_str().as_ptr();
+        let staged_key_allocation = Cell::new(std::ptr::null::<u8>());
+
+        let _task = terminal.submit_add_account_with(|terminal, persisted_accounts| {
+            assert_eq!(terminal.accounts.len(), 2);
+            assert!(terminal.accounts[1].agent_key.is_empty());
+            assert_eq!(persisted_accounts.len(), 2);
+            staged_key_allocation.set(persisted_accounts[1].agent_key.as_ptr());
+            true
+        });
+
+        assert!(terminal.add_account_window.is_none());
+        assert_eq!(terminal.active_account_index, 1);
+        assert_eq!(terminal.accounts[1].agent_key.as_str(), VALID_KEY);
+        assert_eq!(
+            terminal.accounts[1].agent_key.as_ptr(),
+            staged_key_allocation.get()
+        );
+        assert_eq!(terminal.wallet_key_input.as_str(), VALID_KEY);
+        assert_ne!(
+            terminal.accounts[1].agent_key.as_ptr(),
+            draft_key_allocation
+        );
+        assert_eq!(
+            terminal.active_account_source,
+            ActiveAccountSource::Hyperliquid
+        );
+    }
+
+    #[test]
+    fn blocked_switch_on_add_never_retargets_the_active_key_input() {
+        let mut terminal =
+            terminal_with_encrypted_storage(vec![account("acct-a", ADDRESS_A, "old-agent-key")]);
+        terminal.wallet_address_input = ADDRESS_A.to_string();
+        terminal.wallet_key_input = sensitive_string("old-agent-key");
+        terminal.connected_address = Some(ADDRESS_A.to_string());
+        terminal.chase_orders.insert(42, chase_order(ADDRESS_A));
+        open_window(&mut terminal);
+        {
+            let state = window_state(&mut terminal);
+            state.address_input = ADDRESS_B.to_string();
+            state.key_input = sensitive_string(VALID_KEY);
+        }
+        let active_key_allocation = terminal.wallet_key_input.as_str().as_ptr();
+        let staged_key_allocation = Cell::new(std::ptr::null::<u8>());
+
+        let _task = terminal.submit_add_account_with(|terminal, persisted_accounts| {
+            assert!(terminal.accounts[1].agent_key.is_empty());
+            staged_key_allocation.set(persisted_accounts[1].agent_key.as_ptr());
+            true
+        });
+
+        assert!(terminal.add_account_window.is_none());
+        assert_eq!(terminal.accounts.len(), 2);
+        assert_eq!(terminal.active_account_index, 0);
+        assert_eq!(terminal.accounts[1].agent_key.as_str(), VALID_KEY);
+        assert_eq!(
+            terminal.accounts[1].agent_key.as_ptr(),
+            staged_key_allocation.get()
+        );
+        assert_eq!(terminal.wallet_key_input.as_str(), "old-agent-key");
+        assert_eq!(
+            terminal.wallet_key_input.as_str().as_ptr(),
+            active_key_allocation
+        );
+        assert!(terminal.chase_orders.contains_key(&42));
+        let blocked_toast = terminal
+            .toasts
+            .iter()
+            .find(|toast| toast.is_error)
+            .expect("blocked switch should toast");
+        assert!(blocked_toast.message.contains("switching accounts"));
+        let added_toast = terminal
+            .toasts
+            .iter()
+            .find(|toast| !toast.is_error)
+            .expect("add should still toast");
+        assert!(added_toast.message.contains("without switching"));
+    }
+
+    #[test]
+    fn first_account_success_preserves_trimmed_key_semantics() {
+        let mut terminal = terminal_with_encrypted_storage(Vec::new());
+        open_window(&mut terminal);
+        {
+            let state = window_state(&mut terminal);
+            state.address_input = ADDRESS_B.to_string();
+            state.key_input = sensitive_string(format!("  {VALID_KEY}\n"));
+        }
+
+        let _task = terminal.submit_add_account_with(|_, persisted_accounts| {
+            assert_eq!(persisted_accounts[0].agent_key.as_str(), VALID_KEY);
+            true
+        });
+
+        assert_eq!(terminal.accounts[0].agent_key.as_str(), VALID_KEY);
+        assert_eq!(terminal.wallet_key_input.as_str(), VALID_KEY);
     }
 
     #[test]
