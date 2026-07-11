@@ -144,6 +144,15 @@
   (`src/account_update/profile_rebinding.rs:9-69`,
   `src/account_update/profile.rs:150-234`,
   `src/account_update/connection.rs:129-216`).
+- Explicit agent-key saving constructs one caller-owned, ghost-filtered profile
+  snapshot with the draft key substituted directly, leaving the prior canonical
+  signing key untouched while either storage backend runs. Failure drops the
+  staged key; success moves that exact persisted allocation into the same
+  originating profile after an identity check, then drops all other snapshot
+  keys before scheduling config persistence. Backend payload/serialization
+  copies remain in their existing synchronous zeroizing scopes
+  (`src/account_state/persistence.rs:38-75`,
+  `src/account_update/profile.rs:335-389`).
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -289,6 +298,16 @@ empty. Ordinary encrypted/keychain failures move the exact allocations back;
 success scrubs the rollback immediately. F-31 now records the common installed-
 snapshot policy gap across saved deletion and OS-keychain rebinding without
 changing any exceptional feedback.
+
+Turn 28 closes the explicit-save caller's agent-key commit clone graph. Storage
+still receives a complete saved-profile credential bundle, but the caller now
+builds one snapshot directly with the draft key: the old committed active key is
+never copied into caller staging, ghost profiles remain absent, and every
+unrelated saved key is copied once there rather than twice before backend-owned
+serialization. The canonical signing key stays unchanged during the synchronous
+storage callback. A rejected save drops the staged draft; an accepted save moves
+the exact persisted allocation into the original profile and destroys the
+remaining snapshot before the unchanged debounced config save.
 
 ### Mutation Transport Phase Audit
 
@@ -2225,6 +2244,76 @@ target-specific cancellation policy, not HTTP replay.
   account clone and is the next secret-copy owner to audit; F-31 separately owns
   installed-snapshot authority.
 
+### F-33 — Explicit agent-key save builds cascading credential clones
+
+- Status: addressed in Turn 28; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium; canonical signing authority and failure handling were safe,
+  but every saved profile key and the draft key had more caller-owned live
+  allocations than the synchronous storage entry boundary requires
+- Scope: `save_active_account_credentials`; saved/ghost profile filtering;
+  OS-keychain and encrypted-config persistence; draft versus committed signing
+  authority; post-success config scheduling; secret buffer lifetime
+- Preconditions/event ordering:
+  1. A non-ghost active profile saves its current key input after the existing
+     pending-request/automation gate permits the operation.
+  2. The prior implementation cloned the complete runtime account vector,
+     replaced that clone's active key with a draft clone, then cloned every
+     persisted profile again through `persisted_accounts_from`.
+  3. Storage synchronously accepted or rejected the second snapshot.
+  4. Rejection dropped both staging vectors while canonical state stayed old;
+     success cloned the draft a third time into canonical state before both
+     vectors finally dropped.
+- Evidence: parent commit
+  `fe49d17a57683d8d83bf56479fbe42cb2a661ec5` shows the two full profile clones
+  and post-persistence draft clone in `save_active_account_credentials`.
+  Storage requires a full credential bundle, but it borrows it synchronously
+  and returns a boolean commit result; the successful staged key can therefore
+  become canonical by move.
+- Violated invariant: the explicit-save caller may own one draft allocation and
+  one storage-staging allocation. The prior committed key must remain the only
+  signing authority until success; unrelated saved keys should enter at most
+  one caller-owned storage snapshot. Backend-required zeroizing payload and
+  serialization buffers are separate synchronous scopes.
+- Risk: saving one key transiently multiplied every saved agent/integration key
+  before backend persistence and kept redundant draft copies alive through it.
+  All key copies were `Zeroizing`, no raw value entered diagnostics, and
+  canonical failure authority was correct, so no disclosure or wrong-key
+  signing is claimed. The excess lifetime magnified any future callback or
+  diagnostic defect.
+- Why existing checks did not cover it: tests proved draft edits do not commit,
+  encrypted success updates the payload, locked failure keeps the old signing
+  key, and active automation blocks changed drafts. They compared values, not
+  allocation ownership or the key visible in canonical state during the
+  persistence callback.
+- Implemented fix: construct one caller-owned persisted-account snapshot
+  directly with the draft key at the active runtime index while filtering ghosts
+  and never cloning the old active agent key. Keep canonical state unchanged
+  during the storage hook. On success, verify the originating profile identity
+  and move the exact staged key into canonical state; on failure, leave both
+  canonical/draft owners untouched. Explicitly drop the remaining snapshot
+  before the existing config save request; backend payload construction is
+  unchanged (`src/account_state/persistence.rs:38-75`,
+  `src/account_update/profile.rs:335-389`).
+- Regression coverage: the success test places a ghost before the active
+  profile and another saved profile after it, proves the hook sees only the two
+  persisted profiles and the old canonical key, then requires canonical state
+  to own the exact staged allocation. The failure control proves the original
+  committed and draft allocations both survive unchanged. Existing encrypted
+  success/locked failure and automation-gate tests retain backend and trading
+  behavior coverage (`src/account_update/profile.rs:768-894`).
+- Smallest behavior-preserving fix: key equality/change detection, ghost
+  handling, pending/Chase/TWAP gates, backend selection, profile order and
+  payload values, storage status/warnings, canonical commit timing, captured
+  signing context, debounced config persistence, schema, tasks, and every
+  visible string remain unchanged. Only snapshot construction, successful
+  buffer transfer, and destruction timing change.
+- Residual uncertainty: Rust type-checking and tests remain blocked by ALSA
+  metadata. Account switching/add-account flows deliberately create separate
+  profile and key-input owners and need inclusion in the forthcoming diagnostic
+  and remaining-copy inventory; no claim beyond this explicit-save transaction
+  is made.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -3949,6 +4038,70 @@ target-specific cancellation policy, not HTTP replay.
   wide account/order `Debug`, external error, toast/status, snapshot, and
   progress-log redaction pass.
 
+## Turn 28 — Commit One Staged Agent-Key Snapshot
+
+- Status: F-33 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: explicit active-profile credential saving; old committed key, draft
+  key input, saved/ghost profile snapshot, both storage modes, identity-safe
+  commit, captured signing authority, and config-save scheduling
+- Invariant: storage receives exactly one caller-owned saved-profile snapshot
+  containing the draft key while the prior canonical key remains authoritative.
+  Failure leaves both canonical and draft allocations unchanged; success moves
+  the exact persisted key into the originating profile and promptly scrubs every
+  other caller-staged key. Backend-required zeroizing buffers remain separate.
+- Protected behavior: ghost rejection; changed-key pending/Chase/TWAP gates;
+  unchanged-key saves; profile order and active selection; keychain/encrypted
+  payloads, migration flags, and status text; captured signing context;
+  canonical commit only after storage success; debounced config save; config
+  schema; and all visible interactions.
+- Preconditions/event ordering: after existing gates, build one caller-owned,
+  ghost-filtered snapshot directly from runtime profiles, substituting the draft
+  only at the active runtime index. Call the same synchronous storage boundary
+  while canonical state stays old. Apply or discard the staged key from the
+  returned boolean, destroy the snapshot, then request the same config save on
+  success.
+- Evidence: repository-wide call-site search found one explicit-save caller of
+  `persist_active_profile_secrets_from_accounts`; same-address connect uses the
+  separate one-snapshot wrapper. F-33 records the parent clone graph, backend
+  contract, current source, and allocation assertions.
+- Change: added a caller-owned persisted-snapshot constructor that substitutes
+  the active draft without cloning the old committed key, refactored explicit
+  save behind a testable synchronous persistence boundary, moved the successful
+  staged key into canonical state, and dropped the remaining snapshot before
+  config-save scheduling. Added success/failure allocation and authority
+  regressions plus the security architecture note.
+- Tests/checks:
+  - The pre-edit focused attempt for
+    `agent_key_save_commits_the_exact_persisted_snapshot_allocation` stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    the system `alsa.pc` package.
+  - The post-edit focused `account_update::profile::tests::agent_key_save`
+    attempt stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup/window/subscription path changed,
+    compilation is already blocked, and no live exchange or credential-bearing
+    operation was run.
+- Compatibility/UX assessment: persistence sees the same ordered profile set
+  and exact key values. Canonical signing state remains old during the same
+  backend call and changes only on the same success result. Failure state,
+  statuses, tasks, config timing, and payloads are unchanged; successful state
+  differs only in allocation provenance. No visible copy or stored format
+  changes.
+- Residual risk: Kerosene has not type-checked on this host. F-31 remains
+  deferred. Account switching/add-account key-owner copies and repository-wide
+  account/order `Debug`, external-error, toast/status, snapshot, and progress-
+  log redaction remain to audit before Track 9 or the campaign can close.
+- Prior turn commit hash: `fe49d17a57683d8d83bf56479fbe42cb2a661ec5`
+- Next candidate: begin the repository-wide sensitive diagnostic audit. Enumerate
+  every account/order/credential-bearing `Debug` implementation and derived
+  `Debug` owner, then trace external errors into messages, statuses, toasts,
+  snapshots, and logs. Fix only concrete leakage with redaction tests; include
+  switching/add-account key copies in that owner inventory.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -3971,8 +4124,8 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused address-edit/connect rebind tests,
-  including allocation rollback and installed-snapshot characterizations;
+- Environment-blocked this turn: focused explicit agent-key save authority,
+  allocation, encrypted success/failure, and automation-gate tests;
   `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
@@ -3981,9 +4134,9 @@ target-specific cancellation policy, not HTTP replay.
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, and F-32 have source
-  fixes and regression coverage but await executable validation on a host with
-  ALSA development metadata.
+- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32, and F-33 have
+  source fixes and regression coverage but await executable validation on a
+  host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
   financial invariants have characterization coverage.
 - F-24 is explicitly deferred for a main-window/final-save failure policy; its
@@ -3998,6 +4151,7 @@ target-specific cancellation policy, not HTTP replay.
   be executed on this host. Ghost-profile cluster stream invalidation is
   source-repaired but likewise uncompiled. TWAP captured-key terminalization is
   source-complete apart from the deferred history decision. Saved-profile
-  delete and address-rebind key ownership are source-hardened apart from F-31.
-  Explicit credential-save copies, local planning/state diagnostic redaction,
-  and the rest of Track 9 require completion before a final verdict.
+  delete and address-rebind key ownership are source-hardened apart from F-31;
+  explicit credential-save ownership is source-hardened by F-33. Switching/add-
+  account copies, local planning/state diagnostic redaction, and the rest of
+  Track 9 require completion before a final verdict.

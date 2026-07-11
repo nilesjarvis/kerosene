@@ -333,6 +333,15 @@ impl TradingTerminal {
     }
 
     pub(super) fn save_active_account_credentials(&mut self) -> Task<Message> {
+        self.save_active_account_credentials_with(|terminal, accounts| {
+            terminal.persist_active_profile_secrets_from_accounts(accounts)
+        })
+    }
+
+    fn save_active_account_credentials_with(
+        &mut self,
+        mut persist_profile_secrets: impl FnMut(&mut Self, &[config::AccountProfile]) -> bool,
+    ) -> Task<Message> {
         if self.active_account_is_ghost() {
             self.secret_store_status = Some(("Ghost wallets are in memory only".into(), false));
             return Task::none();
@@ -350,17 +359,30 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let mut next_accounts = self.accounts.clone();
-        next_accounts[self.active_account_index].agent_key.zeroize();
-        next_accounts[self.active_account_index].agent_key =
-            self.wallet_key_input.clone().into_zeroizing();
-        let persisted_accounts =
-            Self::persisted_accounts_from(&next_accounts, &self.ghost_account_secret_ids);
+        let profile_index = self.active_account_index;
+        let (mut persisted_accounts, persisted_profile_index) = self
+            .persisted_accounts_with_active_agent_key(self.wallet_key_input.as_str())
+            .expect("active saved profile must exist while staging credentials");
 
-        if self.persist_active_profile_secrets_from_accounts(&persisted_accounts) {
-            self.accounts[self.active_account_index].agent_key.zeroize();
-            self.accounts[self.active_account_index].agent_key =
-                self.wallet_key_input.clone().into_zeroizing();
+        let persisted = persist_profile_secrets(self, &persisted_accounts);
+        if persisted {
+            let staged_profile = persisted_accounts
+                .get_mut(persisted_profile_index)
+                .expect("staged active profile disappeared after credential persistence");
+            let profile = self
+                .accounts
+                .get_mut(profile_index)
+                .expect("active profile disappeared after credential persistence");
+            assert!(
+                profile.secret_id == staged_profile.secret_id,
+                "active profile identity changed during credential persistence"
+            );
+            profile.agent_key.zeroize();
+            profile.agent_key = std::mem::take(&mut staged_profile.agent_key);
+        }
+        drop(persisted_accounts);
+
+        if persisted {
             self.persist_config();
         }
         Task::none()
@@ -765,6 +787,82 @@ mod tests {
         );
         assert!(!terminal.secret_migration_save_blocked);
         assert!(terminal.config_save_due_at.is_some());
+    }
+
+    #[test]
+    fn agent_key_save_commits_the_exact_persisted_snapshot_allocation() {
+        let mut terminal = terminal_with_active_account(ADDRESS_A, "agent-key");
+        terminal
+            .accounts
+            .insert(0, account("ghost-a", ADDRESS_B, "ghost-agent-key"));
+        terminal
+            .ghost_account_secret_ids
+            .insert("ghost-a".to_string());
+        terminal.active_account_index = 1;
+        terminal
+            .accounts
+            .push(account("acct-b", ADDRESS_B, "other-agent-key"));
+        let original_committed_allocation = terminal.accounts[1].agent_key.as_ptr();
+
+        let _task = terminal.update_wallet_key_input("new-agent-key".into());
+        let draft_allocation = terminal.wallet_key_input.as_str().as_ptr();
+        let staged_allocation = Cell::new(std::ptr::null::<u8>());
+        let _task = terminal.save_active_account_credentials_with(|terminal, accounts| {
+            assert_eq!(terminal.accounts[1].agent_key.as_str(), "agent-key");
+            assert_eq!(
+                terminal.accounts[1].agent_key.as_ptr(),
+                original_committed_allocation
+            );
+            assert_eq!(
+                terminal.wallet_key_input.as_str().as_ptr(),
+                draft_allocation
+            );
+            assert_eq!(accounts.len(), 2);
+            assert_eq!(accounts[0].secret_id, "acct-a");
+            assert_eq!(accounts[0].agent_key.as_str(), "new-agent-key");
+            assert_eq!(accounts[1].secret_id, "acct-b");
+            assert_eq!(accounts[1].agent_key.as_str(), "other-agent-key");
+            staged_allocation.set(accounts[0].agent_key.as_ptr());
+            true
+        });
+
+        assert_eq!(terminal.accounts[1].agent_key.as_str(), "new-agent-key");
+        assert_eq!(
+            terminal.accounts[1].agent_key.as_ptr(),
+            staged_allocation.get()
+        );
+        assert_eq!(
+            terminal.wallet_key_input.as_str().as_ptr(),
+            draft_allocation
+        );
+        assert!(terminal.config_save_due_at.is_some());
+    }
+
+    #[test]
+    fn agent_key_save_failure_preserves_original_committed_and_draft_allocations() {
+        let mut terminal = terminal_with_active_account(ADDRESS_A, "agent-key");
+        terminal.config_save_due_at = None;
+        let original_committed_allocation = terminal.accounts[0].agent_key.as_ptr();
+
+        let _task = terminal.update_wallet_key_input("new-agent-key".into());
+        let draft_allocation = terminal.wallet_key_input.as_str().as_ptr();
+        let _task = terminal.save_active_account_credentials_with(|terminal, accounts| {
+            assert_eq!(terminal.accounts[0].agent_key.as_str(), "agent-key");
+            assert_eq!(accounts[0].agent_key.as_str(), "new-agent-key");
+            false
+        });
+
+        assert_eq!(terminal.accounts[0].agent_key.as_str(), "agent-key");
+        assert_eq!(
+            terminal.accounts[0].agent_key.as_ptr(),
+            original_committed_allocation
+        );
+        assert_eq!(terminal.wallet_key_input.as_str(), "new-agent-key");
+        assert_eq!(
+            terminal.wallet_key_input.as_str().as_ptr(),
+            draft_allocation
+        );
+        assert!(terminal.config_save_due_at.is_none());
     }
 
     #[test]

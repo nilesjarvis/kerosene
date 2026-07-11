@@ -45,6 +45,13 @@ account snapshot after the active key has been removed. Failure restores the
 original allocations; success scrubs the rollback keys and sensitive identity
 copies immediately.
 
+Explicit agent-key saving builds one caller-owned persisted-profile snapshot
+with the draft key substituted directly, while the previous committed key
+remains the signing authority. Failed storage drops that caller-staged copy;
+successful storage moves the exact staged key buffer into committed profile
+state rather than cloning it again. Backend-required payload and serialization
+buffers remain short-lived zeroizing scopes inside the synchronous call.
+
 Secret-bearing state includes:
 
 - `wallet_key_input`

@@ -35,6 +35,45 @@ impl TradingTerminal {
         Self::persisted_accounts_from(&self.accounts, &self.ghost_account_secret_ids)
     }
 
+    pub(crate) fn persisted_accounts_with_active_agent_key(
+        &self,
+        agent_key: &str,
+    ) -> Option<(Vec<AccountProfile>, usize)> {
+        // Construct the storage snapshot directly with the draft key so the
+        // previous committed signing key is never cloned into staging.
+        let active_index = self.active_account_index;
+        let active_profile = self.accounts.get(active_index)?;
+        if self
+            .ghost_account_secret_ids
+            .contains(&active_profile.secret_id)
+        {
+            return None;
+        }
+
+        let mut persisted_accounts = Vec::with_capacity(self.accounts.len());
+        let mut persisted_active_index = None;
+        for (index, profile) in self.accounts.iter().enumerate() {
+            if self.ghost_account_secret_ids.contains(&profile.secret_id) {
+                continue;
+            }
+
+            if index == active_index {
+                persisted_active_index = Some(persisted_accounts.len());
+                persisted_accounts.push(AccountProfile {
+                    secret_id: profile.secret_id.clone(),
+                    name: profile.name.clone(),
+                    wallet_address: profile.wallet_address.clone(),
+                    agent_key: agent_key.to_string().into(),
+                    hydromancer_api_key: profile.hydromancer_api_key.clone(),
+                });
+            } else {
+                persisted_accounts.push(profile.clone());
+            }
+        }
+
+        Some((persisted_accounts, persisted_active_index?))
+    }
+
     pub(crate) fn persisted_journal_entries_by_account_from(
         journal: &journal::JournalState,
         ghost_account_secret_ids: &HashSet<String>,
