@@ -965,6 +965,121 @@ impl fmt::Debug for RedactedJournalSnapshotRequest {
 }
 
 #[derive(Clone)]
+pub(crate) struct TelegramFeedPageMessageResult(Box<Result<TelegramFeedPage, String>>);
+
+impl TelegramFeedPageMessageResult {
+    pub(crate) fn new(result: Result<TelegramFeedPage, String>) -> Self {
+        Self(Box::new(result))
+    }
+
+    pub(crate) fn into_result(self) -> Result<TelegramFeedPage, String> {
+        *self.0
+    }
+}
+
+impl From<Result<TelegramFeedPage, String>> for TelegramFeedPageMessageResult {
+    fn from(result: Result<TelegramFeedPage, String>) -> Self {
+        Self::new(result)
+    }
+}
+
+impl fmt::Debug for TelegramFeedPageMessageResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(_) => f.write_str("Ok(TelegramFeedPage(<redacted>))"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct TelegramImageMessageResult(Box<Result<Vec<u8>, String>>);
+
+impl TelegramImageMessageResult {
+    pub(crate) fn new(result: Result<Vec<u8>, String>) -> Self {
+        Self(Box::new(result))
+    }
+
+    pub(crate) fn into_result(self) -> Result<Vec<u8>, String> {
+        *self.0
+    }
+}
+
+impl From<Result<Vec<u8>, String>> for TelegramImageMessageResult {
+    fn from(result: Result<Vec<u8>, String>) -> Self {
+        Self::new(result)
+    }
+}
+
+impl fmt::Debug for TelegramImageMessageResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct TelegramPrivateChannelsMessageResult(
+    Box<Result<Vec<TelegramPrivateChannelCandidate>, String>>,
+);
+
+impl TelegramPrivateChannelsMessageResult {
+    pub(crate) fn new(result: Result<Vec<TelegramPrivateChannelCandidate>, String>) -> Self {
+        Self(Box::new(result))
+    }
+
+    pub(crate) fn into_result(self) -> Result<Vec<TelegramPrivateChannelCandidate>, String> {
+        *self.0
+    }
+}
+
+impl From<Result<Vec<TelegramPrivateChannelCandidate>, String>>
+    for TelegramPrivateChannelsMessageResult
+{
+    fn from(result: Result<Vec<TelegramPrivateChannelCandidate>, String>) -> Self {
+        Self::new(result)
+    }
+}
+
+impl fmt::Debug for TelegramPrivateChannelsMessageResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(_) => f.write_str("Ok(TelegramPrivateChannels(<redacted>))"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct RedactedTelegramAssetUrl(String);
+
+impl RedactedTelegramAssetUrl {
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedTelegramAssetUrl {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedTelegramAssetUrl {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Debug for RedactedTelegramAssetUrl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("TelegramAssetUrl(<redacted>)")
+    }
+}
+
+#[derive(Clone)]
 pub(crate) struct TelegramFastAuthMessageResult(Box<Result<TelegramFastAuthOutcome, String>>);
 
 impl TelegramFastAuthMessageResult {
@@ -1673,9 +1788,20 @@ pub(crate) enum Message {
     SetPortfolioWindow(PortfolioWindow),
     RefreshTelegramFeed,
     TelegramFeedRefreshTick,
-    TelegramFeedLoaded(String, u64, Box<Result<TelegramFeedPage, String>>),
-    TelegramAvatarLoaded(String, String, u64, Box<Result<Vec<u8>, String>>),
-    TelegramMediaLoaded(String, u64, String, u64, Box<Result<Vec<u8>, String>>),
+    TelegramFeedLoaded(String, u64, TelegramFeedPageMessageResult),
+    TelegramAvatarLoaded(
+        String,
+        RedactedTelegramAssetUrl,
+        u64,
+        TelegramImageMessageResult,
+    ),
+    TelegramMediaLoaded(
+        String,
+        u64,
+        RedactedTelegramAssetUrl,
+        u64,
+        TelegramImageMessageResult,
+    ),
     ToggleTelegramFastFeed,
     TelegramFeedDismissOnboarding,
     TelegramFeedShowOnboarding,
@@ -1696,10 +1822,7 @@ pub(crate) enum Message {
     TelegramFeedChannelInputChanged(String),
     TelegramFeedAddChannel,
     TelegramPrivateChannelsRefresh,
-    TelegramPrivateChannelsLoaded(
-        u64,
-        Box<Result<Vec<TelegramPrivateChannelCandidate>, String>>,
-    ),
+    TelegramPrivateChannelsLoaded(u64, TelegramPrivateChannelsMessageResult),
     TelegramFeedAddPrivateChannel(i64),
     ToggleTelegramPrivateChannelCandidatesExpanded,
     TelegramFeedRemoveChannel(RedactedTelegramChannelKey),
@@ -2253,11 +2376,13 @@ mod tests {
         RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput,
         RedactedPnlCardMessageResult, RedactedPositioningMessageResult,
         RedactedPreferenceAssetImportResult, RedactedPublicMarketMessageResult,
-        RedactedTelegramChannelKey, RedactedWalletClusterId, RedactedWalletClusterName,
-        RedactedWalletLabel, RedactedWalletLabelsMessageResult, SchwabAccountsMessageResult,
-        SchwabTokenRefreshMessageResult, SecretInput, TelegramFastAuthMessageResult,
-        TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult, XAuthContextMessageResult,
-        XFeedPageMessageResult, XListsMessageResult, XProfileImageMessageResult,
+        RedactedTelegramAssetUrl, RedactedTelegramChannelKey, RedactedWalletClusterId,
+        RedactedWalletClusterName, RedactedWalletLabel, RedactedWalletLabelsMessageResult,
+        SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult, SecretInput,
+        TelegramFastAuthMessageResult, TelegramFastAuthOutcome, TelegramFeedPageMessageResult,
+        TelegramImageMessageResult, TelegramPrivateChannelsMessageResult,
+        XAccessTokenRefreshMessageResult, XAuthContextMessageResult, XFeedPageMessageResult,
+        XListsMessageResult, XProfileImageMessageResult,
     };
     use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
     use crate::api::{BookLevel, ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OrderBook};
@@ -3289,6 +3414,55 @@ mod tests {
                     display_name: "sentinel-secret".to_string(),
                 })),
             ),
+            Message::TelegramFeedLoaded(
+                "public-channel".to_string(),
+                3,
+                TelegramFeedPageMessageResult::new(Ok(crate::telegram_feed::TelegramFeedPage {
+                    profile: crate::telegram_feed::TelegramChannelProfile {
+                        channel: "public-channel".to_string(),
+                        title: "sentinel-secret".to_string(),
+                        initials: "SS".to_string(),
+                        avatar_url: None,
+                        avatar_handle: None,
+                        avatar_loading_url: None,
+                        avatar_request_id: 0,
+                        avatar_failed_at_ms: None,
+                    },
+                    posts: Vec::new(),
+                })),
+            ),
+            Message::TelegramFeedLoaded(
+                "public-channel".to_string(),
+                4,
+                TelegramFeedPageMessageResult::new(Err("sentinel-secret".to_string())),
+            ),
+            Message::TelegramAvatarLoaded(
+                "public-channel".to_string(),
+                "https://images.invalid/sentinel-secret.jpg".into(),
+                5,
+                TelegramImageMessageResult::new(Ok(b"sentinel-secret".to_vec())),
+            ),
+            Message::TelegramMediaLoaded(
+                "public-channel".to_string(),
+                6,
+                "https://images.invalid/sentinel-secret.jpg".into(),
+                7,
+                TelegramImageMessageResult::new(Err("sentinel-secret".to_string())),
+            ),
+            Message::TelegramPrivateChannelsLoaded(
+                8,
+                TelegramPrivateChannelsMessageResult::new(Ok(vec![
+                    crate::telegram_feed::TelegramPrivateChannelCandidate {
+                        peer_id: 42,
+                        title: "sentinel-secret".to_string(),
+                        avatar_handle: None,
+                    },
+                ])),
+            ),
+            Message::TelegramPrivateChannelsLoaded(
+                9,
+                TelegramPrivateChannelsMessageResult::new(Err("sentinel-secret".to_string())),
+            ),
             Message::XFeedAccessTokenChanged("sentinel-secret".into()),
             Message::XFeedOAuthClientIdChanged("sentinel-secret".into()),
             Message::XFeedRefreshTokenChanged("sentinel-secret".into()),
@@ -3437,6 +3611,39 @@ mod tests {
                 "debug output leaked a secret: {rendered}"
             );
         }
+    }
+
+    #[test]
+    fn telegram_message_wrappers_preserve_exact_values() {
+        const ERROR: &str = "telegram-result-error-sentinel";
+        const URL: &str = "https://images.invalid/exact-telegram-asset.jpg";
+        let image = vec![0_u8, 1, 2, 3];
+
+        assert_eq!(
+            TelegramFeedPageMessageResult::new(Err(ERROR.to_string()))
+                .into_result()
+                .expect_err("page error should remain exact"),
+            ERROR
+        );
+        assert_eq!(
+            TelegramImageMessageResult::new(Ok(image.clone()))
+                .into_result()
+                .expect("image bytes should remain exact"),
+            image
+        );
+
+        let candidates = TelegramPrivateChannelsMessageResult::new(Ok(vec![
+            crate::telegram_feed::TelegramPrivateChannelCandidate {
+                peer_id: 42,
+                title: "Exact Private Channel".to_string(),
+                avatar_handle: None,
+            },
+        ]))
+        .into_result()
+        .expect("private candidates should remain exact");
+        assert_eq!(candidates[0].peer_id, 42);
+        assert_eq!(candidates[0].title, "Exact Private Channel");
+        assert_eq!(RedactedTelegramAssetUrl::from(URL).into_string(), URL);
     }
 
     #[test]

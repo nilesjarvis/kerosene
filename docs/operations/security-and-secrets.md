@@ -146,6 +146,14 @@ Saved account profiles persist secret IDs and wallet metadata, not raw agent
 keys. Secret payloads map secret IDs to agent keys and global integration
 tokens inside the selected secret storage backend.
 
+Telegram public-page, avatar/media, and private-channel discovery task results
+cross the Elm message boundary through exact-value wrappers whose diagnostics
+show only result shape. Asset URLs use a separate exact-value wrapper that is
+always redacted when formatted. Accepted handlers recover the original page,
+candidate list, bytes, URL, and error without transformation; generic message
+formatting therefore cannot reproduce feed content, private channel metadata,
+image data, URL query material, or upstream error text.
+
 X direct-token authentication and refresh-token exchange share an exact
 runtime credential-operation owner. A refresh may supersede a read-only auth
 check; once its POST is dispatched it remains owner until settlement because

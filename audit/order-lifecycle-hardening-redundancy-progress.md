@@ -6458,6 +6458,67 @@ target-specific cancellation policy, not HTTP replay.
   behavior; the next poll repairs a metadata-transition miss without crossing
   content identity, and changing that observable timing is outside this batch.
 
+### F-80 — Telegram task results traverse generic Elm diagnostics
+
+- Status: addressed in Turn 73; focused source controls added, but executable
+  validation is blocked before Kerosene compilation by the missing system ALSA
+  package
+- Severity: Medium privacy and diagnostic-boundary hardening; no exchange or
+  order-lifecycle consumer exists
+- Scope: public channel page, avatar, media, and signed-in private-channel
+  discovery task publishers; Elm message variants; update recovery; asset URL,
+  image byte, page, candidate, and error diagnostics; existing handler tests;
+  docs; and negative financial-consumer review. MTProto auth/session/event and
+  completion-ownership sequencing remain a separate audit.
+- Preconditions/event ordering: each task maps its raw `Result` directly into a
+  derived-`Debug` `Message`. Page successes recursively format profiles/posts,
+  private discovery successes format account channel metadata, image successes
+  format byte vectors, and every error formats upstream text. Avatar/media URLs
+  are independent raw message strings. These surfaces exist before the update
+  handler can discard image errors or apply its visible error policy.
+- Evidence: the root feed update route is the sole consumer of all four result
+  families. Public refresh publishes channel plus request ID and page result;
+  avatar/media follow-ups additionally publish exact URL and image bytes;
+  private discovery publishes request ID plus account channel candidates. Their
+  established handlers recover the values immediately and own all parsing,
+  cache/backoff, status, and rendering effects. Repository-wide searches found
+  no Telegram value in preparation, signing, Chase/TWAP, cluster execution,
+  account reconciliation, or another exchange mutation.
+- Violated invariant: asynchronous private-integration results must be safe at
+  the Elm boundary itself. Functional consumers must retain exact values, while
+  generic diagnostics must not traverse feed/private-account content, image
+  material or size, URL query material, or uncontrolled external errors.
+- Risk: debug logging or panic context between task completion and update can
+  disclose public-feed content that the app otherwise treats as transient,
+  private Telegram channel metadata, image bytes/URLs, or provider error text.
+  This is a privacy/diagnostic failure, not a financial mutation.
+- Implemented fix: add dedicated exact-value result wrappers for pages, image
+  results, and private candidate lists plus an exact-value, always-redacted
+  asset URL wrapper. Task closures wrap at publication; the root Telegram update
+  route restores the original values at the prior consumption point. Wrapper
+  `Debug` reports only `Ok`/`Err` shape and redaction markers.
+- Regression coverage: the central secret-bearing message test now formats
+  successful page/private-candidate/image results, image errors, and sentinel
+  asset URLs and proves none of their values escape. A separate extraction test
+  proves page errors, image bytes, private candidate identity/title, and asset
+  URLs remain exact. Existing public-feed, avatar/media cache/backoff, stale
+  result, and private discovery tests use the new boundary without changing
+  their assertions.
+- Smallest behavior-preserving fix: message-only wrappers, first-update-arm
+  extraction, focused tests, and lifecycle/security documentation. Endpoints,
+  request methods, timeout/body limits, HTML/MTProto parsing, task count and
+  timing, request IDs, accepted error/status text, post merge/dedupe/order,
+  notifications, image handles/cache/backoff, candidates, session/credential
+  storage, pane/settings UX, persistence, and every trading semantic are
+  unchanged.
+- Residual uncertainty: Kerosene has not type-checked or launched on this host.
+  Rustfmt, producer/consumer review, exact extraction controls, and a negative
+  financial search establish the intended diagnostic boundary, but tests cannot
+  execute until ALSA development metadata is available. Public/private request
+  allocators, config-reset aliasing, replay/wrap, fast-auth challenges, reconnect
+  nonces, session/channel generations, MTProto event ownership, and accepted
+  stream diagnostics remain the next Telegram lifecycle audit.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -11373,6 +11434,70 @@ target-specific cancellation policy, not HTTP replay.
   MTProto requests, cursor/dedupe/order/media/avatar behavior, notifications,
   session/credential storage, pane/settings UX, and every trading semantic.
 
+## Turn 73 — Bound Telegram Task-Result Diagnostics
+
+- Status: F-80 implemented; executable Rust validation environment-blocked
+- Severity: Medium privacy/diagnostic hardening; no financial consumer
+- Scope: public page, avatar/media, and private-channel discovery task/result
+  message boundaries; exact handler extraction; asset URL and payload/error
+  diagnostics; existing behavior tests; docs; and lifecycle handoff
+- Invariant: exact Telegram task values remain available only to their
+  functional update handlers; generic Elm diagnostics cannot traverse page or
+  private-channel content, image bytes, asset URLs, or external errors.
+- Protected behavior: exact public fetch and image requests; endpoints,
+  timeouts/body caps, parsing, post ordering/dedup/limits, ticker resolution,
+  notifications, avatar/media cache and retry backoff, private candidate scan,
+  all status/error copy, credentials/session storage, pane/settings UX,
+  persistence, and every order/signing/automation semantic.
+- Preconditions/event ordering: four raw boxed result families and two raw URL
+  fields crossed the derived-`Debug` `Message` boundary before their existing
+  handlers could apply content/error policy. Successful pages, candidates, and
+  bytes plus failed external requests were therefore recursively formattable.
+- Evidence: F-80 records all four task publishers, the root result routes and
+  sole functional handlers, cache/backoff/status consumers, the fast-event
+  distinction, persistence/reset/view boundaries, and negative financial
+  search. No Telegram result enters an exchange mutation.
+- Change: publish page, image, and private-candidate results through dedicated
+  exact-value, value-neutral wrappers and publish image URLs through an
+  always-redacted exact-value wrapper. Recover each value immediately in the
+  same root update arm before invoking the unchanged handler. Add success/error
+  leak controls, exact extraction controls, and docs.
+- Tests/checks:
+  - Baseline Telegram feed, fast-feed, and `cargo check` attempts stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    `alsa.pc`.
+  - Post-fix focused message-wrapper/diagnostic and Telegram update attempts,
+    `cargo check`, full `cargo test`, and strict clippy stopped at the same
+    dependency boundary before Kerosene compilation.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed. Source,
+    publisher/consumer, exact extraction, request/cache/status, persistence,
+    view, fast-event, financial-consumer, secret/artifact, and compatibility
+    reviews are recorded below.
+  - Startup smoke was not run because boot can dispatch credential-bearing
+    Telegram work and the host could not be guaranteed credential-free. No
+    Telegram/network, image, credential store/config, private-feed, exchange,
+    or other external action ran.
+- Compatibility/UX assessment: every producer launches the same future and now
+  wraps only at message publication. Every update arm unwraps before the same
+  handler call, preserving the exact success/error/URL/byte value and all
+  existing request ownership. Wrapper state is transient and not serialized.
+  Only generic diagnostic formatting changes. No copy, control, data, timing,
+  persisted field/default, signed byte, order behavior, or trading semantic
+  changed.
+- Residual risk: Kerosene has not type-checked on this host. F-80 is source-
+  hardened, but executable validation and dependency-owned response/image
+  buffers remain residual. Telegram public/private allocator ownership,
+  saturation/reset/replay, fast-auth challenge ownership, reconnect/session/
+  channel generations, MTProto event acceptance, accepted error redaction, and
+  nested private model diagnostics remain for the next bounded batch.
+- Prior turn commit hash: `97aa4dfecb89ef699f84225d325a938f70bde185`
+- Next candidate: complete Telegram request/event ownership: use terminal-
+  lifetime wrapping allocators and exact one-shot contexts for public refresh,
+  private discovery, avatar/media, fast auth, and reconnect/session/channel
+  generations; reject stale/replayed/reset work before value recovery; preserve
+  every ordinary request, cursor, cache, status, notification, session,
+  persistence, UI, and trading behavior.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -11414,24 +11539,22 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline X tests and `cargo check`; pre-fix
-  List latest/replay/wrap, auth/manual ordering, source user/payload/rate-limit,
-  profile/URL, config-reset, and private-diagnostic controls; post-fix full X
-  update/state, exact secret-bearing/image-message, routing, config-clear, and X
-  config-serialization suites; `cargo check`; full `cargo test`; and strict
-  clippy at `alsa-sys` system dependency discovery, before Kerosene was compiled.
-- Startup smoke was not run because boot can dispatch credential-bearing X work
-  and the host could not be guaranteed credential-free. Normal boot/timer/task
-  entry and unchanged requests were source-audited instead. No secret backend/
-  config mutation, X or image request, private-feed action, config clear,
-  exchange mutation, or credential-bearing operation was run.
+- Environment-blocked this turn: baseline Telegram and fast-feed tests plus
+  `cargo check`; post-fix message diagnostic/extraction and Telegram update
+  tests; `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
+  dependency discovery, before Kerosene was compiled.
+- Startup smoke was not run because boot can dispatch credential-bearing
+  Telegram work and the host could not be guaranteed credential-free. Normal
+  boot/timer/task entry and unchanged requests were source-audited instead. No
+  secret backend/config mutation, Telegram or image request, private-feed
+  action, config clear, exchange mutation, or credential-bearing operation ran.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-79
+  F-40, and F-42 through F-80
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -11536,7 +11659,10 @@ target-specific cancellation policy, not HTTP replay.
   profile-key/URL image ownership, reset allocation, and private model/message/
   error diagnostics are source-hardened by F-79 while exact normal requests,
   cursor/dedup/cache/rendering behavior, persistence, feed UX, and trading
-  behavior remain unchanged. Telegram and other private-integration result
-  lifecycles, independently formattable nested account/order types, and
-  classified external-status paths, plus the rest of Track 9, require completion
-  before a final verdict.
+  behavior remain unchanged. Telegram public-page, image, and private-channel
+  discovery task-result diagnostics are source-hardened by F-80 while exact
+  values, normal requests, cache/backoff behavior, feed UX, persistence, and
+  trading behavior remain unchanged. Telegram request/auth/event ownership and
+  remaining private model diagnostics, independently formattable nested
+  account/order types, classified external-status paths, and the rest of Track
+  9 require completion before a final verdict.

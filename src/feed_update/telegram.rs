@@ -32,15 +32,24 @@ impl TradingTerminal {
             Message::RefreshTelegramFeed => self.request_telegram_feed_refresh(),
             Message::TelegramFeedRefreshTick => self.request_telegram_feed_background_refresh(),
             Message::TelegramFeedLoaded(channel, request_id, result) => {
-                self.handle_telegram_public_feed_loaded(channel, request_id, *result)
+                self.handle_telegram_public_feed_loaded(channel, request_id, result.into_result())
             }
             Message::TelegramAvatarLoaded(channel, avatar_url, request_id, result) => {
-                self.handle_telegram_avatar_loaded(channel, avatar_url, request_id, *result);
+                self.handle_telegram_avatar_loaded(
+                    channel,
+                    avatar_url.into_string(),
+                    request_id,
+                    result.into_result(),
+                );
                 Task::none()
             }
             Message::TelegramMediaLoaded(channel, message_id, media_url, request_id, result) => {
                 self.handle_telegram_media_loaded(
-                    channel, message_id, media_url, request_id, *result,
+                    channel,
+                    message_id,
+                    media_url.into_string(),
+                    request_id,
+                    result.into_result(),
                 );
                 Task::none()
             }
@@ -119,7 +128,7 @@ impl TradingTerminal {
             Message::TelegramFeedAddChannel => self.add_telegram_feed_channel(),
             Message::TelegramPrivateChannelsRefresh => self.request_telegram_private_channels(),
             Message::TelegramPrivateChannelsLoaded(request_id, result) => {
-                self.handle_telegram_private_channels_loaded(request_id, *result);
+                self.handle_telegram_private_channels_loaded(request_id, result.into_result());
                 Task::none()
             }
             Message::TelegramFeedAddPrivateChannel(peer_id) => {
@@ -291,7 +300,7 @@ impl TradingTerminal {
         self.telegram_feed.fast_status = Some(("Scanning Telegram channels".to_string(), false));
         Task::perform(
             list_telegram_private_channel_candidates(api_id),
-            move |result| Message::TelegramPrivateChannelsLoaded(request_id, Box::new(result)),
+            move |result| Message::TelegramPrivateChannelsLoaded(request_id, result.into()),
         )
     }
 
@@ -418,9 +427,7 @@ impl TradingTerminal {
         let request_id = self.telegram_feed.begin_channel_refresh(&channel);
         Task::perform(
             fetch_telegram_channel_posts(channel.clone()),
-            move |result| {
-                Message::TelegramFeedLoaded(channel.clone(), request_id, Box::new(result))
-            },
+            move |result| Message::TelegramFeedLoaded(channel.clone(), request_id, result.into()),
         )
     }
 
@@ -1029,9 +1036,9 @@ impl TradingTerminal {
                 move |result| {
                     Message::TelegramAvatarLoaded(
                         channel.clone(),
-                        avatar_url.clone(),
+                        avatar_url.clone().into(),
                         request_id,
-                        Box::new(result),
+                        result.into(),
                     )
                 },
             );
@@ -1126,9 +1133,9 @@ impl TradingTerminal {
                     Message::TelegramMediaLoaded(
                         channel.clone(),
                         message_id,
-                        url.clone(),
+                        url.clone().into(),
                         request_id,
-                        Box::new(result),
+                        result.into(),
                     )
                 },
             ));
@@ -1420,9 +1427,9 @@ mod tests {
         let _task = terminal.update_telegram_feed(Message::TelegramMediaLoaded(
             "marketfeed".to_string(),
             1,
-            "https://cdn/p.jpg".to_string(),
+            "https://cdn/p.jpg".into(),
             pending.request_id,
-            Box::new(Ok(vec![0xFF, 0xD8, 0xFF, 0x00])),
+            Ok(vec![0xFF, 0xD8, 0xFF, 0x00]).into(),
         ));
 
         let loaded = find_post_media(&terminal, "marketfeed", 1);
@@ -1452,9 +1459,9 @@ mod tests {
         let _task = terminal.update_telegram_feed(Message::TelegramMediaLoaded(
             "marketfeed".to_string(),
             1,
-            "https://cdn/p.jpg".to_string(),
+            "https://cdn/p.jpg".into(),
             request_id + 999,
-            Box::new(Ok(vec![0xFF, 0xD8, 0xFF, 0x00])),
+            Ok(vec![0xFF, 0xD8, 0xFF, 0x00]).into(),
         ));
 
         let media = find_post_media(&terminal, "marketfeed", 1);
@@ -1538,7 +1545,7 @@ mod tests {
         let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
             channel.to_string(),
             request_id,
-            Box::new(result),
+            result.into(),
         ));
     }
 
@@ -1551,7 +1558,7 @@ mod tests {
         let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
             channel.to_string(),
             request_id,
-            Box::new(result),
+            result.into(),
         ));
     }
 
@@ -1861,13 +1868,14 @@ mod tests {
 
         let _task = terminal.update_telegram_feed(Message::TelegramPrivateChannelsLoaded(
             request_id,
-            Box::new(Ok(vec![
+            Ok(vec![
                 crate::telegram_feed::TelegramPrivateChannelCandidate {
                     peer_id: 42,
                     title: "Private Macro".to_string(),
                     avatar_handle: None,
                 },
-            ])),
+            ])
+            .into(),
         ));
 
         assert!(terminal.telegram_feed.private_channel_candidates_expanded);
@@ -1890,13 +1898,14 @@ mod tests {
         let _task = terminal.update_telegram_feed(Message::ToggleTelegramFastFeed);
         let _task = terminal.update_telegram_feed(Message::TelegramPrivateChannelsLoaded(
             stale_request_id,
-            Box::new(Ok(vec![
+            Ok(vec![
                 crate::telegram_feed::TelegramPrivateChannelCandidate {
                     peer_id: 42,
                     title: "Private Macro".to_string(),
                     avatar_handle: None,
                 },
-            ])),
+            ])
+            .into(),
         ));
 
         assert!(terminal.telegram_feed.private_channel_candidates.is_empty());
@@ -1928,13 +1937,14 @@ mod tests {
 
         let _task = terminal.update_telegram_feed(Message::TelegramPrivateChannelsLoaded(
             stale_request_id,
-            Box::new(Ok(vec![
+            Ok(vec![
                 crate::telegram_feed::TelegramPrivateChannelCandidate {
                     peer_id: 42,
                     title: "Stale Private".to_string(),
                     avatar_handle: None,
                 },
-            ])),
+            ])
+            .into(),
         ));
 
         assert_eq!(terminal.telegram_feed.private_channel_candidates.len(), 1);
@@ -2996,9 +3006,9 @@ mod tests {
 
         let _task = terminal.update_telegram_feed(Message::TelegramAvatarLoaded(
             "marketfeed".to_string(),
-            stale_url.to_string(),
+            stale_url.into(),
             1,
-            Box::new(Ok(vec![0xFF, 0xD8, 0xFF])),
+            Ok(vec![0xFF, 0xD8, 0xFF]).into(),
         ));
 
         let profile = terminal
@@ -3026,9 +3036,9 @@ mod tests {
 
         let _task = terminal.update_telegram_feed(Message::TelegramAvatarLoaded(
             "marketfeed".to_string(),
-            avatar_url.to_string(),
+            avatar_url.into(),
             1,
-            Box::new(Err("avatar failed".to_string())),
+            Err("avatar failed".to_string()).into(),
         ));
 
         let failed_at_ms = terminal

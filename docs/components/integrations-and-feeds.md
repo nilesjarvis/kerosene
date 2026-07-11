@@ -266,6 +266,14 @@ Fast-feed subscriptions require:
 Credentials used during login should not be persisted as plaintext input
 buffers.
 
+Public page, avatar, media, and private-channel discovery completions use
+value-neutral Elm result wrappers. Generic message diagnostics retain only
+non-content correlation and result shape: they do not traverse page or private
+channel data, image bytes, asset URLs, or upstream error text. The update route
+restores the exact page, candidate list, bytes, URL, or error at the same handler
+boundary, so fetches, parsing, caching, retry backoff, status copy, and rendering
+remain unchanged.
+
 ## X Feed
 
 X Feed uses local BYOK user-context access for the authenticated account's
