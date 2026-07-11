@@ -1,3 +1,4 @@
+use crate::helpers::redact_sensitive_order_text;
 use std::fmt;
 
 // ---------------------------------------------------------------------------
@@ -15,7 +16,7 @@ pub(crate) struct OrderStatusResult {
 impl fmt::Debug for OrderStatusResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OrderStatusResult")
-            .field("status", &self.status)
+            .field("status", &redact_sensitive_order_text(&self.status))
             .field("has_oid", &self.oid.is_some())
             .field("has_cloid", &self.cloid.is_some())
             .field("raw_summary", &"<redacted>")

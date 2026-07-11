@@ -1,4 +1,4 @@
-use crate::helpers::redact_sensitive_response_text;
+use crate::helpers::redact_sensitive_order_text;
 
 use super::model::OrderStatusResult;
 use serde_json::Value;
@@ -15,7 +15,7 @@ pub(super) fn parse_order_status_inner(
     if let Some(error) = raw.get("error").and_then(Value::as_str) {
         return Err(format!(
             "orderStatus error: {}",
-            redact_sensitive_response_text(error)
+            redact_sensitive_order_text(error)
         ));
     }
 
@@ -39,19 +39,20 @@ pub(super) fn parse_order_status_inner(
         if let Some(expected_oid) = expected_oid
             && oid != Some(expected_oid)
         {
-            return Err(format!(
-                "orderStatus response oid mismatch for {expected_oid}: got {}",
-                oid.map(|oid| oid.to_string())
-                    .unwrap_or_else(|| "missing oid".to_string())
-            ));
+            return Err(if oid.is_some() {
+                "orderStatus response oid mismatch".to_string()
+            } else {
+                "orderStatus response missing oid".to_string()
+            });
         }
         if let Some(expected_cloid) = expected_cloid
             && cloid.as_deref() != Some(expected_cloid)
         {
-            return Err(format!(
-                "orderStatus response cloid mismatch for {expected_cloid}: got {}",
-                cloid.as_deref().unwrap_or("missing cloid")
-            ));
+            return Err(if cloid.is_some() {
+                "orderStatus response cloid mismatch".to_string()
+            } else {
+                "orderStatus response missing cloid".to_string()
+            });
         }
         return Ok(OrderStatusResult {
             raw_summary: format_order_status_summary(&status, oid, cloid.as_deref()),

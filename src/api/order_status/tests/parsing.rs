@@ -46,6 +46,21 @@ fn order_status_result_debug_redacts_identifiers_and_raw_summary() {
 }
 
 #[test]
+fn order_status_result_debug_redacts_sensitive_status_text() {
+    let cloid = "0x1234567890abcdef1234567890abcdef";
+    let parsed = status_or_panic(&serde_json::json!({
+        "status": format!("unknown cloid={cloid}")
+    }));
+
+    assert!(parsed.status.contains(cloid));
+
+    let rendered = format!("{parsed:?}");
+
+    assert!(rendered.contains("<redacted-hex>"));
+    assert!(!rendered.contains(cloid));
+}
+
+#[test]
 fn parses_missing_order_status() {
     let parsed = status_or_panic(&serde_json::json!({
         "status": "unknownOid"
@@ -57,7 +72,7 @@ fn parses_missing_order_status() {
 #[test]
 fn parsed_order_status_error_redacts_sensitive_values() {
     let error = status_error_or_panic(&serde_json::json!({
-        "error": "upstream echoed Authorization: Basic basic-secret accessToken=\"access-secret\" trace=0x0123456789abcdef0123456789abcdef01234567"
+        "error": "upstream echoed Authorization: Basic basic-secret accessToken=\"access-secret\" trace=0x0123456789abcdef0123456789abcdef01234567 cloid=0x1234567890abcdef1234567890abcdef"
     }));
 
     assert!(error.contains("orderStatus error:"));
@@ -67,6 +82,7 @@ fn parsed_order_status_error_redacts_sensitive_values() {
         "basic-secret",
         "access-secret",
         "0123456789abcdef0123456789abcdef01234567",
+        "0x1234567890abcdef1234567890abcdef",
     ] {
         assert!(!error.contains(secret), "orderStatus error leaked {secret}");
     }

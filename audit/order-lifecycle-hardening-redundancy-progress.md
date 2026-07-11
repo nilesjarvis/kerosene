@@ -56,8 +56,12 @@
   structured possible effect (`src/signing/client.rs:74-232`,
   `src/signing/model/exchange_response/analysis.rs:83-144`).
 - Order-status REST parsing validates the returned OID/CLOID for concrete order
-  bodies before handing a result to lifecycle code
-  (`src/api/order_status/parsing.rs:10-61`).
+  bodies before handing a result to lifecycle code. Both public task exits now
+  sanitize every error before message mapping; HTTP previews redact before
+  truncation; correlation failures are value-neutral; and successful result
+  diagnostics retain only redacted/boolean identifier metadata
+  (`src/api/order_status.rs:16-82`, `src/api/order_status/parsing.rs:10-62`,
+  `src/api/order_status/model.rs:8-24`).
 - Account task results carry read-provider and request-generation context;
   user-data events are address-scoped, and websocket lag forces reconciliation
   (`src/account_update/connection/refresh.rs:94-140`,
@@ -655,30 +659,74 @@ target-specific cancellation policy, not HTTP replay.
   string, and reconciliation path retains its prior behavior. Only a previously
   unrepresented HTTP/exchange success disagreement becomes fail-closed.
 
-### F-12 — `orderStatus` error strings can expose CLOIDs in derived message debug
+### F-12 — `orderStatus` diagnostics can expose correlation values
 
-- Status: confirmed in Turn 10; queued for the next redaction batch
+- Status: addressed in Turn 11; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
 - Severity: Medium privacy hardening
-- Scope: CLOID status-query HTTP/parser errors and their result messages
+- Scope: OID/CLOID status-query HTTP/parser errors, successful result debug,
+  and the result value before task-message mapping
 - Preconditions/event ordering: an HTTP error body echoes a 128-bit CLOID, or a
-  parsed concrete order returns a mismatching CLOID; the `Err(String)` is mapped
-  into `OneShotPlacementStatusLoaded`, `NukePlacementStatusLoaded`, Chase/TWAP
-  status, or wallet-cluster status messages before handler-time redaction.
-- Evidence: the status parser includes both expected and returned CLOIDs in a
-  mismatch error (`src/api/order_status/parsing.rs:48-54`); the HTTP preview
-  uses the generic rather than order-aware excerpt (`src/api/order_status.rs:49-70`);
-  status-result variants live inside derived `Message::Debug`
-  (`src/message.rs:1094-1099`, `src/message.rs:1128-1137`).
+  parsed concrete order returns a mismatching OID/CLOID, or an external status
+  string embeds sensitive order text; the result is mapped into a derived
+  `Message::Debug` variant before handler-time redaction.
+- Evidence: before Turn 11, the parser included expected and returned
+  correlation values in mismatch errors, the HTTP preview used the generic
+  40-hex rather than order-aware 32-hex redactor, and `OrderStatusResult::Debug`
+  emitted `status` verbatim. All status-query callers converge on the two public
+  functions now guarded at `src/api/order_status.rs:16-35`; result variants are
+  stored in derived messages at `src/message.rs:874-879`,
+  `src/message.rs:1094-1099`, `src/message.rs:1128-1137`, and the advanced-order
+  variants at `src/message.rs:1188-1239`.
 - Violated invariant: exact correlation values must be retained for matching
-  but omitted from diagnostic errors before message mapping.
+  but omitted from diagnostic errors and result formatting before message
+  mapping.
 - Risk: an anomalous or hostile reconciliation response can bypass the custom
-  `OrderStatusResult::Debug` redaction by returning through the error lane.
-- Smallest planned fix: apply the Turn 10 order-aware sanitizer at the two
-  public `orderStatus` task exits and make mismatch errors value-neutral, with
-  focused HTTP-preview, mismatch, safe-copy, and derived-result regressions.
-- Protected behavior: request body/correlation, parsed success values, status
-  classification, retries/timeouts, and user-visible normal status paths must
-  remain unchanged.
+  result redaction through either the error lane or the externally supplied
+  status field.
+- Implemented fix: both public status functions apply one order-aware sanitizer
+  to `Err` before returning to `Task::perform`; HTTP bodies are redacted before
+  their 160-character preview is taken; parser mismatch/missing diagnostics no
+  longer embed expected or returned identifiers; and result debug sanitizes the
+  status field while retaining exact stored data (`src/api/order_status.rs:16-35`,
+  `src/api/order_status.rs:77-82`, `src/api/order_status/parsing.rs:15-62`,
+  `src/api/order_status/model.rs:16-24`).
+- Regression coverage: adversarial tests cover a CLOID crossing the prior
+  preview truncation boundary, secret/CLOID errors before message mapping,
+  unchanged safe errors and successful results, value-neutral OID/CLOID
+  mismatch and missing-field errors, external parser errors, and status-field
+  debug redaction (`src/api/order_status/tests/validation.rs:3-145`,
+  `src/api/order_status/tests/parsing.rs:24-89`).
+- Protected behavior: exact request body/correlation comparisons, parsed
+  success values, stored status/summary data, status classification,
+  retries/timeouts, state transitions, and normal user-visible status paths are
+  unchanged. Only sensitive or anomalous diagnostic values are removed.
+
+### F-13 — Derived order messages expose raw OID/CLOID context fields
+
+- Status: confirmed in Turn 11; queued for the next diagnostic-redaction batch
+- Severity: Medium privacy hardening
+- Scope: order-related `Message` variants with direct numeric OID or owned
+  CLOID fields, independent of their already-redacted result payloads
+- Preconditions/event ordering: any diagnostic formats the derived `Debug` for
+  a cancel, move, Chase, or TWAP intent/result/status/retry message carrying a
+  raw correlation identifier.
+- Evidence: `Message` derives `Debug`; raw fields remain on cancel/status at
+  `src/message.rs:1084-1099`, TWAP cancel/status at
+  `src/message.rs:1176-1192`, Chase modify/cancel/status at
+  `src/message.rs:1219-1239`, and move intent/result/status at
+  `src/message.rs:1345-1367`. Sanitizing F-12's `Result` lane does not affect
+  these sibling context fields.
+- Violated invariant: order identifiers needed for routing and equality must
+  not be emitted by general diagnostic formatting.
+- Risk: a normal or failing lifecycle message can disclose the identifier even
+  though response models, placement contexts, account keys, and addresses use
+  redacted diagnostic representations.
+- Smallest planned fix: inventory every direct order-identifier field on
+  `Message`, introduce the narrowest copy/owned redacted wrappers that preserve
+  routing and equality values, and add whole-message `Debug` regressions before
+  changing callers. Do not change message routing, handler values, or status
+  text.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -1178,6 +1226,64 @@ target-specific cancellation policy, not HTTP replay.
 - Next candidate: address F-12 at the `orderStatus` task boundary, then resume
   cancel/move ownership and repeated-attempt correlation in Track 4.
 
+## Turn 11 — Redact Order-Status Result Diagnostics
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: Medium privacy hardening
+- Scope: F-12 across the `orderStatus` HTTP preview, parser, public task exits,
+  result model, and every caller that maps those results into `Message`
+- Invariant: exact OID/CLOID values remain available for request construction,
+  correlation, and lifecycle handling, but neither the successful nor error
+  result lane may expose sensitive order text through derived message debug.
+- Protected behavior: status request JSON, exact expected/actual correlation,
+  successful result fields, missing/open/filled/terminal classification, task
+  routing and timing, retry/reconciliation policy, stored status text, normal
+  user-visible status behavior, signing, persistence, and order semantics.
+- Evidence: a complete caller trace found that one-shot, NUKE, cancel, move,
+  Chase, TWAP, and wallet-cluster status tasks all use
+  `fetch_order_status_by_cloid` or `fetch_order_status_by_oid`; before this turn,
+  handler-time sanitization occurred only after the `Result` had entered a
+  derived message. The concrete exposure and source references are recorded
+  under F-12.
+- Change: applied the existing order-aware redactor at both public status-result
+  exits, redacted HTTP text before truncating it, changed OID/CLOID
+  mismatch/missing errors to retain their diagnostic category without values,
+  and sanitized the external status field only when formatting
+  `OrderStatusResult::Debug`. No request, result, state-machine, message, or
+  persistence type changed.
+- Regression tests: added adversarial pre-message error formatting, a CLOID
+  spanning the old preview cutoff, OID/CLOID mismatch and missing-field value
+  checks, external parser-error CLOID redaction, and successful-result status
+  debug redaction. Existing safe error text and exact successful result values
+  are explicitly preserved.
+- Validation:
+  - `cargo fmt` passed.
+  - `cargo fmt -- --check` and `git diff --check` passed before the ledger
+    update and are rerun during final review.
+  - The pre-implementation
+    `cargo test --package kerosene --bin kerosene order_status_result_error_is_redacted_before_message_mapping -- --exact`
+    attempt stopped in `alsa-sys` before compiling Kerosene because
+    `pkg-config` could not find the system `alsa.pc` package.
+  - The post-implementation focused
+    `cargo test --package kerosene --bin kerosene order_status_` attempt stopped
+    at the same environment boundary.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+- Compatibility/UX assessment: valid and safe status paths retain exact data,
+  copy, state changes, and timing. Only anomalous identifier-bearing diagnostic
+  strings and debug output are redacted; no view, control, schema, dependency,
+  network policy, or trading behavior changed.
+- Residual risk: formatting, source inspection, exhaustive public-fetch caller
+  tracing, and diff review pass, but the new tests/type-check/clippy must execute
+  on a host with ALSA development metadata. F-13 separately records raw
+  identifier context fields on derived messages; F-12 does not claim those
+  sibling fields are safe.
+- Prior turn commit hash: `9123fcf33d61c01d3a168b80bea58185d503957c`
+- Next candidate: address F-13 with typed redacted message-context values and
+  whole-message debug regressions, then resume cancel/move ownership and
+  repeated-attempt correlation in Track 4.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -1185,20 +1291,19 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused exchange redirect/replay, timeout,
-  result/parser redaction, order-aware helper, and response-debug tests; the
-  protected transport-unknown refresh test; `cargo check`; full `cargo test`;
-  and strict clippy at `alsa-sys` system dependency discovery, before Kerosene
-  was compiled.
+- Environment-blocked this turn: focused order-status preview/parser/result
+  redaction and preserved-success tests; `cargo check`; full `cargo test`; and
+  strict clippy at `alsa-sys` system dependency discovery, before Kerosene was
+  compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-11 have source fixes and regression coverage but await
+- F-01 through F-12 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- F-12 is confirmed and queued. `orderStatus` pre-message error redaction,
+- F-13 is confirmed and queued. Derived order-message context redaction,
   cancel/move correlation, broader Chase/TWAP and account-stream ordering,
   restart/shutdown cleanup, and the remaining redaction audit require
   track-by-track completion before a final verdict.

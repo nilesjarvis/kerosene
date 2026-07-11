@@ -3,7 +3,7 @@ mod parsing;
 
 use self::parsing::parse_order_status_inner;
 use super::{API_URL, CLIENT};
-use crate::helpers::sensitive_response_excerpt;
+use crate::helpers::{redact_sensitive_order_text, text_excerpt};
 pub(crate) use model::OrderStatusResult;
 use serde_json::Value;
 
@@ -17,14 +17,22 @@ pub(crate) async fn fetch_order_status_by_cloid(
     address: String,
     cloid: String,
 ) -> Result<OrderStatusResult, String> {
-    fetch_order_status(address, serde_json::json!(cloid), None, Some(cloid)).await
+    let result = fetch_order_status(address, serde_json::json!(cloid), None, Some(cloid)).await;
+    redact_order_status_result(result)
 }
 
 pub(crate) async fn fetch_order_status_by_oid(
     address: String,
     oid: u64,
 ) -> Result<OrderStatusResult, String> {
-    fetch_order_status(address, serde_json::json!(oid), Some(oid), None).await
+    let result = fetch_order_status(address, serde_json::json!(oid), Some(oid), None).await;
+    redact_order_status_result(result)
+}
+
+fn redact_order_status_result(
+    result: Result<OrderStatusResult, String>,
+) -> Result<OrderStatusResult, String> {
+    result.map_err(|error| redact_sensitive_order_text(&error))
 }
 
 async fn fetch_order_status(
@@ -67,7 +75,10 @@ async fn fetch_order_status(
 }
 
 fn order_status_error_preview(body: &str) -> String {
-    sensitive_response_excerpt(body, ORDER_STATUS_ERROR_PREVIEW_CHARS)
+    text_excerpt(
+        &redact_sensitive_order_text(body),
+        ORDER_STATUS_ERROR_PREVIEW_CHARS,
+    )
 }
 
 #[cfg(test)]

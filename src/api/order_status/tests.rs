@@ -1,6 +1,6 @@
 use super::{
     OrderStatusResult, order_status_error_preview, parse_order_status,
-    parse_order_status_for_cloid, parse_order_status_for_oid,
+    parse_order_status_for_cloid, parse_order_status_for_oid, redact_order_status_result,
 };
 
 mod parsing;
