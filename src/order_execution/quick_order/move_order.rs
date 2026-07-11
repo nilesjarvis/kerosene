@@ -165,8 +165,12 @@ impl TradingTerminal {
             false,
         ));
         let request_id = self.allocate_order_lifecycle_request_id();
-        let Ok(context) = PendingMoveOrderContext::new(request_id, account_address.clone(), key)
-        else {
+        let Ok(context) = PendingMoveOrderContext::new(
+            request_id,
+            account_address.clone(),
+            prepared.price.clone(),
+            key,
+        ) else {
             self.order_status = Some(("Move failed: no agent key".into(), true));
             return Task::none();
         };

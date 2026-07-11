@@ -42,6 +42,7 @@ fn pending_move_context() -> PendingMoveOrderContext {
     PendingMoveOrderContext::new(
         0,
         TEST_ACCOUNT.to_string(),
+        "100",
         sensitive_string("move-agent").into_zeroizing(),
     )
     .expect("move context")

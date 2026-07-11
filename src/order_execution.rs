@@ -858,6 +858,7 @@ mod tests {
             account.to_string(),
             42,
             "BTC".to_string(),
+            "100".to_string(),
         ));
         assert!(terminal.has_pending_trading_request());
         terminal.pending_move_status_request = None;
@@ -867,6 +868,7 @@ mod tests {
             PendingMoveOrderContext::new(
                 0,
                 account.to_string(),
+                "100",
                 sensitive_string("move-agent").into_zeroizing(),
             )
             .expect("move context"),
@@ -991,15 +993,18 @@ impl MoveOrderKey {
 pub(crate) struct PendingMoveOrderContext {
     request_id: u64,
     account_address: String,
+    expected_price: String,
     agent_key: CapturedAgentKey,
 }
 
 impl PendingMoveOrderContext {
-    /// Captures the dispatch identity for one modify attempt so a result cannot
-    /// silently switch account/key or settle a later attempt on the same OID.
+    /// Captures the dispatch identity and prepared target for one modify attempt
+    /// so a result cannot silently switch account/key, settle a later attempt on
+    /// the same OID, or reconcile against presentation-only price state.
     pub(crate) fn new(
         request_id: u64,
         account_address: impl Into<String>,
+        expected_price: impl Into<String>,
         agent_key: Zeroizing<String>,
     ) -> Result<Self, MoveOrderContextError> {
         let Some(agent_key) = CapturedAgentKey::new(agent_key) else {
@@ -1009,12 +1014,17 @@ impl PendingMoveOrderContext {
         Ok(Self {
             request_id,
             account_address: account_address.into(),
+            expected_price: expected_price.into(),
             agent_key,
         })
     }
 
     pub(crate) fn request_id(&self) -> u64 {
         self.request_id
+    }
+
+    pub(crate) fn expected_price(&self) -> &str {
+        &self.expected_price
     }
 
     pub(crate) fn replacement_agent_key(

@@ -1,6 +1,8 @@
 use crate::api::{OrderStatusResult, fetch_order_status_by_cloid, fetch_order_status_by_oid};
 use crate::app_state::TradingTerminal;
-use crate::helpers::redact_sensitive_response_text;
+use crate::helpers::{
+    parse_positive_finite_number, redact_sensitive_response_text, values_match_approx,
+};
 use crate::message::Message;
 use crate::order_execution::{OneShotPlacementContext, OrderSurface};
 use crate::signing::ExchangeResponse;
@@ -181,6 +183,11 @@ impl PendingCancelStatusRequest {
         self.phase == PendingCancelRequestPhase::CheckingStatus
             && self.is_for_account(account_address)
     }
+
+    fn is_reconciled_by_account_snapshot(&self, data: &crate::account::AccountData) -> bool {
+        self.phase == PendingCancelRequestPhase::CheckingStatus
+            && data.has_complete_open_orders_for_symbol(&self.symbol)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -189,6 +196,14 @@ pub(crate) struct PendingMoveStatusRequest {
     account_address: String,
     oid: u64,
     symbol: String,
+    expected_price: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MoveAccountSnapshotResolution {
+    TargetNotOpen,
+    OpenAtExpectedPrice,
+    OpenAtDifferentPrice,
 }
 
 impl fmt::Debug for PendingMoveStatusRequest {
@@ -198,17 +213,25 @@ impl fmt::Debug for PendingMoveStatusRequest {
             .field("account_address", &"<redacted>")
             .field("oid", &"<redacted>")
             .field("symbol", &self.symbol)
+            .field("expected_price", &"<redacted>")
             .finish()
     }
 }
 
 impl PendingMoveStatusRequest {
-    pub(crate) fn new(request_id: u64, account_address: String, oid: u64, symbol: String) -> Self {
+    pub(crate) fn new(
+        request_id: u64,
+        account_address: String,
+        oid: u64,
+        symbol: String,
+        expected_price: String,
+    ) -> Self {
         Self {
             request_id,
             account_address,
             oid,
             symbol,
+            expected_price,
         }
     }
 
@@ -237,6 +260,33 @@ impl PendingMoveStatusRequest {
             &self.account_address,
             account_address,
         )
+    }
+
+    fn account_snapshot_resolution(
+        &self,
+        data: &crate::account::AccountData,
+    ) -> Option<MoveAccountSnapshotResolution> {
+        if !data.has_complete_open_orders_for_symbol(&self.symbol) {
+            return None;
+        }
+        let Some(order) = data
+            .open_orders
+            .iter()
+            .find(|order| order.oid == self.oid && order.coin == self.symbol)
+        else {
+            return Some(MoveAccountSnapshotResolution::TargetNotOpen);
+        };
+        let expected_price = parse_positive_finite_number(&self.expected_price)?;
+        let live_price = parse_positive_finite_number(&order.limit_px)?;
+        Some(if values_match_approx(live_price, expected_price) {
+            MoveAccountSnapshotResolution::OpenAtExpectedPrice
+        } else {
+            // A complete post-result snapshot with a different valid price is
+            // still authoritative evidence of the live order's current state.
+            // Preserve the existing cleanup behavior without treating malformed
+            // price data as equivalent evidence.
+            MoveAccountSnapshotResolution::OpenAtDifferentPrice
+        })
     }
 }
 
@@ -712,25 +762,28 @@ impl TradingTerminal {
         &mut self,
         account_address: &str,
     ) {
-        let open_orders_complete = self
-            .account_data_for_order_account(account_address)
-            .is_some_and(|data| data.completeness.open_orders_complete);
-        if !open_orders_complete {
+        let Some(data) = self.account_data_for_order_account(account_address) else {
             return;
-        }
-
-        if self
-            .pending_cancel_status_request
-            .as_ref()
-            .is_some_and(|pending| pending.is_status_check_for_account(account_address))
-        {
-            self.pending_cancel_status_request = None;
-        }
-        if self
+        };
+        let cancel_reconciled =
+            self.pending_cancel_status_request
+                .as_ref()
+                .is_some_and(|pending| {
+                    pending.is_status_check_for_account(account_address)
+                        && pending.is_reconciled_by_account_snapshot(data)
+                });
+        let move_reconciled = self
             .pending_move_status_request
             .as_ref()
-            .is_some_and(|pending| pending.is_for_account(account_address))
-        {
+            .is_some_and(|pending| {
+                pending.is_for_account(account_address)
+                    && pending.account_snapshot_resolution(data).is_some()
+            });
+
+        if cancel_reconciled {
+            self.pending_cancel_status_request = None;
+        }
+        if move_reconciled {
             self.pending_move_status_request = None;
         }
     }

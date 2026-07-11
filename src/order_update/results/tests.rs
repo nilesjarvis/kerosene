@@ -168,12 +168,15 @@ fn begin_one_shot_status_request(
 }
 
 fn finish_current_account_refresh(terminal: &mut TradingTerminal) {
+    apply_current_account_refresh(terminal, account_data_with_open_orders(Vec::new()));
+}
+
+fn apply_current_account_refresh(
+    terminal: &mut TradingTerminal,
+    data: crate::account::AccountData,
+) {
     let context = terminal.current_account_data_request_context();
-    let _task = terminal.apply_account_data_loaded(
-        TEST_ACCOUNT.to_string(),
-        context,
-        Ok(account_data_with_open_orders(Vec::new())),
-    );
+    let _task = terminal.apply_account_data_loaded(TEST_ACCOUNT.to_string(), context, Ok(data));
 }
 
 #[test]
@@ -207,14 +210,50 @@ fn pending_cancel_status_request_debug_redacts_account_and_oid() {
 
 #[test]
 fn pending_move_status_request_debug_redacts_account_and_oid() {
-    let request = PendingMoveStatusRequest::new(7, TEST_ACCOUNT.to_string(), 42, "BTC".to_string());
+    let request = PendingMoveStatusRequest::new(
+        7,
+        TEST_ACCOUNT.to_string(),
+        42,
+        "BTC".to_string(),
+        "98765.4321".to_string(),
+    );
 
     let rendered = format!("{request:?}");
 
     assert!(rendered.contains("<redacted>"));
     assert!(!rendered.contains(TEST_ACCOUNT));
     assert!(!rendered.contains("42"));
+    assert!(!rendered.contains("98765.4321"));
     assert!(rendered.contains("BTC"));
+}
+
+#[test]
+fn move_snapshot_reconciliation_distinguishes_expected_different_and_absent_target() {
+    let request = PendingMoveStatusRequest::new(
+        7,
+        TEST_ACCOUNT.to_string(),
+        42,
+        "BTC".to_string(),
+        "100".to_string(),
+    );
+    let mut data = account_data_with_open_orders(vec![open_order_for(42, "BTC")]);
+    data.open_orders[0].limit_px = "100.0".to_string();
+    assert_eq!(
+        request.account_snapshot_resolution(&data),
+        Some(MoveAccountSnapshotResolution::OpenAtExpectedPrice)
+    );
+
+    data.open_orders[0].limit_px = "101".to_string();
+    assert_eq!(
+        request.account_snapshot_resolution(&data),
+        Some(MoveAccountSnapshotResolution::OpenAtDifferentPrice)
+    );
+
+    data.open_orders.clear();
+    assert_eq!(
+        request.account_snapshot_resolution(&data),
+        Some(MoveAccountSnapshotResolution::TargetNotOpen)
+    );
 }
 
 fn quick_order_form() -> QuickOrderForm {
@@ -810,12 +849,14 @@ fn order_lifecycle_request_allocator_skips_live_ids_across_wrap() {
         TEST_ACCOUNT.to_string(),
         43,
         "ETH".to_string(),
+        "100".to_string(),
     ));
     terminal.pending_move_order_contexts.insert(
         MoveOrderKey::new("SOL", 44),
         PendingMoveOrderContext::new(
             2,
             TEST_ACCOUNT.to_string(),
+            "100",
             Zeroizing::new("move-agent-key".to_string()),
         )
         .expect("valid move context"),
@@ -1301,6 +1342,10 @@ fn arm_pending_cancel_status_request(
     oid: u64,
     symbol: &str,
 ) {
+    // The direct cancel result consumes its presentation indicator before it
+    // transitions the authoritative request into status reconciliation.
+    terminal.pending_order_indicators.clear();
+    terminal.sync_all_chart_orders();
     let mut request = PendingCancelStatusRequest::new(
         CANCEL_REQUEST_ID,
         account_address.to_string(),
@@ -1505,6 +1550,47 @@ fn account_refresh_does_not_clear_cancel_attempt_awaiting_direct_result() {
 
     assert!(terminal.pending_cancel_status_request.is_some());
     assert!(terminal.has_pending_trading_request());
+}
+
+#[test]
+fn cancel_refresh_requires_complete_origin_symbol_lane() {
+    for data in [
+        {
+            let mut data = account_data_with_open_orders(Vec::new());
+            data.fetch_scope = crate::account::AccountDataFetchScope::hip3_dex("xyz");
+            data
+        },
+        {
+            let mut data = account_data_with_open_orders(Vec::new());
+            data.fetch_scope = crate::account::AccountDataFetchScope::hip3_dex("flx");
+            data.completeness.mark_incomplete(
+                crate::account::AccountDataSection::OpenOrders,
+                "test target lane unavailable",
+            );
+            data
+        },
+    ] {
+        let mut terminal = terminal_with_connected_account();
+        arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, 42, "flx:BTC");
+
+        apply_current_account_refresh(&mut terminal, data);
+
+        assert!(terminal.pending_cancel_status_request.is_some());
+        assert!(terminal.has_pending_trading_request());
+    }
+}
+
+#[test]
+fn cancel_covering_refresh_preserves_existing_cleanup_when_target_is_open() {
+    let mut terminal = terminal_with_connected_account();
+    arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, 42, "flx:BTC");
+    let mut data = account_data_with_open_orders(vec![open_order_for(42, "flx:BTC")]);
+    data.fetch_scope = crate::account::AccountDataFetchScope::hip3_dex("flx");
+
+    apply_current_account_refresh(&mut terminal, data);
+
+    assert!(terminal.pending_cancel_status_request.is_none());
+    assert!(!terminal.has_pending_trading_request());
 }
 
 #[test]

@@ -461,7 +461,13 @@ mod tests {
     }
 
     fn pending_move_status_request(account_address: &str) -> PendingMoveStatusRequest {
-        PendingMoveStatusRequest::new(8, account_address.to_string(), 42, "BTC".to_string())
+        PendingMoveStatusRequest::new(
+            8,
+            account_address.to_string(),
+            42,
+            "BTC".to_string(),
+            "100".to_string(),
+        )
     }
 
     fn chase_order(account_address: &str) -> ChaseOrder {
@@ -1258,6 +1264,7 @@ mod tests {
             PendingMoveOrderContext::new(
                 0,
                 TEST_ACCOUNT.to_string(),
+                "100",
                 Zeroizing::new("move-agent".to_string()),
             )
             .expect("move context"),

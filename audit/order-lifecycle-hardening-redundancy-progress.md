@@ -73,10 +73,14 @@
 - Cancel and move direct/status callbacks carry a collision-aware runtime
   request sequence in addition to account, symbol, and OID. Cancel keeps one
   immutable request owner across its awaiting-result and checking-status
-  phases; move keeps the sequence in both its captured-key context and status
-  request. The sequence is local correlation only and does not change the
-  signed exchange action or add mutation retries (`src/order_update/results.rs:88-232`,
-  `src/order_update/results.rs:359-459`, `src/order_update/move_order.rs:12-160`).
+  phases; move keeps the sequence and exact prepared target price in its
+  captured-key context and status request. Successful refresh cleanup requires
+  the origin symbol's open-order lane; move cleanup additionally distinguishes
+  target absence, the expected price, and a different valid live price. These
+  values are local correlation/reconciliation only and do not change the signed
+  action or add mutation retries (`src/order_execution.rs:992-1053`,
+  `src/order_update/results.rs:90-290`,
+  `src/order_update/results.rs:761-788`).
 - Account task results carry read-provider and request-generation context;
   user-data events are address-scoped, and websocket lag forces reconciliation
   (`src/account_update/connection/refresh.rs:94-140`,
@@ -101,8 +105,8 @@
 | HUD place | `HudOrderRequest` captures chart/surface/symbol/side; account context; one-shot context | Market: global action + CLOID. Limit: HUD in-flight ID + indicator + CLOID | Unique one-shot CLOID | Shared classifier | Shared CLOID status + account refresh | Chart/surface/symbol/arm checks; per-account limit tracker; current-account match | Market clears global action; limit finishes its tracker entry; both clear indicator | `order_update/hud.rs` tests, `order_execution/hud.rs` tests | Per-tracker ID wraps without collision handling; practically remote, audit with other allocators |
 | Close-position place (UI or Alfred) | Fresh connected-account position snapshot; account/key; coin/fraction; one-shot context | Global close action + indicator + CLOID context | Unique one-shot CLOID | Shared classifier | Shared CLOID status + account refresh | Pending/reconciliation/freshness/completeness gates; current-account match | Clears close action/indicator; shared one-shot terminal handling | `order_execution/position_actions/close/tests/**`, result tests | No confirmed gap |
 | NUKE child place (UI or Alfred) | Parent execution ID; connected account; planner output; per-child one-shot context | Execution ID + child CLOID in the result context and aggregate settlement set | Unique one-shot CLOID per child; the first terminal transition claims it | Shared classifier | Uncertain child gets CLOID status; parent refreshes after aggregate completion | Current-account and execution-ID checks; duplicate settlement is a no-op | CLOID-keyed confirmed/failed/uncertain totals; parent removed after the unique settled-child count reaches total | `order_execution/position_actions/nuke/tests/**`, direct/status duplicate regressions in `order_update/results/tests.rs` | F-01 addressed in Turn 2; executable regression validation remains environment-blocked by missing ALSA metadata |
-| Cancel by OID | Connected account + symbol + OID + runtime request sequence; one request owns awaiting-result/checking-status phases | Request sequence + account + OID + symbol; indicator is presentation only | Target OID; runtime sequence is correlation only | Shared classifier plus confirmed-cancel predicate | `orderStatus` by OID + open-order/account refresh | Exact request/phase/account match for direct result; exact request/account/OID/symbol match for status | Confirmed/terminal result removes matching local order; only status-check phase is refresh-reconcilable | `order_execution/position_actions/cancel.rs` tests, cancel result/status duplicate and stale-attempt tests | F-14 addressed in Turn 13; F-15 must require refresh coverage of the origin symbol lane |
-| Move/modify | Connected account + symbol + OID + runtime request sequence; original key captured in `PendingMoveOrderContext` | Request sequence + account + symbol + OID; indicator ID is presentation/local-price provenance | Target OID; runtime sequence is correlation only | Shared classifier plus confirmed-modify predicate | `orderStatus` by OID + account refresh to confirm price | Exact request/account/move-key context for direct result; exact request/account/OID/symbol for status | Removes only the matching move context/indicator; terminal status or refresh can clear status uncertainty | `order_execution/quick_order/move_order/tests/**`, `order_update/move_order.rs` duplicate/stale-attempt tests | F-14 addressed in Turn 13; F-15 must retain expected price and require target-lane refresh evidence before cleanup |
+| Cancel by OID | Connected account + symbol + OID + runtime request sequence; one request owns awaiting-result/checking-status phases | Request sequence + account + OID + symbol; indicator is presentation only | Target OID; runtime sequence is correlation only | Shared classifier plus confirmed-cancel predicate | `orderStatus` by OID + origin-symbol open-order refresh | Exact request/phase/account match for direct result; exact request/account/OID/symbol match for status; refresh must cover origin lane | Confirmed/terminal result removes matching local order; only status-check phase and a covering snapshot can release refresh uncertainty | `order_execution/position_actions/cancel.rs` tests, cancel result/status duplicate, stale-attempt, and scoped-refresh tests | F-14/F-15 addressed in Turns 13-14; executable validation remains environment-blocked |
+| Move/modify | Connected account + symbol + OID + runtime request sequence; original key and exact prepared target captured in `PendingMoveOrderContext` | Request sequence + account + symbol + OID; indicator ID is presentation/local projection only | Target OID; runtime sequence is correlation only | Shared classifier plus confirmed-modify predicate | `orderStatus` by OID + origin-symbol refresh that classifies target absent/expected-price/different-valid-price | Exact request/account/move-key context for direct result; exact request/account/OID/symbol for status; refresh rejects uncovered or malformed target evidence | Removes only the matching move context/indicator; terminal status or sufficient target-lane evidence clears status uncertainty | `order_execution/quick_order/move_order/tests/**`, `order_update/move_order.rs` duplicate/stale-attempt/scoped-refresh tests | F-14/F-15 addressed in Turns 13-14; executable validation remains environment-blocked |
 | Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle + dispatch-time place attempt; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account refresh + open-order/fill stream reconciliation | Exact place-attempt equality + `expects_place_result`; current account, symbol identity, prior-exposure, and reconciliation gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled | Chase lifecycle/place/result/status tests, duplicate/late direct-result regressions, and account stream Chase tests | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account refresh + open-order/fill stream | Exact reprice-count/lifecycle/OID match; account and symbol/reconciliation checks before dispatch | Verification/resting/stop flow; terminal Chase archived | `order_update/chase/modify/tests/**`, including duplicate/late direct-result regressions, and Chase reprice tests | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account refresh/open-order disappearance | Exact stopping phase/OID; disconnected account is reconciled at origin scope | Verifying-cancel then archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests | F-08 addressed in Turn 9; retry idempotence depends on target-specific cancel semantics |
@@ -823,7 +827,8 @@ target-specific cancellation policy, not HTTP replay.
 
 ### F-15 — Cancel/move refresh cleanup is not scoped to sufficient evidence
 
-- Status: confirmed and queued for the next narrow Track 4 turn
+- Status: addressed in Turn 14; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
 - Severity: High
 - Scope: authoritative fallback cleanup for uncertain cancel and move attempts
 - Preconditions/event ordering: an uncertain cancel/move originates on one
@@ -834,11 +839,10 @@ target-specific cancellation policy, not HTTP replay.
 - Evidence: refresh scope follows the currently selected market universe
   (`src/account_update/connection/refresh.rs:81-92`), and `AccountData` already
   exposes the correct per-symbol lane predicate
-  (`src/account/types/data.rs:198-213`). However, shared cancel/move cleanup
-  checks only the snapshot-wide `open_orders_complete` flag and account before
-  dropping either request (`src/order_update/results.rs:711-735`). The move
-  status request retains no expected target price
-  (`src/order_update/results.rs:186-232`).
+  (`src/account/types/data.rs:198-213`). Before Turn 14, shared cancel/move
+  cleanup checked only snapshot-wide `open_orders_complete` plus account before
+  dropping either request, and the move's authoritative prepared target was
+  discarded with its direct-result context.
 - Violated invariant: uncertainty may be released only by authoritative data
   that covers the operation's origin lane and distinguishes the relevant
   terminal/open state; an open move additionally needs evidence of whether its
@@ -848,14 +852,40 @@ target-specific cancellation policy, not HTTP replay.
   request without comparing the live order price to the dispatched target,
   allowing later actions to proceed without establishing which modification
   won.
-- Planned remediation/tests: retain the move's exact prepared target price in
-  its runtime-only reconciliation context; require
-  `has_complete_open_orders_for_symbol` for both operations; settle cancel from
-  target OID presence/absence; and settle move only from terminal absence or a
-  parsed live price that can be compared to the expected target under existing
-  numeric semantics. Add selected-dex-switch, unrelated-lane, old-price,
-  expected-price, and terminal-disappearance regressions. Do not alter fetch
-  scope, request cadence, wire payloads, or visible normal-path behavior.
+- Implemented fix: cancel refresh cleanup now requires its immutable origin
+  symbol's open-order lane and remains phase-gated. Move captures the exact
+  already-prepared target price with its request/account/key context before
+  dispatch, propagates it into ambiguous status state after the presentation
+  indicator is consumed, and releases refresh uncertainty only after a covering
+  snapshot establishes one of three explicit states: target absent, target open
+  at the expected price, or target open at a different valid price. A malformed
+  live or retained price is not reconciliation evidence for an open target
+  (`src/order_execution/quick_order/move_order.rs:162-204`,
+  `src/order_execution.rs:992-1053`,
+  `src/order_update/move_order.rs:30-143`,
+  `src/order_update/results.rs:187-290`,
+  `src/order_update/results.rs:761-788`).
+- Why a different valid price still resolves: the successful post-result
+  snapshot is the existing authoritative current-state fallback. Distinguishing
+  that state proves the requested price is not the live winner while preserving
+  the prior cleanup contract; retaining uncertainty solely because the valid
+  live price differs would change enabled/disabled behavior and could strand a
+  provably current open order. Wrong-scope, incomplete, absent-account, or
+  malformed evidence remains blocked.
+- Regression coverage: wrong HIP-3 scope and incomplete origin-lane snapshots
+  retain cancel/move requests; a covering cancel snapshot preserves cleanup
+  when the target remains open; a move result carries its expected price after
+  its indicator disappears; malformed live price retains uncertainty; formatted
+  expected, different valid, and absent target states are distinguished; and
+  existing valid-price/terminal cleanup remains unchanged
+  (`src/order_update/results/tests.rs:1527-1565`,
+  `src/order_update/move_order.rs:651-714`,
+  `src/order_update/results/tests.rs:230-257`).
+- Protected behavior: account refresh scope/cadence/generations, exact status
+  tasks, all user-visible strings, normal cleanup timing, pending indicators,
+  prepared and signed modify values, local confirmed-price projection, retries,
+  UI, and persistence are unchanged. The new target price is runtime-only and
+  redacted in the pending request's custom `Debug` output.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -1551,6 +1581,88 @@ target-specific cancellation policy, not HTTP replay.
   exact expected-price evidence for an open moved order, preserving the current
   fetch cadence, wire mutation, normal statuses, and UI.
 
+## Turn 14 — Scope Cancel and Move Refresh Evidence
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: High
+- Scope: F-15 across successful account-refresh cleanup, cancel origin-lane
+  evidence, move prepared-price provenance, move snapshot classification, and
+  status-phase test fixtures
+- Invariant: an account snapshot may release cancel/move uncertainty only when
+  it successfully fetched the exact operation's open-order lane; an open move
+  additionally requires a parseable live price compared with the immutable
+  prepared target, while target absence is terminal evidence.
+- Protected behavior: exact cancel/modify preparation and signed payloads,
+  account/key/request correlation, result/status classification and messages,
+  refresh scope/cadence/generations, normal valid-snapshot cleanup, confirmed
+  local move projection, indicators, retries, UI, and persistence.
+- Preconditions/event ordering: a cancel or move becomes uncertain; the user
+  changes the selected HIP-3 universe or the target lane fails while another
+  lane succeeds; alternatively, a covering snapshot contains the target with a
+  malformed or differently formatted/live price; successful account loading
+  reaches the shared cleanup boundary.
+- Evidence: account refresh chooses scope from the current market universe and
+  a scoped snapshot can be complete for only that scope. `AccountData` already
+  records per-lane fetch success, but cancel/move cleanup used only the global
+  completeness boolean. Move's prepared price lived in its indicator and
+  prepared request, then disappeared before status reconciliation. F-15 records
+  the concrete source evidence and failure ordering.
+- Change: reused `has_complete_open_orders_for_symbol` for both operations;
+  retained the exact prepared price in `PendingMoveOrderContext`; copied it into
+  pending status state only for ambiguous/transport-unknown outcomes; redacted
+  it in custom diagnostics; and classified covering move snapshots as target
+  absent, expected-price open, different-valid-price open, or insufficient.
+  Only the first three preserve the existing cleanup. No request, task, polling,
+  schema, dependency, or view was added. Status test fixtures now remove the
+  direct-result context/indicator before arming reconciliation, matching the
+  production phase boundary.
+- Tests/checks:
+  - Added cancel and move regressions for wrong HIP-3 scope and incomplete
+    target lanes, covering cancel cleanup with a still-open target, move cleanup
+    with formatted expected and different valid prices, malformed live-price
+    retention after a real uncertain direct-result transition, and pure
+    expected/different/absent snapshot classification.
+  - Extended captured move-context and pending-status diagnostic tests to prove
+    exact expected-price retention and diagnostic redaction.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - Pre- and post-implementation focused
+    `cargo test --package kerosene --bin kerosene cancel_refresh_requires_complete_origin_symbol_lane`,
+    `move_refresh_requires_complete_origin_symbol_lane`,
+    `move_covering_refresh_requires_parseable_live_target_price`, and
+    `move_covering_refresh_preserves_cleanup_for_valid_live_price` attempts all
+    stopped in `alsa-sys` before Kerosene compilation because `pkg-config`
+    could not find the system `alsa.pc` package.
+  - Post-implementation focused
+    `cancel_covering_refresh_preserves_existing_cleanup_when_target_is_open`,
+    `move_snapshot_reconciliation_distinguishes_expected_different_and_absent_target`,
+    `pending_move_context_reuses_captured_agent_key_for_same_account`, and
+    `pending_move_status_request_debug_redacts_account_and_oid` attempts stopped
+    at the same dependency boundary.
+  - Nearby/protected `cancel_order_status_`, `move_order_status_`,
+    `move_result_failure_keeps_local_price`,
+    `account_refresh_must_cover_one_shot_symbol_before_clearing_status_request`,
+    and `complete_open_order_coverage_tracks_each_symbol_lane` attempts stopped
+    at the same boundary.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing boundary before checking Kerosene.
+- Compatibility/UX assessment: complete covering snapshots with an absent
+  target, the expected price (including equivalent formatting), or a different
+  valid current price retain the same cleanup and enabled/disabled timing. Only
+  an unrelated/incomplete lane or malformed target evidence remains blocked.
+  The captured price is runtime-only plumbing and never changes the order or
+  visible status.
+- Residual risk: source parsing, formatting, exhaustive constructor/consumer
+  inspection, phase-order review, adversarial tests, and diff review pass, but
+  Rust type-check/tests/clippy must execute on a host with ALSA development
+  metadata. Track 5 still needs a fresh end-to-end Chase audit across scoped
+  REST refreshes, partial open-order/fill lanes, and user-stream ordering.
+- Prior turn commit hash: `8771aa8e87771d6ae3db312e01d67ba80962acf3`
+- Next candidate: begin the remaining Track 5 audit by tracing Chase
+  disappearance/replacement and fill reconciliation across selected HIP-3
+  scopes, partial account snapshots, websocket lag/repair, and reversed REST
+  versus user-stream delivery, preserving all repricing and archive behavior.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -1558,10 +1670,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused stale/duplicate cancel and move
-  attempt tests, allocator-wrap and awaiting-result phase tests, nearby
-  cancel/move status tests, protected indicator-expiry/confirmed-price tests,
-  `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
+- Environment-blocked this turn: focused cancel/move origin-lane, live-price,
+  snapshot-classification, captured-context, and diagnostic-redaction tests;
+  nearby cancel/move status and protected one-shot/account-lane tests;
+  `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
@@ -1569,8 +1681,8 @@ target-specific cancellation policy, not HTTP replay.
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-14 have source fixes and regression coverage but await
+- F-01 through F-15 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- F-15 cancel/move refresh sufficiency, broader Chase/TWAP and account-stream
-  ordering, restart/shutdown cleanup, local planning/state diagnostic
-  redaction, and the remaining tracks require completion before a final verdict.
+- Broader Chase/TWAP and account-stream ordering, restart/shutdown cleanup,
+  local planning/state diagnostic redaction, and the remaining tracks require
+  completion before a final verdict.

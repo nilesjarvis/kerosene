@@ -56,6 +56,7 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        let expected_price = pending_context.expected_price().to_string();
         let confirmed_price = self.pending_modification_price(pending_indicator_id);
         let response_oid = result.as_ref().ok().and_then(|resp| resp.order_oid());
         self.pending_move_order_contexts.remove(&move_key);
@@ -97,6 +98,7 @@ impl TradingTerminal {
                     account_address.clone(),
                     oid,
                     move_key.coin().to_string(),
+                    expected_price.clone(),
                 ));
                 self.set_order_status(
                     format!(
@@ -121,6 +123,7 @@ impl TradingTerminal {
                     account_address.clone(),
                     oid,
                     move_key.coin().to_string(),
+                    expected_price,
                 ));
                 self.set_order_status(
                     format!(
@@ -349,21 +352,30 @@ mod tests {
         oid: u64,
         symbol: &str,
     ) {
+        // The direct modify result consumes the captured key context and
+        // presentation indicator before it creates status-reconciliation state.
+        terminal.pending_move_order_contexts.clear();
+        terminal.pending_order_indicators.clear();
+        terminal.sync_all_chart_orders();
         terminal.pending_move_status_request = Some(PendingMoveStatusRequest::new(
             MOVE_REQUEST_ID,
             account_address.to_string(),
             oid,
             symbol.to_string(),
+            "111".to_string(),
         ));
     }
 
     fn finish_current_account_refresh(terminal: &mut TradingTerminal) {
+        apply_current_account_refresh(terminal, account_data_with_orders(Vec::new()));
+    }
+
+    fn apply_current_account_refresh(
+        terminal: &mut TradingTerminal,
+        data: crate::account::AccountData,
+    ) {
         let context = terminal.current_account_data_request_context();
-        let _task = terminal.apply_account_data_loaded(
-            TEST_ACCOUNT.to_string(),
-            context,
-            Ok(account_data_with_orders(Vec::new())),
-        );
+        let _task = terminal.apply_account_data_loaded(TEST_ACCOUNT.to_string(), context, Ok(data));
     }
 
     fn terminal_with_pending_move() -> (TradingTerminal, Option<u64>) {
@@ -388,6 +400,7 @@ mod tests {
             PendingMoveOrderContext::new(
                 MOVE_REQUEST_ID,
                 TEST_ACCOUNT.to_string(),
+                "111",
                 Zeroizing::new("agent-key".to_string()),
             )
             .expect("pending move context"),
@@ -441,6 +454,7 @@ mod tests {
             PendingMoveOrderContext::new(
                 MOVE_REQUEST_ID,
                 TEST_ACCOUNT.to_string(),
+                "211",
                 Zeroizing::new("agent-key".to_string()),
             )
             .expect("pending move context"),
@@ -634,6 +648,72 @@ mod tests {
     }
 
     #[test]
+    fn move_refresh_requires_complete_origin_symbol_lane() {
+        for data in [
+            {
+                let mut data = account_data_with_orders(Vec::new());
+                data.fetch_scope = crate::account::AccountDataFetchScope::hip3_dex("xyz");
+                data
+            },
+            {
+                let mut data = account_data_with_orders(Vec::new());
+                data.fetch_scope = crate::account::AccountDataFetchScope::hip3_dex("flx");
+                data.completeness.mark_incomplete(
+                    crate::account::AccountDataSection::OpenOrders,
+                    "test target lane unavailable",
+                );
+                data
+            },
+        ] {
+            let (mut terminal, _pending_id) = terminal_with_pending_move();
+            arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "flx:BTC");
+
+            apply_current_account_refresh(&mut terminal, data);
+
+            assert!(terminal.pending_move_status_request.is_some());
+            assert!(terminal.has_pending_trading_request());
+        }
+    }
+
+    #[test]
+    fn move_covering_refresh_requires_parseable_live_target_price() {
+        let (mut terminal, pending_id) = terminal_with_pending_move();
+        let _task = terminal.handle_move_order_modify_result(
+            MOVE_REQUEST_ID,
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            42,
+            pending_id,
+            Err("exchange request failed".to_string()),
+        );
+        assert!(terminal.pending_order_indicators.is_empty());
+
+        apply_current_account_refresh(
+            &mut terminal,
+            account_data_with_order(open_order(42, "not-a-price")),
+        );
+
+        assert!(terminal.pending_move_status_request.is_some());
+        assert!(terminal.has_pending_trading_request());
+    }
+
+    #[test]
+    fn move_covering_refresh_preserves_cleanup_for_valid_live_price() {
+        for price in ["111.0", "100"] {
+            let (mut terminal, _pending_id) = terminal_with_pending_move();
+            arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
+
+            apply_current_account_refresh(
+                &mut terminal,
+                account_data_with_order(open_order(42, price)),
+            );
+
+            assert!(terminal.pending_move_status_request.is_none());
+            assert!(!terminal.has_pending_trading_request());
+        }
+    }
+
+    #[test]
     fn move_order_status_error_redacts_sensitive_text() {
         let (mut terminal, _pending_id) = terminal_with_pending_move();
         arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
@@ -783,6 +863,7 @@ mod tests {
             PendingMoveOrderContext::new(
                 NEW_MOVE_REQUEST_ID,
                 TEST_ACCOUNT.to_string(),
+                "122",
                 Zeroizing::new("new-agent-key".to_string()),
             )
             .expect("new pending move context"),
@@ -822,6 +903,7 @@ mod tests {
             PendingMoveOrderContext::new(
                 NEW_MOVE_REQUEST_ID,
                 OTHER_ACCOUNT.to_string(),
+                "122",
                 Zeroizing::new("other-agent-key".to_string()),
             )
             .expect("other pending move context"),
