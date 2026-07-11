@@ -15,7 +15,7 @@ impl TradingTerminal {
     pub(crate) fn update_account(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::PositionsSortChanged(col) => self.update_positions_sort(col),
-            Message::ToggleHiddenPosition(coin) => self.toggle_hidden_position(coin),
+            Message::ToggleHiddenPosition(coin) => self.toggle_hidden_position(coin.into_string()),
             Message::ToggleShowHiddenPositions => self.toggle_show_hidden_positions(),
             Message::OpenPnlCard(target) => self.open_pnl_card_window(target),
             Message::SetPnlCardDisplayMode(window_id, mode) => {

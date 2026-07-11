@@ -716,7 +716,7 @@ fn close_button(
     let mut btn = button(text(label).size(10)).padding([3, 5]);
     if enabled {
         btn = btn.on_press(Message::WalletClusterClosePosition {
-            symbol,
+            symbol: symbol.into(),
             side,
             fraction,
             use_market,

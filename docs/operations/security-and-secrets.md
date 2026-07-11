@@ -219,6 +219,15 @@ wallet-cluster update route restores the original result immediately, retaining
 all exact errors, responses, contexts, indicators, recovery owners, and member
 correlation for existing lifecycle handling.
 
+Direct order/position symbols on outcome-sell prefill, cluster close,
+cancel/status, position hide/close, and move drag/intent/result/status messages
+use the same exact-value symbol wrapper. Advanced-history navigation uses a
+dedicated wrapper because its persisted identity embeds the originating account
+address. Views and tasks wrap only at message construction; the order, account,
+cluster, or history-window update arm immediately restores the original
+`String`. Diagnostics are value-neutral while selection, preparation,
+correlation, prices, fractions, persistence, and window identity remain exact.
+
 Terminal Chase/TWAP history intentionally persists exact account, symbol,
 financial, timing, child-identifier, status, and activity fields for its
 existing views. The persisted entry, child, and log types have independently

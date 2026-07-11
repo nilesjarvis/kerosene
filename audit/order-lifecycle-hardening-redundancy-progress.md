@@ -190,6 +190,19 @@
   `src/message.rs:988-999`, `src/message.rs:1203-1263`,
   `src/message.rs:1465-1503`, `src/order_update.rs:57-165`,
   `src/order_update.rs:411-483`, `src/wallet_cluster_update.rs:143-164`).
+- The 11 direct order/position symbol fields across outcome-sell prefill,
+  cluster close, cancel/status, position hide/close, and move drag/intent/
+  result/status messages now use `RedactedOrderSymbol`. Advanced-history
+  navigation uses `RedactedAdvancedOrderHistoryId` because the exact persisted
+  identity embeds its account address. Producers wrap once at message
+  construction and the order, account, cluster, or history update boundary
+  immediately restores the original string; price, fraction, route, state, and
+  handler inputs remain exact (`src/message.rs:310-370`,
+  `src/message.rs:805-815`, `src/message.rs:1010-1018`,
+  `src/message.rs:1239-1273`, `src/message.rs:1346-1354`,
+  `src/message.rs:1509-1534`, `src/order_update.rs:42-126`,
+  `src/order_update.rs:281-283`, `src/order_update.rs:441-485`,
+  `src/account_update.rs:15-19`, `src/wallet_cluster_update.rs:134-147`).
 - Terminal advanced-order history retains the exact Chase/TWAP account,
   symbol, financial, timing, identifier, status, activity, and child fields
   required by its persisted schema and existing views. Each independently
@@ -3552,6 +3565,89 @@ target-specific cancellation policy, not HTTP replay.
   cannot execute until ALSA development metadata is available. Raw order
   symbols, prices/fractions, and history-navigation IDs remain to audit.
 
+### F-50 — Order symbols and history navigation identity bypass message redaction
+
+- Status: addressed in Turn 43; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account/order privacy and diagnostic-boundary hardening; a
+  persisted history identity contains an account address, while exact position
+  and order symbols reveal activity context, but no known production message
+  misroute or emitted disclosure was found
+- Scope: 11 direct symbol fields across outcome-sell prefill, wallet-cluster
+  close, cancel intent/status, position close-menu/hide/close, and move drag/
+  intent/direct-result/status-result messages; advanced-order history-window
+  navigation identity; every view/task publisher, route, immediate consumer,
+  and nearby lifecycle/routing test
+- Preconditions/event ordering:
+  1. Account/order/cluster views and chart interaction publish exact symbols;
+     cancel/move reconciliation tasks republish the immutable origin symbol in
+     status results; the history row publishes the selected persisted entry ID.
+  2. The entry ID is deliberately stable and persisted as
+     `kind:account_address:started_at_ms:source_id` for Chase and TWAP
+     (`src/advanced_order_history/snapshots.rs:115-123`,
+     `src/advanced_order_history/snapshots.rs:199-207`).
+  3. All 12 fields were ordinary `String` values, so derived `Message::Debug`
+     emitted them verbatim before the order/account/cluster update arm passed
+     them unchanged to the existing handler.
+- Evidence: parent commit
+  `078fc1ab388288b8a82261dac6218cff1316a23f` shows the raw fields at
+  `src/message.rs:784`, `src/message.rs:982-986`,
+  `src/message.rs:1209-1241`, `src/message.rs:1321-1323`, and
+  `src/message.rs:1480-1502`. Publishers span balance/order/position rows,
+  cluster-close controls, chart cancel/drag interaction, cancel/move status
+  tasks, and the history info button (`src/account_views/balances/row.rs:35-48`,
+  `src/account_views/orders/row.rs:37-45`,
+  `src/account_views/positions/table/close_cell/button.rs:8-58`,
+  `src/account_views/positions/table/close_cell/menu.rs:42-87`,
+  `src/wallet_cluster_views.rs:708-724`,
+  `src/chart/interaction/press.rs:127-150`,
+  `src/chart/interaction/drag.rs:204-219`,
+  `src/order_update/results.rs:362-377`,
+  `src/order_update/move_order.rs:12-28`,
+  `src/order_views/advanced/components.rs:45-55`).
+- Violated invariant: exact order/position identity may cross transient Elm
+  plumbing for selection and correlation, but generic diagnostics should not
+  disclose the selected symbol or an account-bearing persisted identifier.
+- Risk: the debug-only unrouted-order-message assertion, a test failure,
+  framework instrumentation, or future message logging could associate an
+  account with a persisted Chase/TWAP record or expose which symbol is being
+  sold, hidden, closed, canceled, or modified. No key, signature, signed
+  payload, price, quantity, fraction, or known live diagnostic is implicated.
+- Why existing checks did not cover it: F-48 wrapped only Chase/TWAP market and
+  adoption symbols; F-49 wrapped result payloads but intentionally retained
+  these correlation strings. OID/CLOID message tests used ordinary symbol
+  literals without asserting their absence, while advanced-history tests
+  redacted the persisted entry's own `Debug` but did not format the navigation
+  message that cloned its raw ID.
+- Implemented fix: reuse `RedactedOrderSymbol` for all 11 symbol fields and add
+  `RedactedAdvancedOrderHistoryId`, an allocation-neutral string newtype whose
+  diagnostic exposes only a marker. Every producer wraps at message
+  construction; `update_order`, `update_account`, or `update_wallet_cluster`
+  immediately calls `into_string()` before the same handler. History navigation
+  does the same before the existing entry lookup/window map operation
+  (`src/message.rs:310-370`, `src/order_update.rs:42-126`,
+  `src/order_update.rs:281-283`, `src/order_update.rs:441-485`,
+  `src/account_update.rs:15-19`, `src/wallet_cluster_update.rs:134-147`).
+- Regression coverage: format all 12 affected variants with unique symbol and
+  history-identity sentinels and require redaction without either exact value
+  (`src/message.rs:1852-1918`). The wrapper recovery control proves the exact
+  history ID and symbol survive formatting (`src/message.rs:2033-2069`), while
+  existing route, exit-fence, chart-cancel, cluster, status, close, and history
+  tests retain their established lifecycle assertions.
+- Smallest behavior-preserving fix: wrapping moves each existing `String`
+  without changing its allocation; the move-result path replaces its existing
+  `&str`-to-`String` allocation with the wrapper's identical conversion. No
+  message route, handler signature, history ID/schema, lookup, window identity,
+  symbol normalization, move key, status owner, price, fraction, close/cancel/
+  move preparation, signing, task order, visible copy, or trading policy
+  changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  exact raw-field absence searches, complete call-site tracing, and the
+  mechanical diff establish the intended boundary, but focused and nearby
+  suites cannot execute until ALSA development metadata is available. Raw
+  financial values and remaining nested order-sensitive message types still
+  require a separate complete inventory.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -6181,6 +6277,66 @@ target-specific cancellation policy, not HTTP replay.
   wrappers while preserving move price/fraction handling for its own complete
   financial-value audit.
 
+## Turn 43 — Redact Order Symbols and History Navigation Identity
+
+- Status: F-50 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: 11 direct symbol fields on outcome prefill, cluster close,
+  cancel/status, position hide/close, and move drag/intent/result/status
+  messages; the account-bearing advanced-history navigation ID; all publishers,
+  routes, immediate consumers, and diagnostic/lifecycle controls
+- Invariant: transient Elm diagnostics must not expose an exact order/position
+  symbol or persisted history identity, while every handler receives the
+  source-identical string at the source-identical lifecycle point.
+- Protected behavior: exact symbol and history-ID bytes; outcome sell prefill;
+  cluster-close member sizing; cancel and move origin correlation/status
+  ownership; close-menu and hidden-position selection; close fractions and
+  market/limit choice; move price and drag state; history entry lookup/window
+  focus/open behavior; routing, exit fencing, task order, signing, persistence,
+  visible copy, and trading semantics.
+- Preconditions/event ordering: views or chart interaction move their existing
+  symbol/history string into a wrapper only when constructing `Message`;
+  cancel/move status tasks do the same with captured origin strings. The order,
+  account, cluster, or history update arm consumes the wrapper immediately and
+  invokes the unchanged handler. No wrapper enters feature state, persistence,
+  preparation, or signing.
+- Evidence: F-50 records the parent raw fields, account-bearing history-ID
+  construction, complete producer/consumer inventory, concrete generic
+  diagnostic sinks, prior coverage gap, exact recovery control, and
+  repository-wide absence of those raw direct fields after the patch.
+- Change: reused `RedactedOrderSymbol` for all 11 direct symbol fields; added an
+  exact-value `RedactedAdvancedOrderHistoryId`; mechanically wrapped every
+  publisher and restored each string at its immediate update boundary; left
+  every financial value and nested model unchanged.
+- Tests/checks:
+  - The pre-fix exact 12-variant diagnostic regression stopped in `alsa-sys`
+    before Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - Post-fix exact diagnostic and wrapper-recovery tests, complete message and
+    app-update suites, chart-input tests, advanced-history tests, and wallet-
+    cluster tests stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, subscription, window, task, or
+    rendering behavior changed; compilation is already blocked, and no live
+    exchange or credential-bearing operation was run.
+- Compatibility/UX assessment: the exact recovery control proves symbol and
+  history-ID identity is unchanged; existing chart cancel, routing, final-exit,
+  cluster, close/move/status, and history-window paths still receive their
+  original types immediately after the message boundary. No visible behavior,
+  timing, schema, signed bytes, financial input, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-50 is source-
+  hardened, but direct financial values (price, percentage/fraction, preset and
+  slippage input) and remaining nested order-sensitive message types need a
+  complete diagnostic inventory before any further wrapper change.
+- Prior turn commit hash: `078fc1ab388288b8a82261dac6218cff1316a23f`
+- Next candidate: inventory every remaining direct and nested financial/order-
+  sensitive `Message` field, classify UI geometry separately from trading
+  values, and close one exact-value subset without changing parsing, precision,
+  preparation, or visible behavior.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -6222,9 +6378,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: pre-fix 14-variant mutation-result diagnostics;
-  post-fix exact message diagnostics, complete message/order-result and wallet-
-  cluster suites, `cargo check`, full `cargo test`, and strict clippy at
+- Environment-blocked this turn: pre-fix 12-variant symbol/history diagnostics;
+  post-fix exact diagnostic/recovery tests, complete message/app-update, chart-
+  input, advanced-history, and wallet-cluster suites, `cargo check`, full
+  `cargo test`, and strict clippy at
   `alsa-sys` system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
@@ -6233,7 +6390,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-49
+  F-40, and F-42 through F-50
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -6269,5 +6426,7 @@ target-specific cancellation policy, not HTTP replay.
   correlation diagnostics by F-46. Transient TWAP form/schedule/book/fill
   helper diagnostics are source-hardened by F-47, and advanced-order Elm
   message diagnostics by F-48. All remaining mutation-result message payloads
-  are source-hardened by F-49. Remaining order-value and external-status paths,
-  plus the rest of Track 9, require completion before a final verdict.
+  are source-hardened by F-49; direct order/position symbols and advanced-
+  history navigation identity are source-hardened by F-50. Remaining financial,
+  nested order-sensitive, and external-status paths, plus the rest of Track 9,
+  require completion before a final verdict.

@@ -211,7 +211,7 @@ impl CandlestickChart {
             if let (Some(coin), Some(price)) = (coin, new_price) {
                 return Some(
                     canvas::Action::publish(Message::MoveOrder {
-                        coin,
+                        coin: coin.into(),
                         oid: oid.into(),
                         new_price: price,
                     })

@@ -49,7 +49,7 @@ pub(super) fn history_info_button(entry_id: String) -> Element<'static, Message>
             .center()
             .width(iced::Length::Fixed(36.0)),
     )
-    .on_press(Message::OpenAdvancedOrderHistory(entry_id))
+    .on_press(Message::OpenAdvancedOrderHistory(entry_id.into()))
     .padding([3, 6])
     .style(|theme: &Theme, status| info_button_style(theme, status))
     .into()

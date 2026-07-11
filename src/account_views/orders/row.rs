@@ -39,7 +39,7 @@ impl TradingTerminal {
                 "Cancel",
                 theme.palette().danger,
                 Message::CancelOrder {
-                    coin: order.coin.clone(),
+                    coin: order.coin.clone().into(),
                     oid: order.oid.into(),
                 },
             )

@@ -106,7 +106,7 @@ fn final_exit_fence_classifies_every_fresh_mutation_intent() {
             snapshot: ticket_snapshot(),
         },
         Message::ClosePosition {
-            coin: "BTC".to_string(),
+            coin: "BTC".into(),
             fraction: 1.0,
             use_market: true,
         },
@@ -126,7 +126,7 @@ fn final_exit_fence_classifies_every_fresh_mutation_intent() {
         },
         Message::SubmitHudOrder(hud_request()),
         Message::MoveOrder {
-            coin: "BTC".to_string(),
+            coin: "BTC".into(),
             oid: 7.into(),
             new_price: 101.0,
         },
@@ -138,7 +138,7 @@ fn final_exit_fence_classifies_every_fresh_mutation_intent() {
         Message::AlfredCommandSelected(AlfredCommandId::NaturalLanguageTrading),
         Message::WalletClusterSubmitOrder { is_buy: true },
         Message::WalletClusterClosePosition {
-            symbol: "BTC".to_string(),
+            symbol: "BTC".into(),
             side: WalletClusterCloseSide::Long,
             fraction: 1.0,
             use_market: true,
@@ -158,7 +158,7 @@ fn final_exit_fence_classifies_every_fresh_mutation_intent() {
 fn final_exit_fence_allows_reconciliation_and_exposure_cleanup_messages() {
     let messages = vec![
         Message::CancelOrder {
-            coin: "BTC".to_string(),
+            coin: "BTC".into(),
             oid: 7.into(),
         },
         Message::StopChase,
@@ -174,7 +174,7 @@ fn final_exit_fence_allows_reconciliation_and_exposure_cleanup_messages() {
         Message::MoveOrderModifyResult {
             request_id: 1,
             account_address: "0xabc".into(),
-            coin: "BTC".to_string(),
+            coin: "BTC".into(),
             oid: 7.into(),
             pending_indicator_id: None,
             result: Err("transport outcome unknown".to_string()).into(),
@@ -203,7 +203,7 @@ fn final_exit_fence_drops_mutation_before_its_feature_route_runs() {
     terminal.config_save_exit_requested = true;
 
     let task = terminal.update(Message::MoveOrder {
-        coin: "BTC".to_string(),
+        coin: "BTC".into(),
         oid: 7.into(),
         new_price: 101.0,
     });

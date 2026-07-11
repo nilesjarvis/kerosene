@@ -21,7 +21,7 @@ pub(super) fn view_position_hide_button(
                 .center()
                 .color(hidden_button_color(theme)),
         )
-        .on_press(Message::ToggleHiddenPosition(coin))
+        .on_press(Message::ToggleHiddenPosition(coin.into()))
         .padding([1, 5])
         .style(|theme: &Theme, status| {
             let color = hidden_button_color(theme);
@@ -53,7 +53,7 @@ pub(super) fn view_position_close_button(
     compact_action_button(
         "Close",
         theme.palette().danger,
-        Message::ToggleCloseMenu(coin_for_close),
+        Message::ToggleCloseMenu(coin_for_close.into()),
     )
 }
 

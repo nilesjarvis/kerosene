@@ -371,7 +371,7 @@ impl TradingTerminal {
                 request_id,
                 account_address: account_address.into(),
                 oid: oid.into(),
-                symbol,
+                symbol: symbol.into(),
                 result: result.into(),
             },
         )

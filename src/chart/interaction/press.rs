@@ -130,7 +130,7 @@ impl CandlestickChart {
             if hit.is_cancel_hit(visual_pos) {
                 return Some(
                     canvas::Action::publish(Message::CancelOrder {
-                        coin: hit.order.coin.clone(),
+                        coin: hit.order.coin.clone().into(),
                         oid: hit.order.oid.into(),
                     })
                     .and_capture(),
@@ -143,7 +143,7 @@ impl CandlestickChart {
             state.drag_order_new_price = Some(hit.order.limit_px);
             return Some(
                 canvas::Action::publish(Message::MoveOrderDragStarted {
-                    coin: hit.order.coin.clone(),
+                    coin: hit.order.coin.clone().into(),
                     oid: hit.order.oid.into(),
                 })
                 .and_capture(),
@@ -312,7 +312,7 @@ impl CandlestickChart {
         {
             return Some(
                 canvas::Action::publish(Message::CancelOrder {
-                    coin: hit.order.coin.clone(),
+                    coin: hit.order.coin.clone().into(),
                     oid: hit.order.oid.into(),
                 })
                 .and_capture(),

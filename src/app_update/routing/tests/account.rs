@@ -5,7 +5,7 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
     let window_id = window_id();
 
     assert_route(
-        Message::ToggleHiddenPosition("BTC".to_string()),
+        Message::ToggleHiddenPosition("BTC".into()),
         UpdateRoute::Account,
     );
     assert_route(

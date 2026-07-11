@@ -51,7 +51,7 @@ fn position_close_pct_button(
 ) -> Element<'static, Message> {
     button(text(label).size(9).center())
         .on_press(Message::ClosePosition {
-            coin,
+            coin: coin.into(),
             fraction,
             use_market: market,
         })
@@ -83,7 +83,7 @@ fn position_close_pct_button(
 
 fn position_close_dismiss_button(coin_for_close: String) -> Element<'static, Message> {
     button(text("X").size(9).center())
-        .on_press(Message::ToggleCloseMenu(coin_for_close))
+        .on_press(Message::ToggleCloseMenu(coin_for_close.into()))
         .padding([1, 3])
         .style(|_theme: &Theme, _status| button::Style {
             background: Some(color!(0x3a3a3a).into()),

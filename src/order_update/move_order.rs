@@ -20,7 +20,7 @@ impl TradingTerminal {
             move |result| Message::MoveOrderStatusLoaded {
                 request_id,
                 account_address: account_address.into(),
-                coin,
+                coin: coin.into(),
                 oid: oid.into(),
                 result: result.into(),
             },

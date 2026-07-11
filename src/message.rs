@@ -338,6 +338,37 @@ impl fmt::Debug for RedactedOrderSymbol {
     }
 }
 
+/// Persisted advanced-order history identity carried through navigation.
+///
+/// The exact value remains available to the history-window handler, while the
+/// derived `Message::Debug` path cannot expose the embedded account identity.
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
+pub(crate) struct RedactedAdvancedOrderHistoryId(String);
+
+impl RedactedAdvancedOrderHistoryId {
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedAdvancedOrderHistoryId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedAdvancedOrderHistoryId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Debug for RedactedAdvancedOrderHistoryId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("AdvancedOrderHistoryId(<redacted>)")
+    }
+}
+
 /// Exact order task result carried through the Elm message boundary.
 ///
 /// Update handlers recover the original value. Generic message diagnostics
@@ -781,7 +812,7 @@ pub(crate) enum Message {
     SetOrderKind(OrderKind),
     ToggleOrderDenomination,
     OrderPercentageChanged(f32),
-    PrefillOutcomeSell(String),
+    PrefillOutcomeSell(RedactedOrderSymbol),
     ToggleReduceOnly,
     ToggleOrderLeverageDropdown,
     OrderLeverageInputChanged(RedactedOrderInput),
@@ -980,7 +1011,7 @@ pub(crate) enum Message {
         is_buy: bool,
     },
     WalletClusterClosePosition {
-        symbol: String,
+        symbol: RedactedOrderSymbol,
         side: WalletClusterCloseSide,
         fraction: f64,
         use_market: bool,
@@ -1207,7 +1238,7 @@ pub(crate) enum Message {
     },
     DismissOrderStatus,
     CancelOrder {
-        coin: String,
+        coin: RedactedOrderSymbol,
         oid: RedactedOrderId,
     },
     CancelResult {
@@ -1220,11 +1251,11 @@ pub(crate) enum Message {
         request_id: u64,
         account_address: RedactedAddress,
         oid: RedactedOrderId,
-        symbol: String,
+        symbol: RedactedOrderSymbol,
         result: RedactedOrderMessageResult<api::OrderStatusResult>,
     },
-    ToggleCloseMenu(String),
-    ToggleHiddenPosition(String),
+    ToggleCloseMenu(RedactedOrderSymbol),
+    ToggleHiddenPosition(RedactedOrderSymbol),
     ToggleShowHiddenPositions,
     OpenPnlCard(PnlCardTarget),
     SetPnlCardDisplayMode(window::Id, PnlCardDisplayMode),
@@ -1236,7 +1267,7 @@ pub(crate) enum Message {
     SavePnlCard(window::Id),
     PnlCardSaved(Result<Option<PathBuf>, String>),
     ClosePosition {
-        coin: String,
+        coin: RedactedOrderSymbol,
         fraction: f64,
         use_market: bool,
     },
@@ -1319,7 +1350,7 @@ pub(crate) enum Message {
         result: RedactedOrderMessageResult<api::OrderStatusResult>,
     },
     OpenTwapDetails(u64),
-    OpenAdvancedOrderHistory(String),
+    OpenAdvancedOrderHistory(RedactedAdvancedOrderHistoryId),
     ChaseInitialBookLoaded {
         chase_id: u64,
         result: RedactedOrderMessageResult<OrderBook>,
@@ -1478,18 +1509,18 @@ pub(crate) enum Message {
     EscapePressed(window::Id),
     // Order drag-to-move (from chart canvas)
     MoveOrderDragStarted {
-        coin: String,
+        coin: RedactedOrderSymbol,
         oid: RedactedOrderId,
     },
     MoveOrder {
-        coin: String,
+        coin: RedactedOrderSymbol,
         oid: RedactedOrderId,
         new_price: f64,
     },
     MoveOrderModifyResult {
         request_id: u64,
         account_address: RedactedAddress,
-        coin: String,
+        coin: RedactedOrderSymbol,
         oid: RedactedOrderId,
         pending_indicator_id: Option<u64>,
         result: RedactedOrderMessageResult<ExchangeResponse>,
@@ -1497,7 +1528,7 @@ pub(crate) enum Message {
     MoveOrderStatusLoaded {
         request_id: u64,
         account_address: RedactedAddress,
-        coin: String,
+        coin: RedactedOrderSymbol,
         oid: RedactedOrderId,
         result: RedactedOrderMessageResult<api::OrderStatusResult>,
     },
@@ -1643,8 +1674,8 @@ pub(crate) enum Message {
 #[cfg(test)]
 mod tests {
     use super::{
-        Message, RedactedClientOrderId, RedactedOrderId, RedactedOrderInput,
-        RedactedOrderMessageResult, RedactedOrderSymbol, RedactedPhoneInput,
+        Message, RedactedAdvancedOrderHistoryId, RedactedClientOrderId, RedactedOrderId,
+        RedactedOrderInput, RedactedOrderMessageResult, RedactedOrderSymbol, RedactedPhoneInput,
         RedactedTelegramChannelKey, SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult,
         SecretInput, TelegramFastAuthMessageResult, TelegramFastAuthOutcome,
         XAccessTokenRefreshMessageResult, XAuthContextMessageResult, XFeedPageMessageResult,
@@ -1759,7 +1790,7 @@ mod tests {
                 request_id: 3,
                 account_address: ADDRESS.into(),
                 oid: 9_876_543_210_123_457_u64.into(),
-                symbol: "HYPE".to_string(),
+                symbol: "HYPE".into(),
                 result: Err(ERROR.to_string()).into(),
             },
             Message::ClosePositionResult {
@@ -1797,7 +1828,7 @@ mod tests {
             Message::MoveOrderModifyResult {
                 request_id: 11,
                 account_address: ADDRESS.into(),
-                coin: "HYPE".to_string(),
+                coin: "HYPE".into(),
                 oid: 9_876_543_210_123_457_u64.into(),
                 pending_indicator_id: Some(12),
                 result: Err(ERROR.to_string()).into(),
@@ -1805,7 +1836,7 @@ mod tests {
             Message::MoveOrderStatusLoaded {
                 request_id: 11,
                 account_address: ADDRESS.into(),
-                coin: "HYPE".to_string(),
+                coin: "HYPE".into(),
                 oid: 9_876_543_210_123_457_u64.into(),
                 result: Err(ERROR.to_string()).into(),
             },
@@ -1815,6 +1846,74 @@ mod tests {
             let rendered = format!("{message:?}");
             assert!(rendered.contains("<redacted>"), "{rendered}");
             assert!(!rendered.contains(ERROR), "error leaked in {rendered}");
+        }
+    }
+
+    #[test]
+    fn remaining_order_symbol_and_history_message_debug_redacts_exact_values() {
+        const SYMBOL: &str = "remaining-order-symbol-sentinel";
+        const HISTORY_ID: &str = "history-entry-account-identity-sentinel";
+        let messages = vec![
+            Message::PrefillOutcomeSell(SYMBOL.into()),
+            Message::WalletClusterClosePosition {
+                symbol: SYMBOL.into(),
+                side: crate::wallet_cluster_state::WalletClusterCloseSide::Long,
+                fraction: 0.5,
+                use_market: true,
+            },
+            Message::CancelOrder {
+                coin: SYMBOL.into(),
+                oid: 9_876_543_210_123_457_u64.into(),
+            },
+            Message::CancelOrderStatusLoaded {
+                request_id: 1,
+                account_address: "synthetic-account".into(),
+                oid: 9_876_543_210_123_457_u64.into(),
+                symbol: SYMBOL.into(),
+                result: Err("synthetic status error".to_string()).into(),
+            },
+            Message::ToggleCloseMenu(SYMBOL.into()),
+            Message::ToggleHiddenPosition(SYMBOL.into()),
+            Message::ClosePosition {
+                coin: SYMBOL.into(),
+                fraction: 0.25,
+                use_market: false,
+            },
+            Message::OpenAdvancedOrderHistory(HISTORY_ID.into()),
+            Message::MoveOrderDragStarted {
+                coin: SYMBOL.into(),
+                oid: 9_876_543_210_123_457_u64.into(),
+            },
+            Message::MoveOrder {
+                coin: SYMBOL.into(),
+                oid: 9_876_543_210_123_457_u64.into(),
+                new_price: 12_345.678_901,
+            },
+            Message::MoveOrderModifyResult {
+                request_id: 2,
+                account_address: "synthetic-account".into(),
+                coin: SYMBOL.into(),
+                oid: 9_876_543_210_123_457_u64.into(),
+                pending_indicator_id: Some(3),
+                result: Err("synthetic modify error".to_string()).into(),
+            },
+            Message::MoveOrderStatusLoaded {
+                request_id: 2,
+                account_address: "synthetic-account".into(),
+                coin: SYMBOL.into(),
+                oid: 9_876_543_210_123_457_u64.into(),
+                result: Err("synthetic status error".to_string()).into(),
+            },
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(SYMBOL), "symbol leaked in {rendered}");
+            assert!(
+                !rendered.contains(HISTORY_ID),
+                "history identity leaked in {rendered}"
+            );
         }
     }
 
@@ -1934,9 +2033,11 @@ mod tests {
     #[test]
     fn advanced_order_message_wrappers_preserve_exact_values_and_result_shape() {
         const SYMBOL: &str = "advanced-order-symbol-sentinel";
+        const HISTORY_ID: &str = "advanced-order-history-identity-sentinel";
         const ERROR: &str = "advanced-order-external-error-sentinel";
         const BID_PRICE: f64 = 98_765.432_123;
         let symbol = RedactedOrderSymbol::from(SYMBOL);
+        let history_id = RedactedAdvancedOrderHistoryId::from(HISTORY_ID);
         let error: RedactedOrderMessageResult<OrderBook> = Err(ERROR.to_string()).into();
         let success: RedactedOrderMessageResult<OrderBook> = Ok(OrderBook {
             bids: vec![BookLevel {
@@ -1949,15 +2050,19 @@ mod tests {
 
         let error_debug = format!("{error:?}");
         let success_debug = format!("{success:?}");
+        let history_debug = format!("{history_id:?}");
 
         assert!(error_debug.contains("Err(<redacted>)"), "{error_debug}");
         assert!(success_debug.contains("Ok(<redacted>)"), "{success_debug}");
+        assert!(history_debug.contains("<redacted>"), "{history_debug}");
         assert!(!error_debug.contains(ERROR), "{error_debug}");
+        assert!(!history_debug.contains(HISTORY_ID), "{history_debug}");
         assert!(
             !success_debug.contains(&BID_PRICE.to_string()),
             "{success_debug}"
         );
         assert_eq!(symbol.into_string(), SYMBOL);
+        assert_eq!(history_id.into_string(), HISTORY_ID);
         assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
         let restored_book = success.into_result().expect("synthetic book");
         assert_eq!(restored_book.bids[0].px, BID_PRICE);
@@ -2022,14 +2127,14 @@ mod tests {
 
         let messages = vec![
             Message::CancelOrder {
-                coin: "HYPE".to_string(),
+                coin: "HYPE".into(),
                 oid: OID.into(),
             },
             Message::CancelOrderStatusLoaded {
                 request_id: 1,
                 account_address: "0x0000000000000000000000000000000000000001".into(),
                 oid: OID.into(),
-                symbol: "HYPE".to_string(),
+                symbol: "HYPE".into(),
                 result: Err("status failed".to_string()).into(),
             },
             Message::TwapUnexpectedCancelResult {
@@ -2077,18 +2182,18 @@ mod tests {
                 oid: OID.into(),
             },
             Message::MoveOrderDragStarted {
-                coin: "HYPE".to_string(),
+                coin: "HYPE".into(),
                 oid: OID.into(),
             },
             Message::MoveOrder {
-                coin: "HYPE".to_string(),
+                coin: "HYPE".into(),
                 oid: OID.into(),
                 new_price: 100.0,
             },
             Message::MoveOrderModifyResult {
                 request_id: 2,
                 account_address: "0x0000000000000000000000000000000000000001".into(),
-                coin: "HYPE".to_string(),
+                coin: "HYPE".into(),
                 oid: OID.into(),
                 pending_indicator_id: None,
                 result: Err("modify failed".to_string()).into(),
@@ -2096,7 +2201,7 @@ mod tests {
             Message::MoveOrderStatusLoaded {
                 request_id: 2,
                 account_address: "0x0000000000000000000000000000000000000001".into(),
-                coin: "HYPE".to_string(),
+                coin: "HYPE".into(),
                 oid: OID.into(),
                 result: Err("status failed".to_string()).into(),
             },
@@ -2504,13 +2609,13 @@ mod tests {
                 request_id: 1,
                 account_address: ADDRESS.into(),
                 oid: 42.into(),
-                symbol: "HYPE".to_string(),
+                symbol: "HYPE".into(),
                 result: Err("status failed".to_string()).into(),
             },
             Message::MoveOrderModifyResult {
                 request_id: 2,
                 account_address: ADDRESS.into(),
-                coin: "HYPE".to_string(),
+                coin: "HYPE".into(),
                 oid: 42.into(),
                 pending_indicator_id: None,
                 result: Err("modify failed".to_string()).into(),
@@ -2518,7 +2623,7 @@ mod tests {
             Message::MoveOrderStatusLoaded {
                 request_id: 2,
                 account_address: ADDRESS.into(),
-                coin: "HYPE".to_string(),
+                coin: "HYPE".into(),
                 oid: 42.into(),
                 result: Err("move status failed".to_string()).into(),
             },

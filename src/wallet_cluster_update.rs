@@ -139,7 +139,12 @@ impl TradingTerminal {
                 side,
                 fraction,
                 use_market,
-            } => self.submit_wallet_cluster_close_position(symbol, side, fraction, use_market),
+            } => self.submit_wallet_cluster_close_position(
+                symbol.into_string(),
+                side,
+                fraction,
+                use_market,
+            ),
             Message::WalletClusterOrderResult {
                 execution_id,
                 member_key,

@@ -40,7 +40,7 @@ impl TradingTerminal {
             Message::ToggleOrderDenomination => self.handle_toggle_order_denomination(),
             Message::OrderPercentageChanged(value) => self.handle_order_percentage_changed(value),
             Message::PrefillOutcomeSell(balance_coin) => {
-                return self.handle_prefill_outcome_sell(balance_coin);
+                return self.handle_prefill_outcome_sell(balance_coin.into_string());
             }
             Message::SetOrderKind(kind) => self.handle_set_order_kind(kind),
             Message::ToggleReduceOnly => self.handle_toggle_reduce_only(),
@@ -84,6 +84,7 @@ impl TradingTerminal {
                 );
             }
             Message::CancelOrder { coin, oid } => {
+                let coin = coin.into_string();
                 return self.execute_cancel(&coin, oid.into_u64());
             }
             Message::CancelResult {
@@ -110,17 +111,18 @@ impl TradingTerminal {
                     request_id,
                     account_address.into_string(),
                     oid.into_u64(),
-                    symbol,
+                    symbol.into_string(),
                     result.into_result(),
                 );
             }
-            Message::ToggleCloseMenu(coin) => self.toggle_close_menu(coin),
+            Message::ToggleCloseMenu(coin) => self.toggle_close_menu(coin.into_string()),
             Message::ClosePosition {
                 coin,
                 fraction,
                 use_market,
             } => {
                 self.close_menu_coin = None;
+                let coin = coin.into_string();
                 return self.execute_close_position(&coin, fraction, use_market);
             }
             Message::ClosePositionResult {
@@ -278,7 +280,7 @@ impl TradingTerminal {
             }
             Message::OpenTwapDetails(twap_id) => return self.open_twap_details(twap_id),
             Message::OpenAdvancedOrderHistory(entry_id) => {
-                return self.open_advanced_order_history(entry_id);
+                return self.open_advanced_order_history(entry_id.into_string());
             }
             Message::ChaseInitialBookLoaded { chase_id, result } => {
                 return self.handle_chase_initial_book_loaded(chase_id, result.into_result());
@@ -438,7 +440,7 @@ impl TradingTerminal {
             Message::EscapePressed(window_id) => self.handle_order_escape_pressed(window_id),
             Message::MoveOrderDragStarted { coin, oid } => {
                 self.active_move_order_drag = Some(crate::order_execution::MoveOrderKey::new(
-                    coin,
+                    coin.into_string(),
                     oid.into_u64(),
                 ));
             }
@@ -448,7 +450,7 @@ impl TradingTerminal {
                 new_price,
             } => {
                 self.active_move_order_drag = None;
-                return self.handle_move_order(coin, oid.into_u64(), new_price);
+                return self.handle_move_order(coin.into_string(), oid.into_u64(), new_price);
             }
             Message::MoveOrderModifyResult {
                 request_id,
@@ -461,7 +463,7 @@ impl TradingTerminal {
                 return self.handle_move_order_modify_result(
                     request_id,
                     account_address.into_string(),
-                    coin,
+                    coin.into_string(),
                     oid.into_u64(),
                     pending_indicator_id,
                     result.into_result(),
@@ -477,7 +479,7 @@ impl TradingTerminal {
                 return self.handle_move_order_status_result(
                     request_id,
                     account_address.into_string(),
-                    coin,
+                    coin.into_string(),
                     oid.into_u64(),
                     result.into_result(),
                 );

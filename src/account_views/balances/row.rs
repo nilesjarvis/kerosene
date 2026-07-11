@@ -43,7 +43,7 @@ pub(super) fn balance_row(
         (Some(_trade_coin), Some(_)) => compact_action_button(
             "Sell",
             theme.palette().danger,
-            Message::PrefillOutcomeSell(coin.clone()),
+            Message::PrefillOutcomeSell(coin.clone().into()),
         ),
         (None, _) => text("").size(12).into(),
     };

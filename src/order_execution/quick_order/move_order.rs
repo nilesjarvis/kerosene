@@ -197,7 +197,7 @@ impl TradingTerminal {
         modify_order_task(key, prepared, move |r| Message::MoveOrderModifyResult {
             request_id,
             account_address: account_address.clone().into(),
-            coin: move_key.coin().to_string(),
+            coin: move_key.coin().into(),
             oid: oid.into(),
             pending_indicator_id,
             result: r.into(),
