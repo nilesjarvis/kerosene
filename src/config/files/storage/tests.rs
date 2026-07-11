@@ -856,6 +856,68 @@ fn valid_bundle_cleanup_scope_uses_payload_profiles_not_all_config_accounts() {
 }
 
 #[test]
+fn active_legacy_partial_merge_uses_identity_only_shell_and_moves_plaintext_fallbacks() {
+    let mut config = KeroseneConfig {
+        active_account_index: 1,
+        accounts: vec![test_profile("one", ""), test_profile(" two ", "")],
+        ..KeroseneConfig::default()
+    };
+    let mut payload = SecretPayload::from_credentials(&[test_profile("one", "one-agent")], "", "");
+    let loaded_agent_allocation = Cell::new(std::ptr::null::<u8>());
+    let loaded_hydromancer_allocation = Cell::new(std::ptr::null::<u8>());
+
+    let changed =
+        merge_active_legacy_profile_secrets_into_payload(&mut config, &mut payload, |profile| {
+            assert_eq!(profile.secret_id, " two ");
+            assert!(profile.name.is_empty());
+            assert!(profile.wallet_address.is_empty());
+            assert!(profile.agent_key.is_empty());
+            assert!(profile.hydromancer_api_key.is_empty());
+            profile.agent_key = "two-agent".to_string().into();
+            profile.hydromancer_api_key = "legacy-profile-hydro".to_string().into();
+            loaded_agent_allocation.set(profile.agent_key.as_ptr());
+            loaded_hydromancer_allocation.set(profile.hydromancer_api_key.as_ptr());
+            Ok(())
+        })
+        .expect("legacy profile merge should succeed");
+
+    assert!(changed);
+    assert_eq!(payload.profile_agent_key("one"), Some("one-agent"));
+    assert_eq!(payload.profile_agent_key("two"), Some("two-agent"));
+    assert_eq!(payload.global_hydromancer_api_key(), "legacy-profile-hydro");
+    assert_eq!(
+        config.accounts[1].agent_key.as_ptr(),
+        loaded_agent_allocation.get()
+    );
+    assert_eq!(
+        config.hydromancer_api_key.as_ptr(),
+        loaded_hydromancer_allocation.get()
+    );
+}
+
+#[test]
+fn active_legacy_partial_merge_preserves_hydromancer_trimming() {
+    let mut config = KeroseneConfig {
+        active_account_index: 0,
+        accounts: vec![test_profile("one", "")],
+        ..KeroseneConfig::default()
+    };
+    let mut payload = SecretPayload::from_credentials(&[], "", "");
+
+    let changed =
+        merge_active_legacy_profile_secrets_into_payload(&mut config, &mut payload, |profile| {
+            profile.agent_key = "one-agent".to_string().into();
+            profile.hydromancer_api_key = "  legacy-profile-hydro\n".to_string().into();
+            Ok(())
+        })
+        .expect("trimmed legacy profile merge should succeed");
+
+    assert!(changed);
+    assert_eq!(payload.global_hydromancer_api_key(), "legacy-profile-hydro");
+    assert_eq!(config.hydromancer_api_key.as_str(), "legacy-profile-hydro");
+}
+
+#[test]
 fn valid_partial_bundle_hydrates_missing_active_profile_from_legacy_keychain() {
     let mut config = KeroseneConfig {
         active_account_index: 1,
@@ -881,7 +943,12 @@ fn valid_partial_bundle_hydrates_missing_active_profile_from_legacy_keychain() {
         |profile| {
             loaded_profiles.borrow_mut().push(profile.secret_id.clone());
             if profile.secret_id == "two" {
+                assert!(profile.name.is_empty());
+                assert!(profile.wallet_address.is_empty());
+                assert!(profile.agent_key.is_empty());
+                assert!(profile.hydromancer_api_key.is_empty());
                 profile.agent_key = "two-agent".to_string().into();
+                profile.hydromancer_api_key = "legacy-profile-hydro".to_string().into();
             }
             Ok(())
         },
@@ -899,6 +966,10 @@ fn valid_partial_bundle_hydrates_missing_active_profile_from_legacy_keychain() {
         .expect("active legacy fallback should be stored into the bundle");
     assert_eq!(stored_payload.profile_agent_key("one"), Some("one-agent"));
     assert_eq!(stored_payload.profile_agent_key("two"), Some("two-agent"));
+    assert_eq!(
+        stored_payload.global_hydromancer_api_key(),
+        "legacy-profile-hydro"
+    );
 
     let cleaned_payload = cleaned_payload
         .borrow()
@@ -906,7 +977,129 @@ fn valid_partial_bundle_hydrates_missing_active_profile_from_legacy_keychain() {
         .expect("cleanup should use the completed bundle payload");
     assert_eq!(cleaned_payload.profile_agent_key("one"), Some("one-agent"));
     assert_eq!(cleaned_payload.profile_agent_key("two"), Some("two-agent"));
+    assert_eq!(
+        cleaned_payload.global_hydromancer_api_key(),
+        "legacy-profile-hydro"
+    );
+    assert_eq!(config.hydromancer_api_key.as_str(), "legacy-profile-hydro");
     assert!(!config.secret_migration_save_blocked);
+}
+
+#[test]
+fn valid_partial_bundle_store_failure_preserves_loaded_active_legacy_secrets() {
+    let mut config = KeroseneConfig {
+        active_account_index: 1,
+        accounts: vec![test_profile("one", ""), test_profile("two", "")],
+        ..KeroseneConfig::default()
+    };
+    let bundle = SecretPayload::from_credentials(&[test_profile("one", "one-agent")], "", "");
+    let attempted_payload = RefCell::new(None);
+    let cleanups = Cell::new(0);
+    let warnings = RefCell::new(Vec::new());
+    let loaded_agent_allocation = Cell::new(std::ptr::null::<u8>());
+    let loaded_hydromancer_allocation = Cell::new(std::ptr::null::<u8>());
+
+    load_os_keychain_secrets_with(
+        &mut config,
+        || Ok(Some(bundle.clone())),
+        |payload| {
+            attempted_payload.replace(Some(payload.clone()));
+            Err("keychain denied write".to_string())
+        },
+        cleanup_hooks(|_| {
+            cleanups.set(cleanups.get().saturating_add(1));
+            Ok(())
+        }),
+        |profile| {
+            assert_eq!(profile.secret_id, "two");
+            assert!(profile.name.is_empty());
+            assert!(profile.wallet_address.is_empty());
+            assert!(profile.agent_key.is_empty());
+            assert!(profile.hydromancer_api_key.is_empty());
+            profile.agent_key = "two-agent".to_string().into();
+            profile.hydromancer_api_key = "legacy-profile-hydro".to_string().into();
+            loaded_agent_allocation.set(profile.agent_key.as_ptr());
+            loaded_hydromancer_allocation.set(profile.hydromancer_api_key.as_ptr());
+            Ok(())
+        },
+        no_legacy_global_secrets,
+        |warning| warnings.borrow_mut().push(warning),
+    );
+
+    let attempted_payload = attempted_payload
+        .borrow()
+        .clone()
+        .expect("completed legacy payload should be attempted");
+    assert_eq!(
+        attempted_payload.profile_agent_key("two"),
+        Some("two-agent")
+    );
+    assert_eq!(
+        attempted_payload.global_hydromancer_api_key(),
+        "legacy-profile-hydro"
+    );
+    assert_eq!(cleanups.get(), 0);
+    assert!(config.secret_migration_save_blocked);
+    assert_eq!(config.accounts[0].agent_key.as_str(), "one-agent");
+    assert_eq!(config.accounts[1].agent_key.as_str(), "two-agent");
+    assert_eq!(
+        config.accounts[1].agent_key.as_ptr(),
+        loaded_agent_allocation.get()
+    );
+    assert_eq!(config.hydromancer_api_key.as_str(), "legacy-profile-hydro");
+    assert_eq!(
+        config.hydromancer_api_key.as_ptr(),
+        loaded_hydromancer_allocation.get()
+    );
+    assert!(
+        warnings
+            .borrow()
+            .iter()
+            .any(|warning| warning.contains("config saves are paused"))
+    );
+}
+
+#[test]
+fn valid_partial_bundle_keeps_bundle_hydromancer_authoritative_during_cleanup() {
+    let mut config = KeroseneConfig {
+        active_account_index: 1,
+        accounts: vec![test_profile("one", ""), test_profile("two", "")],
+        ..KeroseneConfig::default()
+    };
+    let bundle =
+        SecretPayload::from_credentials(&[test_profile("one", "one-agent")], "bundle-hydro", "");
+    let stores = Cell::new(0);
+    let cleanups = Cell::new(0);
+    let warnings = RefCell::new(Vec::new());
+
+    load_os_keychain_secrets_with(
+        &mut config,
+        || Ok(Some(bundle.clone())),
+        |_| {
+            stores.set(stores.get().saturating_add(1));
+            Ok(())
+        },
+        cleanup_hooks(|_| {
+            cleanups.set(cleanups.get().saturating_add(1));
+            Ok(())
+        }),
+        |profile| {
+            assert_eq!(profile.secret_id, "two");
+            profile.agent_key = "two-agent".to_string().into();
+            profile.hydromancer_api_key = "different-hydro".to_string().into();
+            Ok(())
+        },
+        no_legacy_global_secrets,
+        |warning| warnings.borrow_mut().push(warning),
+    );
+
+    assert_eq!(stores.get(), 1);
+    assert_eq!(cleanups.get(), 1);
+    assert!(!config.secret_migration_save_blocked);
+    assert_eq!(config.accounts[0].agent_key.as_str(), "one-agent");
+    assert_eq!(config.accounts[1].agent_key.as_str(), "two-agent");
+    assert_eq!(config.hydromancer_api_key.as_str(), "bundle-hydro");
+    assert!(warnings.borrow().is_empty());
 }
 
 #[test]

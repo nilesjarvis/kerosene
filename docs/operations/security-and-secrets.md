@@ -77,6 +77,16 @@ global runtime state and is copied once for its input. Conflict, trimming,
 persistence, and legacy-cleanup behavior remain owned by the existing migration
 path.
 
+Startup hydration treats an active profile's partial-bundle legacy fallback as
+one agent/Hydromancer transaction. Its keychain lookup shell retains the exact
+profile ID but omits unrelated metadata and canonical secret owners. When the
+bundle has no global Hydromancer key, every unambiguous loaded value that
+profile-wide cleanup may delete is placed in the attempted bundle first. Until
+that write succeeds, the loaded buffers remain the exact plaintext config
+fallbacks. When the bundle already has a global Hydromancer key, it retains its
+established authority; choosing a different conflict policy requires an
+explicit migration-behavior decision.
+
 Secret-bearing state includes:
 
 - `wallet_key_input`

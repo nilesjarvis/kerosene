@@ -8,7 +8,7 @@ use crate::config::{
     AccountProfile, CredentialStorageMode, KeroseneConfig, SecretPayload, new_secret_id,
 };
 use crate::helpers::redact_sensitive_response_text;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 mod payload;
 
@@ -184,22 +184,23 @@ fn load_os_keychain_secrets_with(
                 merge_missing_plaintext_secrets_into_payload(config, &mut merged_payload);
             let legacy_binding_changed =
                 bind_legacy_unbound_profile_keys_to_wallets(config, &mut merged_payload);
-            let active_legacy_profile_changed = match merge_active_legacy_profile_key_into_payload(
-                config,
-                &mut merged_payload,
-                &mut load_profile,
-            ) {
-                Ok(changed) => changed,
-                Err(error) => {
-                    config.secret_migration_save_blocked = true;
-                    let error = redact_sensitive_response_text(&error);
-                    push_warning(format!(
-                        "Active legacy account credential read failed: {error}; config saves are paused until credentials are saved to a working store"
-                    ));
-                    apply_secret_payload_preserving_missing_plaintext(config, &payload);
-                    return;
-                }
-            };
+            let active_legacy_profile_changed =
+                match merge_active_legacy_profile_secrets_into_payload(
+                    config,
+                    &mut merged_payload,
+                    &mut load_profile,
+                ) {
+                    Ok(changed) => changed,
+                    Err(error) => {
+                        config.secret_migration_save_blocked = true;
+                        let error = redact_sensitive_response_text(&error);
+                        push_warning(format!(
+                            "Active legacy account credential read failed: {error}; config saves are paused until credentials are saved to a working store"
+                        ));
+                        apply_secret_payload_preserving_missing_plaintext(config, &payload);
+                        return;
+                    }
+                };
             let should_store =
                 plaintext_merge_changed || legacy_binding_changed || active_legacy_profile_changed;
             if should_store && let Err(error) = store_payload(&merged_payload) {
@@ -392,10 +393,10 @@ fn load_legacy_os_keychain_secrets_with_warnings(
     true
 }
 
-fn merge_active_legacy_profile_key_into_payload(
+fn merge_active_legacy_profile_secrets_into_payload(
     config: &mut KeroseneConfig,
     payload: &mut SecretPayload,
-    mut load_profile: impl FnMut(&mut AccountProfile) -> Result<(), String>,
+    load_profile: impl FnOnce(&mut AccountProfile) -> Result<(), String>,
 ) -> Result<bool, String> {
     let Some(active_index) = active_legacy_profile_index(config) else {
         return Ok(false);
@@ -404,31 +405,77 @@ fn merge_active_legacy_profile_key_into_payload(
         return Ok(false);
     };
 
-    let secret_id = profile.secret_id.trim().to_string();
-    if secret_id.is_empty()
+    let payload_secret_id = profile.secret_id.trim().to_string();
+    if payload_secret_id.is_empty()
         || payload
-            .profile_agent_key_for_wallet(&secret_id, &profile.wallet_address)
+            .profile_agent_key_for_wallet(&payload_secret_id, &profile.wallet_address)
             .is_some()
-        || payload.profile_agent_key_binding_mismatches(&secret_id, &profile.wallet_address)
+        || payload.profile_agent_key_binding_mismatches(&payload_secret_id, &profile.wallet_address)
     {
         return Ok(false);
     }
 
+    // Preserve the exact legacy lookup ID, but do not expose unrelated account
+    // metadata or clone canonical secret owners into the keychain boundary.
+    let lookup_secret_id = profile.secret_id.clone();
     let wallet_address = profile.wallet_address.clone();
-    let mut legacy_profile = profile.clone();
+    let mut legacy_profile = AccountProfile {
+        secret_id: lookup_secret_id,
+        name: String::new(),
+        wallet_address: String::new(),
+        agent_key: String::new().into(),
+        hydromancer_api_key: String::new().into(),
+    };
     load_profile(&mut legacy_profile)?;
     if legacy_profile.agent_key.trim().is_empty() {
         return Ok(false);
     }
 
-    let agent_key = legacy_profile.agent_key.clone();
-    let changed =
-        payload.upsert_profile_agent_key_for_wallet(&secret_id, Some(&wallet_address), &agent_key);
-    if changed && let Some(profile) = config.accounts.get_mut(active_index) {
+    let agent_key = std::mem::take(&mut legacy_profile.agent_key);
+    let hydromancer_api_key = std::mem::take(&mut legacy_profile.hydromancer_api_key);
+    let hydromancer_changed = merge_active_legacy_profile_hydromancer_key_into_payload(
+        config,
+        payload,
+        hydromancer_api_key,
+    );
+    let agent_changed = payload.upsert_profile_agent_key_for_wallet(
+        &payload_secret_id,
+        Some(&wallet_address),
+        &agent_key,
+    );
+    if agent_changed && let Some(profile) = config.accounts.get_mut(active_index) {
         profile.agent_key.zeroize();
         profile.agent_key = agent_key;
     }
-    Ok(changed)
+    Ok(agent_changed || hydromancer_changed)
+}
+
+fn merge_active_legacy_profile_hydromancer_key_into_payload(
+    config: &mut KeroseneConfig,
+    payload: &mut SecretPayload,
+    hydromancer_api_key: Zeroizing<String>,
+) -> bool {
+    let loaded_key = hydromancer_api_key.trim();
+    if loaded_key.is_empty() {
+        return false;
+    }
+
+    let payload_key = payload.global_hydromancer_api_key().trim();
+    if !payload_key.is_empty() || !config.hydromancer_api_key.trim().is_empty() {
+        return false;
+    }
+
+    let hydromancer_api_key = if loaded_key.len() == hydromancer_api_key.len() {
+        hydromancer_api_key
+    } else {
+        Zeroizing::new(loaded_key.to_string())
+    };
+    let changed = payload.set_global_hydromancer_api_key(&hydromancer_api_key);
+    if changed {
+        config.hydromancer_api_key.zeroize();
+        config.hydromancer_api_key = hydromancer_api_key;
+    }
+    changed
 }
 
 fn normalize_legacy_plaintext_secrets(config: &mut KeroseneConfig) -> Result<(), String> {

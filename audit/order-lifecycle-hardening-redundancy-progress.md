@@ -188,6 +188,16 @@
   Conflict, trimming, generation/cache invalidation, bundle persistence, and
   cleanup ordering retain their established owners
   (`src/account_state/switching.rs:98-210`).
+- Startup partial-bundle hydration treats the active legacy profile as one
+  agent/Hydromancer transaction. It reads through an identity-only shell,
+  and, when the bundle has no global Hydromancer key, places both values in the
+  attempted bundle before profile-wide cleanup. It move-retains those loaded
+  buffers in plaintext config until storage succeeds, so store failure
+  preserves retry authority. An already-populated bundle retains its
+  established Hydromancer precedence pending the separately deferred
+  conflict-policy decision
+  (`src/config/files/storage.rs:178-228`,
+  `src/config/files/storage.rs:396-479`).
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -2654,10 +2664,88 @@ target-specific cancellation policy, not HTTP replay.
   and every visible behavior remain unchanged. Only lookup breadth, allocation
   provenance, callback capability, and zeroization timing change.
 - Residual uncertainty: Rust type-checking and tests remain blocked by ALSA
-  metadata. Startup's active-legacy payload merge independently clones a full
-  profile and loaded agent, and storage-selection snapshots have separate
+  metadata. Startup active-legacy partial-bundle hydration is separately
+  addressed by F-38, while storage-selection snapshots retain separate
   ownership needs; F-37 makes no claim about those paths. The remaining
   diagnostic inventory is also incomplete.
+
+### F-38 — Partial-bundle cleanup can delete an unmerged legacy integration key
+
+- Status: addressed in Turn 33; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium credential-durability and secret-lifetime hardening; no
+  exchange mutation is affected, but a valid saved integration credential can
+  be removed from its only durable location during startup migration
+- Scope: OS-keychain startup with a valid partial bundle; plaintext
+  normalization and unbound-wallet binding; active legacy profile fallback;
+  agent/Hydromancer merge; bundle store success/failure; original-payload
+  repair; cleanup scope; warning and save-block behavior
+- Preconditions/event ordering:
+  1. The current keychain bundle is valid but lacks the active profile's agent
+     key and any global Hydromancer key, so startup invokes the combined legacy
+     profile reader with no competing integration value.
+  2. That reader can populate both the legacy agent and per-profile Hydromancer
+     fields. The prior merge cloned and inserted only the agent key, ignoring
+     the loaded Hydromancer field.
+  3. A successful bundle write made the active profile eligible for cleanup.
+     Profile cleanup deletes both legacy agent and Hydromancer entries, even
+     though the latter was absent from the stored bundle/global runtime state.
+  4. Separately, the prior helper cloned the complete profile and loaded agent;
+     on bundle-write failure, a cloned agent remained as plaintext retry
+     authority while the loaded source survived unnecessarily to scope end.
+- Evidence: parent commit
+  `fc17cf69f613c0f4038d8066bc4cf4a71c2f9104` shows
+  `load_profile_secrets` populating both fields, the active merge reading only
+  `legacy_profile.agent_key`, and cleanup clearing both profile fields for each
+  payload profile (`src/config/secrets/keychain.rs:282-312`,
+  `src/config/secrets/keychain.rs:556-571`). The original-payload failure repair
+  intentionally preserves config plaintext values missing from the stored
+  bundle (`src/config/files/storage/payload.rs:159-228`).
+- Violated invariant: when the candidate bundle has no global Hydromancer key,
+  profile-wide legacy cleanup may run only after the unambiguous loaded value is
+  represented in the successfully stored bundle. Until storage succeeds, the
+  exact loaded buffers must remain plaintext retry authority. The distinct
+  pre-existing disagreement case remains current-behavior authority under F-39.
+- Risk: a partial-bundle migration could silently delete the active profile's
+  only legacy Hydromancer key and restart without that integration credential.
+  This can disable authenticated data services and forces manual re-entry. The
+  agent key remained correctly correlated and no order, signature, or private
+  value was exposed.
+- Why existing checks did not cover it: the partial-bundle success test made
+  the loader return only an agent key. Other tests covered plaintext
+  Hydromancer conflicts and full storage-selection migration, but none combined
+  a partial bundle, the active profile's two-field legacy reader, profile-wide
+  cleanup, and store failure.
+- Implemented fix: rename the helper for its two-secret responsibility; retain
+  the exact lookup ID in a metadata/keyless shell while keeping the trimmed ID
+  for payload binding; move the loaded agent into plaintext config and clone it
+  only into the attempted payload; normalize and merge the loaded Hydromancer
+  key when the bundle global is empty, move it into plaintext config, and clone
+  it into the payload. Both unambiguous loaded values therefore survive
+  original-payload repair on store failure. An existing bundle global retains
+  its established precedence (`src/config/files/storage.rs:178-228`,
+  `src/config/files/storage.rs:396-479`).
+- Regression coverage: a direct helper test requires an exact untrimmed lookup
+  ID, empty metadata/secret shell, trimmed payload identity, both payload
+  values, and exact loaded allocations in plaintext config. Integration tests
+  require both values in stored and cleanup payloads on success; exact loaded
+  plaintext owners plus no cleanup on store failure; established bundle-global
+  precedence and cleanup when a different legacy value exists; and preserved
+  whitespace normalization
+  (`src/config/files/storage/tests.rs:859-1103`). Existing binding-mismatch,
+  read-failure redaction, plaintext merge, and cleanup-warning tests remain.
+- Smallest behavior-preserving fix: active-index selection, exact lookup ID,
+  trimmed payload ID, wallet binding/mismatch gates, bundle and plaintext
+  precedence, keychain read count, success/store-failure warning text,
+  `secret_migration_save_blocked`, original-payload repair, cleanup scope and
+  timing, stored schema, bundle-global disagreement precedence, warnings, and
+  normal hydrated values remain unchanged. No visible string or policy was
+  introduced.
+- Residual uncertainty: Rust type-checking and tests remain blocked by ALSA
+  metadata. Keychain payload serialization and final config hydration still
+  require their necessary copies. F-39 owns the bundle-global disagreement;
+  the storage-selection snapshot graph and remaining local planner/state/
+  message diagnostics are not yet complete.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -4696,6 +4784,68 @@ target-specific cancellation policy, not HTTP replay.
   merge in `config/files/storage.rs`, including binding, partial-bundle failure,
   and cleanup semantics; then resume the remaining diagnostic inventory.
 
+## Turn 33 — Preserve Both Active Legacy Secrets Before Startup Cleanup
+
+- Status: F-38 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: startup hydration of an active profile missing from an otherwise valid
+  keychain bundle, including two-field legacy read, store/repair, and cleanup
+- Invariant: when the candidate bundle lacks a global Hydromancer value, every
+  unambiguous legacy value the profile cleanup can delete must be in the
+  attempted bundle, and exact loaded plaintext owners must survive until that
+  bundle is durably accepted. Existing bundle-global disagreement precedence
+  must remain unchanged pending approval.
+- Protected behavior: active-profile selection; exact-versus-trimmed secret-ID
+  use; wallet binding and mismatch gates; plaintext/bundle precedence; loader
+  invocation; success and failure warnings; save blocking; original-payload
+  repair; bundle-global disagreement behavior; cleanup payload/scope/timing;
+  final values and schema; no order, view, prompt, or normal startup behavior
+  change.
+- Preconditions/event ordering: normalize plaintext secrets and bind any
+  unbound payload entries first. If the active wallet still lacks a bound key,
+  load its legacy two-field record into a narrow shell. Require the agent key,
+  merge an unambiguous missing Hydromancer value, then copy both into the
+  candidate payload and move both into plaintext config as failure authority.
+  Store the candidate; only success proceeds through authoritative payload
+  application and cleanup. An existing bundle global remains authoritative.
+- Evidence: F-38 records the exact loss ordering, parent/current sources,
+  cleanup behavior, established bundle-global precedence, and adversarial
+  success/precedence/store-failure assertions. Call-site review confirms this
+  helper is exclusive to the valid-bundle startup branch.
+- Change: merged both loaded fields transactionally, added an identity-only
+  lookup shell, retained exact/trimmed ID roles, moved loaded fallback buffers
+  into config, preserved existing bundle-global precedence, added focused
+  preservation/precedence/allocation tests, and documented the startup
+  migration contract.
+- Tests/checks:
+  - The pre-fix exact helper regression stopped in `alsa-sys` before Kerosene
+    compilation because `pkg-config` could not find the system `alsa.pc` file.
+  - Post-fix exact helper, integrated success, store-failure, and bundle-global
+    precedence tests plus the full `config::files::storage::tests` module
+    stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no app runtime, subscription, view, or
+    window path changed, compilation is already blocked, and no live exchange
+    or credential-bearing external operation was run.
+- Compatibility/UX assessment: unambiguous migration retains the same agent
+  value and now preserves the accompanying Hydromancer value before the same
+  cleanup. Store failure keeps the same block/warning and now retains both exact
+  loaded buffers. A pre-existing bundle global remains authoritative with the
+  same store, cleanup, warning, and final-state behavior; F-39 records why
+  changing that disagreement policy requires approval. No schema, normal copy,
+  task, prompt, trading rule, or UI flow changes.
+- Residual risk: Kerosene has not type-checked on this host. Storage-selection
+  hydration constructs a full saved-profile snapshot and reads every legacy
+  profile; its ownership/correlation needs remain to audit. The broader
+  diagnostic inventory also remains incomplete.
+- Prior turn commit hash: `fc17cf69f613c0f4038d8066bc4cf4a71c2f9104`
+- Next candidate: audit `encrypted_storage_selection_payload` and its callers
+  for profile/key ownership, binding/conflict rollback, and cleanup authority;
+  then return to the remaining account/order diagnostic inventory.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -4714,21 +4864,30 @@ target-specific cancellation policy, not HTTP replay.
   OS-keychain-rebind runtime state while disk may retain the transition and
   cleanup intent. Choosing installed-snapshot authority or a second durable
   rollback changes exceptional behavior and requires approval.
+- F-39: when a valid partial bundle already has a global Hydromancer key that
+  differs from the active profile's legacy Hydromancer entry, startup currently
+  keeps the bundle global authoritative, migrates the missing agent, and runs
+  profile-wide cleanup that deletes the differing legacy entry. Treating the
+  disagreement as uncertain would add a startup warning/save block; preserving
+  both would require field-specific cleanup ownership or new durable conflict
+  state. Choose explicitly between current bundle authority, conflict blocking,
+  or a separate retention policy. Turn 33 preserves current behavior and fixes
+  only the unambiguous missing-global loss path.
 
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused deferred-legacy allocation, fallback,
-  conflict, trim, bundle-failure, and nearby switch tests; `cargo check`; full
-  `cargo test`; and strict clippy at `alsa-sys` system dependency discovery,
-  before Kerosene was compiled.
+- Environment-blocked this turn: focused startup partial-bundle identity,
+  allocation, two-secret success, store-failure, bundle-global precedence, and
+  nearby storage tests; `cargo check`; full `cargo test`; and strict clippy at
+  `alsa-sys` system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-37
+- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -4740,6 +4899,9 @@ target-specific cancellation policy, not HTTP replay.
 - F-31 is explicitly deferred for post-install saved-profile deletion/rebind
   authority; ordinary failure and successful key ownership are independently
   hardened by F-30/F-32.
+- F-39 is explicitly deferred for partial-bundle versus legacy-profile
+  Hydromancer conflict authority; F-38 independently preserves unambiguous
+  missing-global migration before cleanup.
 - TWAP terminalization plus successful save/clear final-exit fencing across all
   current mutation intents are source-audited with focused coverage but cannot
   be executed on this host. Ghost-profile cluster stream invalidation is
@@ -4749,7 +4911,7 @@ target-specific cancellation policy, not HTTP replay.
   explicit credential-save ownership is source-hardened by F-33, and nested
   exchange-response diagnostics are source-hardened by F-34. Ordinary switching
   key ownership is source-hardened by F-35, and add-account ownership by F-36;
-  deferred runtime legacy-key ownership is source-hardened by F-37. Startup
-  legacy migration/storage-selection copies, local planning/state/message
-  diagnostic redaction, other external-status paths, and the rest of Track 9
-  require completion before a final verdict.
+  deferred runtime legacy-key ownership is source-hardened by F-37, and startup
+  partial-bundle cleanup by F-38. Storage-selection copies, local planning/
+  state/message diagnostic redaction, other external-status paths, and the rest
+  of Track 9 require completion before a final verdict.
