@@ -146,6 +146,17 @@ Saved account profiles persist secret IDs and wallet metadata, not raw agent
 keys. Secret payloads map secret IDs to agent keys and global integration
 tokens inside the selected secret storage backend.
 
+X direct-token authentication and refresh-token exchange share an exact
+runtime credential-operation owner. A refresh may supersede a read-only auth
+check; once its POST is dispatched it remains owner until settlement because
+the response may rotate the refresh token. The refresh request owns a zeroizing
+copy of its dispatch-time Client ID and fallback refresh token, separate from
+mutable input staging. Supersession, credential clear, and config clear drop
+obsolete contexts before stale results are recovered; config clear preserves
+only the non-secret terminal allocator. Result wrappers remain value-neutral in
+generic diagnostics, and accepted credential errors pass a final sensitive-text
+redaction boundary before entering runtime status.
+
 OpenRouter key validation captures the configured key only in a `Zeroizing`
 task value. Its completion carries safe runtime request correlation and a
 value-neutral result wrapper; generic diagnostics do not traverse key-check

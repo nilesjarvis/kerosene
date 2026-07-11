@@ -6229,6 +6229,113 @@ target-specific cancellation policy, not HTTP replay.
   remain ordinary `String` values for exact serialization and consumption, and
   `reqwest`/serde-owned serialized buffers are not guaranteed to be erased.
 
+### F-78 — X credential stages have independent and mutable result ownership
+
+- Status: addressed in Turn 71; focused source controls added, but executable
+  validation is blocked before Kerosene compilation by the missing system ALSA
+  package
+- Severity: Medium private-credential ownership and diagnostic hardening; the
+  race cannot mutate an exchange, but it can persist a mixed X OAuth credential
+  set, let completion order choose a different private-feed identity, strand
+  loading state, or expose an unsanitized synthetic error
+- Scope: X direct access-token input/authentication, OAuth Client ID and refresh-
+  token exchange, refresh rotation/fallback, automatic auth/refresh requests,
+  result messages and wrappers, secret persistence-before-commit, credential
+  clear, encrypted payload change, config clear, restart/shutdown, diagnostics,
+  pane/feed consumers, docs, and focused coverage
+- Preconditions/event ordering:
+  1. Refresh A captures Client ID/refresh token A in its task and sets
+     `token_refreshing`. A second Connect with credentials B overwrites the
+     shared pending Client ID/refresh-token fields before the existing guard
+     suppresses a second POST. When A succeeds without a rotated refresh token,
+     its handler pairs access token A with fallback credentials B and persists
+     the mixed set.
+  2. Direct-token auth and token refresh use independent current-ID scalars. If
+     read-only auth A is pending and refresh B starts, both results remain
+     current in their own domains; whichever arrives first can publish status,
+     commit credentials, clear the other intent's pending secret, and invalidate
+     the other result. Direct auth started during refresh has the symmetric race,
+     although discarding the refresh response is unsafe because it may contain a
+     rotated token.
+  3. With no committed credential, direct auth can be pending solely against a
+     staged token. Clear increments scalar IDs but leaves `connecting` and
+     `lists_loading` untouched; the subsequent empty-to-empty credential set is
+     not considered changed, so the UI can remain loading after the stale result
+     is rejected.
+  4. In-process config clear replaces `XFeedState` and resets the scalar request
+     domains. The first post-clear auth can therefore reuse an old task's ID,
+     allowing the pre-clear result to settle the new state. Saturating scalar
+     allocation also permanently reuses `u64::MAX`, and completed scalar owners
+     accept replays.
+  5. Credential wrappers were recovered before their scalar check, and accepted
+     handler errors relied solely on producer sanitization before visible state.
+- Evidence: the secure pane inputs route only through `feed_update/x.rs`.
+  `refresh_x_access_token` owns the one refresh POST and `fetch_x_auth_context`
+  owns the read-only user/List requests; task credentials are `Zeroizing`.
+  Successful handlers persist through the selected OS-keychain/encrypted-config
+  backend before committing `XFeedState`. `x_feed.rs` owns the pending/live
+  secrets, three credential flags, and separate saturating auth/refresh IDs.
+  Credential change invalidates feed/List requests, while config clear is the
+  sole in-process whole-state replacement. Parent result wrappers and nested
+  user/list/token models are already value-neutral. Plain snapshots contain only
+  X pane IDs and non-secret public sources. Repository-wide searches found no X
+  state or result used by order preparation, signing, Chase/TWAP, wallet-cluster,
+  account reconciliation, or any exchange mutation.
+- Violated invariant: the two credential stages form one operation domain. A
+  token-refresh POST that may rotate credentials remains authoritative until it
+  settles; a newly started refresh may supersede an older read-only auth check.
+  Only the exact current owner may recover a result once, and it must use the
+  immutable Client ID/fallback token captured at dispatch. Clear/reset must drop
+  all owners, secret contexts, and loading flags while retaining a terminal-
+  lifetime allocator. Accepted errors need an independent final redaction pass.
+- Risk: a mixed access/client/refresh set can authenticate once as one X user but
+  fail later refreshes, or select completion-order rather than request authority
+  for a private following/List feed. Reset aliasing can publish an old error or
+  identity into a new credential attempt. These failures affect private content
+  and credential availability, but X state has no financial mutation consumer.
+- Why existing checks did not cover it: state tests covered redacted formatting,
+  simple direct-token commit, clear invalidation, post dedupe, and List option
+  dedupe. There were no update-handler tests for cross-stage ordering, suppressed
+  retry credentials, automatic-versus-explicit work, duplicate/replayed result,
+  persistence/status compatibility, clear with only a pending token, terminal
+  wrap, config-clear reuse, reject-before-recovery, or final redaction.
+- Implemented fix: replace the two scalar credential domains with one wrapping
+  terminal allocator and an exact typed owner. Store the active refresh's Client
+  ID and fallback token in a redacted `SensitiveString` context separate from
+  mutable input staging. A refresh supersedes read-only auth; auth remains
+  deduped while a potentially rotating refresh is in flight. Automatic work
+  never supersedes explicit pending credential work. Check/take the exact owner
+  before recovering the value-neutral wrapper, settle it once, clear obsolete
+  pending secrets and all invalidation flags, and re-redact accepted errors.
+  Preserve the allocator—but no owner or secret—across config clear; restart
+  resets it because tasks cannot survive process exit.
+- Regression coverage: controls cover both cross-stage orders, refresh authority
+  over a later direct Connect, explicit intent over automatic work, immutable A
+  fallback credentials despite suppressed B input, exact direct-token secure
+  persistence/config-save/status behavior, ordinary error equality, handler-
+  boundary secret redaction, duplicate auth/refresh replay, clear with an empty
+  committed credential, config-clear old/new ID separation, `MAX`-to-zero
+  allocation, one-time settlement, and request-context/state diagnostics.
+  Existing routing, wrapper/model, secret payload, config serialization, API,
+  list/post, and pane behavior controls remain nearby.
+- Smallest behavior-preserving fix: one two-kind owner, one secret-bearing typed
+  refresh context, owner begin/finish/invalidation helpers, a config-clear
+  allocator handoff, reject-before-recovery at two handlers, two final-redaction
+  calls, focused tests, and docs. Normal Connect still launches the same single
+  auth or refresh task at the same point; refresh re-entry still launches no
+  second POST. No endpoint/form/query/timeout, rotation/fallback value, secure
+  persistence order/backend, normal status/error text, polling/List/post/image
+  behavior, pane/layout schema, order input, signed bytes, or trading semantic
+  changed.
+- Residual uncertainty: Kerosene has not type-checked or launched on this host.
+  Rustfmt, exhaustive producer/consumer/secret/reset/financial tracing, exact
+  typed ownership, and source controls establish the intended boundary, but
+  tests cannot execute until ALSA development metadata is available. Complete
+  allocator-cycle reuse is theoretical. Dependency-owned OAuth form/header
+  buffers are not guaranteed erased. List/page/profile-image owner allocation,
+  config-reset aliasing, replay/wrap behavior, result recovery, and diagnostics
+  are a separate confirmed remaining X audit.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -10964,6 +11071,94 @@ target-specific cancellation policy, not HTTP replay.
   status behavior, credential storage, and every trading semantic; then audit
   Telegram private-integration completion ownership.
 
+## Turn 71 — Preserve X Credential Operation Ownership
+
+- Status: F-78 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: X direct-token auth and OAuth refresh stages, credential task capture,
+  cross-stage/automatic ordering, token rotation/fallback, result acceptance and
+  diagnostics, secret persistence, clear/config-clear/restart/shutdown, X pane
+  and feed consumers, docs, and adversarial source controls
+- Invariant: X credential work has one terminal-lifetime owner. A refresh POST
+  that may rotate the token stays owner until settlement; a new refresh may
+  supersede older read-only auth. Only the exact current owner recovers one
+  result using immutable dispatch credentials. Clear/reset removes owners,
+  secret contexts, and loading flags without resetting the process allocator,
+  and accepted errors pass an independent final redaction boundary.
+- Protected behavior: exact secure inputs, direct-token and Client ID/refresh-
+  token selection, one normal task per Connect, existing refresh deduplication,
+  `/2/oauth2/token` form and timeout, user/List auth requests, rotation and
+  fallback values, persistence-before-runtime-commit and failure authority,
+  every normal status/error string and config-save schedule, polling/source/
+  post/profile-image behavior, pane/layout persistence, secret schema/defaults,
+  restart with no live task, all order/signing/automation paths, and every
+  trading semantic.
+- Preconditions/event ordering: mutable pending refresh credentials could be
+  retargeted by a suppressed second Connect; independent auth/refresh scalars
+  allowed both stages to settle according to response order; clear against only
+  pending direct auth left loading true; config clear reset IDs so an old result
+  could alias the first new request. Completed IDs also accepted replays, and
+  wrappers/errors lacked the final acceptance boundaries.
+- Evidence: F-78 records every secure input, task publisher, HTTP boundary,
+  result message/wrapper/handler, pending/live secret transition, automatic
+  caller, clear and encrypted payload path, whole-state replacement, snapshot,
+  view/pane consumer, and negative financial search. X credential state is
+  global to the terminal and not tied to pane lifetime; no exchange consumer was
+  found.
+- Change: add a shared wrapping credential owner plus an immutable redacted,
+  zeroizing refresh context. Give the rotating refresh stage precedence over
+  later Connect re-entry and let a new refresh supersede older read-only auth;
+  block automatic cross-stage supersession. Reject stale/replayed contexts
+  before result recovery, settle exact results once, clear all invalidation
+  flags/pending secrets, preserve only allocator state across config clear, and
+  re-redact accepted errors. Add focused handler/state controls and document the
+  lifecycle/security boundary.
+- Tests/checks:
+  - Baseline X tests, exact X routing and private-integration message controls,
+    and `cargo check` stopped in `alsa-sys` before Kerosene compilation because
+    `pkg-config` could not find `alsa.pc`.
+  - The pre-fix exact cross-stage-order, mutable fallback-credential, and pending-
+    clear/config-reset controls stopped at the same dependency boundary before
+    demonstrating their expected assertion failures.
+  - Post-fix X update/state controls, private-integration message diagnostics,
+    X routing, config-clear, and credential-serialization suites all stopped at
+    the same boundary before executing.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed; final
+    source, call-site, endpoint, task-secret, diagnostic, snapshot/persistence,
+    pane/window/shutdown, financial-consumer, secret/artifact, and compatibility
+    reviews are recorded in the validation summary below.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` stopped at the
+    same pre-existing dependency boundary before Kerosene compilation. Startup
+    smoke was not run because the host could not be guaranteed credential-free;
+    the existing boot auth-refresh entry and its unchanged normal dispatch were
+    source-audited instead. No X/network, secret backend/config, private-feed,
+    exchange, or credential-bearing operation ran.
+- Compatibility/UX assessment: ordinary direct auth and token refresh still
+  stage the same trimmed secret, set the same status/flag, launch the same task,
+  persist the same accepted values before runtime commit, schedule the same
+  config save, and start the same follow-up auth/feed work. Refresh re-entry
+  still starts no second POST. Only overlapping/stale/replayed/reset contexts
+  receive deterministic authority and final secret redaction. Runtime owner and
+  allocator state is not serialized. No normal copy/data/timing/control,
+  persisted field/default, feed/List/post/image behavior, signed bytes, order
+  behavior, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-78 is source-
+  hardened; full-cycle reuse, dependency-owned buffer erasure, and executable
+  validation remain residual. X List/page/profile-image ownership and
+  diagnostics, Telegram private-integration lifecycles, independently
+  formattable nested account/order types, classified external-status paths, and
+  the remainder of Track 9 still require review.
+- Prior turn commit hash: `039f45cbbfbee853d5a840aeb6d5094ee71cfce7`
+- Next candidate: audit X List, source-page, and profile-image completions for
+  terminal allocation, config-clear/layout recreation, repeated/same-source
+  issue, reversed/duplicate/replayed acceptance, source/payload and profile/URL
+  identity, rate-limit ownership, wrapper recovery, final error redaction, and
+  parent/model diagnostics. Preserve exact polling cadence, endpoints, query/
+  pagination, dedupe/sort/limit, visible feed/status/image behavior, persisted
+  source policy, and every trading semantic; then audit Telegram integration
+  completion ownership.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -11005,23 +11200,26 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline OpenRouter API/full integration tests
-  plus `cargo check`; pre-fix standalone chat-message, enclosing-request,
-  completion-result, and token-usage diagnostic controls; post-fix exact
-  diagnostic controls; full OpenRouter API, update, and combined suites;
-  `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
-  dependency discovery, before Kerosene was compiled.
-- Startup smoke was not applicable because no startup, subscription, route,
-  window, task, or runtime-state plumbing changed. No secret backend/config
-  mutation, OpenRouter or other live request, AI action, config clear, exchange
-  mutation, or credential-bearing operation was run.
+- Environment-blocked this turn: baseline X, exact X-routing, private-
+  integration-message tests and `cargo check`; pre-fix cross-stage order,
+  mutable refresh-fallback, pending clear, and config-reset controls; post-fix
+  exact credential owner/precedence/capture, automatic-work, persistence/status,
+  replay, clear/reset/wrap, diagnostic and final-redaction controls; full X
+  update/state, routing, message, config-clear and credential-serialization
+  suites; `cargo check`; full `cargo test`; and strict clippy at `alsa-sys`
+  system dependency discovery, before Kerosene was compiled.
+- Startup smoke was not run because the host could not be guaranteed credential-
+  free; the existing boot auth-refresh entry and unchanged normal dispatch were
+  source-audited instead. No secret backend/config mutation, X or other live
+  request, private-feed action, config clear, exchange mutation, or credential-
+  bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-77
+  F-40, and F-42 through F-78
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -11118,7 +11316,11 @@ target-specific cancellation policy, not HTTP replay.
   remain unchanged. Dormant OpenRouter chat message/request/completion/usage
   diagnostics are source-hardened by F-77 while exact serialization, parsing,
   key/model interface, and lack of a production caller remain unchanged; a
-  future caller still requires its own audited owner/result boundary. Other
-  private-integration result lifecycles, independently formattable nested
-  account/order types, and classified external-status paths, plus the rest of
-  Track 9, require completion before a final verdict.
+  future caller still requires its own audited owner/result boundary. X direct-
+  auth/refresh credential ownership, immutable secret capture, reset allocation,
+  result diagnostics, and final errors are source-hardened by F-78 while exact
+  normal requests, persistence, feed UX, and trading behavior remain unchanged.
+  X List/page/image and other private-integration result lifecycles,
+  independently formattable nested account/order types, and classified external-
+  status paths, plus the rest of Track 9, require completion before a final
+  verdict.

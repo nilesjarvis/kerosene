@@ -204,6 +204,44 @@ impl fmt::Debug for XOAuthTokenRefresh {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum XCredentialRequestKind {
+    AuthContext,
+    TokenRefresh,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct XCredentialRequest {
+    request_id: u64,
+    kind: XCredentialRequestKind,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct XTokenRefreshRequest {
+    owner: XCredentialRequest,
+    oauth_client_id: SensitiveString,
+    fallback_refresh_token: SensitiveString,
+}
+
+impl fmt::Debug for XTokenRefreshRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XTokenRefreshRequest")
+            .field("owner", &self.owner)
+            .field("oauth_client_id", &"<redacted>")
+            .field("fallback_refresh_token", &"<redacted>")
+            .finish()
+    }
+}
+
+impl XTokenRefreshRequest {
+    fn into_credentials(self) -> (Zeroizing<String>, Zeroizing<String>) {
+        (
+            self.oauth_client_id.into_zeroizing(),
+            self.fallback_refresh_token.into_zeroizing(),
+        )
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct XFeedPost {
     pub(crate) id: String,
@@ -389,8 +427,9 @@ pub(crate) struct XFeedState {
     access_token_expires_at_ms: Option<u64>,
     pub(crate) auth_user: Option<XAuthenticatedUser>,
     pub(crate) lists: Vec<XListSummary>,
-    pub(crate) connect_request_id: u64,
-    pub(crate) token_refresh_request_id: u64,
+    next_credential_request_id: u64,
+    credential_request: Option<XCredentialRequest>,
+    token_refresh_request: Option<XTokenRefreshRequest>,
     pub(crate) lists_request_id: u64,
     pub(crate) refresh_request_id: u64,
     source_refresh_request_ids: HashMap<String, u64>,
@@ -422,8 +461,12 @@ impl fmt::Debug for XFeedState {
             )
             .field("auth_user", &self.auth_user)
             .field("lists", &self.lists.len())
-            .field("connect_request_id", &self.connect_request_id)
-            .field("token_refresh_request_id", &self.token_refresh_request_id)
+            .field(
+                "next_credential_request_id",
+                &self.next_credential_request_id,
+            )
+            .field("credential_request", &self.credential_request)
+            .field("token_refresh_request", &self.token_refresh_request)
             .field("lists_request_id", &self.lists_request_id)
             .field("refresh_request_id", &self.refresh_request_id)
             .field(
@@ -483,8 +526,9 @@ impl XFeedState {
             access_token_expires_at_ms: None,
             auth_user: None,
             lists: Vec::new(),
-            connect_request_id: 0,
-            token_refresh_request_id: 0,
+            next_credential_request_id: 0,
+            credential_request: None,
+            token_refresh_request: None,
             lists_request_id: 0,
             refresh_request_id: 0,
             source_refresh_request_ids: HashMap::new(),
@@ -613,15 +657,6 @@ impl XFeedState {
         (!token.is_empty()).then(|| Zeroizing::new(token))
     }
 
-    pub(crate) fn pending_oauth_credentials_for_secret(
-        &self,
-    ) -> Option<(Zeroizing<String>, Zeroizing<String>)> {
-        let client_id = self.pending_oauth_client_id.trim().to_string();
-        let refresh_token = self.pending_refresh_token.trim().to_string();
-        (!client_id.is_empty() && !refresh_token.is_empty())
-            .then(|| (Zeroizing::new(client_id), Zeroizing::new(refresh_token)))
-    }
-
     pub(crate) fn clear_pending_access_token(&mut self) {
         self.pending_access_token.zeroize();
     }
@@ -695,23 +730,123 @@ impl XFeedState {
     }
 
     pub(crate) fn invalidate_requests(&mut self) {
-        self.connect_request_id = self.connect_request_id.saturating_add(1);
-        self.token_refresh_request_id = self.token_refresh_request_id.saturating_add(1);
+        self.credential_request = None;
+        self.token_refresh_request = None;
         self.lists_request_id = self.lists_request_id.saturating_add(1);
         self.refresh_request_id = self.refresh_request_id.saturating_add(1);
+        self.connecting = false;
         self.token_refreshing = false;
+        self.lists_loading = false;
         self.source_refresh_request_ids.clear();
         self.source_rate_limit_reset_ms.clear();
     }
 
-    pub(crate) fn next_connect_request_id(&mut self) -> u64 {
-        self.connect_request_id = self.connect_request_id.saturating_add(1);
-        self.connect_request_id
+    fn begin_credential_request(&mut self, kind: XCredentialRequestKind) -> XCredentialRequest {
+        self.next_credential_request_id = self.next_credential_request_id.wrapping_add(1);
+        let request = XCredentialRequest {
+            request_id: self.next_credential_request_id,
+            kind,
+        };
+        self.credential_request = Some(request);
+        request
     }
 
-    pub(crate) fn next_token_refresh_request_id(&mut self) -> u64 {
-        self.token_refresh_request_id = self.token_refresh_request_id.saturating_add(1);
-        self.token_refresh_request_id
+    /// Begin a read-only auth-context request. An in-flight token refresh stays
+    /// authoritative because its response may rotate the refresh token.
+    pub(crate) fn begin_auth_request(&mut self) -> Option<u64> {
+        if self.token_refreshing {
+            return None;
+        }
+
+        self.token_refresh_request = None;
+        self.clear_pending_oauth_credentials();
+        self.connecting = true;
+        Some(
+            self.begin_credential_request(XCredentialRequestKind::AuthContext)
+                .request_id,
+        )
+    }
+
+    pub(crate) fn finish_auth_request(&mut self, request_id: u64) -> bool {
+        let request = XCredentialRequest {
+            request_id,
+            kind: XCredentialRequestKind::AuthContext,
+        };
+        if self.credential_request != Some(request) {
+            return false;
+        }
+        self.credential_request = None;
+        self.connecting = false;
+        true
+    }
+
+    /// Begin a token refresh with immutable dispatch-time fallback credentials.
+    /// This safely supersedes an older read-only auth-context request.
+    pub(crate) fn begin_token_refresh_request(
+        &mut self,
+        oauth_client_id: &str,
+        fallback_refresh_token: &str,
+    ) -> Option<u64> {
+        if self.token_refreshing {
+            return None;
+        }
+
+        self.clear_pending_access_token();
+        self.connecting = false;
+        let owner = self.begin_credential_request(XCredentialRequestKind::TokenRefresh);
+        self.token_refresh_request = Some(XTokenRefreshRequest {
+            owner,
+            oauth_client_id: sensitive_string(oauth_client_id.to_string()),
+            fallback_refresh_token: sensitive_string(fallback_refresh_token.to_string()),
+        });
+        self.token_refreshing = true;
+        Some(owner.request_id)
+    }
+
+    pub(crate) fn finish_token_refresh_request(
+        &mut self,
+        request_id: u64,
+    ) -> Option<(Zeroizing<String>, Zeroizing<String>)> {
+        let request = XCredentialRequest {
+            request_id,
+            kind: XCredentialRequestKind::TokenRefresh,
+        };
+        if self.credential_request != Some(request)
+            || !self
+                .token_refresh_request
+                .as_ref()
+                .is_some_and(|context| context.owner == request)
+        {
+            return None;
+        }
+
+        self.credential_request = None;
+        self.token_refreshing = false;
+        self.token_refresh_request
+            .take()
+            .map(XTokenRefreshRequest::into_credentials)
+    }
+
+    pub(crate) fn credential_request_allocator(&self) -> u64 {
+        self.next_credential_request_id
+    }
+
+    pub(crate) fn restore_credential_request_allocator(&mut self, request_id: u64) {
+        self.next_credential_request_id = request_id;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn current_auth_request_id(&self) -> Option<u64> {
+        self.credential_request
+            .filter(|request| request.kind == XCredentialRequestKind::AuthContext)
+            .map(|request| request.request_id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn current_token_refresh_request_id(&self) -> Option<u64> {
+        self.credential_request
+            .filter(|request| request.kind == XCredentialRequestKind::TokenRefresh)
+            .map(|request| request.request_id)
     }
 
     pub(crate) fn next_lists_request_id(&mut self) -> u64 {
@@ -1326,6 +1461,9 @@ mod tests {
         state.oauth_client_id = sensitive_string("saved-client");
         state.refresh_token = sensitive_string("saved-refresh");
         state.status = Some(("auth_token=token-input failed".to_string(), true));
+        let _request_id = state
+            .begin_token_refresh_request("request-client", "request-refresh")
+            .expect("token refresh owner");
 
         let rendered = format!("{state:?}");
 
@@ -1335,14 +1473,18 @@ mod tests {
         assert!(!rendered.contains("saved-token"));
         assert!(!rendered.contains("saved-client"));
         assert!(!rendered.contains("saved-refresh"));
+        assert!(!rendered.contains("request-client"));
+        assert!(!rendered.contains("request-refresh"));
         assert!(rendered.contains("<redacted>"));
     }
 
     #[test]
     fn direct_access_token_commit_clears_refresh_credentials() {
         let mut state = XFeedState::new(&[], "old-access", "old-client", "old-refresh");
-        state.token_refreshing = true;
-        let previous_refresh_request_id = state.token_refresh_request_id;
+        let refresh_request_id = state
+            .begin_token_refresh_request("old-client", "old-refresh")
+            .expect("token refresh owner");
+        let request_allocator = state.credential_request_allocator();
 
         assert!(state.commit_access_token("new-access"));
 
@@ -1352,7 +1494,12 @@ mod tests {
         assert_eq!(refresh_token.as_str(), "");
         assert!(!state.has_refresh_credentials());
         assert!(!state.token_refreshing);
-        assert!(state.token_refresh_request_id > previous_refresh_request_id);
+        assert!(
+            state
+                .finish_token_refresh_request(refresh_request_id)
+                .is_none()
+        );
+        assert_eq!(state.credential_request_allocator(), request_allocator);
     }
 
     #[test]
@@ -1360,8 +1507,10 @@ mod tests {
         let mut state = XFeedState::new(&[], "", "", "");
         state.pending_oauth_client_id = sensitive_string("pending-client");
         state.pending_refresh_token = sensitive_string("pending-refresh");
-        state.token_refreshing = true;
-        let previous_refresh_request_id = state.token_refresh_request_id;
+        let refresh_request_id = state
+            .begin_token_refresh_request("pending-client", "pending-refresh")
+            .expect("token refresh owner");
+        let request_allocator = state.credential_request_allocator();
 
         state.clear_access_token();
 
@@ -1369,9 +1518,30 @@ mod tests {
         assert_eq!(access_token.as_str(), "");
         assert_eq!(client_id.as_str(), "");
         assert_eq!(refresh_token.as_str(), "");
-        assert!(state.pending_oauth_credentials_for_secret().is_none());
+        assert!(state.pending_oauth_client_id.is_empty());
+        assert!(state.pending_refresh_token.is_empty());
         assert!(!state.token_refreshing);
-        assert!(state.token_refresh_request_id > previous_refresh_request_id);
+        assert!(
+            state
+                .finish_token_refresh_request(refresh_request_id)
+                .is_none()
+        );
+        assert_eq!(state.credential_request_allocator(), request_allocator);
+    }
+
+    #[test]
+    fn credential_owner_wraps_and_settles_only_the_newest_request_once() {
+        let mut state = XFeedState::new(&[], "", "", "");
+        state.next_credential_request_id = u64::MAX - 1;
+
+        let older_request_id = state.begin_auth_request().expect("older auth owner");
+        let newer_request_id = state.begin_auth_request().expect("newer auth owner");
+
+        assert_eq!(older_request_id, u64::MAX);
+        assert_eq!(newer_request_id, 0);
+        assert!(!state.finish_auth_request(older_request_id));
+        assert!(state.finish_auth_request(newer_request_id));
+        assert!(!state.finish_auth_request(newer_request_id));
     }
 
     #[test]

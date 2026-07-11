@@ -280,6 +280,17 @@ access tokens, Client IDs, and refresh tokens are stored only in the selected
 credential store (OS keychain or encrypted config) and are omitted from
 plaintext config snapshots.
 
+Direct-token authentication and refresh-token exchange use one runtime-only
+credential-operation owner, and only the exact current owner recovers a result.
+A token refresh supersedes an older read-only auth check; once the refresh POST
+is dispatched it remains owner because the response may rotate the refresh
+token, so repeated Connect attempts stay deduped until it settles. Refresh tasks
+retain an immutable redacted/zeroizing Client ID and fallback refresh-token
+context; credential clear removes ownership and loading state. In-process config
+clear keeps the terminal allocator but no owner or credential, preventing pre-
+clear results from aliasing new work. Ordinary requests, result text, and UI
+timing are unchanged, and accepted errors receive a final redaction pass.
+
 Low-latency behavior is REST polling while an X Feed pane is open. Following and
 List timelines are user-context REST endpoints, so X Filtered Stream is not a
 drop-in replacement for these sources; it is app-context public filtering and

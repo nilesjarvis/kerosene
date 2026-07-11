@@ -1,14 +1,14 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::{
     Message, XAccessTokenRefreshMessageResult, XAuthContextMessageResult, XFeedPageMessageResult,
     XListsMessageResult, XProfileImageMessageResult,
 };
 use crate::pane_state::PaneKind;
 use crate::x_feed::{
-    X_PROFILE_IMAGE_RETRY_BACKOFF_MS, XAuthenticatedUser, XAuthorProfile, XFeedId, XFeedInstance,
-    XFeedPage, XFeedPost, XFeedRequestError, XFeedSource, XListsFetchOutcome, XOAuthTokenRefresh,
-    fetch_x_auth_context, fetch_x_feed_page, fetch_x_lists, fetch_x_profile_image_bytes,
-    refresh_x_access_token,
+    X_PROFILE_IMAGE_RETRY_BACKOFF_MS, XAuthorProfile, XFeedId, XFeedInstance, XFeedPage, XFeedPost,
+    XFeedRequestError, XFeedSource, XListsFetchOutcome, fetch_x_auth_context, fetch_x_feed_page,
+    fetch_x_lists, fetch_x_profile_image_bytes, refresh_x_access_token,
 };
 use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
@@ -34,10 +34,10 @@ impl TradingTerminal {
             }
             Message::XFeedConnect => self.connect_x_feed(),
             Message::XAccessTokenRefreshed(request_id, result) => {
-                self.handle_x_access_token_refreshed(request_id, result.into_result())
+                self.handle_x_access_token_refreshed(request_id, result)
             }
             Message::XFeedAuthLoaded(request_id, result) => {
-                self.handle_x_feed_auth_loaded(request_id, result.into_result())
+                self.handle_x_feed_auth_loaded(request_id, result)
             }
             Message::XFeedClearAccessToken => {
                 if !self.persist_x_oauth_credentials_secret_from_keys("", "", "") {
@@ -94,8 +94,9 @@ impl TradingTerminal {
     }
 
     fn start_x_feed_auth_request(&mut self, token: zeroize::Zeroizing<String>) -> Task<Message> {
-        let request_id = self.x_feed.next_connect_request_id();
-        self.x_feed.connecting = true;
+        let Some(request_id) = self.x_feed.begin_auth_request() else {
+            return Task::none();
+        };
         self.x_feed.status = Some(("Connecting to X".to_string(), false));
         Task::perform(fetch_x_auth_context(token), move |result| {
             Message::XFeedAuthLoaded(request_id, XAuthContextMessageResult::new(result))
@@ -103,6 +104,9 @@ impl TradingTerminal {
     }
 
     pub(crate) fn request_x_feed_auth_refresh(&mut self) -> Task<Message> {
+        if self.x_feed.connecting || self.x_feed.token_refreshing {
+            return Task::none();
+        }
         let now_ms = Self::now_ms();
         if self.x_feed.access_token_refresh_due(now_ms)
             || (!self.x_feed.has_access_token() && self.x_feed.has_refresh_credentials())
@@ -110,9 +114,6 @@ impl TradingTerminal {
             return self.request_x_access_token_refresh();
         }
         if !self.x_feed.has_access_token() {
-            return Task::none();
-        }
-        if self.x_feed.connecting {
             return Task::none();
         }
         let token = self.x_feed.access_token_for_task();
@@ -123,7 +124,7 @@ impl TradingTerminal {
         if !self.x_feed.has_refresh_credentials() {
             return Task::none();
         }
-        if self.x_feed.token_refreshing {
+        if self.x_feed.connecting || self.x_feed.token_refreshing {
             return Task::none();
         }
         let client_id = self.x_feed.oauth_client_id_for_task();
@@ -136,11 +137,12 @@ impl TradingTerminal {
         client_id: zeroize::Zeroizing<String>,
         refresh_token: zeroize::Zeroizing<String>,
     ) -> Task<Message> {
-        if self.x_feed.token_refreshing {
+        let Some(request_id) = self
+            .x_feed
+            .begin_token_refresh_request(client_id.as_str(), refresh_token.as_str())
+        else {
             return Task::none();
-        }
-        let request_id = self.x_feed.next_token_refresh_request_id();
-        self.x_feed.token_refreshing = true;
+        };
         self.x_feed.status = Some(("Refreshing X token".to_string(), false));
         Task::perform(
             refresh_x_access_token(client_id, refresh_token),
@@ -156,27 +158,18 @@ impl TradingTerminal {
     fn handle_x_access_token_refreshed(
         &mut self,
         request_id: u64,
-        result: Result<XOAuthTokenRefresh, String>,
+        result: XAccessTokenRefreshMessageResult,
     ) -> Task<Message> {
-        if request_id != self.x_feed.token_refresh_request_id {
+        let Some((client_id, fallback_refresh_token)) =
+            self.x_feed.finish_token_refresh_request(request_id)
+        else {
             return Task::none();
-        }
-        self.x_feed.token_refreshing = false;
+        };
+        self.x_feed.clear_pending_access_token();
 
-        match result {
+        match result.into_result() {
             Ok(refresh) => {
-                let (client_id, fallback_refresh_token) = self
-                    .x_feed
-                    .pending_oauth_credentials_for_secret()
-                    .unwrap_or_else(|| {
-                        (
-                            self.x_feed.oauth_client_id_for_task(),
-                            self.x_feed.refresh_token_for_task(),
-                        )
-                    });
-                let refresh_token = refresh.refresh_token.unwrap_or_else(|| {
-                    zeroize::Zeroizing::new(fallback_refresh_token.as_str().to_string())
-                });
+                let refresh_token = refresh.refresh_token.unwrap_or(fallback_refresh_token);
                 let expires_at_ms = refresh
                     .expires_in_secs
                     .map(|secs| Self::now_ms().saturating_add(secs.saturating_mul(1_000)));
@@ -203,7 +196,7 @@ impl TradingTerminal {
             }
             Err(err) => {
                 self.x_feed.clear_pending_oauth_credentials();
-                self.x_feed.status = Some((err, true));
+                self.x_feed.status = Some((redact_sensitive_response_text(&err), true));
                 Task::none()
             }
         }
@@ -212,13 +205,12 @@ impl TradingTerminal {
     fn handle_x_feed_auth_loaded(
         &mut self,
         request_id: u64,
-        result: Result<(XAuthenticatedUser, XListsFetchOutcome), String>,
+        result: XAuthContextMessageResult,
     ) -> Task<Message> {
-        if request_id != self.x_feed.connect_request_id {
+        if !self.x_feed.finish_auth_request(request_id) {
             return Task::none();
         }
-        self.x_feed.connecting = false;
-        match result {
+        match result.into_result() {
             Ok((user, outcome)) => {
                 if let Some(token) = self.x_feed.pending_access_token_for_secret() {
                     if !self.persist_x_oauth_credentials_secret_from_keys(token.as_str(), "", "") {
@@ -243,7 +235,7 @@ impl TradingTerminal {
             }
             Err(err) => {
                 self.x_feed.clear_pending_access_token();
-                self.x_feed.status = Some((err, true));
+                self.x_feed.status = Some((redact_sensitive_response_text(&err), true));
                 Task::none()
             }
         }
@@ -535,3 +527,6 @@ impl TradingTerminal {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

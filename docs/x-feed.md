@@ -44,6 +44,19 @@ auth/list/feed calls. Clearing X credentials removes the access token, Client
 ID, and refresh token from the selected secret store before clearing runtime
 state.
 
+Direct-token authentication and refresh-token exchange share one runtime-only
+credential-operation owner, and only the exact current owner may recover a
+result. A newly started token refresh supersedes an older read-only auth check;
+an already-dispatched token refresh remains authoritative because its response
+may rotate the refresh token, so later Connect attempts stay deduped until it
+settles. The refresh retains its dispatch-time Client ID and fallback refresh
+token in a redacted, zeroizing request context, so repeated input cannot retarget
+the active response. Credential clear drops the owner and all loading flags;
+in-process config clear preserves only the terminal request allocator so an old
+task cannot alias the first post-clear request. Restart begins a fresh allocator
+because no task survives process exit. Accepted errors pass a final sensitive-
+text redaction boundary without changing ordinary error text.
+
 Production OAuth should use X OAuth 2.0 Authorization Code Flow with PKCE and
 scopes such as `tweet.read`, `users.read`, `list.read`, and `offline.access`
 when refresh tokens are needed. Access tokens, Client IDs, and refresh tokens
@@ -63,7 +76,8 @@ watch source for lower latency on public accounts/rules.
 ## Files
 
 - `src/x_feed.rs`: state model, X REST client, response parsing, dedupe helpers.
-- `src/feed_update/x.rs`: token handling, auth/list refreshes, feed polling.
+- `src/feed_update/x.rs`: credential ownership, token handling, auth/list
+  refreshes, feed polling.
 - `src/feed_views/x.rs`: token controls, source picker, post cards.
 - `src/message.rs`: X feed messages and redacted result wrappers.
 - `src/config/panes/x_feed.rs`: persisted widget source config.
