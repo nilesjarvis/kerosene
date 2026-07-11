@@ -148,7 +148,7 @@ impl TradingTerminal {
             self.clear_chase_desired_price(chase_id);
             return Task::none();
         }
-        if !chase_snapshot.can_reprice_now(now) || !self.can_send_chase_exchange_request(now) {
+        if !chase_snapshot.can_reprice_now(now) || !self.can_progress_chase_automation(now) {
             if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                 chase.desired_price = Some(rounded_best);
                 chase.lifecycle = ChaseLifecycle::Queued {
@@ -192,7 +192,7 @@ impl TradingTerminal {
                 true,
             );
         }
-        if !chase_snapshot.can_reprice_now(now) || !self.can_send_chase_exchange_request(now) {
+        if !chase_snapshot.can_reprice_now(now) || !self.can_progress_chase_automation(now) {
             if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                 let action = if chase.desired_price.is_some() {
                     ChaseQueuedAction::Reprice

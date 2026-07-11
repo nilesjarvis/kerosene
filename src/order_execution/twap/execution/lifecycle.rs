@@ -108,7 +108,12 @@ impl TradingTerminal {
         &self,
         now: Instant,
     ) -> bool {
-        !self.account_loading
+        // The daemon can remain alive while the final config save completes
+        // after its main window closes. A new slice must not begin then;
+        // status reconciliation and unexpected-child cancellation are separate
+        // safety paths and remain available.
+        !self.config_save_exit_requested
+            && !self.account_loading
             && !self.account_reconciliation_required
             && self.last_advanced_exchange_request_at.is_none_or(|last| {
                 now.saturating_duration_since(last) >= ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL

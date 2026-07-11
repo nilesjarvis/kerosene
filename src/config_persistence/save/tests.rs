@@ -90,6 +90,41 @@ fn config_save_completion_blocks_exit_when_final_save_failed() {
 }
 
 #[test]
+fn pending_exit_flag_remains_armed_while_existing_save_finishes() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.config_save_in_flight = true;
+
+    let task = terminal.flush_pending_config_save_and_exit();
+
+    assert_eq!(task.units(), 0);
+    assert!(terminal.config_save_exit_requested);
+    assert!(terminal.config_save_in_flight);
+}
+
+#[test]
+fn successful_exit_keeps_automation_fence_armed_until_runtime_exits() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.config_save_exit_requested = true;
+    terminal.config_save_in_flight = true;
+
+    let task = terminal.handle_config_save_result(Ok(()));
+
+    assert_eq!(task.units(), 1);
+    assert!(terminal.config_save_exit_requested);
+    assert!(!terminal.config_save_in_flight);
+}
+
+#[test]
+fn exit_without_pending_save_keeps_automation_fence_armed() {
+    let mut terminal = TradingTerminal::boot().0;
+
+    let task = terminal.flush_pending_config_save_and_exit();
+
+    assert_eq!(task.units(), 1);
+    assert!(terminal.config_save_exit_requested);
+}
+
+#[test]
 fn failed_exit_save_leaves_immediate_retry_pending() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.config_save_exit_requested = true;

@@ -306,7 +306,7 @@ impl TradingTerminal {
             self.remove_chase_order(chase_id);
             return Task::none();
         }
-        if !self.can_send_chase_exchange_request(now) {
+        if !self.can_progress_chase_automation(now) {
             if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                 chase.desired_price = Some(rounded_best);
                 chase.lifecycle = ChaseLifecycle::Queued {

@@ -117,7 +117,6 @@ impl TradingTerminal {
         if self.config_cleared_this_session {
             self.config_save_due_at = None;
             self.config_save_in_flight = false;
-            self.config_save_exit_requested = false;
             return iced::exit();
         }
 
@@ -129,7 +128,6 @@ impl TradingTerminal {
             return self.start_config_save();
         }
 
-        self.config_save_exit_requested = false;
         iced::exit()
     }
 
@@ -156,10 +154,7 @@ impl TradingTerminal {
                 self.config_save_due_at = None;
                 self.start_config_save()
             }
-            ConfigSaveCompletionAction::Exit => {
-                self.config_save_exit_requested = false;
-                iced::exit()
-            }
+            ConfigSaveCompletionAction::Exit => iced::exit(),
             ConfigSaveCompletionAction::BlockExitOnError => {
                 // Clear the exit-requested flag but keep a save due now. A
                 // subsequent close re-runs the final save instead of silently

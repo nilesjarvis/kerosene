@@ -428,6 +428,9 @@ pub(crate) struct TradingTerminal {
     pub(crate) config_cleared_this_session: bool,
     pub(crate) config_save_due_at: Option<std::time::Instant>,
     pub(crate) config_save_in_flight: bool,
+    /// The main window has closed and the final persistence/exit sequence owns
+    /// the daemon. Also fences new exposure-progressing automation until exit
+    /// completes or a save failure explicitly clears exit ownership.
     pub(crate) config_save_exit_requested: bool,
     pub(crate) liquidations: VecDeque<ws::LiquidationEvent>,
     // (long_notional, short_notional)

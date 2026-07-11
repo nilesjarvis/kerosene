@@ -112,6 +112,13 @@
   or timer ticks; a retryable cancel result that was already in flight still
   requests immediate account reconciliation but no longer creates a delayed
   retry trigger after authoritative fills complete the TWAP.
+- Config snapshots contain terminal advanced-order history but no live
+  Chase/TWAP maps, pending order contexts, or captured signing keys; boot
+  reconstructs those runtime owners empty. When main-window closure leaves the
+  daemon alive for a final config write, the exit flag now stays armed through
+  the exit task and independently fences new Chase place/modify progress and
+  TWAP slices. Status reconciliation and exposure-reducing cancellation remain
+  available, and a failed save clears the fence so queued automation resumes.
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -139,10 +146,10 @@
 | NUKE child place (UI or Alfred) | Parent execution ID; connected account; planner output; per-child one-shot context | Execution ID + child CLOID in the result context and aggregate settlement set | Unique one-shot CLOID per child; the first terminal transition claims it | Shared classifier | Uncertain child gets CLOID status; parent refreshes after aggregate completion | Current-account and execution-ID checks; duplicate settlement is a no-op | CLOID-keyed confirmed/failed/uncertain totals; parent removed after the unique settled-child count reaches total | `order_execution/position_actions/nuke/tests/**`, direct/status duplicate regressions in `order_update/results/tests.rs` | F-01 addressed in Turn 2; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Cancel by OID | Connected account + symbol + OID + runtime request sequence; one request owns awaiting-result/checking-status phases | Request sequence + account + OID + symbol; indicator is presentation only | Target OID; runtime sequence is correlation only | Shared classifier plus confirmed-cancel predicate | `orderStatus` by OID + origin-symbol open-order refresh | Exact request/phase/account match for direct result; exact request/account/OID/symbol match for status; refresh must cover origin lane | Confirmed/terminal result removes matching local order; only status-check phase and a covering snapshot can release refresh uncertainty | `order_execution/position_actions/cancel.rs` tests, cancel result/status duplicate, stale-attempt, and scoped-refresh tests | F-14/F-15 addressed in Turns 13-14; executable validation remains environment-blocked |
 | Move/modify | Connected account + symbol + OID + runtime request sequence; original key and exact prepared target captured in `PendingMoveOrderContext` | Request sequence + account + symbol + OID; indicator ID is presentation/local projection only | Target OID; runtime sequence is correlation only | Shared classifier plus confirmed-modify predicate | `orderStatus` by OID + origin-symbol refresh that classifies target absent/expected-price/different-valid-price | Exact request/account/move-key context for direct result; exact request/account/OID/symbol for status; refresh rejects uncovered or malformed target evidence | Removes only the matching move context/indicator; terminal status or sufficient target-lane evidence clears status uncertainty | `order_execution/quick_order/move_order/tests/**`, `order_update/move_order.rs` duplicate/stale-attempt/scoped-refresh tests | F-14/F-15 addressed in Turns 13-14; executable validation remains environment-blocked |
-| Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle + dispatch-time place attempt; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact place-attempt equality + `expects_place_result`; current account, symbol identity, prior-exposure, per-symbol open-order authority, and reconciliation gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled; final replacement gate repeats the origin-lane proof | Chase lifecycle/place/result/status tests, duplicate/late direct-result regressions, account stream tests, and wrong-scope replacement tests | F-05/F-16 addressed in Turns 7/15; executable regression validation remains environment-blocked by missing ALSA metadata |
-| Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact reprice-count/lifecycle/OID match; account, symbol, origin-lane, and reconciliation checks before correction/replacement | Verification/resting/stop flow; terminal Chase archived only from covering evidence | `order_update/chase/modify/tests/**`, including duplicate/late direct-result regressions, Chase reprice tests, and wrong-scope refresh tests | F-05/F-16 addressed in Turns 7/15; executable regression validation remains environment-blocked by missing ALSA metadata |
+| Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle + dispatch-time place attempt; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact place-attempt equality + `expects_place_result`; current account, symbol identity, prior-exposure, per-symbol open-order authority, reconciliation, and final-exit progress gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled; final replacement gate repeats origin-lane proof; exit-pending place remains queued | Chase lifecycle/place/result/status tests, duplicate/late direct-result regressions, account stream tests, wrong-scope replacement tests, and exit-fence/resumption tests | F-05/F-16/F-23 addressed in Turns 7/15/22; executable regression validation remains environment-blocked by missing ALSA metadata |
+| Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account-wide fills + origin-symbol open-order refresh/stream reconciliation | Exact reprice-count/lifecycle/OID match; account, symbol, origin-lane, reconciliation, and final-exit progress checks before correction/replacement | Verification/resting/stop flow; terminal Chase archived only from covering evidence; exit-pending reprice/size correction remains queued | `order_update/chase/modify/tests/**`, including duplicate/late results, wrong-scope refresh, and exit-fence/resumption tests | F-05/F-16/F-23 addressed in Turns 7/15/22; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account-wide fills + origin-symbol account refresh/open-order disappearance | Exact stopping phase/OID; REST archive requires the origin open-order lane; websocket disappearance is dex-scoped | Verifying-cancel then covering-snapshot archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests, and wrong-scope archive regression | F-08/F-16 addressed in Turns 9/15; retry idempotence depends on target-specific cancel semantics; executable validation remains environment-blocked |
-| TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID and armed retry attempt | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending slice/retry for placement; status dispatch/result requires the current CLOID and single in-flight attempt; current-account and terminal guards remain | Finishes attempt once; child status/fills updated; status ownership cleared on result or account-fill resolution; terminal TWAP archived | `order_execution/twap/tests/**`, including duplicate/late slice and status dispatch/result regressions, and `twap_state/tests/**` | F-05/F-19 addressed in Turns 7/18; executable regression validation remains environment-blocked by missing ALSA metadata |
+| TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID and armed retry attempt | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending slice/retry for placement; status result requires current CLOID/attempt; current-account, terminal, and final-exit progress guards remain | Finishes attempt once; child status/fills updated; status ownership cleared on result or account-fill resolution; terminal TWAP archived; exit-pending due slice stays unsent | `order_execution/twap/tests/**`, including duplicate/late slice/status results and exit-fence/resumption, plus `twap_state/tests/**` | F-05/F-19/F-23 addressed in Turns 7/18/22; executable regression validation remains environment-blocked by missing ALSA metadata |
 | TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + exact armed retry attempt | Pending target plus current retry count and one in-flight attempt; retry and result messages both carry the attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Dispatch atomically requires non-terminal exact target/retry with no existing owner; result requires exact target/retry/owner | Consumes one owner, then clears pending cancel and finishes once or schedules the next bounded attempt; a result arriving after fill terminalization retains refresh but cannot schedule retry work | `order_execution/twap/tests/cancel.rs`, placement/status entry-path tests, fill/cancel and terminal-result characterizations | F-08/F-20/F-22 addressed in Turns 9/19/21; F-21's delivery-order-dependent child label is deferred for an explicit UX/history semantics decision; financial accounting is order-independent |
 | Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution/profile/CLOID plus account, symbol, surface, and order kind | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member user stream | Full origin match; direct requires `Pending`, status requires `Checking`; pending executions are not evicted | First terminal leg outcome is immutable; execution complete when every leg terminal | Cluster planning/member tests plus adversarial result/status tests in `wallet_cluster_update.rs` | F-04 addressed in Turn 5; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Wallet-cluster close child | Same as cluster order, plus fresh per-member position snapshot and reduce-only plan | Same full correlation tuple with `ClusterClose` surface | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member stream | Freshness/side/position preflight plus the shared exact transition guard | Same first-terminal-wins handling as cluster orders | Close sizing/freshness tests and shared adversarial result tests | F-04 addressed by the shared Turn 5 transition guard |
@@ -205,6 +212,14 @@ history identity and scrub the captured key. If full-fill reconciliation wins
 while an unexpected-child cancel is in flight, a retryable late result now
 keeps the immediate origin-account refresh without creating a delayed trigger
 that terminal state could only reject.
+
+Turn 22 begins Track 9 by proving the restart persistence boundary and fencing
+the live final-save interval. Live automation/request owners remain absent from
+config and boot empty. After the main window closes, the final-exit flag remains
+set until process exit; Chase place/reprice/size correction and due TWAP slices
+stay queued, while exact status repair and exposure-reducing cancel paths retain
+their existing authority. A failed final save clears the flag and the same
+queued values resume through their normal gates.
 
 ### Mutation Transport Phase Audit
 
@@ -1511,6 +1526,148 @@ target-specific cancellation policy, not HTTP replay.
   formatting, and diff review pass. The regression tests and Rust type-check
   still require a host with ALSA development metadata. F-21 remains separately
   deferred because its visible child-label semantics are outside this finding.
+
+### F-23 — Final-save shutdown can start a new automation mutation
+
+- Status: addressed in Turn 22; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: High
+- Scope: main-window closure, debounced/in-flight final config persistence,
+  Chase place/reprice/size-correction dispatch, TWAP slice dispatch, failed-save
+  recovery, and exposure-reducing automation cleanup
+- Preconditions/event ordering:
+  1. A Chase has queued placement, reprice, or size correction work, or a TWAP
+     slice is due.
+  2. A config save is already in flight or a debounced save is due.
+  3. The main window closes. `WindowClosed` requests a final save and the iced
+     daemon stays alive until the blocking file write produces `ConfigSaved`.
+  4. A queued timer, book update, initial-book result, or account-reconciliation
+     result reaches the automation handler before the exit task terminates the
+     runtime.
+- Evidence: `update_window` closes the main window before calling
+  `flush_pending_config_save_and_exit`; that method deliberately returns
+  `Task::none()` while a save is already in flight, or starts an asynchronous
+  save while setting `config_save_exit_requested`. Before Turn 22, the Chase
+  place/reprice/modify and TWAP slice gates checked account loading,
+  reconciliation, rate/cooldown, and lifecycle state but not that exit flag.
+  Successful/no-save branches also cleared the flag before returning
+  `iced::exit()` (`src/window_update.rs:29-35`,
+  `src/config_persistence/save.rs:106-172`,
+  `src/order_execution/chase/lifecycle.rs:23-37`,
+  `src/order_execution/chase/lifecycle/place.rs:309-317`,
+  `src/order_execution/chase/lifecycle/reprice.rs:151-205`,
+  `src/order_execution/twap/execution/lifecycle.rs:107-121`).
+- Violated invariant: after the user closes the main window and final exit owns
+  the daemon, no new exposure-progressing automation mutation may begin.
+  Results for mutations already sent may still reconcile, and exact
+  exposure-reducing cancellation must remain available.
+- Risk: a slow or stalled config write could let an unobserved Chase placement,
+  modify, size correction, or TWAP IOC slice reach the exchange after the
+  trading window has disappeared. The process could then exit immediately,
+  leaving the user unable to monitor the new mutation and with no persisted
+  live automation to resume. This is realistic continuation of automation
+  across a shutdown boundary, even though the request itself retains the right
+  account, key, price, size, and identifier.
+- Why existing checks did not cover it: account/reconciliation/cooldown guards
+  prove exchange readiness, not application-lifecycle authority. Runtime-only
+  persistence prevents restart resurrection but does not stop the still-live
+  daemon. Config-save tests covered durability and failure feedback, while
+  Chase/TWAP tests covered busy exchange gates without a closed-window exit
+  interval.
+- Implemented fix: retain `config_save_exit_requested` through successful and
+  immediate `iced::exit()` tasks, clearing it only when a failed final save
+  explicitly returns control to the app. Add a Chase progress gate that combines
+  the unchanged exchange-readiness gate with the exit fence for place, book
+  reprice, reconciled modify, and size correction. Add the same exit fence to
+  the TWAP slice gate. Status checks and target-specific Chase/TWAP cancellation
+  continue using their existing paths and can still reduce or reconcile known
+  exposure (`src/config_persistence/save.rs:106-172`,
+  `src/order_execution/chase/lifecycle.rs:23-37`,
+  `src/order_execution/chase/lifecycle/place.rs:309-317`,
+  `src/order_execution/chase/lifecycle/reprice.rs:151-205`,
+  `src/order_execution/twap/execution/lifecycle.rs:107-121`).
+- Regression coverage: config-save tests prove the fence is armed while an
+  existing write finishes and remains armed through both successful-save and
+  no-save exit tasks; the established failed-save test proves it clears on
+  recovery. Chase tests prove placement, reprice, and queued size correction
+  remain unsent with their exact queued values and resume normally when the
+  fence clears. TWAP proves a due slice keeps zero attempts/sends/pending op and
+  then dispatches once after recovery. Separate Chase and TWAP tests prove
+  cancel retries remain authorized during exit
+  (`src/config_persistence/save/tests.rs:92-142`,
+  `src/order_execution/chase/lifecycle/tests/place.rs:83-114`,
+  `src/order_execution/chase/lifecycle/tests/reprice/direct.rs:118-138`,
+  `src/order_execution/chase/lifecycle/tests/reprice/tick.rs:23-53,113-135`,
+  `src/order_execution/twap/tests/gating.rs:40-78`,
+  `src/order_execution/twap/tests/cancel.rs:195-214`).
+- Smallest behavior-preserving fix: reuse the existing runtime-only exit flag
+  at the final mutation owners. No automation is stopped or removed; no task or
+  key is persisted; no active-order cancel is suppressed; and no valid order
+  payload, identifier, price, size, timing rule, retry rule, history, schema,
+  status text, view, or normal in-app interaction changes.
+- Residual uncertainty: this batch covers autonomous Chase/TWAP progress after
+  main-window closure while final exit remains owned. F-24 separately records
+  the existing failed-save path that relinquishes exit after the window is
+  gone. A queued one-shot/cluster/leverage intent and close-versus-config-clear
+  orchestration still require Track 9 audit. Rust type-check/tests/clippy remain
+  environment-blocked before Kerosene compilation.
+
+### F-24 — Failed final save resumes automation without a main window
+
+- Status: deferred in Turn 22; every safe resolution changes visible window,
+  exit, or unsaved-config behavior and requires explicit approval
+- Severity: High
+- Scope: iced main-window close semantics, final config-save failure, toast/
+  retry visibility, daemon lifetime, and all runtime trading automation
+- Preconditions/event ordering:
+  1. The main window uses iced's default `exit_on_close_request: true`.
+  2. The OS/custom close path removes that window and emits `WindowClosed`.
+  3. A pending final config save fails after the window is gone.
+  4. `BlockExitOnError` clears `config_save_exit_requested`, queues an immediate
+     future save, pushes a retry toast, and returns `Task::none()`.
+- Evidence: iced 0.14 converts a close request with the default window setting
+  into `window::Action::Close`, removes the window, then emits `Event::Closed`;
+  Kerosene subscribes to closed—not close-requested—events. The main-window
+  handler therefore starts persistence after removal. The failure branch is
+  intentionally documented to stay open and tell the user to close again, but
+  there is no main window to render that feedback or receive another close.
+  Because the daemon does not exit when all windows are closed and the exit flag
+  is cleared, subscriptions and queued automation resume
+  (`src/window_chrome.rs:6-14`, `src/app_boot/windows.rs:10-27`,
+  `src/subscription_state.rs:24-26`, `src/window_update.rs:29-35`,
+  `src/config_persistence/save.rs:134-172`; iced 0.14 local sources
+  `iced_core/src/window/settings.rs`, `iced_winit/src/lib.rs`, and
+  `iced/src/daemon.rs`, inspected 2026-07-11).
+- Violated invariant: aborting exit because configuration could not be saved
+  must return the user to an observable, controllable trading application; it
+  must not resume client-side automation in a headless daemon.
+- Risk: after a disk/permission/transient write failure, Chase or TWAP can
+  continue to mutate exchange state without its main monitoring/control window.
+  The promised toast and “close again” recovery are not actionable. A later
+  ordinary retry can save successfully but cannot exit because the exit owner
+  was cleared, leaving the process alive until externally terminated.
+- Why current checks do not cover it: config-save unit tests exercise the pure
+  exit decision and state flags without a real window manager. The headless
+  daemon behavior spans iced's automatic close action, Kerosene's closed-event
+  subscription, and the later asynchronous save result.
+- Why deferred: intercepting `CloseRequested` and keeping the window open until
+  save completion changes close timing/appearance; reopening the main window on
+  failure visibly reverses a close and must restore window state; exiting on
+  failure discards the current durability guarantee; retaining a permanent
+  headless fence strands the process. Selecting among those behaviors exceeds
+  this campaign's no-UX/no-workflow authority.
+- Approval options: (1) keep the main window open during final save and close
+  only after success; (2) close immediately but reopen on save failure; or (3)
+  honor close even on save failure and accept unsaved preference/layout loss.
+  Whichever policy is chosen should add a real close-request/save-result window
+  lifecycle test and define behavior when auxiliary windows remain.
+- Protected behavior: Turn 22 does not alter the established save-error branch,
+  toast copy, automatic retry due time, or window creation/closure behavior.
+  F-23 only fences the interval where final exit still owns the daemon.
+- Residual uncertainty: the executable GUI path cannot be smoked on this host
+  because compilation stops at missing ALSA metadata. Source semantics are
+  explicit, but platform-specific window-manager timing should be verified once
+  a product policy is approved.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -2821,31 +2978,113 @@ target-specific cancellation policy, not HTTP replay.
   uncertainty, keys, and redacted diagnostics cannot survive or leak across
   those boundaries.
 
+## Turn 22 — Fence Automation Progress During Final Exit
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: High
+- Scope: first Track 9 batch covering config/boot exclusion of live order state,
+  main-window close plus final-save lifecycle, Chase place/reprice/size
+  correction, TWAP slice dispatch, save-failure recovery, and cancellation
+  cleanup during exit
+- Invariant: after main-window closure transfers ownership to final persistence
+  and process exit, no new exposure-progressing automation mutation may begin.
+  Already-sent results must still reconcile, known exposure may still be
+  canceled, and a failed save must not corrupt the exact queued automation
+  state; F-24 separately owns whether that state may resume without a window.
+- Protected behavior: config schema/defaults and terminal-history persistence;
+  normal Chase/TWAP lifecycle, prices, sizes, cadence, randomization, limits,
+  CLOIDs/OIDs, retry/cooldown rules, account and symbol gates, status/cancel
+  reconciliation, active-order cleanup, save failure feedback, all UI/copy, and
+  key storage/redaction.
+- Preconditions/event ordering: live Chase/TWAP state is runtime-only; a place,
+  modify, size correction, or slice becomes due; a config save is pending; the
+  main window closes; the daemon remains alive awaiting the save; and an
+  automation task/message arrives before `iced::exit()` executes.
+- Evidence: `KeroseneConfig` has only terminal advanced-order history, config
+  snapshots explicitly blank secret fields and omit every active/pending order
+  owner, and boot initializes pending one-shot/cancel/move/nuke/leverage,
+  Chase, and TWAP state empty. Account disconnect/switch, saved-profile delete,
+  and config clear already block pending trading activity/active automation or
+  defer destructive runtime reset. F-23 identifies the distinct live final-save
+  window in which progress gates previously ignored `config_save_exit_requested`.
+- Change: documented the existing exit flag as the runtime owner/fence and keep
+  it armed through both successful and immediate exit tasks. Added a Chase
+  progress predicate for placement, book reprice, reconciled modify, and size
+  correction while retaining the broader readiness predicate for status/cancel
+  cleanup. Added the exit condition to the TWAP slice dispatch gate. Queue and
+  pending state are not cleared, so the existing failed-save path clears the
+  flag and normal gates resume exact work. Updated internal architecture docs.
+- Tests/checks:
+  - The pre-edit focused attempt for
+    `chase_reprice_tick_runs_queued_size_correction` stopped in `alsa-sys`
+    before Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` package.
+  - Focused post-edit attempts for
+    `chase_place_waits_during_pending_exit_and_resumes_if_exit_aborts`,
+    `due_twap_slice_waits_during_pending_exit_and_resumes_if_exit_aborts`, and
+    `successful_exit_keeps_automation_fence_armed_until_runtime_exits` stopped
+    at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test could not be run because compilation is already blocked
+    by ALSA metadata; runtime close/exit behavior therefore remains executable-
+    validation debt on a provisioned host.
+- Compatibility/UX assessment: the window is already closed when the fence is
+  active. Only a not-yet-dispatched Chase/TWAP progress mutation waits; existing
+  reconciliation and cancellation keep their behavior. A failed save resets
+  the flag and exact queued values can resume under the existing policy; F-24
+  documents that policy's headless risk without changing it. No visible
+  control, feedback, normal interaction timing, order payload/strategy,
+  persisted value, schema, secret, or history meaning changed.
+- Residual risk: Rust execution remains blocked. Track 9 still needs explicit
+  audit of queued one-shot/NUKE/cluster/leverage intent after close,
+  close-versus-config-clear completion, remaining disconnect/profile secret
+  lifetimes, and repository-wide order/account diagnostic redaction. F-24's
+  failed-save/headless policy requires approval. No overall completion claim is
+  made.
+- Prior turn commit hash: `10d20f18d7755010d3f145e88a5b70442de67bec`
+- Next candidate: continue Track 9 at the root close boundary. Adversarially
+  order queued one-shot, cancel/move, close/NUKE, wallet-cluster, and leverage
+  intent messages against `WindowClosed`; inspect config-clear completion after
+  a main-window close; then prove no exposure-increasing dispatch or headless
+  runtime survives the successful exit owner while preserving result
+  reconciliation and cleanup cancellation. Keep F-24 deferred until its visible
+  failed-save policy is approved.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
   order depends on fill-versus-cancel delivery order. Financial state is safe,
   but choosing fill-dominant, cancel-dominant, or combined visible semantics
   requires explicit approval. Existing stored history strings remain unchanged.
+- F-24: a failed final config save clears exit ownership after iced has already
+  removed the main window, so automation can resume headlessly. Fixing it
+  requires choosing delayed close, reopen-on-error, or exit-with-unsaved-config
+  behavior; current window/save-error UX is unchanged pending approval.
 
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused terminal cancel-retry suppression and
-  the pre-edit terminal retry-due guard; `cargo check`; full `cargo test`; and
-  strict clippy at `alsa-sys` system dependency discovery, before Kerosene was
-  compiled.
+- Environment-blocked this turn: focused final-exit flag, Chase place, queued
+  Chase correction, and TWAP slice fence/resumption tests; `cargo check`; full
+  `cargo test`; and strict clippy at `alsa-sys` system dependency discovery,
+  before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20 and F-22 have source fixes and regression coverage but
+- F-01 through F-20 and F-22/F-23 have source fixes and regression coverage but
   await executable validation on a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
   financial invariants have characterization coverage.
-- TWAP terminalization is source-audited with focused coverage but cannot be
-  executed on this host. Restart/shutdown cleanup, local planning/state
-  diagnostic redaction, and the remaining tracks require completion before a
+- F-24 is explicitly deferred for a main-window/final-save failure policy; its
+  successful-exit automation interval is independently fenced by F-23.
+- TWAP terminalization and advanced-automation final-exit fencing are
+  source-audited with focused coverage but cannot be executed on this host.
+  Remaining shutdown/config-clear/one-shot paths, local planning/state
+  diagnostic redaction, and the rest of Track 9 require completion before a
   final verdict.

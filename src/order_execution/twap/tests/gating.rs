@@ -38,6 +38,46 @@ fn advanced_exchange_requests_pause_while_account_reconciliation_is_loading() {
 }
 
 #[test]
+fn due_twap_slice_waits_during_pending_exit_and_resumes_if_exit_aborts() {
+    let now = Instant::now();
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc".to_string());
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    terminal.last_advanced_exchange_request_at = None;
+    let mut twap = test_twap(1, "0xaaa", now);
+    twap.status = TwapStatus::Running;
+    twap.pause_reason = None;
+    twap.status_check_cloid = None;
+    twap.status_check_pending_attempt = None;
+    twap.child_orders.clear();
+    twap.next_slice_due = now - Duration::from_secs(1);
+    twap.latest_book = Some(TwapBookSnapshot {
+        book: book(99.0, 101.0),
+        updated_at: now,
+    });
+    terminal.twap_orders.insert(1, twap);
+    terminal.config_save_exit_requested = true;
+
+    let blocked_task = terminal.handle_twap_tick();
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(blocked_task.units(), 0);
+    assert_eq!(twap.slices_attempted, 0);
+    assert_eq!(twap.slices_sent, 0);
+    assert_eq!(twap.pending_op, None);
+
+    terminal.config_save_exit_requested = false;
+    let resumed_task = terminal.handle_twap_tick();
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(resumed_task.units(), 1);
+    assert_eq!(twap.slices_attempted, 1);
+    assert_eq!(twap.slices_sent, 1);
+    assert!(matches!(twap.pending_op, Some(TwapPendingOp::Place(_))));
+}
+
+#[test]
 fn twap_deadline_waits_for_pending_status_reconciliation() {
     let now = Instant::now();
     let mut terminal = TradingTerminal::boot().0;

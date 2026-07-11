@@ -200,6 +200,8 @@ fn unexpected_cancel_retry_due_revalidates_current_pending_cancel() {
         twap.cancel_retries = 1;
         twap.unexpected_cancel_pending_attempt = None;
     }
+    // The exit fence blocks new slices, not cleanup of a resting child.
+    terminal.config_save_exit_requested = true;
 
     let task =
         terminal.handle_twap_unexpected_cancel_retry_due(1, Some(OID), Some(CLOID.to_string()), 1);

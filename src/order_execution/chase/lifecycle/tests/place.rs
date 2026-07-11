@@ -5,7 +5,7 @@ use crate::account::{
 };
 use crate::app_state::TradingTerminal;
 use crate::order_execution::PendingOrderAction;
-use crate::signing::ChaseLifecycle;
+use crate::signing::{ChaseLifecycle, ChaseQueuedAction};
 
 fn terminal_ready_for_chase_place() -> TradingTerminal {
     let mut terminal = TradingTerminal::boot().0;
@@ -78,6 +78,39 @@ fn chase_place_uses_unfilled_residual_size() {
     let chase = chase_by_id(&terminal, 1);
     assert_eq!(chase.lifecycle, ChaseLifecycle::Placing);
     assert!((chase.remaining_size - 0.9).abs() < 1e-12);
+}
+
+#[test]
+fn chase_place_waits_during_pending_exit_and_resumes_if_exit_aborts() {
+    let mut terminal = terminal_ready_for_chase_place();
+    let mut chase = chase();
+    chase.current_oid = None;
+    chase.known_oids.clear();
+    terminal.chase_orders.insert(1, chase);
+    terminal.config_save_exit_requested = true;
+
+    let blocked_task = terminal.chase_place_at_best(1, 101.0);
+
+    let chase = chase_by_id(&terminal, 1);
+    assert_eq!(blocked_task.units(), 0);
+    assert_eq!(chase.place_attempt_count, 0);
+    assert_eq!(chase.current_cloid, None);
+    assert_eq!(chase.desired_price, Some(101.0));
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Queued {
+            action: ChaseQueuedAction::Place
+        }
+    );
+
+    terminal.config_save_exit_requested = false;
+    let resumed_task = terminal.chase_place_at_best(1, 101.0);
+
+    let chase = chase_by_id(&terminal, 1);
+    assert_eq!(resumed_task.units(), 1);
+    assert_eq!(chase.place_attempt_count, 1);
+    assert!(chase.current_cloid.is_some());
+    assert_eq!(chase.lifecycle, ChaseLifecycle::Placing);
 }
 
 #[test]

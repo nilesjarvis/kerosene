@@ -341,6 +341,14 @@ the TWAP terminal while a cancel is in flight, a retryable cancel result keeps
 the immediate account refresh but does not schedule a retry trigger that
 terminal state can only reject.
 
+After the main window closes, a final config write can briefly keep the daemon
+alive. While that exit save is pending, Chase retains queued place/reprice/size
+correction work and TWAP retains due slices without dispatching them. Status
+reconciliation and exposure-reducing Chase/TWAP cancellations remain available;
+if the save fails and exit is canceled, the queued automation resumes through
+its normal gates. The main-window policy for that failed-save case is tracked
+separately as deferred audit finding F-24.
+
 ## Advanced Order History
 
 `advanced_order_history/` stores bounded snapshots of terminal advanced orders.

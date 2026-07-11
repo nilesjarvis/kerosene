@@ -27,4 +27,12 @@ impl TradingTerminal {
                 now.saturating_duration_since(last) >= ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL
             })
     }
+
+    fn can_progress_chase_automation(&self, now: Instant) -> bool {
+        // A final config write can keep the daemon alive after its main window
+        // closes. Do not begin a place/modify iteration in that interval.
+        // Status reconciliation and exposure-reducing cancellation deliberately
+        // keep using the broader exchange gate.
+        !self.config_save_exit_requested && self.can_send_chase_exchange_request(now)
+    }
 }
