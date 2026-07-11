@@ -336,6 +336,7 @@ impl TradingTerminal {
         chase.last_reprice_at = Some(now);
         chase.desired_price = Some(rounded_best);
         chase.reprice_count = chase.reprice_count.saturating_add(1);
+        let reprice_count = chase.reprice_count;
         self.last_advanced_exchange_request_at = Some(now);
         self.order_status = Some((format!("{status} {oid}"), false));
 
@@ -343,6 +344,7 @@ impl TradingTerminal {
         modify_order_task(key, prepared, move |r| Message::ChaseModifyResult {
             chase_id,
             oid,
+            reprice_count,
             result: Box::new(r),
         })
     }

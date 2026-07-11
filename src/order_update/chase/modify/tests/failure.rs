@@ -14,6 +14,7 @@ fn chase_modify_non_retryable_error_cancels_resting_order() {
     let _task = terminal.handle_chase_modify_result(
         1,
         42,
+        1,
         Ok(exchange_response(serde_json::json!({
             "error": "Order must have minimum value of $10"
         }))),
@@ -47,6 +48,7 @@ fn chase_modify_non_retryable_error_while_stopping_cancels_resting_order() {
     let _task = terminal.handle_chase_modify_result(
         1,
         42,
+        1,
         Ok(exchange_response(serde_json::json!({
             "error": "Insufficient margin to place order"
         }))),

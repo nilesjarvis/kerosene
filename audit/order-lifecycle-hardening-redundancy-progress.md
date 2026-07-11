@@ -69,10 +69,10 @@
 | NUKE child place (UI or Alfred) | Parent execution ID; connected account; planner output; per-child one-shot context | Execution ID + child CLOID in the result context and aggregate settlement set | Unique one-shot CLOID per child; the first terminal transition claims it | Shared classifier | Uncertain child gets CLOID status; parent refreshes after aggregate completion | Current-account and execution-ID checks; duplicate settlement is a no-op | CLOID-keyed confirmed/failed/uncertain totals; parent removed after the unique settled-child count reaches total | `order_execution/position_actions/nuke/tests/**`, direct/status duplicate regressions in `order_update/results/tests.rs` | F-01 addressed in Turn 2; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Cancel by OID | Connected account + symbol + OID; durable pending cancel status context | Account + OID + symbol; indicator is presentation only | Target OID (no separate request token) | Shared classifier plus confirmed-cancel predicate | `orderStatus` by OID + open-order/account refresh | Same-account check and exact pending status tuple | Confirmed/terminal result removes matching local order; complete open-order refresh clears uncertainty | `order_execution/position_actions/cancel.rs` tests, cancel result tests | Audit whether every `Ok` refresh used for cleanup has complete open orders |
 | Move/modify | Connected account + symbol + OID; original key captured in `PendingMoveOrderContext` | Account + symbol + OID; indicator ID | Target OID (no separate request token) | Shared classifier plus confirmed-modify predicate | `orderStatus` by OID + account refresh to confirm price | Exact pending move key/context; account match; status tuple match | Removes move context/indicator; terminal status or complete open-order refresh clears uncertainty | `order_execution/quick_order/move_order/tests/**`, `order_update/move_order.rs` tests | Same OID can be modified repeatedly; audit per-attempt correlation after prior completion |
-| Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account refresh + open-order/fill stream reconciliation | `expects_place_result`, current account, symbol identity, prior-exposure and reconciliation gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled | Chase lifecycle/place/result/status tests and account stream Chase tests | Direct place-result message lacks the attempt CLOID; audit duplicate/late result behavior (F-05) |
-| Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + `expects_modify_result` | Target OID; no per-modify request token | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account refresh + open-order/fill stream | Lifecycle/OID match; account and symbol/reconciliation checks before dispatch | Verification/resting/stop flow; terminal Chase archived | `order_update/chase/modify/tests/**`, Chase reprice tests | Repeated modifies can reuse OID; audit per-attempt result correlation (F-05) |
+| Chase place/replacement | `ChaseOrder` captures ID, account, agent key, symbol, side, sizes, start time, lifecycle | Chase ID + lifecycle + dispatch-time place attempt; current CLOID is checked by status path | CLOID hashes account + chase ID + start + attempt | Chase-specific strict response analysis | CLOID status + account refresh + open-order/fill stream reconciliation | Exact place-attempt equality + `expects_place_result`; current account, symbol identity, prior-exposure, and reconciliation gates | Moves to verification/resting/stop/archive; late stopped placement is cancelled | Chase lifecycle/place/result/status tests, duplicate/late direct-result regressions, and account stream Chase tests | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
+| Chase modify | Chase ID + captured account/key + current OID + lifecycle + desired price | Chase ID + OID + dispatch-time reprice count + `expects_modify_result` | Target OID; no separate exchange idempotency key (runtime sequence is correlation only) | `is_confirmed_modify_result` and Chase-specific error handling | OID status + account refresh + open-order/fill stream | Exact reprice-count/lifecycle/OID match; account and symbol/reconciliation checks before dispatch | Verification/resting/stop flow; terminal Chase archived | `order_update/chase/modify/tests/**`, including duplicate/late direct-result regressions, and Chase reprice tests | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Chase cancel | Chase ID + captured account/key + OID + stopping phase | Chase ID + OID + `expects_cancel_result` | Target OID; bounded retry treats terminal-not-open responses specially | Confirmed-cancel predicate plus Chase cancel classification | OID status + account refresh/open-order disappearance | Exact stopping phase/OID; disconnected account is reconciled at origin scope | Verifying-cancel then archive; bounded manual-check terminal | `order_update/chase/cancel/tests.rs`, Chase stop/status tests | No confirmed gap; retry idempotence depends on target-specific cancel semantics |
-| TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID | TWAP ID + current `pending_op`; status path adds exact CLOID | Deterministic child CLOID | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Pending-op state, current account for dispatch, status CLOID, terminal checks | Finishes attempt once; child status/fills updated; terminal TWAP archived | `order_execution/twap/tests/**`, `twap_state/tests/**` | Direct slice-result message carries only TWAP ID; audit duplicate/late result behavior (F-05) |
+| TWAP child place | `TwapOrder` captures ID/account/key/symbol/plan; `TwapPendingSlice` captures index/size/price/CLOID/retry | TWAP ID + dispatch-time slice index/retry count + current `pending_op`; status path adds exact CLOID | Deterministic child CLOID (runtime index/retry tuple is correlation only) | TWAP-specific IOC/fill/resting/transport classification | CLOID status + scoped account-fill refresh + reconciliation deadline | Exact pending index/retry equality, current account for dispatch, status CLOID, and terminal checks | Finishes attempt once; child status/fills updated; terminal TWAP archived | `order_execution/twap/tests/**`, including duplicate/late slice-result regressions, and `twap_state/tests/**` | F-05 addressed in Turn 7; executable regression validation remains environment-blocked by missing ALSA metadata |
 | TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + retry attempt | Pending cancel target matches OID or CLOID; retry message includes attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Exact pending target, retry count, and terminal-state checks | Clears pending cancel and finishes attempt, or bounded error terminal | `order_execution/twap/tests/cancel.rs`, status/account tests | No confirmed gap |
 | Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution/profile/CLOID plus account, symbol, surface, and order kind | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member user stream | Full origin match; direct requires `Pending`, status requires `Checking`; pending executions are not evicted | First terminal leg outcome is immutable; execution complete when every leg terminal | Cluster planning/member tests plus adversarial result/status tests in `wallet_cluster_update.rs` | F-04 addressed in Turn 5; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Wallet-cluster close child | Same as cluster order, plus fresh per-member position snapshot and reduce-only plan | Same full correlation tuple with `ClusterClose` surface | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member stream | Freshness/side/position preflight plus the shared exact transition guard | Same first-terminal-wins handling as cluster orders | Close sizing/freshness tests and shared adversarial result tests | F-04 addressed by the shared Turn 5 transition guard |
@@ -238,19 +238,61 @@
 
 ### F-05 — Advanced place/modify result messages rely on lifecycle state rather than per-attempt tokens
 
-- Status: audit candidate
-- Provisional severity: Medium
+- Status: addressed in Turn 7; focused tests added, but executable validation is
+  blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium invariant hardening
+- Scope: Chase place, Chase modify, and TWAP child-place direct-result message
+  correlation
+- Preconditions/event ordering:
+  1. A direct result for attempt N is handled and advances the strategy.
+  2. The same strategy later dispatches attempt N+1 and returns to `Placing`,
+     `Modifying` with the same OID, or a TWAP `Place` pending operation.
+  3. A duplicate or delayed message for attempt N arrives while attempt N+1 is
+     in that recurring coarse phase.
+  4. The old handler sees a valid current phase (and, for modify, the same OID)
+     and applies the earlier exchange outcome to the current attempt.
 - Evidence:
-  - `ChasePlaceResult` carries Chase ID but not current CLOID/attempt;
-    `ChaseModifyResult` carries Chase ID and OID, which may remain stable across
-    modifies (`src/message.rs:1212-1220`).
-  - `TwapSliceResult` carries TWAP ID but not the pending child CLOID/index
-    (`src/message.rs:1170-1173`).
-  - Handlers use explicit lifecycle/pending-op state, and current code appears
-    to serialize each strategy's exchange mutations.
-- Next evidence needed: adversarial duplicate and late-result tests. If the
-  state machines already make replay harmless, close this candidate with test
-  evidence rather than adding fields.
+  - Chase replacement placement already increments `place_attempt_count` and
+    derives a distinct CLOID, but the result closure previously discarded the
+    attempt (`src/order_execution/chase/lifecycle/place.rs:358-394`).
+  - Chase increments `reprice_count` before each modify, while Hyperliquid may
+    retain the OID, but the result message previously retained only the OID
+    (`src/order_execution/chase/lifecycle/reprice.rs:333-348`).
+  - TWAP pending state already owns a slice index and retry count. A retry
+    reuses its logical child and CLOID, but the direct result previously carried
+    only the TWAP ID (`src/order_execution/twap/execution.rs:308-318`).
+  - The immediate-duplicate phase guards were sound, but they did not identify
+    which dispatch owned a result once the same phase recurred.
+- Violated invariant: an asynchronous mutation result may settle only the exact
+  in-flight attempt whose dispatch created it.
+- Risk: a stale rejection, fill, ambiguity, or acceptance can fail, credit,
+  pause, verify, cancel, or otherwise settle a later Chase/TWAP attempt despite
+  referring to earlier exchange work.
+- Implemented fix: the three internal result messages now capture the safe
+  runtime sequence already assigned before dispatch: Chase place attempt,
+  Chase reprice count, or TWAP slice index plus retry count. Result handlers
+  require exact sequence equality in addition to their existing lifecycle,
+  OID, and pending-operation checks (`src/message.rs:1170-1175`,
+  `src/message.rs:1214-1223`, `src/order_update/chase/result.rs:126-157`,
+  `src/order_update/chase/modify.rs:35-59`,
+  `src/order_execution/twap/slice_result.rs:38-61`). No CLOID, account value,
+  or new persisted/runtime state was added. A mismatched sequence returns
+  before account-refresh or status-repair follow-up; a same-attempt result that
+  arrives after another lifecycle transition retains the former conservative
+  refresh behavior.
+- Regression coverage: each surface receives a conflicting duplicate after the
+  first direct result has advanced its phase. Separate late-result cases put a
+  newer Chase place attempt, same-OID Chase reprice, or TWAP slice/retry in
+  flight and prove an earlier result cannot mutate it
+  (`src/order_update/chase/result/tests.rs:154-209`,
+  `src/order_update/chase/modify/tests/success.rs:58-115`,
+  `src/order_execution/twap/tests/place_result.rs:103-188`). The TWAP case
+  independently checks both slice-index and retry-count mismatch, and the
+  Chase-place/TWAP cases prove stale outcomes cannot launch account refresh.
+- Protected behavior: an exactly matching direct result follows the same
+  classifier, reconciliation, fill, retry, stop, archive, refresh, and visible
+  status paths as before. Chase/TWAP scheduling, pricing, sizing, repricing,
+  CLOIDs, signed requests, UI, persistence, and normal timing are unchanged.
 
 ### F-06 — Wallet-cluster leg debug output exposes its lifecycle message
 
@@ -524,6 +566,64 @@
   replay tests, adding per-attempt correlation only if existing phase guards do
   not already make duplicate and late delivery harmless.
 
+## Turn 7 — Correlate Advanced-Order Direct Results to Exact Attempts
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: Medium invariant hardening
+- Scope: internal result messages and handlers for Chase placement, Chase
+  modify, and TWAP child placement
+- Invariant: a direct exchange result may transition only the exact runtime
+  attempt whose task emitted it, even after the strategy returns to the same
+  lifecycle phase or reuses the same OID/CLOID.
+- Protected behavior: every result whose dispatch-time sequence matches the
+  current pending attempt retains the existing classification, account refresh,
+  reconciliation, fill accounting, retry, stop, archive, status text, and task
+  timing. Order preparation, sizing, pricing, rounding, reduce-only behavior,
+  Chase repricing, TWAP cadence/randomization, signing, UI, and persistence are
+  untouched.
+- Evidence: dispatch and handler tracing confirmed that all three state machines
+  already own bounded runtime counters that distinguish recurring phases, but
+  their direct-result messages discarded those counters. Exact ordering and
+  source references are recorded under F-05 above.
+- Change: captured `place_attempt`, `reprice_count`, or
+  `slice_index`/`retry_count` in the corresponding `Message` and required it to
+  equal current state before handling. This adds no state, identifiers,
+  dependencies, schema fields, exchange requests, or mutation retries.
+- Regression tests: added conflicting immediate duplicates plus late prior-
+  attempt results while later attempts occupy the same phase. The Chase modify
+  regression keeps OID 42 constant; TWAP independently exercises a prior slice
+  index and a prior retry of the current slice.
+- Validation:
+  - `cargo fmt` passed.
+  - `cargo fmt -- --check` passed.
+  - `git diff --check` passed before the ledger update and is rerun during the
+    final review.
+  - `cargo test --package kerosene --bin kerosene stale_place_result_from_prior_attempt_does_not_settle_current_attempt`
+    stopped in `alsa-sys` before compiling Kerosene because `pkg-config` could
+    not find the system `alsa.pc` package.
+  - `cargo test --package kerosene --bin kerosene stale_modify_result_from_prior_reprice_does_not_settle_current_reprice`
+    stopped at the same environment boundary.
+  - `cargo test --package kerosene --bin kerosene stale_slice_result_requires_current_index_and_retry_count`
+    stopped at the same environment boundary.
+  - A final combined `cargo test --package kerosene --bin kerosene stale_`
+    retry after the correlation guards were complete stopped at the same
+    boundary.
+  - `cargo check` stopped at the same pre-existing environment dependency
+    boundary before checking Kerosene.
+- Compatibility/UX assessment: runtime message correlation only; no visible
+  copy, controls, success/failure behavior for current attempts, order
+  semantics, schema, or dependency changes.
+- Residual risk: source parsing, formatting, exhaustive call-site inspection,
+  and the diff pass, but the new tests and Rust type-check must still execute on
+  a host with ALSA development metadata. Existing Chase duration/reprice and
+  TWAP slice/retry limits keep these runtime sequences below saturation; no
+  counter or wraparound behavior was changed.
+- Prior turn commit hash: `fda0d0ee3fe8491624a53e4c5bab3fb6d71a9c65`
+- Next candidate: audit prepared-order-to-signed-wire parity and narrow
+  structural validation (Track 2), starting with non-finite/negative-zero,
+  market-type/asset identity, side, reduce-only, and order-kind preservation
+  before deciding whether production hardening is warranted.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -531,18 +631,17 @@
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: the focused cluster-leg debug regression and
-  `cargo check` at `alsa-sys` system dependency discovery, before Kerosene was
-  compiled.
+- Environment-blocked this turn: the focused Chase place, Chase modify, and
+  TWAP slice replay regressions plus `cargo check` at `alsa-sys` system
+  dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-04 and F-06 have source fixes and regression coverage but await
-  executable validation on a host with ALSA development metadata. F-05 remains
-  open as described above.
+- F-01 through F-06 have source fixes and regression coverage but await
+  executable validation on a host with ALSA development metadata.
 - Signing wire construction, response classification, Chase/TWAP correlation,
   cluster result handling, account refresh completeness, restart cleanup, and
   redaction require further track-by-track completion before a final verdict.

@@ -1169,6 +1169,8 @@ pub(crate) enum Message {
     },
     TwapSliceResult {
         twap_id: u64,
+        slice_index: u32,
+        retry_count: u32,
         result: Box<Result<ExchangeResponse, String>>,
     },
     TwapUnexpectedCancelResult {
@@ -1211,11 +1213,13 @@ pub(crate) enum Message {
     ChaseRepriceTick,
     ChasePlaceResult {
         chase_id: u64,
+        place_attempt: u32,
         result: Box<Result<ExchangeResponse, String>>,
     },
     ChaseModifyResult {
         chase_id: u64,
         oid: u64,
+        reprice_count: u32,
         result: Box<Result<ExchangeResponse, String>>,
     },
     ChaseCancelResult {

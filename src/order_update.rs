@@ -192,8 +192,13 @@ impl TradingTerminal {
                     skipped,
                 );
             }
-            Message::TwapSliceResult { twap_id, result } => {
-                return self.handle_twap_slice_result(twap_id, *result);
+            Message::TwapSliceResult {
+                twap_id,
+                slice_index,
+                retry_count,
+                result,
+            } => {
+                return self.handle_twap_slice_result(twap_id, slice_index, retry_count, *result);
             }
             Message::TwapUnexpectedCancelResult {
                 twap_id,
@@ -252,14 +257,21 @@ impl TradingTerminal {
                 );
             }
             Message::ChaseRepriceTick => return self.handle_chase_reprice_tick(),
-            Message::ChasePlaceResult { chase_id, result } => {
-                return self.handle_chase_place_result(chase_id, *result);
+            Message::ChasePlaceResult {
+                chase_id,
+                place_attempt,
+                result,
+            } => {
+                return self.handle_chase_place_result(chase_id, place_attempt, *result);
             }
             Message::ChaseModifyResult {
                 chase_id,
                 oid,
+                reprice_count,
                 result,
-            } => return self.handle_chase_modify_result(chase_id, oid, *result),
+            } => {
+                return self.handle_chase_modify_result(chase_id, oid, reprice_count, *result);
+            }
             Message::ChaseCancelResult {
                 chase_id,
                 oid,

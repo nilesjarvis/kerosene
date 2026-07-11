@@ -554,6 +554,8 @@ fn ambiguous_slice_result_after_account_switch_does_not_refresh_current_account(
 
     let _task = terminal.handle_twap_slice_result(
         1,
+        1,
+        0,
         Err("Exchange request failed after submit: api_key=super-secret".into()),
     );
 
@@ -588,8 +590,12 @@ fn ambiguous_slice_result_queues_followup_when_current_account_refresh_is_loadin
     terminal.account_refresh_followup_pending = false;
     terminal.twap_orders.insert(1, pending_twap(1, CLOID, now));
 
-    let _task =
-        terminal.handle_twap_slice_result(1, Err("Exchange request failed after submit".into()));
+    let _task = terminal.handle_twap_slice_result(
+        1,
+        1,
+        0,
+        Err("Exchange request failed after submit".into()),
+    );
 
     let twap = twap_by_id(&terminal, 1);
     assert_eq!(twap.account_address, ORIGIN_ADDRESS);
@@ -609,8 +615,12 @@ fn stopped_transport_unknown_twap_finishes_after_partial_fill_reconciliation() {
     let _task = terminal.stop_twap(1);
     assert_eq!(twap_by_id(&terminal, 1).status, TwapStatus::Stopping);
 
-    let _task =
-        terminal.handle_twap_slice_result(1, Err("Exchange request failed after submit".into()));
+    let _task = terminal.handle_twap_slice_result(
+        1,
+        1,
+        0,
+        Err("Exchange request failed after submit".into()),
+    );
     assert_eq!(twap_by_id(&terminal, 1).status, TwapStatus::Stopping);
 
     let _task = terminal.handle_twap_order_status_result(

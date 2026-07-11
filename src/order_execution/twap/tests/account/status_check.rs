@@ -128,8 +128,12 @@ fn missing_status_exhaustion_after_unknown_slice_fails_closed() {
     let mut terminal = origin_account_terminal();
     terminal.twap_orders.insert(1, pending_twap(1, CLOID, now));
 
-    let _task = terminal
-        .handle_twap_slice_result(1, Err("Exchange request failed after submit".to_string()));
+    let _task = terminal.handle_twap_slice_result(
+        1,
+        1,
+        0,
+        Err("Exchange request failed after submit".to_string()),
+    );
     {
         let twap = terminal
             .twap_orders

@@ -390,6 +390,7 @@ impl TradingTerminal {
         self.invalidate_spot_balances_after_exchange_dispatch(&account_address, market_type);
         place_order_task(key, request, move |r| Message::ChasePlaceResult {
             chase_id,
+            place_attempt,
             result: Box::new(r),
         })
     }

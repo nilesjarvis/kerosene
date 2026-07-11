@@ -126,6 +126,7 @@ impl TradingTerminal {
     pub(crate) fn handle_chase_place_result(
         &mut self,
         chase_id: u64,
+        place_attempt: u32,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         let owns_startup_pending = self.chase_place_result_owns_startup_pending(chase_id);
@@ -140,11 +141,15 @@ impl TradingTerminal {
         else {
             return Task::none();
         };
-        if !self
-            .chase_orders
-            .get(&chase_id)
-            .is_some_and(|chase| chase.lifecycle.expects_place_result())
-        {
+        // Placing recurs for replacement orders, so lifecycle state alone
+        // cannot distinguish a late result from the current place attempt.
+        let Some(chase) = self.chase_orders.get(&chase_id) else {
+            return Task::none();
+        };
+        if chase.place_attempt_count != place_attempt {
+            return Task::none();
+        }
+        if !chase.lifecycle.expects_place_result() {
             return self.refresh_after_chase_result_for_order_account(
                 should_refresh,
                 &chase_account_address,

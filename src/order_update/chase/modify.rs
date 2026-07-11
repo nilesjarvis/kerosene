@@ -36,6 +36,7 @@ impl TradingTerminal {
         &mut self,
         chase_id: u64,
         oid: u64,
+        reprice_count: u32,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         if !self.chase_orders.contains_key(&chase_id) {
@@ -48,14 +49,12 @@ impl TradingTerminal {
         else {
             return Task::none();
         };
-        let lifecycle = self
-            .chase_orders
-            .get(&chase_id)
-            .map(|chase| chase.lifecycle);
-        let Some(lifecycle) = lifecycle else {
+        let Some(chase) = self.chase_orders.get(&chase_id) else {
             return Task::none();
         };
-        if !lifecycle.expects_modify_result(oid) {
+        // The exchange may retain the same OID across multiple modifies.
+        // Require the dispatch-time sequence as well as the lifecycle/OID.
+        if chase.reprice_count != reprice_count || !chase.lifecycle.expects_modify_result(oid) {
             return Task::none();
         }
 

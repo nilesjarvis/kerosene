@@ -5,7 +5,7 @@ use super::super::{
 use super::fixtures::{exchange_response, exchange_response_from_value, pending_twap, twap_by_id};
 use crate::app_state::TradingTerminal;
 use crate::signing::ExchangeResponse;
-use crate::twap_state::{TwapChildStatus, TwapPauseReason, TwapStatus};
+use crate::twap_state::{TwapChildStatus, TwapPauseReason, TwapPendingOp, TwapStatus};
 use std::time::Instant;
 
 #[test]
@@ -85,6 +85,8 @@ fn retryable_slice_error_pauses_active_twap_for_retry() {
 
     let _task = terminal.handle_twap_slice_result(
         1,
+        1,
+        0,
         Ok(exchange_response(serde_json::json!({
             "error": "429 Too Many Requests"
         }))),
@@ -99,6 +101,92 @@ fn retryable_slice_error_pauses_active_twap_for_retry() {
 }
 
 #[test]
+fn duplicate_slice_result_cannot_consume_a_settled_attempt() {
+    let now = Instant::now();
+    let mut terminal = TradingTerminal::boot().0;
+    terminal
+        .twap_orders
+        .insert(1, pending_twap(1, "0xaaa", now));
+
+    let _task = terminal.handle_twap_slice_result(
+        1,
+        1,
+        0,
+        Ok(exchange_response(serde_json::json!({
+            "error": "429 Too Many Requests"
+        }))),
+    );
+    let settled_status = terminal.order_status.clone();
+
+    let _task = terminal.handle_twap_slice_result(
+        1,
+        1,
+        0,
+        Ok(exchange_response(serde_json::json!({
+            "filled": {
+                "totalSz": "0.5",
+                "avgPx": "100",
+                "oid": 77_u64
+            }
+        }))),
+    );
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(twap.status, TwapStatus::Paused);
+    assert_eq!(twap.pause_reason, Some(TwapPauseReason::RateLimited));
+    assert_eq!(twap.pending_op, None);
+    assert_eq!(twap.filled_size, 0.0);
+    assert_eq!(twap.remaining_size, 1.0);
+    assert_eq!(twap.child_orders[0].status, TwapChildStatus::Retrying);
+    assert_eq!(twap.child_orders[0].retry_count, 1);
+    assert_eq!(terminal.order_status, settled_status);
+}
+
+#[test]
+fn stale_slice_result_requires_current_index_and_retry_count() {
+    for (stale_index, stale_retry_count) in [(1, 1), (2, 0)] {
+        let now = Instant::now();
+        let mut terminal = TradingTerminal::boot().0;
+        let mut twap = pending_twap(1, "0xbbb", now);
+        twap.slices_attempted = 2;
+        if let Some(TwapPendingOp::Place(slice)) = twap.pending_op.as_mut() {
+            slice.index = 2;
+            slice.retry_count = 1;
+        }
+        twap.child_orders[0].index = 2;
+        twap.child_orders[0].retry_count = 1;
+        terminal.twap_orders.insert(1, twap);
+        terminal.connected_address = Some("0xabc".to_string());
+        terminal.account_loading = false;
+        terminal.account_reconciliation_required = false;
+        terminal.order_status = Some(("Current slice attempt pending".to_string(), false));
+
+        let _task = terminal.handle_twap_slice_result(
+            1,
+            stale_index,
+            stale_retry_count,
+            Err("stale transport result".to_string()),
+        );
+
+        let twap = twap_by_id(&terminal, 1);
+        assert!(matches!(
+            twap.pending_op.as_ref(),
+            Some(TwapPendingOp::Place(slice))
+                if slice.index == 2 && slice.retry_count == 1
+        ));
+        assert_eq!(twap.filled_size, 0.0);
+        assert_eq!(twap.remaining_size, 1.0);
+        assert_eq!(twap.child_orders[0].status, TwapChildStatus::Pending);
+        assert!(!terminal.account_loading);
+        assert!(!terminal.account_reconciliation_required);
+        assert_eq!(
+            terminal.order_status,
+            Some(("Current slice attempt pending".to_string(), false))
+        );
+    }
+}
+
+#[test]
 fn stopped_in_flight_twap_does_not_retry_after_retryable_slice_error() {
     let now = Instant::now();
     let mut terminal = TradingTerminal::boot().0;
@@ -110,6 +198,8 @@ fn stopped_in_flight_twap_does_not_retry_after_retryable_slice_error() {
 
     let _task = terminal.handle_twap_slice_result(
         1,
+        1,
+        0,
         Ok(exchange_response(serde_json::json!({
             "error": "429 Too Many Requests"
         }))),

@@ -12,6 +12,7 @@ fn chase_modify_rate_limit_keeps_target_queued_for_retry() {
     let _task = terminal.handle_chase_modify_result(
         1,
         42,
+        1,
         Ok(exchange_response(serde_json::json!({
             "error": "rate limit"
         }))),
@@ -49,6 +50,7 @@ fn chase_modify_rate_limit_keeps_size_correction_queued_for_retry() {
     let _task = terminal.handle_chase_modify_result(
         1,
         42,
+        1,
         Ok(exchange_response(serde_json::json!({
             "error": "too many requests"
         }))),

@@ -305,11 +305,15 @@ impl TradingTerminal {
             reduce_only,
             market_type,
         };
+        let slice_index = pending_slice.index;
+        let retry_count = pending_slice.retry_count;
         let request = prepared.place_request_with_existing_cloid(pending_slice.cloid);
 
         self.invalidate_spot_balances_after_exchange_dispatch(&account_address, market_type);
         place_order_task(key, request, move |result| Message::TwapSliceResult {
             twap_id,
+            slice_index,
+            retry_count,
             result: Box::new(result),
         })
     }

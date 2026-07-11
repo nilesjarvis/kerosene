@@ -14,6 +14,7 @@ fn chase_modify_unknown_response_preserves_target_for_reconciliation() {
     let _task = terminal.handle_chase_modify_result(
         1,
         42,
+        1,
         Err("response body timeout: token=super-secret".to_string()),
     );
 
@@ -39,7 +40,7 @@ fn chase_modify_empty_ok_response_preserves_target_for_reconciliation() {
     terminal.connected_address = Some(TEST_ACCOUNT.to_string());
     terminal.chase_orders.insert(1, chase());
 
-    let _task = terminal.handle_chase_modify_result(1, 42, Ok(empty_ok_exchange_response()));
+    let _task = terminal.handle_chase_modify_result(1, 42, 1, Ok(empty_ok_exchange_response()));
 
     let chase = chase_by_id(&terminal, 1);
     assert_eq!(
@@ -67,7 +68,7 @@ fn chase_modify_malformed_filled_response_preserves_target_for_reconciliation() 
             "avgPx": "100"
         }
     }));
-    let _task = terminal.handle_chase_modify_result(1, 42, Ok(response));
+    let _task = terminal.handle_chase_modify_result(1, 42, 1, Ok(response));
 
     let chase = chase_by_id(&terminal, 1);
     assert_eq!(chase.filled_size, 0.0);

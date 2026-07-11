@@ -38,19 +38,26 @@ impl TradingTerminal {
     pub(crate) fn handle_twap_slice_result(
         &mut self,
         twap_id: u64,
+        slice_index: u32,
+        retry_count: u32,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         let mut refresh_policy = twap_place_result_refresh_policy(&result);
         let now = Instant::now();
-        let pending = self
+        // A slice retry reuses both the TWAP ID and child CLOID. The index and
+        // retry count together identify the exact dispatch without exposing it.
+        let pending = match self
             .twap_orders
             .get(&twap_id)
-            .and_then(|twap| match &twap.pending_op {
-                Some(TwapPendingOp::Place(slice)) => Some(slice.clone()),
-                _ => None,
-            });
-        let Some(pending) = pending else {
-            return self.refresh_after_twap_result(refresh_policy, twap_id);
+            .and_then(|twap| twap.pending_op.as_ref())
+        {
+            Some(TwapPendingOp::Place(slice))
+                if slice.index == slice_index && slice.retry_count == retry_count =>
+            {
+                slice.clone()
+            }
+            Some(TwapPendingOp::Place(_)) => return Task::none(),
+            _ => return self.refresh_after_twap_result(refresh_policy, twap_id),
         };
 
         let mut status_update = None;

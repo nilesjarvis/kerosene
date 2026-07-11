@@ -118,7 +118,7 @@ fn rejected_initial_place_result_removes_chase_and_clears_owned_pending_action()
     let response = exchange_response(vec![serde_json::json!({
         "error": "tick rejected"
     })]);
-    let _task = terminal.handle_chase_place_result(1, Ok(response));
+    let _task = terminal.handle_chase_place_result(1, 1, Ok(response));
 
     assert!(terminal.chase_orders.is_empty());
     assert_eq!(terminal.pending_order_action, None);
@@ -144,7 +144,7 @@ fn replacement_place_result_preserves_unrelated_pending_order_action() {
             "oid": 9001_u64
         }
     })]);
-    let _task = terminal.handle_chase_place_result(1, Ok(response));
+    let _task = terminal.handle_chase_place_result(1, 2, Ok(response));
 
     assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
     let chase = chase_from_terminal(&terminal, 1);
@@ -152,10 +152,72 @@ fn replacement_place_result_preserves_unrelated_pending_order_action() {
 }
 
 #[test]
+fn stale_place_result_from_prior_attempt_does_not_settle_current_attempt() {
+    let mut chase = chase();
+    chase.lifecycle = ChaseLifecycle::Placing;
+    chase.current_cloid = Some(TEST_CLOID.to_string());
+    chase.place_attempt_count = 2;
+    let mut terminal = connected_terminal_with_chase(chase);
+    terminal.account_loading = false;
+    terminal.order_status = Some(("Current place attempt pending".to_string(), false));
+
+    let response = exchange_response(vec![serde_json::json!({
+        "resting": {
+            "oid": 9001_u64
+        }
+    })]);
+    let _task = terminal.handle_chase_place_result(1, 1, Ok(response));
+
+    let chase = chase_from_terminal(&terminal, 1);
+    assert_eq!(chase.lifecycle, ChaseLifecycle::Placing);
+    assert_eq!(chase.place_attempt_count, 2);
+    assert_eq!(chase.current_oid, None);
+    assert_eq!(chase.filled_size, 0.0);
+    assert!(!terminal.account_loading);
+    assert_eq!(
+        terminal.order_status,
+        Some(("Current place attempt pending".to_string(), false))
+    );
+}
+
+#[test]
+fn duplicate_place_result_cannot_rewrite_settled_attempt() {
+    let mut chase = chase();
+    chase.lifecycle = ChaseLifecycle::Placing;
+    chase.current_cloid = Some(TEST_CLOID.to_string());
+    chase.place_attempt_count = 1;
+    let mut terminal = terminal_with_chase(chase);
+
+    let accepted = exchange_response(vec![serde_json::json!({
+        "resting": {
+            "oid": 9001_u64
+        }
+    })]);
+    let _task = terminal.handle_chase_place_result(1, 1, Ok(accepted));
+    let settled_status = terminal.order_status.clone();
+
+    let conflicting_duplicate = exchange_response(vec![serde_json::json!({
+        "error": "conflicting duplicate"
+    })]);
+    let _task = terminal.handle_chase_place_result(1, 1, Ok(conflicting_duplicate));
+
+    let chase = chase_from_terminal(&terminal, 1);
+    assert_eq!(chase.current_oid, Some(9001));
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Placement
+        }
+    );
+    assert_eq!(terminal.order_status, settled_status);
+}
+
+#[test]
 fn malformed_filled_place_result_checks_status_without_crediting_remaining_size() {
     let mut chase = chase();
     chase.lifecycle = ChaseLifecycle::Placing;
     chase.current_cloid = Some(TEST_CLOID.to_string());
+    chase.place_attempt_count = 1;
     let mut terminal = connected_terminal_with_chase(chase);
     terminal.account_loading = false;
 
@@ -165,7 +227,7 @@ fn malformed_filled_place_result_checks_status_without_crediting_remaining_size(
             "avgPx": "100"
         }
     })]);
-    let _task = terminal.handle_chase_place_result(1, Ok(response));
+    let _task = terminal.handle_chase_place_result(1, 1, Ok(response));
 
     let chase = chase_from_terminal(&terminal, 1);
     assert_eq!(chase.filled_size, 0.0);
@@ -189,10 +251,12 @@ fn place_transport_error_checks_status_with_redacted_reason() {
     let mut chase = chase();
     chase.lifecycle = ChaseLifecycle::Placing;
     chase.current_cloid = Some(TEST_CLOID.to_string());
+    chase.place_attempt_count = 1;
     let mut terminal = connected_terminal_with_chase(chase);
     terminal.account_loading = false;
 
     let _task = terminal.handle_chase_place_result(
+        1,
         1,
         Err("place request failed: api_key=super-secret".to_string()),
     );
@@ -222,7 +286,7 @@ fn late_place_result_without_chase_does_not_refresh_current_account() {
             "oid": 9001_u64
         }
     })]);
-    let _task = terminal.handle_chase_place_result(1, Ok(response));
+    let _task = terminal.handle_chase_place_result(1, 1, Ok(response));
 
     assert!(!terminal.account_loading);
     assert!(terminal.chase_orders.is_empty());
