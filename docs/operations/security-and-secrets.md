@@ -463,6 +463,15 @@ bytes, picker filters, validation, generated names, config serialization,
 visible feedback, font selection, HUD sound timing, and order behavior remain
 unchanged.
 
+Prepared preference assets also redact their family, generated name, staging
+path, and destination path when formatted independently. Validated bytes live
+only in an internal same-directory staging file, not in Elm diagnostics. The
+clone-safe staging lease best-effort removes uncommitted files when stale,
+config-clear-discarded, duplicated, or dropped results lose their last owner;
+only the exact accepted target promotes the file. Promotion and rollback errors
+are reduced to path-neutral I/O categories before entering the unchanged
+import-failure toast.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

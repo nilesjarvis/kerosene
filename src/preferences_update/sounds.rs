@@ -1,4 +1,4 @@
-use super::PreferenceAssetImportTarget;
+use super::{PreferenceAssetImportTarget, PreparedPreferenceAssetImport};
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::helpers::redact_sensitive_response_text;
@@ -50,7 +50,7 @@ impl TradingTerminal {
                 self.chart_hud_order_sound_import_request = None;
 
                 match result.into_result() {
-                    Ok(Some(file_name)) => {
+                    Ok(Some(asset)) => {
                         if self.config_clear_requested || self.config_cleared_this_session {
                             self.push_toast(
                                 "HUD order sound import was discarded because config persistence is paused until restart."
@@ -59,6 +59,19 @@ impl TradingTerminal {
                             );
                             return Task::none();
                         }
+                        let file_name = match asset.commit("write imported HUD order sound file") {
+                            Ok(file_name) => file_name,
+                            Err(error) => {
+                                self.push_toast(
+                                    format!(
+                                        "HUD order sound import failed: {}",
+                                        redact_sensitive_response_text(&error)
+                                    ),
+                                    true,
+                                );
+                                return Task::none();
+                            }
+                        };
                         self.chart_hud_order_sound_file = Some(file_name);
                         self.chart_hud_order_sound = config::ChartHudOrderSound::CustomWav;
                         self.persist_config();
@@ -105,7 +118,7 @@ impl TradingTerminal {
     }
 }
 
-async fn import_hud_order_sound() -> Result<Option<String>, String> {
+async fn import_hud_order_sound() -> Result<Option<PreparedPreferenceAssetImport>, String> {
     let Some(file) = rfd::AsyncFileDialog::new()
         .add_filter("WAV audio", &["wav"])
         .pick_file()
@@ -129,11 +142,14 @@ async fn import_hud_order_sound() -> Result<Option<String>, String> {
         .ok_or_else(|| "platform config directory is unavailable".to_string())?;
     std::fs::create_dir_all(&sound_dir)
         .map_err(|e| super::import_io_failure("create HUD order sound storage directory", &e))?;
-    let destination = sound_dir.join(&file_name);
-    std::fs::write(&destination, bytes)
-        .map_err(|e| super::import_io_failure("write imported HUD order sound file", &e))?;
+    let asset = PreparedPreferenceAssetImport::stage(
+        &sound_dir,
+        file_name,
+        &bytes,
+        "write imported HUD order sound file",
+    )?;
 
-    Ok(Some(file_name))
+    Ok(Some(asset))
 }
 
 fn validate_wav(bytes: &[u8]) -> Result<(), String> {
@@ -178,6 +194,26 @@ mod tests {
     use crate::config::ChartHudOrderSound;
     use std::fs::File;
 
+    fn import_test_dir(name: &str) -> std::path::PathBuf {
+        let path = unique_temp_path(name);
+        std::fs::create_dir_all(&path).expect("create sound import fixture directory");
+        path
+    }
+
+    fn staged_sound(
+        directory: &Path,
+        file_name: &str,
+        bytes: &[u8],
+    ) -> PreparedPreferenceAssetImport {
+        PreparedPreferenceAssetImport::stage(
+            directory,
+            file_name.to_string(),
+            bytes,
+            "write imported HUD order sound file",
+        )
+        .expect("stage sound import fixture")
+    }
+
     #[test]
     fn completed_hud_sound_import_is_discarded_after_config_clear() {
         let (mut terminal, _) = TradingTerminal::boot();
@@ -186,10 +222,15 @@ mod tests {
             .chart_hud_order_sound_import_request
             .expect("sound import owner");
         terminal.config_cleared_this_session = true;
+        let directory = import_test_dir("sound-clear");
+        let asset = staged_sound(&directory, "after-clear.wav", b"after-clear");
+        let staged_path = asset.staged_path().to_path_buf();
+        let destination_path = asset.destination_path().to_path_buf();
+        std::fs::remove_dir_all(&directory).expect("simulate config-clear asset removal");
 
         let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
             request,
-            Ok(Some("after-clear.wav".to_string())).into(),
+            Ok(Some(asset)).into(),
         ));
 
         assert_eq!(terminal.chart_hud_order_sound_file, None);
@@ -199,6 +240,9 @@ mod tests {
         );
         assert!(terminal.config_save_due_at.is_none());
         assert!(terminal.chart_hud_order_sound_import_request.is_none());
+        assert!(!staged_path.exists());
+        assert!(!destination_path.exists());
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -216,20 +260,25 @@ mod tests {
             .expect("newer sound import owner");
         assert_eq!(older_request.request_id(), u64::MAX);
         assert_eq!(newer_request.request_id(), 0);
+        let directory = import_test_dir("sound-reversed");
+        let older_asset = staged_sound(&directory, "same.wav", b"older-bytes");
+        let older_staged_path = older_asset.staged_path().to_path_buf();
+        let newer_asset = staged_sound(&directory, "same.wav", b"newer-bytes");
+        let destination_path = newer_asset.destination_path().to_path_buf();
 
         let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
             newer_request,
-            Ok(Some("newer.wav".to_string())).into(),
+            Ok(Some(newer_asset)).into(),
         ));
         let toast_count = terminal.toasts.len();
         let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
             older_request,
-            Ok(Some("older.wav".to_string())).into(),
+            Ok(Some(older_asset)).into(),
         ));
 
         assert_eq!(
             terminal.chart_hud_order_sound_file.as_deref(),
-            Some("newer.wav")
+            Some("same.wav")
         );
         assert_eq!(
             terminal.chart_hud_order_sound,
@@ -237,9 +286,15 @@ mod tests {
         );
         assert_eq!(terminal.toasts.len(), toast_count);
         assert!(terminal.config_save_due_at.is_some());
+        assert_eq!(
+            std::fs::read(&destination_path).expect("read accepted sound fixture"),
+            b"newer-bytes"
+        );
+        assert!(!older_staged_path.exists());
         let toast = terminal.toasts.last().expect("import success toast");
         assert!(!toast.is_error);
         assert_eq!(toast.message, "HUD order sound imported");
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -280,13 +335,17 @@ mod tests {
         let newer_request = terminal
             .chart_hud_order_sound_import_request
             .expect("newer sound import owner");
+        let directory = import_test_dir("sound-cancel-reversed");
+        let older_asset = staged_sound(&directory, "older.wav", b"older-bytes");
+        let older_staged_path = older_asset.staged_path().to_path_buf();
+        let destination_path = older_asset.destination_path().to_path_buf();
         let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
             newer_request,
             Err("Import cancelled".to_string()).into(),
         ));
         let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
             older_request,
-            Ok(Some("older.wav".to_string())).into(),
+            Ok(Some(older_asset)).into(),
         ));
 
         assert!(terminal.chart_hud_order_sound_import_request.is_none());
@@ -294,6 +353,74 @@ mod tests {
         assert_eq!(terminal.chart_hud_order_sound_file, file_before);
         assert_eq!(terminal.toasts.len(), toast_count);
         assert!(terminal.config_save_due_at.is_none());
+        assert!(!older_staged_path.exists());
+        assert!(!destination_path.exists());
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn accepted_sound_promotion_failure_keeps_selection_and_uses_existing_error_feedback() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let sound_before = terminal.chart_hud_order_sound;
+        let file_before = terminal.chart_hud_order_sound_file.clone();
+        let _task = terminal.update_sound_preferences(Message::ImportChartHudOrderSound);
+        let request = terminal
+            .chart_hud_order_sound_import_request
+            .expect("sound import owner");
+        let directory = import_test_dir("sound-promote-error");
+        let asset = staged_sound(&directory, "promote-error.wav", b"sound-bytes");
+        let staged_path = asset.staged_path().to_path_buf();
+        std::fs::remove_file(&staged_path).expect("remove staged sound fixture");
+
+        let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(
+            request,
+            Ok(Some(asset)).into(),
+        ));
+
+        assert!(terminal.chart_hud_order_sound_import_request.is_none());
+        assert_eq!(terminal.chart_hud_order_sound, sound_before);
+        assert_eq!(terminal.chart_hud_order_sound_file, file_before);
+        assert!(terminal.config_save_due_at.is_none());
+        let toast = terminal.toasts.last().expect("promotion error toast");
+        assert!(toast.is_error);
+        assert!(
+            toast
+                .message
+                .contains("HUD order sound import failed: write imported HUD order sound file failed: not found"),
+            "{}",
+            toast.message
+        );
+        assert!(!toast.message.contains(&directory.display().to_string()));
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn duplicate_accepted_sound_message_cannot_remove_committed_asset_or_repeat_feedback() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let _task = terminal.update_sound_preferences(Message::ImportChartHudOrderSound);
+        let request = terminal
+            .chart_hud_order_sound_import_request
+            .expect("sound import owner");
+        let directory = import_test_dir("sound-duplicate");
+        let asset = staged_sound(&directory, "duplicate.wav", b"committed-bytes");
+        let destination_path = asset.destination_path().to_path_buf();
+        let message = Message::ChartHudOrderSoundImported(request, Ok(Some(asset)).into());
+        let duplicate = message.clone();
+
+        let _task = terminal.update_sound_preferences(message);
+        let toast_count = terminal.toasts.len();
+        let _task = terminal.update_sound_preferences(duplicate);
+
+        assert_eq!(terminal.toasts.len(), toast_count);
+        assert_eq!(
+            std::fs::read(&destination_path).expect("read committed duplicate fixture"),
+            b"committed-bytes"
+        );
+        assert_eq!(
+            terminal.chart_hud_order_sound_file.as_deref(),
+            Some("duplicate.wav")
+        );
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]

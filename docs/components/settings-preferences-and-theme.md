@@ -113,6 +113,16 @@ cancel an app-global import intent. The shared custom-family registry, font
 validation, generated file names, restart requirement, and persistence format
 remain unchanged.
 
+The copy task writes validated bytes to an internal, request-unique file beside
+the unchanged final name. That staged file is carried by a clone-safe lease in
+the completion message. Only an accepted current owner promotes it; stale,
+canceled, config-clear-discarded, or dropped completions best-effort remove
+staging without touching the final path. Promotion is a same-directory metadata
+operation in the same update that already selected and persisted the font, so
+there is no extra task, visible phase, or filename change. If two accepted font
+targets report the same family and generated name, completion-handler order
+owns the final bytes and shared-family upsert.
+
 ## Pane Chrome And UI Scale
 
 User-adjustable chrome includes:
@@ -165,6 +175,10 @@ Custom HUD-order-sound import uses the same runtime latest-request boundary.
 Only its exact current completion may select `CustomWav` and persist the stored
 file name. This owner does not alter HUD submit-time sound playback, order
 dispatch, volume, picker validation, or visible import feedback.
+
+Custom sound bytes use the same staging lease. A same-name older task cannot
+truncate the accepted file before its stale result is rejected, while duplicate
+message clones cannot remove a file after the first exact completion commits it.
 
 Desktop notifications use `notify-rust` and are controlled by notification
 toggles. Notification text should not include secrets.

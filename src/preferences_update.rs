@@ -12,7 +12,10 @@ use crate::message::Message;
 use iced::Task;
 #[cfg(target_os = "linux")]
 use iced::window;
-use std::path::Path;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
 mod fonts;
 mod hotkeys;
@@ -34,6 +37,252 @@ pub(crate) enum PreferenceAssetImportTarget {
 pub(crate) struct PreferenceAssetImportRequest {
     request_id: u64,
     target: PreferenceAssetImportTarget,
+}
+
+const STAGED_IMPORT_READY: u8 = 0;
+const STAGED_IMPORT_COMMITTING: u8 = 1;
+const STAGED_IMPORT_COMMITTED: u8 = 2;
+static NEXT_STAGED_IMPORT_FILE_ID: AtomicU64 = AtomicU64::new(0);
+
+/// A validated preference asset whose public filename is not installed until
+/// its exact Elm request owner accepts the completion.
+///
+/// `Message` is cloneable, so every clone shares one staging-file lease. The
+/// last uncommitted clone removes the sidecar; a committed lease never removes
+/// the installed destination.
+#[derive(Clone)]
+pub(crate) struct PreparedPreferenceAssetImport {
+    file_name: String,
+    staged: Arc<StagedPreferenceAssetFile>,
+}
+
+impl std::fmt::Debug for PreparedPreferenceAssetImport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PreparedPreferenceAssetImport")
+            .field("file_name", &format_args!("<redacted>"))
+            .field("staged_path", &format_args!("<redacted>"))
+            .finish()
+    }
+}
+
+impl PreparedPreferenceAssetImport {
+    pub(crate) fn stage(
+        directory: &Path,
+        file_name: String,
+        bytes: &[u8],
+        action: &str,
+    ) -> Result<Self, String> {
+        if !stored_import_file_name_is_safe(&file_name) {
+            return Err(format!("{action} failed: generated file name is invalid"));
+        }
+
+        let destination_path = directory.join(&file_name);
+        let (staged_path, mut staged_file) = create_staged_import_file(&destination_path, action)?;
+        if let Err(error) = staged_file.write_all(bytes) {
+            drop(staged_file);
+            cleanup_staged_import_file(&staged_path);
+            return Err(import_io_failure(action, &error));
+        }
+        drop(staged_file);
+
+        Ok(Self {
+            file_name,
+            staged: Arc::new(StagedPreferenceAssetFile {
+                staged_path,
+                destination_path,
+                state: AtomicU8::new(STAGED_IMPORT_READY),
+            }),
+        })
+    }
+
+    pub(crate) fn commit(self, action: &str) -> Result<String, String> {
+        self.staged
+            .state
+            .compare_exchange(
+                STAGED_IMPORT_READY,
+                STAGED_IMPORT_COMMITTING,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .map_err(|_| format!("{action} failed: staged import is unavailable"))?;
+
+        match promote_staged_import_file(
+            &self.staged.staged_path,
+            &self.staged.destination_path,
+            action,
+        ) {
+            Ok(()) => {
+                self.staged
+                    .state
+                    .store(STAGED_IMPORT_COMMITTED, Ordering::Release);
+                Ok(self.file_name)
+            }
+            Err(error) => {
+                self.staged
+                    .state
+                    .store(STAGED_IMPORT_READY, Ordering::Release);
+                Err(error)
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn staged_path(&self) -> &Path {
+        &self.staged.staged_path
+    }
+
+    #[cfg(test)]
+    pub(crate) fn destination_path(&self) -> &Path {
+        &self.staged.destination_path
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct PreparedFontImport {
+    family: String,
+    asset: PreparedPreferenceAssetImport,
+}
+
+impl std::fmt::Debug for PreparedFontImport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PreparedFontImport")
+            .field("family", &format_args!("<redacted>"))
+            .field("asset", &self.asset)
+            .finish()
+    }
+}
+
+impl PreparedFontImport {
+    pub(crate) fn new(family: String, asset: PreparedPreferenceAssetImport) -> Self {
+        Self { family, asset }
+    }
+
+    pub(crate) fn commit(self) -> Result<crate::config::CustomFontConfig, String> {
+        let file_name = self.asset.commit("write imported font file")?;
+        Ok(crate::config::CustomFontConfig {
+            family: self.family,
+            file_name,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn staged_path(&self) -> &Path {
+        self.asset.staged_path()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn destination_path(&self) -> &Path {
+        self.asset.destination_path()
+    }
+}
+
+struct StagedPreferenceAssetFile {
+    staged_path: PathBuf,
+    destination_path: PathBuf,
+    state: AtomicU8,
+}
+
+impl Drop for StagedPreferenceAssetFile {
+    fn drop(&mut self) {
+        if self.state.load(Ordering::Acquire) != STAGED_IMPORT_COMMITTED {
+            cleanup_staged_import_file(&self.staged_path);
+        }
+    }
+}
+
+fn stored_import_file_name_is_safe(file_name: &str) -> bool {
+    !file_name.is_empty()
+        && !file_name.contains('/')
+        && !file_name.contains('\\')
+        && !file_name.contains("..")
+}
+
+fn create_staged_import_file(
+    destination_path: &Path,
+    action: &str,
+) -> Result<(PathBuf, std::fs::File), String> {
+    for _ in 0..1024 {
+        let staged_path = unique_import_sidecar_path(destination_path, "import-stage");
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staged_path)
+        {
+            Ok(file) => return Ok((staged_path, file)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(import_io_failure(action, &error)),
+        }
+    }
+
+    Err(format!(
+        "{action} failed: no unique staging file was available"
+    ))
+}
+
+fn unique_import_sidecar_path(destination_path: &Path, marker: &str) -> PathBuf {
+    let pid = std::process::id();
+    let id = NEXT_STAGED_IMPORT_FILE_ID.fetch_add(1, Ordering::Relaxed);
+    let sidecar_name = format!(".kerosene-{marker}-{pid}-{id}");
+
+    match destination_path.parent() {
+        Some(parent) => parent.join(sidecar_name),
+        None => PathBuf::from(sidecar_name),
+    }
+}
+
+fn promote_staged_import_file(
+    staged_path: &Path,
+    destination_path: &Path,
+    action: &str,
+) -> Result<(), String> {
+    // Unix-like filesystems normally replace an existing destination here.
+    // Platforms that reject replacement rename use the same-directory backup
+    // below so a failed install can restore the prior complete asset.
+    let initial_error = match std::fs::rename(staged_path, destination_path) {
+        Ok(()) => return Ok(()),
+        Err(error) => error,
+    };
+
+    let replaceable_destination = destination_path
+        .symlink_metadata()
+        .map(|metadata| {
+            let file_type = metadata.file_type();
+            file_type.is_file() || file_type.is_symlink()
+        })
+        .unwrap_or(false);
+    if !replaceable_destination {
+        return Err(import_io_failure(action, &initial_error));
+    }
+
+    let rollback_path = unique_import_sidecar_path(destination_path, "import-old");
+    if let Err(error) = std::fs::rename(destination_path, &rollback_path) {
+        return Err(format!(
+            "{}; staging the existing asset for rollback failed: {}",
+            import_io_failure(action, &initial_error),
+            crate::helpers::path_neutral_io_error_detail(&error)
+        ));
+    }
+
+    match std::fs::rename(staged_path, destination_path) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(rollback_path);
+            Ok(())
+        }
+        Err(error) => {
+            let replacement_error = import_io_failure(action, &error);
+            match std::fs::rename(&rollback_path, destination_path) {
+                Ok(()) => Err(replacement_error),
+                Err(restore_error) => Err(format!(
+                    "{replacement_error}; restoring the prior asset failed: {}",
+                    crate::helpers::path_neutral_io_error_detail(&restore_error)
+                )),
+            }
+        }
+    }
+}
+
+fn cleanup_staged_import_file(path: &Path) {
+    let _ = std::fs::remove_file(path);
 }
 
 impl PreferenceAssetImportRequest {
@@ -524,6 +773,28 @@ mod tests {
     use super::*;
     use std::io::{Error, ErrorKind};
 
+    fn unique_asset_test_dir(name: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!("kerosene-asset-{nanos}-{name}"))
+    }
+
+    fn stage_test_asset(
+        directory: &Path,
+        file_name: &str,
+        bytes: &[u8],
+    ) -> PreparedPreferenceAssetImport {
+        PreparedPreferenceAssetImport::stage(
+            directory,
+            file_name.to_string(),
+            bytes,
+            "write imported test asset",
+        )
+        .expect("stage imported test asset")
+    }
+
     #[test]
     fn missing_import_file_metadata_error_redacts_source_path() {
         let path = std::env::temp_dir().join("kerosene-secret-source-font.ttf");
@@ -552,6 +823,153 @@ mod tests {
         );
         assert!(!rendered.contains("/home/alice"));
         assert!(!rendered.contains("font-secret"));
+    }
+
+    #[test]
+    fn dropping_last_prepared_import_lease_removes_only_the_staging_file() {
+        let directory = unique_asset_test_dir("drop");
+        std::fs::create_dir_all(&directory).expect("create asset fixture directory");
+        let asset = stage_test_asset(&directory, "same.wav", b"staged");
+        let clone = asset.clone();
+        let staged_path = asset.staged_path().to_path_buf();
+        let destination_path = asset.destination_path().to_path_buf();
+
+        drop(asset);
+        assert!(staged_path.exists(), "the cloned lease still owns staging");
+        drop(clone);
+
+        assert!(!staged_path.exists());
+        assert!(!destination_path.exists());
+        assert!(directory.exists());
+        assert_eq!(
+            std::fs::read_dir(&directory)
+                .expect("read empty staging directory")
+                .count(),
+            0
+        );
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn staging_sidecar_name_does_not_extend_the_generated_final_name() {
+        let directory = unique_asset_test_dir("long-final-name");
+        let final_name = format!("{}.ttf", "a".repeat(220));
+        let destination_path = directory.join(&final_name);
+
+        let staged_path = unique_import_sidecar_path(&destination_path, "import-stage");
+        let staged_name = staged_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("staging sidecar name");
+
+        assert_eq!(staged_path.parent(), Some(directory.as_path()));
+        assert!(staged_name.starts_with(".kerosene-import-stage-"));
+        assert!(staged_name.len() < 80, "{staged_name}");
+        assert!(!staged_name.contains(&final_name));
+    }
+
+    #[test]
+    fn same_name_prepared_imports_commit_in_completion_order() {
+        let directory = unique_asset_test_dir("same-name");
+        std::fs::create_dir_all(&directory).expect("create asset fixture directory");
+        let first = stage_test_asset(&directory, "same.ttf", b"first");
+        let second = stage_test_asset(&directory, "same.ttf", b"second");
+        let destination_path = first.destination_path().to_path_buf();
+
+        assert_eq!(
+            first
+                .commit("write imported test asset")
+                .expect("commit first"),
+            "same.ttf"
+        );
+        assert_eq!(
+            second
+                .commit("write imported test asset")
+                .expect("commit second"),
+            "same.ttf"
+        );
+
+        assert_eq!(
+            std::fs::read(&destination_path).expect("read committed asset"),
+            b"second"
+        );
+        let entries = std::fs::read_dir(&directory)
+            .expect("read asset fixture directory")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read asset fixture entries");
+        assert_eq!(
+            entries.len(),
+            1,
+            "rollback/staging sidecars must be cleaned"
+        );
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn failed_collision_promotion_restores_the_existing_asset() {
+        let directory = unique_asset_test_dir("restore");
+        std::fs::create_dir_all(&directory).expect("create asset fixture directory");
+        let destination_path = directory.join("same.wav");
+        std::fs::write(&destination_path, b"existing").expect("write existing asset fixture");
+        let asset = stage_test_asset(&directory, "same.wav", b"replacement");
+        let staged_path = asset.staged_path().to_path_buf();
+        std::fs::remove_file(&staged_path).expect("remove staged fixture before commit");
+
+        let error = asset
+            .commit("write imported test asset")
+            .expect_err("missing staging file should fail promotion");
+
+        assert!(
+            error.contains("write imported test asset failed"),
+            "{error}"
+        );
+        assert!(!error.contains(&directory.display().to_string()), "{error}");
+        assert_eq!(
+            std::fs::read(&destination_path).expect("read restored existing asset"),
+            b"existing"
+        );
+        let entries = std::fs::read_dir(&directory)
+            .expect("read restored fixture directory")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read restored fixture entries");
+        assert_eq!(
+            entries.len(),
+            1,
+            "rollback sidecar should be restored/cleaned"
+        );
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn prepared_import_debug_hides_family_file_and_paths() {
+        const FAMILY: &str = "private-prepared-font-family-sentinel";
+        const FILE_NAME: &str = "private-prepared-font-file-sentinel.ttf";
+        let directory = unique_asset_test_dir("private-prepared-path-sentinel");
+        std::fs::create_dir_all(&directory).expect("create asset fixture directory");
+        let asset = stage_test_asset(&directory, FILE_NAME, b"font-bytes");
+        let prepared_font = PreparedFontImport::new(FAMILY.to_string(), asset.clone());
+        let request =
+            PreferenceAssetImportRequest::new(41, PreferenceAssetImportTarget::DisplayFont);
+        let message = Message::DisplayFontImported(request, Ok(prepared_font.clone()).into());
+
+        let asset_debug = format!("{asset:?}");
+        let font_debug = format!("{prepared_font:?}");
+        let message_debug = format!("{message:?}");
+
+        for rendered in [asset_debug, font_debug, message_debug] {
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(FAMILY), "{rendered}");
+            assert!(!rendered.contains(FILE_NAME), "{rendered}");
+            assert!(
+                !rendered.contains("private-prepared-path-sentinel"),
+                "{rendered}"
+            );
+        }
+        drop(message);
+        drop(prepared_font);
+        drop(asset);
+        assert!(directory.exists());
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]

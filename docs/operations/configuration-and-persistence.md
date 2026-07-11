@@ -158,6 +158,17 @@ existing persisted reference. Stored bytes, file-name generation, custom-font
 family normalization, schema fields, defaults, and restart behavior are
 unchanged.
 
+Validated import bytes are first written to an exclusively created internal
+sidecar in the destination directory. The prepared result owns that sidecar
+through a clone-safe lease; dropping the last uncommitted clone best-effort
+removes it. Its short internal name neither extends nor reproduces the generated
+final filename.
+After request/config-clear acceptance, the existing update handler promotes the
+sidecar to the exact generated final name before snapshotting the reference.
+Same-name replacement uses same-directory rename with a rollback fallback for
+platforms that cannot rename over an existing file. No staging or rollback name
+enters `KeroseneConfig`, the settings UI, or font/sound lookup.
+
 ## Journal Cache
 
 Journal fill cache is per wallet and separate from `config.json`. It is

@@ -5930,6 +5930,114 @@ target-specific cancellation policy, not HTTP replay.
   of different files reporting the same font family intentionally retain the
   established completion-ordered shared-family upsert semantics.
 
+### F-75 — Preference asset tasks mutate final paths before result acceptance
+
+- Status: addressed in Turn 68; focused source controls added, but executable
+  validation is blocked before Kerosene compilation by the missing system ALSA
+  package
+- Severity: Medium filesystem/finalization ownership hardening; a stale task can
+  replace the bytes referenced by an accepted custom HUD sound or next-start
+  font, but no order preparation, signing, reconciliation, automation, or
+  exchange-mutation input was found
+- Scope: HUD-order-sound and font byte copy/finalization, timestamp-derived
+  same-name collision, repeated/canceled/stale completion order, config-clear
+  races, partial write, message cloning/drop/shutdown, cross-platform replacement
+  rollback, selected-reference persistence, diagnostics, settings lifecycle,
+  font/sound consumers, docs, and focused coverage
+- Preconditions/event ordering:
+  1. F-74 gated result application but each picker task still called
+     `std::fs::write` on its generated final path before publishing that result.
+     Two same-target tasks selecting the same sanitized stem or font family in
+     one millisecond can generate the same final name. If newer task B writes and
+     its result is accepted first, then older task A writes later, F-74 rejects
+     A's stale result but the persisted B reference now resolves A's bytes.
+  2. A superseded task, or a task completing after a newer cancellation, writes
+     an unreferenced final asset before its result is rejected. A task racing
+     config clear can recreate the removed asset directory and write after the
+     clear operation; the result fence prevents config mutation but cannot own
+     or remove that file. Settings close intentionally does not cancel the
+     app-global import.
+  3. `std::fs::write` opens an existing same-name file with truncation before all
+     bytes are written. A later write error can therefore damage the previously
+     complete asset even though the result enters only the existing failure
+     branch. A result dropped at app shutdown has no object that owns cleanup.
+- Evidence: `preferences_update/fonts.rs::import_font` and
+  `preferences_update/sounds.rs::import_hud_order_sound` were the sole final-
+  path writers and returned only a `CustomFontConfig` or filename. Their names
+  remain derived from sanitized family/source stem plus millisecond time. The
+  sole handlers already perform exact F-74 target/owner and config-clear checks,
+  then synchronously update selection, schedule the existing config save, and
+  emit the existing toast. `config::font_storage_dir`, `sound_storage_dir`,
+  `custom_font_path`, and `custom_sound_path` never scan directories; config and
+  views retain only exact final names. `Message` must remain cloneable. HUD
+  submission resolves the configured sound only for its established audio side
+  effect (`order_update/hud.rs`); font loading is restart-time UI plumbing.
+  Repository-wide order/signing/Chase/TWAP/cluster/reconciliation searches found
+  no staged/final asset path or byte input to a financial mutation.
+- Violated invariant: an import task may finish the established expensive byte
+  copy before its single completion message, but it may own only a request-
+  unique staging path until the exact current target owner and config-clear
+  fence accept that result. A rejected or dropped result must never mutate the
+  public final path. Accepted replacement must install a complete file or
+  preserve the prior complete file, and cloned messages must share one cleanup
+  lease without deleting a committed destination.
+- Risk: a persisted custom sound or font reference can silently resolve the
+  wrong or partially written bytes, while rejected tasks can retain local asset
+  data after cancellation or config clear. The custom sound affects only the
+  audio played at HUD submit time; it cannot change, duplicate, or settle an
+  order. No exchange exposure or financial state is created by these files.
+- Why existing checks did not cover it: F-74's owner check happens after task
+  side effects. Config-clear tests asserted state/save behavior but used
+  synthetic filenames, and existing copy errors had no same-name prior asset.
+  There was no staged-file lease, collision-byte assertion, rollback failure
+  control, message-clone cleanup control, or filesystem assertion for stale,
+  canceled, config-clear-discarded, and dropped completions.
+- Implemented fix: write validated bytes with exclusive creation to a request-
+  unique internal sidecar in the unchanged destination directory. Return a
+  redacted, clone-safe prepared-asset lease through the existing single result
+  message. Only after the exact request and config-clear checks does the handler
+  synchronously promote that sidecar to the unchanged final name, before any
+  state or persistence mutation. Same-directory rename provides complete-file
+  replacement; platforms that cannot rename over an existing file temporarily
+  move the prior regular file/symlink to a unique rollback sidecar and restore it
+  if installation fails. The last uncommitted lease clone best-effort removes
+  staging; a committed atomic state prevents duplicate clones from removing the
+  destination. All promotion errors use path-neutral I/O detail and enter the
+  existing import-failure feedback branch.
+- Regression coverage: source controls cover last-clone drop cleanup without
+  final-path mutation, a short sidecar that cannot extend a near-limit final
+  component, two prepared imports with the same exact final name and handler-
+  ordered bytes, forced install failure with restoration of a prior same-name
+  file, rollback-sidecar cleanup, prepared asset/font and parent diagnostic
+  redaction, same-name reversed sound and font completions, newer cancellation
+  followed by stale staged success, config-clear and pending-clear discard,
+  independent display/monospace completion, wrong-target rejection, settings-
+  close survival, accepted promotion failure with unchanged state/save and exact
+  existing feedback prefix, and duplicate cloned message behavior. Existing
+  route, serialization, config-clear, and HUD consumer suites remain in the
+  validation ladder.
+- Smallest behavior-preserving fix: one shared prepared-asset/lease helper, one
+  prepared-font carrier, replacement of the three success payload types, stage
+  calls at the two sole writers, promotion calls inside the three sole accepted
+  handlers, focused filesystem/owner tests, and docs. No picker/filter, limit,
+  read/validation byte, family/name derivation, final/displayed name, config
+  field/default/wire value, save schedule, restart rule, toast text, font/sound
+  selection, HUD sound timing/volume, order input, signed bytes, or trading
+  semantic changed. The task still writes all bytes before the same single
+  completion message; the accepted handler adds only same-directory metadata
+  promotion.
+- Residual uncertainty: Kerosene has not type-checked or launched on this host.
+  Rustfmt, exhaustive writer/consumer/persistence/order tracing, and source
+  controls establish the intended boundary, but tests cannot execute until ALSA
+  development metadata is available. A hard process kill, an OS cleanup denial,
+  or a rollback-cleanup failure can retain an internal sidecar; config clear
+  removes the whole asset directories and normal lookup never scans sidecars.
+  The helper deliberately does not remove an empty parent directory because that
+  could race another task after its `create_dir_all`. An exceptional platform
+  failure that both blocks replacement and blocks rollback restoration remains
+  reported as uncertain rather than treated as success. Cross-process external
+  writers are outside the runtime owner model.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -10393,6 +10501,105 @@ target-specific cancellation policy, not HTTP replay.
   and every trading semantic; defer rather than change those semantics if a
   safe phased design is not provable.
 
+## Turn 68 — Finalize Preference Assets After Ownership Acceptance
+
+- Status: F-75 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: HUD-order-sound, display-font, and monospace-font byte staging and
+  finalization; exact final-name collision, stale/canceled/config-clear result
+  order, partial write and message/drop cleanup, same-directory replacement and
+  rollback, result/model diagnostics, settings lifecycle, persistence, font/HUD
+  consumers, docs, and adversarial source controls
+- Invariant: each picker task may complete its established byte write before
+  publishing one result, but it owns only a request-unique sidecar. Only the
+  exact F-74 current target owner, after the existing config-clear fence, may
+  install the unchanged final path. A rejected or dropped result cannot touch a
+  final asset; an accepted collision installs one complete file or restores the
+  prior complete file; cloned messages share cleanup without deleting a
+  committed destination.
+- Protected behavior: exact picker filters/cancellation, byte limits, WAV/font
+  validation, selected bytes, source reads, timestamp-derived stored/displayed
+  names, one-task/one-message completion shape, custom-family normalization and
+  upsert order, config schema/defaults/serialization/save timing, settings close/
+  reopen behavior, restart requirement, all success/error/cancel/config-clear
+  strings, font rendering, sound selection/volume/test and HUD submit-time
+  playback, order preparation/signing, and every trading semantic.
+- Preconditions/event ordering: F-74 rejected stale messages only after their
+  tasks had directly opened the generated final path. An older same-name task
+  could therefore overwrite accepted bytes after the newer reference was
+  persisted; canceled, superseded, dropped, and post-clear tasks could leave
+  unreferenced files; and truncation followed by a partial-write error could
+  damage a prior same-name asset. Completion payload clones carried no artifact
+  cleanup ownership.
+- Evidence: F-75 records the two sole writers, three sole accepted handlers,
+  F-74 owners and config-clear fences, exact name derivation, task and message
+  boundaries, config path and lookup behavior, shared font registry, settings
+  lifecycle, persisted snapshots/views, clone requirement, HUD audio consumer,
+  and repository-wide order/signing/automation/reconciliation searches. No
+  directory scanner, alternate final-path writer, persisted staging identity,
+  order price/size/account input, pending mutation, signer, result classifier,
+  reconciliation consumer, or exchange trigger was found.
+- Change: introduce a prepared preference-asset type that exclusively stages
+  bytes beside the final path and owns that sidecar through an `Arc`-backed
+  atomic lease. Carry prepared sound/font results through the existing redacted
+  wrapper. Accepted handlers promote before their original state/save/toast
+  branch; stale, canceled, wrong-target, config-clear-discarded, duplicated, or
+  dropped messages best-effort clean only staging. Use direct same-directory
+  rename and a prior-file rollback fallback where replacement rename is not
+  supported. Keep generated final names exact and reduce all new errors to
+  path-neutral categories. Document staging, finalization, redaction, and
+  persistence boundaries.
+- Tests/checks:
+  - Baseline preference, config-clear and routing suites plus `cargo check`
+    stopped in `alsa-sys` before Kerosene compilation because `pkg-config`
+    could not find the system `alsa.pc` file.
+  - Exact lease-drop, bounded sidecar-name, same-name commit, collision rollback,
+    prepared diagnostic, reversed sound/font completion, duplicate message,
+    config-clear discard, and accepted-promotion-error controls stopped at that
+    same dependency boundary before executing.
+  - Post-fix full preference-update, config-clear, preference-message, market-
+    routing, font-serialization, and HUD-order suites all stopped at the same
+    dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed; final
+    source, call-site, diagnostic, secret/artifact, and compatibility reviews are
+    recorded in the current validation summary below.
+  - `cargo check`, full `cargo test`,
+    `cargo clippy --all-targets --all-features -- -D warnings`, and
+    `timeout 20s xvfb-run -a cargo run` stopped at the same pre-existing system
+    dependency boundary before Kerosene compilation or startup. No picker,
+    platform asset/config write or clear, audio playback, live request, exchange
+    mutation, or credential-bearing operation ran.
+- Compatibility/UX assessment: a normal task reads, validates, names, and writes
+  the byte-for-byte same asset before publishing the same one completion. Its
+  accepted handler performs a same-directory metadata promotion, recovers the
+  exact original filename/family, and enters the unchanged normalization,
+  selection, save, and toast branch. There is no second task, message, loading
+  phase, filename suffix, config field, or visible state. Promotion failure
+  enters the existing sanitized import-error copy without selecting or saving.
+  Same-name ambiguity now resolves by accepted handler order; stale tasks cannot
+  mutate accepted bytes. Settings close remains non-canceling and display/
+  monospace owners remain independent. No ordinary visible data/timing,
+  interaction, persisted value/default, sound/font behavior, signed bytes,
+  order behavior, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked or launched on this host. F-75 is
+  source-hardened; hard process termination or filesystem-denied best-effort
+  cleanup can leave an internal sidecar that lookup ignores, and an exceptional
+  double failure can prevent restoration of a prior collision asset while
+  surfacing an error. Parent-directory cleanup is intentionally omitted to
+  avoid racing another task. Executable and cross-platform validation remain
+  residual. Private-integration result fields, independently formattable nested
+  account/order types, classified external-status paths, and the remainder of
+  Track 9 still require review.
+- Prior turn commit hash: `d2cb67fd83f176b8d8cfbd2d1a31444176fc3ff3`
+- Next candidate: audit `OpenRouterKeyChecked` from encrypted/keychain save and
+  terminal generation allocation through task-secret capture, HTTP response/
+  error sanitization, same-key repeated checks, key clear/account/config-clear/
+  shutdown ordering, stale/duplicate result acceptance, parent/model
+  diagnostics, visible status, persistence, and AI consumers. Preserve exact
+  key authority, request, status text, save behavior, settings UX, secret
+  storage compatibility, and every trading semantic; then continue the X and
+  Telegram private-integration completion inventory.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -10434,26 +10641,27 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline sound/font preference, routing and
-  appearance-config suites plus `cargo check`; the pre-fix reversed sound/font
-  completion and parent-diagnostic regressions; post-fix exact `MAX`-to-zero,
-  reversed success, newer cancellation, ordinary cancellation, target mismatch,
-  independent-target, settings-close, config-clear, wrapper/model/message
-  diagnostic and exact-feedback controls; sound/font, import-message,
-  font-serialization, routing, config-clear and HUD-order suites; `cargo check`,
-  full `cargo test`, strict clippy, and the headless GUI smoke command at
-  `alsa-sys` system dependency discovery, before Kerosene was compiled or
-  launched.
-- No picker, imported font/sound read or write, config save/clear, audio
-  playback, live request, exchange mutation, or credential-bearing operation
-  was run.
+- Environment-blocked this turn: baseline preference-update, config-clear and
+  routing suites plus `cargo check`; exact last-lease drop, bounded sidecar name,
+  same-final-name commit, collision rollback/restoration, prepared/model/message
+  diagnostic, reversed sound/font completion, newer cancellation, wrong-target,
+  independent target, settings-close, config-clear/pending-clear, promotion-
+  error, duplicate message and exact-feedback controls; full preference-update,
+  config-clear, preference-message, font-serialization, routing and HUD-order suites;
+  `cargo check`; full `cargo test`; strict clippy; and the headless GUI smoke
+  command at `alsa-sys` system dependency discovery, before Kerosene was
+  compiled or launched.
+- No picker, imported font/sound or platform config operation, config save/
+  clear, audio playback, live request, exchange mutation, or credential-bearing
+  operation was run. Test fixture filesystem operations also did not run because
+  compilation stopped first.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-74
+  F-40, and F-42 through F-75
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -10540,7 +10748,10 @@ target-specific cancellation policy, not HTTP replay.
   terminal sequence wrap, reversed success and newer cancellation, while
   target/result/font-config diagnostics are source-hardened by F-74; exact
   picker/copy, config, feedback, font rendering, HUD sound timing, and order
-  behavior remain unchanged. Pre-result asset-write/finalization and config-
-  clear cleanup ownership, private-integration result lifecycles, independently
-  formattable nested account/order types, and classified external-status paths,
-  plus the rest of Track 9, require completion before a final verdict.
+  behavior remain unchanged. Preference-asset writes now use clone-safe staging
+  ownership and accepted-handler finalization with same-name rollback under
+  F-75, preserving exact public filenames and lookup behavior; hard-kill/
+  cleanup-denial sidecars and cross-platform executable validation remain
+  residual. Private-integration result lifecycles, independently formattable
+  nested account/order types, and classified external-status paths, plus the
+  rest of Track 9, require completion before a final verdict.

@@ -38,7 +38,9 @@ use crate::positioning_state::{
     PositioningInfoChangeTimeframe, PositioningInfoId, PositioningInfoPage, PositioningInfoSide,
     PositioningInfoSortField,
 };
-use crate::preferences_update::PreferenceAssetImportRequest;
+use crate::preferences_update::{
+    PreferenceAssetImportRequest, PreparedFontImport, PreparedPreferenceAssetImport,
+};
 use crate::read_data_provider::{
     AccountDataRequestContext, MarketDataSourceContext, ReadDataRequestContext,
 };
@@ -796,9 +798,9 @@ impl<T> fmt::Debug for RedactedChartScreenshotMessageResult<T> {
 /// Exact imported preference asset or import error carried through the Elm
 /// message boundary.
 ///
-/// Update handlers recover the original generated file name, font config, or
-/// error only after accepting the current import request. Generic diagnostics
-/// expose only success/error shape.
+/// Update handlers recover the original staged asset, prepared font, or error
+/// only after accepting the current import request. Generic diagnostics expose
+/// only success/error shape.
 #[derive(Clone)]
 pub(crate) struct RedactedPreferenceAssetImportResult<T>(Result<T, String>);
 
@@ -1420,7 +1422,7 @@ pub(crate) enum Message {
     ImportChartHudOrderSound,
     ChartHudOrderSoundImported(
         PreferenceAssetImportRequest,
-        RedactedPreferenceAssetImportResult<Option<String>>,
+        RedactedPreferenceAssetImportResult<Option<PreparedPreferenceAssetImport>>,
     ),
     TestChartHudOrderSound,
     ToggleChartHudUiSounds(bool),
@@ -1432,12 +1434,12 @@ pub(crate) enum Message {
     ImportDisplayFont,
     DisplayFontImported(
         PreferenceAssetImportRequest,
-        RedactedPreferenceAssetImportResult<config::CustomFontConfig>,
+        RedactedPreferenceAssetImportResult<PreparedFontImport>,
     ),
     ImportMonospaceFont,
     MonospaceFontImported(
         PreferenceAssetImportRequest,
-        RedactedPreferenceAssetImportResult<config::CustomFontConfig>,
+        RedactedPreferenceAssetImportResult<PreparedFontImport>,
     ),
     PaneBorderThicknessChanged(f32),
     PaneCornerRadiusChanged(f32),
@@ -3522,8 +3524,6 @@ mod tests {
     #[test]
     fn preference_asset_import_message_debug_hides_files_families_and_errors() {
         const FAMILY: &str = "private-import-font-family-sentinel";
-        const FILE_NAME: &str = "private-import-file-name-sentinel.ttf";
-        const SOUND_FILE_NAME: &str = "private-import-sound-name-sentinel.wav";
         const ERROR: &str = "private-import-error-sentinel";
         let sound_request = crate::preferences_update::PreferenceAssetImportRequest::new(
             36,
@@ -3539,28 +3539,9 @@ mod tests {
         );
 
         for message in [
-            Message::ChartHudOrderSoundImported(
-                sound_request,
-                Ok(Some(SOUND_FILE_NAME.to_string())).into(),
-            ),
+            Message::ChartHudOrderSoundImported(sound_request, Ok(None).into()),
             Message::ChartHudOrderSoundImported(sound_request, Err(ERROR.to_string()).into()),
-            Message::DisplayFontImported(
-                display_request,
-                Ok(crate::config::CustomFontConfig {
-                    family: FAMILY.to_string(),
-                    file_name: FILE_NAME.to_string(),
-                })
-                .into(),
-            ),
             Message::DisplayFontImported(display_request, Err(ERROR.to_string()).into()),
-            Message::MonospaceFontImported(
-                monospace_request,
-                Ok(crate::config::CustomFontConfig {
-                    family: FAMILY.to_string(),
-                    file_name: FILE_NAME.to_string(),
-                })
-                .into(),
-            ),
             Message::MonospaceFontImported(monospace_request, Err(ERROR.to_string()).into()),
             Message::DisplayFontChanged(crate::config::DisplayFontConfig::Custom {
                 family: FAMILY.to_string(),
@@ -3578,7 +3559,7 @@ mod tests {
                 "{rendered}"
             );
             assert!(rendered.contains("<redacted>"), "{rendered}");
-            for hidden in [FAMILY, FILE_NAME, SOUND_FILE_NAME, ERROR] {
+            for hidden in [FAMILY, ERROR] {
                 assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
             }
         }

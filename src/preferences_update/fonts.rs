@@ -1,4 +1,4 @@
-use super::PreferenceAssetImportTarget;
+use super::{PreferenceAssetImportTarget, PreparedFontImport, PreparedPreferenceAssetImport};
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::helpers::redact_sensitive_response_text;
@@ -72,7 +72,7 @@ impl TradingTerminal {
                 self.display_font_import_request = None;
 
                 match result.into_result() {
-                    Ok(font) => {
+                    Ok(prepared) => {
                         if self.config_clear_requested || self.config_cleared_this_session {
                             self.push_toast(
                                 "Font import was discarded because config persistence is paused until restart."
@@ -81,6 +81,19 @@ impl TradingTerminal {
                             );
                             return Task::none();
                         }
+                        let font = match prepared.commit() {
+                            Ok(font) => font,
+                            Err(error) => {
+                                self.push_toast(
+                                    format!(
+                                        "Font import failed: {}",
+                                        redact_sensitive_response_text(&error)
+                                    ),
+                                    true,
+                                );
+                                return Task::none();
+                            }
+                        };
                         let family = font.family.clone();
                         upsert_custom_font(&mut self.custom_fonts, font);
                         self.custom_fonts =
@@ -116,7 +129,7 @@ impl TradingTerminal {
                 self.monospace_font_import_request = None;
 
                 match result.into_result() {
-                    Ok(font) => {
+                    Ok(prepared) => {
                         if self.config_clear_requested || self.config_cleared_this_session {
                             self.push_toast(
                                 "Font import was discarded because config persistence is paused until restart."
@@ -125,6 +138,19 @@ impl TradingTerminal {
                             );
                             return Task::none();
                         }
+                        let font = match prepared.commit() {
+                            Ok(font) => font,
+                            Err(error) => {
+                                self.push_toast(
+                                    format!(
+                                        "Font import failed: {}",
+                                        redact_sensitive_response_text(&error)
+                                    ),
+                                    true,
+                                );
+                                return Task::none();
+                            }
+                        };
                         let family = font.family.clone();
                         upsert_custom_font(&mut self.custom_fonts, font);
                         self.custom_fonts =
@@ -175,7 +201,7 @@ fn upsert_custom_font(
     }
 }
 
-async fn import_font() -> Result<config::CustomFontConfig, String> {
+async fn import_font() -> Result<PreparedFontImport, String> {
     let Some(file) = rfd::AsyncFileDialog::new()
         .add_filter("Font", &["ttf", "otf", "ttc"])
         .pick_file()
@@ -195,11 +221,14 @@ async fn import_font() -> Result<config::CustomFontConfig, String> {
         .ok_or_else(|| "platform config directory is unavailable".to_string())?;
     std::fs::create_dir_all(&font_dir)
         .map_err(|e| super::import_io_failure("create font storage directory", &e))?;
-    let destination = font_dir.join(&file_name);
-    std::fs::write(&destination, bytes)
-        .map_err(|e| super::import_io_failure("write imported font file", &e))?;
+    let asset = PreparedPreferenceAssetImport::stage(
+        &font_dir,
+        file_name,
+        &bytes,
+        "write imported font file",
+    )?;
 
-    Ok(config::CustomFontConfig { family, file_name })
+    Ok(PreparedFontImport::new(family, asset))
 }
 
 fn font_family_from_bytes(bytes: &[u8]) -> Result<String, String> {
@@ -257,8 +286,30 @@ fn unique_font_file_name(family: &str, extension: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{CustomFontConfig, DisplayFontConfig};
+    use crate::config::DisplayFontConfig;
     use std::fs::File;
+
+    fn import_test_dir(name: &str) -> std::path::PathBuf {
+        let path = unique_temp_path(name);
+        std::fs::create_dir_all(&path).expect("create font import fixture directory");
+        path
+    }
+
+    fn staged_font(
+        directory: &Path,
+        family: &str,
+        file_name: &str,
+        bytes: &[u8],
+    ) -> PreparedFontImport {
+        let asset = PreparedPreferenceAssetImport::stage(
+            directory,
+            file_name.to_string(),
+            bytes,
+            "write imported font file",
+        )
+        .expect("stage font import fixture");
+        PreparedFontImport::new(family.to_string(), asset)
+    }
 
     #[test]
     fn completed_font_import_is_discarded_after_config_clear() {
@@ -269,20 +320,21 @@ mod tests {
             .display_font_import_request
             .expect("display font import owner");
         terminal.config_cleared_this_session = true;
+        let directory = import_test_dir("font-clear");
+        let prepared = staged_font(&directory, "After Clear", "after-clear.ttf", b"after-clear");
+        let staged_path = prepared.staged_path().to_path_buf();
+        let destination_path = prepared.destination_path().to_path_buf();
 
-        let _task = terminal.update_font_preferences(Message::DisplayFontImported(
-            request,
-            Ok(CustomFontConfig {
-                family: "After Clear".to_string(),
-                file_name: "after-clear.ttf".to_string(),
-            })
-            .into(),
-        ));
+        let _task = terminal
+            .update_font_preferences(Message::DisplayFontImported(request, Ok(prepared).into()));
 
         assert!(terminal.custom_fonts.is_empty());
         assert_eq!(terminal.display_font, display_font_before);
         assert!(terminal.config_save_due_at.is_none());
         assert!(terminal.display_font_import_request.is_none());
+        assert!(!staged_path.exists());
+        assert!(!destination_path.exists());
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -294,20 +346,26 @@ mod tests {
             .monospace_font_import_request
             .expect("monospace font import owner");
         terminal.config_clear_requested = true;
+        let directory = import_test_dir("font-clear-pending");
+        let prepared = staged_font(
+            &directory,
+            "During Clear",
+            "during-clear.ttf",
+            b"during-clear",
+        );
+        let staged_path = prepared.staged_path().to_path_buf();
+        let destination_path = prepared.destination_path().to_path_buf();
 
-        let _task = terminal.update_font_preferences(Message::MonospaceFontImported(
-            request,
-            Ok(CustomFontConfig {
-                family: "During Clear".to_string(),
-                file_name: "during-clear.ttf".to_string(),
-            })
-            .into(),
-        ));
+        let _task = terminal
+            .update_font_preferences(Message::MonospaceFontImported(request, Ok(prepared).into()));
 
         assert!(terminal.custom_fonts.is_empty());
         assert_eq!(terminal.monospace_font, monospace_font_before);
         assert!(terminal.config_save_due_at.is_none());
         assert!(terminal.monospace_font_import_request.is_none());
+        assert!(!staged_path.exists());
+        assert!(!destination_path.exists());
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -325,23 +383,30 @@ mod tests {
             .expect("newer display font import owner");
         assert_eq!(older_request.request_id(), u64::MAX);
         assert_eq!(newer_request.request_id(), 0);
+        let directory = import_test_dir("font-reversed");
+        let older_prepared = staged_font(
+            &directory,
+            "Newer Family",
+            "same-family.ttf",
+            b"older-bytes",
+        );
+        let older_staged_path = older_prepared.staged_path().to_path_buf();
+        let newer_prepared = staged_font(
+            &directory,
+            "Newer Family",
+            "same-family.ttf",
+            b"newer-bytes",
+        );
+        let destination_path = newer_prepared.destination_path().to_path_buf();
 
         let _task = terminal.update_font_preferences(Message::DisplayFontImported(
             newer_request,
-            Ok(CustomFontConfig {
-                family: "Newer Family".to_string(),
-                file_name: "newer-family.ttf".to_string(),
-            })
-            .into(),
+            Ok(newer_prepared).into(),
         ));
         let toast_count = terminal.toasts.len();
         let _task = terminal.update_font_preferences(Message::DisplayFontImported(
             older_request,
-            Ok(CustomFontConfig {
-                family: "Older Family".to_string(),
-                file_name: "older-family.ttf".to_string(),
-            })
-            .into(),
+            Ok(older_prepared).into(),
         ));
 
         assert_eq!(
@@ -352,12 +417,19 @@ mod tests {
         );
         assert_eq!(terminal.toasts.len(), toast_count);
         assert!(terminal.config_save_due_at.is_some());
+        assert_eq!(terminal.custom_fonts[0].file_name, "same-family.ttf");
+        assert_eq!(
+            std::fs::read(&destination_path).expect("read accepted font fixture"),
+            b"newer-bytes"
+        );
+        assert!(!older_staged_path.exists());
         let toast = terminal.toasts.last().expect("display import toast");
         assert!(!toast.is_error);
         assert_eq!(
             toast.message,
             "Display font set to Newer Family. Restart Kerosene to apply it."
         );
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -372,22 +444,23 @@ mod tests {
         let monospace_request = terminal
             .monospace_font_import_request
             .expect("monospace font import owner");
+        let directory = import_test_dir("font-independent");
+        let monospace_prepared =
+            staged_font(&directory, "Mono Family", "mono-family.ttf", b"mono-bytes");
+        let display_prepared = staged_font(
+            &directory,
+            "Display Family",
+            "display-family.ttf",
+            b"display-bytes",
+        );
 
         let _task = terminal.update_font_preferences(Message::MonospaceFontImported(
             monospace_request,
-            Ok(CustomFontConfig {
-                family: "Mono Family".to_string(),
-                file_name: "mono-family.ttf".to_string(),
-            })
-            .into(),
+            Ok(monospace_prepared).into(),
         ));
         let _task = terminal.update_font_preferences(Message::DisplayFontImported(
             display_request,
-            Ok(CustomFontConfig {
-                family: "Display Family".to_string(),
-                file_name: "display-family.ttf".to_string(),
-            })
-            .into(),
+            Ok(display_prepared).into(),
         ));
 
         assert_eq!(
@@ -406,6 +479,15 @@ mod tests {
         assert!(terminal.monospace_font_import_request.is_none());
         assert_eq!(terminal.custom_fonts.len(), 2);
         assert!(terminal.config_save_due_at.is_some());
+        assert_eq!(
+            std::fs::read(directory.join("mono-family.ttf")).expect("read monospace fixture"),
+            b"mono-bytes"
+        );
+        assert_eq!(
+            std::fs::read(directory.join("display-family.ttf")).expect("read display fixture"),
+            b"display-bytes"
+        );
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -421,19 +503,27 @@ mod tests {
             display_request.request_id(),
             PreferenceAssetImportTarget::MonospaceFont,
         );
+        let directory = import_test_dir("font-wrong-target");
+        let prepared = staged_font(
+            &directory,
+            "Wrong Target",
+            "wrong-target.ttf",
+            b"wrong-target",
+        );
+        let staged_path = prepared.staged_path().to_path_buf();
+        let destination_path = prepared.destination_path().to_path_buf();
         let _task = terminal.update_font_preferences(Message::DisplayFontImported(
             wrong_target_request,
-            Ok(CustomFontConfig {
-                family: "Wrong Target".to_string(),
-                file_name: "wrong-target.ttf".to_string(),
-            })
-            .into(),
+            Ok(prepared).into(),
         ));
 
         assert_eq!(terminal.display_font_import_request, Some(display_request));
         assert_eq!(terminal.display_font, display_font_before);
         assert!(terminal.custom_fonts.is_empty());
         assert!(terminal.config_save_due_at.is_none());
+        assert!(!staged_path.exists());
+        assert!(!destination_path.exists());
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -450,15 +540,16 @@ mod tests {
 
         assert!(terminal.settings_window_id.is_none());
         assert_eq!(terminal.display_font_import_request, Some(request));
+        let directory = import_test_dir("font-settings-close");
+        let prepared = staged_font(
+            &directory,
+            "After Settings Close",
+            "after-settings-close.ttf",
+            b"after-settings-close",
+        );
 
-        let _task = terminal.update_font_preferences(Message::DisplayFontImported(
-            request,
-            Ok(CustomFontConfig {
-                family: "After Settings Close".to_string(),
-                file_name: "after-settings-close.ttf".to_string(),
-            })
-            .into(),
-        ));
+        let _task = terminal
+            .update_font_preferences(Message::DisplayFontImported(request, Ok(prepared).into()));
 
         assert_eq!(
             terminal.display_font,
@@ -468,6 +559,12 @@ mod tests {
         );
         assert!(terminal.display_font_import_request.is_none());
         assert!(terminal.config_save_due_at.is_some());
+        assert_eq!(
+            std::fs::read(directory.join("after-settings-close.ttf"))
+                .expect("read settings-close fixture"),
+            b"after-settings-close"
+        );
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]

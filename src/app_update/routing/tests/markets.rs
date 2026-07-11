@@ -135,10 +135,7 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::Preferences,
     );
     assert_route(
-        Message::ChartHudOrderSoundImported(
-            sound_import_request,
-            Ok(Some("synthetic.wav".to_string())).into(),
-        ),
+        Message::ChartHudOrderSoundImported(sound_import_request, Ok(None).into()),
         UpdateRoute::Preferences,
     );
     assert_route(
