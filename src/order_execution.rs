@@ -548,21 +548,31 @@ impl fmt::Debug for PendingLeverageUpdateContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PendingLeverageUpdateContext")
             .field("address", &"<redacted>")
-            .field("symbol_key", &self.symbol_key)
-            .field("display", &self.display)
-            .field("asset", &self.asset)
-            .field("dex", &self.dex)
+            .field("symbol_key", &"<redacted>")
+            .field("display", &"<redacted>")
+            .field("asset", &"<redacted>")
+            .field("dex", &self.dex.as_ref().map(|_| "<redacted>"))
             .field("is_cross", &self.is_cross)
-            .field("leverage", &self.leverage)
+            .field("leverage", &"<redacted>")
             .finish()
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct OrderLeverageSubmissionSnapshot {
     pub(crate) symbol_key: String,
     pub(crate) leverage_input: String,
     pub(crate) is_cross: bool,
+}
+
+impl fmt::Debug for OrderLeverageSubmissionSnapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OrderLeverageSubmissionSnapshot")
+            .field("symbol_key", &"<redacted>")
+            .field("leverage_input", &"<redacted>")
+            .field("is_cross", &self.is_cross)
+            .finish()
+    }
 }
 
 impl PendingLeverageUpdateContext {

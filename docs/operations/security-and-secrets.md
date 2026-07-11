@@ -173,6 +173,15 @@ response-type metadata, status counts, and explicit redaction markers. A
 type-only response summary emits the recognized protocol label or a
 value-neutral marker; ordinary protocol copy remains unchanged.
 
+Leverage updates retain their exact input, symbol, account-correlation, asset,
+margin-mode, and leverage values for validation, stale-result checks, signing,
+and user feedback. Those values must not become a diagnostic payload: the Elm
+input message uses `RedactedOrderInput`, the submission and pending-result
+contexts implement value-redacting `Debug`, and the serialized leverage action
+redacts its asset and leverage when formatted. This changes only diagnostic
+representations; the signed wire fields and normal leverage behavior remain
+unchanged.
+
 ## API Key Boundaries
 
 Hydromancer, HyperDash, and X keys are only needed in:

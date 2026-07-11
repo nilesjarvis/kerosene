@@ -120,3 +120,17 @@ fn action_enum_debug_uses_redacted_inner_actions() {
         assert!(!rendered.contains(&cloid));
     }
 }
+
+#[test]
+fn update_leverage_action_debug_redacts_mutation_parameters() {
+    const ASSET: u32 = 110_003;
+    const LEVERAGE: u32 = 97;
+    let action = HyperliquidL1Action::update_leverage(ASSET, false, LEVERAGE);
+
+    let rendered = format!("{action:?}");
+
+    assert!(rendered.contains("UpdateLeverageAction"));
+    assert!(rendered.contains("<redacted>"));
+    assert!(!rendered.contains(&ASSET.to_string()), "{rendered}");
+    assert!(!rendered.contains(&LEVERAGE.to_string()), "{rendered}");
+}

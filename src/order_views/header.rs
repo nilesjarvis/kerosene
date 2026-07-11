@@ -153,7 +153,7 @@ impl TradingTerminal {
             .padding(5)
             .width(Length::Fixed(46.0));
         if !pending {
-            input = input.on_input(Message::OrderLeverageInputChanged);
+            input = input.on_input(|value| Message::OrderLeverageInputChanged(value.into()));
         }
 
         let apply_button: Element<'_, Message> = if pending {

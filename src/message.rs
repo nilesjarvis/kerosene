@@ -724,7 +724,7 @@ pub(crate) enum Message {
     PrefillOutcomeSell(String),
     ToggleReduceOnly,
     ToggleOrderLeverageDropdown,
-    OrderLeverageInputChanged(String),
+    OrderLeverageInputChanged(RedactedOrderInput),
     SetOrderLeverageCross(bool),
     SubmitOrderLeverage(OrderLeverageSubmissionSnapshot),
     OrderLeverageResult {
@@ -1593,8 +1593,8 @@ mod tests {
     use crate::chart_state::ChartSurfaceId;
     use crate::config::{ChartBackfillSource, MarketUniverseConfig, ReadDataProvider};
     use crate::order_execution::{
-        OneShotPlacementContext, PendingLeverageUpdateContext, QuickOrderForm,
-        QuickOrderQuantityProvenance, QuickOrderRecovery,
+        OneShotPlacementContext, OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext,
+        QuickOrderForm, QuickOrderQuantityProvenance, QuickOrderRecovery,
     };
     use crate::read_data_provider::{AccountDataRequestContext, ReadDataRequestContext};
     use crate::timeframe::Timeframe;
@@ -1614,10 +1614,12 @@ mod tests {
 
     #[test]
     fn order_input_debug_redacts_value() {
-        let rendered = format!("{:?}", RedactedOrderInput::from("order-input-secret"));
+        let input = RedactedOrderInput::from("order-input-secret");
+        let rendered = format!("{input:?}");
 
         assert!(rendered.contains("<redacted>"));
         assert!(!rendered.contains("order-input-secret"));
+        assert_eq!(input.into_string(), "order-input-secret");
     }
 
     #[test]
@@ -1630,12 +1632,65 @@ mod tests {
             Message::TwapMinPriceChanged("order-input-secret".into()),
             Message::TwapMaxPriceChanged("order-input-secret".into()),
             Message::QuickOrderQtyChanged(7, "order-input-secret".into()),
+            Message::OrderLeverageInputChanged("order-input-secret".into()),
         ];
 
         for message in messages {
             let rendered = format!("{message:?}");
             assert!(rendered.contains("<redacted>"));
             assert!(!rendered.contains("order-input-secret"));
+        }
+    }
+
+    #[test]
+    fn leverage_message_debug_redacts_mutation_parameters() {
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+        const SYMBOL: &str = "leverage-symbol-sentinel";
+        const DISPLAY: &str = "leverage-display-sentinel";
+        const DEX: &str = "leverage-dex-sentinel";
+        const INPUT: &str = "leverage-input-sentinel";
+        const ASSET: u32 = 110_003;
+        const LEVERAGE: u32 = 73;
+        let asset = ASSET.to_string();
+        let leverage = LEVERAGE.to_string();
+
+        let messages = [
+            Message::SubmitOrderLeverage(OrderLeverageSubmissionSnapshot {
+                symbol_key: SYMBOL.to_string(),
+                leverage_input: INPUT.to_string(),
+                is_cross: true,
+            }),
+            Message::OrderLeverageResult {
+                context: PendingLeverageUpdateContext {
+                    address: ADDRESS.to_string(),
+                    symbol_key: SYMBOL.to_string(),
+                    display: DISPLAY.to_string(),
+                    asset: ASSET,
+                    dex: Some(DEX.to_string()),
+                    is_cross: false,
+                    leverage: LEVERAGE,
+                },
+                result: Box::new(Err("leverage failed".to_string())),
+            },
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for sensitive in [
+                ADDRESS,
+                SYMBOL,
+                DISPLAY,
+                DEX,
+                INPUT,
+                asset.as_str(),
+                leverage.as_str(),
+            ] {
+                assert!(
+                    !rendered.contains(sensitive),
+                    "{sensitive} leaked: {rendered}"
+                );
+            }
         }
     }
 

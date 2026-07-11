@@ -164,7 +164,7 @@ impl fmt::Debug for ModifyAction {
 }
 
 /// Update leverage action: fields in Python SDK/docs order: type, asset, isCross, leverage
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
 pub(in crate::signing) struct UpdateLeverageAction {
     #[serde(rename = "type")]
     pub(super) action_type: String,
@@ -172,4 +172,15 @@ pub(in crate::signing) struct UpdateLeverageAction {
     #[serde(rename = "isCross")]
     pub(super) is_cross: bool,
     pub(super) leverage: u32,
+}
+
+impl fmt::Debug for UpdateLeverageAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UpdateLeverageAction")
+            .field("action_type", &self.action_type)
+            .field("asset", &"<redacted>")
+            .field("is_cross", &self.is_cross)
+            .field("leverage", &"<redacted>")
+            .finish()
+    }
 }

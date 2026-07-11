@@ -46,7 +46,7 @@ impl TradingTerminal {
             Message::ToggleReduceOnly => self.handle_toggle_reduce_only(),
             Message::ToggleOrderLeverageDropdown => self.handle_toggle_order_leverage_dropdown(),
             Message::OrderLeverageInputChanged(value) => {
-                self.handle_order_leverage_input_changed(value)
+                self.handle_order_leverage_input_changed(value.into_string())
             }
             Message::SetOrderLeverageCross(is_cross) => {
                 self.handle_set_order_leverage_cross(is_cross)

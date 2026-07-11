@@ -63,6 +63,15 @@
   (`src/signing/model/exchange_response.rs:19-67`,
   `src/signing/model/exchange_response/analysis.rs:24-31`,
   `src/signing/model/exchange_response/analysis.rs:227-247`).
+- The leverage-mutation diagnostic chain preserves exact input, symbol,
+  account-correlation, asset, dex, margin-mode, and leverage values for the
+  unchanged validation, equality, signing, result handling, and UI paths. The
+  transient input uses `RedactedOrderInput`; submission and pending-result
+  contexts expose only redaction markers plus margin mode through `Debug`; and
+  the serializable signed action redacts its asset and leverage when formatted.
+  Serde fields and signed bytes are unchanged (`src/message.rs:228-250`,
+  `src/message.rs:727-733`, `src/order_execution.rs:537-581`,
+  `src/signing/actions/wire.rs:166-188`).
 - Order-status REST parsing validates the returned OID/CLOID for concrete order
   bodies before handing a result to lifecycle code. Both public task exits now
   sanitize every error before message mapping; HTTP previews redact before
@@ -243,7 +252,7 @@
 | TWAP unexpected-child cancel | TWAP ID + captured key + OID/CLOID target + exact armed retry attempt | Pending target plus current retry count and one in-flight attempt; retry and result messages both carry the attempt | Target-specific cancel by CLOID preferred, else OID | Confirmed-cancel/terminal-not-open/error handling | Immediate origin-account refresh; child status and later fills | Dispatch atomically requires non-terminal exact target/retry with no existing owner; result requires exact target/retry/owner | Consumes one owner, then clears pending cancel and finishes once or schedules the next bounded attempt; a result arriving after fill terminalization retains refresh but cannot schedule retry work | `order_execution/twap/tests/cancel.rs`, placement/status entry-path tests, fill/cancel and terminal-result characterizations | F-08/F-20/F-22 addressed in Turns 9/19/21; F-21's delivery-order-dependent child label is deferred for an explicit UX/history semantics decision; financial accounting is order-independent |
 | Wallet-cluster order child | Execution ID + profile secret ID + member address/key + one-shot context | Execution/profile/CLOID plus account, symbol, surface, and order kind | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member user stream | Full origin match; direct requires `Pending`, status requires `Checking`; pending executions are not evicted | First terminal leg outcome is immutable; execution complete when every leg terminal | Cluster planning/member tests plus adversarial result/status tests in `wallet_cluster_update.rs` | F-04 addressed in Turn 5; executable regression validation remains environment-blocked by missing ALSA metadata |
 | Wallet-cluster close child | Same as cluster order, plus fresh per-member position snapshot and reduce-only plan | Same full correlation tuple with `ClusterClose` surface | Unique one-shot CLOID per member leg; direct result may leave `Pending` once | Shared classifier | CLOID status + member refresh + member stream | Freshness/side/position preflight plus the shared exact transition guard | Same first-terminal-wins handling as cluster orders | Close sizing/freshness tests and shared adversarial result tests | F-04 addressed by the shared Turn 5 transition guard |
-| Leverage update | `PendingLeverageUpdateContext` captures account, symbol, asset, dex, margin mode, leverage | Full pending-context equality | None; mutation is not blindly retried | Confirmed-default predicate; other non-error bodies are uncertain | Scoped account refresh for outcomes that may have committed | Pending-context equality + current-account match | Pending context cleared once; matching form updated only on confirmed default | `order_update/leverage.rs` tests, signing action/response tests | No exact mutation status endpoint; verify refresh completeness is sufficient in transport audit |
+| Leverage update | `PendingLeverageUpdateContext` captures account, symbol, asset, dex, margin mode, leverage | Full pending-context equality | None; mutation is not blindly retried | Confirmed-default predicate; other non-error bodies are uncertain | Scoped account refresh for outcomes that may have committed | Pending-context equality + current-account match | Pending context cleared once; matching form updated only on confirmed default | `order_update/leverage.rs` tests, signing action/response tests, diagnostic-redaction tests | F-42 diagnostic exposure addressed in Turn 35; executable validation remains environment-blocked. No exact mutation status endpoint; verify refresh completeness is sufficient in the remaining external-status audit |
 
 Turn 8 verified that every placement and modify row above reaches the shared
 signed-action builder. Valid field mapping is direct and covered at both the
@@ -2846,6 +2855,81 @@ target-specific cancellation policy, not HTTP replay.
   bundle-versus-legacy authority question; local order planner/state/message
   diagnostics and other external-status paths remain to audit.
 
+### F-42 — Leverage mutation parameters escape the redacted diagnostic graph
+
+- Status: addressed in Turn 35; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium diagnostic-confidentiality hardening; no production log sink
+  or known disclosure was found, but an account-linked financial mutation was
+  representable through raw derived diagnostics
+- Scope: leverage text input at the Elm message boundary; immutable submission
+  snapshot; pending result-correlation context; `Message::Debug`; signed
+  `UpdateLeverageAction`; action-enum diagnostics; unchanged serde/signing and
+  update consumers
+- Preconditions/event ordering:
+  1. Editing the leverage control published its raw `String` through a `Message`
+     variant whose enum derives `Debug`.
+  2. Applying the change captured raw symbol and leverage text in a submission
+     snapshot whose derived `Debug` flowed through the same message enum.
+  3. Dispatch captured address, symbol/display, asset, dex, margin mode, and
+     leverage in the result context. Its custom `Debug` hid only the address.
+  4. The signed wire action independently derived raw `Debug` for asset, margin
+     mode, and leverage; the action enum delegated to that representation.
+- Evidence: parent commit
+  `fed00b0ca77642dd54acdf1076e61c69b8ec12cc` shows the raw input/snapshot and
+  partially redacted context (`src/message.rs:727-733`,
+  `src/order_execution.rs:537-568`). `UpdateLeverageAction` was the one signed
+  mutation left with derived field-level `Debug`; the prior signing-redaction
+  commit `585b7467934c06f6ced1d9fa0cb74d6052f7aca0` deliberately tested place,
+  cancel, cancel-by-CLOID, and modify but omitted leverage
+  (`src/signing/actions/wire.rs:166-175`,
+  `src/signing/tests/actions/constructors.rs:87-122`). A repository-wide
+  production formatting/logging search found no current sink, so the confirmed
+  issue is diagnostic capability rather than evidence of an emitted log.
+- Violated invariant: runtime validation, stale-result correlation, visible
+  confirmation, and signed serialization may require exact mutation values;
+  generic message/action diagnostics do not. Every independently formattable
+  layer in that path should redact account-linked identity and numeric mutation
+  parameters rather than rely on the absence of a current logger.
+- Risk: a panic/assertion diagnostic or future message/action instrumentation
+  could expose the account address, traded symbol/dex/asset, leverage input, and
+  chosen leverage. No private key, signature, or raw exchange response was
+  present in these types, and no live exchange operation was run.
+- Why existing checks did not cover it: the general order-input message test
+  omitted leverage input, the address-redaction test did not constrain the
+  other pending-context fields, and the signed-action redaction test's variant
+  set omitted `UpdateLeverage` even though serialization tests covered it.
+- Implemented fix: publish leverage input through the existing exact-value
+  `RedactedOrderInput` and restore it only at the update handler; replace
+  snapshot/context diagnostics with custom redacted representations; preserve
+  optional-dex shape and margin mode while hiding every identity and numeric
+  mutation parameter; and replace signed leverage-action `Debug` with an
+  action-shape representation that redacts asset and leverage
+  (`src/message.rs:228-250`, `src/message.rs:727-733`,
+  `src/order_views/header.rs:140-169`, `src/order_update.rs:45-58`,
+  `src/order_execution.rs:537-581`,
+  `src/signing/actions/wire.rs:166-188`).
+- Regression coverage: message tests require the input, submission, and result
+  diagnostics to omit sentinel address/symbol/display/dex/asset/leverage values
+  while the wrapper restores the exact input. A signing test requires the enum
+  representation to omit sentinel asset/leverage values. The pre-existing
+  JSON/msgpack constructor-equivalence test continues to characterize the exact
+  leverage wire representation (`src/message.rs:1610-1693`,
+  `src/signing/tests/actions/constructors.rs:73-87`,
+  `src/signing/tests/actions/constructors.rs:124-137`).
+- Smallest behavior-preserving fix: the view still emits the same text on each
+  enabled input event, the update handler passes the exact original allocation
+  into the unchanged sanitizer, and submission equality, parsing, constraints,
+  account/key selection, task timing, result correlation, refresh policy,
+  status copy, serde field names/order/values, and signed bytes are unchanged.
+  No prompt, persistence, schema, trading rule, error string, or visible state
+  changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Source and
+  call-site inspection plus existing wire-equivalence coverage establish the
+  intended compatibility, but the new tests cannot execute until ALSA
+  development metadata is available. Remaining local planner/state diagnostics
+  and other external-status paths still require Track 9 audit.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -5007,6 +5091,69 @@ target-specific cancellation policy, not HTTP replay.
   paths for sensitive account/order material, then continue remaining external-
   status and Track 9 shutdown/restart diagnostics.
 
+## Turn 35 — Redact Leverage Mutation Diagnostics
+
+- Status: F-42 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: leverage input, submission snapshot, pending-result context, derived
+  `Message` diagnostics, signed leverage-action diagnostics, and exact-value
+  preservation through the existing view/update and serde boundaries
+- Invariant: leverage validation, correlation, signing, reconciliation, and
+  visible status require exact values, but generic diagnostics must not expose
+  account identity or financial mutation parameters.
+- Protected behavior: enabled/disabled input timing; exact text passed to the
+  unchanged sanitizer; snapshot equality and stale-submit gate; leverage
+  parsing/constraints; symbol and account/key selection; margin-mode policy;
+  pending equality and current-account guard; task timing; response
+  classification and refresh; form/status updates; serde names/order/values;
+  action hashing/signing/posting; all persistence, prompts, and visible copy.
+- Preconditions/event ordering: the view wraps each input value only when
+  publishing its message, and the order update route restores the exact string
+  before sanitizing it. Apply captures the same immutable snapshot; dispatch
+  builds the same pending context and action; result handling compares and
+  consumes their exact values. Only an explicit `Debug` request receives the
+  redacted representations.
+- Evidence: F-42 records the complete producer/consumer graph, parent-source
+  diagnostic exposure, prior signing-redaction omission, absence of a current
+  production log sink, signed serialization control, and adversarial sentinel
+  assertions.
+- Change: changed the leverage-input message payload to `RedactedOrderInput`,
+  added value-redacting `Debug` implementations for the submission snapshot,
+  pending result context, and `UpdateLeverageAction`, retained margin mode and
+  optional-dex shape as non-value diagnostic structure, and documented the
+  leverage diagnostic boundary.
+- Tests/checks:
+  - The pre-fix exact message regression stopped in `alsa-sys` before Kerosene
+    compilation because `pkg-config` could not find the system `alsa.pc` file.
+  - Post-fix exact message and signing-action regressions plus the complete
+    `message::tests` and `signing::tests` modules stopped at the same dependency
+    boundary. The existing leverage JSON/msgpack equivalence test therefore
+    could not execute on this host.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: this batch changes only diagnostic
+    formatting and an exact-value internal message wrapper, compilation is
+    already blocked, and no live exchange or credential-bearing external
+    operation was run.
+- Compatibility/UX assessment: `RedactedOrderInput::into_string` returns the
+  original allocation, and a regression assertion characterizes that exact
+  handoff. Snapshot/context equality and every consumer still use the original
+  field types and values. Removing only `Debug` derives does not change serde;
+  the pre-existing JSON/msgpack equivalence test characterizes the signed wire.
+  No visible state, status, error, timing, persistence, or trading semantic
+  changed.
+- Residual risk: Kerosene has not type-checked on this host. F-42 is source-
+  hardened, but local planner/state types such as TWAP events, planning skips,
+  and execution outcomes plus remaining external-status paths still need
+  diagnostic audit before Track 9 can close.
+- Prior turn commit hash: `fed00b0ca77642dd54acdf1076e61c69b8ec12cc`
+- Next candidate: continue the local planner/state diagnostic inventory at
+  `TwapEvent`, `TwapPlannedSliceSkip`, `ExecutionOutcome`, and nearby order
+  correlation helpers; then resume remaining external-status and shutdown/
+  restart diagnostics.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -5048,10 +5195,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused storage-selection reader-identity,
-  allocation, bundle-precedence, cleanup-identity, and nearby selection/model
-  tests; `cargo check`; full `cargo test`; and strict clippy at `alsa-sys`
-  system dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: pre- and post-fix leverage-message diagnostics,
+  post-fix leverage-action diagnostics, complete message/signing test modules,
+  `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
+  dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
@@ -5059,7 +5206,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  and F-40
+  F-40, and F-42
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -5088,6 +5235,7 @@ target-specific cancellation policy, not HTTP replay.
   key ownership is source-hardened by F-35, and add-account ownership by F-36;
   deferred runtime legacy-key ownership is source-hardened by F-37, and startup
   partial-bundle cleanup by F-38. Storage-selection and cleanup ownership are
-  source-hardened by F-40. Local planning/state/message diagnostic redaction,
-  other external-status paths, and the rest of Track 9 require completion
-  before a final verdict.
+  source-hardened by F-40. Leverage input/submission/result/action diagnostics
+  are source-hardened by F-42. Remaining local planner/state diagnostics, other
+  external-status paths, and the rest of Track 9 require completion before a
+  final verdict.
