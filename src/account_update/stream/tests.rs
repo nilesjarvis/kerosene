@@ -198,6 +198,33 @@ fn websocket_account_repair_skips_when_initial_fetch_is_loading() {
 }
 
 #[test]
+fn websocket_account_delta_queues_followup_during_initial_fetch() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.account_data = None;
+    let _request_context = terminal.begin_account_data_request_context();
+    terminal.account_loading = true;
+    terminal.account_refresh_followup_pending = false;
+    terminal.account_reconciliation_required = false;
+    let request_generation = terminal.account_data_request_generation;
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::OpenOrders {
+            dex: String::new(),
+            orders: vec![open_order(42, Some(false))],
+        },
+    );
+
+    assert!(terminal.account_data.is_none());
+    assert!(terminal.account_loading);
+    assert!(terminal.account_refresh_followup_pending);
+    assert!(terminal.account_reconciliation_required);
+    assert_eq!(terminal.account_data_request_generation, request_generation);
+}
+
+#[test]
 fn websocket_account_repair_respects_account_refresh_backoff() {
     let (mut terminal, _) = TradingTerminal::boot();
     let address = "0xabc0000000000000000000000000000000000000".to_string();

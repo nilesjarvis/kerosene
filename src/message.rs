@@ -1968,7 +1968,7 @@ mod tests {
             read_data_provider_generation: 1,
             hydromancer_key_generation: 2,
         };
-        let account_context = AccountDataRequestContext::connected_snapshot(read_context, 3);
+        let account_context = AccountDataRequestContext::connected_snapshot(read_context, 3, 4);
         let snapshot_request = crate::journal::JournalTradeSnapshotRequest {
             account_key: Some(ACCOUNT_KEY.to_string()),
             address: ADDRESS.to_string(),

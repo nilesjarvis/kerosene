@@ -81,10 +81,14 @@
   action or add mutation retries (`src/order_execution.rs:992-1053`,
   `src/order_update/results.rs:90-290`,
   `src/order_update/results.rs:761-788`).
-- Account task results carry read-provider and request-generation context;
-  user-data events are address-scoped, and websocket lag forces reconciliation
-  (`src/account_update/connection/refresh.rs:94-140`,
-  `src/account_update/stream.rs:45-78`).
+- Connected-account task results carry read-provider, request-generation, and
+  dispatch-time account-revision context. Address-scoped user-data changes
+  supersede an earlier request before it can replace state or drive lifecycle
+  reconciliation; an initial-load frame with no mergeable base queues one
+  post-frame refresh. Websocket lag retains its existing reconciliation path
+  (`src/read_data_provider.rs:23-157`,
+  `src/account_update/connection/refresh.rs:94-213`,
+  `src/account_update/stream.rs:45-230`).
 - Chase and TWAP retain captured account/key identity and explicit lifecycle or
   pending-operation state. Their active state and in-flight requests are
   runtime-only.
@@ -137,6 +141,15 @@ wallet-cluster results, and explicitly to Chase place/modify/cancel plus TWAP
 child-place/unexpected-cancel handling. Pure errors, unambiguous successes,
 transport failures, and unstructured malformed responses retain their prior
 paths; only simultaneous error/effect claims reconcile.
+
+Turn 16 adds a causal precondition to every matrix row that uses the connected
+account snapshot as authoritative fallback: a successful REST result may reach
+one-shot, cancel/move, Chase, connected-account TWAP, leverage, or overlay
+reconciliation only when `account_data_revision` is unchanged since dispatch.
+If a user-data delta advanced it, the current merged state and uncertainty are
+preserved while one sequential post-delta refresh starts. Off-account TWAP fill
+reconciliation remains separately address/generation-scoped and does not
+replace connected account state.
 
 ### Mutation Transport Phase Audit
 
@@ -971,6 +984,93 @@ target-specific cancellation policy, not HTTP replay.
   review pass, but Rust type-check/tests/clippy must execute on a host with ALSA
   development metadata. Reversed REST-versus-websocket delivery remains a
   separate Track 8 candidate and is not claimed resolved by this fix.
+
+### F-17 — In-flight REST snapshot can erase a newer user-data event
+
+- Status: addressed in Turn 16; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Critical
+- Scope: connected-account REST request ownership, ordinary user-data position,
+  open-order, fill, and spot-balance frames, initial account loading, and every
+  order lifecycle that treats a successful connected snapshot as authoritative
+  fallback evidence
+- Preconditions/event ordering:
+  1. A connected-account REST refresh starts at local account revision `R`.
+  2. The server can capture or serve that request's snapshot before a later
+     user-data frame, while delivery of the REST result remains in flight.
+  3. A valid same-account websocket frame then changes positions, open orders,
+     fills, or balances and advances local state to `R+1`. No second refresh or
+     lag notification is otherwise required.
+  4. The first REST result arrives last with the same address, read provider,
+     key generation, and request generation. Before Turn 16, it replaced the
+     websocket-merged `AccountData`, bumped the revision again, and immediately
+     ran one-shot, cancel/move, Chase, and TWAP reconciliation from the
+     potentially pre-event body.
+  5. During initial loading the related gap was earlier: without a base
+     `AccountData`, an ordinary account frame was not merged and did not queue a
+     follow-up, so the pre-frame result could reconcile as final.
+- Affected order surfaces: ticket, preset, Alfred, quick, HUD, close, NUKE,
+  cancel, move, Chase, connected-account TWAP, and leverage flows that depend on
+  the shared connected snapshot cleanup boundary. Wallet-detail/cluster state
+  and off-account TWAP reconciliation use separate state/generations.
+- Evidence: all mergeable account websocket variants set
+  `account_data_changed` and advance `account_data_revision`
+  (`src/account_update/stream.rs:101-230`). Before Turn 16,
+  `AccountDataRequestContext::ConnectedSnapshot` carried provider and request
+  generation but not its starting revision, while `apply_account_data_loaded`
+  unconditionally installed a same-generation success and invoked shared
+  cleanup (`src/order_update/results.rs:736-788`) plus Chase/TWAP reconciliation.
+  The fixed ownership and application boundaries are now
+  `src/read_data_provider.rs:23-157` and
+  `src/account_update/connection/refresh.rs:94-213`; initial-load coalescing is
+  at `src/account_update/stream.rs:193-230`.
+- Violated invariant: data that may predate a newer authoritative user-data
+  event must not erase that event or prove a financial mutation absent. A
+  connected snapshot may settle lifecycle uncertainty only if its causal
+  request context still owns the current account revision.
+- Risk: a live order or fill can disappear locally, a pending one-shot/cancel/
+  move check can be cleared by pre-operation absence, and Chase can archive or
+  progress toward replacement after newer exposure was already observed. This
+  falsely declares unknown exchange exposure safe and can enable a duplicate
+  or unmanaged mutation.
+- Why existing checks did not cover it: the address, provider/key generation,
+  and request generation all remain valid because there is only one REST
+  request. `account_refresh_followup_pending` was set by an explicit refresh or
+  lag event, not by ordinary mergeable websocket frames. The revision existed
+  for sizing provenance but was not captured by the REST task.
+- Implemented fix: capture `account_data_revision_at_dispatch` in every
+  connected-snapshot request context. After the existing provider, generation,
+  and address checks, reject a successful body whose revision no longer owns
+  current account state before changing loading data, revisions, pending
+  uncertainty, or automation. Preserve the websocket-merged snapshot, consume
+  any queued reason into one sequential post-frame refresh, and reuse the
+  existing backoff/generation machinery. If initial loading has no base to
+  merge into, mark the in-flight result for the existing follow-up branch; it
+  may populate display state but cannot reconcile orders before the post-frame
+  request completes.
+- Regression coverage: an adversarial request-before/open-order-frame/result-
+  after test proves the live order and account revision remain, the pending
+  one-shot status is not cleared, and exactly one newer request generation is
+  active. A separate initial-load test proves an otherwise unmergeable account
+  frame queues reconciliation without starting a competing request
+  (`src/account_update/connection/refresh.rs:805-869`,
+  `src/account_update/stream/tests.rs:200-225`). Existing same-generation load,
+  queued-follow-up, stale-generation/provider, scoped-open-order, and
+  off-account TWAP tests characterize protected behavior.
+- Smallest behavior-preserving fix: add one runtime-only revision value to the
+  existing context and one pre-application ownership check, plus reuse the
+  existing initial-load follow-up bit. Do not merge lanes speculatively, add a
+  timer, accept causally unproven absence, or alter response/status semantics.
+- Protected behavior: REST fetch scope, cadence, providers, errors, 429
+  backoff, explicit/lag follow-ups, successful no-conflict application,
+  display layout/copy, order preparation/signing, exact status handlers,
+  persistence, and secrets are unchanged. Conflict handling starts at most one
+  sequential request at a time; continued live deltas remain fail-closed under
+  the existing rate-limit policy rather than accepting an unowned snapshot.
+- Residual uncertainty: Rust type-check/tests/clippy remain blocked by ALSA
+  metadata. Same-address user-stream subscription identity across reconnects
+  and channel closure is a separate Track 8 candidate; this REST ownership
+  guard does not claim to establish stream-generation provenance.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -1823,6 +1923,87 @@ target-specific cancellation policy, not HTTP replay.
   deciding whether this is a finding; preserve refresh cadence and display
   behavior.
 
+## Turn 16 — Preserve Newer User Data Across REST Completion
+
+- Status: implemented; executable Rust validation environment-blocked
+- Severity: Critical
+- Scope: F-17 across connected account request context, successful REST result
+  application, all account-bearing user-data lanes, initial loading, shared
+  lifecycle cleanup, documentation, and context fixtures
+- Invariant: a connected REST result may replace account state or reconcile an
+  order only if no user-data event advanced that account after request
+  dispatch; an event received before a mergeable base exists must force one
+  post-event snapshot before lifecycle cleanup.
+- Protected behavior: account addresses/providers/key generations, request
+  generations, scopes/cadence, successful no-conflict refreshes, errors and 429
+  backoff, existing explicit/lag follow-ups, display/status text, order
+  preparation and signing, automation parameters, UI, persistence, and secrets.
+- Preconditions/event ordering: one connected refresh starts; its response can
+  represent pre-event state; a valid same-account open-order/fill/position/
+  balance frame arrives and updates the local snapshot (or cannot merge during
+  initial load); then the still-current REST result arrives without an explicit
+  second refresh or lag signal. All old provider/address/generation checks pass.
+- Evidence: ordinary mergeable user-data frames advance
+  `account_data_revision`, but connected request context previously captured no
+  revision. Same-generation success then replaced `account_data` and ran every
+  shared cleanup consumer. When no account data existed, ordinary frames were
+  skipped while loading without setting the existing follow-up flag. F-17
+  records the complete call graph, false-safety consequences, and fixed source
+  boundaries.
+- Change: extended only `ConnectedSnapshot` context with
+  `account_data_revision_at_dispatch`; captured it at both initial-connect and
+  forced-refresh task creation; checked it after provider/generation/address
+  ownership but before any successful-result mutation; preserved the newer
+  websocket-merged state and pending uncertainty on mismatch; and started one
+  coalesced post-frame refresh. An account frame received with no initial base
+  now sets the existing follow-up/reconciliation bits without launching a
+  parallel task. Off-account TWAP context and error handling are untouched.
+- Tests/checks:
+  - Added an adversarial request-before/open-order-frame/result-after regression
+    that proves the live OID and revision survive, one-shot uncertainty remains,
+    and exactly one newer request generation is active.
+  - Added initial-fetch coverage proving an unmergeable account frame queues a
+    follow-up while the original request remains the only in-flight task.
+  - Pre- and post-implementation
+    `cargo test --package kerosene --bin kerosene rest_result_started_before_ws_delta_does_not_overwrite_or_reconcile`
+    attempts stopped in `alsa-sys` before Kerosene compilation because
+    `pkg-config` could not find the system `alsa.pc` package. The post-change
+    `websocket_account_delta_queues_followup_during_initial_fetch` attempt
+    stopped at the same boundary.
+  - Nearby/protected `queued_refresh_followup_result_clears_reconciliation_required`,
+    `stale_same_account_refresh_result_does_not_overwrite_newer_snapshot`,
+    `refresh_requested_mid_fetch_is_queued_and_runs_after_load`,
+    `websocket_open_order_update_refreshes_only_matching_dex_lane`,
+    `twap_reconciliation_result_after_switching_back_does_not_replace_connected_snapshot`,
+    `account_load_error_redacts_account_error`, and
+    `address_bearing_message_debug_redacts_values` attempts all stopped at the
+    same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing boundary before checking Kerosene.
+- Compatibility/UX assessment: a no-conflict response follows the identical
+  application and cleanup path. Only a causally superseded success is withheld;
+  the newer already-visible websocket state no longer flickers backward and
+  existing uncertainty stays blocked until one sequential fresh result. During
+  initial loading the first result retains the established display-population
+  behavior but cannot settle orders before its queued follow-up. No copy,
+  control, schema, or persisted value changed.
+- Residual risk: formatting, constructor/consumer inventory, serialized Elm
+  ordering, all websocket mutation lanes, initial/no-base behavior, cleanup
+  reachability, error/backoff isolation, and diff review pass, but Rust
+  type-check/tests/clippy must execute with ALSA development metadata.
+  Continuous live deltas intentionally remain fail-closed and may defer
+  reconciliation; requests stay sequential and the existing 429 backoff bounds
+  pressure. Same-address stream-generation/reconnect provenance remains to be
+  audited separately.
+- Prior turn commit hash: `37b57f74b317a7f9d440557ac0e43ed618c57efa`
+- Next candidate: continue Track 8 by tracing `WsUserDataStreamParams`, iced
+  subscription replacement, manager reconnects, broadcast lag/closure, and
+  queued `WsUserDataUpdate` messages for the same address. Determine whether
+  address plus subscription identity proves stream provenance or whether a
+  runtime generation is required; preserve reconnect behavior and stream UX.
+
 ## Deferred Findings
 
 - None yet. Candidates are not deferred findings.
@@ -1830,19 +2011,19 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused Chase wrong-scope replacement,
-  stop/archive, fill-completion, and final-dispatch tests; nearby covering-scope
-  replacement, stop, fill, and CLOID-attempt tests; the broader Chase test
-  filter; `cargo check`; full `cargo test`; and strict clippy at `alsa-sys`
-  system dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: focused REST/user-data reversal and
+  initial-load follow-up tests; nearby same-generation, queued-follow-up,
+  stale-generation, scoped-open-order, off-account TWAP, error-redaction, and
+  message-debug tests; `cargo check`; full `cargo test`; and strict clippy at
+  `alsa-sys` system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-16 have source fixes and regression coverage but await
+- F-01 through F-17 have source fixes and regression coverage but await
   executable validation on a host with ALSA development metadata.
-- TWAP, REST/user-stream causal ordering, restart/shutdown cleanup, local
-  planning/state diagnostic redaction, and the remaining tracks require
+- Same-address user-stream reconnect provenance, TWAP, restart/shutdown cleanup,
+  local planning/state diagnostic redaction, and the remaining tracks require
   completion before a final verdict.

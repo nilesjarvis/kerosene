@@ -139,6 +139,19 @@ impl TradingTerminal {
             }
             return Task::none();
         }
+        if result.is_ok() && !context.account_data_revision_is_current(self.account_data_revision) {
+            // A user-data frame advanced the connected snapshot after this
+            // request started. Applying the potentially older REST body could
+            // erase that frame and let absence from pre-event data settle order
+            // uncertainty. Preserve the newer merged state and coalesce every
+            // queued reason into one request that starts after the frame.
+            self.account_loading = false;
+            self.account_refresh_followup_pending = false;
+            self.account_reconciliation_required = true;
+            self.account_refresh_backoff_until_ms = None;
+            self.account_refresh_retry_due_ms = None;
+            return self.force_refresh_account_data_for_reconciliation(address);
+        }
         self.account_loading = false;
         let followup_pending = std::mem::take(&mut self.account_refresh_followup_pending);
         match result {
@@ -353,10 +366,14 @@ fn fills_incomplete_warning(data: &AccountData) -> Option<String> {
 mod tests {
     use super::*;
     use crate::account::{
-        AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary, Position,
-        PositionLeverage, SpotClearinghouseState, UserFeeRates, UserFill,
+        AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary, OpenOrder,
+        Position, PositionLeverage, SpotClearinghouseState, UserFeeRates, UserFill,
     };
+    use crate::order_execution::{OneShotPlacementContext, OrderSurface};
+    use crate::order_update::PendingOneShotStatusRequest;
     use crate::read_data_provider::{AccountDataRequestContext, ReadDataRequestContext};
+    use crate::signing::ExchangeOrderKind;
+    use crate::ws::WsUserData;
 
     fn account_data_with_position(coin: &str) -> AccountData {
         AccountData {
@@ -786,6 +803,72 @@ mod tests {
     }
 
     #[test]
+    fn rest_result_started_before_ws_delta_does_not_overwrite_or_reconcile() {
+        let mut terminal = TradingTerminal::boot().0;
+        let address = "0xabc0000000000000000000000000000000000000".to_string();
+        terminal.connected_address = Some(address.clone());
+        terminal.account_data_address = Some(address.clone());
+        terminal.account_data = Some(account_data_with_position("ETH"));
+        terminal.insert_pending_one_shot_status_request(PendingOneShotStatusRequest::new(
+            7,
+            &OneShotPlacementContext {
+                account_address: address.clone(),
+                cloid: "0x00000000000000000000000000000001".to_string(),
+                surface: OrderSurface::Ticket,
+                symbol_key: "BTC".to_string(),
+                order_kind: ExchangeOrderKind::Market,
+            },
+        ));
+
+        let request_context = terminal.begin_account_data_request_context();
+        let request_generation = terminal.account_data_request_generation;
+        terminal.account_loading = true;
+        terminal.account_reconciliation_required = true;
+
+        let _task = terminal.apply_ws_user_data_update(
+            Some(address.clone()),
+            WsUserData::OpenOrders {
+                dex: String::new(),
+                orders: vec![OpenOrder {
+                    coin: "BTC".to_string(),
+                    side: "B".to_string(),
+                    limit_px: "100".to_string(),
+                    sz: "1".to_string(),
+                    oid: 42,
+                    timestamp: 1,
+                    reduce_only: Some(false),
+                    is_trigger: None,
+                    order_type: None,
+                    tif: None,
+                    trigger_px: None,
+                }],
+            },
+        );
+
+        let revision_after_ws = terminal.account_data_revision;
+        let _task = terminal.apply_account_data_loaded(
+            address,
+            request_context,
+            Ok(account_data_with_position("ETH")),
+        );
+
+        let account_data = terminal
+            .account_data
+            .as_ref()
+            .expect("websocket-updated account data");
+        assert!(account_data.open_orders.iter().any(|order| order.oid == 42));
+        assert_eq!(terminal.account_data_revision, revision_after_ws);
+        assert_eq!(
+            terminal.account_data_request_generation,
+            request_generation.wrapping_add(1)
+        );
+        assert!(terminal.has_pending_one_shot_status_requests_for_test());
+        assert!(terminal.account_loading);
+        assert!(terminal.account_reconciliation_required);
+        assert!(!terminal.account_refresh_followup_pending);
+    }
+
+    #[test]
     fn stale_same_account_refresh_result_does_not_consume_current_loading_or_followup() {
         let mut terminal = TradingTerminal::boot().0;
         let address = "0xabc0000000000000000000000000000000000000".to_string();
@@ -852,6 +935,7 @@ mod tests {
         let stale_context = AccountDataRequestContext::connected_snapshot(
             stale_read_context,
             terminal.account_data_request_generation,
+            terminal.account_data_revision,
         );
 
         let _task = terminal.apply_account_data_loaded(
@@ -963,6 +1047,7 @@ mod tests {
         let stale_context = AccountDataRequestContext::connected_snapshot(
             stale_read_context,
             terminal.account_data_request_generation,
+            terminal.account_data_revision,
         );
 
         let _task = terminal.apply_account_data_loaded(

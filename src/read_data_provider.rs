@@ -28,15 +28,27 @@ pub(crate) struct AccountDataRequestContext {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AccountDataRequestScope {
-    ConnectedSnapshot { generation: u64 },
-    TwapReconciliation { generation: u64 },
+    ConnectedSnapshot {
+        generation: u64,
+        account_data_revision_at_dispatch: u64,
+    },
+    TwapReconciliation {
+        generation: u64,
+    },
 }
 
 impl AccountDataRequestContext {
-    pub(crate) fn connected_snapshot(read_data: ReadDataRequestContext, generation: u64) -> Self {
+    pub(crate) fn connected_snapshot(
+        read_data: ReadDataRequestContext,
+        generation: u64,
+        account_data_revision_at_dispatch: u64,
+    ) -> Self {
         Self {
             read_data,
-            scope: AccountDataRequestScope::ConnectedSnapshot { generation },
+            scope: AccountDataRequestScope::ConnectedSnapshot {
+                generation,
+                account_data_revision_at_dispatch,
+            },
         }
     }
 
@@ -44,6 +56,16 @@ impl AccountDataRequestContext {
         Self {
             read_data,
             scope: AccountDataRequestScope::TwapReconciliation { generation },
+        }
+    }
+
+    pub(crate) fn account_data_revision_is_current(self, current_revision: u64) -> bool {
+        match self.scope {
+            AccountDataRequestScope::ConnectedSnapshot {
+                account_data_revision_at_dispatch,
+                ..
+            } => account_data_revision_at_dispatch == current_revision,
+            AccountDataRequestScope::TwapReconciliation { .. } => true,
         }
     }
 }
@@ -90,6 +112,7 @@ impl TradingTerminal {
         AccountDataRequestContext::connected_snapshot(
             self.read_data_request_context(),
             self.account_data_request_generation,
+            self.account_data_revision,
         )
     }
 
@@ -123,7 +146,7 @@ impl TradingTerminal {
         context: AccountDataRequestContext,
     ) -> bool {
         match context.scope {
-            AccountDataRequestScope::ConnectedSnapshot { generation } => {
+            AccountDataRequestScope::ConnectedSnapshot { generation, .. } => {
                 generation == self.account_data_request_generation
             }
             AccountDataRequestScope::TwapReconciliation { generation } => self

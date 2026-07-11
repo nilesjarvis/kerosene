@@ -196,6 +196,18 @@ impl TradingTerminal {
                     mids_task = self.handle_mids_update(mids);
                 }
                 _ => {
+                    if self.connected_address.is_some()
+                        && self.account_data.is_none()
+                        && self.account_loading
+                    {
+                        // The initial REST fetch may have captured its snapshot
+                        // before this frame, but there is no loaded base to
+                        // merge the frame into. Let that fetch populate display
+                        // state, then require one post-frame snapshot before
+                        // order reconciliation.
+                        self.account_refresh_followup_pending = true;
+                        self.account_reconciliation_required = true;
+                    }
                     if should_repair_account_from_ws(
                         self.connected_address.as_deref(),
                         self.account_data.is_some(),

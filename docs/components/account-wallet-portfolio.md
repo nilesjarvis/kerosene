@@ -301,6 +301,15 @@ Refresh state includes:
 If a refresh is requested while another is in flight, the follow-up flag keeps
 the second refresh from being dropped.
 
+Connected-account refresh contexts also capture the account-data revision at
+dispatch. If a user-data websocket frame advances that revision before the
+REST result arrives, the result is not installed or used to settle order
+uncertainty; the newer merged websocket state remains visible and one
+post-frame refresh is started. This prevents a pre-event snapshot from erasing
+an order/fill/balance/position delta or proving an operation absent. During
+initial loading, when no base snapshot exists to merge into, an account frame
+queues the same post-frame refresh instead of starting a competing request.
+
 ## Tests To Check
 
 Use focused tests in these areas:
