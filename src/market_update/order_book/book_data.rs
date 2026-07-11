@@ -16,6 +16,24 @@ mod planning;
 mod tests;
 
 impl TradingTerminal {
+    fn order_book_request_id_in_use(&self, request_id: u64) -> bool {
+        self.order_books
+            .values()
+            .any(|instance| instance.pending_book_request_id() == Some(request_id))
+    }
+
+    /// Allocate across pane incarnations so runtime layout reconstruction cannot
+    /// make a surviving task current again. Active owners are skipped on wrap.
+    pub(crate) fn allocate_order_book_request_id(&mut self) -> u64 {
+        loop {
+            let request_id = self.next_order_book_request_id;
+            self.next_order_book_request_id = self.next_order_book_request_id.wrapping_add(1);
+            if !self.order_book_request_id_in_use(request_id) {
+                return request_id;
+            }
+        }
+    }
+
     pub(crate) fn canonical_l2_book_sigfigs(&self, symbol: &str) -> (Option<u8>, Option<u8>) {
         let Some(mid) = self
             .order_books
@@ -212,11 +230,16 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        let request_id = self.allocate_order_book_request_id();
         if let Some(inst) = self.order_books.get_mut(&id) {
             inst.book_loading = true;
             inst.book_error = None;
-            let request_id =
-                inst.mark_book_request(plan.symbol.clone(), plan.tick_size, plan.sigfigs);
+            inst.mark_book_request(
+                request_id,
+                plan.symbol.clone(),
+                plan.tick_size,
+                plan.sigfigs,
+            );
             return Task::perform(
                 fetch_order_book(plan.symbol.clone(), plan.sigfigs),
                 move |result| Message::BookLoaded {
@@ -225,7 +248,7 @@ impl TradingTerminal {
                     coin: plan.symbol,
                     tick_size: plan.tick_size,
                     sigfigs: plan.sigfigs,
-                    result,
+                    result: result.into(),
                 },
             );
         }

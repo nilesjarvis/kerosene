@@ -84,7 +84,6 @@ pub struct OrderBookInstance {
     /// aggregation does not flap) while the live mid hovers around a
     /// power-of-ten boundary.
     tick_options_basis: Option<f64>,
-    next_book_request_id: u64,
     pending_book_request: Option<PendingOrderBookRequest>,
     pub(super) book_revision: u64,
     aggregated: RefCell<AggregatedDepth>,
@@ -119,7 +118,6 @@ impl OrderBookInstance {
             book_source_tick_size: None,
             book_source_mid: None,
             tick_options_basis: None,
-            next_book_request_id: 0,
             pending_book_request: None,
             book_revision: 0,
             aggregated: RefCell::new(AggregatedDepth::default()),
@@ -215,7 +213,6 @@ impl OrderBookInstance {
             .map(|request| request.sigfigs)
     }
 
-    #[cfg(test)]
     pub(crate) fn pending_book_request_id(&self) -> Option<u64> {
         self.pending_book_request
             .as_ref()
@@ -252,19 +249,17 @@ impl OrderBookInstance {
 
     pub fn mark_book_request(
         &mut self,
+        request_id: u64,
         symbol: String,
         tick_size: f64,
         sigfigs: (Option<u8>, Option<u8>),
-    ) -> u64 {
-        self.next_book_request_id = self.next_book_request_id.wrapping_add(1);
-        let request_id = self.next_book_request_id;
+    ) {
         self.pending_book_request = Some(PendingOrderBookRequest {
             request_id,
             symbol,
             tick_size,
             sigfigs,
         });
-        request_id
     }
 
     pub fn clear_matching_book_request(

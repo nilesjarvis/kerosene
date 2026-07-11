@@ -177,6 +177,13 @@ The update path rejects websocket data that does not match the instance's
 symbol mode or canonical precision. Tick-size changes reuse cached book data
 when possible and refetch when precision changes require it.
 
+REST snapshot ownership is terminal-scoped rather than pane-instance-scoped,
+so applying a runtime layout cannot reset a recreated pane to an ID still held
+by its previous in-flight task. The allocator skips active IDs across numeric
+wrap; the result handler still requires the exact request ID, pane, symbol,
+selected tick, and server sigfig tuple before replacing a book or clearing its
+loading owner.
+
 ## Symbol Search And Watchlist
 
 `PaneKind::Watchlist` is the symbol-search pane. It shows tradable markets,

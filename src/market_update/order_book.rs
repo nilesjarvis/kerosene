@@ -22,7 +22,14 @@ impl TradingTerminal {
                 tick_size,
                 sigfigs,
                 result,
-            } => self.apply_order_book_loaded(request_id, id, coin, tick_size, sigfigs, result),
+            } => self.apply_order_book_loaded(
+                request_id,
+                id,
+                coin,
+                tick_size,
+                sigfigs,
+                result.into_result(),
+            ),
             Message::OrderBookWsAssetCtxUpdate {
                 id,
                 coin,

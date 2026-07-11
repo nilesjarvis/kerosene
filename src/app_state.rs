@@ -406,6 +406,9 @@ pub(crate) struct TradingTerminal {
     // L2 order books
     pub(crate) order_books: HashMap<OrderBookId, OrderBookInstance>,
     pub(crate) next_order_book_id: OrderBookId,
+    /// Terminal-lifetime sequence for REST book snapshots. It deliberately
+    /// outlives individual pane instances and runtime layout reconstruction.
+    pub(crate) next_order_book_request_id: u64,
     // Wallet / account connection
     pub(crate) accounts: Vec<config::AccountProfile>,
     pub(crate) pending_keychain_profile_deletions: Vec<String>,

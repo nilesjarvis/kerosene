@@ -4942,6 +4942,98 @@ target-specific cancellation policy, not HTTP replay.
   `BookLoaded` remains the next separate public-market result/correlation
   lifecycle for review.
 
+### F-66 — Recreated order-book panes reuse an in-flight request owner
+
+- Status: addressed in Turn 59; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium correlation and diagnostic hardening; a stale snapshot can
+  become a displayed/clickable price source, but no automatic exchange mutation
+  or current wrong-order submission was found
+- Scope: order-book REST planning/publication, pane-instance and terminal state,
+  runtime layout reconstruction, pane close/add, active/fixed symbol changes,
+  tick/sigfig precision, pending-owner allocation/rollover, response acceptance,
+  precision replanning, websocket interaction, error handling, row selection,
+  parent diagnostics, boot state, routes, docs, and focused tests
+- Preconditions/event ordering:
+  1. Existing pane instance `P` dispatches REST snapshot `A`. Its local request
+     sequence starts at one, and `A` captures pane ID, symbol, selected tick,
+     and server sigfigs.
+  2. Before `A` completes, the user applies a saved layout. Runtime layout
+     restoration clears the order-book map and constructs a replacement pane
+     with the same persisted ID/symbol/tick; the old async task remains alive.
+  3. The replacement instance resets its local sequence and dispatches `B` as
+     request one with the same remaining context as `A`.
+  4. If `A` arrives first, every prior guard matches. It clears `B`'s pending
+     owner/loading state and installs `A`'s older snapshot. When `B` later
+     arrives, no pending request remains and the actual replacement result is
+     rejected.
+  5. Independently, the raw `BookLoaded` result let derived `Message::Debug`
+     expose structural book counts or a pre-handler upstream error. Standalone
+     `OrderBook`/`BookLevel` formatting already protected exact prices/sizes.
+- Evidence: parent commit
+  `7e495dfd37c6fb3d1e2d100a76e66773f467dcd8` stored
+  `next_book_request_id` inside each `OrderBookInstance`, initialized it to zero,
+  and incremented it in `mark_book_request` (`src/market_state/types/
+  order_book.rs`). Runtime `apply_layout` calls `restore_layout_order_books`,
+  which clears and reconstructs that map before dispatching replacement fetches
+  (`src/layout_persistence.rs`, `src/layout_persistence/order_books.rs`). The
+  result already required exact request ID, instance ID, tracked symbol, current
+  tick, and sigfig tuple before applying (`src/market_update/order_book/
+  book_data.rs`), but none identified the instance incarnation. `BookLoaded`
+  carried a raw result in `src/message.rs`; the only publisher and consumer are
+  in the order-book fetch/update modules. Book rows publish
+  `OrderBookPriceSelected`, whose unchanged handler can switch the active symbol
+  and seed a limit price. No other REST publisher, pending-state writer,
+  persisted request owner, or direct mutation caller was found.
+- Violated invariant: a REST snapshot may consume pending state only when its
+  immutable request owner belongs to the current pane incarnation. Recreating a
+  runtime widget must not reset correlation identity while an older task can
+  still complete, even if every public market parameter is identical.
+- Risk: an older snapshot can replace the intended replacement snapshot and
+  stop its loading owner, leaving stale depth rows available for the existing
+  click-to-limit workflow until websocket or another REST update repairs them.
+  A user still has to select a row and explicitly submit through canonical order
+  preparation/signing; the defect does not submit, retry, resize, or reprice an
+  order automatically. Different symbol/tick/sigfig contexts were already
+  rejected and remain so.
+- Why existing checks did not cover it: same-instance tick changes clear the
+  prior marker while preserving the instance-local sequence, and existing tests
+  prove older same-parameter IDs cannot consume a newer one. Active-symbol,
+  fixed-mode, alias, mute, and precision changes likewise clear or replace the
+  pending tuple. Only whole-instance reconstruction reset the numeric owner;
+  no test recreated the same persisted pane/context while its old task survived.
+- Implemented fix: move REST request allocation from `OrderBookInstance` to one
+  runtime-only terminal-lifetime `next_order_book_request_id`; allocate before
+  installing the pane-local pending tuple; and scan every current pending pane
+  to skip active IDs when the counter wraps. The existing ID/pane/symbol/tick/
+  sigfig acceptance fence and all valid handling stay unchanged. Replace the
+  raw parent result with `RedactedPublicMarketMessageResult<OrderBook>`; the
+  only publisher wraps it and the first consumer restores it before the existing
+  correlation checks.
+- Regression coverage: an old instance and an identical replacement dispatch
+  separate tasks, prove distinct IDs, reject `A` while preserving `B`'s loading,
+  pending owner, and empty book, then accept only `B`. A rollover control seeds
+  live IDs at `u64::MAX`, zero, and one, proving the allocator returns two and
+  advances to three. Existing stale same-instance, tick change, symbol reset,
+  precision, partial-book, failure streak, sanitizer, and websocket tests remain
+  applicable. The shared parent-message control now covers book success/error
+  while retaining correlation and hiding the nested snapshot/error; standalone
+  API tests retain structural book diagnostics.
+- Smallest behavior-preserving fix: one runtime scalar/default, relocation of
+  the existing request sequence owner, one active-ID scan, explicit ID install
+  on the existing pending tuple, one existing-wrapper substitution and recovery,
+  two adversarial controls, and docs. No request endpoint/body, symbol, tick,
+  sigfig, REST/stream cadence, parser, level value, merge/scope rule, loading/
+  error/toast copy, rendered row, click selection, order input, order preparation,
+  signed bytes, config/schema/layout representation, or trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  exhaustive producer/consumer/state/reset tracing, existing correlation and
+  precision coverage, and the mechanical diff establish the intended boundary,
+  but focused and nearby suites cannot execute until ALSA development metadata
+  is available. A removed task surviving a complete `u64` allocation cycle
+  could theoretically meet a reused ID because removed owners are intentionally
+  not retained as unbounded tombstones; current active IDs are collision-safe.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -8595,6 +8687,86 @@ target-specific cancellation policy, not HTTP replay.
   diagnostics; preserve order-book data, loading/error behavior, tick sizing,
   quick-order pricing inputs, and every visible interaction.
 
+## Turn 59 — Preserve Order-Book Ownership Across Pane Recreation
+
+- Status: F-66 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: order-book REST planning, runtime layout/pane incarnation, global and
+  pane-local request ownership, rollover collision avoidance, result acceptance,
+  precision and websocket interactions, click-to-limit dependency, diagnostics,
+  boot state, docs, and focused regressions
+- Invariant: only the terminal-lifetime request owner installed on the current
+  pane incarnation, with the exact pane/symbol/tick/sigfig context, may replace
+  its REST snapshot or clear its loading state; layout reconstruction cannot
+  make a surviving old task current again.
+- Protected behavior: active/fixed panes, boot/layout restoration, symbol and
+  alias changes, hidden-market handling, selected ticks and exact sigfig
+  planning, deduplication, precision/scope re-fetching, REST/stream books and
+  values, revisions/caches, scroll centering, failure streaks, sanitized inline
+  errors/toasts, websocket source/symbol/precision guards, depth/DOM/spread
+  rendering, row selection and limit-price seeding, request timing/content,
+  config/schema/layout compatibility, order preparation, and every trading/UI
+  semantic.
+- Preconditions/event ordering: request `A` owns an existing pane. Applying a
+  saved layout reconstructs an identical pane while `A` remains in flight and
+  dispatches `B`. The former per-instance sequence made both request one, so all
+  other immutable context matched and `A` could consume `B`. Allocation now
+  outlives both instances; the replacement receives a distinct owner, and the
+  unchanged first-consumer tuple fence rejects `A` without mutation before
+  accepting `B` normally.
+- Evidence: F-66 records the per-instance sequence/default, all REST request
+  entry points, dedup and precision planner, only task publisher, raw parent
+  field, first consumer, pending tuple, every clear/reset path, runtime layout
+  reconstruction, pane removal/addition, active/fixed and alias changes,
+  websocket context gates, API parser/model diagnostics, errors/toasts, views,
+  row-selection order input, routes, and tests. No second REST publisher,
+  pending-state writer, persisted request owner, automatic mutation consumer,
+  or missing public-market context check was found.
+- Change: add runtime-only terminal field `next_order_book_request_id`; remove
+  the instance-local sequence; allocate globally before installing the same
+  pane-local pending tuple; skip all current pending IDs across wrap; retain the
+  complete result fence; wrap `BookLoaded` in the existing public-market result
+  boundary and recover it at the first consumer; add recreation, rollover, and
+  parent-diagnostic controls; document ownership and diagnostics.
+- Tests/checks:
+  - Baseline order-book data/API/layout suites and `cargo check` stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    the system `alsa.pc` file.
+  - The pre-fix recreated-instance regression stopped at that same dependency
+    boundary before demonstrating the expected request-ID equality/failure.
+  - Post-fix exact recreation, rollover, complete book-data, public-message,
+    order-book API/layout, routing, and order-book form suites stopped at the
+    same dependency boundary.
+  - `cargo fmt` and `git diff --check` passed; the final formatting check is
+    recorded in the current validation summary below.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no view, layout representation, subscription
+    identity, request content/timing, interaction, or exchange mutation changed;
+    compilation is already blocked, and no live market request, exchange call,
+    or credential-bearing operation ran.
+- Compatibility/UX assessment: every valid response still reaches the same
+  helper with identical payload/context and follows unchanged precision,
+  success/error, cache/revision, center, and rendering paths. Only correlation
+  numbers move to a longer-lived runtime owner; they are neither rendered nor
+  persisted. Parent diagnostics become value-neutral while standalone book
+  structure remains diagnosable. No exact price/size/tick, visible state/copy,
+  request cadence, click behavior, persisted value, signed bytes, or trading
+  semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-66 is source-
+  hardened; an old removed task surviving a complete `u64` allocation cycle and
+  executable validation remain residual. Chart/session/calendar, file/config/
+  screenshot, private-integration result classes, independently formattable
+  nested account/order types, classified external-status paths, and the
+  remainder of Track 9 still require review.
+- Prior turn commit hash: `7e495dfd37c6fb3d1e2d100a76e66773f467dcd8`
+- Next candidate: audit chart candle/backfill completion messages from request
+  planning through provider/generation/symbol/timeframe ownership, runtime
+  instance reconstruction, cache merge, external-error diagnostics, and order-
+  price/quick-order consumers; preserve every candle value, chart state,
+  interaction, refresh policy, and trading semantic.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -8636,10 +8808,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline symbol-update and exchange-symbol API
-  suites plus `cargo check`; the pre-fix stale-result, duplicate-cache, and
-  parent-message regressions; post-fix symbol-update, exchange-symbol API,
-  parent-message, and routing suites;
+- Environment-blocked this turn: baseline order-book data/API/layout suites and
+  `cargo check`; the pre-fix recreated-instance regression; post-fix exact
+  recreation, rollover, complete book-data, public-message, order-book API/
+  layout, routing, and order-book form suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live market request, exchange mutation, or credential-bearing operation was
@@ -8650,7 +8822,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-65
+  F-40, and F-42 through F-66
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -8707,7 +8879,10 @@ target-specific cancellation policy, not HTTP replay.
   volume diagnostics and concurrent latest-request scope ownership are source-
   hardened by F-64. Exchange-symbol cached-startup/live-verification/periodic
   completion ownership and parent diagnostics are source-hardened by F-65 while
-  preserving metadata policy and all valid fan-out. Remaining
+  preserving metadata policy and all valid fan-out. Order-book REST ownership
+  now survives runtime pane recreation and parent diagnostics are source-
+  hardened by F-66 while preserving exact book/precision/click behavior.
+  Remaining
   independently formattable nested account/order types and classified external-
   status paths, plus the rest of Track 9, require completion before a final
   verdict.

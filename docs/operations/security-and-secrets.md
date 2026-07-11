@@ -368,6 +368,17 @@ metadata merge. Cache policy, partial-family retention, fail-closed spot and
 outcome orderability, aliases, refresh cadence, visible statuses, and dependent
 market refreshes remain exact and unchanged.
 
+Order-book snapshots retain structural standalone diagnostics—side counts and
+best-level presence—while individual prices and sizes remain redacted.
+`BookLoaded` uses the public-market result wrapper, preserving pane/request,
+symbol, selected-tick, and server-sigfig correlation without traversing a
+snapshot or upstream error in generic Elm diagnostics. Its numeric request
+owner is allocated for the terminal lifetime and skips active IDs across wrap,
+so runtime layout reconstruction cannot make an old pane task indistinguishable
+from the replacement pane's request. REST/stream parsing, exact book values,
+precision planning, merge/scope behavior, sanitized UI errors, rendered rows,
+and click-to-limit behavior remain unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

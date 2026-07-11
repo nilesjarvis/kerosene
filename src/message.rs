@@ -1977,7 +1977,7 @@ pub(crate) enum Message {
         coin: String,
         tick_size: f64,
         sigfigs: (Option<u8>, Option<u8>),
-        result: Result<OrderBook, String>,
+        result: RedactedPublicMarketMessageResult<OrderBook>,
     },
     WsBookUpdate {
         id: OrderBookId,
@@ -3620,7 +3620,33 @@ mod tests {
             partial_errors: vec![PARTIAL_ERROR.to_string()],
         };
         let request_symbols = || vec![REQUEST_SYMBOL.to_string()];
+        let order_book = || OrderBook {
+            bids: vec![BookLevel {
+                px: DAY_VALUE,
+                sz: WEEK_VALUE,
+            }],
+            asks: vec![BookLevel {
+                px: MONTH_VALUE,
+                sz: DAY_VALUE,
+            }],
+        };
         let messages = vec![
+            Message::BookLoaded {
+                request_id: 7,
+                id: 9,
+                coin: REQUEST_SYMBOL.to_string(),
+                tick_size: 0.5,
+                sigfigs: (Some(5), None),
+                result: Ok(order_book()).into(),
+            },
+            Message::BookLoaded {
+                request_id: 7,
+                id: 9,
+                coin: REQUEST_SYMBOL.to_string(),
+                tick_size: 0.5,
+                sigfigs: (Some(5), None),
+                result: Err(ERROR.to_string()).into(),
+            },
             Message::LiveWatchlistContextsLoaded(
                 7,
                 request_symbols(),

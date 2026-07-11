@@ -23,12 +23,14 @@ fn mark_pending_book_request(
     tick_size: f64,
     sigfigs: (Option<u8>, Option<u8>),
 ) -> u64 {
+    let request_id = terminal.allocate_order_book_request_id();
     let inst = terminal
         .order_books
         .get_mut(&id)
         .expect("order book instance should exist");
     inst.book_loading = true;
-    inst.mark_book_request(symbol.to_string(), tick_size, sigfigs)
+    inst.mark_book_request(request_id, symbol.to_string(), tick_size, sigfigs);
+    request_id
 }
 
 #[test]
@@ -38,7 +40,7 @@ fn symbol_switch_reset_clears_pending_request_and_reseeds_tick() {
     // Simulate a fetch in flight for the previous symbol; if this marker
     // survived the switch it would satisfy the dedup guard and silently
     // skip the new symbol's fetch.
-    instance.mark_book_request("BTC".to_string(), 10.0, (Some(5), None));
+    instance.mark_book_request(1, "BTC".to_string(), 10.0, (Some(5), None));
     instance.book_failure_toasted = true;
     terminal.order_books.insert(9, instance);
 
@@ -158,6 +160,82 @@ fn stale_same_parameter_snapshot_does_not_clear_newer_pending_request() {
     assert_eq!(inst.pending_book_sigfigs(), None);
     assert_eq!(inst.book.bids.len(), 1);
     assert_eq!(inst.book.asks.len(), 1);
+}
+
+#[test]
+fn recreated_instance_does_not_reuse_removed_instance_request_owner() {
+    let mut terminal = terminal_with_fixed_btc_book(7, 0.05);
+
+    let old_task = terminal.order_book_fetch_task_for_id(7);
+    let old_request_id = terminal.order_books[&7]
+        .pending_book_request_id()
+        .expect("old instance request should be pending");
+    let old_sigfigs = terminal.order_books[&7]
+        .pending_book_sigfigs()
+        .expect("old instance precision should be retained");
+    assert_eq!(old_task.units(), 1);
+
+    // Runtime layout application clears and reconstructs order-book instances.
+    // The old task remains alive, so an identical replacement must receive a
+    // terminal-lifetime request owner rather than restarting at the same ID.
+    terminal.order_books.insert(
+        7,
+        OrderBookInstance::new(7, OrderBookSymbolMode::Fixed("BTC".to_string()), 0.05),
+    );
+    let new_task = terminal.order_book_fetch_task_for_id(7);
+    let new_request_id = terminal.order_books[&7]
+        .pending_book_request_id()
+        .expect("replacement instance request should be pending");
+    let new_sigfigs = terminal.order_books[&7]
+        .pending_book_sigfigs()
+        .expect("replacement precision should be retained");
+    assert_eq!(new_task.units(), 1);
+    assert_ne!(old_request_id, new_request_id);
+    assert_eq!(old_sigfigs, new_sigfigs);
+
+    let _ = terminal.apply_order_book_loaded(
+        old_request_id,
+        7,
+        "BTC".to_string(),
+        0.05,
+        old_sigfigs,
+        Ok(populated_book()),
+    );
+    let inst = &terminal.order_books[&7];
+    assert!(inst.book_loading);
+    assert_eq!(inst.pending_book_request_id(), Some(new_request_id));
+    assert!(inst.book.bids.is_empty());
+    assert!(inst.book.asks.is_empty());
+
+    let _ = terminal.apply_order_book_loaded(
+        new_request_id,
+        7,
+        "BTC".to_string(),
+        0.05,
+        new_sigfigs,
+        Ok(populated_book()),
+    );
+    let inst = &terminal.order_books[&7];
+    assert!(!inst.book_loading);
+    assert_eq!(inst.pending_book_request_id(), None);
+    assert_eq!(inst.book.bids.len(), 1);
+    assert_eq!(inst.book.asks.len(), 1);
+}
+
+#[test]
+fn order_book_request_allocator_skips_live_ids_across_wrap() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.order_books.clear();
+    for (id, request_id) in [(7, u64::MAX), (8, 0), (9, 1)] {
+        let mut instance =
+            OrderBookInstance::new(id, OrderBookSymbolMode::Fixed("BTC".to_string()), 0.05);
+        instance.mark_book_request(request_id, "BTC".to_string(), 0.05, (None, None));
+        terminal.order_books.insert(id, instance);
+    }
+    terminal.next_order_book_request_id = u64::MAX;
+
+    assert_eq!(terminal.allocate_order_book_request_id(), 2);
+    assert_eq!(terminal.next_order_book_request_id, 3);
 }
 
 #[test]

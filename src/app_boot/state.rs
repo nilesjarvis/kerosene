@@ -217,6 +217,7 @@ impl TradingTerminal {
             display_denomination: cfg.display_denomination.clone().normalized(),
             order_books: HashMap::new(),
             next_order_book_id: 0,
+            next_order_book_request_id: 0,
             accounts: cfg.accounts.clone(),
             pending_keychain_profile_deletions: cfg.pending_keychain_profile_deletions.clone(),
             pending_keychain_cleanup_all: cfg.pending_keychain_cleanup_all,
