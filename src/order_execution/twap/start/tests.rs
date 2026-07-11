@@ -206,6 +206,32 @@ fn schedule_capacity_error_or_panic(active_slice_rate: f64, schedule: TwapStartS
     }
 }
 
+#[test]
+fn twap_start_schedule_debug_redacts_exact_cadence_without_changing_it() {
+    const DURATION_SECONDS: u64 = 7_654_321;
+    const SLICE_COUNT: u32 = 987_654_321;
+    let schedule = TwapStartSchedule {
+        duration: std::time::Duration::from_secs(DURATION_SECONDS),
+        slice_count: SLICE_COUNT,
+    };
+
+    let rendered = format!("{schedule:?}");
+
+    assert_eq!(schedule.duration.as_secs(), DURATION_SECONDS);
+    assert_eq!(schedule.slice_count, SLICE_COUNT);
+    assert!(rendered.contains("TwapStartSchedule"), "{rendered}");
+    assert!(rendered.contains("duration: \"<redacted>\""), "{rendered}");
+    assert!(
+        rendered.contains("slice_count: \"<redacted>\""),
+        "{rendered}"
+    );
+    assert!(
+        !rendered.contains(&DURATION_SECONDS.to_string()),
+        "{rendered}"
+    );
+    assert!(!rendered.contains(&SLICE_COUNT.to_string()), "{rendered}");
+}
+
 fn order_status_error_contains(terminal: &TradingTerminal, needle: &str) -> bool {
     terminal
         .order_status

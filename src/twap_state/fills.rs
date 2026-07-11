@@ -2,17 +2,27 @@ use crate::account::UserFill;
 use crate::helpers::{finite_value, non_perp_fee_usd, positive_finite_value};
 use crate::signing::ExchangeResponse;
 
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt};
 
 // ---------------------------------------------------------------------------
 // TWAP Fill Summaries
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Clone, Copy, Default)]
 pub(crate) struct ResponseFillSummary {
     pub(crate) oid: Option<u64>,
     pub(crate) filled_size: f64,
     pub(crate) avg_price: Option<f64>,
+}
+
+impl fmt::Debug for ResponseFillSummary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ResponseFillSummary")
+            .field("oid", &self.oid.map(|_| "<redacted>"))
+            .field("filled_size", &"<redacted>")
+            .field("avg_price", &self.avg_price.map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 pub(crate) fn twap_response_fill_summary(response: &ExchangeResponse) -> ResponseFillSummary {
@@ -52,11 +62,21 @@ pub(crate) fn twap_response_fill_summary(response: &ExchangeResponse) -> Respons
     summary
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub(super) struct FillSummary {
     pub(super) filled_size: f64,
     pub(super) avg_price: Option<f64>,
     pub(super) fee: f64,
+}
+
+impl fmt::Debug for FillSummary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FillSummary")
+            .field("filled_size", &"<redacted>")
+            .field("avg_price", &self.avg_price.map(|_| "<redacted>"))
+            .field("fee", &"<redacted>")
+            .finish()
+    }
 }
 
 pub(super) fn fill_summary_for_order(

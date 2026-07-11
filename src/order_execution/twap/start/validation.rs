@@ -3,16 +3,25 @@ use crate::twap_state::{
     twap_aggregate_slice_rate, validate_twap_interval,
 };
 
-use std::time::Duration;
+use std::{fmt, time::Duration};
 
 // ---------------------------------------------------------------------------
 // TWAP Start Validation
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub(super) struct TwapStartSchedule {
     pub(super) duration: Duration,
     pub(super) slice_count: u32,
+}
+
+impl fmt::Debug for TwapStartSchedule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TwapStartSchedule")
+            .field("duration", &"<redacted>")
+            .field("slice_count", &"<redacted>")
+            .finish()
+    }
 }
 
 pub(super) fn parse_twap_start_schedule(

@@ -15,13 +15,25 @@ pub(crate) use self::status::{TwapChildStatus, TwapPauseReason, TwapStatus};
 // Form State
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct TwapOrderForm {
     pub(crate) duration_minutes: String,
     pub(crate) slices: String,
     pub(crate) min_price: String,
     pub(crate) max_price: String,
     pub(crate) randomize: bool,
+}
+
+impl fmt::Debug for TwapOrderForm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TwapOrderForm")
+            .field("duration_minutes", &"<redacted>")
+            .field("slices", &"<redacted>")
+            .field("min_price", &"<redacted>")
+            .field("max_price", &"<redacted>")
+            .field("randomize", &self.randomize)
+            .finish()
+    }
 }
 
 impl Default for TwapOrderForm {
@@ -118,10 +130,19 @@ impl fmt::Debug for TwapPendingOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct TwapBookSnapshot {
     pub(crate) book: OrderBook,
     pub(crate) updated_at: Instant,
+}
+
+impl fmt::Debug for TwapBookSnapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TwapBookSnapshot")
+            .field("book", &"<redacted>")
+            .field("updated_at", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Clone)]

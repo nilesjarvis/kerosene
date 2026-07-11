@@ -1,11 +1,13 @@
+use super::fills::{FillSummary, ResponseFillSummary};
 use super::{
     MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_MAX_AGGREGATE_SLICE_RATE, TWAP_RECONCILIATION_TIMEOUT,
-    TwapChildOrder, TwapChildStatus, TwapEvent, TwapEventKind, TwapOrder, TwapOrderInit,
-    TwapPauseReason, TwapPendingOp, TwapPendingSlice, TwapStatus, parse_twap_duration_minutes,
-    parse_twap_slice_count, quantize_twap_slice_size, twap_aggregate_schedule_has_capacity,
-    twap_aggregate_slice_rate, twap_child_cloid, twap_limit_price_for_slice,
-    twap_min_quantized_child_notional, twap_order_notional_meets_minimum, twap_required_slice_rate,
-    twap_response_fill_summary, twap_target_size_from_quantity, validate_twap_interval,
+    TwapBookSnapshot, TwapChildOrder, TwapChildStatus, TwapEvent, TwapEventKind, TwapOrder,
+    TwapOrderForm, TwapOrderInit, TwapPauseReason, TwapPendingOp, TwapPendingSlice, TwapStatus,
+    parse_twap_duration_minutes, parse_twap_slice_count, quantize_twap_slice_size,
+    twap_aggregate_schedule_has_capacity, twap_aggregate_slice_rate, twap_child_cloid,
+    twap_limit_price_for_slice, twap_min_quantized_child_notional,
+    twap_order_notional_meets_minimum, twap_required_slice_rate, twap_response_fill_summary,
+    twap_target_size_from_quantity, validate_twap_interval,
 };
 use crate::account::UserFill;
 use crate::api::{BookLevel, OrderBook};
@@ -186,6 +188,180 @@ fn twap_event_debug_redacts_exact_activity_message_without_changing_it() {
     assert!(rendered.contains("is_error: false"), "{rendered}");
     assert!(rendered.contains("<redacted>"), "{rendered}");
     assert!(!rendered.contains(MESSAGE), "{rendered}");
+}
+
+#[test]
+fn twap_form_and_book_snapshot_debug_redacts_exact_strategy_and_market_values() {
+    const DURATION: &str = "duration-input-sentinel";
+    const SLICES: &str = "slice-count-input-sentinel";
+    const MIN_PRICE: &str = "min-price-input-sentinel";
+    const MAX_PRICE: &str = "max-price-input-sentinel";
+    const BID_PRICE: f64 = 98_765.432_123_457;
+    const BID_SIZE: f64 = 123.456_789_123;
+    const ASK_PRICE: f64 = 98_766.543_234_568;
+    const ASK_SIZE: f64 = 234.567_891_234;
+
+    let form = TwapOrderForm {
+        duration_minutes: DURATION.to_string(),
+        slices: SLICES.to_string(),
+        min_price: MIN_PRICE.to_string(),
+        max_price: MAX_PRICE.to_string(),
+        randomize: false,
+    };
+    let expected_form = TwapOrderForm {
+        duration_minutes: DURATION.to_string(),
+        slices: SLICES.to_string(),
+        min_price: MIN_PRICE.to_string(),
+        max_price: MAX_PRICE.to_string(),
+        randomize: false,
+    };
+    let updated_at = Instant::now();
+    let snapshot = TwapBookSnapshot {
+        book: OrderBook {
+            bids: vec![BookLevel {
+                px: BID_PRICE,
+                sz: BID_SIZE,
+            }],
+            asks: vec![BookLevel {
+                px: ASK_PRICE,
+                sz: ASK_SIZE,
+            }],
+        },
+        updated_at,
+    };
+
+    let form_debug = format!("{form:?}");
+    let snapshot_debug = format!("{snapshot:?}");
+
+    assert_eq!(form, expected_form);
+    assert_eq!(snapshot.book.bids[0].px, BID_PRICE);
+    assert_eq!(snapshot.book.bids[0].sz, BID_SIZE);
+    assert_eq!(snapshot.book.asks[0].px, ASK_PRICE);
+    assert_eq!(snapshot.book.asks[0].sz, ASK_SIZE);
+    assert_eq!(snapshot.updated_at, updated_at);
+    assert!(form_debug.contains("TwapOrderForm"), "{form_debug}");
+    assert!(form_debug.contains("randomize: false"), "{form_debug}");
+    for field in ["duration_minutes", "slices", "min_price", "max_price"] {
+        assert!(
+            form_debug.contains(&format!("{field}: \"<redacted>\"")),
+            "{form_debug}"
+        );
+    }
+    assert!(
+        snapshot_debug.contains("TwapBookSnapshot"),
+        "{snapshot_debug}"
+    );
+    assert!(
+        snapshot_debug.contains("book: \"<redacted>\""),
+        "{snapshot_debug}"
+    );
+    assert!(
+        snapshot_debug.contains("updated_at: \"<redacted>\""),
+        "{snapshot_debug}"
+    );
+    for sentinel in [DURATION, SLICES, MIN_PRICE, MAX_PRICE] {
+        assert!(
+            !form_debug.contains(sentinel),
+            "{sentinel} leaked in {form_debug}"
+        );
+    }
+    for sentinel in [BID_PRICE, BID_SIZE, ASK_PRICE, ASK_SIZE] {
+        assert!(
+            !snapshot_debug.contains(&sentinel.to_string()),
+            "{sentinel} leaked in {snapshot_debug}"
+        );
+    }
+}
+
+#[test]
+fn twap_fill_summary_debug_redacts_exact_result_and_reconciliation_values() {
+    const OID: u64 = 9_876_543_210_123_457;
+    const RESPONSE_SIZE: f64 = 7.123_456_789;
+    const RESPONSE_PRICE: f64 = 42_001.765_432_1;
+    const RECONCILED_SIZE: f64 = 6.987_654_321;
+    const RECONCILED_PRICE: f64 = 42_002.876_543_2;
+    const RECONCILED_FEE: f64 = 12.345_678_912;
+    let response_summary = ResponseFillSummary {
+        oid: Some(OID),
+        filled_size: RESPONSE_SIZE,
+        avg_price: Some(RESPONSE_PRICE),
+    };
+    let reconciliation_summary = FillSummary {
+        filled_size: RECONCILED_SIZE,
+        avg_price: Some(RECONCILED_PRICE),
+        fee: RECONCILED_FEE,
+    };
+
+    let response_debug = format!("{response_summary:?}");
+    let reconciliation_debug = format!("{reconciliation_summary:?}");
+
+    assert_eq!(response_summary.oid, Some(OID));
+    assert_eq!(response_summary.filled_size, RESPONSE_SIZE);
+    assert_eq!(response_summary.avg_price, Some(RESPONSE_PRICE));
+    assert_eq!(reconciliation_summary.filled_size, RECONCILED_SIZE);
+    assert_eq!(reconciliation_summary.avg_price, Some(RECONCILED_PRICE));
+    assert_eq!(reconciliation_summary.fee, RECONCILED_FEE);
+    assert!(
+        response_debug.contains("ResponseFillSummary"),
+        "{response_debug}"
+    );
+    assert!(
+        response_debug.contains("oid: Some(\"<redacted>\")"),
+        "{response_debug}"
+    );
+    assert!(
+        response_debug.contains("avg_price: Some(\"<redacted>\")"),
+        "{response_debug}"
+    );
+    assert!(
+        response_debug.contains("filled_size: \"<redacted>\""),
+        "{response_debug}"
+    );
+    assert!(
+        reconciliation_debug.contains("FillSummary"),
+        "{reconciliation_debug}"
+    );
+    assert!(
+        reconciliation_debug.contains("avg_price: Some(\"<redacted>\")"),
+        "{reconciliation_debug}"
+    );
+    assert!(
+        reconciliation_debug.contains("filled_size: \"<redacted>\""),
+        "{reconciliation_debug}"
+    );
+    assert!(
+        reconciliation_debug.contains("fee: \"<redacted>\""),
+        "{reconciliation_debug}"
+    );
+    let empty_response_debug = format!("{:?}", ResponseFillSummary::default());
+    assert!(
+        empty_response_debug.contains("oid: None"),
+        "{empty_response_debug}"
+    );
+    assert!(
+        empty_response_debug.contains("avg_price: None"),
+        "{empty_response_debug}"
+    );
+    for sentinel in [
+        OID.to_string(),
+        RESPONSE_SIZE.to_string(),
+        RESPONSE_PRICE.to_string(),
+    ] {
+        assert!(
+            !response_debug.contains(&sentinel),
+            "{sentinel} leaked in {response_debug}"
+        );
+    }
+    for sentinel in [
+        RECONCILED_SIZE.to_string(),
+        RECONCILED_PRICE.to_string(),
+        RECONCILED_FEE.to_string(),
+    ] {
+        assert!(
+            !reconciliation_debug.contains(&sentinel),
+            "{sentinel} leaked in {reconciliation_debug}"
+        );
+    }
 }
 
 fn next_slice(twap: &mut TwapOrder, context: &str) -> f64 {

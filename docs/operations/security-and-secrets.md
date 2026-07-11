@@ -195,6 +195,14 @@ formattable runtime layers do not expose that text: `TwapPlannedSliceSkip` and
 but represent the message with a redaction marker. This does not change event
 storage, display, history serialization, scheduling, or retry behavior.
 
+The transient TWAP input-to-reconciliation pipeline likewise keeps exact form
+inputs, parsed cadence, cached book/freshness data, direct-response OID and fill
+metrics, and authoritative account-fill metrics for runtime decisions only.
+Direct diagnostics for the form, parsed schedule, TWAP-owned book snapshot, and
+both fill-summary layers expose only structural booleans/presence where useful
+and redaction markers. Their values, defaults, equality, calculations,
+scheduling, and reconciliation behavior remain unchanged.
+
 Terminal Chase/TWAP history intentionally persists exact account, symbol,
 financial, timing, child-identifier, status, and activity fields for its
 existing views. The persisted entry, child, and log types have independently

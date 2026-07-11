@@ -158,6 +158,17 @@
   `src/order_execution/twap/execution/skip.rs:11-25`,
   `src/twap_state/model.rs:43-76`, `src/twap_state/order.rs:150-158`,
   `src/advanced_order_history/snapshots.rs:61-118`).
+- The transient TWAP helper chain retains exact editable form inputs, parsed
+  cadence, cached book/freshness state, direct-response OID/fill metrics, and
+  authoritative account-fill metrics for unchanged validation, planning, child
+  settlement, and reconciliation. Each helper now has an explicit diagnostic
+  boundary: exact values are replaced by markers, response optionality remains
+  visible, and the form retains only its randomization boolean. The start
+  snapshot and root order keep their existing independent redaction, while the
+  captured-key initializer remains non-formattable
+  (`src/twap_state/model.rs:18-48`, `src/twap_state/model.rs:133-146`,
+  `src/twap_state/fills.rs:11-130`,
+  `src/order_execution/twap/start/validation.rs:12-47`).
 - Terminal advanced-order history retains the exact Chase/TWAP account,
   symbol, financial, timing, identifier, status, activity, and child fields
   required by its persisted schema and existing views. Each independently
@@ -3277,6 +3288,87 @@ target-specific cancellation policy, not HTTP replay.
   helpers and remaining external-status diagnostics still require Track 9
   audit.
 
+### F-47 — Transient TWAP helper diagnostics expose strategy and fill state
+
+- Status: addressed in Turn 40; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account/order privacy and diagnostic-boundary hardening; no
+  current production formatter/log sink or known disclosure was found
+- Scope: editable `TwapOrderForm`; parsed `TwapStartSchedule`; TWAP-owned
+  `TwapBookSnapshot`; direct-response `ResponseFillSummary`; authoritative-
+  account `FillSummary`; their start, planning, result, reconciliation, parent-
+  formatter, view, persistence, and test consumers
+- Preconditions/event ordering:
+  1. The order ticket retains free-form duration, slice-count, and price-range
+     inputs; startup clones them into an already-redacted immutable snapshot and
+     parses exact cadence values for schedule validation and order creation.
+  2. A keyed market subscription installs an exact book plus freshness time;
+     slice planning clones and reads both. A direct exchange result extracts
+     OID/filled size/average price, while account reconciliation independently
+     deduplicates matching fills and derives size/average price/fee.
+  3. All five helpers derived `Debug`. The form, schedule, and two summaries
+     emitted their exact fields. The book snapshot emitted its exact freshness
+     timestamp and nested book shape; its price/size levels were protected only
+     because `OrderBook` currently has a separate redacted formatter.
+- Evidence: parent commit
+  `05402699c29f45ac8fe69bfcf57f97ca8f43377d` shows the five raw derives
+  (`src/twap_state/model.rs:18-25`, `src/twap_state/model.rs:121-125`,
+  `src/twap_state/fills.rs:11-16`, `src/twap_state/fills.rs:55-60`,
+  `src/order_execution/twap/start/validation.rs:12-16`). Form values flow only
+  through update/start/view/reset owners; schedule values through start
+  validation; the snapshot through keyed book gates and slice planning;
+  response metrics through slice-result settlement; and authoritative metrics
+  through OID/coin/side/deduplicated fill reconciliation
+  (`src/order_execution/advanced.rs:63-78`,
+  `src/order_execution/twap/start.rs:105-281`,
+  `src/order_execution/twap.rs:88-131`,
+  `src/order_execution/twap/execution.rs:53-190`,
+  `src/order_execution/twap/slice_result.rs:67-163`,
+  `src/twap_state/order/reconciliation.rs:44-83`). Repository-wide formatter
+  searches found tests but no production sink. `TwapOrderStartSnapshot` already
+  redacts the entire form, `TwapOrder` reports only book presence and redacts
+  financial fields, and `TwapOrderInit` has no formatter because it owns a
+  captured key.
+- Violated invariant: exact strategy inputs/cadence, TWAP-owned market timing,
+  exchange order identity, fill price/size, and fee values belong only in
+  deliberate validation, execution, reconciliation, history, and view paths.
+  Independently reachable transient helpers must not create a raw diagnostic
+  bypass around their already-redacted parents.
+- Risk: a future assertion, panic, or instrumentation at a parser, planner,
+  response, or reconciliation boundary could reveal a trader's configured TWAP
+  strategy and exact child-order/fill details. The book levels were already
+  redacted and no signing key, signature, or current emitted log is implicated.
+- Why existing checks did not cover it: start-snapshot and root-order tests stop
+  at their safe parent formatters; form tests cover stale equality/defaults;
+  schedule tests cover parsing/capacity; book tests cover source/freshness
+  gates; fill tests cover parsing, deduplication, identity, fee conversion, and
+  totals. None directly formatted the five helpers.
+- Implemented fix: replace only the five derived formatters with explicit non-
+  recursive formatters. The form redacts four free-form inputs and retains the
+  established randomization boolean; the book and cadence redact every value;
+  the two fill summaries redact financial values and OID while preserving
+  optional `Some`/`None` shape. Existing `Clone`, `Copy`, `Default`,
+  `PartialEq`, and `Eq` derives remain where they existed.
+- Regression coverage: exact form equality and every stored form/book field are
+  required before and after formatting; form and snapshot diagnostics require
+  type/field markers and reject all sentinels. Both fill-summary layers retain
+  exact OID/size/price/fee values, preserve response optionality, and reject all
+  sentinels. The parsed schedule retains its exact duration/slice count while
+  formatting replaces both (`src/twap_state/tests.rs:193-359`,
+  `src/order_execution/twap/start/tests.rs:209-233`). Existing form equality,
+  schedule, book gating/planning, response parsing, account reconciliation, and
+  TWAP start/result suites remain behavioral controls.
+- Smallest behavior-preserving fix: no field, visibility, constructor, default,
+  equality, parser, calculation, book value/timestamp, fill identity/dedup key,
+  fee conversion, status, schedule, task, message, view, persistence, history,
+  signed request, visible string, or trading policy changed. Only direct
+  `Debug` output and new tests differ.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete producer/consumer tracing, and the narrow diff establish the
+  intended boundary, but the exact regressions and nearby TWAP suites cannot
+  execute until ALSA development metadata is available. Remaining external-
+  status/message diagnostics and other Track 9 boundaries still require audit.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -5729,6 +5821,64 @@ target-specific cancellation policy, not HTTP replay.
   graph and its scheduling/result consumers, then continue remaining external-
   status boundaries without changing visible automation behavior.
 
+## Turn 40 — Redact Transient TWAP Helper Diagnostics
+
+- Status: F-47 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: editable TWAP form, parsed start schedule, TWAP-owned book snapshot,
+  direct-response fill summary, authoritative-account fill summary, and their
+  complete validation/planning/result/reconciliation/parent diagnostic graph
+- Invariant: exact TWAP strategy, market-timing, order-identity, and fill values
+  must remain available to deliberate runtime consumers but cannot bypass the
+  already-redacted order/start/result layers through helper formatting.
+- Protected behavior: form fields/default/equality and stale-start rejection;
+  schedule parsing, interval and aggregate-capacity checks; exact book levels,
+  timestamp, source/freshness gates, and slice planning; response parsing and
+  OID fallback; fill OID/coin/side matching and deduplication; base/quote fee
+  conversion; child settlement and account reconciliation; clone/copy/default
+  traits; scheduling, randomization, history/UI copy, tasks, signed values,
+  persistence, and all trading semantics.
+- Preconditions/event ordering: input/update/start, market-stream/cache/plan,
+  direct-result/child-settlement, and account-fill/reconciliation paths retain
+  the same exact fields in the same owners and consume them in the same order.
+  Only direct formatters substitute markers; optional response metadata retains
+  its presence shape, and captured-key initialization remains non-formattable.
+- Evidence: F-47 records all five raw parent derives, exact producer/consumer
+  paths, existing parent and nested redaction boundaries, absence of a current
+  production formatting sink, diagnostic bypass risk, and exact-value
+  characterizations.
+- Change: replaced only the five derived `Debug` implementations with explicit
+  non-recursive formatters. Form input, cadence, book/timestamp, OID, size,
+  price, and fee values are redacted; the form's established randomization
+  boolean and fill optionality remain structural diagnostics.
+- Tests/checks:
+  - The pre-fix exact form/book diagnostic regression stopped in `alsa-sys`
+    before Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - Post-fix exact helper diagnostic family, complete `twap_state::tests`, and
+    complete TWAP start tests stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, subscription, view, window,
+    task, persistence, or runtime behavior changed, compilation is already
+    blocked, and no live exchange or credential-bearing operation was run.
+- Compatibility/UX assessment: regressions require every exact field, form
+  equality, response optionality, and parsed cadence to remain unchanged before
+  and after formatting. Production changes are limited to formatters; all
+  calculations, consumers, strings, serde/config behavior, timing, signed
+  bytes, and trading branches remain source-identical. No user experience or
+  trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-47 is source-
+  hardened, but raw symbol/error context in advanced-order Elm messages and
+  remaining external-status diagnostic types still require Track 9 audit.
+- Prior turn commit hash: `05402699c29f45ac8fe69bfcf57f97ca8f43377d`
+- Next candidate: audit the complete Chase/TWAP market/result `Message`
+  diagnostic graph, including raw symbol fields, initial-book errors, nested
+  response/status formatters, producers, routing, and handler unwrapping; keep
+  every stream identity and automation transition unchanged.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -5770,11 +5920,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: pre-fix pending-cancel diagnostics; post-fix
-  key/hash and pending cancel/move correlation diagnostics; complete order-
-  result and move-update tests; `cargo check`; full `cargo test`; and strict
-  clippy at `alsa-sys` system dependency discovery, before Kerosene was
-  compiled.
+- Environment-blocked this turn: pre-fix exact form/book diagnostics; post-fix
+  exact helper diagnostics and complete TWAP-state/TWAP-start tests;
+  `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
+  dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
@@ -5782,7 +5931,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-46
+  F-40, and F-42 through F-47
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -5815,6 +5964,7 @@ target-specific cancellation policy, not HTTP replay.
   are source-hardened by F-42, and shared normalized execution-outcome
   diagnostics by F-43. TWAP planning/live-event diagnostics are source-hardened
   by F-44, persisted advanced-history diagnostics by F-45, and cancel/move
-  correlation diagnostics by F-46. Remaining local planner/state diagnostics,
-  other external-status paths, and the rest of Track 9 require completion
-  before a final verdict.
+  correlation diagnostics by F-46. Transient TWAP form/schedule/book/fill
+  helper diagnostics are source-hardened by F-47. Remaining Elm-message and
+  external-status paths, plus the rest of Track 9, require completion before a
+  final verdict.
