@@ -3828,6 +3828,94 @@ target-specific cancellation policy, not HTTP replay.
   such as `PnlCardTarget`, ticket quantity provenance, and order-preset config
   remain for the next Track 9 diagnostic audit.
 
+### F-53 — PnL-card diagnostics reproduce account values, image data, and export results
+
+- Status: addressed in Turn 46; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account/order privacy and diagnostic-boundary hardening; no
+  incorrect PnL calculation, export, or known production disclosure was found
+- Scope: the complete PnL-card diagnostic graph: `PnlCardTarget`, composed
+  `PnlCardWindowState`, `PnlCardMetrics`, `PnlCardRenderText`, `PnlCardPalette`,
+  `ExportMetricStyle`, `PnlCardImage`, `OpenPnlCard`, `PnlCardCopied`, and
+  `PnlCardSaved`; their view/task producers, account-update consumers, routing
+  controls, and privacy/export tests
+- Preconditions/event ordering:
+  1. A position-row action places the exact symbol in `PnlCardTarget::Position`;
+     window state retains that target plus an already-redacted account address
+     for deduplication, stale-account rejection, lookup, rendering, and export.
+  2. Metrics and render-text helpers materialize the symbol, leverage, entry/
+     exit prices, position-size context, uPnL, percentages, and final display
+     strings. Styling derives direction-dependent colors from uPnL; image export
+     then materializes the styled values into RGBA and PNG buffers and derives
+     a symbol-bearing filename.
+  3. All six independently formattable nested value types derived field-
+     complete `Debug`; the window state's otherwise-safe custom formatter
+     traversed the raw target. Copy and save tasks also emitted ordinary result
+     messages, exposing external errors and, on successful save, the local path
+     before the account handler applied its existing sanitizer or user-visible
+     path toast.
+- Evidence: parent commit
+  `345e52d3a1a4d82758b89f8690bd03c50184e533` shows raw derived diagnostics at
+  `src/pnl_card/model.rs:7-11`, `src/pnl_card/metrics.rs:15-26`,
+  `src/pnl_card/text.rs:18-28`, and `src/pnl_card/image.rs:28-35`; the raw
+  direction-color/style derives at `src/pnl_card/style.rs:15-25` and
+  `src/pnl_card/image/drawing.rs:11-17`; the raw target/result fields at
+  `src/message.rs:1327-1335`; task publication at
+  `src/pnl_card/update/export.rs:28-43`; and result consumption/sanitization at
+  `src/account_update.rs:20-36` and `src/pnl_card/update/export.rs:46-76`.
+  Repository search found no runtime formatter specific to these values, but
+  parent `Message::Debug`, test failure output, and future instrumentation can
+  traverse them independently.
+- Violated invariant: exact PnL-card values and artifacts may remain available
+  to the explicitly requested on-screen/export workflow, but generic runtime
+  diagnostics must not reproduce an account's symbol, PnL, price, size, image,
+  direction-derived style, filename/path, or unsanitized external error.
+- Risk: a test failure, message instrumentation, state dump, or future logging
+  could disclose account trading performance and position intent; formatting
+  an image could additionally emit millions of pixel/PNG byte values. A local
+  saved path may disclose workstation identity. No private key, signature,
+  signed payload, exchange mutation, or known live diagnostic is implicated.
+- Why existing checks did not cover it: the feature's privacy tests protected
+  the account address and user-controlled entry/exit-price rendering, but the
+  state test explicitly expected the raw position symbol in `Debug`. Export
+  tests inspected exact image/filename fields without constraining their
+  diagnostic form. Copy/save tests verified sanitization after result routing,
+  not the parent message before routing.
+- Implemented fix: replace derived formatters with allowlisted custom `Debug`
+  for the target, metrics, render text, palette, export metric style, and image.
+  Target diagnostics retain only `Position` versus `Summary`; metrics/text
+  retain redaction markers and safe presence/mode metadata; styles hide
+  direction-derived colors; images retain dimensions and buffer lengths but
+  not bytes or filename (`src/pnl_card/model.rs:7-20`,
+  `src/pnl_card/metrics.rs:16-43`, `src/pnl_card/text.rs:19-44`,
+  `src/pnl_card/style.rs:16-32`, `src/pnl_card/image/drawing.rs:12-29`,
+  `src/pnl_card/image.rs:29-48`). Add
+  `RedactedPnlCardMessageResult<T>` and apply it to both export-result messages,
+  restoring the original result at the same account-update boundary
+  (`src/message.rs:427-453`, `src/message.rs:1355-1363`).
+- Regression coverage: focused PnL privacy controls reject unique symbol,
+  leverage, price, size/context, PnL/percentage, formatted-value, image-byte,
+  filename, and direction-color sentinels while requiring safe structural
+  metadata and exact target equality (`src/pnl_card/tests/privacy.rs:3-120`,
+  `src/pnl_card/image/drawing.rs:144-165`). Message diagnostics reject unique
+  target, external-error, and local-path sentinels
+  (`src/message.rs:2728-2752`). A separate recovery control proves the exact
+  path and error survive the wrapper unchanged (`src/message.rs:2314-2336`);
+  existing render/export/routing/toast tests remain behavior controls.
+- Smallest behavior-preserving fix: custom formatters borrow existing fields
+  without changing them. The result newtype retains the exact prior unboxed
+  `Result<T, String>` and moves it without conversion. No target equality,
+  window identity, account binding, metric calculation, privacy toggle,
+  display text, style/color calculation, image pixel/PNG byte, filename,
+  dialog, filesystem write, clipboard operation, task timing, toast text,
+  route, persistence, or trading behavior changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete PnL type/call-site searches, raw-field absence checks, and the
+  mechanical diff establish the intended boundary, but focused and nearby
+  suites cannot execute until ALSA development metadata is available. Ticket
+  `OrderQuantityProvenance`, order-preset/config-layout diagnostics, and the
+  remaining raw external-status messages require separate Track 9 audits.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -6641,6 +6729,68 @@ target-specific cancellation policy, not HTTP replay.
   `OrderPreset`/saved-layout diagnostics; close only one complete class after
   proving exact state/view behavior and persistence remain unchanged.
 
+## Turn 46 — Redact PnL Card Diagnostics and Export Results
+
+- Status: F-53 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: complete PnL-card diagnostic boundary from position target and window
+  state through account-derived metrics, render text, direction-derived styles,
+  image buffers/filename, and copy/save result messages; all producers,
+  consumers, routing, privacy, render, export, and toast controls
+- Invariant: the explicitly requested PnL card must retain exact account-
+  derived content and export artifacts, while generic diagnostics expose only
+  safe variant, mode, presence, dimension, buffer-length, and result-shape
+  metadata.
+- Protected behavior: exact target symbol/equality and window deduplication;
+  account binding/staleness; display and percentage modes; price and position-
+  size privacy toggles; metric calculations; rendered text; RGBA/PNG bytes and
+  filename; clipboard/dialog/filesystem operations; saved-path and error toast
+  text; route/task timing; persistence; and all trading semantics.
+- Preconditions/event ordering: view intent moves the exact target into
+  `OpenPnlCard`; window state and render helpers retain exact values. Export
+  tasks move the unchanged image into clipboard/save I/O and wrap only the
+  resulting success/error when constructing `Message`. The account update arm
+  immediately restores the result before the same toast handler.
+- Evidence: F-53 records the parent derives/fields, complete PnL producer and
+  consumer graph, pre-routing diagnostic exposure, prior privacy-test gap,
+  exact target/path/error recovery controls, style/color classification, and
+  repository-wide absence of the targeted raw result fields after the patch.
+- Change: added value-redacting custom formatters for `PnlCardTarget`, metrics,
+  render text, palette, export metric style, and image; retained safe window
+  mode/flag and image shape metadata; added a dedicated exact-value export-
+  result wrapper for copy/save messages; converted only the two task publishers,
+  account consumers, and route fixtures required by that message type change.
+- Tests/checks:
+  - Pre-fix PnL privacy/model and Message diagnostic regressions stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    the system `alsa.pc` file.
+  - Post-fix PnL privacy/style, Message diagnostic, exact path/error recovery,
+    complete PnL-card, complete Message, account-routing, and account-update
+    suites stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: window creation, rendering, export I/O, and
+    task timing are source-identical; compilation is already blocked, and no
+    live exchange or credential-bearing operation was run.
+- Compatibility/UX assessment: existing field access and equality remain
+  source-identical; the wrapper recovery test proves exact path/error values;
+  existing render/export tests continue to assert exact text, pixels, PNG
+  header, and filename, while toast tests retain exact success behavior and
+  sanitized failures. No visible behavior, timing, schema, precision, file
+  output, signed bytes, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-53 is source-
+  hardened, but ticket quantity provenance, preset/config-layout diagnostics,
+  and remaining raw external-status messages still require type-by-type Track
+  9 review. Bitmap positions/dimensions and fixed mode enums were classified as
+  non-account control data and intentionally retain ordinary diagnostics.
+- Prior turn commit hash: `345e52d3a1a4d82758b89f8690bd03c50184e533`
+- Next candidate: harden `OrderQuantityProvenance` as the remaining ticket-
+  sizing counterpart to the already-redacted quick-order provenance; prove
+  symbol/reference-price redaction and exact provenance invalidation behavior
+  before changing only its custom formatter.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -6682,11 +6832,11 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: pre-fix seven-variant account-result
-  diagnostics; post-fix exact diagnostic and bit/error recovery tests, complete
-  message, wallet-update, wallet-cluster, portfolio-update, and account-update
-  suites, `cargo check`, full `cargo test`, and strict clippy at `alsa-sys`
-  system dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: pre-fix PnL privacy/model and Message
+  diagnostics; post-fix PnL privacy/style, Message diagnostic, exact path/error
+  recovery, complete PnL-card, complete Message, account-routing, and account-
+  update suites, `cargo check`, full `cargo test`, and strict clippy at
+  `alsa-sys` system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
@@ -6694,7 +6844,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-52
+  F-40, and F-42 through F-53
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -6733,6 +6883,7 @@ target-specific cancellation policy, not HTTP replay.
   are source-hardened by F-49; direct order/position symbols and advanced-
   history navigation identity are source-hardened by F-50, and all direct
   financial message values by F-51. Boxed account-result diagnostics are
-  source-hardened by F-52. Remaining independently formattable nested account/
-  order types and external-status paths, plus the rest of Track 9, require
-  completion before a final verdict.
+  source-hardened by F-52, and PnL-card model/image/export diagnostics by F-53.
+  Remaining independently formattable nested account/order types and external-
+  status paths, plus the rest of Track 9, require completion before a final
+  verdict.

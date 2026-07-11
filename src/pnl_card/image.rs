@@ -9,6 +9,7 @@ use super::model::PnlCardWindowState;
 use super::style::pnl_card_palette;
 
 use iced::{Color, Theme};
+use std::fmt;
 
 mod drawing;
 mod formatting;
@@ -25,13 +26,25 @@ pub(super) use io::{copy_pnl_card_to_clipboard, save_pnl_card_png};
 // Image Export
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(super) struct PnlCardImage {
     pub(super) width: u32,
     pub(super) height: u32,
     pub(super) rgba: Vec<u8>,
     pub(super) png: Vec<u8>,
     pub(super) default_filename: String,
+}
+
+impl fmt::Debug for PnlCardImage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PnlCardImage")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("rgba_len", &self.rgba.len())
+            .field("png_len", &self.png.len())
+            .field("default_filename", &format_args!("<redacted>"))
+            .finish()
+    }
 }
 
 pub(super) fn render_pnl_card_image(

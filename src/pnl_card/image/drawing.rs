@@ -3,17 +3,29 @@ use crate::chart_screenshot::{PixelPoint, Rect, bitmap_text_width, draw_bitmap_t
 use super::super::style::{detail_band_rgba, mix_color, pnl_card_palette};
 
 use iced::{Color, Theme};
+use std::fmt;
 
 // ---------------------------------------------------------------------------
 // Bitmap Drawing Helpers
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub(super) struct ExportMetricStyle {
     pub(super) width: u32,
     pub(super) height: u32,
     pub(super) label_color: [u8; 4],
     pub(super) value_color: [u8; 4],
+}
+
+impl fmt::Debug for ExportMetricStyle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExportMetricStyle")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("label_color", &format_args!("<redacted>"))
+            .field("value_color", &format_args!("<redacted>"))
+            .finish()
+    }
 }
 
 pub(super) fn draw_export_metric(
@@ -127,6 +139,29 @@ fn set_pixel(rgba: &mut [u8], width: u32, x: u32, y: u32, color: Color) {
     rgba[idx + 1] = color_to_byte(color.g);
     rgba[idx + 2] = color_to_byte(color.b);
     rgba[idx + 3] = 255;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn export_metric_style_debug_redacts_derived_colors() {
+        let style = ExportMetricStyle {
+            width: 1200,
+            height: 675,
+            label_color: [241, 242, 243, 244],
+            value_color: [231, 232, 233, 234],
+        };
+
+        let rendered = format!("{style:?}");
+
+        assert!(rendered.contains("width: 1200"), "{rendered}");
+        assert!(rendered.contains("height: 675"), "{rendered}");
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        assert!(!rendered.contains("241, 242, 243, 244"), "{rendered}");
+        assert!(!rendered.contains("231, 232, 233, 234"), "{rendered}");
+    }
 }
 
 fn color_to_byte(value: f32) -> u8 {

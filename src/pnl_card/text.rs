@@ -1,5 +1,6 @@
 use crate::denomination::DisplayDenominationContext;
 use crate::helpers::{format_signed_percent_value, normalize_two_decimal_display_value};
+use std::fmt;
 
 use super::metrics::PnlCardMetrics;
 use super::model::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardWindowState};
@@ -15,7 +16,7 @@ pub(super) use privacy::privacy_price_display;
 // Display Text
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(super) struct PnlCardRenderText {
     pub(super) ticker: String,
     pub(super) leverage_display: String,
@@ -25,6 +26,21 @@ pub(super) struct PnlCardRenderText {
     pub(super) entry_display: String,
     pub(super) exit_display: String,
     pub(super) context: String,
+}
+
+impl fmt::Debug for PnlCardRenderText {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PnlCardRenderText")
+            .field("ticker", &format_args!("<redacted>"))
+            .field("leverage_display", &format_args!("<redacted>"))
+            .field("primary_value", &format_args!("<redacted>"))
+            .field("percent_mode_label", &self.percent_mode_label)
+            .field("secondary_value_present", &self.secondary_value.is_some())
+            .field("entry_display", &format_args!("<redacted>"))
+            .field("exit_display", &format_args!("<redacted>"))
+            .field("context", &format_args!("<redacted>"))
+            .finish()
+    }
 }
 
 impl PnlCardPercentMode {

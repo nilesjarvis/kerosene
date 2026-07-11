@@ -29,9 +29,9 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
         UpdateRoute::Account,
     );
     assert_route(Message::CopyPnlCard(window_id), UpdateRoute::Account);
-    assert_route(Message::PnlCardCopied(Ok(())), UpdateRoute::Account);
+    assert_route(Message::PnlCardCopied(Ok(()).into()), UpdateRoute::Account);
     assert_route(Message::SavePnlCard(window_id), UpdateRoute::Account);
-    assert_route(Message::PnlCardSaved(Ok(None)), UpdateRoute::Account);
+    assert_route(Message::PnlCardSaved(Ok(None).into()), UpdateRoute::Account);
     let source_context = crate::read_data_provider::MarketDataSourceContext {
         provider: crate::config::ReadDataProvider::Hyperliquid,
         read_data_provider_generation: 0,

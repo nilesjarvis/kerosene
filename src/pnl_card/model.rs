@@ -4,10 +4,19 @@ use std::fmt;
 // PnL Card State
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) enum PnlCardTarget {
     Position(String),
     Summary,
+}
+
+impl fmt::Debug for PnlCardTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Position(_) => f.write_str("Position(<redacted>)"),
+            Self::Summary => f.write_str("Summary"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

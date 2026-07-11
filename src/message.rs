@@ -424,6 +424,34 @@ impl<T> fmt::Debug for RedactedAccountMessageResult<T> {
     }
 }
 
+/// Exact PnL-card export result carried through the Elm message boundary.
+///
+/// Update handlers recover the original saved path or external error. Generic
+/// message diagnostics expose only success/error shape.
+#[derive(Clone)]
+pub(crate) struct RedactedPnlCardMessageResult<T>(Result<T, String>);
+
+impl<T> RedactedPnlCardMessageResult<T> {
+    pub(crate) fn into_result(self) -> Result<T, String> {
+        self.0
+    }
+}
+
+impl<T> From<Result<T, String>> for RedactedPnlCardMessageResult<T> {
+    fn from(value: Result<T, String>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> fmt::Debug for RedactedPnlCardMessageResult<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 /// Exact order task result carried through the Elm message boundary.
 ///
 /// Update handlers recover the original value. Generic message diagnostics
@@ -1330,9 +1358,9 @@ pub(crate) enum Message {
     TogglePnlCardPricePrivacy(window::Id, bool),
     TogglePnlCardPositionSize(window::Id, bool),
     CopyPnlCard(window::Id),
-    PnlCardCopied(Result<(), String>),
+    PnlCardCopied(RedactedPnlCardMessageResult<()>),
     SavePnlCard(window::Id),
-    PnlCardSaved(Result<Option<PathBuf>, String>),
+    PnlCardSaved(RedactedPnlCardMessageResult<Option<PathBuf>>),
     ClosePosition {
         coin: RedactedOrderSymbol,
         fraction: RedactedOrderValue<f64>,
@@ -1751,11 +1779,11 @@ mod tests {
     use super::{
         Message, RedactedAccountMessageResult, RedactedAdvancedOrderHistoryId,
         RedactedClientOrderId, RedactedOrderId, RedactedOrderInput, RedactedOrderMessageResult,
-        RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput, RedactedTelegramChannelKey,
-        SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult, SecretInput,
-        TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult,
-        XAuthContextMessageResult, XFeedPageMessageResult, XListsMessageResult,
-        XProfileImageMessageResult,
+        RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput, RedactedPnlCardMessageResult,
+        RedactedTelegramChannelKey, SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult,
+        SecretInput, TelegramFastAuthMessageResult, TelegramFastAuthOutcome,
+        XAccessTokenRefreshMessageResult, XAuthContextMessageResult, XFeedPageMessageResult,
+        XListsMessageResult, XProfileImageMessageResult,
     };
     use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
     use crate::api::{
@@ -2284,6 +2312,30 @@ mod tests {
     }
 
     #[test]
+    fn pnl_card_message_result_wrapper_preserves_exact_path_and_error() {
+        const ERROR: &str = "pnl-card-result-error-sentinel";
+        const PATH_COMPONENT: &str = "pnl-card-result-path-sentinel";
+        let path = std::path::PathBuf::from(format!("{PATH_COMPONENT}/card.png"));
+        let error: RedactedPnlCardMessageResult<Option<std::path::PathBuf>> =
+            Err(ERROR.to_string()).into();
+        let success: RedactedPnlCardMessageResult<Option<std::path::PathBuf>> =
+            Ok(Some(path.clone())).into();
+
+        let error_debug = format!("{error:?}");
+        let success_debug = format!("{success:?}");
+
+        assert!(error_debug.contains("Err(<redacted>)"), "{error_debug}");
+        assert!(success_debug.contains("Ok(<redacted>)"), "{success_debug}");
+        assert!(!error_debug.contains(ERROR), "{error_debug}");
+        assert!(!success_debug.contains(PATH_COMPONENT), "{success_debug}");
+        assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
+        assert_eq!(
+            success.into_result().expect("synthetic success"),
+            Some(path)
+        );
+    }
+
+    #[test]
     fn leverage_message_debug_redacts_mutation_parameters() {
         const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
         const SYMBOL: &str = "leverage-symbol-sentinel";
@@ -2671,6 +2723,32 @@ mod tests {
         assert!(!rendered.contains("private threshold"));
         assert!(!rendered.contains("Long raw outcome description"));
         assert!(!rendered.contains("75348.12"));
+    }
+
+    #[test]
+    fn pnl_card_message_debug_redacts_target_results_and_path() {
+        const SYMBOL: &str = "private-pnl-message-symbol-sentinel";
+        const ERROR: &str = "private-pnl-export-error-sentinel";
+        const PATH_COMPONENT: &str = "private-pnl-save-path-sentinel";
+        let messages = [
+            Message::OpenPnlCard(crate::pnl_card::PnlCardTarget::Position(SYMBOL.to_string())),
+            Message::PnlCardCopied(Err(ERROR.to_string()).into()),
+            Message::PnlCardSaved(
+                Ok(Some(std::path::PathBuf::from(format!(
+                    "{PATH_COMPONENT}/pnl-card.png"
+                ))))
+                .into(),
+            ),
+            Message::PnlCardSaved(Err(ERROR.to_string()).into()),
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(SYMBOL), "{rendered}");
+            assert!(!rendered.contains(ERROR), "{rendered}");
+            assert!(!rendered.contains(PATH_COMPONENT), "{rendered}");
+        }
     }
 
     #[test]

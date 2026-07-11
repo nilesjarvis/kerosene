@@ -1,5 +1,6 @@
 use crate::account;
 use crate::app_state::TradingTerminal;
+use std::fmt;
 
 mod numbers;
 
@@ -12,7 +13,7 @@ pub(super) use numbers::{pct_from_basis, position_asset_move_pct};
 // PnL Card Metrics
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(super) struct PnlCardMetrics {
     pub(super) ticker: String,
     pub(super) leverage_display: String,
@@ -23,6 +24,22 @@ pub(super) struct PnlCardMetrics {
     pub(super) upnl: f64,
     pub(super) asset_move_pct: Option<f64>,
     pub(super) leveraged_pct: Option<f64>,
+}
+
+impl fmt::Debug for PnlCardMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PnlCardMetrics")
+            .field("ticker", &format_args!("<redacted>"))
+            .field("leverage_display", &format_args!("<redacted>"))
+            .field("entry_display", &format_args!("<redacted>"))
+            .field("exit_display", &format_args!("<redacted>"))
+            .field("context", &format_args!("<redacted>"))
+            .field("private_context_present", &self.private_context.is_some())
+            .field("upnl", &format_args!("<redacted>"))
+            .field("asset_move_pct_present", &self.asset_move_pct.is_some())
+            .field("leveraged_pct_present", &self.leveraged_pct.is_some())
+            .finish()
+    }
 }
 
 impl TradingTerminal {

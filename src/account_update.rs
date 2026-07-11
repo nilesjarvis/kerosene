@@ -31,9 +31,9 @@ impl TradingTerminal {
                 self.toggle_pnl_card_position_size(window_id, show)
             }
             Message::CopyPnlCard(window_id) => self.copy_pnl_card_image(window_id),
-            Message::PnlCardCopied(result) => self.handle_pnl_card_copied(result),
+            Message::PnlCardCopied(result) => self.handle_pnl_card_copied(result.into_result()),
             Message::SavePnlCard(window_id) => self.save_pnl_card_image(window_id),
-            Message::PnlCardSaved(result) => self.handle_pnl_card_saved(result),
+            Message::PnlCardSaved(result) => self.handle_pnl_card_saved(result.into_result()),
             Message::WalletKeyInputChanged(value) => self.update_wallet_key_input(value),
             Message::WalletAddressInputChanged(value) => {
                 self.update_wallet_address_input(value.into_string())

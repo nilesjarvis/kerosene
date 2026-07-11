@@ -27,7 +27,7 @@ impl TradingTerminal {
 
         Task::perform(
             async move { copy_pnl_card_to_clipboard(image).map_err(|err| err.to_string()) },
-            Message::PnlCardCopied,
+            |result| Message::PnlCardCopied(result.into()),
         )
     }
 
@@ -40,7 +40,9 @@ impl TradingTerminal {
             }
         };
 
-        Task::perform(save_pnl_card_png(image), Message::PnlCardSaved)
+        Task::perform(save_pnl_card_png(image), |result| {
+            Message::PnlCardSaved(result.into())
+        })
     }
 
     pub(crate) fn handle_pnl_card_copied(&mut self, result: Result<(), String>) -> Task<Message> {

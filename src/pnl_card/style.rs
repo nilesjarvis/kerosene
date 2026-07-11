@@ -1,6 +1,7 @@
 use iced::gradient;
 use iced::widget::container as container_style;
 use iced::{Color, Degrees, Theme};
+use std::fmt;
 
 mod contrast;
 
@@ -12,7 +13,7 @@ use contrast::{readable_card_surfaces, relative_luminance};
 // PnL Card Styles
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub(super) struct PnlCardPalette {
     pub(super) start: Color,
     pub(super) mid: Color,
@@ -22,6 +23,12 @@ pub(super) struct PnlCardPalette {
     pub(super) border_end: Color,
     pub(super) text: Color,
     pub(super) weak_text: Color,
+}
+
+impl fmt::Debug for PnlCardPalette {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("PnlCardPalette(<redacted>)")
+    }
 }
 
 pub(super) fn pnl_card_palette(theme: &Theme, pnl_color: Color) -> PnlCardPalette {

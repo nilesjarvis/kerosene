@@ -249,6 +249,17 @@ state application. Account reconciliation, cluster sizing, tracker state,
 portfolio/income data, retry bookkeeping, and user-visible error sanitization
 remain exact.
 
+PnL-card runtime diagnostics must not reproduce the card itself. The target,
+account-derived metrics, formatted render text, and rendered image use custom
+`Debug` implementations that hide the symbol, prices, size/context, PnL,
+percentages, direction-derived colors, pixels, PNG bytes, and export filename
+while retaining only safe variant, mode, presence, dimension, and buffer-length
+metadata. Copy/save result messages likewise expose only success/error shape;
+the account update path recovers the exact external error or saved path before
+the unchanged toast handling. On-screen rendering, privacy toggles, styles,
+image bytes, filenames, saved-path toast text, and export behavior remain
+unchanged.
+
 Terminal Chase/TWAP history intentionally persists exact account, symbol,
 financial, timing, child-identifier, status, and activity fields for its
 existing views. The persisted entry, child, and log types have independently
