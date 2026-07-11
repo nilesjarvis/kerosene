@@ -98,7 +98,8 @@ fn final_exit_fence_classifies_every_fresh_mutation_intent() {
                 label: "$100".to_string(),
                 size: 100.0,
                 price_offset_pct: None,
-            },
+            }
+            .into(),
             true,
         ),
         Message::PlaceOrder {
@@ -107,7 +108,7 @@ fn final_exit_fence_classifies_every_fresh_mutation_intent() {
         },
         Message::ClosePosition {
             coin: "BTC".into(),
-            fraction: 1.0,
+            fraction: 1.0.into(),
             use_market: true,
         },
         Message::NukePositions,
@@ -128,7 +129,7 @@ fn final_exit_fence_classifies_every_fresh_mutation_intent() {
         Message::MoveOrder {
             coin: "BTC".into(),
             oid: 7.into(),
-            new_price: 101.0,
+            new_price: 101.0.into(),
         },
         Message::ChaseRestingOrder {
             coin: "BTC".into(),
@@ -140,7 +141,7 @@ fn final_exit_fence_classifies_every_fresh_mutation_intent() {
         Message::WalletClusterClosePosition {
             symbol: "BTC".into(),
             side: WalletClusterCloseSide::Long,
-            fraction: 1.0,
+            fraction: 1.0.into(),
             use_market: true,
         },
         Message::ClearConfigs,
@@ -205,7 +206,7 @@ fn final_exit_fence_drops_mutation_before_its_feature_route_runs() {
     let task = terminal.update(Message::MoveOrder {
         coin: "BTC".into(),
         oid: 7.into(),
-        new_price: 101.0,
+        new_price: 101.0.into(),
     });
 
     assert_eq!(task.units(), 0);

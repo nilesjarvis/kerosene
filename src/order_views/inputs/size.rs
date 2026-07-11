@@ -66,11 +66,9 @@ impl TradingTerminal {
         ]
         .align_y(iced::Alignment::Center);
 
-        let percent_slider = slider(
-            0.0..=100.0,
-            self.order_percentage,
-            Message::OrderPercentageChanged,
-        )
+        let percent_slider = slider(0.0..=100.0, self.order_percentage, |value| {
+            Message::OrderPercentageChanged(value.into())
+        })
         .width(Fill)
         .height(SIZE_SLIDER_HEIGHT)
         .step(1.0)

@@ -32,13 +32,15 @@ impl TradingTerminal {
             }
             Message::SetMidPrice => self.handle_set_mid_price(),
             Message::OrderBookPriceSelected { id, price } => {
-                return self.handle_order_book_price_selected(id, price);
+                return self.handle_order_book_price_selected(id, price.into_string());
             }
             Message::OrderQuantityChanged(value) => {
                 self.handle_order_quantity_changed(value.into_string())
             }
             Message::ToggleOrderDenomination => self.handle_toggle_order_denomination(),
-            Message::OrderPercentageChanged(value) => self.handle_order_percentage_changed(value),
+            Message::OrderPercentageChanged(value) => {
+                self.handle_order_percentage_changed(value.into_inner())
+            }
             Message::PrefillOutcomeSell(balance_coin) => {
                 return self.handle_prefill_outcome_sell(balance_coin.into_string());
             }
@@ -61,12 +63,14 @@ impl TradingTerminal {
             Message::TogglePresetCurrency => self.handle_toggle_preset_currency(),
             Message::TogglePresetEditMode => self.handle_toggle_preset_edit_mode(),
             Message::EditPresetStart(kind, idx, current_size_str) => {
-                self.handle_edit_preset_start(kind, idx, current_size_str)
+                self.handle_edit_preset_start(kind, idx, current_size_str.into_string())
             }
-            Message::EditPresetChanged(new_text) => self.handle_edit_preset_changed(new_text),
+            Message::EditPresetChanged(new_text) => {
+                self.handle_edit_preset_changed(new_text.into_string())
+            }
             Message::EditPresetSave(kind, idx) => self.handle_edit_preset_save(kind, idx),
             Message::ExecutePreset(kind, preset, is_buy) => {
-                return self.handle_execute_preset(kind, preset, is_buy);
+                return self.handle_execute_preset(kind, preset.into_inner(), is_buy);
             }
             Message::DismissOrderStatus => self.handle_dismiss_order_status(),
             Message::PlaceOrder { is_buy, snapshot } => {
@@ -123,7 +127,7 @@ impl TradingTerminal {
             } => {
                 self.close_menu_coin = None;
                 let coin = coin.into_string();
-                return self.execute_close_position(&coin, fraction, use_market);
+                return self.execute_close_position(&coin, fraction.into_inner(), use_market);
             }
             Message::ClosePositionResult {
                 pending_indicator_id,
@@ -385,7 +389,7 @@ impl TradingTerminal {
                 return self.handle_open_quick_order(QuickOrderOpenRequest {
                     chart_id,
                     surface_id,
-                    price,
+                    price: price.into_inner(),
                     click_x,
                     click_y,
                     chart_w,
@@ -396,7 +400,7 @@ impl TradingTerminal {
                 self.handle_quick_order_qty_changed(id, qty.into_string())
             }
             Message::QuickOrderPercentageChanged(id, value) => {
-                self.handle_quick_order_percentage_changed(id, value)
+                self.handle_quick_order_percentage_changed(id, value.into_inner())
             }
             Message::QuickOrderToggleDenomination(id) => {
                 self.handle_quick_order_toggle_denomination(id)
@@ -450,7 +454,11 @@ impl TradingTerminal {
                 new_price,
             } => {
                 self.active_move_order_drag = None;
-                return self.handle_move_order(coin.into_string(), oid.into_u64(), new_price);
+                return self.handle_move_order(
+                    coin.into_string(),
+                    oid.into_u64(),
+                    new_price.into_inner(),
+                );
             }
             Message::MoveOrderModifyResult {
                 request_id,

@@ -52,7 +52,7 @@ fn position_close_pct_button(
     button(text(label).size(9).center())
         .on_press(Message::ClosePosition {
             coin: coin.into(),
-            fraction,
+            fraction: fraction.into(),
             use_market: market,
         })
         .padding([1, 3])

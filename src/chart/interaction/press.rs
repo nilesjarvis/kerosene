@@ -285,7 +285,7 @@ impl CandlestickChart {
                 canvas::Action::publish(Message::OpenQuickOrder(
                     self.id,
                     self.surface_id,
-                    price,
+                    price.into(),
                     pos.x,
                     pos.y,
                     chart_w,
@@ -352,7 +352,7 @@ impl CandlestickChart {
                 canvas::Action::publish(Message::OpenQuickOrder(
                     self.id,
                     self.surface_id,
-                    price,
+                    price.into(),
                     pos.x,
                     pos.y,
                     chart_w,

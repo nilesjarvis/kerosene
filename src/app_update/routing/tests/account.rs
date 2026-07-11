@@ -64,7 +64,7 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
     assert_route(
         Message::OrderBookPriceSelected {
             id: 7,
-            price: "100.5".to_string(),
+            price: "100.5".into(),
         },
         UpdateRoute::Order,
     );

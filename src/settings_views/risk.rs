@@ -141,7 +141,7 @@ impl TradingTerminal {
             row![
                 text_input("0.0 - 20.0", &self.market_slippage_input)
                     .style(helpers::text_input_style)
-                    .on_input(Message::MarketSlippageInputChanged)
+                    .on_input(|value| Message::MarketSlippageInputChanged(value.into()))
                     .on_submit(Message::SaveMarketSlippage)
                     .size(12)
                     .padding(6)

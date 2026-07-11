@@ -718,7 +718,7 @@ fn close_button(
         btn = btn.on_press(Message::WalletClusterClosePosition {
             symbol: symbol.into(),
             side,
-            fraction,
+            fraction: fraction.into(),
             use_market,
         });
     }

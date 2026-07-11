@@ -59,7 +59,7 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let theme = self.theme();
         let percent_slider = slider(0.0..=100.0, form.percentage, move |value| {
-            Message::QuickOrderPercentageChanged(chart_id, value)
+            Message::QuickOrderPercentageChanged(chart_id, value.into())
         })
         .step(1.0)
         .style(|theme: &Theme, status| {
@@ -162,7 +162,7 @@ fn quick_order_percent_button<'a>(
 ) -> button::Button<'a, Message> {
     let selected = (current_pct - pct).abs() < 0.5;
     button(text(format!("{pct:.0}%")).size(9).center())
-        .on_press(Message::QuickOrderPercentageChanged(chart_id, pct))
+        .on_press(Message::QuickOrderPercentageChanged(chart_id, pct.into()))
         .padding([2, 6])
         .width(Fill)
         .style(move |theme: &Theme, status| {

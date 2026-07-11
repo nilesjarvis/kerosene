@@ -52,6 +52,7 @@ fn assert_open_quick_order_message(
         Message::OpenQuickOrder(id, surface_id, price, click_x, click_y, chart_w, chart_h) => {
             assert_eq!(id, chart.id);
             assert_eq!(surface_id, chart.surface_id);
+            let price = price.into_inner();
             assert!(price.is_finite() && price > 0.0);
             assert_eq!(click_x, click.x);
             assert_eq!(click_y, click.y);

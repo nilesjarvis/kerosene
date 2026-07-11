@@ -251,6 +251,32 @@ impl fmt::Debug for RedactedOrderInput {
     }
 }
 
+/// Exact financial order value carried through the transient message boundary.
+///
+/// Update handlers recover the original value without conversion. Derived
+/// `Message::Debug` output cannot expose a price, percentage, fraction, or
+/// nested preset payload.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) struct RedactedOrderValue<T>(T);
+
+impl<T> RedactedOrderValue<T> {
+    pub(crate) fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+impl<T> From<T> for RedactedOrderValue<T> {
+    fn from(value: T) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> fmt::Debug for RedactedOrderValue<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("OrderValue(<redacted>)")
+    }
+}
+
 /// Exchange order ID carried through the transient message boundary.
 ///
 /// The exact value remains available to update handlers, while the derived
@@ -806,12 +832,12 @@ pub(crate) enum Message {
     SetMidPrice,
     OrderBookPriceSelected {
         id: OrderBookId,
-        price: String,
+        price: RedactedOrderInput,
     },
     OrderQuantityChanged(RedactedOrderInput),
     SetOrderKind(OrderKind),
     ToggleOrderDenomination,
-    OrderPercentageChanged(f32),
+    OrderPercentageChanged(RedactedOrderValue<f32>),
     PrefillOutcomeSell(RedactedOrderSymbol),
     ToggleReduceOnly,
     ToggleOrderLeverageDropdown,
@@ -826,10 +852,14 @@ pub(crate) enum Message {
     TogglePresetCurrency,
     TogglePresetEditMode,
     SetAddWidgetPlacement(AddWidgetPlacement),
-    EditPresetStart(crate::signing::OrderKind, usize, String),
-    EditPresetChanged(String),
+    EditPresetStart(crate::signing::OrderKind, usize, RedactedOrderInput),
+    EditPresetChanged(RedactedOrderInput),
     EditPresetSave(crate::signing::OrderKind, usize),
-    ExecutePreset(crate::signing::OrderKind, crate::config::OrderPreset, bool),
+    ExecutePreset(
+        crate::signing::OrderKind,
+        RedactedOrderValue<crate::config::OrderPreset>,
+        bool,
+    ),
     ToggleFavourite(String),
     ToggleTickerTape,
     TickerTapeTick,
@@ -967,7 +997,7 @@ pub(crate) enum Message {
     UnmuteTicker(String),
     MarketUniverseChanged(config::MarketUniverseConfig),
     DisplayDenominationChanged(config::DisplayDenominationConfig),
-    MarketSlippageInputChanged(String),
+    MarketSlippageInputChanged(RedactedOrderInput),
     SaveMarketSlippage,
     ExecuteHotkey(config::HotkeyAction),
     StartRecordingHotkey(config::HotkeyAction),
@@ -1013,7 +1043,7 @@ pub(crate) enum Message {
     WalletClusterClosePosition {
         symbol: RedactedOrderSymbol,
         side: WalletClusterCloseSide,
-        fraction: f64,
+        fraction: RedactedOrderValue<f64>,
         use_market: bool,
     },
     WalletClusterOrderResult {
@@ -1268,7 +1298,7 @@ pub(crate) enum Message {
     PnlCardSaved(Result<Option<PathBuf>, String>),
     ClosePosition {
         coin: RedactedOrderSymbol,
-        fraction: f64,
+        fraction: RedactedOrderValue<f64>,
         use_market: bool,
     },
     ClosePositionResult {
@@ -1482,9 +1512,17 @@ pub(crate) enum Message {
     ClosePane(pane_grid::Pane),
     ToggleHidePnl,
     // Quick order form (right-click on chart)
-    OpenQuickOrder(ChartId, ChartSurfaceId, f64, f32, f32, f32, f32),
+    OpenQuickOrder(
+        ChartId,
+        ChartSurfaceId,
+        RedactedOrderValue<f64>,
+        f32,
+        f32,
+        f32,
+        f32,
+    ),
     QuickOrderQtyChanged(ChartId, RedactedOrderInput),
-    QuickOrderPercentageChanged(ChartId, f32),
+    QuickOrderPercentageChanged(ChartId, RedactedOrderValue<f32>),
     QuickOrderToggleDenomination(ChartId),
     QuickOrderToggleType(ChartId),
     CloseQuickOrder(ChartId),
@@ -1515,7 +1553,7 @@ pub(crate) enum Message {
     MoveOrder {
         coin: RedactedOrderSymbol,
         oid: RedactedOrderId,
-        new_price: f64,
+        new_price: RedactedOrderValue<f64>,
     },
     MoveOrderModifyResult {
         request_id: u64,
@@ -1675,11 +1713,11 @@ pub(crate) enum Message {
 mod tests {
     use super::{
         Message, RedactedAdvancedOrderHistoryId, RedactedClientOrderId, RedactedOrderId,
-        RedactedOrderInput, RedactedOrderMessageResult, RedactedOrderSymbol, RedactedPhoneInput,
-        RedactedTelegramChannelKey, SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult,
-        SecretInput, TelegramFastAuthMessageResult, TelegramFastAuthOutcome,
-        XAccessTokenRefreshMessageResult, XAuthContextMessageResult, XFeedPageMessageResult,
-        XListsMessageResult, XProfileImageMessageResult,
+        RedactedOrderInput, RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue,
+        RedactedPhoneInput, RedactedTelegramChannelKey, SchwabAccountsMessageResult,
+        SchwabTokenRefreshMessageResult, SecretInput, TelegramFastAuthMessageResult,
+        TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult, XAuthContextMessageResult,
+        XFeedPageMessageResult, XListsMessageResult, XProfileImageMessageResult,
     };
     use crate::api::{
         BookLevel, ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OrderBook, OutcomeSymbolInfo,
@@ -1716,6 +1754,38 @@ mod tests {
         assert!(rendered.contains("<redacted>"));
         assert!(!rendered.contains("order-input-secret"));
         assert_eq!(input.into_string(), "order-input-secret");
+    }
+
+    #[test]
+    fn order_value_wrapper_preserves_exact_float_bits_and_preset() {
+        const F64_BITS: u64 = 0x7ff8_1234_5678_9abc;
+        const F32_BITS: u32 = 0x7fc1_2345;
+        let f64_value = f64::from_bits(F64_BITS);
+        let f32_value = f32::from_bits(F32_BITS);
+        let preset = crate::config::OrderPreset {
+            label: "exact-preset-label".to_string(),
+            size: 12_345.678_901,
+            price_offset_pct: Some(4.625),
+        };
+        let f64_value = RedactedOrderValue::from(f64_value);
+        let f32_value = RedactedOrderValue::from(f32_value);
+        let negative_zero = RedactedOrderValue::from(-0.0_f64);
+        let wrapped_preset = RedactedOrderValue::from(preset.clone());
+
+        for rendered in [
+            format!("{f64_value:?}"),
+            format!("{f32_value:?}"),
+            format!("{wrapped_preset:?}"),
+        ] {
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains("exact-preset-label"), "{rendered}");
+            assert!(!rendered.contains("12345.678901"), "{rendered}");
+        }
+
+        assert_eq!(f64_value.into_inner().to_bits(), F64_BITS);
+        assert_eq!(f32_value.into_inner().to_bits(), F32_BITS);
+        assert_eq!(negative_zero.into_inner().to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(wrapped_preset.into_inner(), preset);
     }
 
     #[test]
@@ -1858,7 +1928,7 @@ mod tests {
             Message::WalletClusterClosePosition {
                 symbol: SYMBOL.into(),
                 side: crate::wallet_cluster_state::WalletClusterCloseSide::Long,
-                fraction: 0.5,
+                fraction: 0.5.into(),
                 use_market: true,
             },
             Message::CancelOrder {
@@ -1876,7 +1946,7 @@ mod tests {
             Message::ToggleHiddenPosition(SYMBOL.into()),
             Message::ClosePosition {
                 coin: SYMBOL.into(),
-                fraction: 0.25,
+                fraction: 0.25.into(),
                 use_market: false,
             },
             Message::OpenAdvancedOrderHistory(HISTORY_ID.into()),
@@ -1887,7 +1957,7 @@ mod tests {
             Message::MoveOrder {
                 coin: SYMBOL.into(),
                 oid: 9_876_543_210_123_457_u64.into(),
-                new_price: 12_345.678_901,
+                new_price: 12_345.678_901.into(),
             },
             Message::MoveOrderModifyResult {
                 request_id: 2,
@@ -1914,6 +1984,81 @@ mod tests {
                 !rendered.contains(HISTORY_ID),
                 "history identity leaked in {rendered}"
             );
+        }
+    }
+
+    #[test]
+    fn remaining_financial_message_debug_redacts_exact_values() {
+        const INPUT: &str = "remaining-financial-input-sentinel";
+        const PRESET_LABEL: &str = "remaining-financial-preset-label-sentinel";
+        const FINANCIAL_F64: f64 = 91_827.364_512_739;
+        const FINANCIAL_F32: f32 = 73.125;
+        const PRESET_OFFSET: f64 = 18.375;
+        let financial_f64 = format!("{FINANCIAL_F64:?}");
+        let financial_f32 = format!("{FINANCIAL_F32:?}");
+        let preset_offset = format!("{PRESET_OFFSET:?}");
+        let messages = vec![
+            Message::OrderBookPriceSelected {
+                id: 7,
+                price: INPUT.into(),
+            },
+            Message::OrderPercentageChanged(FINANCIAL_F32.into()),
+            Message::EditPresetStart(crate::signing::OrderKind::Limit, 3, INPUT.into()),
+            Message::EditPresetChanged(INPUT.into()),
+            Message::ExecutePreset(
+                crate::signing::OrderKind::Limit,
+                crate::config::OrderPreset {
+                    label: PRESET_LABEL.to_string(),
+                    size: FINANCIAL_F64,
+                    price_offset_pct: Some(PRESET_OFFSET),
+                }
+                .into(),
+                true,
+            ),
+            Message::MarketSlippageInputChanged(INPUT.into()),
+            Message::WalletClusterClosePosition {
+                symbol: "HYPE".into(),
+                side: crate::wallet_cluster_state::WalletClusterCloseSide::Long,
+                fraction: FINANCIAL_F64.into(),
+                use_market: true,
+            },
+            Message::ClosePosition {
+                coin: "HYPE".into(),
+                fraction: FINANCIAL_F64.into(),
+                use_market: false,
+            },
+            Message::OpenQuickOrder(
+                7,
+                ChartSurfaceId::Docked(7),
+                FINANCIAL_F64.into(),
+                11.0,
+                12.0,
+                13.0,
+                14.0,
+            ),
+            Message::QuickOrderPercentageChanged(7, FINANCIAL_F32.into()),
+            Message::MoveOrder {
+                coin: "HYPE".into(),
+                oid: 9_876_543_210_123_457_u64.into(),
+                new_price: FINANCIAL_F64.into(),
+            },
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for sensitive in [
+                INPUT,
+                PRESET_LABEL,
+                financial_f64.as_str(),
+                financial_f32.as_str(),
+                preset_offset.as_str(),
+            ] {
+                assert!(
+                    !rendered.contains(sensitive),
+                    "financial value {sensitive} leaked in {rendered}"
+                );
+            }
         }
     }
 
@@ -2188,7 +2333,7 @@ mod tests {
             Message::MoveOrder {
                 coin: "HYPE".into(),
                 oid: OID.into(),
-                new_price: 100.0,
+                new_price: 100.0.into(),
             },
             Message::MoveOrderModifyResult {
                 request_id: 2,

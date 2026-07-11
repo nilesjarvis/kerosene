@@ -23,7 +23,7 @@ impl TradingTerminal {
                 if self.preset_edit_idx == Some((kind, idx)) {
                     let input = text_input("Size", &self.preset_edit_buffer)
                         .style(helpers::text_input_style)
-                        .on_input(Message::EditPresetChanged)
+                        .on_input(|value| Message::EditPresetChanged(value.into()))
                         .on_submit(Message::EditPresetSave(kind, idx))
                         .size(11)
                         .padding([2, 4]);
@@ -36,7 +36,11 @@ impl TradingTerminal {
                     row_items = row_items.push(row![input, save_btn].spacing(4));
                 } else {
                     let edit_btn = button(text(p.label.clone()).size(10).color(color!(0xbbbbbb)))
-                        .on_press(Message::EditPresetStart(kind, idx, p.size.to_string()))
+                        .on_press(Message::EditPresetStart(
+                            kind,
+                            idx,
+                            p.size.to_string().into(),
+                        ))
                         .padding([3, 6])
                         .style(|theme: &Theme, status| {
                             let bg = match status {
@@ -64,7 +68,7 @@ impl TradingTerminal {
                         .size(10)
                         .color(color!(0x50fa7b)),
                 )
-                .on_press(Message::ExecutePreset(kind, preset.clone(), true))
+                .on_press(Message::ExecutePreset(kind, preset.clone().into(), true))
                 .padding([3, 6])
                 .style(|theme: &Theme, status| {
                     let bg = match status {
@@ -87,7 +91,7 @@ impl TradingTerminal {
                         .size(10)
                         .color(color!(0xff5555)),
                 )
-                .on_press(Message::ExecutePreset(kind, preset.clone(), false))
+                .on_press(Message::ExecutePreset(kind, preset.clone().into(), false))
                 .padding([3, 6])
                 .style(|theme: &Theme, status| {
                     let bg = match status {

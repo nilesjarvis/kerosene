@@ -95,7 +95,7 @@ fn dom_row(
         content,
         Message::OrderBookPriceSelected {
             id: context.id,
-            price: format!("{:.decimals$}", row_data.price, decimals = context.decimals),
+            price: format!("{:.decimals$}", row_data.price, decimals = context.decimals).into(),
         },
     )
 }

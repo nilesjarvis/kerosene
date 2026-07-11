@@ -75,7 +75,8 @@ impl canvas_widget::Program<Message> for SizePresetMarks {
         let position = cursor.position_in(bounds)?;
 
         size_preset_pct_at_position(bounds, position).map(|pct| {
-            canvas_widget::Action::publish(Message::OrderPercentageChanged(pct)).and_capture()
+            canvas_widget::Action::publish(Message::OrderPercentageChanged(pct.into()))
+                .and_capture()
         })
     }
 

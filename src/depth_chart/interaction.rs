@@ -33,7 +33,8 @@ impl DepthChart {
                     return Some(
                         Action::publish(Message::OrderBookPriceSelected {
                             id: self.id,
-                            price: format!("{:.decimals$}", target.price, decimals = self.decimals),
+                            price: format!("{:.decimals$}", target.price, decimals = self.decimals)
+                                .into(),
                         })
                         .and_capture(),
                     );

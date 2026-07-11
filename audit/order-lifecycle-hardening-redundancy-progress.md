@@ -203,6 +203,21 @@
   `src/message.rs:1509-1534`, `src/order_update.rs:42-126`,
   `src/order_update.rs:281-283`, `src/order_update.rs:441-485`,
   `src/account_update.rs:15-19`, `src/wallet_cluster_update.rs:134-147`).
+- Every remaining direct financial `Message` field is now value-neutral in
+  derived diagnostics: order-book price, main/quick percentages, preset edit
+  input and exact preset payload, market-slippage input, connected/cluster close
+  fractions, quick-open price, and move price. Strings reuse
+  `RedactedOrderInput`; `RedactedOrderValue<T>` preserves exact numeric bits and
+  the nested `OrderPreset`. Immediate update arms restore the original values
+  before unchanged parsing, clamping, validation, preparation, or state
+  mutation. Quick-order canvas coordinates remain ordinary UI geometry
+  (`src/message.rs:227-278`, `src/message.rs:831-862`,
+  `src/message.rs:998-1001`, `src/message.rs:1040-1048`,
+  `src/message.rs:1299-1303`, `src/message.rs:1514-1525`,
+  `src/message.rs:1549-1557`, `src/order_update.rs:34-73`,
+  `src/order_update.rs:123-130`, `src/order_update.rs:380-403`,
+  `src/order_update.rs:451-460`, `src/preferences_update.rs:406-407`,
+  `src/wallet_cluster_update.rs:137-146`).
 - Terminal advanced-order history retains the exact Chase/TWAP account,
   symbol, financial, timing, identifier, status, activity, and child fields
   required by its persisted schema and existing views. Each independently
@@ -3648,6 +3663,93 @@ target-specific cancellation policy, not HTTP replay.
   financial values and remaining nested order-sensitive message types still
   require a separate complete inventory.
 
+### F-51 — Direct financial message values bypass diagnostic redaction
+
+- Status: addressed in Turn 44; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account/order privacy and diagnostic-boundary hardening; no
+  incorrect preparation or known production disclosure was found, but exact
+  trading intent and risk-setting values crossed a generic formatter
+- Scope: all 11 remaining direct/nested financial fields in `Message`:
+  order-book selected price; main sizing percentage; preset edit start/change
+  strings; exact `OrderPreset`; market-slippage input; connected and cluster
+  close fractions; quick-order open price and sizing percentage; move target
+  price; every publisher, route, immediate consumer, and nearby interaction/
+  lifecycle test
+- Preconditions/event ordering:
+  1. Order-book/depth views publish formatted price strings; order and quick
+     sliders publish percentages; preset controls publish editable strings or a
+     cloned preset; risk settings publish slippage text; close controls publish
+     fractions; chart interaction publishes clicked/dragged prices.
+  2. The order, preferences, or cluster update arm passed each raw value
+     directly to existing storage, parsing, clamping, validation, preparation,
+     or execution. Invalid/non-finite numeric inputs remained available to the
+     established fail-closed checks rather than being normalized in routing.
+  3. Derived `Message::Debug` emitted the input text, every numeric value, and
+     nested preset label/size/offset verbatim before those checks ran.
+- Evidence: parent commit
+  `90b156a313e886fb43140a9b13705feb46f21ba2` shows the raw fields at
+  `src/message.rs:807-814`, `src/message.rs:829-832`,
+  `src/message.rs:968-971`, `src/message.rs:1013-1017`,
+  `src/message.rs:1269-1273`, `src/message.rs:1484-1487`, and
+  `src/message.rs:1515-1518`. Producers span the order-book/depth rows, main
+  size controls, preset row, risk input, close menus, cluster controls, quick
+  controls, and chart press/drag interaction
+  (`src/market_views/order_book/depth/rows.rs:100-146`,
+  `src/market_views/order_book/depth/dom/rows.rs:90-100`,
+  `src/depth_chart/interaction.rs:24-42`,
+  `src/order_views/inputs/size.rs:66-78`,
+  `src/order_views/inputs/size/presets.rs:68-81`,
+  `src/order_views/presets/preset_row.rs:20-95`,
+  `src/settings_views/risk.rs:134-149`,
+  `src/account_views/positions/table/close_cell/menu.rs:42-58`,
+  `src/wallet_cluster_views.rs:708-724`,
+  `src/order_views/quick_order/components/inputs.rs:54-67`,
+  `src/chart/interaction/press.rs:278-293`,
+  `src/chart/interaction/drag.rs:207-218`).
+- Violated invariant: exact financial inputs may cross transient Elm plumbing
+  so canonical handlers can validate and execute them, but generic diagnostics
+  must not disclose price, size percentage, preset, slippage, or close fraction
+  and must not change any float while hiding it.
+- Risk: the debug-only unrouted-order-message assertion, a test failure,
+  framework instrumentation, or future message logging could reveal a selected
+  limit/move price, sizing intent, stored preset, configured market slippage, or
+  requested close fraction. No account key, signature, wire payload, automatic
+  retry, exchange outcome, or known live diagnostic is implicated.
+- Why existing checks did not cover it: typed price/quantity/TWAP/leverage
+  inputs already used `RedactedOrderInput`, and snapshot/form/result formatters
+  hid their nested values, but book selection, sliders, preset controls,
+  slippage, close fractions, and pre-form chart prices remained separate raw
+  parent fields. F-50 deliberately changed only symbol/history identities.
+- Implemented fix: reuse `RedactedOrderInput` for the four string fields and add
+  generic `RedactedOrderValue<T>` for the six numeric fields plus the nested
+  preset. It exposes only `OrderValue(<redacted>)` and returns the original `T`
+  without parsing or conversion. Every publisher wraps only at `Message`
+  construction; `update_order`, `update_preferences`, or
+  `update_wallet_cluster` immediately restores the prior type before the same
+  handler (`src/message.rs:227-278`, `src/order_update.rs:34-73`,
+  `src/order_update.rs:123-130`, `src/order_update.rs:380-403`,
+  `src/order_update.rs:451-460`, `src/preferences_update.rs:406-407`,
+  `src/wallet_cluster_update.rs:137-146`).
+- Regression coverage: format all 11 variants with unique text, preset, `f32`,
+  and `f64` sentinels and reject every exact value while retaining redaction
+  (`src/message.rs:1990-2063`). Independently recover a payload-bearing NaN for
+  each float width, negative zero, and the exact cloned preset
+  (`src/message.rs:1759-1789`); existing chart-input, route, exit-fence, order,
+  preference, close/move, cluster, and preset tests remain lifecycle controls.
+- Smallest behavior-preserving fix: string and preset allocations are moved as
+  before; numeric wrappers are single-field moves whose recovery preserves
+  exact bits. Quick-order X/Y/width/height remain unwrapped control geometry.
+  No route, handler signature, parse, clamp, validation, precision, display
+  formatting, preset schema/default, state timing, price/size calculation,
+  preparation, signing, task, visible copy, or trading policy changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  exact raw-field absence searches, complete call-site tracing, and the
+  mechanical diff establish the intended boundary, but focused and nearby
+  suites cannot execute until ALSA development metadata is available. Nested
+  order/account state diagnostics and non-mutation external result/status
+  messages remain for the final Track 9 inventory.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -6337,6 +6439,67 @@ target-specific cancellation policy, not HTTP replay.
   values, and close one exact-value subset without changing parsing, precision,
   preparation, or visible behavior.
 
+## Turn 44 — Redact Direct Financial Message Values
+
+- Status: F-51 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: complete direct financial-value graph in `Message`: book-selected
+  price, main/quick percentages, preset edit/execute, market-slippage input,
+  connected/cluster close fractions, quick-open price, and move price; all
+  publishers, immediate consumers, diagnostic controls, and UI geometry
+  classification
+- Invariant: every transient financial value must reach the established parser,
+  validator, clamp, preparation, or state update bit-for-bit while generic
+  message diagnostics expose no exact trading value.
+- Protected behavior: exact string bytes, float bits (including non-finite and
+  negative-zero inputs), preset label/size/offset, order-book formatting,
+  percentage sizing, slippage parsing, connected/cluster close sizing,
+  quick-form placement geometry, move target validation, routing, final-exit
+  fencing, persistence, visible copy, preparation, signing, and trading
+  semantics.
+- Preconditions/event ordering: views move existing strings, numeric values, or
+  cloned presets into wrappers only when constructing `Message`; order,
+  preferences, and cluster update arms immediately recover the original type
+  before any existing branch runs. No wrapper enters state, config, preparation,
+  signing, or a task result.
+- Evidence: F-51 records the complete parent field/publisher/consumer inventory,
+  prior coverage gap, exact float/preset controls, UI-geometry classification,
+  generic debug sink, and repository-wide absence of the targeted raw field
+  types after the patch.
+- Change: reused `RedactedOrderInput` for four financial strings and added
+  `RedactedOrderValue<T>` for six numeric values plus `OrderPreset`; wrapped
+  every producer and restored every value at its immediate update boundary.
+- Tests/checks:
+  - The pre-fix exact 11-variant financial diagnostic regression stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    the system `alsa.pc` file.
+  - Post-fix exact diagnostic and bit/preset recovery tests, complete message,
+    app-update, order-update, wallet-cluster, chart-input, and preferences
+    suites stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: startup, subscriptions, windows, rendering,
+    and geometry are unchanged; compilation is already blocked, and no live
+    exchange or credential-bearing operation was run.
+- Compatibility/UX assessment: recovery tests prove exact float bit patterns
+  and preset equality; the existing string wrapper proves exact text recovery;
+  chart interaction still verifies positive clicked price plus exact X/Y/canvas
+  dimensions. All handlers retain their original signatures and receive values
+  before existing parsing/validation. No visible behavior, timing, schema,
+  precision, signed bytes, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-51 is source-
+  hardened, but nested formattable order/account state and raw non-mutation
+  external result/status messages require a final Track 9 inventory. Public
+  market-data values and UI geometry must remain separately classified rather
+  than blanket-wrapped.
+- Prior turn commit hash: `90b156a313e886fb43140a9b13705feb46f21ba2`
+- Next candidate: inventory every remaining formattable nested order/account
+  type and raw external-result message (including `PnlCardTarget`, ticket sizing
+  provenance, preset config diagnostics, account refresh, and user-data paths),
+  distinguish deliberately public market data, and close one evidenced subset.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -6378,10 +6541,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: pre-fix 12-variant symbol/history diagnostics;
-  post-fix exact diagnostic/recovery tests, complete message/app-update, chart-
-  input, advanced-history, and wallet-cluster suites, `cargo check`, full
-  `cargo test`, and strict clippy at
+- Environment-blocked this turn: pre-fix 11-variant financial diagnostics;
+  post-fix exact diagnostic/bit/preset recovery tests, complete message, app-
+  update, order-update, chart-input, wallet-cluster, and preferences suites,
+  `cargo check`, full `cargo test`, and strict clippy at
   `alsa-sys` system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
@@ -6390,7 +6553,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-50
+  F-40, and F-42 through F-51
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -6427,6 +6590,7 @@ target-specific cancellation policy, not HTTP replay.
   helper diagnostics are source-hardened by F-47, and advanced-order Elm
   message diagnostics by F-48. All remaining mutation-result message payloads
   are source-hardened by F-49; direct order/position symbols and advanced-
-  history navigation identity are source-hardened by F-50. Remaining financial,
-  nested order-sensitive, and external-status paths, plus the rest of Track 9,
-  require completion before a final verdict.
+  history navigation identity are source-hardened by F-50, and all direct
+  financial message values by F-51. Remaining nested order/account and external-
+  status paths, plus the rest of Track 9, require completion before a final
+  verdict.

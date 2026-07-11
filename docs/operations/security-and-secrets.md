@@ -228,6 +228,16 @@ cluster, or history-window update arm immediately restores the original
 `String`. Diagnostics are value-neutral while selection, preparation,
 correlation, prices, fractions, persistence, and window identity remain exact.
 
+Direct financial values on order-book price selection, sizing percentages,
+preset edit/execute, market-slippage input, connected and cluster close
+fractions, quick-order open/percentage, and move price messages are likewise
+value-neutral in diagnostics. String inputs reuse `RedactedOrderInput`; numeric
+values and the exact nested preset use `RedactedOrderValue<T>`, which moves the
+original value without conversion and preserves floating-point bits. Update
+restores each value before existing parsing, clamping, preparation, or state
+changes. Quick-order canvas coordinates remain ordinary control geometry; no
+price, size, preset, slippage, fraction, persistence, or UI behavior changes.
+
 Terminal Chase/TWAP history intentionally persists exact account, symbol,
 financial, timing, child-identifier, status, and activity fields for its
 existing views. The persisted entry, child, and log types have independently

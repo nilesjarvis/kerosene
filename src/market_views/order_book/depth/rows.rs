@@ -111,7 +111,7 @@ pub(super) fn depth_ask_column(
             context.reverse_side,
             Message::OrderBookPriceSelected {
                 id: context.id,
-                price: format!("{:.decimals$}", px, decimals = context.decimals),
+                price: format!("{:.decimals$}", px, decimals = context.decimals).into(),
             },
         ))
     })
@@ -142,7 +142,7 @@ pub(super) fn depth_bid_column(
                 context.reverse_side,
                 Message::OrderBookPriceSelected {
                     id: context.id,
-                    price: format!("{:.decimals$}", px, decimals = context.decimals),
+                    price: format!("{:.decimals$}", px, decimals = context.decimals).into(),
                 },
             ))
         });

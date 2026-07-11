@@ -404,7 +404,7 @@ impl TradingTerminal {
                 return Task::batch(tasks);
             }
             Message::MarketSlippageInputChanged(value) => {
-                self.market_slippage_input = value;
+                self.market_slippage_input = value.into_string();
             }
             Message::SaveMarketSlippage => {
                 match self
