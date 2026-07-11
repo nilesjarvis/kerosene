@@ -269,6 +269,17 @@ state application. Account reconciliation, cluster sizing, tracker state,
 portfolio/income data, retry bookkeeping, and user-visible error sanitization
 remain exact.
 
+Trading-journal fill and chart-snapshot results follow the same boundary with a
+dedicated `RedactedJournalMessageResult<T>`. Derived message diagnostics expose
+only `Ok`/`Err` shape, not account activity, candle timing/values, pagination
+warnings, or upstream error text. Snapshot-request diagnostics likewise hide
+trade identity, symbol, and exact trade/fetch windows while retaining safe
+source/generation/timeframe structure. Fill handlers restore the exact result
+only after the existing request/account/address stale guards accept it;
+snapshot handling recovers the exact candles or error for the unchanged request
+and provider-generation checks. Pagination, fill aggregation, snapshot
+coverage, cache behavior, and visible sanitized errors remain unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

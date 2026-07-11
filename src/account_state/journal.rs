@@ -68,7 +68,7 @@ impl TradingTerminal {
                 request_id,
                 account_key: request_account_key.clone().into(),
                 address: request_address.clone().into(),
-                result,
+                result: result.into(),
             }
         })
     }

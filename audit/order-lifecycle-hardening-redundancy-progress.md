@@ -4068,6 +4068,90 @@ target-specific cancellation policy, not HTTP replay.
   available. Remaining raw external-status message classes require the next
   Track 9 inventory.
 
+### F-56 — Journal completion diagnostics expose trade context and upstream errors
+
+- Status: addressed in Turn 49; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account/order privacy and diagnostic-boundary hardening; no
+  journal correlation, aggregation, snapshot, cache, or visible-error defect
+  was found
+- Scope: `JournalTradeSnapshotRequest`, `JournalFillsLoaded`, and
+  `JournalSnapshotLoaded`; initial and paginated fill tasks, snapshot tasks,
+  both result consumers, routing, error sanitization, and journal/message tests
+- Preconditions/event ordering:
+  1. Initial refresh and each pagination step publish a `UserFillsPage` or an
+     upstream error. The prior raw `Result` formatter exposed pagination and
+     requested-end timestamps on success and the complete external string on
+     error before the update arm checked request ID, account key, and address.
+  2. A chart-snapshot completion carried an exact request plus candles or an
+     error. Although account/address and OHLCV values already had nested
+     redaction, the request formatter printed trade ID, symbol, trade/fetch
+     windows, and the candle list printed open/close timestamps; errors were
+     unfiltered until after the exact account/provider/generation/request gate.
+  3. Accepted fill pages still drive pagination, aggregation, cache updates,
+     selection/edit pruning, warnings, and chart reveal. Accepted snapshot
+     results still drive timeframe fallback and metric construction; rejected
+     stale results remain no-ops.
+- Evidence: parent commit
+  `6cd4601840bdc8c381371914ad30b8df98e2daed` shows the two raw result fields at
+  `src/message.rs:1169-1198`, the partially redacted request formatter at
+  `src/journal/snapshot.rs:110-140`, initial fill publication at
+  `src/account_state/journal.rs:66-73`, pagination and snapshot publication at
+  `src/journal_update.rs:167-176` and `src/journal_update.rs:711-727`, and the
+  correlation/result consumers at `src/journal_update.rs:54-202` and
+  `src/journal_update.rs:596-675`. Routing remains the existing journal group in
+  `src/app_update/routing.rs:379-399`.
+- Violated invariant: exact account activity and external failures may cross
+  the transient Elm boundary for established journal behavior, but generic
+  diagnostics must not reveal trade identity/timing or bypass the sanitizer
+  that governs user-visible error text.
+- Risk: a state dump, assertion failure, or future message instrumentation
+  could associate a user account with a traded symbol/window or reproduce raw
+  provider errors. Existing fill and candle model formatters already hid fill
+  identity/financial values and OHLCV values, and no private key, signing
+  payload, mutation retry, or known production logging sink is implicated.
+- Why existing checks did not cover it: the address-bearing `Message` control
+  asserted only account/address absence. The request control explicitly
+  allowed trade ID and symbol, while model-level controls treated pagination
+  and candle timestamps as useful structure. Journal behavior tests exercised
+  stale gates and post-routing error sanitization without formatting the parent
+  completion messages.
+- Implemented fix: add `RedactedJournalMessageResult<T>`, whose formatter emits
+  only `Ok(<redacted>)` or `Err(<redacted>)`, and use it for both journal
+  completion variants (`src/message.rs:427-454`,
+  `src/message.rs:1198-1227`). All three task publishers wrap the same result;
+  fill handling recovers it only after the existing stale gate, and snapshot
+  handling restores it before the unchanged exact request checks
+  (`src/account_state/journal.rs:66-73`, `src/journal_update.rs:54-72`,
+  `src/journal_update.rs:165-176`, `src/journal_update.rs:299-310`,
+  `src/journal_update.rs:711-727`). The request's custom formatter now hides
+  trade ID, symbol, and all four trade/fetch times while retaining source,
+  generations, coverage, timeframe, ladder position, and open/closed shape
+  (`src/journal/snapshot.rs:110-140`).
+- Regression coverage: the wrapper control rejects a unique external error and
+  candle timestamp while recovering the exact error, timestamp, and NaN payload
+  bits (`src/message.rs:2372-2403`). Parent-message coverage rejects a unique
+  journal error together with the existing account/address sentinels
+  (`src/message.rs:2989-3199`). The request control rejects unique account,
+  address, trade, symbol, and four timestamp sentinels, retains safe structural
+  metadata, and proves every stored value unchanged after formatting
+  (`src/journal/snapshot.rs:725-769`). Existing stale-fill, matching-fill,
+  provider-generation, exact-request, aggregation, and sanitized-error tests
+  remain lifecycle controls (`src/journal_update.rs:758-1007`).
+- Smallest behavior-preserving fix: one diagnostic-only request formatter and
+  one transient result newtype changed. No request field, equality, fetch
+  range, pagination cursor, candle/fill payload, task timing, stale gate,
+  aggregation, cache write, snapshot calculation, sanitizer, persistence,
+  status text, UI, or trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete producer/consumer/routing tracing, exact-value controls, and raw-
+  field absence checks establish the intended boundary, but focused and nearby
+  suites cannot execute until ALSA development metadata is available. The
+  remaining raw `Message` result inventory is now classified into public
+  market/chart data; wallet-label account-identity file I/O; config and ordinary
+  preference/file/screenshot operations; and private integration content/key-
+  status paths. Each class needs a separate sensitivity and behavior audit.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -7060,6 +7144,72 @@ target-specific cancellation policy, not HTTP replay.
   preference/file operations, account data, and order lifecycle separately,
   then close one complete sensitive result class.
 
+## Turn 49 — Redact Journal Completion Diagnostics
+
+- Status: F-56 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: exact journal fill-page and chart-snapshot completion results; snapshot
+  request trade identity/timing; initial, pagination, and snapshot task
+  publishers; stale/provider/request gates; aggregation/cache/snapshot/error
+  consumers; routing and focused controls; remaining raw-result classification
+- Invariant: journal tasks and handlers must retain every exact request, fill,
+  candle, pagination cursor, warning, and external error required by current
+  behavior, while generic diagnostics cannot disclose account trade context or
+  traverse unsanitized task results.
+- Protected behavior: request-ID/account/address correlation; provider and API-
+  key generation fences; exact pending-request equality; fill pagination,
+  deduplication, aggregation, position reconciliation, cache writes, warnings,
+  selection/edit pruning, and chart reveal; snapshot timeframe fallback,
+  coverage, metrics, and unavailable reasons; existing error sanitization;
+  task order, persistence, visible copy, and all trading semantics.
+- Preconditions/event ordering: each producer wraps only when publishing the
+  completed task. The fill update arm restores the original `Result` after its
+  request/account/address gate. Snapshot dispatch restores the original request
+  and result for the same helper whose account/source/provider/key-generation/
+  exact-request gate still precedes result matching. Formatting borrows the
+  request or wrapper and cannot mutate either.
+- Evidence: F-56 records the parent raw fields and partial formatter, all three
+  publishers, both consumers, routing, sanitizer boundary, pre-existing model
+  redaction, exact-value controls, and the mechanical wrapper/formatter diff.
+- Change: add a dedicated exact journal-result wrapper and apply it to both
+  completion variants; convert all publishers and test constructors; recover
+  the original result at the update boundary; make the independently
+  formattable snapshot request hide trade ID, symbol, and exact windows while
+  retaining safe control structure.
+- Tests/checks:
+  - The baseline parent-message diagnostic control stopped in `alsa-sys` before
+    Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - Post-fix exact wrapper recovery, snapshot-request diagnostics, parent-
+    message diagnostics, complete journal-update, Message, and routing suites
+    stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, view, window, rendering, task
+    timing, state transition, or user interaction changed; compilation is
+    already blocked, and no live exchange or credential-bearing operation ran.
+- Compatibility/UX assessment: the wrapper control recovers the original error
+  and candle timestamp/NaN bits, and the request control reads every exact
+  identity/time field after formatting. Existing lifecycle tests are unchanged
+  except for the mechanically required `.into()` at message construction. No
+  visible behavior, timing, fetch range, pagination, financial precision,
+  schema, file content, signed bytes, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-56 is source-
+  hardened, but the classified raw-result inventory still includes wallet-
+  label I/O, config/preference/file/screenshot operations, public market data,
+  and private integration results; their payload and error sensitivity must be
+  assessed independently. Other direct journal edit/select messages also need
+  type-by-type Track 9 review and were not broadened into this async-completion
+  patch.
+- Prior turn commit hash: `6cd4601840bdc8c381371914ad30b8df98e2daed`
+- Next candidate: trace `WalletLabelsExported` and `WalletLabelsImported`
+  through snapshot construction, file dialogs, parsing/normalization,
+  persistence, cancellation, and visible error handling; determine whether a
+  dedicated exact shape-only result wrapper closes that account-identity file-
+  I/O class without altering labels, addresses, wire format, or UX.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -7101,11 +7251,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline and pre-fix preset, saved-layout, and
-  layout-Message diagnostics; post-fix focused preset/config/layout/Message
-  diagnostics, exact layout-result recovery, silent-cancellation control,
-  complete preset-config, layout-update, layout-persistence, preset-execution,
-  and Message suites,
+- Environment-blocked this turn: the baseline journal parent-message
+  diagnostic; post-fix exact journal-result recovery, snapshot-request and
+  parent-message diagnostics, complete journal-update, Message, and routing
+  suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
@@ -7115,7 +7264,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-55
+  F-40, and F-42 through F-56
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -7157,6 +7306,7 @@ target-specific cancellation policy, not HTTP replay.
   source-hardened by F-52, and PnL-card model/image/export diagnostics by F-53.
   Ticket percentage-sizing provenance diagnostics are source-hardened by F-54.
   Preset/saved-layout model and I/O-result diagnostics are source-hardened by
-  F-55. Remaining independently formattable nested account/order types and
-  external-status paths, plus the rest of Track 9, require completion before a
-  final verdict.
+  F-55, and journal completion request/result diagnostics by F-56. Remaining
+  independently formattable nested account/order types and classified external-
+  status paths, plus the rest of Track 9, require completion before a final
+  verdict.

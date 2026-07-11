@@ -424,6 +424,35 @@ impl<T> fmt::Debug for RedactedAccountMessageResult<T> {
     }
 }
 
+/// Exact trading-journal task result carried through the Elm message boundary.
+///
+/// Update handlers recover the original fills, candles, or external error.
+/// Generic message diagnostics expose only success/error shape and never
+/// traverse account activity or snapshot payloads.
+#[derive(Clone)]
+pub(crate) struct RedactedJournalMessageResult<T>(Result<T, String>);
+
+impl<T> RedactedJournalMessageResult<T> {
+    pub(crate) fn into_result(self) -> Result<T, String> {
+        self.0
+    }
+}
+
+impl<T> From<Result<T, String>> for RedactedJournalMessageResult<T> {
+    fn from(value: Result<T, String>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> fmt::Debug for RedactedJournalMessageResult<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 /// Exact saved-layout I/O result carried through the Elm message boundary.
 ///
 /// Update handlers recover the original layout or external error. Generic
@@ -1170,7 +1199,7 @@ pub(crate) enum Message {
         request_id: u64,
         account_key: RedactedAccountKey,
         address: RedactedAddress,
-        result: Result<api::UserFillsPage, String>,
+        result: RedactedJournalMessageResult<api::UserFillsPage>,
     },
     JournalRefresh,
     JournalClearCache,
@@ -1195,7 +1224,7 @@ pub(crate) enum Message {
         account_key: RedactedAccountKey,
         address: RedactedAddress,
         request: RedactedJournalSnapshotRequest,
-        result: Result<Vec<Candle>, String>,
+        result: RedactedJournalMessageResult<Vec<Candle>>,
     },
     // Spaghetti chart
     SpaghettiSwitchTimeframe(SpaghettiChartId, Timeframe),
@@ -1806,12 +1835,13 @@ pub(crate) enum Message {
 mod tests {
     use super::{
         Message, RedactedAccountMessageResult, RedactedAdvancedOrderHistoryId,
-        RedactedClientOrderId, RedactedLayoutMessageResult, RedactedOrderId, RedactedOrderInput,
-        RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput,
-        RedactedPnlCardMessageResult, RedactedTelegramChannelKey, SchwabAccountsMessageResult,
-        SchwabTokenRefreshMessageResult, SecretInput, TelegramFastAuthMessageResult,
-        TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult, XAuthContextMessageResult,
-        XFeedPageMessageResult, XListsMessageResult, XProfileImageMessageResult,
+        RedactedClientOrderId, RedactedJournalMessageResult, RedactedLayoutMessageResult,
+        RedactedOrderId, RedactedOrderInput, RedactedOrderMessageResult, RedactedOrderSymbol,
+        RedactedOrderValue, RedactedPhoneInput, RedactedPnlCardMessageResult,
+        RedactedTelegramChannelKey, SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult,
+        SecretInput, TelegramFastAuthMessageResult, TelegramFastAuthOutcome,
+        XAccessTokenRefreshMessageResult, XAuthContextMessageResult, XFeedPageMessageResult,
+        XListsMessageResult, XProfileImageMessageResult,
     };
     use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
     use crate::api::{
@@ -2337,6 +2367,39 @@ mod tests {
             restored.buckets["day"].account_value_history[0].1.to_bits(),
             FINANCIAL_BITS
         );
+    }
+
+    #[test]
+    fn journal_message_result_wrapper_preserves_exact_candles_and_error() {
+        const ERROR: &str = "journal-result-error-sentinel";
+        const OPEN_TIME: u64 = 9_123_456_789;
+        const FINANCIAL_BITS: u64 = 0x7ff8_0000_0000_0042;
+        let financial_value = f64::from_bits(FINANCIAL_BITS);
+        let candle = crate::api::Candle::test_ohlcv(
+            OPEN_TIME,
+            OPEN_TIME + 59_999,
+            [financial_value, 20.0, 10.0, 15.0],
+            42.0,
+        );
+        let error: RedactedJournalMessageResult<Vec<crate::api::Candle>> =
+            Err(ERROR.to_string()).into();
+        let success: RedactedJournalMessageResult<Vec<crate::api::Candle>> =
+            Ok(vec![candle]).into();
+
+        let error_debug = format!("{error:?}");
+        let success_debug = format!("{success:?}");
+
+        assert!(error_debug.contains("Err(<redacted>)"), "{error_debug}");
+        assert!(success_debug.contains("Ok(<redacted>)"), "{success_debug}");
+        assert!(!error_debug.contains(ERROR), "{error_debug}");
+        assert!(
+            !success_debug.contains(&OPEN_TIME.to_string()),
+            "{success_debug}"
+        );
+        assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
+        let restored = success.into_result().expect("synthetic candles");
+        assert_eq!(restored[0].open_time, OPEN_TIME);
+        assert_eq!(restored[0].open.to_bits(), FINANCIAL_BITS);
     }
 
     #[test]
@@ -2926,6 +2989,7 @@ mod tests {
     fn address_bearing_message_debug_redacts_values() {
         const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
         const ACCOUNT_KEY: &str = "account-key-sentinel";
+        const JOURNAL_ERROR: &str = "journal-message-error-sentinel";
 
         let read_context = ReadDataRequestContext {
             provider: ReadDataProvider::Hyperliquid,
@@ -2971,13 +3035,13 @@ mod tests {
                 request_id: 1,
                 account_key: Some(ACCOUNT_KEY.to_string()).into(),
                 address: ADDRESS.into(),
-                result: Err("fills failed".to_string()),
+                result: Err(JOURNAL_ERROR.to_string()).into(),
             },
             Message::JournalSnapshotLoaded {
                 account_key: Some(ACCOUNT_KEY.to_string()).into(),
                 address: ADDRESS.into(),
                 request: snapshot_request.into(),
-                result: Err("snapshot failed".to_string()),
+                result: Err(JOURNAL_ERROR.to_string()).into(),
             },
             Message::WalletTrackerInputChanged(ADDRESS.into()),
             Message::WalletTrackerMute(ADDRESS.into()),
@@ -3131,6 +3195,7 @@ mod tests {
             assert!(rendered.contains("<redacted>"), "{rendered}");
             assert!(!rendered.contains(ADDRESS), "{rendered}");
             assert!(!rendered.contains(ACCOUNT_KEY), "{rendered}");
+            assert!(!rendered.contains(JOURNAL_ERROR), "{rendered}");
         }
     }
 }

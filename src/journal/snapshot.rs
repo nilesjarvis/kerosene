@@ -115,8 +115,8 @@ impl fmt::Debug for JournalTradeSnapshotRequest {
                 &self.account_key.as_ref().map(|_| "<redacted>"),
             )
             .field("address", &format_args!("<redacted>"))
-            .field("trade_id", &self.trade_id)
-            .field("coin", &self.coin)
+            .field("trade_id", &format_args!("<redacted>"))
+            .field("coin", &format_args!("<redacted>"))
             .field("source", &self.source)
             .field(
                 "read_data_provider_generation",
@@ -129,11 +129,11 @@ impl fmt::Debug for JournalTradeSnapshotRequest {
             .field("coverage", &self.coverage)
             .field("timeframe", &self.timeframe)
             .field("ladder_index", &self.ladder_index)
-            .field("trade_start_ms", &self.trade_start_ms)
-            .field("trade_end_ms", &self.trade_end_ms)
+            .field("trade_start_ms", &format_args!("<redacted>"))
+            .field("trade_end_ms", &format_args!("<redacted>"))
             .field("is_open", &self.is_open)
-            .field("start_ms", &self.start_ms)
-            .field("end_ms", &self.end_ms)
+            .field("start_ms", &format_args!("<redacted>"))
+            .field("end_ms", &format_args!("<redacted>"))
             .finish()
     }
 }
@@ -723,14 +723,52 @@ mod tests {
     }
 
     #[test]
-    fn request_debug_redacts_account_identifiers() {
-        let rendered = format!("{:?}", request());
+    fn request_debug_redacts_account_and_trade_context() {
+        const ACCOUNT_KEY: &str = "journal-account-key-sentinel";
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+        const TRADE_ID: &str = "journal-trade-id-sentinel";
+        const COIN: &str = "JOURNAL-SYMBOL-SENTINEL";
+        const TRADE_START_MS: u64 = 9_123_456_781;
+        const TRADE_END_MS: u64 = 9_123_456_782;
+        const START_MS: u64 = 9_123_456_783;
+        const END_MS: u64 = 9_123_456_784;
+        let mut request = request();
+        request.account_key = Some(ACCOUNT_KEY.to_string());
+        request.address = ADDRESS.to_string();
+        request.trade_id = TRADE_ID.to_string();
+        request.coin = COIN.to_string();
+        request.trade_start_ms = TRADE_START_MS;
+        request.trade_end_ms = TRADE_END_MS;
+        request.start_ms = START_MS;
+        request.end_ms = END_MS;
+
+        let rendered = format!("{request:?}");
 
         assert!(rendered.contains("<redacted>"));
-        assert!(!rendered.contains("acct"));
-        assert!(!rendered.contains("0xabc"));
-        assert!(rendered.contains("perp:BTC:test"));
-        assert!(rendered.contains("BTC"));
+        assert!(rendered.contains("source: Hyperliquid"));
+        assert!(rendered.contains("timeframe: M1"));
+        for sensitive in [ACCOUNT_KEY, ADDRESS, TRADE_ID, COIN] {
+            assert!(
+                !rendered.contains(sensitive),
+                "{sensitive} leaked in {rendered}"
+            );
+        }
+        for sensitive in
+            [TRADE_START_MS, TRADE_END_MS, START_MS, END_MS].map(|value| value.to_string())
+        {
+            assert!(
+                !rendered.contains(&sensitive),
+                "{sensitive} leaked in {rendered}"
+            );
+        }
+        assert_eq!(request.account_key.as_deref(), Some(ACCOUNT_KEY));
+        assert_eq!(request.address, ADDRESS);
+        assert_eq!(request.trade_id, TRADE_ID);
+        assert_eq!(request.coin, COIN);
+        assert_eq!(request.trade_start_ms, TRADE_START_MS);
+        assert_eq!(request.trade_end_ms, TRADE_END_MS);
+        assert_eq!(request.start_ms, START_MS);
+        assert_eq!(request.end_ms, END_MS);
     }
 
     #[test]

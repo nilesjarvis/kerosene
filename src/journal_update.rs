@@ -66,6 +66,7 @@ impl TradingTerminal {
                     return Task::none();
                 }
 
+                let result = result.into_result();
                 let had_chart_history = self.journal.trades.len() >= 2;
 
                 match result {
@@ -170,7 +171,7 @@ impl TradingTerminal {
                                     request_id,
                                     account_key: request_account_key.clone().into(),
                                     address: request_address.clone().into(),
-                                    result,
+                                    result: result.into(),
                                 },
                             );
                         }
@@ -305,7 +306,7 @@ impl TradingTerminal {
                     account_key.into_option(),
                     address.into_string(),
                     request.into_request(),
-                    result,
+                    result.into_result(),
                 );
             }
             Message::JournalRefresh => {
@@ -721,7 +722,7 @@ impl TradingTerminal {
                 account_key: account_key.clone().into(),
                 address: address.clone().into(),
                 request: request.clone().into(),
-                result,
+                result: result.into(),
             },
         )
     }
@@ -772,7 +773,7 @@ mod tests {
             account_key: Some("acct".to_string()).into(),
             address: "0xabc".to_string().into(),
             request: request.clone().into(),
-            result: Ok(vec![api::Candle::test_flat(0, 100.0)]),
+            result: Ok(vec![api::Candle::test_flat(0, 100.0)]).into(),
         });
 
         assert_eq!(
@@ -862,7 +863,7 @@ mod tests {
             request_id,
             account_key: Some("acct".to_string()).into(),
             address: "0xabc".to_string().into(),
-            result: Ok(empty_journal_page(12_345)),
+            result: Ok(empty_journal_page(12_345)).into(),
         });
 
         assert!(terminal.journal.selected_trade_id.is_none());
@@ -902,7 +903,7 @@ mod tests {
             request_id: stale_request_id,
             account_key: Some("acct".to_string()).into(),
             address: "0xabc".to_string().into(),
-            result: Err("old request failed".to_string()),
+            result: Err("old request failed".to_string()).into(),
         });
 
         assert_eq!(terminal.journal.sync_request_id, current_request_id);
@@ -922,7 +923,7 @@ mod tests {
             request_id,
             account_key: Some("acct".to_string()).into(),
             address: "0xabc".to_string().into(),
-            result: Ok(empty_journal_page(12_345)),
+            result: Ok(empty_journal_page(12_345)).into(),
         });
 
         assert!(!terminal.journal.loading);
@@ -941,7 +942,7 @@ mod tests {
             request_id,
             account_key: Some("acct".to_string()).into(),
             address: "0xabc".to_string().into(),
-            result: Err("fills failed: api_key=journal-secret".to_string()),
+            result: Err("fills failed: api_key=journal-secret".to_string()).into(),
         });
 
         let error = terminal.journal.error.as_deref().expect("journal error");
@@ -961,7 +962,7 @@ mod tests {
             request_id,
             account_key: Some("acct".to_string()).into(),
             address: "0xabc".to_string().into(),
-            result: Err("fills failed: signature=warning-secret".to_string()),
+            result: Err("fills failed: signature=warning-secret".to_string()).into(),
         });
 
         let warning = terminal
@@ -990,7 +991,7 @@ mod tests {
             account_key: Some("acct".to_string()).into(),
             address: "0xabc".to_string().into(),
             request: request.clone().into(),
-            result: Err("candles failed: auth_token=snapshot-secret".to_string()),
+            result: Err("candles failed: auth_token=snapshot-secret".to_string()).into(),
         });
 
         let snapshot = terminal
