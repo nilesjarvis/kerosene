@@ -180,6 +180,14 @@ status is represented by a redaction marker so OIDs, fill size, fill price, and
 sanitized-but-still-sensitive external copy do not become diagnostic output.
 The stored status and every downstream consumer remain unchanged.
 
+Cancel and move correlation state likewise retains exact account, symbol, OID,
+request-sequence, and expected-price values for map identity, stale-result
+rejection, status reconciliation, and chart interaction. Its independently
+formattable key and pending status records expose only request sequence, phase,
+type shape, and redaction markers. The captured-key move context remains
+non-formattable. Formatting does not alter equality, hashing, matching, cleanup,
+or any order action.
+
 TWAP planning and activity messages also remain exact for the order-status UI,
 live activity log, and terminal advanced-order history. Their independently
 formattable runtime layers do not expose that text: `TwapPlannedSliceSkip` and

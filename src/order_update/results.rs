@@ -119,7 +119,7 @@ impl fmt::Debug for PendingCancelStatusRequest {
             .field("request_id", &self.request_id)
             .field("account_address", &"<redacted>")
             .field("oid", &"<redacted>")
-            .field("symbol", &self.symbol)
+            .field("symbol", &"<redacted>")
             .field("phase", &self.phase)
             .finish()
     }
@@ -223,7 +223,7 @@ impl fmt::Debug for PendingMoveStatusRequest {
             .field("request_id", &self.request_id)
             .field("account_address", &"<redacted>")
             .field("oid", &"<redacted>")
-            .field("symbol", &self.symbol)
+            .field("symbol", &"<redacted>")
             .field("expected_price", &"<redacted>")
             .finish()
     }

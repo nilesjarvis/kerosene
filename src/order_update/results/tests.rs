@@ -192,39 +192,69 @@ fn pending_one_shot_status_request_debug_redacts_account_and_cloid() {
 }
 
 #[test]
-fn pending_cancel_status_request_debug_redacts_account_and_oid() {
-    let request = PendingCancelStatusRequest::new(
+fn pending_cancel_status_request_debug_redacts_exact_correlation_values() {
+    const SYMBOL: &str = "CANCEL-SYMBOL-SENTINEL";
+    const OID: u64 = 9_876_543_210_123_457;
+    let mut request = PendingCancelStatusRequest::new(
         CANCEL_REQUEST_ID,
         TEST_ACCOUNT.to_string(),
-        42,
-        "BTC".to_string(),
+        OID,
+        SYMBOL.to_string(),
     );
+
+    assert!(request.matches_result(CANCEL_REQUEST_ID, TEST_ACCOUNT));
+    assert!(!request.matches_result(STALE_CANCEL_REQUEST_ID, TEST_ACCOUNT));
+    assert!(!request.matches_result(CANCEL_REQUEST_ID, OTHER_ACCOUNT));
+    assert!(request.begin_status_check(CANCEL_REQUEST_ID));
+    assert!(request.matches_status(CANCEL_REQUEST_ID, TEST_ACCOUNT, OID, SYMBOL));
+    assert!(!request.matches_status(CANCEL_REQUEST_ID, TEST_ACCOUNT, OID + 1, SYMBOL));
+    assert!(!request.matches_status(CANCEL_REQUEST_ID, TEST_ACCOUNT, OID, "OTHER-SYMBOL"));
 
     let rendered = format!("{request:?}");
 
-    assert!(rendered.contains("<redacted>"));
+    assert!(rendered.contains("PendingCancelStatusRequest"));
+    assert!(rendered.contains("request_id: 17"));
+    assert!(rendered.contains("phase: CheckingStatus"));
+    assert!(rendered.contains("account_address: \"<redacted>\""));
+    assert!(rendered.contains("oid: \"<redacted>\""));
+    assert!(rendered.contains("symbol: \"<redacted>\""));
     assert!(!rendered.contains(TEST_ACCOUNT));
-    assert!(!rendered.contains("42"));
-    assert!(rendered.contains("BTC"));
+    assert!(!rendered.contains(&OID.to_string()));
+    assert!(!rendered.contains(SYMBOL));
 }
 
 #[test]
-fn pending_move_status_request_debug_redacts_account_and_oid() {
+fn pending_move_status_request_debug_redacts_exact_correlation_values() {
+    const REQUEST_ID: u64 = 19;
+    const SYMBOL: &str = "MOVE-SYMBOL-SENTINEL";
+    const OID: u64 = 9_876_543_210_123_459;
+    const EXPECTED_PRICE: &str = "98765.432123456";
     let request = PendingMoveStatusRequest::new(
-        7,
+        REQUEST_ID,
         TEST_ACCOUNT.to_string(),
-        42,
-        "BTC".to_string(),
-        "98765.4321".to_string(),
+        OID,
+        SYMBOL.to_string(),
+        EXPECTED_PRICE.to_string(),
     );
+
+    assert!(request.matches(REQUEST_ID, TEST_ACCOUNT, OID, SYMBOL));
+    assert!(!request.matches(REQUEST_ID + 1, TEST_ACCOUNT, OID, SYMBOL));
+    assert!(!request.matches(REQUEST_ID, OTHER_ACCOUNT, OID, SYMBOL));
+    assert!(!request.matches(REQUEST_ID, TEST_ACCOUNT, OID + 1, SYMBOL));
+    assert!(!request.matches(REQUEST_ID, TEST_ACCOUNT, OID, "OTHER-SYMBOL"));
 
     let rendered = format!("{request:?}");
 
-    assert!(rendered.contains("<redacted>"));
+    assert!(rendered.contains("PendingMoveStatusRequest"));
+    assert!(rendered.contains("request_id: 19"));
+    assert!(rendered.contains("account_address: \"<redacted>\""));
+    assert!(rendered.contains("oid: \"<redacted>\""));
+    assert!(rendered.contains("symbol: \"<redacted>\""));
+    assert!(rendered.contains("expected_price: \"<redacted>\""));
     assert!(!rendered.contains(TEST_ACCOUNT));
-    assert!(!rendered.contains("42"));
-    assert!(!rendered.contains("98765.4321"));
-    assert!(rendered.contains("BTC"));
+    assert!(!rendered.contains(&OID.to_string()));
+    assert!(!rendered.contains(SYMBOL));
+    assert!(!rendered.contains(EXPECTED_PRICE));
 }
 
 #[test]

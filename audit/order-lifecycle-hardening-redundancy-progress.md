@@ -105,6 +105,14 @@
   action or add mutation retries (`src/order_execution.rs:992-1053`,
   `src/order_update/results.rs:90-290`,
   `src/order_update/results.rs:761-788`).
+- The independently formattable cancel/move correlation layers now keep account,
+  symbol, OID, and expected price behind redaction markers. `MoveOrderKey`
+  preserves exact `Eq`/`Hash` map and drag identity; pending status records
+  preserve exact matching while retaining only request sequence and phase as
+  useful diagnostic metadata. The captured-key `PendingMoveOrderContext`
+  remains deliberately non-formattable, and no production diagnostic sink was
+  found (`src/order_execution.rs:1009-1062`,
+  `src/order_update/results.rs:102-290`).
 - Connected-account task results carry read-provider, request-generation, and
   dispatch-time account-revision context. Address-scoped user-data changes
   supersede an earlier request before it can replace state or drive lifecycle
@@ -3197,6 +3205,78 @@ target-specific cancellation policy, not HTTP replay.
   helpers, and remaining local/external-status diagnostics still require Track
   9 audit.
 
+### F-46 — Cancel and move correlation diagnostics expose order identity
+
+- Status: addressed in Turn 39; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account/order privacy and diagnostic-boundary hardening; no
+  current production formatter/log sink or known disclosure was found
+- Scope: `MoveOrderKey`; pending cancel and move status requests; all map, drag,
+  chart-overlay, result/status matching, refresh-reconciliation, disconnect,
+  config-clear, and test consumers; deliberately non-formattable captured-key
+  move context
+- Preconditions/event ordering:
+  1. A chart move captures an exact symbol/OID key for active drag and pending-
+     context map ownership, or cancel/move dispatch creates a pending status
+     request with request sequence, account, OID, symbol, and move target price.
+  2. Exact key equality/hash lookups control overlay state and claim only the
+     matching move context. Exact pending-request predicates reject stale
+     request, account, OID, or symbol combinations before applying results.
+  3. `MoveOrderKey` derived `Debug` over its symbol/OID, while the two explicit
+     pending-request formatters redacted account/OID (and move price) but still
+     emitted symbol. Formatting these independently reachable runtime records
+     therefore exposed the remaining order identity.
+- Evidence: parent commit
+  `4b6fbf5c42fda63648e2ed50b40b93913367fea4` shows the raw key derive and
+  symbol-bearing status formatters. Repository-wide use tracing found the key
+  only in runtime map/drag/overlay identity and cleanup paths, and the status
+  owners only in cancel/move result, status, and account-snapshot
+  reconciliation. Repository-wide formatter/log searches found test formatters
+  but no current production sink. `PendingMoveOrderContext`, which owns the
+  captured signing key, intentionally has no `Debug` implementation
+  (`src/order_execution.rs:1009-1062`,
+  `src/order_execution/quick_order/move_order.rs:1-89`,
+  `src/order_update/move_order.rs:1-142`,
+  `src/chart_state/overlays.rs:70-112`,
+  `src/order_update/results.rs:102-290`).
+- Violated invariant: exact account-linked order identity belongs only in
+  deliberate correlation, reconciliation, and view behavior. A generic
+  diagnostic should identify the correlation record and safe control phase
+  without disclosing symbol, OID, account, or target price.
+- Risk: a future assertion, panic, map diagnostic, or lifecycle instrumentation
+  could disclose which instrument and exchange order a local account was
+  cancelling or modifying. No private key/signature exposure and no current
+  emitted log are claimed.
+- Why existing checks did not cover it: the pending-request diagnostic tests
+  required account/OID and price redaction but explicitly treated the symbol as
+  safe output. No test formatted `MoveOrderKey`; correlation tests exercised
+  map and matcher behavior without specifying a diagnostic policy.
+- Implemented fix: replace only `MoveOrderKey`'s derived formatter with an
+  explicit type-shaped formatter that redacts both fields, and replace only the
+  symbol values in the two pending-request formatters with redaction markers.
+  Request sequence and cancel phase remain visible. The key retains its exact
+  `Clone`, `PartialEq`, `Eq`, and `Hash` derives; the status fields,
+  constructors, accessors, and match predicates are unchanged.
+- Regression coverage: exact symbol/OID key values remain directly accessible
+  and equal keys still resolve through a `HashSet`, while alternate symbol or
+  OID values remain distinct; formatting rejects both sentinels. Cancel and
+  move requests must still accept every exact correlation value and reject
+  stale request, account, OID, and symbol variants before their diagnostics
+  retain request/phase metadata and reject account, symbol, OID, and price
+  sentinels (`src/order_execution.rs:725-754`,
+  `src/order_update/results/tests.rs:195-263`).
+- Smallest behavior-preserving fix: no field, constructor, accessor, match
+  predicate, equality/hash behavior, map operation, drag/overlay behavior,
+  state transition, cleanup, result ordering, task, message, view, persistence,
+  signed value, status copy, or trading policy changed. Only direct `Debug`
+  output and its tests differ.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  source/call-site tracing, and the narrow diff establish the intended
+  boundary, but the exact correlation regressions and nearby cancel/move suites
+  cannot execute until ALSA development metadata is available. TWAP form/book
+  helpers and remaining external-status diagnostics still require Track 9
+  audit.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -5593,6 +5673,62 @@ target-specific cancellation policy, not HTTP replay.
   and other nearby order-correlation model diagnostics; then continue TWAP form/
   book and remaining external-status boundaries.
 
+## Turn 39 — Redact Cancel and Move Correlation Diagnostics
+
+- Status: F-46 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: `MoveOrderKey`; cancel/move pending status owners; map, active-drag,
+  chart-overlay, direct/status-result, refresh, disconnect, and config-clear
+  consumers; captured-key move context boundary
+- Invariant: exact order identity must remain available to local correlation
+  and reconciliation, while generic diagnostics expose only safe lifecycle
+  control metadata.
+- Protected behavior: stored account/symbol/OID/expected-price/request values;
+  key clone/equality/hash and map lookup; active drag and chart overlays; cancel
+  phase transitions; stale request/account/OID/symbol rejection; move-context
+  ownership and captured key; result/status classification; refresh cleanup;
+  task/message ordering; visible order state and copy; all signed values,
+  persistence, timing, and trading behavior.
+- Preconditions/event ordering: dispatch and drag creation retain the same exact
+  values in the same owners. Map/overlay consumers continue hashing the key,
+  while pending requests compare every exact field in the same order. Only a
+  direct formatter substitutes markers for the key fields and status-record
+  symbol; the captured-key context still has no formatter.
+- Evidence: F-46 records the parent source, complete key/request consumer
+  inventory, absence of a current production formatting sink, intentional
+  non-formattability of the captured-key context, prior partial-redaction gap,
+  and exact correlation plus diagnostic characterizations.
+- Change: removed only `MoveOrderKey`'s derived `Debug` and added an explicit
+  formatter that redacts coin/OID; changed only the symbol fields in cancel and
+  move status formatters to redaction markers; documented the local correlation
+  diagnostic boundary.
+- Tests/checks:
+  - The pre-fix exact pending-cancel correlation/diagnostic regression stopped
+    in `alsa-sys` before Kerosene compilation because `pkg-config` could not
+    find the system `alsa.pc` file.
+  - Post-fix exact key/hash and pending cancel/move correlation regressions, the
+    complete order-result suite, and the move-order update suite stopped at the
+    same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no view, startup, subscription, window,
+    task, persistence, or runtime behavior changed, compilation is already
+    blocked, and no live exchange or credential-bearing operation was run.
+- Compatibility/UX assessment: the new tests require exact key values,
+  equality/hash distinctions, and request matcher behavior before formatting.
+  The production diff changes only three diagnostic field renderings; every
+  consumer and state-machine branch is source-identical. No visible behavior,
+  schema, timing, signed bytes, or trading semantics changed.
+- Residual risk: Kerosene has not type-checked on this host. F-46 is source-
+  hardened, but TWAP form/book helpers, remaining external-status types, and
+  other Track 9 diagnostics still require audit before a final verdict.
+- Prior turn commit hash: `4b6fbf5c42fda63648e2ed50b40b93913367fea4`
+- Next candidate: audit the complete TWAP form/book/planning-helper diagnostic
+  graph and its scheduling/result consumers, then continue remaining external-
+  status boundaries without changing visible automation behavior.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -5634,11 +5770,11 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: pre- and post-fix exact nested history/serde
-  diagnostics, complete advanced-history tests, exact config history round-trip/
-  default coverage, history-view formatting tests, `cargo check`, full
-  `cargo test`, and strict clippy at `alsa-sys` system dependency discovery,
-  before Kerosene was compiled.
+- Environment-blocked this turn: pre-fix pending-cancel diagnostics; post-fix
+  key/hash and pending cancel/move correlation diagnostics; complete order-
+  result and move-update tests; `cargo check`; full `cargo test`; and strict
+  clippy at `alsa-sys` system dependency discovery, before Kerosene was
+  compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
@@ -5646,7 +5782,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-45
+  F-40, and F-42 through F-46
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -5678,6 +5814,7 @@ target-specific cancellation policy, not HTTP replay.
   source-hardened by F-40. Leverage input/submission/result/action diagnostics
   are source-hardened by F-42, and shared normalized execution-outcome
   diagnostics by F-43. TWAP planning/live-event diagnostics are source-hardened
-  by F-44, and persisted advanced-history diagnostics by F-45. Remaining local
-  planner/state diagnostics, other external-status paths, and the rest of Track
-  9 require completion before a final verdict.
+  by F-44, persisted advanced-history diagnostics by F-45, and cancel/move
+  correlation diagnostics by F-46. Remaining local planner/state diagnostics,
+  other external-status paths, and the rest of Track 9 require completion
+  before a final verdict.

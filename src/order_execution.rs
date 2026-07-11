@@ -723,6 +723,35 @@ mod tests {
     }
 
     #[test]
+    fn move_order_key_debug_redacts_correlation_values_without_changing_hash_identity() {
+        const SYMBOL: &str = "MOVE-SYMBOL-SENTINEL";
+        const OID: u64 = 9_876_543_210_123_457;
+
+        let key = MoveOrderKey::new(SYMBOL, OID);
+        let matching_key = MoveOrderKey::new(SYMBOL, OID);
+        let other_symbol = MoveOrderKey::new("OTHER-SYMBOL-SENTINEL", OID);
+        let other_oid = MoveOrderKey::new(SYMBOL, OID + 1);
+        let keys = std::collections::HashSet::from([key.clone()]);
+
+        assert_eq!(key.coin(), SYMBOL);
+        assert_eq!(key.oid, OID);
+        assert_eq!(key, matching_key);
+        assert_ne!(key, other_symbol);
+        assert_ne!(key, other_oid);
+        assert!(keys.contains(&matching_key));
+        assert!(!keys.contains(&other_symbol));
+        assert!(!keys.contains(&other_oid));
+
+        let rendered = format!("{key:?}");
+
+        assert!(rendered.contains("MoveOrderKey"));
+        assert!(rendered.contains("coin: \"<redacted>\""));
+        assert!(rendered.contains("oid: \"<redacted>\""));
+        assert!(!rendered.contains(SYMBOL));
+        assert!(!rendered.contains(&OID.to_string()));
+    }
+
+    #[test]
     fn connected_order_account_address_rejects_missing_and_blank_values() {
         let mut terminal = TradingTerminal::boot().0;
 
@@ -980,10 +1009,19 @@ impl MoveOrderContextError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub(crate) struct MoveOrderKey {
     coin: String,
     oid: u64,
+}
+
+impl fmt::Debug for MoveOrderKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MoveOrderKey")
+            .field("coin", &"<redacted>")
+            .field("oid", &"<redacted>")
+            .finish()
+    }
 }
 
 impl MoveOrderKey {
