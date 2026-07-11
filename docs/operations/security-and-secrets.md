@@ -52,6 +52,12 @@ successful storage moves the exact staged key buffer into committed profile
 state rather than cloning it again. Backend-required payload and serialization
 buffers remain short-lived zeroizing scopes inside the synchronous call.
 
+Account switching performs same-profile, pending-request, Chase, and uncertain-
+TWAP checks before capturing target credentials. A successful saved-profile
+switch clones the canonical key once into a narrow target and moves that exact
+allocation into the key-input owner. Rejected and ghost switches create no
+target-key copy; ghost cleanup still scrubs any stray canonical key.
+
 Secret-bearing state includes:
 
 - `wallet_key_input`

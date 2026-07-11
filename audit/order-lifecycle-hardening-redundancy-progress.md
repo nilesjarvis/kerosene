@@ -161,6 +161,13 @@
   copies remain in their existing synchronous zeroizing scopes
   (`src/account_state/persistence.rs:38-75`,
   `src/account_update/profile.rs:335-389`).
+- Account switching evaluates same-profile, pending-request, Chase, and
+  uncertain-TWAP gates before constructing a minimal target. A saved target
+  clones only its canonical agent key and moves that exact allocation into the
+  intentional key-input owner; rejected and ghost switches copy no key. All
+  switch callers converge on this boundary
+  (`src/account_state/switching.rs:15-35`,
+  `src/account_state/switching.rs:306-381`).
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -323,6 +330,15 @@ inner/data models still derived raw `Debug`, and a type-only summary trusted the
 externally supplied response type. All three diagnostic layers now independently
 retain only allowlisted type/count metadata while exact status values remain
 available to the unchanged classifiers. Safe protocol summaries remain exact.
+
+Turn 30 closes the ordinary account-switch credential clone graph. The old
+entry point copied the complete target profile before any no-op or financial
+gate and copied its key again after a successful switch. Target capture now
+occurs only after every blocker plus synchronous old-account cleanup. Saved
+profiles create one moveable key-input allocation, rejected switches create
+none, and ghost switching never copies a stray canonical key before scrubbing
+it. Existing switch, stop, reset, persistence, and connect/disconnect behavior
+is unchanged.
 
 ### Mutation Transport Phase Audit
 
@@ -2395,6 +2411,74 @@ target-specific cancellation policy, not HTTP replay.
   add-account submission has a broader staged-key clone graph; neither owner
   path is claimed fixed by F-34.
 
+### F-35 — Rejected account switches clone target credentials before gates
+
+- Status: addressed in Turn 30; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium secret-lifetime hardening; switch authority and resulting
+  account selection were correct, but raw keys acquired unnecessary owners
+- Scope: every `switch_account_task` caller; invalid/same-profile requests;
+  pending mutation, active Chase, and uncertain-TWAP gates; normal active-TWAP
+  stopping; saved and ghost target profiles; empty-key handoff into deferred
+  legacy loading; key-input synchronization; config/connect task scheduling
+- Preconditions/event ordering:
+  1. A caller supplies an existing target profile index.
+  2. The prior entry point immediately clones the complete `AccountProfile`,
+     including agent and legacy per-profile integration keys.
+  3. A same-profile or financial gate may then reject the switch, leaving the
+     needless zeroizing clone alive through feedback construction and return.
+  4. If switching succeeds, the prior path clones the snapshot's agent key
+     again into `wallet_key_input`; a ghost target can likewise be cloned before
+     its canonical key is scrubbed.
+- Evidence: parent commit
+  `051b06c43524b73f3a051db1d1142d9056da3187` shows
+  `self.accounts.get(index).cloned()` before all four return gates and a second
+  `profile.agent_key.clone()` on success in `switch_account_task`. Picker,
+  hotkey, add-account, ghost, saved-delete fallback, and profile-selection
+  callers all converge on that method.
+- Violated invariant: target credentials must not be captured until index and
+  financial gates authorize a switch. A saved switch may own the canonical key
+  plus exactly one intentional key-input copy; a rejected or ghost switch needs
+  no target-key copy.
+- Risk: repeatedly selecting the current profile or attempting a blocked switch
+  transiently multiplied a signing key and unrelated per-profile secret. A
+  successful switch kept an intermediate key allocation in addition to the
+  canonical and key-input owners. All copies were zeroizing and no wrong-key
+  dispatch or disclosure is claimed, but the extra lifetime increases the
+  impact of a future callback, panic, or diagnostic defect.
+- Why existing checks did not cover it: switch tests asserted active index,
+  stopping, state clearing, toasts, and final key values. They did not observe
+  when the target snapshot was created or whether the successful key-input
+  value reused the one authorized captured allocation.
+- Implemented fix: added a narrow, non-`Clone`, non-`Debug` switch target that
+  contains only identity/address values plus one zeroizing key. Bounds and all
+  blockers run before target construction; normal active-TWAP stopping and
+  connected-state cleanup still run in their established order. Saved targets
+  clone the canonical key once and move it into `wallet_key_input`; ghost
+  targets construct an empty key and then retain the established canonical
+  scrub (`src/account_state/switching.rs:15-35`,
+  `src/account_state/switching.rs:306-381`).
+- Regression coverage: an injected capture boundary must remain untouched for
+  same-profile, pending-NUKE, active-Chase, and uncertain-TWAP rejection while
+  both canonical target and active-input allocations remain identical. The
+  successful control requires the canonical allocation to remain unchanged and
+  the input to own the exact one captured allocation. A ghost control starts
+  with a stray key, requires an empty target, and proves both canonical/input
+  owners finish scrubbed (`src/account_state/switching/tests.rs:147-265`).
+  Existing switch tests retain state-reset, stop, same-wallet, terminal-TWAP,
+  legacy migration, and connect/disconnect coverage.
+- Smallest behavior-preserving fix: caller routing, gate order and text, active
+  TWAP stop semantics, account clearing, active index, journal identity,
+  address/key input values, ghost status, deferred legacy migration, stream
+  resets, config scheduling, connect/disconnect tasks, toasts, and all visible
+  state remain unchanged. Only capture timing, snapshot breadth, allocation
+  provenance, and zeroization timing differ.
+- Residual uncertainty: Rust type-checking and tests remain blocked by ALSA
+  metadata. Add-account submission still clones its key through input, local
+  profile, persisted bundle, and first-account key-input synchronization.
+  Deferred legacy profile loading separately clones a full profile and key and
+  remains in the owner inventory; F-35 makes no claim about either path.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -4240,6 +4324,68 @@ target-specific cancellation policy, not HTTP replay.
   profile plus key-input owners. Then audit the add-account staging graph and
   continue the remaining local planner/message diagnostic inventory.
 
+## Turn 30 — Gate Account Credential Capture
+
+- Status: F-35 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: ordinary account-switch target ownership across every caller, all
+  pre-switch blockers, saved/ghost targets, old-account cleanup, key-input
+  transfer, and unchanged post-switch tasks
+- Invariant: an invalid, same-profile, pending, Chase-blocked, or uncertain-TWAP
+  switch captures no target credential. Once all gates pass, a saved switch
+  creates one moveable key-input allocation from the canonical profile; a ghost
+  switch creates no key copy and still scrubs any stray key.
+- Protected behavior: index validation; all gate ordering and feedback; active
+  TWAP stopping; connected/account/chart/portfolio/journal reset; active
+  selection; address and key inputs; ghost status; deferred legacy loading;
+  stream resets; config save timing; ConnectWallet/DisconnectWallet
+  publication; hotkey, picker, add-account, ghost, and deletion-fallback
+  callers; and every visible interaction.
+- Preconditions/event ordering: validate index and no-op/gate conditions first,
+  then stop ordinary active TWAPs and clear old connected state exactly as
+  before. Only after that synchronous cleanup can the still-existing target
+  profile be captured. Apply its identity/address and move or discard its
+  zeroizing key before the unchanged stream/config/task tail.
+- Evidence: repository-wide call-site search found one switch implementation
+  used by every UI/internal caller. Parent/current source comparison proves the
+  full pre-gate profile clone and second key clone are gone. F-35 records the
+  exact owner graph and focused capture/allocation assertions.
+- Change: introduced a minimal non-cloneable switch target and testable capture
+  boundary, moved target capture after every blocker and old-account cleanup,
+  omitted ghost keys, moved the saved target key into the input owner, added
+  three focused ownership regressions, and documented the lifecycle rule.
+- Tests/checks:
+  - The pre-fix exact rejected-switch capture attempt stopped in `alsa-sys`
+    before Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - Post-fix exact rejected/success/ghost allocation tests and the full
+    `account_state::switching::tests` module stopped at the same dependency
+    boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, subscription, window, or view
+    route changed, compilation is already blocked, and no live exchange or
+    credential-bearing operation was run.
+- Compatibility/UX assessment: the same gates run in the same order with the
+  same status/toast output. Once authorized, the same old-account stop/clear
+  work precedes the same target values, stream reset, config request, and
+  connect/disconnect message. Saved and ghost values are identical; only raw
+  owner count and allocation provenance change. No visible copy, timing,
+  trading, persistence, or interaction change is intentional.
+- Residual risk: Kerosene has not type-checked on this host. Add-account and
+  deferred legacy-key loading retain separate copy graphs; local planner/state
+  and direct-message diagnostic redaction plus other external status/snapshot
+  paths remain incomplete.
+- Prior turn commit hash: `051b06c43524b73f3a051db1d1142d9056da3187`
+- Next candidate: harden add-account submission so the window draft remains the
+  failure authority, credential storage receives only the necessary saved-
+  profile snapshot, and success moves rather than reclones the authorized key
+  into canonical/first-account input state. Include locked/encrypted and
+  keychain failure plus switch-on-add behavior before returning to the remaining
+  diagnostic inventory.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -4262,8 +4408,8 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused nested exchange-response redaction and
-  nearby signing response tests; `cargo check`; full `cargo test`; and strict
+- Environment-blocked this turn: focused account-switch capture/allocation and
+  nearby switch behavior tests; `cargo check`; full `cargo test`; and strict
   clippy at `alsa-sys` system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
@@ -4271,7 +4417,7 @@ target-specific cancellation policy, not HTTP replay.
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-34
+- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-35
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -4290,7 +4436,7 @@ target-specific cancellation policy, not HTTP replay.
   source-complete apart from the deferred history decision. Saved-profile
   delete and address-rebind key ownership are source-hardened apart from F-31;
   explicit credential-save ownership is source-hardened by F-33, and nested
-  exchange-response diagnostics are source-hardened by F-34. Switching/add-
-  account copies, local planning/state/message diagnostic redaction, other
-  external-status paths, and the rest of Track 9 require completion before a
-  final verdict.
+  exchange-response diagnostics are source-hardened by F-34. Ordinary switching
+  key ownership is source-hardened by F-35; add-account/deferred-legacy copies,
+  local planning/state/message diagnostic redaction, other external-status
+  paths, and the rest of Track 9 require completion before a final verdict.

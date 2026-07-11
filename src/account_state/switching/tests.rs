@@ -1,3 +1,4 @@
+use super::AccountSwitchTarget;
 use crate::account::{
     AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary,
     SpotClearinghouseState, UserFeeRates,
@@ -141,6 +142,126 @@ fn pending_place_twap(id: u64, account_address: &str) -> TwapOrder {
         retry_count: 0,
     }));
     twap
+}
+
+fn switch_test_terminal() -> TradingTerminal {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.desktop_notifications = false;
+    terminal.accounts = vec![
+        account(
+            "account-a",
+            "Account A",
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ),
+        account(
+            "account-b",
+            "Account B",
+            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ),
+    ];
+    terminal.active_account_index = 0;
+    terminal.wallet_address_input = terminal.accounts[0].wallet_address.clone();
+    terminal.wallet_key_input = terminal.accounts[0].agent_key.clone().into();
+    terminal.connected_address = Some(terminal.accounts[0].wallet_address.clone());
+    terminal
+}
+
+fn assert_switch_target_not_captured(mut terminal: TradingTerminal, index: usize, context: &str) {
+    let target_key_allocation = terminal.accounts[index].agent_key.as_ptr();
+    let active_input_allocation = terminal.wallet_key_input.as_str().as_ptr();
+    let capture_count = Cell::new(0_u32);
+
+    let _task = terminal.switch_account_task_with_target(index, |profile, is_ghost| {
+        capture_count.set(capture_count.get().saturating_add(1));
+        AccountSwitchTarget::from_profile(profile, is_ghost)
+    });
+
+    assert_eq!(capture_count.get(), 0, "{context}");
+    assert_eq!(
+        terminal.accounts[index].agent_key.as_ptr(),
+        target_key_allocation,
+        "{context}"
+    );
+    assert_eq!(
+        terminal.wallet_key_input.as_str().as_ptr(),
+        active_input_allocation,
+        "{context}"
+    );
+}
+
+#[test]
+fn rejected_account_switches_do_not_capture_target_credentials() {
+    assert_switch_target_not_captured(switch_test_terminal(), 0, "same active profile");
+
+    let mut pending = switch_test_terminal();
+    pending.pending_nuke_execution = Some(PendingNukeExecution::new(7, 2, 0));
+    assert_switch_target_not_captured(pending, 1, "pending trading request");
+
+    let mut chasing = switch_test_terminal();
+    chasing.chase_orders.insert(
+        42,
+        chase_order("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+    );
+    assert_switch_target_not_captured(chasing, 1, "active Chase");
+
+    let mut uncertain_twap = switch_test_terminal();
+    uncertain_twap.twap_orders.insert(
+        7,
+        pending_place_twap(7, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+    );
+    assert_switch_target_not_captured(uncertain_twap, 1, "uncertain TWAP");
+}
+
+#[test]
+fn successful_account_switch_moves_exact_captured_key_into_input() {
+    let mut terminal = switch_test_terminal();
+    let canonical_key_allocation = terminal.accounts[1].agent_key.as_ptr();
+    let captured_key_allocation = Cell::new(std::ptr::null::<u8>());
+    let capture_count = Cell::new(0_u32);
+
+    let _task = terminal.switch_account_task_with_target(1, |profile, is_ghost| {
+        assert!(!is_ghost);
+        assert_eq!(profile.agent_key.as_ptr(), canonical_key_allocation);
+        capture_count.set(capture_count.get().saturating_add(1));
+        let target = AccountSwitchTarget::from_profile(profile, is_ghost);
+        captured_key_allocation.set(target.agent_key.as_ptr());
+        target
+    });
+
+    assert_eq!(capture_count.get(), 1);
+    assert_eq!(terminal.active_account_index, 1);
+    assert_eq!(
+        terminal.accounts[1].agent_key.as_ptr(),
+        canonical_key_allocation
+    );
+    assert_eq!(terminal.wallet_key_input.as_str(), "account-b-agent-key");
+    assert_eq!(
+        terminal.wallet_key_input.as_str().as_ptr(),
+        captured_key_allocation.get()
+    );
+}
+
+#[test]
+fn ghost_account_switch_target_never_captures_profile_key() {
+    let mut terminal = switch_test_terminal();
+    terminal
+        .ghost_account_secret_ids
+        .insert("account-b".to_string());
+    let capture_count = Cell::new(0_u32);
+
+    let _task = terminal.switch_account_task_with_target(1, |profile, is_ghost| {
+        assert!(is_ghost);
+        assert_eq!(profile.agent_key.as_str(), "account-b-agent-key");
+        capture_count.set(capture_count.get().saturating_add(1));
+        let target = AccountSwitchTarget::from_profile(profile, is_ghost);
+        assert!(target.agent_key.is_empty());
+        target
+    });
+
+    assert_eq!(capture_count.get(), 1);
+    assert_eq!(terminal.active_account_index, 1);
+    assert!(terminal.accounts[1].agent_key.is_empty());
+    assert!(terminal.wallet_key_input.is_empty());
 }
 
 #[test]

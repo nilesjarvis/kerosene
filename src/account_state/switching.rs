@@ -10,7 +10,29 @@ use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
 use iced::Task;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
+
+/// Short-lived target captured only after every account-switch gate passes.
+/// Its saved-profile key becomes the key-input allocation by move.
+struct AccountSwitchTarget {
+    secret_id: String,
+    wallet_address: String,
+    agent_key: Zeroizing<String>,
+}
+
+impl AccountSwitchTarget {
+    fn from_profile(profile: &AccountProfile, is_ghost: bool) -> Self {
+        Self {
+            secret_id: profile.secret_id.clone(),
+            wallet_address: profile.wallet_address.clone(),
+            agent_key: if is_ghost {
+                Zeroizing::new(String::new())
+            } else {
+                profile.agent_key.clone()
+            },
+        }
+    }
+}
 
 impl TradingTerminal {
     fn stop_twaps_for_account_switch(&mut self) {
@@ -282,9 +304,17 @@ impl TradingTerminal {
     }
 
     pub(crate) fn switch_account_task(&mut self, index: usize) -> Task<Message> {
-        let Some(profile) = self.accounts.get(index).cloned() else {
+        self.switch_account_task_with_target(index, AccountSwitchTarget::from_profile)
+    }
+
+    fn switch_account_task_with_target(
+        &mut self,
+        index: usize,
+        capture_target: impl FnOnce(&AccountProfile, bool) -> AccountSwitchTarget,
+    ) -> Task<Message> {
+        if self.accounts.get(index).is_none() {
             return Task::none();
-        };
+        }
 
         if index == self.active_account_index {
             return Task::none();
@@ -305,11 +335,17 @@ impl TradingTerminal {
         self.stop_twaps_for_account_switch();
         self.clear_connected_account_state_for_switch();
 
+        let profile = self
+            .accounts
+            .get(index)
+            .expect("switch target must survive synchronous account-state cleanup");
         let is_ghost = self.ghost_account_secret_ids.contains(&profile.secret_id);
+        let target = capture_target(profile, is_ghost);
+
         self.active_account_index = index;
         self.journal
-            .switch_active_account(Some(profile.secret_id.clone()));
-        self.wallet_address_input = profile.wallet_address.clone();
+            .switch_active_account(Some(target.secret_id.clone()));
+        self.wallet_address_input = target.wallet_address;
         self.close_menu_coin = None;
         self.nuke_confirmation = None;
         self.pending_nuke_execution = None;
@@ -322,8 +358,8 @@ impl TradingTerminal {
             self.secret_store_status = Some(("Ghost wallet loaded in memory only".into(), false));
         } else {
             self.wallet_key_input.zeroize();
-            self.wallet_key_input = profile.agent_key.clone().into();
-            self.last_persisted_active_account_secret_id = Some(profile.secret_id.clone());
+            self.wallet_key_input = target.agent_key.into();
+            self.last_persisted_active_account_secret_id = Some(target.secret_id);
             if self.wallet_key_input.trim().is_empty() {
                 self.load_deferred_legacy_account_key(index);
             }
