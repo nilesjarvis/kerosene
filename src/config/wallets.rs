@@ -18,7 +18,7 @@ impl fmt::Debug for TrackedWalletConfig {
             .field("address", &"<redacted>")
             .field(
                 "label",
-                &redact_wallet_address_debug_value(self.label.trim()),
+                &(!self.label.trim().is_empty()).then_some("<redacted>"),
             )
             .finish()
     }
@@ -46,9 +46,9 @@ impl fmt::Debug for AddressBookEntryConfig {
             .field("address", &"<redacted>")
             .field(
                 "label",
-                &redact_wallet_address_debug_value(self.label.trim()),
+                &(!self.label.trim().is_empty()).then_some("<redacted>"),
             )
-            .field("color", &self.color)
+            .field("color", &self.color.as_ref().map(|_| "<redacted>"))
             .field("tags", &RedactedWalletTags(self.tags.len()))
             .finish()
     }
@@ -303,13 +303,14 @@ mod tests {
     const ADDRESS_C: &str = "0x3333333333333333333333333333333333333333";
 
     #[test]
-    fn wallet_config_debug_redacts_addresses() {
+    fn wallet_config_debug_redacts_addresses_and_labels_without_changing_wire_data() {
+        const LABEL: &str = "private-tracked-wallet-label-sentinel";
         let cfg = WalletTrackerConfig {
             tracked_addresses: vec![ADDRESS_A.to_string(), ADDRESS_B.to_string()],
             muted_addresses: vec![ADDRESS_C.to_string()],
             wallets: vec![TrackedWalletConfig {
                 address: ADDRESS_A.to_string(),
-                label: "Whale".to_string(),
+                label: LABEL.to_string(),
             }],
             open: true,
             width: 900.0,
@@ -317,6 +318,7 @@ mod tests {
             x: Some(12.0),
             y: Some(34.0),
         };
+        let wire_before = serde_json::to_value(&cfg).expect("serialize wallet tracker config");
 
         let rendered = format!("{cfg:?}");
 
@@ -325,8 +327,50 @@ mod tests {
         }
         assert!(rendered.contains("tracked_addresses: <2 redacted>"));
         assert!(rendered.contains("muted_addresses: <1 redacted>"));
-        assert!(rendered.contains("Whale"));
+        assert!(rendered.contains("label: Some(\"<redacted>\")"));
+        assert!(!rendered.contains(LABEL));
         assert!(rendered.contains("open: true"));
+        assert_eq!(
+            serde_json::to_value(&cfg).expect("serialize wallet tracker config after formatting"),
+            wire_before
+        );
+    }
+
+    #[test]
+    fn address_book_config_debug_is_structural_and_preserves_wire_data() {
+        const LABEL: &str = "private-address-book-label-sentinel";
+        const COLOR: &str = "#a1b2c3";
+        const TAG: &str = "private-address-book-tag-sentinel";
+        let entry = AddressBookEntryConfig {
+            address: ADDRESS_A.to_string(),
+            label: LABEL.to_string(),
+            color: Some(COLOR.to_string()),
+            tags: vec![TAG.to_string(), ADDRESS_B.to_string()],
+        };
+        let wire_before = serde_json::to_value(&entry).expect("serialize address-book entry");
+
+        let rendered = format!("{entry:?}");
+
+        assert!(rendered.contains("address: \"<redacted>\""), "{rendered}");
+        assert!(
+            rendered.contains("label: Some(\"<redacted>\")"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("color: Some(\"<redacted>\")"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("tags: <2 redacted>"), "{rendered}");
+        for sensitive in [ADDRESS_A, ADDRESS_B, LABEL, COLOR, TAG] {
+            assert!(
+                !rendered.contains(sensitive),
+                "{sensitive} leaked in {rendered}"
+            );
+        }
+        assert_eq!(
+            serde_json::to_value(&entry).expect("serialize address-book entry after formatting"),
+            wire_before
+        );
     }
 
     #[test]

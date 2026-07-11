@@ -198,6 +198,33 @@ impl fmt::Debug for RedactedAddress {
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct RedactedWalletLabel(String);
+
+impl RedactedWalletLabel {
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedWalletLabel {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedWalletLabel {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Debug for RedactedWalletLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("WalletLabel(<redacted>)")
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct RedactedClipboardText(String);
 
 impl RedactedClipboardText {
@@ -1274,12 +1301,12 @@ pub(crate) enum Message {
     SpaghettiSetColorMode(SpaghettiChartId, spaghetti::ComparisonColorMode),
     PairSetCandleMode(SpaghettiChartId, bool),
     WalletTrackerInputChanged(RedactedAddress),
-    WalletTrackerLabelInputChanged(String),
+    WalletTrackerLabelInputChanged(RedactedWalletLabel),
     WalletTrackerAdd,
     WalletTrackerMute(RedactedAddress),
     WalletTrackerUnmute(RedactedAddress),
     WalletTrackerRemove(RedactedAddress),
-    WalletTrackerLabelChanged(RedactedAddress, String),
+    WalletTrackerLabelChanged(RedactedAddress, RedactedWalletLabel),
     WalletTrackerRefresh,
     WalletTrackerRefreshDue,
     WalletTrackerRefreshOne(RedactedAddress),
@@ -1867,10 +1894,11 @@ mod tests {
         RedactedClientOrderId, RedactedJournalMessageResult, RedactedLayoutMessageResult,
         RedactedOrderId, RedactedOrderInput, RedactedOrderMessageResult, RedactedOrderSymbol,
         RedactedOrderValue, RedactedPhoneInput, RedactedPnlCardMessageResult,
-        RedactedTelegramChannelKey, RedactedWalletLabelsMessageResult, SchwabAccountsMessageResult,
-        SchwabTokenRefreshMessageResult, SecretInput, TelegramFastAuthMessageResult,
-        TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult, XAuthContextMessageResult,
-        XFeedPageMessageResult, XListsMessageResult, XProfileImageMessageResult,
+        RedactedTelegramChannelKey, RedactedWalletLabel, RedactedWalletLabelsMessageResult,
+        SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult, SecretInput,
+        TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult,
+        XAuthContextMessageResult, XFeedPageMessageResult, XListsMessageResult,
+        XProfileImageMessageResult,
     };
     use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
     use crate::api::{
@@ -1908,6 +1936,18 @@ mod tests {
         assert!(rendered.contains("<redacted>"));
         assert!(!rendered.contains("order-input-secret"));
         assert_eq!(input.into_string(), "order-input-secret");
+    }
+
+    #[test]
+    fn wallet_label_debug_redacts_and_preserves_exact_value() {
+        const LABEL: &str = "private-wallet-label-input-sentinel";
+        let label = RedactedWalletLabel::from(LABEL);
+
+        let rendered = format!("{label:?}");
+
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        assert!(!rendered.contains(LABEL), "{rendered}");
+        assert_eq!(label.into_string(), LABEL);
     }
 
     #[test]
@@ -3096,6 +3136,7 @@ mod tests {
         const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
         const ACCOUNT_KEY: &str = "account-key-sentinel";
         const JOURNAL_ERROR: &str = "journal-message-error-sentinel";
+        const WALLET_LABEL: &str = "private-wallet-message-label-sentinel";
 
         let read_context = ReadDataRequestContext {
             provider: ReadDataProvider::Hyperliquid,
@@ -3150,10 +3191,11 @@ mod tests {
                 result: Err(JOURNAL_ERROR.to_string()).into(),
             },
             Message::WalletTrackerInputChanged(ADDRESS.into()),
+            Message::WalletTrackerLabelInputChanged(WALLET_LABEL.into()),
             Message::WalletTrackerMute(ADDRESS.into()),
             Message::WalletTrackerUnmute(ADDRESS.into()),
             Message::WalletTrackerRemove(ADDRESS.into()),
-            Message::WalletTrackerLabelChanged(ADDRESS.into(), "desk".to_string()),
+            Message::WalletTrackerLabelChanged(ADDRESS.into(), WALLET_LABEL.into()),
             Message::WalletTrackerRefreshOne(ADDRESS.into()),
             Message::WalletTrackerRefreshOrders(ADDRESS.into()),
             Message::WalletTrackerLoaded(
@@ -3302,6 +3344,7 @@ mod tests {
             assert!(!rendered.contains(ADDRESS), "{rendered}");
             assert!(!rendered.contains(ACCOUNT_KEY), "{rendered}");
             assert!(!rendered.contains(JOURNAL_ERROR), "{rendered}");
+            assert!(!rendered.contains(WALLET_LABEL), "{rendered}");
         }
     }
 }

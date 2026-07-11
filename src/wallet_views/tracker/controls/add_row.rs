@@ -17,7 +17,7 @@ impl TradingTerminal {
                 .padding([6, 8]),
             text_input("Label (optional)", &self.wallet_tracker.add_label_input)
                 .style(helpers::text_input_style)
-                .on_input(Message::WalletTrackerLabelInputChanged)
+                .on_input(|value| Message::WalletTrackerLabelInputChanged(value.into()))
                 .on_submit(Message::WalletTrackerAdd)
                 .size(12)
                 .padding([6, 8])

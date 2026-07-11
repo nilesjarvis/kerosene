@@ -10,7 +10,7 @@ impl TradingTerminal {
                 self.wallet_tracker.add_input = value.into_string();
             }
             Message::WalletTrackerLabelInputChanged(value) => {
-                self.wallet_tracker.add_label_input = value;
+                self.wallet_tracker.add_label_input = value.into_string();
             }
             Message::WalletTrackerAdd => {
                 let Some(addr) = Self::normalize_wallet_address(&self.wallet_tracker.add_input)
@@ -109,6 +109,7 @@ impl TradingTerminal {
                     return Task::none();
                 };
                 let was_labeled = self.wallet_label(&address).is_some();
+                let label = label.into_string();
                 let label = label.trim().to_string();
                 if label.is_empty() {
                     if self
@@ -133,5 +134,51 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+
+    #[test]
+    fn wallet_tracker_label_input_preserves_exact_edit_text() {
+        const LABEL_INPUT: &str = "  private wallet label input  ";
+        let (mut terminal, _) = TradingTerminal::boot();
+
+        let _task = terminal.update_wallet_tracker_entries(
+            Message::WalletTrackerLabelInputChanged(LABEL_INPUT.into()),
+        );
+
+        assert_eq!(terminal.wallet_tracker.add_label_input, LABEL_INPUT);
+    }
+
+    #[test]
+    fn wallet_tracker_label_change_preserves_trim_sync_and_persist_behavior() {
+        const LABEL_INPUT: &str = "  Private Wallet Desk  ";
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.address_book.remove(TEST_ADDRESS);
+        terminal.config_save_due_at = None;
+        let reconnect_nonce = terminal.tracked_trades_reconnect_nonce;
+
+        let _task = terminal.update_wallet_tracker_entries(Message::WalletTrackerLabelChanged(
+            TEST_ADDRESS.into(),
+            LABEL_INPUT.into(),
+        ));
+
+        assert_eq!(
+            terminal
+                .address_book
+                .get(TEST_ADDRESS)
+                .map(|entry| entry.label.as_str()),
+            Some("Private Wallet Desk")
+        );
+        assert_eq!(
+            terminal.tracked_trades_reconnect_nonce,
+            reconnect_nonce.wrapping_add(1)
+        );
+        assert!(terminal.config_save_due_at.is_some());
     }
 }

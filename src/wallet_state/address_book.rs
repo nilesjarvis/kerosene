@@ -1,5 +1,4 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::redact_wallet_address_debug_value;
 use std::fmt;
 
 mod display;
@@ -23,9 +22,9 @@ impl fmt::Debug for AddressBookEntry {
         f.debug_struct("AddressBookEntry")
             .field(
                 "label",
-                &redact_wallet_address_debug_value(self.label.trim()),
+                &(!self.label.trim().is_empty()).then_some("<redacted>"),
             )
-            .field("color", &self.color)
+            .field("color", &self.color.as_ref().map(|_| "<redacted>"))
             .field("tags", &format_args!("<{} redacted>", self.tags.len()))
             .finish()
     }
@@ -41,11 +40,8 @@ pub(crate) struct WalletDisplay {
 impl fmt::Debug for WalletDisplay {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WalletDisplay")
-            .field("primary", &redact_wallet_address_debug_value(&self.primary))
-            .field(
-                "secondary",
-                &redact_wallet_address_debug_value(&self.secondary),
-            )
+            .field("primary", &"<redacted>")
+            .field("secondary", &"<redacted>")
             .field("has_label", &self.has_label)
             .finish()
     }
@@ -105,31 +101,73 @@ mod tests {
     const TEST_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
 
     #[test]
-    fn address_book_entry_debug_redacts_wallet_labels_and_tags() {
+    fn address_book_entry_debug_is_structural_and_preserves_values() {
+        const LABEL: &str = "private-live-wallet-label-sentinel";
+        const COLOR: &str = "#ff00ff";
+        const TAG: &str = "private-live-wallet-tag-sentinel";
         let entry = AddressBookEntry {
-            label: TEST_ADDRESS.to_string(),
-            color: Some("#ff00ff".to_string()),
-            tags: vec!["desk".to_string(), TEST_ADDRESS.to_string()],
+            label: LABEL.to_string(),
+            color: Some(COLOR.to_string()),
+            tags: vec![TAG.to_string(), TEST_ADDRESS.to_string()],
         };
 
         let rendered = format!("{entry:?}");
 
-        assert!(rendered.contains("label: \"<redacted>\""));
-        assert!(rendered.contains("color: Some(\"#ff00ff\")"));
+        assert!(rendered.contains("label: Some(\"<redacted>\")"));
+        assert!(rendered.contains("color: Some(\"<redacted>\")"));
         assert!(rendered.contains("tags: <2 redacted>"));
-        assert!(!rendered.contains(TEST_ADDRESS));
-        assert!(!rendered.contains("desk"));
+        for sensitive in [TEST_ADDRESS, LABEL, COLOR, TAG] {
+            assert!(
+                !rendered.contains(sensitive),
+                "{sensitive} leaked in {rendered}"
+            );
+        }
+        assert_eq!(entry.label, LABEL);
+        assert_eq!(entry.color.as_deref(), Some(COLOR));
+        assert_eq!(entry.tags, vec![TAG.to_string(), TEST_ADDRESS.to_string()]);
     }
 
     #[test]
-    fn wallet_display_debug_redacts_full_addresses() {
+    fn wallet_display_debug_redacts_full_and_short_addresses_without_changing_values() {
         let display =
             TradingTerminal::wallet_display_from_address_book(&HashMap::new(), TEST_ADDRESS);
+        let primary = display.primary.clone();
+        let secondary = display.secondary.clone();
 
         let rendered = format!("{display:?}");
 
-        assert!(rendered.contains("0xabc0...0000"));
         assert!(rendered.contains("<redacted>"));
         assert!(!rendered.contains(TEST_ADDRESS));
+        assert!(!rendered.contains("0xabc0...0000"));
+        assert!(rendered.contains("has_label: false"));
+        assert_eq!(display.primary, primary);
+        assert_eq!(display.secondary, secondary);
+        assert!(!display.has_label);
+    }
+
+    #[test]
+    fn labeled_wallet_display_debug_redacts_label_and_preserves_render_values() {
+        const LABEL: &str = "private-wallet-display-label-sentinel";
+        let mut address_book = HashMap::new();
+        address_book.insert(
+            TEST_ADDRESS.to_string(),
+            AddressBookEntry {
+                label: LABEL.to_string(),
+                ..Default::default()
+            },
+        );
+        let display =
+            TradingTerminal::wallet_display_from_address_book(&address_book, TEST_ADDRESS);
+
+        let rendered = format!("{display:?}");
+
+        assert!(rendered.contains("primary: \"<redacted>\""), "{rendered}");
+        assert!(rendered.contains("secondary: \"<redacted>\""), "{rendered}");
+        assert!(rendered.contains("has_label: true"), "{rendered}");
+        assert!(!rendered.contains(LABEL), "{rendered}");
+        assert!(!rendered.contains("0xabc0...0000"), "{rendered}");
+        assert_eq!(display.primary, LABEL);
+        assert_eq!(display.secondary, "0xabc0...0000");
+        assert!(display.has_label);
     }
 }

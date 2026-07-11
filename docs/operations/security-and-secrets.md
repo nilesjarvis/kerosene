@@ -290,6 +290,15 @@ merge/sync/persistence work, cancellation checks, and toast sanitizer. File
 contents, normalization and precedence, tracked-address refreshes, both silent
 cancellation strings, and visible success/error behavior remain unchanged.
 
+The same identity boundary applies after import. Persisted tracker/address-book
+entries and live address-book entries report only redacted label/color presence
+and tag/address counts; `WalletDisplay` hides both its primary and secondary
+strings while retaining the `has_label` shape. Tracker label input/edit messages
+use `RedactedWalletLabel`, restoring the exact string before existing edit-state
+storage or trim-on-commit behavior. Serde data, label/color/tag lookup, short-
+address rendering, tooltips, subscription refresh, tracker rows, and config
+persistence remain exact and user-visible output is unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

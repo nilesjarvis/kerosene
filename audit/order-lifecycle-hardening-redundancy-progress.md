@@ -4234,6 +4234,95 @@ target-specific cancellation policy, not HTTP replay.
   values; public market, ordinary file/config/screenshot, and private
   integration result classes also remain.
 
+### F-58 — Wallet identity diagnostics expose labels, colors, and short addresses
+
+- Status: addressed in Turn 51; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account-identity privacy and diagnostic-boundary hardening;
+  no label storage, display, subscription, tracker, or persistence defect was
+  found
+- Scope: `TrackedWalletConfig`, `WalletTrackerConfig`,
+  `AddressBookEntryConfig`, live `AddressBookEntry`, `WalletDisplay`,
+  `WalletTrackerLabelInputChanged`, and `WalletTrackerLabelChanged`; config/live
+  conversion, display construction and consumers, tracker label views/update,
+  persistence/subscription effects, routing, and wallet/config/message tests.
+  `WalletTrackerRow` and `WalletDetailsWindowState` were audited and already
+  expose only safe control/presence metadata.
+- Preconditions/event ordering:
+  1. Persisted tracker and address-book entries retain exact wallet address,
+     label, color, and tags; tracker config nests legacy wallet entries. Their
+     formatters hid full addresses and tag values, but printed every ordinary
+     label and address-book color.
+  2. Config hydration copies the same identity values into live address-book
+     entries. Their formatter had the same label/color exposure. Display
+     construction then produces either label plus short address, or short plus
+     full address; its formatter hid only strings that matched a complete
+     40-hex address and therefore exposed labels and shortened addresses.
+  3. Add-row and inline label edits published raw `String` message fields before
+     the wallet update arm stored exact draft text or trimmed committed text,
+     rotated the tracked-trade subscription when label presence changed, and
+     scheduled config persistence.
+- Evidence: parent commit
+  `f2c4c35a9e5b1498f727f78fd80df9e6ae4fca0f` shows the partially redacted
+  persisted formatters at `src/config/wallets.rs:15-54`, live/display formatters
+  at `src/wallet_state/address_book.rs:20-48`, and raw message fields at
+  `src/message.rs:1276-1282`. Exact config/live conversion is
+  `src/wallet_state/address_book/labels/config.rs:11-66`; exact display
+  construction is `src/wallet_state/address_book/display.rs:10-50`; view
+  publication and update behavior are
+  `src/wallet_views/tracker/controls/add_row.rs:10-28`,
+  `src/wallet_views/tracker/rows/row/identity.rs:8-50`, and
+  `src/wallet_update/tracker/entries.rs:7-137`. The already-safe row/detail
+  formatters are `src/wallet_state/model.rs:22-105`.
+- Violated invariant: wallet identity values may remain exact for config and
+  rendering, but generic diagnostics must not reveal user-defined account names,
+  display metadata, or a stable partial address, and transient edit messages
+  must not bypass that model boundary.
+- Risk: state/config formatting, assertion failures, or future message logging
+  could associate user-defined labels/colors with a recognizable wallet prefix
+  and suffix. Full addresses, tags, tracker account payloads, and errors already
+  had separate protection; no key, signed payload, exchange mutation, retry, or
+  known production logging sink is implicated.
+- Why existing checks did not cover it: config tests explicitly required the
+  label `Whale`, the live-entry test explicitly allowed a color, and the display
+  test required the shortened address. Each used an address-shaped value where
+  a label leak was checked. Tracker update and view tests protected state and
+  rendering but never formatted label edit messages.
+- Implemented fix: persisted and live entry formatters now retain only label/
+  color presence and tag/address counts; `WalletDisplay` retains only
+  `has_label` while hiding both strings (`src/config/wallets.rs:15-54`,
+  `src/wallet_state/address_book.rs:20-48`). Add exact-value
+  `RedactedWalletLabel` and use it for both tracker label messages; view
+  publishers wrap and the update arm restores the original string before its
+  existing behavior (`src/message.rs:200-225`, `src/message.rs:1303-1309`,
+  `src/wallet_views/tracker/controls/add_row.rs:18-21`,
+  `src/wallet_views/tracker/rows/row/identity.rs:28-36`,
+  `src/wallet_update/tracker/entries.rs:7-132`).
+- Regression coverage: config controls reject unique address/label/color/tag
+  values and compare identical serde JSON before/after formatting
+  (`src/config/wallets.rs:305-374`). Live/display controls reject labels, colors,
+  tags, full addresses, and shortened addresses while reading every original
+  value afterward (`src/wallet_state/address_book.rs:103-172`). Wrapper and
+  parent-message controls prove exact label recovery and absence from both edit
+  variants (`src/message.rs:1941-1951`, `src/message.rs:3134-3348`). Update
+  controls preserve exact untrimmed draft text, trim-on-commit, tracked-trade
+  reconnect rotation, and persistence scheduling
+  (`src/wallet_update/tracker/entries.rs:140-183`). Existing display, tracker,
+  import/export, positioning, and wallet-row controls remain behavior/safety
+  coverage.
+- Smallest behavior-preserving fix: four custom formatter bodies and one
+  transient string newtype changed. No serde field/attribute, address/label/
+  color/tag value, normalization, display string, tooltip, widget layout,
+  edit/trim rule, tracker list, subscription identity, refresh queue,
+  persistence schedule, toast, UI, or trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete definition/call-site tracing, exact serde/runtime controls, and the
+  mechanical diff establish the intended boundary, but focused and nearby
+  suites cannot execute until ALSA development metadata is available. Saved-
+  account picker labels and wallet-cluster names/leg labels use the same
+  address-only helper and require a separate account/cluster identity audit;
+  remaining raw result classes also remain open.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -7351,6 +7440,67 @@ target-specific cancellation policy, not HTTP replay.
   label/color/address values should be structurally redacted without changing
   stored metadata or display behavior.
 
+## Turn 51 — Redact Wallet Identity Model and Edit Diagnostics
+
+- Status: F-58 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: persisted tracker/address-book identity models; live address-book and
+  display models; tracker row/detail safety audit; tracker label edit messages,
+  publishers, update handling, routing, serde/runtime/view controls
+- Invariant: exact wallet identity values must continue to drive persisted
+  configuration, tracker edits, label lookup, short-address rendering, tooltips,
+  subscriptions, and persistence, while generic diagnostics reveal only
+  presence/count/control structure.
+- Protected behavior: config JSON/defaults; legacy tracker/address-book union;
+  normalization, sorting, label/color/tag conversion; labeled/unlabeled display
+  strings and `has_label`; positioning, unstaking, and tracker views/tooltips;
+  exact draft edit text, trim-on-commit, label removal, subscription refresh,
+  tracker state, config save scheduling, routing, and all UI/trading behavior.
+- Preconditions/event ordering: config and live formatters borrow values only.
+  Display formatting is independent of view rendering. Label strings are
+  wrapped only when a text-input event creates a message and restored at the
+  first wallet update arm before draft storage or committed trimming.
+- Evidence: F-58 records all targeted definitions and consumers, the prior
+  address-only formatter behavior, existing explicit leak expectations, safe
+  row/detail controls, and the value-transparent production/test diff.
+- Change: make four identity formatters structural; add an exact wallet-label
+  message newtype; convert both text-input publishers and both update consumers;
+  expand serde/runtime/display/message controls and add tracker update behavior
+  characterizations.
+- Tests/checks:
+  - Baseline tracker-config, live-entry, display, and already-safe tracker-row
+    diagnostic tests stopped in `alsa-sys` before Kerosene compilation because
+    `pkg-config` could not find the system `alsa.pc` file.
+  - Post-fix focused config/live/display/message/update diagnostics and exact-
+    value controls, complete wallet/config/message/update suites, wallet display/
+    tracker/label behavior suites, positioning formatting, wallet row/detail,
+    and routing suites stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, view output, widget layout,
+    window, task timing, state transition, or user interaction changed;
+    compilation is already blocked, and no live exchange or credential-bearing
+    operation ran.
+- Compatibility/UX assessment: serde controls compare full tracker/address-
+  book JSON; live/display controls read exact labels, colors, tags, and full/
+  short address strings after formatting; edit controls preserve exact draft
+  text and established committed trim/subscription/persistence effects. Views
+  still consume the same fields directly. No visible behavior, timing, config
+  content, identity, persistence, signed bytes, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-58 is source-
+  hardened, but saved-account picker labels and wallet-cluster names/leg labels
+  are the next confirmed address-only diagnostic class. Public market,
+  config/preference/file/screenshot, and private-integration raw-result classes
+  also remain open.
+- Prior turn commit hash: `f2c4c35a9e5b1498f727f78fd80df9e6ae4fca0f`
+- Next candidate: trace `AccountPickerOption`, `AccountPickerLabelChanged`,
+  `WalletClusterConfig`, live `WalletCluster`, `WalletClusterExecutionLeg`, and
+  `WalletClusterExecution` through saved-profile/cluster config, views,
+  execution history, message routing, and tests; harden only ordinary names/
+  labels that do not need diagnostic visibility.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -7392,10 +7542,11 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline wallet-label export diagnostics,
-  wallet-label update tests, and `cargo check`; post-fix export-model, exact
-  wallet-label-result recovery, parent-message, complete wallet-label update,
-  pure merge/export, and routing suites;
+- Environment-blocked this turn: baseline tracker-config, live-entry, display,
+  and tracker-row diagnostics; post-fix config/live/display/message/update
+  diagnostics and exact-value controls, complete wallet/config/message/update,
+  wallet display/tracker/label behavior, positioning formatting, wallet row/
+  detail, and routing suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
@@ -7405,7 +7556,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-57
+  F-40, and F-42 through F-58
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -7448,6 +7599,7 @@ target-specific cancellation policy, not HTTP replay.
   Ticket percentage-sizing provenance diagnostics are source-hardened by F-54.
   Preset/saved-layout model and I/O-result diagnostics are source-hardened by
   F-55, journal completion request/result diagnostics by F-56, and wallet-label
-  export/I/O-result diagnostics by F-57. Remaining independently formattable
+  export/I/O-result diagnostics by F-57. Wallet identity model/display/edit
+  diagnostics are source-hardened by F-58. Remaining independently formattable
   nested account/order types and classified external-status paths, plus the rest
   of Track 9, require completion before a final verdict.

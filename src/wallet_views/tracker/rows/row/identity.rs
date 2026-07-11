@@ -30,7 +30,9 @@ pub(super) fn wallet_identity_cell(
             .style(helpers::text_input_style)
             .on_input({
                 let address = address.clone();
-                move |value| Message::WalletTrackerLabelChanged(address.clone().into(), value)
+                move |value| {
+                    Message::WalletTrackerLabelChanged(address.clone().into(), value.into())
+                }
             })
             .size(11)
             .padding([3, 6])
