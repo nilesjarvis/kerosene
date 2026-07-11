@@ -1,4 +1,4 @@
-use crate::{config, helpers::redact_wallet_address_debug_value};
+use crate::config;
 
 use std::fmt;
 
@@ -15,14 +15,8 @@ impl fmt::Debug for AccountPickerOption {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AccountPickerOption")
             .field("index", &self.index)
-            .field(
-                "label",
-                &redact_wallet_address_debug_value(self.label.trim()),
-            )
-            .field(
-                "address",
-                &redact_wallet_address_debug_value(self.address.trim()),
-            )
+            .field("label", &"<redacted>")
+            .field("address", &"<redacted>")
             .field("can_trade", &self.can_trade)
             .field("is_ghost", &self.is_ghost)
             .finish()
@@ -88,7 +82,7 @@ mod tests {
     use super::AccountPickerOption;
 
     #[test]
-    fn account_picker_option_debug_redacts_wallet_addresses() {
+    fn account_picker_option_debug_redacts_address_shaped_identity() {
         let label_address = "0xabc0000000000000000000000000000000000000";
         let account_address = "0xdef0000000000000000000000000000000000000";
         let option = AccountPickerOption {
@@ -105,14 +99,17 @@ mod tests {
         assert!(!rendered.contains(account_address));
         assert!(rendered.contains("<redacted>"));
         assert!(rendered.contains("can_trade: true"));
+        assert_eq!(option.label, label_address);
+        assert_eq!(option.address, account_address);
     }
 
     #[test]
-    fn account_picker_option_debug_keeps_non_address_label() {
+    fn account_picker_option_debug_redacts_ordinary_label_but_display_preserves_it() {
+        const LABEL: &str = "private-account-picker-label-sentinel";
         let account_address = "0xdef0000000000000000000000000000000000000";
         let option = AccountPickerOption {
             index: 0,
-            label: "Main account".to_string(),
+            label: LABEL.to_string(),
             address: account_address.to_string(),
             can_trade: false,
             is_ghost: true,
@@ -120,8 +117,12 @@ mod tests {
 
         let rendered = format!("{option:?}");
 
-        assert!(rendered.contains("Main account"));
+        assert!(!rendered.contains(LABEL));
         assert!(!rendered.contains(account_address));
+        assert!(rendered.contains("label: \"<redacted>\""));
         assert!(rendered.contains("is_ghost: true"));
+        assert_eq!(option.label, LABEL);
+        assert_eq!(option.address, account_address);
+        assert_eq!(option.to_string(), LABEL);
     }
 }

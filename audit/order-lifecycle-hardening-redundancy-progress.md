@@ -4323,6 +4323,104 @@ target-specific cancellation policy, not HTTP replay.
   address-only helper and require a separate account/cluster identity audit;
   remaining raw result classes also remain open.
 
+### F-59 — Saved-account and cluster diagnostics expose names, IDs, and fan-out weights
+
+- Status: addressed in Turn 52; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account/order privacy and diagnostic-boundary hardening; no
+  account rename, cluster selection/membership, fan-out sizing, execution
+  correlation, or persistence defect was found
+- Scope: `AccountProfile`, `AccountPickerOption`, add/rename account-label
+  messages; `WalletClusterMemberConfig`, `WalletClusterConfig`, live
+  `WalletClusterMember`/`WalletCluster`, execution leg/history diagnostics;
+  cluster name/ID/profile-ID messages, member-load publication, views, account/
+  cluster update arms, serde/runtime behavior, routing, and tests. Root cluster
+  state, member-data, position summaries, and captured trading members were
+  audited and already avoid a raw diagnostic graph.
+- Preconditions/event ordering:
+  1. Saved profiles retain a stable secret ID, user name, wallet address, and
+     credentials. Their formatter hid every field except an ordinary name;
+     picker diagnostics likewise exposed ordinary names while add/rename edit
+     messages carried raw strings before the account update arm.
+  2. Cluster config persists a stable cluster ID/name plus profile secret IDs
+     and exact relative weights. Config/live member formatters exposed weight,
+     and config/live cluster formatters exposed ordinary names. Those weights
+     directly determine per-member order sizing after validation.
+  3. Runtime execution legs/history retain exact member/cluster labels for the
+     existing UI. Their formatters exposed ordinary labels/names. Selection,
+     rename, delete, add/remove/weight, and member-load messages additionally
+     carried raw cluster IDs; add-member carried a raw profile secret ID.
+- Evidence: parent commit
+  `1a89e8b87f011ff45616796a7bc50a22f6d390b2` shows the raw account name at
+  `src/config/schema/accounts.rs:23-32`, partially redacted picker at
+  `src/account_state/types.rs:14-29`, and raw account label messages at
+  `src/message.rs:982-987`. Cluster config formatters are
+  `src/config/wallets.rs:168-201`; live/member/execution formatters are
+  `src/wallet_cluster_state.rs:48-95` and
+  `src/wallet_cluster_state.rs:220-265`; raw identity message fields are
+  `src/message.rs:1182-1199`. Exact view publication and first consumers are
+  `src/account_views/add_window.rs:132-141`,
+  `src/account_views/picker/dropdown/option_row.rs:31-52`,
+  `src/account_update.rs:52-63`, `src/wallet_cluster_views.rs:84-326`, and
+  `src/wallet_cluster_update.rs:53-100`/`403-435`.
+- Violated invariant: account/cluster identity and allocation must remain exact
+  for storage, rendering, selection, sizing, and result correlation, but generic
+  diagnostics must not reveal user names, stable IDs, membership, or financial
+  fan-out weights.
+- Risk: a config/state dump, assertion failure, or future message logging could
+  connect saved profile names and IDs to cluster membership, allocation ratios,
+  and execution labels. Keys, full wallet addresses, symbols, sizes, prices,
+  CLOIDs, lifecycle messages, account payloads, and errors already had separate
+  protection; no exchange mutation, retry, or known production logging sink is
+  implicated.
+- Why existing checks did not cover it: account model tests explicitly required
+  ordinary names to remain in `Debug`; cluster weight tests protected zero and
+  round-trip trading semantics but did not format the models. Execution tests
+  checked CLOID/message redaction without checking labels or parent cluster
+  names. Message tests covered account keys/addresses/results but not cluster
+  IDs or ordinary edit names.
+- Implemented fix: eight custom formatters now replace account/cluster names,
+  member labels, and weights with markers while retaining safe index, mode,
+  status, count, and lifecycle structure (`src/config/schema/accounts.rs:23-32`,
+  `src/account_state/types.rs:14-23`, `src/config/wallets.rs:167-201`,
+  `src/wallet_cluster_state.rs:48-93`,
+  `src/wallet_cluster_state.rs:217-259`). Add exact-value wrappers for account
+  labels, required profile IDs, cluster IDs, and cluster names, and apply them
+  to every targeted message (`src/message.rs:227-333`,
+  `src/message.rs:1090-1096`, `src/message.rs:1289-1310`). Views/tasks wrap only
+  at publication; the first account/cluster update arm restores each original
+  string before source-identical logic.
+- Regression coverage: profile/picker controls reject ordinary names and
+  addresses while comparing exact serde/display/runtime values
+  (`src/config/schema/accounts.rs:84-117`,
+  `src/account_state/types.rs:80-127`). Cluster config/runtime controls reject
+  names, stable IDs, profile IDs, member labels, and exact weight values while
+  comparing JSON and float bits (`src/config/wallets.rs:375-423`,
+  `src/wallet_cluster_state.rs:596-690`). Wrapper and parent-message controls
+  prove exact string recovery and value-neutral formatting for all targeted
+  variants (`src/message.rs:2066-2090`, `src/message.rs:3201-3259`). Account
+  controls preserve exact add/rename draft text and persistence; cluster controls
+  preserve draft trimming on create, exact rename text, selection by generated
+  ID, member addition, stream rotation, and persistence
+  (`src/account_update/add_window.rs:384-397`,
+  `src/account_update/profile.rs:493-505`,
+  `src/wallet_cluster_update.rs:1677-1712`,
+  `src/wallet_cluster_update.rs:2320-2360`). Existing cluster lifecycle,
+  sizing, stale-result, config-round-trip, and routing suites remain controls.
+- Smallest behavior-preserving fix: eight formatter expressions/bodies and four
+  transient exact-string newtypes changed. No serde field/attribute, secret
+  owner, profile/cluster ID, name/label, member weight/float bit, normalization,
+  selection, membership, account capability, sizing, stream generation,
+  result correlation, execution/history field, persistence schedule, view/UI,
+  signed bytes, or trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete definition/call-site tracing, exact serde/string/float controls, and
+  the mechanical diff establish the intended boundary, but focused and nearby
+  suites cannot execute until ALSA development metadata is available. The last
+  address-only helper use is in HyperDash response diagnostics and requires a
+  type-specific public/account-identity audit; classified raw external-result
+  groups also remain open.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -7501,6 +7599,69 @@ target-specific cancellation policy, not HTTP replay.
   execution history, message routing, and tests; harden only ordinary names/
   labels that do not need diagnostic visibility.
 
+## Turn 52 — Redact Saved-Account and Cluster Identity Diagnostics
+
+- Status: F-59 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: saved-profile and picker identity models; add/rename account messages;
+  persisted/live cluster identity and member-weight models; execution labels/
+  names; all cluster name/ID/profile-ID message routes, views, member-load task,
+  update handling, exact behavior, and focused controls
+- Invariant: exact account and cluster identity/allocation values must continue
+  to drive storage, views, membership, fan-out sizing, selection, stream
+  ownership, execution correlation, and history, while generic diagnostics
+  expose only safe lifecycle structure.
+- Protected behavior: account-profile JSON/credentials, picker labels/display,
+  add/rename draft text and saves; cluster schema/defaults/generated IDs/names,
+  selected identity, member profile references, exact weight bits and zero-
+  disabled semantics, create/rename/delete/add/remove/weight actions, user-data
+  stream rotation, member refresh result correlation, order/close sizing,
+  execution retention/history/status, routing, and all UI/trading behavior.
+- Preconditions/event ordering: model formatting only borrows stored values.
+  Views and the member task wrap identity strings only when publishing a
+  message; account and cluster update arms immediately restore them before
+  existing state checks, mutation planning, persistence, or follow-up tasks.
+- Evidence: F-59 records all definitions, message variants, publishers,
+  consumers, safe adjacent types, prior explicit diagnostic expectations,
+  lifecycle owners, exact controls, and the mechanical diff.
+- Change: make eight account/cluster config/live/execution formatters value-
+  neutral; add four exact identity wrappers; apply them to both account-label
+  messages and every cluster name/ID/required-profile-ID message; mechanically
+  update producers, consumers, routing fixtures, and focused controls.
+- Tests/checks:
+  - Baseline account-profile/picker and cluster execution/state diagnostics plus
+    `cargo check` stopped in `alsa-sys` before Kerosene compilation because
+    `pkg-config` could not find the system `alsa.pc` file.
+  - Post-fix focused profile/picker/config/live/execution/message/account-update/
+    cluster-update and routing controls stopped at the same dependency boundary.
+  - Complete account config/update, wallet config, cluster state/update,
+    Message, routing, and order/cluster lifecycle suites likewise stopped there.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, view output, widget layout,
+    window, task timing, state transition, or interaction behavior changed;
+    compilation is already blocked, and no live exchange or credential-bearing
+    operation ran.
+- Compatibility/UX assessment: controls compare profile/cluster serde, picker
+  display, original strings, weight bits, create trimming, rename text,
+  generated-ID selection, member addition, stream generation, and persistence.
+  All views still read the same raw state directly. No visible behavior, timing,
+  schema/content, account/cluster identity, sizing, persistence, signed bytes,
+  or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-59 is source-
+  hardened, but HyperDash wallet fields are the remaining address-only helper
+  consumer and require payload-specific classification. Public market,
+  config/preference/file/screenshot, and private-integration raw-result groups
+  also remain open.
+- Prior turn commit hash: `1a89e8b87f011ff45616796a7bc50a22f6d390b2`
+- Next candidate: inspect the HyperDash position/delta response models and every
+  parent `Message` result for wallet fields, symbols, positions, errors, and
+  pagination/context; separate public aggregate data from account identity and
+  close only the sensitive formatter/result boundary without changing feeds or
+  views.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -7542,11 +7703,11 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline tracker-config, live-entry, display,
-  and tracker-row diagnostics; post-fix config/live/display/message/update
-  diagnostics and exact-value controls, complete wallet/config/message/update,
-  wallet display/tracker/label behavior, positioning formatting, wallet row/
-  detail, and routing suites;
+- Environment-blocked this turn: baseline account-profile/picker and cluster
+  execution/state diagnostics plus `cargo check`; post-fix focused profile/
+  picker/config/live/execution/message/account-update/cluster-update and routing
+  controls; complete account config/update, wallet config, cluster state/update,
+  Message, routing, and order/cluster lifecycle suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
@@ -7556,7 +7717,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-58
+  F-40, and F-42 through F-59
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -7600,6 +7761,7 @@ target-specific cancellation policy, not HTTP replay.
   Preset/saved-layout model and I/O-result diagnostics are source-hardened by
   F-55, journal completion request/result diagnostics by F-56, and wallet-label
   export/I/O-result diagnostics by F-57. Wallet identity model/display/edit
-  diagnostics are source-hardened by F-58. Remaining independently formattable
-  nested account/order types and classified external-status paths, plus the rest
-  of Track 9, require completion before a final verdict.
+  diagnostics are source-hardened by F-58, and saved-account/cluster identity,
+  allocation, and message diagnostics by F-59. Remaining independently
+  formattable nested account/order types and classified external-status paths,
+  plus the rest of Track 9, require completion before a final verdict.

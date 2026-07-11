@@ -92,7 +92,7 @@ impl TradingTerminal {
                 &self.wallet_clusters.new_cluster_name_input
             )
             .style(text_input_style)
-            .on_input(Message::WalletClusterNameInputChanged)
+            .on_input(|value| Message::WalletClusterNameInputChanged(value.into()))
             .on_submit(Message::WalletClusterCreate)
             .size(12)
             .padding(6)
@@ -120,7 +120,7 @@ impl TradingTerminal {
             clusters = clusters.push(
                 button(text(label).size(11))
                     .padding([4, 8])
-                    .on_press(Message::WalletClusterSelected(cluster.id.clone())),
+                    .on_press(Message::WalletClusterSelected(cluster.id.clone().into())),
             );
         }
         clusters.into()
@@ -153,13 +153,15 @@ impl TradingTerminal {
                 Space::new().width(Fill),
                 button(text("Delete Cluster").size(11))
                     .padding([4, 8])
-                    .on_press(Message::WalletClusterDeleted(cluster.id.clone()))
+                    .on_press(Message::WalletClusterDeleted(cluster.id.clone().into()))
             ]
             .spacing(8)
             .align_y(Alignment::Center),
             text_input("Cluster name", &cluster.name)
                 .style(text_input_style)
-                .on_input(move |value| Message::WalletClusterRenamed(rename_id.clone(), value))
+                .on_input(move |value| {
+                    Message::WalletClusterRenamed(rename_id.clone().into(), value.into())
+                })
                 .size(12)
                 .padding(6)
                 .width(Fill),
@@ -210,11 +212,9 @@ impl TradingTerminal {
             } else {
                 format!("{} ({address})", profile.name.trim())
             };
-            add_row = add_row.push(
-                button(text(label).size(11))
-                    .padding([4, 8])
-                    .on_press(Message::WalletClusterAddMember(profile.secret_id.clone())),
-            );
+            add_row = add_row.push(button(text(label).size(11)).padding([4, 8]).on_press(
+                Message::WalletClusterAddMember(profile.secret_id.clone().into()),
+            ));
         }
         if available_count == 0 {
             add_row = add_row.push(
@@ -303,7 +303,7 @@ impl TradingTerminal {
                 .style(text_input_style)
                 .on_input(move |value| {
                     Message::WalletClusterMemberWeightChanged(
-                        weight_cluster_id.clone(),
+                        weight_cluster_id.clone().into(),
                         Some(weight_member_id.clone()).into(),
                         value.into(),
                     )
@@ -318,7 +318,7 @@ impl TradingTerminal {
             button(text("Remove").size(11))
                 .padding([4, 8])
                 .on_press(Message::WalletClusterRemoveMember(
-                    cluster_id,
+                    cluster_id.into(),
                     Some(member.profile_secret_id.clone()).into(),
                 ))
                 .width(Length::Fixed(72.0)),

@@ -41,7 +41,9 @@ impl TradingTerminal {
                     container(
                         text_input("Account label", label_value)
                             .style(helpers::text_input_style)
-                            .on_input(move |value| Message::AccountPickerLabelChanged(index, value))
+                            .on_input(move |value| {
+                                Message::AccountPickerLabelChanged(index, value.into())
+                            })
                             .size(11)
                             .padding([6, 8])
                             .width(Fill),

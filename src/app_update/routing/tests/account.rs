@@ -48,7 +48,7 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
     );
     assert_route(Message::AccountPickerRenameToggled(0), UpdateRoute::Account);
     assert_route(
-        Message::AccountPickerLabelChanged(0, "Main".to_string()),
+        Message::AccountPickerLabelChanged(0, "Main".into()),
         UpdateRoute::Account,
     );
     assert_route(Message::RefreshAccountData, UpdateRoute::Account);

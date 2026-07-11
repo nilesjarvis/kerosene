@@ -385,6 +385,17 @@ mod tests {
     }
 
     #[test]
+    fn add_account_name_message_preserves_exact_draft_text() {
+        const NAME: &str = "  Private New Account Name  ";
+        let mut terminal = terminal_with_encrypted_storage(vec![account("acct-a", ADDRESS_A, "")]);
+        open_window(&mut terminal);
+
+        let _task = terminal.update_account(Message::AddAccountNameChanged(NAME.into()));
+
+        assert_eq!(window_state(&mut terminal).name_input, NAME);
+    }
+
+    #[test]
     fn open_closes_picker_menu_and_reuses_the_existing_window() {
         let mut terminal = terminal_with_encrypted_storage(vec![account("acct-a", ADDRESS_A, "")]);
         terminal.account_picker_open = true;

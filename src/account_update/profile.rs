@@ -494,6 +494,19 @@ mod tests {
     }
 
     #[test]
+    fn account_picker_label_message_preserves_exact_text_and_persistence() {
+        const LABEL: &str = "  Private Account Label  ";
+        let mut terminal = terminal_with_active_account(ADDRESS_A, "agent-key");
+        terminal.config_save_due_at = None;
+
+        let _task = terminal.update_account(Message::AccountPickerLabelChanged(0, LABEL.into()));
+
+        assert_eq!(terminal.accounts[0].name, LABEL);
+        assert_eq!(terminal.account_picker_rename_index, Some(0));
+        assert!(terminal.config_save_due_at.is_some());
+    }
+
+    #[test]
     fn wallet_address_edit_clears_agent_key_when_binding_changes() {
         let mut terminal = terminal_with_active_account(ADDRESS_A, "agent-key");
 

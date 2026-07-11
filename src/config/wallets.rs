@@ -1,4 +1,3 @@
-use crate::helpers::redact_wallet_address_debug_value;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -169,7 +168,7 @@ impl fmt::Debug for WalletClusterMemberConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WalletClusterMemberConfig")
             .field("profile_secret_id", &"<redacted>")
-            .field("weight", &self.weight)
+            .field("weight", &"<redacted>")
             .finish()
     }
 }
@@ -196,7 +195,7 @@ impl fmt::Debug for WalletClusterConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WalletClusterConfig")
             .field("id", &"<redacted>")
-            .field("name", &redact_wallet_address_debug_value(self.name.trim()))
+            .field("name", &"<redacted>")
             .field("members", &RedactedWalletClusterMembers(self.members.len()))
             .finish()
     }
@@ -369,6 +368,56 @@ mod tests {
         }
         assert_eq!(
             serde_json::to_value(&entry).expect("serialize address-book entry after formatting"),
+            wire_before
+        );
+    }
+
+    #[test]
+    fn wallet_cluster_config_debug_redacts_identity_and_weight_without_changing_wire_data() {
+        const CLUSTER_ID: &str = "private-cluster-id-sentinel";
+        const CLUSTER_NAME: &str = "private-cluster-name-sentinel";
+        const PROFILE_ID: &str = "private-cluster-profile-id-sentinel";
+        const WEIGHT_BITS: u64 = 0x4009_21fb_5444_2d18;
+        let weight = f64::from_bits(WEIGHT_BITS);
+        let cluster = WalletClusterConfig {
+            id: CLUSTER_ID.to_string(),
+            name: CLUSTER_NAME.to_string(),
+            members: vec![WalletClusterMemberConfig {
+                profile_secret_id: PROFILE_ID.to_string(),
+                weight,
+            }],
+        };
+        let wire_before = serde_json::to_value(&cluster).expect("serialize wallet cluster");
+
+        let cluster_debug = format!("{cluster:?}");
+        let member_debug = format!("{:?}", cluster.members[0]);
+        let weight_debug = format!("{weight:?}");
+
+        assert!(
+            cluster_debug.contains("name: \"<redacted>\""),
+            "{cluster_debug}"
+        );
+        assert!(
+            cluster_debug.contains("members: <1 redacted>"),
+            "{cluster_debug}"
+        );
+        assert!(
+            member_debug.contains("weight: \"<redacted>\""),
+            "{member_debug}"
+        );
+        for sensitive in [CLUSTER_ID, CLUSTER_NAME, PROFILE_ID, weight_debug.as_str()] {
+            assert!(
+                !cluster_debug.contains(sensitive),
+                "{sensitive} leaked in {cluster_debug}"
+            );
+            assert!(
+                !member_debug.contains(sensitive),
+                "{sensitive} leaked in {member_debug}"
+            );
+        }
+        assert_eq!(cluster.members[0].weight.to_bits(), WEIGHT_BITS);
+        assert_eq!(
+            serde_json::to_value(&cluster).expect("serialize wallet cluster after formatting"),
             wire_before
         );
     }

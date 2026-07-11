@@ -225,6 +225,114 @@ impl fmt::Debug for RedactedWalletLabel {
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct RedactedAccountLabel(String);
+
+impl RedactedAccountLabel {
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedAccountLabel {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedAccountLabel {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Debug for RedactedAccountLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("AccountLabel(<redacted>)")
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct RedactedAccountProfileId(String);
+
+impl RedactedAccountProfileId {
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedAccountProfileId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedAccountProfileId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Debug for RedactedAccountProfileId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("AccountProfileId(<redacted>)")
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct RedactedWalletClusterId(String);
+
+impl RedactedWalletClusterId {
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedWalletClusterId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedWalletClusterId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Debug for RedactedWalletClusterId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("WalletClusterId(<redacted>)")
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct RedactedWalletClusterName(String);
+
+impl RedactedWalletClusterName {
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedWalletClusterName {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedWalletClusterName {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Debug for RedactedWalletClusterName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("WalletClusterName(<redacted>)")
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct RedactedClipboardText(String);
 
 impl RedactedClipboardText {
@@ -982,9 +1090,9 @@ pub(crate) enum Message {
     ToggleAccountPicker,
     AccountPickerSelected(usize),
     AccountPickerRenameToggled(usize),
-    AccountPickerLabelChanged(usize, String),
+    AccountPickerLabelChanged(usize, RedactedAccountLabel),
     OpenAddAccountWindow,
-    AddAccountNameChanged(String),
+    AddAccountNameChanged(RedactedAccountLabel),
     AddAccountAddressChanged(RedactedAddress),
     AddAccountKeyChanged(SecretInput),
     AddAccountSwitchToggled(bool),
@@ -1180,17 +1288,21 @@ pub(crate) enum Message {
     AlfredCommandSelected(AlfredCommandId),
     OpenWalletTrackerWindow,
     OpenWalletClustersWindow,
-    WalletClusterNameInputChanged(String),
+    WalletClusterNameInputChanged(RedactedWalletClusterName),
     WalletClusterCreate,
-    WalletClusterSelected(String),
-    WalletClusterRenamed(String, String),
-    WalletClusterDeleted(String),
-    WalletClusterAddMember(String),
-    WalletClusterRemoveMember(String, RedactedAccountKey),
-    WalletClusterMemberWeightChanged(String, RedactedAccountKey, RedactedOrderInput),
+    WalletClusterSelected(RedactedWalletClusterId),
+    WalletClusterRenamed(RedactedWalletClusterId, RedactedWalletClusterName),
+    WalletClusterDeleted(RedactedWalletClusterId),
+    WalletClusterAddMember(RedactedAccountProfileId),
+    WalletClusterRemoveMember(RedactedWalletClusterId, RedactedAccountKey),
+    WalletClusterMemberWeightChanged(
+        RedactedWalletClusterId,
+        RedactedAccountKey,
+        RedactedOrderInput,
+    ),
     WalletClusterRefresh,
     WalletClusterMemberLoaded(
-        String,
+        RedactedWalletClusterId,
         RedactedAccountKey,
         RedactedAddress,
         ReadDataRequestContext,
@@ -1890,11 +2002,12 @@ pub(crate) enum Message {
 #[cfg(test)]
 mod tests {
     use super::{
-        Message, RedactedAccountMessageResult, RedactedAdvancedOrderHistoryId,
-        RedactedClientOrderId, RedactedJournalMessageResult, RedactedLayoutMessageResult,
-        RedactedOrderId, RedactedOrderInput, RedactedOrderMessageResult, RedactedOrderSymbol,
-        RedactedOrderValue, RedactedPhoneInput, RedactedPnlCardMessageResult,
-        RedactedTelegramChannelKey, RedactedWalletLabel, RedactedWalletLabelsMessageResult,
+        Message, RedactedAccountLabel, RedactedAccountMessageResult, RedactedAccountProfileId,
+        RedactedAdvancedOrderHistoryId, RedactedClientOrderId, RedactedJournalMessageResult,
+        RedactedLayoutMessageResult, RedactedOrderId, RedactedOrderInput,
+        RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput,
+        RedactedPnlCardMessageResult, RedactedTelegramChannelKey, RedactedWalletClusterId,
+        RedactedWalletClusterName, RedactedWalletLabel, RedactedWalletLabelsMessageResult,
         SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult, SecretInput,
         TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult,
         XAuthContextMessageResult, XFeedPageMessageResult, XListsMessageResult,
@@ -1948,6 +2061,32 @@ mod tests {
         assert!(rendered.contains("<redacted>"), "{rendered}");
         assert!(!rendered.contains(LABEL), "{rendered}");
         assert_eq!(label.into_string(), LABEL);
+    }
+
+    #[test]
+    fn account_and_cluster_identity_wrappers_preserve_exact_values() {
+        const ACCOUNT_LABEL: &str = "private-account-label-sentinel";
+        const PROFILE_ID: &str = "private-account-profile-id-sentinel";
+        const CLUSTER_ID: &str = "private-wallet-cluster-id-sentinel";
+        const CLUSTER_NAME: &str = "private-wallet-cluster-name-sentinel";
+        let account_label = RedactedAccountLabel::from(ACCOUNT_LABEL);
+        let profile_id = RedactedAccountProfileId::from(PROFILE_ID);
+        let cluster_id = RedactedWalletClusterId::from(CLUSTER_ID);
+        let cluster_name = RedactedWalletClusterName::from(CLUSTER_NAME);
+
+        for (rendered, sensitive) in [
+            (format!("{account_label:?}"), ACCOUNT_LABEL),
+            (format!("{profile_id:?}"), PROFILE_ID),
+            (format!("{cluster_id:?}"), CLUSTER_ID),
+            (format!("{cluster_name:?}"), CLUSTER_NAME),
+        ] {
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(sensitive), "{rendered}");
+        }
+        assert_eq!(account_label.into_string(), ACCOUNT_LABEL);
+        assert_eq!(profile_id.into_string(), PROFILE_ID);
+        assert_eq!(cluster_id.into_string(), CLUSTER_ID);
+        assert_eq!(cluster_name.into_string(), CLUSTER_NAME);
     }
 
     #[test]
@@ -3060,6 +3199,66 @@ mod tests {
     }
 
     #[test]
+    fn account_and_cluster_identity_message_debug_is_value_neutral() {
+        const ACCOUNT_LABEL: &str = "private-account-message-label-sentinel";
+        const PROFILE_ID: &str = "private-cluster-message-profile-id-sentinel";
+        const CLUSTER_ID: &str = "private-cluster-message-id-sentinel";
+        const CLUSTER_NAME: &str = "private-cluster-message-name-sentinel";
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+        const WEIGHT: &str = "7.654321";
+        const ERROR: &str = "private-cluster-member-error-sentinel";
+        let read_context = ReadDataRequestContext {
+            provider: ReadDataProvider::Hyperliquid,
+            read_data_provider_generation: 1,
+            hydromancer_key_generation: 2,
+        };
+        let messages = vec![
+            Message::AccountPickerLabelChanged(1, ACCOUNT_LABEL.into()),
+            Message::AddAccountNameChanged(ACCOUNT_LABEL.into()),
+            Message::WalletClusterNameInputChanged(CLUSTER_NAME.into()),
+            Message::WalletClusterSelected(CLUSTER_ID.into()),
+            Message::WalletClusterRenamed(CLUSTER_ID.into(), CLUSTER_NAME.into()),
+            Message::WalletClusterDeleted(CLUSTER_ID.into()),
+            Message::WalletClusterAddMember(PROFILE_ID.into()),
+            Message::WalletClusterRemoveMember(
+                CLUSTER_ID.into(),
+                Some(PROFILE_ID.to_string()).into(),
+            ),
+            Message::WalletClusterMemberWeightChanged(
+                CLUSTER_ID.into(),
+                Some(PROFILE_ID.to_string()).into(),
+                WEIGHT.into(),
+            ),
+            Message::WalletClusterMemberLoaded(
+                CLUSTER_ID.into(),
+                Some(PROFILE_ID.to_string()).into(),
+                ADDRESS.into(),
+                read_context,
+                Err(ERROR.to_string()).into(),
+            ),
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for sensitive in [
+                ACCOUNT_LABEL,
+                PROFILE_ID,
+                CLUSTER_ID,
+                CLUSTER_NAME,
+                ADDRESS,
+                WEIGHT,
+                ERROR,
+            ] {
+                assert!(
+                    !rendered.contains(sensitive),
+                    "{sensitive} leaked in {rendered}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn boxed_account_result_message_debug_redacts_payloads() {
         const ERROR_SENTINEL: &str = "raw-provider-account-error-sentinel";
         const FINANCIAL_SENTINEL: f64 = 918_273_645.125;
@@ -3084,7 +3283,7 @@ mod tests {
 
         let messages = vec![
             Message::WalletClusterMemberLoaded(
-                "cluster-1".to_string(),
+                "cluster-1".into(),
                 Some("profile-1".to_string()).into(),
                 "0x1111111111111111111111111111111111111111".into(),
                 read_context,

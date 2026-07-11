@@ -53,10 +53,12 @@ impl TradingTerminal {
             Message::AccountPickerSelected(index) => self.select_account_from_picker(index),
             Message::AccountPickerRenameToggled(index) => self.toggle_account_picker_rename(index),
             Message::AccountPickerLabelChanged(index, value) => {
-                self.update_account_picker_label(index, value)
+                self.update_account_picker_label(index, value.into_string())
             }
             Message::OpenAddAccountWindow => self.open_add_account_window(),
-            Message::AddAccountNameChanged(value) => self.update_add_account_name(value),
+            Message::AddAccountNameChanged(value) => {
+                self.update_add_account_name(value.into_string())
+            }
             Message::AddAccountAddressChanged(value) => {
                 self.update_add_account_address(value.into_string())
             }

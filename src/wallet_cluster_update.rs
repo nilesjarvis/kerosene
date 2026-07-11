@@ -54,24 +54,27 @@ impl TradingTerminal {
         match message {
             Message::OpenWalletClustersWindow => self.open_wallet_clusters_window(),
             Message::WalletClusterNameInputChanged(value) => {
-                self.wallet_clusters.new_cluster_name_input = value;
+                self.wallet_clusters.new_cluster_name_input = value.into_string();
                 Task::none()
             }
             Message::WalletClusterCreate => self.create_wallet_cluster(),
-            Message::WalletClusterSelected(cluster_id) => self.select_wallet_cluster(cluster_id),
+            Message::WalletClusterSelected(cluster_id) => {
+                self.select_wallet_cluster(cluster_id.into_string())
+            }
             Message::WalletClusterRenamed(cluster_id, value) => {
-                self.rename_wallet_cluster(cluster_id, value)
+                self.rename_wallet_cluster(cluster_id.into_string(), value.into_string())
             }
-            Message::WalletClusterDeleted(cluster_id) => self.delete_wallet_cluster(cluster_id),
+            Message::WalletClusterDeleted(cluster_id) => {
+                self.delete_wallet_cluster(cluster_id.into_string())
+            }
             Message::WalletClusterAddMember(profile_secret_id) => {
-                self.add_wallet_cluster_member(profile_secret_id)
+                self.add_wallet_cluster_member(profile_secret_id.into_string())
             }
-            Message::WalletClusterRemoveMember(cluster_id, profile_key) => {
-                self.remove_wallet_cluster_member(cluster_id, profile_key.into_option())
-            }
+            Message::WalletClusterRemoveMember(cluster_id, profile_key) => self
+                .remove_wallet_cluster_member(cluster_id.into_string(), profile_key.into_option()),
             Message::WalletClusterMemberWeightChanged(cluster_id, profile_key, value) => self
                 .change_wallet_cluster_member_weight(
-                    cluster_id,
+                    cluster_id.into_string(),
                     profile_key.into_option(),
                     value.into_string(),
                 ),
@@ -83,7 +86,7 @@ impl TradingTerminal {
                 context,
                 result,
             ) => self.apply_wallet_cluster_member_loaded(
-                cluster_id,
+                cluster_id.into_string(),
                 profile_key.into_option(),
                 address.into_string(),
                 context,
@@ -420,7 +423,7 @@ impl TradingTerminal {
             ),
             move |result| {
                 Message::WalletClusterMemberLoaded(
-                    cluster_id,
+                    cluster_id.into(),
                     Some(profile_secret_id).into(),
                     address.into(),
                     read_context,
@@ -1672,6 +1675,43 @@ mod tests {
     }
 
     #[test]
+    fn cluster_name_messages_preserve_draft_create_select_and_rename_behavior() {
+        const DRAFT_NAME: &str = "  Private Cluster Draft  ";
+        const RENAMED: &str = "  Private Cluster Renamed  ";
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.wallet_clusters.clusters.clear();
+        terminal.wallet_clusters.selected_cluster_id = None;
+        terminal.config_save_due_at = None;
+
+        let _task = terminal
+            .update_wallet_cluster(Message::WalletClusterNameInputChanged(DRAFT_NAME.into()));
+        assert_eq!(terminal.wallet_clusters.new_cluster_name_input, DRAFT_NAME);
+
+        let _task = terminal.update_wallet_cluster(Message::WalletClusterCreate);
+        assert_eq!(terminal.wallet_clusters.clusters[0].name, DRAFT_NAME.trim());
+        let cluster_id = terminal.wallet_clusters.clusters[0].id.clone();
+        assert_eq!(
+            terminal.wallet_clusters.selected_cluster_id.as_deref(),
+            Some(cluster_id.as_str())
+        );
+
+        terminal.wallet_clusters.selected_cluster_id = None;
+        let _task = terminal
+            .update_wallet_cluster(Message::WalletClusterSelected(cluster_id.clone().into()));
+        assert_eq!(
+            terminal.wallet_clusters.selected_cluster_id.as_deref(),
+            Some(cluster_id.as_str())
+        );
+
+        let _task = terminal.update_wallet_cluster(Message::WalletClusterRenamed(
+            cluster_id.into(),
+            RENAMED.into(),
+        ));
+        assert_eq!(terminal.wallet_clusters.clusters[0].name, RENAMED);
+        assert!(terminal.config_save_due_at.is_some());
+    }
+
+    #[test]
     fn cluster_direct_result_requires_exact_origin_identity() {
         let mut wrong_cloid = cluster_context(WalletClusterExecutionKind::Order);
         wrong_cloid.cloid = "0x00000000000000000000000000000002".to_string();
@@ -2304,7 +2344,8 @@ mod tests {
         terminal.wallet_clusters.selected_cluster_id = Some("cluster".to_string());
         let previous_generation = terminal.wallet_cluster_user_data_stream_generation;
 
-        let _task = terminal.add_wallet_cluster_member("member-profile".to_string());
+        let _task = terminal
+            .update_wallet_cluster(Message::WalletClusterAddMember("member-profile".into()));
 
         assert_eq!(terminal.wallet_clusters.clusters[0].members.len(), 1);
         assert_eq!(

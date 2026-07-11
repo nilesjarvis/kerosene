@@ -49,7 +49,7 @@ impl fmt::Debug for WalletClusterMember {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WalletClusterMember")
             .field("profile_secret_id", &"<redacted>")
-            .field("weight", &self.weight)
+            .field("weight", &"<redacted>")
             .field("weight_input", &"<redacted>")
             .finish()
     }
@@ -84,10 +84,7 @@ impl fmt::Debug for WalletCluster {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WalletCluster")
             .field("id", &"<redacted>")
-            .field(
-                "name",
-                &crate::helpers::redact_wallet_address_debug_value(&self.name),
-            )
+            .field("name", &"<redacted>")
             .field(
                 "members",
                 &format_args!("<{} redacted>", self.members.len()),
@@ -222,10 +219,7 @@ impl fmt::Debug for WalletClusterExecutionLeg {
         f.debug_struct("WalletClusterExecutionLeg")
             .field("profile_secret_id", &"<redacted>")
             .field("address", &"<redacted>")
-            .field(
-                "label",
-                &crate::helpers::redact_wallet_address_debug_value(&self.label),
-            )
+            .field("label", &"<redacted>")
             .field("symbol", &"<redacted>")
             .field("is_buy", &self.is_buy)
             .field("size", &"<redacted>")
@@ -252,10 +246,7 @@ impl fmt::Debug for WalletClusterExecution {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WalletClusterExecution")
             .field("id", &self.id)
-            .field(
-                "cluster_name",
-                &crate::helpers::redact_wallet_address_debug_value(&self.cluster_name),
-            )
+            .field("cluster_name", &"<redacted>")
             .field("kind", &self.kind)
             .field("symbol", &"<redacted>")
             .field("order_kind", &self.order_kind)
@@ -606,13 +597,58 @@ mod tests {
     }
 
     #[test]
+    fn cluster_runtime_debug_redacts_identity_and_weight_without_changing_values() {
+        const CLUSTER_ID: &str = "private-runtime-cluster-id-sentinel";
+        const CLUSTER_NAME: &str = "private-runtime-cluster-name-sentinel";
+        const PROFILE_ID: &str = "private-runtime-profile-id-sentinel";
+        const WEIGHT_BITS: u64 = 0x4009_21fb_5444_2d18;
+        let state = WalletClusterState::from_config(&WalletClustersConfig {
+            clusters: vec![WalletClusterConfig {
+                id: CLUSTER_ID.to_string(),
+                name: CLUSTER_NAME.to_string(),
+                members: vec![WalletClusterMemberConfig {
+                    profile_secret_id: PROFILE_ID.to_string(),
+                    weight: f64::from_bits(WEIGHT_BITS),
+                }],
+            }],
+            selected_cluster_id: Some(CLUSTER_ID.to_string()),
+            ..WalletClustersConfig::default()
+        });
+        let cluster = &state.clusters[0];
+
+        let cluster_debug = format!("{cluster:?}");
+        let member_debug = format!("{:?}", cluster.members[0]);
+
+        for sensitive in [CLUSTER_ID, CLUSTER_NAME, PROFILE_ID] {
+            assert!(
+                !cluster_debug.contains(sensitive),
+                "{sensitive} leaked in {cluster_debug}"
+            );
+            assert!(
+                !member_debug.contains(sensitive),
+                "{sensitive} leaked in {member_debug}"
+            );
+        }
+        assert!(
+            member_debug.contains("weight: \"<redacted>\""),
+            "{member_debug}"
+        );
+        assert_eq!(cluster.id, CLUSTER_ID);
+        assert_eq!(cluster.name, CLUSTER_NAME);
+        assert_eq!(cluster.members[0].profile_secret_id, PROFILE_ID);
+        assert_eq!(cluster.members[0].weight.to_bits(), WEIGHT_BITS);
+    }
+
+    #[test]
     fn execution_leg_debug_redacts_lifecycle_message() {
         const RAW_CLOID: &str = "0x0000000000000000000000000000000f";
+        const LABEL: &str = "private-execution-member-label-sentinel";
+        const CLUSTER_NAME: &str = "private-execution-cluster-name-sentinel";
         let message = format!("orderStatus says cancel {RAW_CLOID} if needed");
         let leg = WalletClusterExecutionLeg {
             profile_secret_id: "profile-secret".to_string(),
             address: "0x1111111111111111111111111111111111111111".to_string(),
-            label: "Test member".to_string(),
+            label: LABEL.to_string(),
             symbol: "BTC".to_string(),
             is_buy: true,
             size: "1".to_string(),
@@ -626,7 +662,28 @@ mod tests {
 
         assert!(rendered.contains("message: \"<redacted>\""));
         assert!(!rendered.contains(RAW_CLOID));
+        assert!(!rendered.contains(LABEL));
+        assert_eq!(leg.label, LABEL);
         assert_eq!(leg.message, message, "stored UI message must remain intact");
+
+        let execution = WalletClusterExecution {
+            id: 42,
+            cluster_name: CLUSTER_NAME.to_string(),
+            kind: WalletClusterExecutionKind::Order,
+            symbol: "BTC".to_string(),
+            order_kind: OrderKind::Limit,
+            created_at_ms: 123,
+            legs: vec![leg],
+        };
+        let execution_debug = format!("{execution:?}");
+
+        assert!(
+            execution_debug.contains("cluster_name: \"<redacted>\""),
+            "{execution_debug}"
+        );
+        assert!(!execution_debug.contains(CLUSTER_NAME), "{execution_debug}");
+        assert_eq!(execution.cluster_name, CLUSTER_NAME);
+        assert_eq!(execution.legs[0].label, LABEL);
     }
 
     #[test]

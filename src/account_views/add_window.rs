@@ -132,7 +132,7 @@ impl TradingTerminal {
         let default_name = format!("Account {}", self.persisted_accounts_snapshot().len() + 1);
         let name_input = text_input(&default_name, &state.name_input)
             .style(helpers::text_input_style)
-            .on_input(Message::AddAccountNameChanged)
+            .on_input(|value| Message::AddAccountNameChanged(value.into()))
             .size(12)
             .padding([6, 8])
             .width(Fill);

@@ -299,6 +299,16 @@ storage or trim-on-commit behavior. Serde data, label/color/tag lookup, short-
 address rendering, tooltips, subscription refresh, tracker rows, and config
 persistence remain exact and user-visible output is unchanged.
 
+Saved-account and wallet-cluster identity follows the same rule. Account profile
+and picker diagnostics hide names and addresses; cluster config/live/execution
+diagnostics hide cluster/member names, stable cluster/profile IDs, and fan-out
+weights while retaining safe mode, status, count, and lifecycle structure.
+Account-label, cluster-name, cluster-ID, and required profile-ID messages use
+exact-value redacted wrappers and restore their strings in the first account or
+cluster update arm. Profile/cluster serde, drafts, generated IDs, selection,
+membership, weight bits, stream rotation, persistence, execution correlation,
+history rendering, and all visible names remain unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,
