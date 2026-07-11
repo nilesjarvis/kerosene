@@ -309,6 +309,18 @@ cluster update arm. Profile/cluster serde, drafts, generated IDs, selection,
 membership, weight bits, stream rotation, persistence, execution correlation,
 history rendering, and all visible names remain unchanged.
 
+HyperDash positioning diagnostics distinguish public market aggregates from
+wallet-level data. Ticker/market/timeframe, aggregate notionals and counts,
+pagination shape, and timestamps remain available on the aggregate models, but
+wallet rows are represented only by count. Row diagnostics hide addresses,
+ordinary names/labels/tags, verification and copy-score metadata, exact
+positions, prices, PnL, account values, and deltas. Positioning completion
+messages use `RedactedPositioningMessageResult<T>`, so generic Elm diagnostics
+also avoid traversing either a success payload or external error. Response
+parsing, size caps, request keys/generations, coalescing, stale-result handling,
+stored values, widget errors, and every rendered aggregate and wallet row remain
+exact and unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

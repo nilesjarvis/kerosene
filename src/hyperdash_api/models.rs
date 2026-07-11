@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::helpers::{redact_sensitive_response_text, redact_wallet_address_debug_value};
+use crate::helpers::redact_sensitive_response_text;
 use serde::{Deserialize, Serialize};
 
 use super::HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS;
@@ -101,25 +101,28 @@ impl fmt::Debug for TickerPositionEntry {
             .field("address", &"<redacted>")
             .field(
                 "display_name",
-                &redacted_optional_wallet_debug_value(&self.display_name),
+                &self.display_name.as_ref().map(|_| "<redacted>"),
             )
-            .field("label", &redacted_optional_wallet_debug_value(&self.label))
-            .field("tag", &redacted_optional_wallet_debug_value(&self.tag))
-            .field("verified", &self.verified)
-            .field("copy_score", &self.copy_score)
-            .field("size", &self.size)
-            .field("notional_size", &self.notional_size)
-            .field("entry_price", &self.entry_price)
-            .field("liquidation_price", &self.liquidation_price)
-            .field("unrealized_pnl", &self.unrealized_pnl)
-            .field("funding_pnl", &self.funding_pnl)
-            .field("account_value", &self.account_value)
+            .field("label", &self.label.as_ref().map(|_| "<redacted>"))
+            .field("tag", &self.tag.as_ref().map(|_| "<redacted>"))
+            .field("verified", &self.verified.map(|_| "<redacted>"))
+            .field("copy_score", &self.copy_score.map(|_| "<redacted>"))
+            .field("size", &"<redacted>")
+            .field("notional_size", &"<redacted>")
+            .field("entry_price", &"<redacted>")
+            .field(
+                "liquidation_price",
+                &self.liquidation_price.map(|_| "<redacted>"),
+            )
+            .field("unrealized_pnl", &"<redacted>")
+            .field("funding_pnl", &"<redacted>")
+            .field("account_value", &"<redacted>")
             .finish()
     }
 }
 
 /// Aggregated HyperDash positioning for one perp ticker.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Clone, Deserialize, PartialEq)]
 pub struct TickerPositions {
     pub coin: String,
     pub positions: Vec<TickerPositionEntry>,
@@ -140,6 +143,26 @@ pub struct TickerPositions {
     pub timestamp: String,
 }
 
+impl fmt::Debug for TickerPositions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TickerPositions")
+            .field("coin", &self.coin)
+            .field(
+                "positions",
+                &format_args!("<{} redacted>", self.positions.len()),
+            )
+            .field("total_long_notional", &self.total_long_notional)
+            .field("total_short_notional", &self.total_short_notional)
+            .field("total_notional", &self.total_notional)
+            .field("long_count", &self.long_count)
+            .field("short_count", &self.short_count)
+            .field("total_count", &self.total_count)
+            .field("has_more", &self.has_more)
+            .field("timestamp", &self.timestamp)
+            .finish()
+    }
+}
+
 /// A single wallet-level position delta from the HyperDash perp delta endpoint.
 #[derive(Clone, Deserialize, PartialEq)]
 pub struct PerpDeltaEntry {
@@ -152,18 +175,28 @@ impl fmt::Debug for PerpDeltaEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PerpDeltaEntry")
             .field("address", &"<redacted>")
-            .field("current", &self.current)
-            .field("delta", &self.delta)
+            .field("current", &"<redacted>")
+            .field("delta", &"<redacted>")
             .finish()
     }
 }
 
 /// Position-size changes for one perp market and timeframe.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Clone, Deserialize, PartialEq)]
 pub struct PerpDeltas {
     pub market: String,
     pub timeframe: String,
     pub deltas: Vec<PerpDeltaEntry>,
+}
+
+impl fmt::Debug for PerpDeltas {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PerpDeltas")
+            .field("market", &self.market)
+            .field("timeframe", &self.timeframe)
+            .field("deltas", &format_args!("<{} redacted>", self.deltas.len()))
+            .finish()
+    }
 }
 
 /// Parameters used for the last heatmap fetch, so we can detect when the
@@ -236,13 +269,6 @@ impl fmt::Debug for GqlError {
     }
 }
 
-fn redacted_optional_wallet_debug_value(value: &Option<String>) -> Option<&str> {
-    value
-        .as_deref()
-        .map(str::trim)
-        .map(redact_wallet_address_debug_value)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{GqlError, PerpDeltaEntry, PerpDeltas, TickerPositionEntry, TickerPositions};
@@ -250,23 +276,34 @@ mod tests {
     const TEST_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
 
     #[test]
-    fn ticker_positions_debug_redacts_wallet_addresses() {
+    fn ticker_positions_debug_separates_public_aggregates_from_wallet_rows() {
+        const DISPLAY_NAME: &str = "private-hyperdash-display-name-sentinel";
+        const LABEL: &str = "private-hyperdash-label-sentinel";
+        const TAG: &str = "private-hyperdash-tag-sentinel";
+        const COPY_SCORE: f64 = 201_910.937_5;
+        const SIZE: f64 = 918_273.125;
+        const NOTIONAL_SIZE: f64 = 827_364.25;
+        const ENTRY_PRICE: f64 = 736_455.375;
+        const LIQUIDATION_PRICE: f64 = 645_546.5;
+        const UNREALIZED_PNL: f64 = 534_637.625;
+        const FUNDING_PNL: f64 = -423_728.75;
+        const ACCOUNT_VALUE: f64 = 312_819.875;
         let positions = TickerPositions {
             coin: "HYPE".to_string(),
             positions: vec![TickerPositionEntry {
                 address: TEST_ADDRESS.to_string(),
-                display_name: Some(TEST_ADDRESS.to_string()),
-                label: Some("Whale".to_string()),
-                tag: Some(TEST_ADDRESS.to_string()),
+                display_name: Some(DISPLAY_NAME.to_string()),
+                label: Some(LABEL.to_string()),
+                tag: Some(TAG.to_string()),
                 verified: Some(true),
-                copy_score: Some(61.5),
-                size: 12.5,
-                notional_size: 500.25,
-                entry_price: 30.0,
-                liquidation_price: None,
-                unrealized_pnl: 125.75,
-                funding_pnl: -4.5,
-                account_value: 1000.0,
+                copy_score: Some(COPY_SCORE),
+                size: SIZE,
+                notional_size: NOTIONAL_SIZE,
+                entry_price: ENTRY_PRICE,
+                liquidation_price: Some(LIQUIDATION_PRICE),
+                unrealized_pnl: UNREALIZED_PNL,
+                funding_pnl: FUNDING_PNL,
+                account_value: ACCOUNT_VALUE,
             }],
             total_long_notional: 600.0,
             total_short_notional: 400.0,
@@ -277,30 +314,102 @@ mod tests {
             has_more: true,
             timestamp: "2026-05-18T11:52:39.585Z".to_string(),
         };
+        let value_before = positions.clone();
 
-        let rendered = format!("{positions:?}");
+        let parent_debug = format!("{positions:?}");
+        let entry_debug = format!("{:?}", positions.positions[0]);
 
-        assert!(rendered.contains("<redacted>"));
-        assert!(rendered.contains("Whale"));
-        assert!(!rendered.contains(TEST_ADDRESS));
+        assert!(parent_debug.contains("coin: \"HYPE\""), "{parent_debug}");
+        assert!(
+            parent_debug.contains("positions: <1 redacted>"),
+            "{parent_debug}"
+        );
+        assert!(
+            parent_debug.contains("total_long_notional: 600.0"),
+            "{parent_debug}"
+        );
+        assert!(parent_debug.contains("has_more: true"), "{parent_debug}");
+        assert!(entry_debug.contains("<redacted>"), "{entry_debug}");
+        assert!(
+            !entry_debug.contains("verified: Some(true)"),
+            "{entry_debug}"
+        );
+        for sensitive in [TEST_ADDRESS, DISPLAY_NAME, LABEL, TAG] {
+            assert!(
+                !parent_debug.contains(sensitive),
+                "{sensitive} leaked in {parent_debug}"
+            );
+            assert!(
+                !entry_debug.contains(sensitive),
+                "{sensitive} leaked in {entry_debug}"
+            );
+        }
+        for sensitive in [
+            COPY_SCORE,
+            SIZE,
+            NOTIONAL_SIZE,
+            ENTRY_PRICE,
+            LIQUIDATION_PRICE,
+            UNREALIZED_PNL,
+            FUNDING_PNL,
+            ACCOUNT_VALUE,
+        ] {
+            let sensitive = format!("{sensitive:?}");
+            assert!(
+                !parent_debug.contains(&sensitive),
+                "{sensitive} leaked in {parent_debug}"
+            );
+            assert!(
+                !entry_debug.contains(&sensitive),
+                "{sensitive} leaked in {entry_debug}"
+            );
+        }
+        assert_eq!(positions, value_before);
     }
 
     #[test]
-    fn perp_deltas_debug_redacts_wallet_addresses() {
+    fn perp_deltas_debug_keeps_public_context_and_redacts_wallet_values() {
+        const CURRENT: f64 = -918_273.125;
+        const DELTA: f64 = 827_364.25;
         let deltas = PerpDeltas {
             market: "HYPE".to_string(),
             timeframe: "15m".to_string(),
             deltas: vec![PerpDeltaEntry {
                 address: TEST_ADDRESS.to_string(),
-                current: -25.5,
-                delta: 10.25,
+                current: CURRENT,
+                delta: DELTA,
             }],
         };
+        let value_before = deltas.clone();
 
-        let rendered = format!("{deltas:?}");
+        let parent_debug = format!("{deltas:?}");
+        let entry_debug = format!("{:?}", deltas.deltas[0]);
 
-        assert!(rendered.contains("<redacted>"));
-        assert!(!rendered.contains(TEST_ADDRESS));
+        assert!(parent_debug.contains("market: \"HYPE\""), "{parent_debug}");
+        assert!(
+            parent_debug.contains("timeframe: \"15m\""),
+            "{parent_debug}"
+        );
+        assert!(
+            parent_debug.contains("deltas: <1 redacted>"),
+            "{parent_debug}"
+        );
+        assert!(entry_debug.contains("<redacted>"), "{entry_debug}");
+        for sensitive in [
+            TEST_ADDRESS.to_string(),
+            format!("{CURRENT:?}"),
+            format!("{DELTA:?}"),
+        ] {
+            assert!(
+                !parent_debug.contains(&sensitive),
+                "{sensitive} leaked in {parent_debug}"
+            );
+            assert!(
+                !entry_debug.contains(&sensitive),
+                "{sensitive} leaked in {entry_debug}"
+            );
+        }
+        assert_eq!(deltas, value_before);
     }
 
     #[test]

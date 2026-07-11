@@ -71,8 +71,11 @@ fn stale_hyperdash_generation_positioning_result_does_not_remove_current_pending
         instance.pending_key = Some(request_key.clone());
     }
 
-    let _ =
-        terminal.apply_positioning_info_loaded(request_key.clone(), 1, Ok(ticker_positions("BTC")));
+    let _task = terminal.update_positioning_info_market(Message::PositioningInfoLoaded(
+        request_key.clone(),
+        1,
+        Ok(ticker_positions("BTC")).into(),
+    ));
 
     let instance = terminal.positioning_infos.get(&id).expect("instance");
     assert!(instance.loading);
@@ -83,11 +86,11 @@ fn stale_hyperdash_generation_positioning_result_does_not_remove_current_pending
         Some(&vec![id])
     );
 
-    let _ = terminal.apply_positioning_info_loaded(
+    let _task = terminal.update_positioning_info_market(Message::PositioningInfoLoaded(
         request_key.clone(),
         2,
-        Ok(ticker_positions("HYPE")),
-    );
+        Ok(ticker_positions("HYPE")).into(),
+    ));
 
     let instance = terminal.positioning_infos.get(&id).expect("instance");
     assert!(!instance.loading);
@@ -120,11 +123,11 @@ fn current_positioning_error_redacts_widget_error() {
         instance.pending_key = Some(request_key.clone());
     }
 
-    let _ = terminal.apply_positioning_info_loaded(
+    let _task = terminal.update_positioning_info_market(Message::PositioningInfoLoaded(
         request_key.clone(),
         2,
-        Err("positioning rejected: api_key=key-secret signature=sig-secret".to_string()),
-    );
+        Err("positioning rejected: api_key=key-secret signature=sig-secret".to_string()).into(),
+    ));
 
     let instance = terminal.positioning_infos.get(&id).expect("instance");
     assert!(!instance.loading);
@@ -216,11 +219,11 @@ fn stale_hyperdash_generation_change_result_does_not_remove_current_pending_requ
         instance.change_pending_key = Some(request_key.clone());
     }
 
-    let _ = terminal.apply_positioning_info_change_loaded(
+    let _task = terminal.update_positioning_info_market(Message::PositioningInfoChangeLoaded(
         request_key.clone(),
         1,
-        Ok(perp_deltas("BTC")),
-    );
+        Ok(perp_deltas("BTC")).into(),
+    ));
 
     let instance = terminal.positioning_infos.get(&id).expect("instance");
     assert!(instance.change_loading);
@@ -234,11 +237,11 @@ fn stale_hyperdash_generation_change_result_does_not_remove_current_pending_requ
         Some(&vec![id])
     );
 
-    let _ = terminal.apply_positioning_info_change_loaded(
+    let _task = terminal.update_positioning_info_market(Message::PositioningInfoChangeLoaded(
         request_key.clone(),
         2,
-        Ok(perp_deltas("HYPE")),
-    );
+        Ok(perp_deltas("HYPE")).into(),
+    ));
 
     let instance = terminal.positioning_infos.get(&id).expect("instance");
     assert!(!instance.change_loading);
@@ -270,11 +273,12 @@ fn current_positioning_change_error_redacts_widget_error() {
         instance.change_pending_key = Some(request_key.clone());
     }
 
-    let _ = terminal.apply_positioning_info_change_loaded(
+    let _task = terminal.update_positioning_info_market(Message::PositioningInfoChangeLoaded(
         request_key.clone(),
         2,
-        Err("perp deltas rejected: auth_token=token-secret signature=sig-secret".to_string()),
-    );
+        Err("perp deltas rejected: auth_token=token-secret signature=sig-secret".to_string())
+            .into(),
+    ));
 
     let instance = terminal.positioning_infos.get(&id).expect("instance");
     assert!(!instance.change_loading);

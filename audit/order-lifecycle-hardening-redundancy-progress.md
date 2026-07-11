@@ -4421,6 +4421,93 @@ target-specific cancellation policy, not HTTP replay.
   type-specific public/account-identity audit; classified raw external-result
   groups also remain open.
 
+### F-60 — HyperDash positioning diagnostics traverse wallet identities and exact positions
+
+- Status: addressed in Turn 53; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account/position privacy and diagnostic-boundary hardening;
+  no request coalescing, stale-result, parsing, rendering, or trading defect was
+  found
+- Scope: wallet-level `TickerPositionEntry`/`PerpDeltaEntry`, aggregate
+  `TickerPositions`/`PerpDeltas`, both positioning completion messages, their
+  fetch-task publishers and first update consumers, request keys/generations,
+  response/error sanitization, runtime state, views, parsing/size limits, and
+  focused tests. HyperDash liquidation/heatmap results are a separate public-
+  market result class and were not changed.
+- Preconditions/event ordering:
+  1. HyperDash returns public market context plus wallet-addressed rows. A
+     position row contains provider names/labels/tags, verification/copy-score
+     metadata, exact size/notional/entry/liquidation values, PnL, and account
+     value; a delta row contains address, current size, and exact change.
+  2. The existing row formatters hid full addresses and address-shaped labels,
+     but exposed ordinary identity metadata and every wallet-level financial
+     value. Derived aggregate formatters recursively traversed all rows.
+  3. The coalesced fetch tasks moved `Box<Result<...>>` directly into
+     `PositioningInfoLoaded`/`PositioningInfoChangeLoaded`. Derived
+     `Message::Debug` therefore traversed a successful response or external
+     error before the update handler's generation/key guards and error
+     sanitizer ran.
+- Evidence: parent commit
+  `16c880623de6174afb518b6cbfb9a73183fd5ea3` exposes identity/financial row
+  fields at `src/hyperdash_api/models.rs:72-167` and raw boxed results at
+  `src/message.rs:1076-1085`. Publishers are
+  `src/market_update/positioning_info/requests/queue.rs:49-68` and
+  `src/market_update/positioning_info/requests/queue.rs:100-108`; the first
+  consumer is `src/market_update/positioning_info.rs:189-194`, followed by
+  generation/key ownership and sanitized state application in
+  `src/market_update/positioning_info/requests/apply.rs:13-83`. Request keys are
+  derived only from public market/filter/pagination context at
+  `src/market_update/positioning_info/requests.rs:132-151`.
+- Violated invariant: public market aggregate context may remain diagnosable,
+  but generic formatters must not connect a wallet identity to exact position,
+  account, PnL, or delta values, and an Elm completion message must not traverse
+  either the nested result or pre-handler external error.
+- Risk: an assertion failure, state/message dump, framework instrumentation, or
+  future message logging could disclose provider identity labels alongside an
+  exact wallet position, liquidation price, account value, or recent change.
+  The HyperDash key already uses `Zeroizing`, response excerpts already redact
+  common secret/address shapes, and no known production log sink, signed
+  exchange mutation, retry, or order-state transition is implicated.
+- Why existing checks did not cover it: the prior model test explicitly
+  required an ordinary wallet label to remain in aggregate `Debug` and checked
+  only full-address absence. Response tests cover parsing, auth/error redaction,
+  body/entry caps, and exact values; update tests cover stale key generations,
+  coalescing, and sanitized widget errors only after unboxing the raw message.
+- Implemented fix: wallet-row formatters now retain only field/presence shape
+  and redact all identity, account metadata, and exact financial values.
+  Aggregate formatters retain the deliberately public ticker/market/timeframe,
+  aggregate notionals/counts, pagination flag, timestamp, and row count without
+  traversing rows (`src/hyperdash_api/models.rs:98-199`). Add boxed
+  `RedactedPositioningMessageResult<T>` and use it for both completion variants
+  (`src/message.rs:561-590`, `src/message.rs:1105-1114`). Tasks wrap the existing
+  result at publication; the positioning update arm immediately restores it
+  before the source-identical generation/key/application path. Public request
+  keys and numeric generations remain unchanged and diagnostically available.
+- Regression coverage: model controls reject ordinary identities and every
+  unique per-wallet position/delta value, retain public aggregate/context
+  structure, and compare the complete cloned values after formatting
+  (`src/hyperdash_api/models.rs:279-415`). Wrapper recovery preserves a
+  non-canonical float payload, negative zero, and exact external error while
+  formatting only result shape (`src/message.rs:2611-2642`). Parent-message
+  controls cover success and error for both result types and reject identity,
+  financial, and error sentinels (`src/message.rs:3325-3408`). Existing stale-
+  generation and widget-error tests now enter through the wrapped `Message`
+  path (`src/market_update/positioning_info/tests.rs:58-290`); parser, cap,
+  state, metric, flow, table, and view suites remain behavior controls.
+- Smallest behavior-preserving fix: four formatter bodies/derives and one
+  box-preserving result newtype changed. No GraphQL query/field, deserialize
+  type, result allocation, response/body/entry cap, float bit, request key,
+  generation, pending map, coalescing, stale guard, error sanitizer, state
+  field, sort/filter/pagination behavior, timestamp, view access, config/schema,
+  visible copy, signed bytes, or trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete definition/call-site tracing, exact recovery controls, existing
+  parse/view coverage, and the mechanical diff establish the intended boundary,
+  but focused and nearby suites cannot execute until ALSA development metadata
+  is available. Remaining raw HyperDash liquidation/heatmap completions and
+  other classified public/private external-result groups require separate
+  Track 9 review.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -7662,6 +7749,72 @@ target-specific cancellation policy, not HTTP replay.
   close only the sensitive formatter/result boundary without changing feeds or
   views.
 
+## Turn 53 — Isolate HyperDash Wallet Position Diagnostics
+
+- Status: F-60 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: complete HyperDash positioning/delta diagnostic graph from response
+  row/aggregate models through both coalesced task results, parent messages,
+  first update consumers, stale-generation/key application, runtime state, and
+  views; explicit classification of public aggregate/query context
+- Invariant: exact parsed wallet rows and public aggregates must continue to
+  drive the same widget, while standalone model and generic message diagnostics
+  cannot connect wallet identity to exact account/position/delta values or
+  traverse an external error.
+- Protected behavior: GraphQL fields and deserialization, response/body and
+  delta-entry caps, public ticker/market/timeframe/aggregate/pagination/
+  timestamp data, exact float bits, request keys and generations, pending-map
+  coalescing, stale-result rejection, error sanitization/copy, instance state,
+  sort/filter behavior, table/flow/summary calculations, wallet actions,
+  persistence, and all visible output.
+- Preconditions/event ordering: the task keeps the existing request key and
+  HyperDash-key generation beside the wrapped result. The market update arm
+  restores the exact boxed result first, then the unchanged apply helper rejects
+  stale generations, removes only the matching pending key, confirms each
+  instance still owns that key, and applies data or a sanitized error.
+- Evidence: F-60 records every model, formatter, task publisher, parent field,
+  first consumer, correlation/staleness owner, parser/error boundary, state/view
+  consumer, prior expectation, and exact regression control. Public request
+  context was deliberately retained rather than blanket-redacted.
+- Change: replace recursive aggregate derives with structural formatters;
+  redact ordinary identity metadata and all per-wallet financial row values;
+  add `RedactedPositioningMessageResult<T>` around the existing box; convert the
+  two publishers/consumers mechanically; route existing staleness/error tests
+  through the message boundary.
+- Tests/checks:
+  - Baseline HyperDash model and positioning-update suites plus `cargo check`
+    stopped in `alsa-sys` before Kerosene compilation because `pkg-config`
+    could not find the system `alsa.pc` file.
+  - The pre-fix exact model diagnostic regression stopped at that same boundary
+    before it could demonstrate the expected assertion failure.
+  - Post-fix complete HyperDash model/positioning, positioning update/view/state,
+    Message, market-update, routing, and positioning-config suites stopped at
+    the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, subscription identity, widget
+    layout, view output, task timing, or interaction behavior changed;
+    compilation is already blocked, and no live exchange, HyperDash request, or
+    credential-bearing operation ran.
+- Compatibility/UX assessment: complete model equality and wrapper bit/error
+  recovery controls preserve exact values; existing parse and widget suites
+  retain response shapes and calculations; stale-generation/error tests now
+  cover the new boundary while keeping the same state assertions. No visible
+  behavior, request content/timing, config/schema, persistence, signed bytes,
+  order state, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-60 is source-
+  hardened, but remaining HyperDash liquidation/heatmap completion messages and
+  other raw external-result classes still need type-by-type public/private
+  classification before Track 9 can close.
+- Prior turn commit hash: `16c880623de6174afb518b6cbfb9a73183fd5ea3`
+- Next candidate: audit `ChartLiquidationLoaded`,
+  `LiquidationsDistributionLoaded`, and `ChartHeatmapLoaded` from public
+  aggregate model formatting through response/error sanitization and parent
+  messages; preserve market diagnostics while adding only any missing external-
+  error/result boundary, then resume the remaining raw result inventory.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -7703,11 +7856,10 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline account-profile/picker and cluster
-  execution/state diagnostics plus `cargo check`; post-fix focused profile/
-  picker/config/live/execution/message/account-update/cluster-update and routing
-  controls; complete account config/update, wallet config, cluster state/update,
-  Message, routing, and order/cluster lifecycle suites;
+- Environment-blocked this turn: baseline HyperDash model/positioning-update
+  suites plus `cargo check`; the pre-fix exact model diagnostic regression;
+  post-fix complete HyperDash model/positioning, positioning update/view/state,
+  Message, market-update, routing, and positioning-config suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
@@ -7717,7 +7869,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-59
+  F-40, and F-42 through F-60
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -7762,6 +7914,8 @@ target-specific cancellation policy, not HTTP replay.
   F-55, journal completion request/result diagnostics by F-56, and wallet-label
   export/I/O-result diagnostics by F-57. Wallet identity model/display/edit
   diagnostics are source-hardened by F-58, and saved-account/cluster identity,
-  allocation, and message diagnostics by F-59. Remaining independently
-  formattable nested account/order types and classified external-status paths,
-  plus the rest of Track 9, require completion before a final verdict.
+  allocation, and message diagnostics by F-59. HyperDash wallet-level
+  positioning models and completion messages are source-hardened by F-60 while
+  retaining public aggregate diagnostics. Remaining independently formattable
+  nested account/order types and classified external-status paths, plus the rest
+  of Track 9, require completion before a final verdict.

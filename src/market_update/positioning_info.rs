@@ -187,11 +187,14 @@ impl TradingTerminal {
                 Task::none()
             }
             Message::PositioningInfoLoaded(request_key, generation, result) => {
-                self.apply_positioning_info_loaded(request_key, generation, *result)
+                self.apply_positioning_info_loaded(request_key, generation, result.into_result())
             }
-            Message::PositioningInfoChangeLoaded(request_key, generation, result) => {
-                self.apply_positioning_info_change_loaded(request_key, generation, *result)
-            }
+            Message::PositioningInfoChangeLoaded(request_key, generation, result) => self
+                .apply_positioning_info_change_loaded(
+                    request_key,
+                    generation,
+                    result.into_result(),
+                ),
             _ => Task::none(),
         }
     }

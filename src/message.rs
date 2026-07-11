@@ -559,6 +559,35 @@ impl<T> fmt::Debug for RedactedAccountMessageResult<T> {
     }
 }
 
+/// Exact HyperDash positioning result carried through the Elm message boundary.
+///
+/// Update handlers recover the original wallet-level positions, deltas, or
+/// external error. Generic message diagnostics expose only success/error shape
+/// and never traverse the account-identifying payload.
+#[derive(Clone)]
+pub(crate) struct RedactedPositioningMessageResult<T>(Box<Result<T, String>>);
+
+impl<T> RedactedPositioningMessageResult<T> {
+    pub(crate) fn into_result(self) -> Result<T, String> {
+        *self.0
+    }
+}
+
+impl<T> From<Result<T, String>> for RedactedPositioningMessageResult<T> {
+    fn from(value: Result<T, String>) -> Self {
+        Self(Box::new(value))
+    }
+}
+
+impl<T> fmt::Debug for RedactedPositioningMessageResult<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(_) => f.write_str("Ok(<redacted>)"),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 /// Exact trading-journal task result carried through the Elm message boundary.
 ///
 /// Update handlers recover the original fills, candles, or external error.
@@ -1076,12 +1105,12 @@ pub(crate) enum Message {
     PositioningInfoLoaded(
         String,
         u64,
-        Box<Result<crate::hyperdash_api::TickerPositions, String>>,
+        RedactedPositioningMessageResult<crate::hyperdash_api::TickerPositions>,
     ),
     PositioningInfoChangeLoaded(
         String,
         u64,
-        Box<Result<crate::hyperdash_api::PerpDeltas, String>>,
+        RedactedPositioningMessageResult<crate::hyperdash_api::PerpDeltas>,
     ),
     AddOrderBookPane,
     AddAdvancedOrdersPane,
@@ -2006,12 +2035,12 @@ mod tests {
         RedactedAdvancedOrderHistoryId, RedactedClientOrderId, RedactedJournalMessageResult,
         RedactedLayoutMessageResult, RedactedOrderId, RedactedOrderInput,
         RedactedOrderMessageResult, RedactedOrderSymbol, RedactedOrderValue, RedactedPhoneInput,
-        RedactedPnlCardMessageResult, RedactedTelegramChannelKey, RedactedWalletClusterId,
-        RedactedWalletClusterName, RedactedWalletLabel, RedactedWalletLabelsMessageResult,
-        SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult, SecretInput,
-        TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult,
-        XAuthContextMessageResult, XFeedPageMessageResult, XListsMessageResult,
-        XProfileImageMessageResult,
+        RedactedPnlCardMessageResult, RedactedPositioningMessageResult, RedactedTelegramChannelKey,
+        RedactedWalletClusterId, RedactedWalletClusterName, RedactedWalletLabel,
+        RedactedWalletLabelsMessageResult, SchwabAccountsMessageResult,
+        SchwabTokenRefreshMessageResult, SecretInput, TelegramFastAuthMessageResult,
+        TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult, XAuthContextMessageResult,
+        XFeedPageMessageResult, XListsMessageResult, XProfileImageMessageResult,
     };
     use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
     use crate::api::{
@@ -2019,6 +2048,7 @@ mod tests {
     };
     use crate::chart_state::ChartSurfaceId;
     use crate::config::{ChartBackfillSource, MarketUniverseConfig, ReadDataProvider};
+    use crate::hyperdash_api::{PerpDeltaEntry, PerpDeltas, TickerPositionEntry, TickerPositions};
     use crate::order_execution::{
         OneShotPlacementContext, OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext,
         QuickOrderForm, QuickOrderQuantityProvenance, QuickOrderRecovery,
@@ -2575,6 +2605,39 @@ mod tests {
             restored.buckets["day"].account_value_history[0].1.to_bits(),
             FINANCIAL_BITS
         );
+    }
+
+    #[test]
+    fn positioning_message_result_wrapper_preserves_exact_payloads() {
+        const ERROR: &str = "positioning-result-error-sentinel";
+        const CURRENT_BITS: u64 = 0x7ff8_0000_0000_0053;
+        const DELTA_BITS: u64 = 0x8000_0000_0000_0000;
+        let error: RedactedPositioningMessageResult<PerpDeltas> = Err(ERROR.to_string()).into();
+        let success: RedactedPositioningMessageResult<PerpDeltas> = Ok(PerpDeltas {
+            market: "HYPE".to_string(),
+            timeframe: "15m".to_string(),
+            deltas: vec![PerpDeltaEntry {
+                address: "synthetic-wallet-identity".to_string(),
+                current: f64::from_bits(CURRENT_BITS),
+                delta: f64::from_bits(DELTA_BITS),
+            }],
+        })
+        .into();
+
+        let error_debug = format!("{error:?}");
+        let success_debug = format!("{success:?}");
+
+        assert!(error_debug.contains("Err(<redacted>)"), "{error_debug}");
+        assert!(success_debug.contains("Ok(<redacted>)"), "{success_debug}");
+        assert!(!error_debug.contains(ERROR), "{error_debug}");
+        assert!(
+            !success_debug.contains("synthetic-wallet-identity"),
+            "{success_debug}"
+        );
+        assert_eq!(error.into_result().expect_err("synthetic error"), ERROR);
+        let restored = success.into_result().expect("synthetic positioning data");
+        assert_eq!(restored.deltas[0].current.to_bits(), CURRENT_BITS);
+        assert_eq!(restored.deltas[0].delta.to_bits(), DELTA_BITS);
     }
 
     #[test]
@@ -3249,6 +3312,93 @@ mod tests {
                 ADDRESS,
                 WEIGHT,
                 ERROR,
+            ] {
+                assert!(
+                    !rendered.contains(sensitive),
+                    "{sensitive} leaked in {rendered}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn positioning_result_message_debug_is_value_neutral() {
+        const ADDRESS: &str = "synthetic-positioning-wallet-identity";
+        const DISPLAY_NAME: &str = "private-positioning-display-name-sentinel";
+        const LABEL: &str = "private-positioning-label-sentinel";
+        const TAG: &str = "private-positioning-tag-sentinel";
+        const ERROR: &str = "private-positioning-result-error-sentinel";
+        const POSITION_VALUE: f64 = 918_273.125;
+        const DELTA_VALUE: f64 = -827_364.25;
+        let positions = TickerPositions {
+            coin: "HYPE".to_string(),
+            positions: vec![TickerPositionEntry {
+                address: ADDRESS.to_string(),
+                display_name: Some(DISPLAY_NAME.to_string()),
+                label: Some(LABEL.to_string()),
+                tag: Some(TAG.to_string()),
+                verified: Some(true),
+                copy_score: Some(61.5),
+                size: POSITION_VALUE,
+                notional_size: POSITION_VALUE,
+                entry_price: POSITION_VALUE,
+                liquidation_price: Some(POSITION_VALUE),
+                unrealized_pnl: POSITION_VALUE,
+                funding_pnl: POSITION_VALUE,
+                account_value: POSITION_VALUE,
+            }],
+            total_long_notional: 600.0,
+            total_short_notional: 400.0,
+            total_notional: 1000.0,
+            long_count: 3,
+            short_count: 2,
+            total_count: 5,
+            has_more: true,
+            timestamp: "2026-05-18T11:52:39.585Z".to_string(),
+        };
+        let deltas = PerpDeltas {
+            market: "HYPE".to_string(),
+            timeframe: "15m".to_string(),
+            deltas: vec![PerpDeltaEntry {
+                address: ADDRESS.to_string(),
+                current: POSITION_VALUE,
+                delta: DELTA_VALUE,
+            }],
+        };
+        let messages = vec![
+            Message::PositioningInfoLoaded(
+                "HYPE:all:notional:desc:-:-:100:0".to_string(),
+                7,
+                Ok(positions).into(),
+            ),
+            Message::PositioningInfoLoaded(
+                "HYPE:all:notional:desc:-:-:100:0".to_string(),
+                7,
+                Err(ERROR.to_string()).into(),
+            ),
+            Message::PositioningInfoChangeLoaded(
+                "change:HYPE:FIFTEEN_MINUTES".to_string(),
+                7,
+                Ok(deltas).into(),
+            ),
+            Message::PositioningInfoChangeLoaded(
+                "change:HYPE:FIFTEEN_MINUTES".to_string(),
+                7,
+                Err(ERROR.to_string()).into(),
+            ),
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            for sensitive in [
+                ADDRESS,
+                DISPLAY_NAME,
+                LABEL,
+                TAG,
+                ERROR,
+                "918273.125",
+                "-827364.25",
             ] {
                 assert!(
                     !rendered.contains(sensitive),

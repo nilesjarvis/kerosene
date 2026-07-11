@@ -61,7 +61,7 @@ impl TradingTerminal {
                 Message::PositioningInfoLoaded(
                     request_key.clone(),
                     hyperdash_generation,
-                    Box::new(result),
+                    result.into(),
                 )
             },
         )
@@ -102,7 +102,7 @@ impl TradingTerminal {
                 Message::PositioningInfoChangeLoaded(
                     request_key.clone(),
                     hyperdash_generation,
-                    Box::new(result),
+                    result.into(),
                 )
             },
         )
