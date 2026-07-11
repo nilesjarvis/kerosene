@@ -4758,6 +4758,100 @@ target-specific cancellation policy, not HTTP replay.
   `SymbolsLoaded`, and `BookLoaded` remain separate public-market result and
   correlation lifecycles for subsequent review.
 
+### F-64 — Outcome-volume completion lacks an independent latest-scope owner
+
+- Status: addressed in Turn 57; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium correlation and diagnostic hardening; no current publisher
+  mismatch, outcome selection, order sizing/pricing, or mutation defect was
+  found
+- Scope: outcome-volume symbol derivation, 24-hour candle aggregation, runtime
+  request ownership, concurrent metadata-refresh supersession, empty-universe
+  invalidation, task publication, parent message, first consumer, stale/
+  duplicate/mismatched results, payload intersection, error retention and
+  sanitization, outcome grouping/rendering, routing, boot state, and tests
+- Preconditions/event ordering:
+  1. Outcome-volume request `A` is in flight. A metadata refresh may immediately
+     dispatch newer request `B`; the established policy is that only `B` may
+     settle, even if `A` completes first.
+  2. State previously retained only the latest numeric request ID. The result
+     message carried its requested-symbol vector, but no independent state owner
+     existed to verify that vector before consuming the request.
+  3. A same-ID completion with a divergent vector therefore passed the prior
+     check, advanced the ID, cleared loading, replaced/error-set the public
+     volume cache, and consumed the latest request. Current publication clones
+     the correct vector, so a mismatch requires a future caller/publisher
+     regression or stale-ID reuse (including the theoretical saturated-ID
+     case), not ordinary current execution.
+  4. Independently, derived `Message::Debug` traversed the raw symbol-to-volume
+     map or upstream error before request validation and the established error
+     sanitizer.
+- Evidence: parent commit
+  `e016744d4550e95d36fbfdfede66ac1a637a1616` retains outcome volumes, loading,
+  request ID, and error but no scope at `src/app_state.rs:393-397` and
+  `src/app_boot/state.rs:207-212`. The request derives a sorted selectable/
+  unhidden outcome scope and publishes it at
+  `src/market_update/symbols/outcome_volumes.rs:9-38`; the prior consumer checks
+  only ID before settling at the same file's lines 41-70. Successful symbol
+  metadata loads dispatch every refresh at `src/market_update/symbols.rs:642-651`.
+  The parent field is raw at `src/message.rs:1965-1969`; aggregation semantics
+  are at `src/api/outcome_volume.rs:15-75`, and visible loading/error/volume use
+  begins at `src/market_views/outcomes.rs:19-38` and its group-card helpers.
+- Violated invariant: only the newest outcome-volume completion matching active
+  loading state, request ID, and exact captured symbol scope may consume request
+  ownership. Standalone public market values may remain exactly diagnosable,
+  while generic completion diagnostics expose only correlation and result
+  shape.
+- Risk: a mismatched internal completion could discard the real newest request,
+  replace the displayed 24-hour contract/notional cache for the wrong scope,
+  or install an error while stopping the loading indicator. Outcome selection
+  and order preparation continue to use exchange metadata rather than this
+  display cache; no account data, signed mutation, retry, secret task input, or
+  known current mismatching publisher is implicated. The raw result also let a
+  future message diagnostic reproduce public financial maps or external error
+  details.
+- Why existing checks did not cover it: every request advances the ID, so
+  ordinary stale concurrent completions are rejected, and an empty universe
+  advances the ID and clears state. Payload application already intersects the
+  carried scope with current selectable symbols, and errors are sanitized after
+  acceptance. Existing tests covered those behaviors but neither retained the
+  latest scope independently nor delivered a current ID with a different scope;
+  no parent-message diagnostic control covered outcome volumes.
+- Implemented fix: add runtime-only `outcome_volumes_request_symbols`, initialized
+  empty at boot (`src/app_state.rs:393-397`, `src/app_boot/state.rs:207-213`).
+  Every request installs its derived scope before dispatch/empty invalidation;
+  the consumer requires loading, ID, and exact scope equality, then clears the
+  scope only on accepted success/error (`src/market_update/symbols/
+  outcome_volumes.rs:9-73`). Reuse `RedactedPublicMarketMessageResult<T>` at the
+  parent field, convert at the only publisher, and recover at the first update
+  arm (`src/message.rs:1965-1969`, `src/market_update/symbols.rs:68-76`).
+- Regression coverage: the concurrent test now changes `A`'s scope before
+  dispatching `B`, proves late `A` preserves `B`'s loading/scope owner, then
+  proves exact `B` settles and clears it (`src/market_update/symbols/
+  outcome_volumes.rs:81-120`). A current-ID/different-scope result preserves ID,
+  loading, scope, cache, and prior error (`src/market_update/symbols/
+  outcome_volumes.rs:122-158`). Empty invalidation and accepted filtered/error
+  paths prove scope cleanup; all completion fixtures now traverse the root
+  message wrapper. A standalone control preserves public contract/notional
+  diagnostics and bits (`src/api/outcome_volume/tests.rs:27-40`), while the
+  shared parent control retains request symbols and hides payload/error values
+  (`src/message.rs:3621-3752`).
+- Smallest behavior-preserving fix: one runtime vector and boot default, one
+  existing-wrapper field substitution, one publication conversion, one first-
+  consumer recovery, a loading/ID/scope fence, terminal scope cleanup, one
+  adversarial test, and focused fixture/diagnostic controls. No API query,
+  candle interval/window, aggregation rule, float value/bit, current/requested
+  intersection, request timing/concurrency, accepted result/error behavior,
+  visible copy, grouping, market selection, config/schema, persistence, signed
+  bytes, or trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete call-site/state/view tracing, public-model and parent-message
+  controls, supersession/mismatch/empty/filter/error coverage, and the mechanical
+  diff establish the intended boundary, but focused and nearby suites cannot
+  execute until ALSA development metadata is available. `SymbolsLoaded` and
+  `BookLoaded` remain separate public-market result/correlation lifecycles for
+  subsequent review.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -8265,6 +8359,76 @@ target-specific cancellation policy, not HTTP replay.
   addition to its request ID; preserve outcome grouping, volume values, error
   behavior, refresh timing, and all displayed search results.
 
+## Turn 57 — Retain Outcome-Volume Request Scope
+
+- Status: F-64 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: outcome-volume scope derivation, aggregation, concurrent request
+  supersession, runtime ownership, empty invalidation, message/result boundary,
+  stale/mismatch acceptance, payload filtering, errors, outcome views, routing,
+  boot state, and focused tests
+- Invariant: only the newest loading outcome-volume request whose ID and exact
+  captured symbol vector match may settle; standalone public volume values stay
+  exactly diagnosable, while the generic result message exposes only request
+  correlation and `Ok`/`Err` shape.
+- Protected behavior: selectable/unhidden outcome scope, sorted symbol order,
+  24-hour `1h` candle window and positive-finite aggregation, concurrent newest-
+  request-wins timing, empty-universe invalidation, requested/current-symbol
+  payload intersection, contract/notional values and bits, retained cache on
+  error, sanitized error state, loading/error copy, grouping/collapse/search,
+  volume formatting/rendering, routing, config/schema, persistence, market
+  selection, and every order/trading semantic.
+- Preconditions/event ordering: each metadata success may dispatch a new volume
+  request even while an older task is in flight. The new runtime scope owner is
+  replaced alongside the numeric ID at every dispatch. Older IDs or divergent
+  same-ID scopes return without mutation; only the matching newest completion
+  clears loading/scope and applies its established success/error path.
+- Evidence: F-64 records the prior missing state owner, only requester/publisher,
+  metadata trigger, raw parent field, first consumer, API aggregation, current
+  filtering/error rules, views, tests, risk boundary, and exact fix. No other
+  result producer, direct state writer, persisted owner, or order/signing
+  consumer was found.
+- Change: add and initialize runtime-only
+  `outcome_volumes_request_symbols`; install it on every request; fence result
+  consumption by loading/ID/scope; clear it on accepted or empty terminal paths;
+  reuse the public-market result wrapper; route existing result fixtures through
+  the root message; strengthen supersession/filter/cleanup controls; add the
+  mismatch, standalone-public-model, and parent-message regressions; document
+  the boundary.
+- Tests/checks:
+  - Baseline outcome-volume suite and `cargo check` stopped in `alsa-sys` before
+    Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - The pre-fix mismatched-scope and extended parent-message regressions stopped
+    at that same boundary before demonstrating their expected failures.
+  - Post-fix exact mismatch, public-model, and parent-message controls plus
+    complete outcome-volume API/update, Message, boot, symbol-update, and routing
+    suites stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup flow, subscription identity,
+    window, view code, API/cache cadence, interaction, or order path changed;
+    compilation is already blocked, and no live market request, exchange
+    mutation, or credential-bearing operation ran.
+- Compatibility/UX assessment: current concurrent, empty-universe, payload-
+  filter, error, and view behavior is unchanged; tests now prove the runtime
+  owner across each terminal/supersession path. The new field is runtime-only
+  and has no serde/config representation. No visible behavior, request content
+  or timing, persisted data, signed bytes, order state, or trading semantic
+  changed.
+- Residual risk: Kerosene has not type-checked on this host. F-64 is source-
+  hardened, but exchange-symbol bootstrap, order-book, chart/session/calendar,
+  file/config/screenshot, private-integration result classes, and the remainder
+  of Track 9 still require type-specific review.
+- Prior turn commit hash: `e016744d4550e95d36fbfdfede66ac1a637a1616`
+- Next candidate: audit `SymbolsLoaded` from multi-family metadata/cache
+  construction through startup/background ownership, partial-family retention,
+  error sanitization, dependent refresh fan-out, and parent diagnostics; preserve
+  market availability, fail-closed orderability, aliases, and every visible
+  symbol behavior.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -8306,10 +8470,11 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline symbol-search-context suite and
-  `cargo check`; the pre-fix mismatched-scope and parent-message diagnostic
-  regressions; post-fix exact mismatch/parent-message controls and complete
-  symbol-update, symbol-search-state, Message, and routing suites;
+- Environment-blocked this turn: baseline outcome-volume suite and `cargo check`;
+  the pre-fix mismatched-scope and parent-message diagnostic
+  regressions; post-fix exact mismatch/public-model/parent-message controls and
+  complete outcome-volume API/update, Message, boot, symbol-update, and routing
+  suites;
   `cargo check`, full `cargo test`, and strict clippy at `alsa-sys` system
   dependency discovery, before Kerosene was compiled.
 - No live market request, exchange mutation, or credential-bearing operation was
@@ -8320,7 +8485,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-63
+  F-40, and F-42 through F-64
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -8373,7 +8538,9 @@ target-specific cancellation policy, not HTTP replay.
   ticker-tape, and screener context/history completion messages are source-
   hardened by F-62 while their exact public data and request/scope behavior
   remain unchanged. Symbol-search context completion diagnostics and its
-  loading/ID/symbol-scope acceptance fence are source-hardened by F-63. Remaining
+  loading/ID/symbol-scope acceptance fence are source-hardened by F-63. Outcome-
+  volume diagnostics and concurrent latest-request scope ownership are source-
+  hardened by F-64. Remaining
   independently formattable nested account/order types and classified external-
   status paths, plus the rest of Track 9, require completion before a final
   verdict.

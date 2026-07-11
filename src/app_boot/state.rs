@@ -207,6 +207,7 @@ impl TradingTerminal {
             outcome_volumes_24h: HashMap::new(),
             outcome_volumes_loading: false,
             outcome_volumes_request_id: 0,
+            outcome_volumes_request_symbols: Vec::new(),
             outcome_volumes_error: None,
             outcome_search_query: String::new(),
             outcome_collapsed_market_groups: HashSet::new(),

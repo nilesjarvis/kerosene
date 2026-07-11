@@ -10,6 +10,7 @@ impl TradingTerminal {
         let symbols = self.current_outcome_volume_symbols();
         self.outcome_volumes_request_id = self.outcome_volumes_request_id.saturating_add(1);
         let request_id = self.outcome_volumes_request_id;
+        self.outcome_volumes_request_symbols = symbols.clone();
 
         self.outcome_volumes_error = None;
         if symbols.is_empty() {
@@ -21,7 +22,7 @@ impl TradingTerminal {
         self.outcome_volumes_loading = true;
         let requested_symbols = symbols.clone();
         Task::perform(api::fetch_outcome_volumes_24h(symbols), move |result| {
-            Message::OutcomeVolumesLoaded(request_id, requested_symbols.clone(), result)
+            Message::OutcomeVolumesLoaded(request_id, requested_symbols.clone(), result.into())
         })
     }
 
@@ -43,12 +44,16 @@ impl TradingTerminal {
         requested_symbols: Vec<String>,
         result: Result<HashMap<String, api::OutcomeVolume24h>, String>,
     ) -> Task<Message> {
-        if request_id != self.outcome_volumes_request_id {
+        if !self.outcome_volumes_loading
+            || request_id != self.outcome_volumes_request_id
+            || requested_symbols != self.outcome_volumes_request_symbols
+        {
             return Task::none();
         }
 
         self.outcome_volumes_request_id = self.outcome_volumes_request_id.saturating_add(1);
         self.outcome_volumes_loading = false;
+        self.outcome_volumes_request_symbols.clear();
         match result {
             Ok(mut volumes) => {
                 let requested_symbols: HashSet<String> = requested_symbols.into_iter().collect();
@@ -79,25 +84,31 @@ mod tests {
         terminal.exchange_symbols = vec![outcome_symbol("#1"), outcome_symbol("#2")];
         let _ = terminal.request_outcome_volume_refresh();
         let stale_request_id = terminal.outcome_volumes_request_id;
+        terminal.exchange_symbols = vec![outcome_symbol("#2")];
         let _ = terminal.request_outcome_volume_refresh();
         let current_request_id = terminal.outcome_volumes_request_id;
 
-        let _ = terminal.apply_outcome_volumes_loaded(
+        let _ = terminal.update_symbol_search_market(Message::OutcomeVolumesLoaded(
             stale_request_id,
             vec!["#1".to_string(), "#2".to_string()],
-            Ok(HashMap::from([("#1".to_string(), volume(1.0))])),
-        );
+            Ok(HashMap::from([("#1".to_string(), volume(1.0))])).into(),
+        ));
 
         assert!(terminal.outcome_volumes_loading);
         assert!(terminal.outcome_volumes_24h.is_empty());
-
-        let _ = terminal.apply_outcome_volumes_loaded(
-            current_request_id,
-            vec!["#1".to_string(), "#2".to_string()],
-            Ok(HashMap::from([("#2".to_string(), volume(2.0))])),
+        assert_eq!(
+            terminal.outcome_volumes_request_symbols,
+            vec!["#2".to_string()]
         );
 
+        let _ = terminal.update_symbol_search_market(Message::OutcomeVolumesLoaded(
+            current_request_id,
+            vec!["#2".to_string()],
+            Ok(HashMap::from([("#2".to_string(), volume(2.0))])).into(),
+        ));
+
         assert!(!terminal.outcome_volumes_loading);
+        assert!(terminal.outcome_volumes_request_symbols.is_empty());
         assert_eq!(
             terminal
                 .outcome_volumes_24h
@@ -109,6 +120,44 @@ mod tests {
     }
 
     #[test]
+    fn mismatched_outcome_volume_scope_does_not_consume_current_request() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![outcome_symbol("#1"), outcome_symbol("#2")];
+        terminal
+            .outcome_volumes_24h
+            .insert("#1".to_string(), volume(9.0));
+        terminal.outcome_volumes_loading = true;
+        terminal.outcome_volumes_request_id = 7;
+        terminal.outcome_volumes_request_symbols = vec!["#1".to_string()];
+        terminal.outcome_volumes_error = Some("existing error".to_string());
+
+        let _ = terminal.update_symbol_search_market(Message::OutcomeVolumesLoaded(
+            7,
+            vec!["#2".to_string()],
+            Ok(HashMap::from([("#2".to_string(), volume(1.0))])).into(),
+        ));
+
+        assert!(terminal.outcome_volumes_loading);
+        assert_eq!(terminal.outcome_volumes_request_id, 7);
+        assert_eq!(
+            terminal.outcome_volumes_request_symbols,
+            vec!["#1".to_string()]
+        );
+        assert_eq!(
+            terminal
+                .outcome_volumes_24h
+                .get("#1")
+                .map(|volume| volume.contract),
+            Some(9.0)
+        );
+        assert!(!terminal.outcome_volumes_24h.contains_key("#2"));
+        assert_eq!(
+            terminal.outcome_volumes_error.as_deref(),
+            Some("existing error")
+        );
+    }
+
+    #[test]
     fn empty_outcome_universe_invalidates_in_flight_volume_request() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.exchange_symbols = vec![outcome_symbol("#1")];
@@ -117,34 +166,38 @@ mod tests {
 
         terminal.exchange_symbols.clear();
         let _ = terminal.request_outcome_volume_refresh();
-        let _ = terminal.apply_outcome_volumes_loaded(
+        let _ = terminal.update_symbol_search_market(Message::OutcomeVolumesLoaded(
             stale_request_id,
             vec!["#1".to_string()],
-            Ok(HashMap::from([("#1".to_string(), volume(1.0))])),
-        );
+            Ok(HashMap::from([("#1".to_string(), volume(1.0))])).into(),
+        ));
 
         assert!(!terminal.outcome_volumes_loading);
         assert!(terminal.outcome_volumes_24h.is_empty());
+        assert!(terminal.outcome_volumes_request_symbols.is_empty());
     }
 
     #[test]
     fn outcome_volume_result_keeps_only_requested_current_symbols() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.exchange_symbols = vec![outcome_symbol("#1"), outcome_symbol("#2")];
-        let _ = terminal.request_outcome_volume_refresh();
-        let request_id = terminal.outcome_volumes_request_id;
+        terminal.outcome_volumes_loading = true;
+        terminal.outcome_volumes_request_id = 7;
+        terminal.outcome_volumes_request_symbols = vec!["#1".to_string()];
 
-        let _ = terminal.apply_outcome_volumes_loaded(
-            request_id,
+        let _ = terminal.update_symbol_search_market(Message::OutcomeVolumesLoaded(
+            7,
             vec!["#1".to_string()],
             Ok(HashMap::from([
                 ("#1".to_string(), volume(1.0)),
                 ("#2".to_string(), volume(2.0)),
                 ("#3".to_string(), volume(3.0)),
-            ])),
-        );
+            ]))
+            .into(),
+        ));
 
         assert_eq!(terminal.outcome_volumes_24h.len(), 1);
+        assert!(terminal.outcome_volumes_request_symbols.is_empty());
         assert_eq!(
             terminal
                 .outcome_volumes_24h
@@ -161,13 +214,14 @@ mod tests {
         let _ = terminal.request_outcome_volume_refresh();
         let request_id = terminal.outcome_volumes_request_id;
 
-        let _ = terminal.apply_outcome_volumes_loaded(
+        let _ = terminal.update_symbol_search_market(Message::OutcomeVolumesLoaded(
             request_id,
             vec!["#1".to_string()],
-            Err("outcome volume fetch failed: api_key=super-secret".to_string()),
-        );
+            Err("outcome volume fetch failed: api_key=super-secret".to_string()).into(),
+        ));
 
         assert!(!terminal.outcome_volumes_loading);
+        assert!(terminal.outcome_volumes_request_symbols.is_empty());
         let error = terminal.outcome_volumes_error.as_ref().expect("error");
         assert!(error.contains("api_key=<redacted>"));
         assert!(!error.contains("super-secret"));

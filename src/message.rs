@@ -1965,7 +1965,7 @@ pub(crate) enum Message {
     OutcomeVolumesLoaded(
         u64,
         Vec<String>,
-        Result<HashMap<String, crate::api::OutcomeVolume24h>, String>,
+        RedactedPublicMarketMessageResult<HashMap<String, crate::api::OutcomeVolume24h>>,
     ),
     SymbolSelected(String),
     BookLoaded {
@@ -3704,6 +3704,19 @@ mod tests {
                 1_778_357_590_000,
                 Err(ERROR.to_string()).into(),
             ),
+            Message::OutcomeVolumesLoaded(
+                7,
+                request_symbols(),
+                Ok(std::collections::HashMap::from([(
+                    PAYLOAD_SYMBOL.to_string(),
+                    crate::api::OutcomeVolume24h {
+                        contract: DAY_VALUE,
+                        notional: WEEK_VALUE,
+                    },
+                )]))
+                .into(),
+            ),
+            Message::OutcomeVolumesLoaded(7, request_symbols(), Err(ERROR.to_string()).into()),
             Message::ScreenerHistoryLoaded(
                 7,
                 request_symbols(),

@@ -346,6 +346,16 @@ market values, refresh cadence, stale/duplicate behavior, visible statuses, and
 all rendered watchlist, tape, screener, and symbol-search data remain exact and
 unchanged.
 
+Outcome-volume aggregation is likewise public market data: standalone
+`OutcomeVolume24h` diagnostics retain exact contract and notional volume. Its
+completion message uses the same value-neutral result wrapper, while runtime
+state retains the latest requested-symbol snapshot beside loading and request
+ID. Every newer metadata refresh replaces that owner; only a completion matching
+all three fields may settle it, and accepted or empty-universe terminal paths
+clear the snapshot. Concurrent newest-request-wins behavior, 24-hour candle
+aggregation, requested/current-symbol intersection, retained data on error,
+sanitized error state, outcome grouping, and rendered volume remain unchanged.
+
 PnL-card runtime diagnostics must not reproduce the card itself. The target,
 account-derived metrics, formatted render text, and rendered image use custom
 `Debug` implementations that hide the symbol, prices, size/context, PnL,

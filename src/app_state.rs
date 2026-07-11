@@ -393,6 +393,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) outcome_volumes_24h: HashMap<String, api::OutcomeVolume24h>,
     pub(crate) outcome_volumes_loading: bool,
     pub(crate) outcome_volumes_request_id: u64,
+    pub(crate) outcome_volumes_request_symbols: Vec<String>,
     pub(crate) outcome_volumes_error: Option<String>,
     pub(crate) outcome_search_query: String,
     pub(crate) outcome_collapsed_market_groups: HashSet<String>,

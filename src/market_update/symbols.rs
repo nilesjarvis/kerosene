@@ -71,9 +71,8 @@ impl TradingTerminal {
                 }
                 Task::none()
             }
-            Message::OutcomeVolumesLoaded(request_id, requested_symbols, result) => {
-                self.apply_outcome_volumes_loaded(request_id, requested_symbols, result)
-            }
+            Message::OutcomeVolumesLoaded(request_id, requested_symbols, result) => self
+                .apply_outcome_volumes_loaded(request_id, requested_symbols, result.into_result()),
             Message::SymbolSelected(key) => self.select_market_symbol(key),
             _ => Task::none(),
         }
