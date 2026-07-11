@@ -2,7 +2,7 @@ use crate::helpers::sensitive_response_snippet;
 use reqwest::Client;
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
-use std::sync::LazyLock;
+use std::{fmt, sync::LazyLock};
 use zeroize::Zeroizing;
 
 // ---------------------------------------------------------------------------
@@ -48,10 +48,19 @@ pub(crate) enum ChatRole {
     Assistant,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
 pub(crate) struct ChatMessage {
     pub(crate) role: ChatRole,
     pub(crate) content: String,
+}
+
+impl fmt::Debug for ChatMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ChatMessage")
+            .field("role", &self.role)
+            .field("content", &"<redacted>")
+            .finish()
+    }
 }
 
 #[allow(dead_code)] // request builders for upcoming AI components
@@ -71,7 +80,7 @@ impl ChatMessage {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
 pub(crate) struct ChatCompletionRequest {
     pub(crate) model: String,
     pub(crate) messages: Vec<ChatMessage>,
@@ -79,6 +88,20 @@ pub(crate) struct ChatCompletionRequest {
     pub(crate) max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) temperature: Option<f32>,
+}
+
+impl fmt::Debug for ChatCompletionRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ChatCompletionRequest")
+            .field("model", &self.model)
+            .field(
+                "messages",
+                &format_args!("<redacted>; count={}", self.messages.len()),
+            )
+            .field("max_tokens", &self.max_tokens)
+            .field("temperature", &self.temperature)
+            .finish()
+    }
 }
 
 #[allow(dead_code)] // request builders for upcoming AI components
@@ -93,7 +116,7 @@ impl ChatCompletionRequest {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct ChatCompletion {
     #[allow(dead_code)] // reported model can differ from the requested router slug
     pub(crate) model: String,
@@ -103,12 +126,36 @@ pub(crate) struct ChatCompletion {
     pub(crate) usage: Option<TokenUsage>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+impl fmt::Debug for ChatCompletion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ChatCompletion")
+            .field("model", &"<redacted>")
+            .field("content", &"<redacted>")
+            .field(
+                "finish_reason",
+                &self.finish_reason.as_ref().map(|_| "<redacted>"),
+            )
+            .field("usage", &self.usage)
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)] // usage reporting for upcoming AI components
 pub(crate) struct TokenUsage {
     pub(crate) prompt_tokens: u64,
     pub(crate) completion_tokens: u64,
     pub(crate) total_tokens: u64,
+}
+
+impl fmt::Debug for TokenUsage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TokenUsage")
+            .field("prompt_tokens", &"<redacted>")
+            .field("completion_tokens", &"<redacted>")
+            .field("total_tokens", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Deserialize)]

@@ -181,6 +181,13 @@ gate features on `openrouter_configured()`. Results returned from tasks should
 be checked against `openrouter_key_generation_is_current` so responses that
 arrive after a key change are dropped.
 
+There is currently no production chat-completion caller. A future component
+must capture the key generation plus its own logical request ID at dispatch,
+carry both through a value-neutral result message, and reject a non-current
+owner before recovering completion content or errors. Chat work must not reuse
+the key-validation request owner because the two operations have independent
+lifecycles.
+
 Key validation has an additional runtime-only request owner containing the key
 generation and a separate wrapping check ID. Each successful nonempty save
 replaces that owner, including repeated saves of the same key, so only the exact
@@ -193,7 +200,10 @@ The OpenRouter key is secret-bearing. The default model slug is plain,
 non-secret config (`openrouter_model`). Key-check messages and standalone
 credit/limit status diagnostics redact values, while the accepted update path
 recovers and renders the exact values. Result errors receive a second redaction
-pass before entering visible runtime status.
+pass before entering visible runtime status. Chat request serialization and
+completion parsing remain exact, but generic diagnostics do not traverse prompt
+messages, returned provider values, generated content, or token-usage counts;
+safe request model/options and message count remain available for correlation.
 
 ## Liquidation Feed
 

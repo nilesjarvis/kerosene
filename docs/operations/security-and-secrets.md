@@ -154,6 +154,14 @@ result, and the update boundary redacts sensitive key/value patterns again
 before storing an error for Settings. The exact accepted success amounts and
 ordinary error text remain unchanged in the UI.
 
+OpenRouter chat wire types serialize prompt text exactly for the provider and
+return exact parsed completion content to their caller, but their `Debug`
+implementations do not traverse prompt, provider-result, generated-content, or
+token-usage values. No production chat caller exists yet. Any future result
+message must be value-neutral in diagnostics, carry independent key-generation
+and logical-request ownership, reject stale ownership before value recovery,
+and apply final error redaction at the accepting state boundary.
+
 ## Ghost Wallets
 
 Ghost wallets are in-memory only. They should not cause agent keys or ghost

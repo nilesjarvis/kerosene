@@ -47,6 +47,85 @@ fn chat_completion_request_serializes_set_optional_fields() {
     assert_eq!(json["temperature"], 0.25);
 }
 
+#[test]
+fn chat_message_debug_hides_content_and_keeps_role() {
+    let message = ChatMessage::user("prompt-content-sentinel");
+
+    let rendered = format!("{message:?}");
+
+    assert!(rendered.contains("role: User"), "{rendered}");
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(!rendered.contains("prompt-content-sentinel"), "{rendered}");
+}
+
+#[test]
+fn chat_completion_request_debug_hides_messages_and_keeps_safe_controls() {
+    let mut request = ChatCompletionRequest::new(
+        "openrouter/auto",
+        vec![
+            ChatMessage::system("system-prompt-sentinel"),
+            ChatMessage::user("user-prompt-sentinel"),
+        ],
+    );
+    request.max_tokens = Some(512);
+    request.temperature = Some(0.25);
+
+    let rendered = format!("{request:?}");
+
+    assert!(rendered.contains("openrouter/auto"), "{rendered}");
+    assert!(rendered.contains("count=2"), "{rendered}");
+    assert!(rendered.contains("max_tokens: Some(512)"), "{rendered}");
+    assert!(rendered.contains("temperature: Some(0.25)"), "{rendered}");
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    for hidden in ["system-prompt-sentinel", "user-prompt-sentinel"] {
+        assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
+    }
+}
+
+#[test]
+fn chat_completion_debug_hides_external_values_and_usage() {
+    let completion = ChatCompletion {
+        model: "reported-model-sentinel".to_string(),
+        content: "generated-content-sentinel".to_string(),
+        finish_reason: Some("finish-reason-sentinel".to_string()),
+        usage: Some(TokenUsage {
+            prompt_tokens: 91_234_567,
+            completion_tokens: 87_654_321,
+            total_tokens: 178_888_888,
+        }),
+    };
+
+    let rendered = format!("{completion:?}");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    for hidden in [
+        "reported-model-sentinel",
+        "generated-content-sentinel",
+        "finish-reason-sentinel",
+        "91234567",
+        "87654321",
+        "178888888",
+    ] {
+        assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
+    }
+}
+
+#[test]
+fn token_usage_debug_hides_counts() {
+    let usage = TokenUsage {
+        prompt_tokens: 91_234_567,
+        completion_tokens: 87_654_321,
+        total_tokens: 178_888_888,
+    };
+
+    let rendered = format!("{usage:?}");
+
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    for hidden in ["91234567", "87654321", "178888888"] {
+        assert!(!rendered.contains(hidden), "{hidden} leaked in {rendered}");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Chat Completion Response Parsing
 // ---------------------------------------------------------------------------

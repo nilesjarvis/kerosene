@@ -6147,6 +6147,88 @@ target-specific cancellation policy, not HTTP replay.
   separate remaining audit, and future AI task consumers must carry their own
   key-generation/request ownership rather than reuse key-check status.
 
+### F-77 — OpenRouter chat values traverse generic diagnostics
+
+- Status: addressed in Turn 70; focused source controls added, but executable
+  validation is blocked before Kerosene compilation by the missing system ALSA
+  package
+- Severity: Medium latent diagnostic hardening; the foundation currently has no
+  production caller, but its default formatters would expose prompt and
+  completion content as soon as a caller placed these values in a task result,
+  diagnostic, or derived parent message
+- Scope: `ChatRole`, `ChatMessage`, `ChatCompletionRequest`, `ChatCompletion`,
+  `TokenUsage`, request serialization, response parsing, API guard/error paths,
+  key/model task helpers, producer/consumer inventory, future result ownership,
+  persistence and financial-consumer boundaries, docs, and focused coverage
+- Preconditions/event ordering:
+  1. A component constructs a system or user message containing a filing,
+     article, prompt, or other input. Formatting either `ChatMessage` or its
+     enclosing `ChatCompletionRequest` with derived `Debug` traverses the exact
+     content sent on the wire.
+  2. A successful response returns provider model metadata, generated content,
+     an optional finish reason, and optional prompt/completion/total token
+     counts. Derived `ChatCompletion::Debug` traverses all of them, while
+     independently formattable `TokenUsage` traverses the counts again.
+  3. No production code currently calls `chat_completion`, constructs these
+     values, carries them in `Message`, stores them in application state, or
+     renders/persists them. There is therefore no present stale-result handler
+     to repair and no safe basis for inventing an unused request owner.
+- Evidence: repository-wide definition/caller searches find the four chat value
+  types and `chat_completion` only in `openrouter_api.rs`, its focused tests,
+  and documentation. The API accepts a `Zeroizing<String>` key, validates key,
+  model, and message presence before I/O, serializes the request once to the
+  existing endpoint, and returns exact parsed content/usage. HTTP failure bodies
+  and HTTP-200 error objects already pass through bounded sensitive-response
+  redaction; transport and parse errors do not include request content. The
+  configured model is non-secret config. There is no chat `Message`, route,
+  runtime field, snapshot field, view, subscription, or shutdown task, and no
+  order/signing/Chase/TWAP/cluster/account-reconciliation reference.
+- Violated invariant: a wire/result model may retain and serialize its exact
+  values for its typed consumer, but generic formatting must expose only
+  classified-safe structure. Prompt collections, provider-returned strings,
+  generated content, and usage values must not become diagnostic output merely
+  because a future parent derives `Debug`.
+- Risk: future AI summaries could place prompt or generated text—and exact usage
+  metadata—into logs, panic output, task diagnostics, tests, or progress notes.
+  This is dormant today and cannot dispatch an AI call or exchange mutation by
+  formatting alone, but leaving the nested types raw would make a later parent
+  wrapper insufficient. No current UI or financial state is affected.
+- Why existing checks did not cover it: request tests asserted exact JSON,
+  response tests asserted exact parsing, and error tests asserted bounded
+  redaction. None formatted the message, enclosing request, completion, or
+  standalone usage model, nor proved that safe diagnostics and exact wire/result
+  behavior can coexist. No production parent exists yet to expose the gap.
+- Implemented fix: replace derived formatting on all four value-bearing types
+  with explicit `Debug` implementations. Retain the safe message role and
+  request model/options/message count; redact each prompt body. Make completion
+  model/content/finish reason value-neutral and rely on independently redacted
+  `TokenUsage` formatting for optional usage shape. Leave every stored field,
+  derive other than `Debug`, constructor, serializer, parser, API function, and
+  error path unchanged. Document that a future caller must add a distinct key-
+  generation-plus-logical-request owner, value-neutral result message, reject-
+  before-recovery gate, and final accepted-error redaction rather than reuse the
+  key-check owner.
+- Regression coverage: focused controls format standalone user content, a
+  two-message request with configured controls, a completion whose every string
+  is a unique sentinel, and standalone unique token counts. They require safe
+  request metadata/shape and `<redacted>` markers while rejecting every
+  sensitive value. Existing tests continue to characterize exact request JSON,
+  optional-field omission/inclusion, text/part response content, usage parsing,
+  error sanitization, and no-I/O guards.
+- Smallest behavior-preserving fix: four custom model formatters, four focused
+  controls, and lifecycle/security documentation. No task, state, `Message`,
+  route, owner, request/response field, JSON byte, endpoint/header/timeout,
+  guard/error string, key/model selection, config field/default/wire value, UI,
+  AI feature activation, order input, signed bytes, or trading semantic changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  exhaustive caller/state/persistence/financial searches, exact source diff,
+  and existing wire/result characterizations establish the intended boundary,
+  but tests cannot execute until ALSA development metadata is available. The
+  future caller's owner and result boundary cannot be validated before that
+  caller exists and must be audited when introduced. Request/completion strings
+  remain ordinary `String` values for exact serialization and consumption, and
+  `reqwest`/serde-owned serialized buffers are not guaranteed to be erased.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -10804,6 +10886,84 @@ target-specific cancellation policy, not HTTP replay.
   lifetime, and every trading semantic; then continue X and Telegram private-
   integration completion ownership.
 
+## Turn 70 — Redact Dormant OpenRouter Chat Diagnostics
+
+- Status: F-77 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: OpenRouter chat message/request/completion/usage models, serializer,
+  parser, API guards/errors, task key/model interface, complete producer and
+  consumer inventory, future ownership requirements, persistence and financial
+  boundaries, docs, and adversarial source controls
+- Invariant: exact prompt and completion values may cross the typed wire/result
+  boundary, but generic formatting exposes only classified-safe structure. A
+  future task result must have independent key-generation and logical-request
+  ownership, be rejected before value recovery when stale, and remain neutral
+  in parent diagnostics.
+- Protected behavior: exact request fields and JSON, model fallback and key
+  capture interface, endpoint, headers, request/connect/pool timeouts, missing-
+  key/model/message guards, HTTP status hints and sanitized errors, response
+  content-part joining, exact model/content/finish/usage output, clone/equality
+  semantics, config schema/defaults/persistence, current lack of a production
+  chat feature, all UI, order preparation/signing, and every trading semantic.
+- Preconditions/event ordering: the four value-bearing chat types derived
+  `Debug`, so formatting a future request/result would traverse prompt content,
+  provider values, generated text, and exact token counts. No production caller
+  or result handler exists, so there is no current dispatch, stale completion,
+  state mutation, or terminal cleanup path to harden without speculation.
+- Evidence: F-77 records definitions, all callers, the serializer/parser/error
+  chain, key/model helpers, and negative searches across `Message`, routes,
+  state, config snapshots, views, subscriptions, shutdown, order execution,
+  signing, automation, wallet-cluster, account, and reconciliation code. Only
+  focused tests construct or call the chat interface; no live AI or financial
+  consumer was found.
+- Change: replace derived formatting for `ChatMessage`,
+  `ChatCompletionRequest`, `ChatCompletion`, and `TokenUsage` with explicit
+  value-neutral formatters. Preserve safe role and request configuration/count
+  metadata, hide message bodies and every completion/usage value, and document
+  the independent owner/result-boundary requirements for any future component.
+  Do not add an unused owner, task publisher, message, state field, or route.
+- Tests/checks:
+  - Baseline OpenRouter API/full integration tests and `cargo check` stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    `alsa.pc`.
+  - The pre-fix exact standalone message, enclosing request, completion, and
+    standalone usage diagnostic controls stopped at the same dependency
+    boundary before demonstrating their expected assertion failures.
+  - Post-fix exact diagnostic controls, the full OpenRouter API suite, nearby
+    OpenRouter update suite, and combined OpenRouter tests all stopped at that
+    same boundary before executing.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed; final
+    source, caller, serializer/parser, error, state/persistence, diagnostic,
+    financial-consumer, secret/artifact, and compatibility reviews are recorded
+    in the validation summary below.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` stopped at the
+    same pre-existing system dependency boundary before Kerosene compilation.
+    Startup smoke was not applicable because no startup, subscription, route,
+    window, task, or runtime-state plumbing changed. No OpenRouter/network
+    request, secret/config operation, AI action, or exchange mutation ran.
+- Compatibility/UX assessment: all exact request and response fields remain in
+  the same types with the same derives other than `Debug`; serialization and
+  parsing code is byte-for-byte unchanged. Safe request role/model/options/count
+  metadata remains diagnosable, while only generic formatting of value-bearing
+  content changes. There is still no production chat task or UI. No visible
+  copy/data/timing/control, persisted value/default, key/model behavior, request,
+  AI output, signed bytes, order behavior, or trading semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-77 is source-
+  hardened, but executable validation, dependency-owned serialized-buffer
+  erasure, and the ownership/result boundary of any future caller remain
+  residual. X/Telegram private-integration result lifecycles, independently
+  formattable nested account/order types, classified external-status paths, and
+  the remainder of Track 9 still require review.
+- Prior turn commit hash: `f3131bd6c1874f64d8cee8b7eba922efe4d52520`
+- Next candidate: audit X private-integration completions from OAuth refresh,
+  lists/page/image fetch dispatch through token generation, source/query/page
+  identity, reversed/duplicate/stale acceptance, clear/config/window/shutdown,
+  external error sanitization, parent/model diagnostics, persistence, and every
+  consumer. Preserve exact OAuth/feed requests, pagination, visible feed and
+  status behavior, credential storage, and every trading semantic; then audit
+  Telegram private-integration completion ownership.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -10845,28 +11005,23 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: baseline OpenRouter update/API, private-
-  integration message, feature-routing and secret suites plus `cargo check`;
-  pre-fix reversed same-key owner, handler-redaction, parent-result and
-  standalone credit-diagnostic controls; post-fix exact persistence success/
-  failure, first owner, `MAX`-to-zero allocation, older-first/older-last,
-  replay, key-clear, config-clear, Settings-close, exact status/error, final
-  redaction, wrapper/model/message diagnostic and recovery controls; full
-  OpenRouter update/API, secret-message, routing, clear and credential-
-  serialization suites; `cargo check`; full `cargo test`; strict clippy; and the
-  headless GUI smoke command at `alsa-sys` system dependency discovery, before
-  Kerosene was compiled or launched.
-- No secret backend/config mutation, OpenRouter or other live request, AI
-  action, config clear, exchange mutation, or credential-bearing operation was
-  run. Test fixture persistence also did not run because compilation stopped
-  first.
+- Environment-blocked this turn: baseline OpenRouter API/full integration tests
+  plus `cargo check`; pre-fix standalone chat-message, enclosing-request,
+  completion-result, and token-usage diagnostic controls; post-fix exact
+  diagnostic controls; full OpenRouter API, update, and combined suites;
+  `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
+  dependency discovery, before Kerosene was compiled.
+- Startup smoke was not applicable because no startup, subscription, route,
+  window, task, or runtime-state plumbing changed. No secret backend/config
+  mutation, OpenRouter or other live request, AI action, config clear, exchange
+  mutation, or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-76
+  F-40, and F-42 through F-77
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -10960,7 +11115,10 @@ target-specific cancellation policy, not HTTP replay.
   residual. OpenRouter key-check ownership now distinguishes repeated validation
   of one key and its parent/model/error diagnostics are source-hardened by F-76
   while exact persistence, request, visible status, and all trading behavior
-  remain unchanged. OpenRouter chat-model diagnostics, other private-integration
-  result lifecycles, independently formattable nested account/order types, and
-  classified external-status paths, plus the rest of Track 9, require completion
-  before a final verdict.
+  remain unchanged. Dormant OpenRouter chat message/request/completion/usage
+  diagnostics are source-hardened by F-77 while exact serialization, parsing,
+  key/model interface, and lack of a production caller remain unchanged; a
+  future caller still requires its own audited owner/result boundary. Other
+  private-integration result lifecycles, independently formattable nested
+  account/order types, and classified external-status paths, plus the rest of
+  Track 9, require completion before a final verdict.
