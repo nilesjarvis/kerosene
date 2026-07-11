@@ -169,7 +169,7 @@ fn final_exit_fence_allows_reconciliation_and_exposure_cleanup_messages() {
             request_id: 1,
             account_address: "0xabc".into(),
             pending_indicator_id: None,
-            result: Box::new(Err("transport outcome unknown".to_string())),
+            result: Err("transport outcome unknown".to_string()).into(),
         },
         Message::MoveOrderModifyResult {
             request_id: 1,
@@ -177,7 +177,7 @@ fn final_exit_fence_allows_reconciliation_and_exposure_cleanup_messages() {
             coin: "BTC".to_string(),
             oid: 7.into(),
             pending_indicator_id: None,
-            result: Box::new(Err("transport outcome unknown".to_string())),
+            result: Err("transport outcome unknown".to_string()).into(),
         },
         Message::TwapSliceResult {
             twap_id: 1,

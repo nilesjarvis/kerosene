@@ -179,7 +179,7 @@ impl TradingTerminal {
             tasks.push(place_order_task(k, request, move |r| Message::NukeResult {
                 execution_id,
                 context,
-                result: Box::new(r),
+                result: r.into(),
             }));
         }
 

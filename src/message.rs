@@ -789,7 +789,7 @@ pub(crate) enum Message {
     SubmitOrderLeverage(OrderLeverageSubmissionSnapshot),
     OrderLeverageResult {
         context: PendingLeverageUpdateContext,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     TogglePresetsMenu,
     TogglePresetCurrency,
@@ -989,13 +989,13 @@ pub(crate) enum Message {
         execution_id: u64,
         member_key: RedactedAccountKey,
         context: OneShotPlacementContext,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     WalletClusterOrderStatusLoaded {
         execution_id: u64,
         member_key: RedactedAccountKey,
         context: OneShotPlacementContext,
-        result: Box<Result<api::OrderStatusResult, String>>,
+        result: RedactedOrderMessageResult<api::OrderStatusResult>,
     },
     OpenWalletDetailsWindow(RedactedAddress),
     RefreshWalletDetails(window::Id),
@@ -1203,7 +1203,7 @@ pub(crate) enum Message {
     OrderResult {
         pending_indicator_id: Option<u64>,
         context: OneShotPlacementContext,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     DismissOrderStatus,
     CancelOrder {
@@ -1214,14 +1214,14 @@ pub(crate) enum Message {
         request_id: u64,
         account_address: RedactedAddress,
         pending_indicator_id: Option<u64>,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     CancelOrderStatusLoaded {
         request_id: u64,
         account_address: RedactedAddress,
         oid: RedactedOrderId,
         symbol: String,
-        result: Box<Result<api::OrderStatusResult, String>>,
+        result: RedactedOrderMessageResult<api::OrderStatusResult>,
     },
     ToggleCloseMenu(String),
     ToggleHiddenPosition(String),
@@ -1243,23 +1243,23 @@ pub(crate) enum Message {
     ClosePositionResult {
         pending_indicator_id: Option<u64>,
         context: OneShotPlacementContext,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     NukePositions,
     NukeResult {
         execution_id: u64,
         context: OneShotPlacementContext,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     NukePlacementStatusLoaded {
         execution_id: u64,
         context: OneShotPlacementContext,
-        result: Box<Result<api::OrderStatusResult, String>>,
+        result: RedactedOrderMessageResult<api::OrderStatusResult>,
     },
     OneShotPlacementStatusLoaded {
         request_id: u64,
         context: OneShotPlacementContext,
-        result: Box<Result<api::OrderStatusResult, String>>,
+        result: RedactedOrderMessageResult<api::OrderStatusResult>,
     },
     StartChase {
         is_buy: bool,
@@ -1466,14 +1466,14 @@ pub(crate) enum Message {
         pending_indicator_id: Option<u64>,
         context: OneShotPlacementContext,
         recovery: Option<QuickOrderRecovery>,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     SubmitHudOrder(HudOrderRequest),
     HudOrderResult {
         pending_indicator_id: Option<u64>,
         inflight_id: Option<u64>,
         context: OneShotPlacementContext,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     EscapePressed(window::Id),
     // Order drag-to-move (from chart canvas)
@@ -1492,14 +1492,14 @@ pub(crate) enum Message {
         coin: String,
         oid: RedactedOrderId,
         pending_indicator_id: Option<u64>,
-        result: Box<Result<ExchangeResponse, String>>,
+        result: RedactedOrderMessageResult<ExchangeResponse>,
     },
     MoveOrderStatusLoaded {
         request_id: u64,
         account_address: RedactedAddress,
         coin: String,
         oid: RedactedOrderId,
-        result: Box<Result<api::OrderStatusResult, String>>,
+        result: RedactedOrderMessageResult<api::OrderStatusResult>,
     },
     // Global messages
     SymbolsLoaded(Result<api::ExchangeSymbolsPayload, String>),
@@ -1708,6 +1708,117 @@ mod tests {
     }
 
     #[test]
+    fn remaining_mutation_result_message_debug_redacts_error_context() {
+        const ERROR: &str = "remaining-mutation-external-error-sentinel";
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+        const CLOID: &str = "0x1234567890abcdef1234567890abcdef";
+        let context = OneShotPlacementContext {
+            account_address: ADDRESS.to_string(),
+            cloid: CLOID.to_string(),
+            surface: crate::order_execution::OrderSurface::Ticket,
+            symbol_key: "HYPE".to_string(),
+            order_kind: crate::signing::ExchangeOrderKind::Limit,
+        };
+        let messages = vec![
+            Message::OrderLeverageResult {
+                context: PendingLeverageUpdateContext {
+                    address: ADDRESS.to_string(),
+                    symbol_key: "HYPE".to_string(),
+                    display: "HYPE".to_string(),
+                    asset: 42,
+                    dex: None,
+                    is_cross: true,
+                    leverage: 3,
+                },
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::WalletClusterOrderResult {
+                execution_id: 1,
+                member_key: Some("member-key-sentinel".to_string()).into(),
+                context: context.clone(),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::WalletClusterOrderStatusLoaded {
+                execution_id: 1,
+                member_key: Some("member-key-sentinel".to_string()).into(),
+                context: context.clone(),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::OrderResult {
+                pending_indicator_id: Some(2),
+                context: context.clone(),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::CancelResult {
+                request_id: 3,
+                account_address: ADDRESS.into(),
+                pending_indicator_id: Some(4),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::CancelOrderStatusLoaded {
+                request_id: 3,
+                account_address: ADDRESS.into(),
+                oid: 9_876_543_210_123_457_u64.into(),
+                symbol: "HYPE".to_string(),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::ClosePositionResult {
+                pending_indicator_id: Some(5),
+                context: context.clone(),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::NukeResult {
+                execution_id: 6,
+                context: context.clone(),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::NukePlacementStatusLoaded {
+                execution_id: 6,
+                context: context.clone(),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::OneShotPlacementStatusLoaded {
+                request_id: 7,
+                context: context.clone(),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::QuickOrderResult {
+                pending_indicator_id: Some(8),
+                context: context.clone(),
+                recovery: None,
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::HudOrderResult {
+                pending_indicator_id: Some(9),
+                inflight_id: Some(10),
+                context: context.clone(),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::MoveOrderModifyResult {
+                request_id: 11,
+                account_address: ADDRESS.into(),
+                coin: "HYPE".to_string(),
+                oid: 9_876_543_210_123_457_u64.into(),
+                pending_indicator_id: Some(12),
+                result: Err(ERROR.to_string()).into(),
+            },
+            Message::MoveOrderStatusLoaded {
+                request_id: 11,
+                account_address: ADDRESS.into(),
+                coin: "HYPE".to_string(),
+                oid: 9_876_543_210_123_457_u64.into(),
+                result: Err(ERROR.to_string()).into(),
+            },
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(ERROR), "error leaked in {rendered}");
+        }
+    }
+
+    #[test]
     fn advanced_order_message_debug_redacts_symbol_and_error_context() {
         const SYMBOL: &str = "advanced-order-symbol-sentinel";
         const ERROR: &str = "advanced-order-external-error-sentinel";
@@ -1880,7 +1991,7 @@ mod tests {
                     is_cross: false,
                     leverage: LEVERAGE,
                 },
-                result: Box::new(Err("leverage failed".to_string())),
+                result: Err("leverage failed".to_string()).into(),
             },
         ];
 
@@ -1919,7 +2030,7 @@ mod tests {
                 account_address: "0x0000000000000000000000000000000000000001".into(),
                 oid: OID.into(),
                 symbol: "HYPE".to_string(),
-                result: Box::new(Err("status failed".to_string())),
+                result: Err("status failed".to_string()).into(),
             },
             Message::TwapUnexpectedCancelResult {
                 twap_id: 1,
@@ -1980,14 +2091,14 @@ mod tests {
                 coin: "HYPE".to_string(),
                 oid: OID.into(),
                 pending_indicator_id: None,
-                result: Box::new(Err("modify failed".to_string())),
+                result: Err("modify failed".to_string()).into(),
             },
             Message::MoveOrderStatusLoaded {
                 request_id: 2,
                 account_address: "0x0000000000000000000000000000000000000001".into(),
                 coin: "HYPE".to_string(),
                 oid: OID.into(),
-                result: Box::new(Err("status failed".to_string())),
+                result: Err("status failed".to_string()).into(),
             },
             Message::ChartHoverStateChanged(
                 1,
@@ -2369,7 +2480,7 @@ mod tests {
                     },
                     surface_id: Some(ChartSurfaceId::Docked(1)),
                 }),
-                result: Box::new(Err("quick failed".to_string())),
+                result: Err("quick failed".to_string()).into(),
             },
             Message::OrderLeverageResult {
                 context: PendingLeverageUpdateContext {
@@ -2381,20 +2492,20 @@ mod tests {
                     is_cross: true,
                     leverage: 3,
                 },
-                result: Box::new(Err("leverage failed".to_string())),
+                result: Err("leverage failed".to_string()).into(),
             },
             Message::CancelResult {
                 request_id: 1,
                 account_address: ADDRESS.into(),
                 pending_indicator_id: None,
-                result: Box::new(Err("cancel failed".to_string())),
+                result: Err("cancel failed".to_string()).into(),
             },
             Message::CancelOrderStatusLoaded {
                 request_id: 1,
                 account_address: ADDRESS.into(),
                 oid: 42.into(),
                 symbol: "HYPE".to_string(),
-                result: Box::new(Err("status failed".to_string())),
+                result: Err("status failed".to_string()).into(),
             },
             Message::MoveOrderModifyResult {
                 request_id: 2,
@@ -2402,14 +2513,14 @@ mod tests {
                 coin: "HYPE".to_string(),
                 oid: 42.into(),
                 pending_indicator_id: None,
-                result: Box::new(Err("modify failed".to_string())),
+                result: Err("modify failed".to_string()).into(),
             },
             Message::MoveOrderStatusLoaded {
                 request_id: 2,
                 account_address: ADDRESS.into(),
                 coin: "HYPE".to_string(),
                 oid: 42.into(),
-                result: Box::new(Err("move status failed".to_string())),
+                result: Err("move status failed".to_string()).into(),
             },
             Message::WalletAddressInputChanged(ADDRESS.into()),
             Message::AddAccountAddressChanged(ADDRESS.into()),

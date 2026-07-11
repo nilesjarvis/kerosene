@@ -99,7 +99,7 @@ impl TradingTerminal {
                 request_id,
                 account_address: account_address.into(),
                 pending_indicator_id,
-                result: Box::new(result),
+                result: result.into(),
             }
         })
     }

@@ -149,7 +149,7 @@ impl TradingTerminal {
                 execution_id,
                 member_key.into_option(),
                 context,
-                *result,
+                result.into_result(),
             ),
             Message::WalletClusterOrderStatusLoaded {
                 execution_id,
@@ -160,7 +160,7 @@ impl TradingTerminal {
                 execution_id,
                 member_key.into_option(),
                 context,
-                *result,
+                result.into_result(),
             ),
             _ => Task::none(),
         }
@@ -1072,7 +1072,7 @@ impl TradingTerminal {
                     execution_id,
                     member_key,
                     context,
-                    result: Box::new(result),
+                    result: result.into(),
                 }
             }));
             legs.push(WalletClusterExecutionLeg {
@@ -1148,7 +1148,7 @@ impl TradingTerminal {
                         execution_id,
                         member_key: Some(profile_secret_id).into(),
                         context: request_context,
-                        result: Box::new(result),
+                        result: result.into(),
                     },
                 ),
             ]);

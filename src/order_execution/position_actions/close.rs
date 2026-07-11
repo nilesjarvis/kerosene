@@ -204,7 +204,7 @@ impl TradingTerminal {
         place_order_task(key, request, move |r| Message::ClosePositionResult {
             pending_indicator_id,
             context,
-            result: Box::new(r),
+            result: r.into(),
         })
     }
 }

@@ -179,6 +179,17 @@
   `src/order_update.rs:177-354`,
   `src/subscription_state/market/chase.rs:82-118`,
   `src/subscription_state/market/twap.rs:68-104`).
+- Every remaining signed-mutation and `orderStatus` result carried by `Message`
+  now uses that same exact boxed-result wrapper: leverage; wallet-cluster
+  direct/status; ticket/preset/Alfred one-shot; cancel direct/status; close;
+  NUKE direct/status; one-shot status; quick; HUD; and move direct/status.
+  Publishers move the same result into the wrapper, and the order or wallet-
+  cluster update route immediately restores it before unchanged handlers run.
+  A repository-wide field search finds no raw exchange-response or order-status
+  result box left in the Elm enum (`src/message.rs:790-793`,
+  `src/message.rs:988-999`, `src/message.rs:1203-1263`,
+  `src/message.rs:1465-1503`, `src/order_update.rs:57-165`,
+  `src/order_update.rs:411-483`, `src/wallet_cluster_update.rs:143-164`).
 - Terminal advanced-order history retains the exact Chase/TWAP account,
   symbol, financial, timing, identifier, status, activity, and child fields
   required by its persisted schema and existing views. Each independently
@@ -3459,6 +3470,88 @@ target-specific cancellation policy, not HTTP replay.
   until ALSA development metadata is available. Non-advanced order-result,
   symbol/value, and history-navigation message diagnostics remain to audit.
 
+### F-49 — Remaining mutation-result messages expose error payloads
+
+- Status: addressed in Turn 42; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium account/order privacy and diagnostic-boundary hardening; the
+  debug-only unrouted-order-message invariant panic remains a concrete
+  formatter, but no known production misroute or emitted disclosure was found
+- Scope: all remaining signed-mutation and mutation-status message results:
+  leverage; wallet-cluster direct/status; shared one-shot direct/status; cancel
+  direct/status; close; NUKE direct/status; quick; HUD; and move direct/status;
+  every publisher, route, immediate consumer, and nearby lifecycle test
+- Preconditions/event ordering:
+  1. Canonical leverage, place, cancel, modify, close/NUKE, quick/HUD, and
+     cluster tasks return the exact exchange `Result`; uncertain direct outcomes
+     schedule exact `orderStatus` tasks whose results carry immutable request,
+     account/member, context, indicator, recovery, execution, and order IDs.
+  2. Publishers boxed those results directly in 14 `Message` variant fields.
+     Order and wallet-cluster update routes moved the box contents once into the
+     existing handlers, which classify, reconcile, refresh, settle, or retain
+     uncertainty.
+  3. Derived `Message::Debug` delegated successful values to already-redacted
+     response/status models but emitted every `Err(String)` verbatim, creating
+     the same parent-boundary bypass closed for Chase/TWAP in F-48.
+- Evidence: parent commit
+  `b9878f438089315d233edd9f6253113695917920` shows all 14 raw boxed result
+  fields (`src/message.rs:790-793`, `src/message.rs:988-999`,
+  `src/message.rs:1203-1263`, `src/message.rs:1465-1503`). Producers were traced
+  through leverage, shared submit, cancel, close, NUKE, quick/HUD, move, result-
+  status follow-ups, and cluster fan-out/status repair
+  (`src/order_update/leverage.rs:155-170`,
+  `src/order_execution/submit.rs:239-249`,
+  `src/order_execution/position_actions/cancel.rs:89-104`,
+  `src/order_execution/position_actions/close.rs:198-208`,
+  `src/order_execution/position_actions/nuke.rs:168-184`,
+  `src/order_execution/quick_order/submit.rs:404-417`,
+  `src/order_update/hud.rs:207-219`,
+  `src/order_execution/quick_order/move_order.rs:190-204`,
+  `src/order_update/results.rs:360-376`,
+  `src/order_update/results.rs:624-638`,
+  `src/order_update/results.rs:832-846`,
+  `src/wallet_cluster_update.rs:1055-1080`,
+  `src/wallet_cluster_update.rs:1136-1153`). Both update boundaries dereferenced
+  each box immediately (`src/order_update.rs:57-479`,
+  `src/wallet_cluster_update.rs:143-164`).
+- Violated invariant: exact mutation/status error payloads belong only in
+  deliberate lifecycle classification and visible sanitized status handling.
+  Generic Elm diagnostics should expose result shape, route, and correlation
+  metadata without disclosing the payload or relying indefinitely on every
+  upstream sanitizer and nested formatter.
+- Risk: a debug assertion, test failure, framework instrumentation, or future
+  message logging could expose exchange/local error copy tied to a one-shot,
+  leverage update, emergency close, move, or cluster member leg. Successful
+  response/status internals were already redacted; no private key, signature,
+  or known live disclosure is implicated.
+- Why existing checks did not cover it: response/status models and lifecycle
+  tests validate nested redaction and exact handler behavior, while message
+  tests focused on accounts, contexts, OID/CLOID, or leverage parameters. Their
+  synthetic errors remained visible but were never asserted absent. F-48 was
+  intentionally limited to the advanced-order subset.
+- Implemented fix: reuse `RedactedOrderMessageResult<T>` for all 14 fields.
+  Every publisher moves its original result into the same-sized boxed wrapper;
+  `update_order` or `update_wallet_cluster` immediately calls `into_result()`
+  before the source-identical handler. No new wrapper or policy was added.
+- Regression coverage: construct every affected variant with the same unique
+  error sentinel and require derived message diagnostics to contain redaction
+  while rejecting the payload (`src/message.rs:1710-1819`). The exact wrapper
+  success/error recovery test from F-48 remains the independent value-preserving
+  control (`src/message.rs:1934-1964`), with existing message, result, cluster,
+  final-exit, leverage, quick/HUD, close/NUKE, and move tests as lifecycle
+  controls.
+- Smallest behavior-preserving fix: fields retain one heap box and the exact
+  `Result<T, String>`; each producer/consumer still performs one move at the
+  same publication/handling points. No context, identifier, route, handler,
+  classification, retry/status task, refresh, indicator, recovery owner,
+  cluster settlement, status copy, view, schema, timing, signed request, or
+  trading policy changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  repository-wide raw-field absence checks, call-site tracing, and the
+  mechanical diff establish the intended boundary, but exact and nearby suites
+  cannot execute until ALSA development metadata is available. Raw order
+  symbols, prices/fractions, and history-navigation IDs remain to audit.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -6030,6 +6123,64 @@ target-specific cancellation policy, not HTTP replay.
   fields using the proven result wrapper; separately inventory raw symbol,
   price/fraction, and history-navigation values before changing their types.
 
+## Turn 42 — Redact Remaining Mutation-Result Messages
+
+- Status: F-49 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: complete non-advanced mutation-result Elm-message graph across
+  leverage, wallet cluster, shared one-shot, cancel, close, NUKE, quick/HUD,
+  move, and their status-reconciliation messages; all publishers, two immediate
+  update consumers, nested response/status diagnostics, and lifecycle controls
+- Invariant: every exchange mutation/status result must cross the Elm boundary
+  exactly once without exposing its payload through generic `Message::Debug`.
+- Protected behavior: exact success/error results; account/member/request/
+  execution/context/indicator/recovery identity; routing and handler call order;
+  response classification, ambiguous-outcome status checks, refresh decisions,
+  optimistic state, NUKE aggregation, cluster leg settlement, leverage state,
+  quick/HUD recovery, move correlation, visible status copy, tasks, timing,
+  persistence, signed values, and trading semantics.
+- Preconditions/event ordering: each existing task mapper moves the same result
+  into the wrapper at `Message` construction; the order or wallet-cluster update
+  arm immediately restores the original result and calls the same handler. No
+  wrapper enters feature state, changes correlation ownership, or survives a
+  lifecycle transition.
+- Evidence: F-49 records the 14 parent raw fields, complete producer/consumer
+  inventory, prior nested redaction, concrete debug-only sink, synthetic-error
+  coverage gap, exact wrapper control, and repository-wide absence of remaining
+  raw exchange/order-status result fields in `Message`.
+- Change: reused the Turn 41 boxed result wrapper for all 14 remaining fields;
+  mechanically changed every publisher from `Box::new(result)` to
+  `result.into()` and both update consumers from `*result` to
+  `result.into_result()`; documented the complete mutation-result boundary.
+- Tests/checks:
+  - The pre-fix exact 14-variant message diagnostic regression stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    the system `alsa.pc` file.
+  - Post-fix exact regression, complete message and shared order-result suites,
+    and the wallet-cluster suite stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup, subscription, view, window,
+    task, or runtime behavior changed; compilation is already blocked, and no
+    live exchange or credential-bearing operation was run.
+- Compatibility/UX assessment: the previously committed generic wrapper test
+  recovers exact success and error payloads; this turn changes only the set of
+  message fields using it. Every context/control field and handler signature is
+  source-identical, and each task still allocates one result box at the same
+  point. No visible behavior, timing, schema, signed bytes, or trading semantic
+  changed.
+- Residual risk: Kerosene has not type-checked on this host. F-49 is source-
+  hardened, but raw symbols in cancel/close/move/cluster and related view-state
+  messages, raw move price and close fractions, and advanced-history navigation
+  IDs remain in the broader Elm-message audit.
+- Prior turn commit hash: `b9878f438089315d233edd9f6253113695917920`
+- Next candidate: inventory every remaining order-sensitive non-result field in
+  `Message`, then close the cohesive raw symbol/history-ID subset with exact
+  wrappers while preserving move price/fraction handling for its own complete
+  financial-value audit.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -6071,9 +6222,9 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: pre-fix advanced-order message diagnostics;
-  post-fix exact wrapper/message diagnostics, complete message/app-update and
-  Chase/TWAP suites, `cargo check`, full `cargo test`, and strict clippy at
+- Environment-blocked this turn: pre-fix 14-variant mutation-result diagnostics;
+  post-fix exact message diagnostics, complete message/order-result and wallet-
+  cluster suites, `cargo check`, full `cargo test`, and strict clippy at
   `alsa-sys` system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
@@ -6082,7 +6233,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-48
+  F-40, and F-42 through F-49
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -6117,5 +6268,6 @@ target-specific cancellation policy, not HTTP replay.
   by F-44, persisted advanced-history diagnostics by F-45, and cancel/move
   correlation diagnostics by F-46. Transient TWAP form/schedule/book/fill
   helper diagnostics are source-hardened by F-47, and advanced-order Elm
-  message diagnostics by F-48. Remaining mutation-message and external-status
-  paths, plus the rest of Track 9, require completion before a final verdict.
+  message diagnostics by F-48. All remaining mutation-result message payloads
+  are source-hardened by F-49. Remaining order-value and external-status paths,
+  plus the rest of Track 9, require completion before a final verdict.

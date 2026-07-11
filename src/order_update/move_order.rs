@@ -22,7 +22,7 @@ impl TradingTerminal {
                 account_address: account_address.into(),
                 coin,
                 oid: oid.into(),
-                result: Box::new(result),
+                result: result.into(),
             },
         )
     }

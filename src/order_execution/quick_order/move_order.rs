@@ -200,7 +200,7 @@ impl TradingTerminal {
             coin: move_key.coin().to_string(),
             oid: oid.into(),
             pending_indicator_id,
-            result: Box::new(r),
+            result: r.into(),
         })
     }
 }

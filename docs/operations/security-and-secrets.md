@@ -211,6 +211,14 @@ traversing nested responses or external error text. Update immediately restores
 the original types before unchanged handlers run, so stream identity,
 correlation, reconciliation, and visible error handling remain exact.
 
+The same result wrapper covers every other signed-mutation and `orderStatus`
+message: leverage, wallet-cluster legs, one-shot placement, cancel, close,
+NUKE, quick/HUD, and move. No raw exchange-response or order-status result box
+remains in `Message`; diagnostics expose only outcome shape. The order or
+wallet-cluster update route restores the original result immediately, retaining
+all exact errors, responses, contexts, indicators, recovery owners, and member
+correlation for existing lifecycle handling.
+
 Terminal Chase/TWAP history intentionally persists exact account, symbol,
 financial, timing, child-identifier, status, and activity fields for its
 existing views. The persisted entry, child, and log types have independently

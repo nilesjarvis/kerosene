@@ -245,7 +245,7 @@ impl TradingTerminal {
         place_order_task(key, request, move |result| Message::OrderResult {
             pending_indicator_id,
             context,
-            result: Box::new(result),
+            result: result.into(),
         })
     }
 }

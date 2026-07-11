@@ -215,7 +215,7 @@ impl TradingTerminal {
             pending_indicator_id,
             inflight_id,
             context,
-            result: Box::new(result),
+            result: result.into(),
         })
     }
 

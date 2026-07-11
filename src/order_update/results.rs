@@ -372,7 +372,7 @@ impl TradingTerminal {
                 account_address: account_address.into(),
                 oid: oid.into(),
                 symbol,
-                result: Box::new(result),
+                result: result.into(),
             },
         )
     }
@@ -634,7 +634,7 @@ impl TradingTerminal {
                 move |result| Message::NukePlacementStatusLoaded {
                     execution_id,
                     context: request_context,
-                    result: Box::new(result),
+                    result: result.into(),
                 },
             );
         }
@@ -842,7 +842,7 @@ impl TradingTerminal {
                 move |result| Message::OneShotPlacementStatusLoaded {
                     request_id,
                     context: request_context,
-                    result: Box::new(result),
+                    result: result.into(),
                 },
             );
             return if outcome.refresh_account {

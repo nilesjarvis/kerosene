@@ -413,7 +413,7 @@ impl TradingTerminal {
             pending_indicator_id,
             context,
             recovery,
-            result: Box::new(result),
+            result: result.into(),
         })
     }
 

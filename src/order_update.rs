@@ -55,7 +55,7 @@ impl TradingTerminal {
                 return self.submit_order_leverage_update(snapshot);
             }
             Message::OrderLeverageResult { context, result } => {
-                return self.handle_order_leverage_result(context, *result);
+                return self.handle_order_leverage_result(context, result.into_result());
             }
             Message::TogglePresetsMenu => self.handle_toggle_presets_menu(),
             Message::TogglePresetCurrency => self.handle_toggle_preset_currency(),
@@ -76,7 +76,13 @@ impl TradingTerminal {
                 pending_indicator_id,
                 context,
                 result,
-            } => return self.handle_order_result(pending_indicator_id, context, *result),
+            } => {
+                return self.handle_order_result(
+                    pending_indicator_id,
+                    context,
+                    result.into_result(),
+                );
+            }
             Message::CancelOrder { coin, oid } => {
                 return self.execute_cancel(&coin, oid.into_u64());
             }
@@ -90,7 +96,7 @@ impl TradingTerminal {
                     request_id,
                     account_address.into_string(),
                     pending_indicator_id,
-                    *result,
+                    result.into_result(),
                 );
             }
             Message::CancelOrderStatusLoaded {
@@ -105,7 +111,7 @@ impl TradingTerminal {
                     account_address.into_string(),
                     oid.into_u64(),
                     symbol,
-                    *result,
+                    result.into_result(),
                 );
             }
             Message::ToggleCloseMenu(coin) => self.toggle_close_menu(coin),
@@ -122,7 +128,11 @@ impl TradingTerminal {
                 context,
                 result,
             } => {
-                return self.handle_close_position_result(pending_indicator_id, context, *result);
+                return self.handle_close_position_result(
+                    pending_indicator_id,
+                    context,
+                    result.into_result(),
+                );
             }
             Message::NukePositions => return self.handle_nuke_positions(),
             Message::NukeResult {
@@ -130,21 +140,29 @@ impl TradingTerminal {
                 context,
                 result,
             } => {
-                return self.handle_nuke_result(execution_id, context, *result);
+                return self.handle_nuke_result(execution_id, context, result.into_result());
             }
             Message::NukePlacementStatusLoaded {
                 execution_id,
                 context,
                 result,
             } => {
-                return self.handle_nuke_placement_status_result(execution_id, context, *result);
+                return self.handle_nuke_placement_status_result(
+                    execution_id,
+                    context,
+                    result.into_result(),
+                );
             }
             Message::OneShotPlacementStatusLoaded {
                 request_id,
                 context,
                 result,
             } => {
-                return self.handle_one_shot_placement_status_result(request_id, context, *result);
+                return self.handle_one_shot_placement_status_result(
+                    request_id,
+                    context,
+                    result.into_result(),
+                );
             }
             Message::StartChase { is_buy, snapshot } => {
                 return self.start_chase_from_snapshot(is_buy, snapshot);
@@ -400,7 +418,7 @@ impl TradingTerminal {
                     pending_indicator_id,
                     context,
                     recovery,
-                    *result,
+                    result.into_result(),
                 );
             }
             Message::SubmitHudOrder(request) => return self.handle_submit_hud_order(request),
@@ -414,7 +432,7 @@ impl TradingTerminal {
                     pending_indicator_id,
                     inflight_id,
                     context,
-                    *result,
+                    result.into_result(),
                 );
             }
             Message::EscapePressed(window_id) => self.handle_order_escape_pressed(window_id),
@@ -446,7 +464,7 @@ impl TradingTerminal {
                     coin,
                     oid.into_u64(),
                     pending_indicator_id,
-                    *result,
+                    result.into_result(),
                 );
             }
             Message::MoveOrderStatusLoaded {
@@ -461,7 +479,7 @@ impl TradingTerminal {
                     account_address.into_string(),
                     coin,
                     oid.into_u64(),
-                    *result,
+                    result.into_result(),
                 );
             }
             Message::ChaseRestingOrder { coin, oid } => {

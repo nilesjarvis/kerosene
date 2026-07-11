@@ -164,7 +164,7 @@ impl TradingTerminal {
             update_leverage(key, context.asset, context.is_cross, context.leverage),
             move |result| Message::OrderLeverageResult {
                 context: context.clone(),
-                result: Box::new(result),
+                result: result.into(),
             },
         )
     }
