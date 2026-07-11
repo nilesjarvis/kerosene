@@ -15,6 +15,27 @@ pub(super) const DEFAULT_ARGON2_MEMORY_KIB: u32 = 64 * 1024;
 pub(super) const DEFAULT_ARGON2_ITERATIONS: u32 = 3;
 pub(super) const DEFAULT_ARGON2_LANES: u32 = 1;
 
+enum SecretBuffer<'a> {
+    Borrowed(&'a str),
+    Owned(Zeroizing<String>),
+}
+
+impl SecretBuffer<'_> {
+    fn as_str(&self) -> &str {
+        match self {
+            Self::Borrowed(value) => value,
+            Self::Owned(value) => value.as_str(),
+        }
+    }
+
+    fn into_owned(self) -> Zeroizing<String> {
+        match self {
+            Self::Borrowed(value) => value.to_string().into(),
+            Self::Owned(value) => value,
+        }
+    }
+}
+
 pub(super) fn redacted_secret_payload_parse_error(
     context: &str,
     error: serde_json::Error,
@@ -226,10 +247,39 @@ impl SecretPayload {
         schwab_refresh_token: &str,
         openrouter_api_key: &str,
     ) -> Self {
+        Self::from_profile_refs_with_integrations(
+            profiles,
+            hydromancer_api_key,
+            hyperdash_api_key,
+            x_access_token,
+            x_oauth_client_id,
+            x_refresh_token,
+            schwab_client_id,
+            schwab_client_secret,
+            schwab_access_token,
+            schwab_refresh_token,
+            openrouter_api_key,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_profile_refs_with_integrations<'a>(
+        profiles: impl IntoIterator<Item = &'a AccountProfile>,
+        hydromancer_api_key: &str,
+        hyperdash_api_key: &str,
+        x_access_token: &str,
+        x_oauth_client_id: &str,
+        x_refresh_token: &str,
+        schwab_client_id: &str,
+        schwab_client_secret: &str,
+        schwab_access_token: &str,
+        schwab_refresh_token: &str,
+        openrouter_api_key: &str,
+    ) -> Self {
         Self {
             schema: SECRET_PAYLOAD_SCHEMA.to_string(),
             profiles: profiles
-                .iter()
+                .into_iter()
                 .filter(|profile| {
                     !profile.secret_id.trim().is_empty() && !profile.agent_key.trim().is_empty()
                 })
@@ -369,12 +419,38 @@ impl SecretPayload {
         wallet_address: Option<&str>,
         agent_key: &str,
     ) -> bool {
+        self.upsert_profile_agent_key_for_wallet_value(
+            secret_id,
+            wallet_address,
+            SecretBuffer::Borrowed(agent_key),
+        )
+    }
+
+    pub(crate) fn upsert_profile_agent_key_for_wallet_owned(
+        &mut self,
+        secret_id: &str,
+        wallet_address: Option<&str>,
+        agent_key: Zeroizing<String>,
+    ) -> bool {
+        self.upsert_profile_agent_key_for_wallet_value(
+            secret_id,
+            wallet_address,
+            SecretBuffer::Owned(agent_key),
+        )
+    }
+
+    fn upsert_profile_agent_key_for_wallet_value(
+        &mut self,
+        secret_id: &str,
+        wallet_address: Option<&str>,
+        agent_key: SecretBuffer<'_>,
+    ) -> bool {
         let secret_id = secret_id.trim();
         if secret_id.is_empty() {
             return false;
         }
 
-        if agent_key.trim().is_empty() {
+        if agent_key.as_str().trim().is_empty() {
             return self.remove_profile(secret_id);
         }
 
@@ -384,20 +460,20 @@ impl SecretPayload {
             .find(|profile| profile.secret_id == secret_id)
         {
             let normalized_wallet = wallet_address.and_then(Self::normalize_wallet_address);
-            if profile.agent_key.as_str() == agent_key
+            if profile.agent_key.as_str() == agent_key.as_str()
                 && profile.wallet_address == normalized_wallet
             {
                 return false;
             }
             profile.wallet_address = normalized_wallet;
-            profile.agent_key = agent_key.to_string().into();
+            profile.agent_key = agent_key.into_owned();
             return true;
         }
 
         self.profiles.push(ProfileSecretPayload {
             secret_id: secret_id.to_string(),
             wallet_address: wallet_address.and_then(Self::normalize_wallet_address),
-            agent_key: agent_key.to_string().into(),
+            agent_key: agent_key.into_owned(),
         });
         true
     }
@@ -442,19 +518,34 @@ impl SecretPayload {
     }
 
     pub fn set_global_hydromancer_api_key(&mut self, value: &str) -> bool {
-        if self.global.hydromancer_api_key.as_str() == value {
-            return false;
-        }
-        self.global.hydromancer_api_key = value.to_string().into();
-        true
+        replace_secret_buffer(
+            &mut self.global.hydromancer_api_key,
+            SecretBuffer::Borrowed(value),
+        )
+    }
+
+    pub(crate) fn set_global_hydromancer_api_key_owned(
+        &mut self,
+        value: Zeroizing<String>,
+    ) -> bool {
+        replace_secret_buffer(
+            &mut self.global.hydromancer_api_key,
+            SecretBuffer::Owned(value),
+        )
     }
 
     pub fn set_global_hyperdash_api_key(&mut self, value: &str) -> bool {
-        if self.global.hyperdash_api_key.as_str() == value {
-            return false;
-        }
-        self.global.hyperdash_api_key = value.to_string().into();
-        true
+        replace_secret_buffer(
+            &mut self.global.hyperdash_api_key,
+            SecretBuffer::Borrowed(value),
+        )
+    }
+
+    pub(crate) fn set_global_hyperdash_api_key_owned(&mut self, value: Zeroizing<String>) -> bool {
+        replace_secret_buffer(
+            &mut self.global.hyperdash_api_key,
+            SecretBuffer::Owned(value),
+        )
     }
 
     pub fn set_global_x_access_token(&mut self, value: &str) -> bool {
@@ -520,6 +611,14 @@ impl SecretPayload {
         self.global.openrouter_api_key = value.to_string().into();
         true
     }
+}
+
+fn replace_secret_buffer(target: &mut Zeroizing<String>, value: SecretBuffer<'_>) -> bool {
+    if target.as_str() == value.as_str() {
+        return false;
+    }
+    *target = value.into_owned();
+    true
 }
 
 impl ProfileSecretPayload {

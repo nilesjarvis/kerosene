@@ -11,13 +11,16 @@ use zeroize::{Zeroize, Zeroizing};
 
 impl TradingTerminal {
     pub(crate) fn current_secret_payload(&self) -> config::SecretPayload {
-        let accounts = self.persisted_accounts_snapshot();
+        let accounts = self
+            .accounts
+            .iter()
+            .filter(|profile| !self.ghost_account_secret_ids.contains(&profile.secret_id));
         let (x_access_token, x_oauth_client_id, x_refresh_token) =
             self.x_feed.oauth_credentials_for_secret();
         let (schwab_client_id, schwab_client_secret, schwab_access_token, schwab_refresh_token) =
             self.schwab.oauth_credentials_for_secret();
-        config::SecretPayload::from_credentials_with_integrations(
-            &accounts,
+        config::SecretPayload::from_profile_refs_with_integrations(
+            accounts,
             &self.hydromancer_api_key,
             &self.hyperdash_api_key,
             x_access_token.as_str(),

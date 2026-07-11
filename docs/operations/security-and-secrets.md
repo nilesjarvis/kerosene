@@ -87,6 +87,17 @@ fallbacks. When the bundle already has a global Hydromancer key, it retains its
 established authority; choosing a different conflict policy requires an
 explicit migration-behavior decision.
 
+Switching from OS-keychain storage to encrypted config builds the candidate
+payload directly from borrowed persisted-profile references, without a second
+full profile snapshot. Legacy readers receive the exact profile ID plus
+non-secret field-presence guards, not canonical names, wallet addresses, or
+credential contents. Newly loaded agent and integration buffers move into the
+candidate payload when no normalization is required; a required normalized
+integration buffer becomes the owner instead. Keychain-cleanup and clear-config
+tasks receive only identity shells. Existing bundle precedence, field-read
+decisions, conflict handling, cleanup scope, and persistence ordering remain
+unchanged.
+
 Secret-bearing state includes:
 
 - `wallet_key_input`

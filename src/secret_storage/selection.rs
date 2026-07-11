@@ -3,6 +3,12 @@ use crate::config;
 use crate::helpers::redact_sensitive_response_text;
 use zeroize::{Zeroize, Zeroizing};
 
+// Legacy readers fetch only empty targets. This non-secret guard preserves the
+// existing field-read decision without handing a canonical value to the
+// callback; candidate selection below never persists the guard.
+const LEGACY_SECRET_PRESENT_GUARD: &str = "already-resolved";
+const LEGACY_HYDROMANCER_CONFLICT: &str = "Multiple legacy Hydromancer API keys were found; choose and save the intended key before switching storage";
+
 // ---------------------------------------------------------------------------
 // Secret Storage Selection
 // ---------------------------------------------------------------------------
@@ -28,7 +34,14 @@ impl TradingTerminal {
     }
 
     pub(crate) fn keychain_cleanup_profiles_snapshot(&self) -> Vec<config::AccountProfile> {
-        let mut accounts = self.persisted_accounts_snapshot();
+        // Cleanup consumers use only secret IDs; keep runtime profile metadata
+        // and credentials out of both synchronous and async cleanup owners.
+        let mut accounts = self
+            .accounts
+            .iter()
+            .filter(|profile| !self.ghost_account_secret_ids.contains(&profile.secret_id))
+            .map(|profile| secret_profile_identity_shell(&profile.secret_id))
+            .collect::<Vec<_>>();
         for secret_id in &self.pending_keychain_profile_deletions {
             let secret_id = secret_id.trim();
             if secret_id.is_empty()
@@ -39,13 +52,7 @@ impl TradingTerminal {
             {
                 continue;
             }
-            accounts.push(config::AccountProfile {
-                secret_id: secret_id.to_string(),
-                name: String::new(),
-                wallet_address: String::new(),
-                agent_key: String::new().into(),
-                hydromancer_api_key: String::new().into(),
-            });
+            accounts.push(secret_profile_identity_shell(secret_id));
         }
         accounts
     }
@@ -241,8 +248,8 @@ impl TradingTerminal {
         &mut self,
         mut save_config: impl FnMut(&config::KeroseneConfig) -> Result<(), String>,
         clear_keychain_secrets: impl FnOnce(&[config::AccountProfile]) -> Result<(), String>,
-        load_keychain_secret_payload: impl FnMut() -> Result<Option<config::SecretPayload>, String>,
-        load_global_secrets: impl FnMut(
+        load_keychain_secret_payload: impl FnOnce() -> Result<Option<config::SecretPayload>, String>,
+        load_global_secrets: impl FnOnce(
             &mut Zeroizing<String>,
             &mut Zeroizing<String>,
         ) -> Result<(), String>,
@@ -347,14 +354,13 @@ impl TradingTerminal {
 
     fn encrypted_storage_selection_payload(
         &self,
-        mut load_keychain_secret_payload: impl FnMut() -> Result<Option<config::SecretPayload>, String>,
-        mut load_global_secrets: impl FnMut(
+        load_keychain_secret_payload: impl FnOnce() -> Result<Option<config::SecretPayload>, String>,
+        load_global_secrets: impl FnOnce(
             &mut Zeroizing<String>,
             &mut Zeroizing<String>,
         ) -> Result<(), String>,
         mut load_profile_secrets: impl FnMut(&mut config::AccountProfile) -> Result<(), String>,
     ) -> Result<config::SecretPayload, String> {
-        let mut accounts = self.persisted_accounts_snapshot();
         let mut payload = self.current_secret_payload();
 
         if self.secret_storage_mode != config::CredentialStorageMode::OsKeychain {
@@ -364,33 +370,39 @@ impl TradingTerminal {
         let keychain_payload = load_keychain_secret_payload()
             .map_err(|_| "OS keychain credentials could not be read".to_string())?;
         if let Some(keychain_payload) = keychain_payload.as_ref() {
-            merge_missing_keychain_payload_secrets(&mut payload, keychain_payload, &accounts);
+            merge_missing_keychain_payload_secrets(
+                &mut payload,
+                keychain_payload,
+                self.accounts
+                    .iter()
+                    .filter(|profile| !self.ghost_account_secret_ids.contains(&profile.secret_id)),
+            );
         }
 
         let mut hydromancer_api_key =
-            Zeroizing::new(payload.global_hydromancer_api_key().to_string());
-        let mut hyperdash_api_key = Zeroizing::new(payload.global_hyperdash_api_key().to_string());
+            legacy_secret_lookup_buffer(payload.global_hydromancer_api_key());
+        let mut hyperdash_api_key = legacy_secret_lookup_buffer(payload.global_hyperdash_api_key());
         load_global_secrets(&mut hydromancer_api_key, &mut hyperdash_api_key)
             .map_err(|_| "OS keychain shared credentials could not be read".to_string())?;
-        merge_missing_legacy_global_secrets(
-            &mut payload,
-            hydromancer_api_key.as_str(),
-            hyperdash_api_key.as_str(),
-        );
+        merge_missing_legacy_global_secrets(&mut payload, hydromancer_api_key, hyperdash_api_key);
 
-        for account in &mut accounts {
+        for account in self
+            .accounts
+            .iter()
+            .filter(|profile| !self.ghost_account_secret_ids.contains(&profile.secret_id))
+        {
             let secret_id = account.secret_id.trim().to_string();
-            let wallet_address = account.wallet_address.clone();
             if secret_id.is_empty() {
                 continue;
             }
 
             let missing_agent_key = payload
-                .profile_agent_key_for_wallet(&secret_id, &wallet_address)
+                .profile_agent_key_for_wallet(&secret_id, &account.wallet_address)
                 .is_none();
             if missing_agent_key
                 && keychain_payload.as_ref().is_some_and(|payload| {
-                    payload.profile_agent_key_binding_mismatches(&secret_id, &wallet_address)
+                    payload
+                        .profile_agent_key_binding_mismatches(&secret_id, &account.wallet_address)
                 })
             {
                 return Err(
@@ -399,47 +411,104 @@ impl TradingTerminal {
                 );
             }
 
-            load_profile_secrets(account)
+            let mut legacy_profile = secret_profile_identity_shell(&account.secret_id);
+            legacy_profile.agent_key = legacy_secret_lookup_buffer(&account.agent_key);
+            legacy_profile.hydromancer_api_key =
+                legacy_secret_lookup_buffer(&account.hydromancer_api_key);
+            load_profile_secrets(&mut legacy_profile)
                 .map_err(|_| "OS keychain profile credentials could not be read".to_string())?;
-            if missing_agent_key && !account.agent_key.trim().is_empty() {
-                payload.upsert_profile_agent_key_for_wallet(
-                    &secret_id,
-                    Some(&wallet_address),
-                    &account.agent_key,
-                );
+            if missing_agent_key {
+                if account.agent_key.trim().is_empty() {
+                    let agent_key = std::mem::take(&mut legacy_profile.agent_key);
+                    if !agent_key.trim().is_empty() {
+                        payload.upsert_profile_agent_key_for_wallet_owned(
+                            &secret_id,
+                            Some(&account.wallet_address),
+                            agent_key,
+                        );
+                    }
+                } else {
+                    payload.upsert_profile_agent_key_for_wallet(
+                        &secret_id,
+                        Some(&account.wallet_address),
+                        &account.agent_key,
+                    );
+                }
             }
-            merge_legacy_profile_hydromancer_key(&mut payload, account)?;
+            merge_legacy_profile_hydromancer_key(
+                &mut payload,
+                &account.hydromancer_api_key,
+                std::mem::take(&mut legacy_profile.hydromancer_api_key),
+            )?;
         }
 
         Ok(payload)
     }
 }
 
+fn secret_profile_identity_shell(secret_id: &str) -> config::AccountProfile {
+    config::AccountProfile {
+        secret_id: secret_id.to_string(),
+        name: String::new(),
+        wallet_address: String::new(),
+        agent_key: String::new().into(),
+        hydromancer_api_key: String::new().into(),
+    }
+}
+
+fn legacy_secret_lookup_buffer(current_value: &str) -> Zeroizing<String> {
+    if current_value.trim().is_empty() {
+        Zeroizing::new(String::new())
+    } else {
+        Zeroizing::new(LEGACY_SECRET_PRESENT_GUARD.to_string())
+    }
+}
+
 fn merge_missing_legacy_global_secrets(
     payload: &mut config::SecretPayload,
-    hydromancer_api_key: &str,
-    hyperdash_api_key: &str,
+    hydromancer_api_key: Zeroizing<String>,
+    hyperdash_api_key: Zeroizing<String>,
 ) {
     if payload.global_hydromancer_api_key().trim().is_empty()
         && !hydromancer_api_key.trim().is_empty()
     {
-        payload.set_global_hydromancer_api_key(hydromancer_api_key);
+        payload.set_global_hydromancer_api_key_owned(hydromancer_api_key);
     }
     if payload.global_hyperdash_api_key().trim().is_empty() && !hyperdash_api_key.trim().is_empty()
     {
-        payload.set_global_hyperdash_api_key(hyperdash_api_key);
+        payload.set_global_hyperdash_api_key_owned(hyperdash_api_key);
     }
 }
 
 fn merge_legacy_profile_hydromancer_key(
     payload: &mut config::SecretPayload,
-    account: &config::AccountProfile,
+    current_profile_key: &str,
+    loaded_profile_key: Zeroizing<String>,
 ) -> Result<(), String> {
-    let profile_hydromancer_key = account.hydromancer_api_key.trim();
-    if profile_hydromancer_key.is_empty() {
-        return Ok(());
+    let current_profile_key = current_profile_key.trim();
+    if !current_profile_key.is_empty() {
+        return merge_borrowed_legacy_profile_hydromancer_key(payload, current_profile_key);
     }
 
+    let loaded_profile_key = trim_owned_legacy_profile_hydromancer_key(loaded_profile_key);
+    if loaded_profile_key.is_empty() {
+        return Ok(());
+    }
+    let global_hydromancer_key = payload.global_hydromancer_api_key().trim();
+    if global_hydromancer_key.is_empty() {
+        payload.set_global_hydromancer_api_key_owned(loaded_profile_key);
+        Ok(())
+    } else if global_hydromancer_key == loaded_profile_key.as_str() {
+        Ok(())
+    } else {
+        Err(LEGACY_HYDROMANCER_CONFLICT.to_string())
+    }
+}
+
+fn merge_borrowed_legacy_profile_hydromancer_key(
+    payload: &mut config::SecretPayload,
+    profile_hydromancer_key: &str,
+) -> Result<(), String> {
     let global_hydromancer_key = payload.global_hydromancer_api_key().trim();
     if global_hydromancer_key.is_empty() {
         payload.set_global_hydromancer_api_key(profile_hydromancer_key);
@@ -447,17 +516,25 @@ fn merge_legacy_profile_hydromancer_key(
     } else if global_hydromancer_key == profile_hydromancer_key {
         Ok(())
     } else {
-        Err(
-            "Multiple legacy Hydromancer API keys were found; choose and save the intended key before switching storage"
-                .to_string(),
-        )
+        Err(LEGACY_HYDROMANCER_CONFLICT.to_string())
     }
 }
 
-fn merge_missing_keychain_payload_secrets(
+fn trim_owned_legacy_profile_hydromancer_key(
+    profile_hydromancer_key: Zeroizing<String>,
+) -> Zeroizing<String> {
+    let trimmed_len = profile_hydromancer_key.trim().len();
+    if trimmed_len == profile_hydromancer_key.len() {
+        profile_hydromancer_key
+    } else {
+        Zeroizing::new(profile_hydromancer_key.trim().to_string())
+    }
+}
+
+fn merge_missing_keychain_payload_secrets<'a>(
     payload: &mut config::SecretPayload,
     keychain_payload: &config::SecretPayload,
-    accounts: &[config::AccountProfile],
+    accounts: impl IntoIterator<Item = &'a config::AccountProfile>,
 ) {
     for account in accounts {
         let secret_id = account.secret_id.trim();
@@ -619,6 +696,146 @@ mod tests {
     }
 
     #[test]
+    fn encrypted_storage_selection_legacy_readers_receive_only_presence_guards() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        terminal.accounts[0].hydromancer_api_key = sensitive_string("hydro-a").into_zeroizing();
+        terminal.accounts.push(account("ghost-acct", "ghost-agent"));
+        terminal
+            .ghost_account_secret_ids
+            .insert("ghost-acct".to_string());
+        let global_reads = Cell::new(0_u32);
+        let profile_reads = RefCell::new(Vec::new());
+
+        let payload = terminal
+            .encrypted_storage_selection_payload(
+                no_keychain_payload,
+                |hydromancer_api_key, hyperdash_api_key| {
+                    global_reads.set(global_reads.get().saturating_add(1));
+                    assert!(!hydromancer_api_key.trim().is_empty());
+                    assert!(!hyperdash_api_key.trim().is_empty());
+                    assert_ne!(hydromancer_api_key.as_str(), "hydro-a");
+                    assert_ne!(hyperdash_api_key.as_str(), "hyper-a");
+                    Ok(())
+                },
+                |profile| {
+                    profile_reads.borrow_mut().push(profile.secret_id.clone());
+                    assert_eq!(profile.secret_id, "acct-a");
+                    assert!(profile.name.is_empty());
+                    assert!(profile.wallet_address.is_empty());
+                    assert!(!profile.agent_key.trim().is_empty());
+                    assert!(!profile.hydromancer_api_key.trim().is_empty());
+                    assert_ne!(profile.agent_key.as_str(), "agent-a");
+                    assert_ne!(profile.hydromancer_api_key.as_str(), "hydro-a");
+                    Ok(())
+                },
+            )
+            .expect("resolved storage selection should preserve canonical credentials");
+
+        assert_eq!(global_reads.get(), 1);
+        assert_eq!(profile_reads.borrow().as_slice(), ["acct-a"]);
+        assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
+        assert_eq!(payload.profile_agent_key("ghost-acct"), None);
+        assert_eq!(payload.global_hydromancer_api_key(), "hydro-a");
+        assert_eq!(payload.global_hyperdash_api_key(), "hyper-a");
+    }
+
+    #[test]
+    fn encrypted_storage_selection_moves_loaded_legacy_allocations_into_payload() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        terminal.accounts[0].agent_key = sensitive_string("").into_zeroizing();
+        terminal.hydromancer_api_key = sensitive_string("");
+        terminal.hyperdash_api_key = sensitive_string("");
+        let loaded_agent_allocation = Cell::new(std::ptr::null::<u8>());
+        let loaded_hydromancer_allocation = Cell::new(std::ptr::null::<u8>());
+        let loaded_hyperdash_allocation = Cell::new(std::ptr::null::<u8>());
+
+        let payload = terminal
+            .encrypted_storage_selection_payload(
+                no_keychain_payload,
+                |hydromancer_api_key, hyperdash_api_key| {
+                    assert!(hydromancer_api_key.is_empty());
+                    assert!(hyperdash_api_key.is_empty());
+                    *hyperdash_api_key = sensitive_string("legacy-hyper").into_zeroizing();
+                    loaded_hyperdash_allocation.set(hyperdash_api_key.as_ptr());
+                    Ok(())
+                },
+                |profile| {
+                    profile.agent_key = sensitive_string("legacy-agent").into_zeroizing();
+                    profile.hydromancer_api_key = sensitive_string("legacy-hydro").into_zeroizing();
+                    loaded_agent_allocation.set(profile.agent_key.as_ptr());
+                    loaded_hydromancer_allocation.set(profile.hydromancer_api_key.as_ptr());
+                    Ok(())
+                },
+            )
+            .expect("legacy credentials should complete the encrypted payload");
+
+        assert_eq!(
+            payload
+                .profile_agent_key("acct-a")
+                .expect("legacy agent should be retained")
+                .as_ptr(),
+            loaded_agent_allocation.get()
+        );
+        assert_eq!(
+            payload.global_hydromancer_api_key().as_ptr(),
+            loaded_hydromancer_allocation.get()
+        );
+        assert_eq!(
+            payload.global_hyperdash_api_key().as_ptr(),
+            loaded_hyperdash_allocation.get()
+        );
+        assert!(terminal.accounts[0].agent_key.is_empty());
+        assert!(terminal.hydromancer_api_key.is_empty());
+        assert!(terminal.hyperdash_api_key.is_empty());
+    }
+
+    #[test]
+    fn encrypted_storage_selection_preserves_legacy_profile_hydromancer_trimming() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        terminal.hydromancer_api_key = sensitive_string("");
+
+        let payload = terminal
+            .encrypted_storage_selection_payload(
+                no_keychain_payload,
+                no_legacy_global_secret,
+                |profile| {
+                    profile.hydromancer_api_key =
+                        sensitive_string("  legacy-hydro\n").into_zeroizing();
+                    Ok(())
+                },
+            )
+            .expect("legacy Hydromancer whitespace should retain established normalization");
+
+        assert_eq!(payload.global_hydromancer_api_key(), "legacy-hydro");
+    }
+
+    #[test]
+    fn encrypted_storage_selection_keeps_bundle_agent_authoritative_over_legacy_fallback() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        terminal.accounts[0].agent_key = sensitive_string("").into_zeroizing();
+        let keychain_payload =
+            config::SecretPayload::from_credentials(&[account("acct-a", "bundle-agent")], "", "");
+        let profile_reads = Cell::new(0_u32);
+
+        let payload = terminal
+            .encrypted_storage_selection_payload(
+                || Ok(Some(keychain_payload.clone())),
+                no_legacy_global_secret,
+                |profile| {
+                    profile_reads.set(profile_reads.get().saturating_add(1));
+                    assert!(profile.agent_key.is_empty());
+                    profile.agent_key = sensitive_string("legacy-agent").into_zeroizing();
+                    Ok(())
+                },
+            )
+            .expect("the existing bundle should retain its established authority");
+
+        assert_eq!(profile_reads.get(), 1);
+        assert_eq!(payload.profile_agent_key("acct-a"), Some("bundle-agent"));
+        assert!(terminal.accounts[0].agent_key.is_empty());
+    }
+
+    #[test]
     fn keychain_cleanup_profiles_snapshot_includes_pending_deleted_profiles_once() {
         let mut terminal = terminal_ready_to_switch_to_encrypted();
         terminal.accounts.push(account("acct-b", "agent-b"));
@@ -643,14 +860,12 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["acct-a", "acct-b", "acct-deleted"]
         );
-        let synthetic_profile = profiles
-            .iter()
-            .find(|profile| profile.secret_id == "acct-deleted")
-            .expect("pending deleted profile should be included for cleanup");
-        assert!(synthetic_profile.name.is_empty());
-        assert!(synthetic_profile.wallet_address.is_empty());
-        assert!(synthetic_profile.agent_key.is_empty());
-        assert!(synthetic_profile.hydromancer_api_key.is_empty());
+        for profile in profiles {
+            assert!(profile.name.is_empty());
+            assert!(profile.wallet_address.is_empty());
+            assert!(profile.agent_key.is_empty());
+            assert!(profile.hydromancer_api_key.is_empty());
+        }
     }
 
     #[test]

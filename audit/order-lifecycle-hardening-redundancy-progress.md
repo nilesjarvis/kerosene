@@ -198,6 +198,17 @@
   conflict-policy decision
   (`src/config/files/storage.rs:178-228`,
   `src/config/files/storage.rs:396-479`).
+- OS-keychain-to-encrypted selection constructs the candidate payload directly
+  from borrowed persisted-profile references. Legacy readers receive exact IDs
+  and non-secret presence guards rather than canonical metadata or credential
+  contents; newly loaded missing values, or required normalized buffers, move
+  into the payload. Keychain cleanup snapshots contain profile identities only,
+  including when moved into the asynchronous clear-config task
+  (`src/config/secrets/model.rs:237-305`,
+  `src/secret_storage/encrypted.rs:13-35`,
+  `src/secret_storage/selection.rs:36-58`,
+  `src/secret_storage/selection.rs:355-532`,
+  `src/config_persistence/clear.rs:80-84`).
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -2744,8 +2755,96 @@ target-specific cancellation policy, not HTTP replay.
 - Residual uncertainty: Rust type-checking and tests remain blocked by ALSA
   metadata. Keychain payload serialization and final config hydration still
   require their necessary copies. F-39 owns the bundle-global disagreement;
-  the storage-selection snapshot graph and remaining local planner/state/
-  message diagnostics are not yet complete.
+  the storage-selection snapshot graph is separately addressed by F-40, while
+  remaining local planner/state/message diagnostics are not yet complete.
+
+### F-40 — Storage migration and cleanup over-own profile secrets
+
+- Status: addressed in Turn 34; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium secret-lifetime and boundary-capability hardening; no known
+  log or credential exposure occurred, but normal storage migration and config
+  clearing retained signing/integration keys in owners that did not need them
+- Scope: OS-keychain-to-encrypted payload construction; bundled and legacy
+  fallback hydration; field-level legacy-read decisions; ghost filtering;
+  wallet binding; conflict authority; encryption handoff; keychain cleanup,
+  unlock retry, and asynchronous clear-config profile snapshots
+- Preconditions/event ordering:
+  1. Runtime account profiles contain loaded agent keys and possibly legacy
+     per-profile Hydromancer fallbacks.
+  2. Switching to encrypted storage previously created one full persisted-
+     profile snapshot for legacy hydration, while `current_secret_payload`
+     independently created another before copying the required secrets into
+     the candidate payload.
+  3. Each full profile clone, including name, wallet address, and canonical
+     secret contents, crossed the legacy profile-reader callback. Newly loaded
+     fallback allocations were then copied into the payload and retained in
+     the snapshot until the whole migration returned.
+  4. Separately, keychain cleanup cloned full persisted profiles even though
+     all consumers use only `secret_id`; config clear moved that clone into an
+     asynchronous task.
+- Evidence: parent commit
+  `e7335ef5dac019f52286c734967928bc37e26bfe` shows the duplicate snapshots,
+  full-profile legacy reader, borrowed payload setters, and full cleanup
+  snapshot (`src/secret_storage/encrypted.rs:13-34`,
+  `src/secret_storage/selection.rs:31-54`,
+  `src/secret_storage/selection.rs:348-414`). The production legacy reader
+  decides field reads solely from whether a target is empty, while full
+  keychain cleanup and clear-config counting consume only profile IDs
+  (`src/config/secrets/keychain.rs:69-85`,
+  `src/config/secrets/keychain.rs:577-603`,
+  `src/config/clear.rs:272-310`, `src/config_persistence/clear.rs:80-84`).
+- Violated invariant: a secret-migration boundary should hold only the secret
+  owners needed to construct the durable candidate. Legacy readers need exact
+  lookup identity and the same empty/non-empty field decisions, not canonical
+  values or account metadata; cleanup tasks need profile IDs only. A newly
+  loaded zeroizing fallback, or its required normalized buffer, should become
+  the payload owner when no competing durable value exists.
+- Risk: unnecessary signing-key, integration-key, wallet-address, and account-
+  metadata copies lived across synchronous callbacks and, for config clear, an
+  asynchronous task. A future debug/error/callback regression would therefore
+  have more secret-bearing state available than its responsibility requires.
+  This finding does not claim an existing disclosure or any exchange mutation.
+- Why existing checks did not cover it: storage-selection tests asserted final
+  decrypted values, binding/conflict results, and cleanup ordering, but did not
+  constrain callback inputs, allocation provenance, or ordinary cleanup
+  profile contents. The cleanup snapshot test checked only the synthetic
+  deleted-profile shell.
+- Implemented fix: construct current payload profiles from filtered references
+  rather than a cloned vector; iterate the canonical profiles read-only for
+  binding and legacy lookup; give legacy readers identity-only shells whose
+  non-secret guards preserve the exact production field-read decisions; adopt
+  loaded agent and loaded/normalized Hydromancer/HyperDash buffers through
+  owned payload mutators; narrow one-use bundle/global readers to `FnOnce`; and
+  make every keychain cleanup snapshot an identity-only profile list
+  (`src/config/secrets/model.rs:237-305`,
+  `src/config/secrets/model.rs:416-622`,
+  `src/secret_storage/encrypted.rs:13-35`,
+  `src/secret_storage/selection.rs:36-58`,
+  `src/secret_storage/selection.rs:247-532`).
+- Regression coverage: focused tests require canonical values to remain absent
+  from global/profile reader inputs while non-secret guards preserve read
+  suppression; exact already-normalized loaded allocations to become payload
+  owners; legacy-profile whitespace normalization and ghost exclusion to remain
+  unchanged; bundle agent precedence and the legacy read to remain unchanged;
+  and every ordinary/pending cleanup profile to contain only its ID
+  (`src/secret_storage/selection.rs:699-869`). Existing integration tests
+  continue to cover save-before-cleanup, cleanup retry intent, deferred profile
+  hydration, wallet mismatch blocking, legacy integration migration, conflict
+  blocking, save rollback, and encrypted payload contents
+  (`src/secret_storage/selection.rs:1174-1710`).
+- Smallest behavior-preserving fix: payload schema, profile ordering and IDs,
+  wallet normalization/binding, ghost filtering, all credential values,
+  legacy keychain entry/read decisions and ordering, bundle precedence,
+  Hydromancer trimming/conflict text, mismatch/read/save failure text, mode and
+  save-block rollback, cleanup scope/count/timing/retry intent, and every user-
+  visible or trading behavior remain unchanged. Only temporary ownership,
+  callback data authority, and callback capability narrow.
+- Residual uncertainty: Rust type-checking and tests remain blocked by ALSA
+  metadata. Payload serialization/encryption and retained keychain-bundle
+  comparison require short-lived copies. F-41 records the separately deferred
+  bundle-versus-legacy authority question; local order planner/state/message
+  diagnostics and other external-status paths remain to audit.
 
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
@@ -4846,6 +4945,68 @@ target-specific cancellation policy, not HTTP replay.
   for profile/key ownership, binding/conflict rollback, and cleanup authority;
   then return to the remaining account/order diagnostic inventory.
 
+## Turn 34 — Narrow Storage Migration and Cleanup Secret Owners
+
+- Status: F-40 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: OS-keychain-to-encrypted credential selection, current/bundle/legacy
+  payload assembly, reader inputs, allocation ownership, cleanup snapshots,
+  unlock cleanup retry, and clear-config task capture
+- Invariant: the durable candidate payload may own required secret copies, but
+  legacy readers must receive only exact identity and non-secret field-presence
+  state, and keychain cleanup must receive only profile identities. Newly
+  loaded missing values, or required normalized buffers, should move into their
+  payload owners.
+- Protected behavior: payload schema/order/values; profile IDs and wallet
+  binding; ghost exclusion; exact legacy field reads and ordering; bundle and
+  runtime precedence; Hydromancer trimming/conflict behavior; mismatch and
+  failure handling; encryption/save rollback; cleanup scope/count/order/retry;
+  all strings, settings behavior, config compatibility, and trading behavior.
+- Preconditions/event ordering: build the current candidate, merge any matching
+  keychain bundle values, read unresolved legacy globals, then visit each
+  persisted profile in order for mismatch gating and unresolved legacy fields.
+  Encrypt and save the completed candidate before clearing keychain state. A
+  later unlock retry or clear-config task may reuse the cleanup profile list.
+- Evidence: F-40 records the parent/current ownership graphs, production reader
+  emptiness contract, cleanup consumers, async capture, and focused controls.
+  Repository search confirms `encrypted_storage_selection_payload` has one
+  production caller and `keychain_cleanup_profiles_snapshot` feeds only full
+  keychain cleanup, unlock retry, config clear, and its tests.
+- Change: built payload profiles from filtered references, removed the second
+  full migration snapshot, introduced identity-only lookup and cleanup shells,
+  used non-secret guards to preserve field-level reads, moved loaded or required
+  normalized fallback allocations into the payload, and narrowed single-use
+  readers to `FnOnce`.
+- Tests/checks:
+  - The pre-fix exact allocation-owner regression stopped in `alsa-sys` before
+    Kerosene compilation because `pkg-config` could not find the system
+    `alsa.pc` file.
+  - Post-fix identity/presence, allocation, bundle-precedence, and cleanup-
+    identity tests plus the full `secret_storage::selection::tests` and
+    `config::secrets::model::tests` modules stopped at the same dependency
+    boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no view, subscription, window, or startup
+    behavior changed, compilation is already blocked, and no live exchange or
+    credential-bearing external operation was run.
+- Compatibility/UX assessment: the same profiles and globals reach the same
+  encrypted schema in the same order. The production keychain reader sees the
+  same empty/non-empty decision for every field and therefore performs the
+  same reads; mismatch/conflict errors, bundle authority, save rollback, and
+  cleanup behavior are unchanged. No schema, copy, prompt, task timing, trading
+  rule, or UI flow changes.
+- Residual risk: Kerosene has not type-checked on this host. F-41 records the
+  storage-selection authority decision for disagreeing bundle and legacy
+  values. Required encryption/serialization buffers remain, and the broader
+  local order planner/state/message diagnostic inventory is incomplete.
+- Prior turn commit hash: `e7335ef5dac019f52286c734967928bc37e26bfe`
+- Next candidate: audit local order-planning, state, and `Message` debug/error
+  paths for sensitive account/order material, then continue remaining external-
+  status and Track 9 shutdown/restart diagnostics.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -4873,21 +5034,32 @@ target-specific cancellation policy, not HTTP replay.
   state. Choose explicitly between current bundle authority, conflict blocking,
   or a separate retention policy. Turn 33 preserves current behavior and fixes
   only the unambiguous missing-global loss path.
+- F-41: during OS-keychain-to-encrypted selection, a current/bundled credential
+  retains established authority over a differing legacy per-profile/global
+  entry, and successful full keychain cleanup removes the legacy entry. Some
+  already-resolved fields deliberately skip the legacy read; a bundle-filled
+  profile whose runtime field is empty still performs its established legacy
+  read but ignores a different result. Detecting or retaining disagreement would
+  add keychain reads/prompts, migration blocking/status behavior, or field-
+  specific durable cleanup state. Choose explicitly between current/bundle
+  authority, conflict blocking, or separate retention. Turn 34 preserves and
+  characterizes current authority while narrowing secret ownership only.
 
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused startup partial-bundle identity,
-  allocation, two-secret success, store-failure, bundle-global precedence, and
-  nearby storage tests; `cargo check`; full `cargo test`; and strict clippy at
-  `alsa-sys` system dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: focused storage-selection reader-identity,
+  allocation, bundle-precedence, cleanup-identity, and nearby selection/model
+  tests; `cargo check`; full `cargo test`; and strict clippy at `alsa-sys`
+  system dependency discovery, before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38
+- F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
+  and F-40
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -4902,6 +5074,9 @@ target-specific cancellation policy, not HTTP replay.
 - F-39 is explicitly deferred for partial-bundle versus legacy-profile
   Hydromancer conflict authority; F-38 independently preserves unambiguous
   missing-global migration before cleanup.
+- F-41 is explicitly deferred for storage-selection current/bundle versus
+  legacy credential authority; F-40 independently narrows migration and cleanup
+  secret owners without changing that policy.
 - TWAP terminalization plus successful save/clear final-exit fencing across all
   current mutation intents are source-audited with focused coverage but cannot
   be executed on this host. Ghost-profile cluster stream invalidation is
@@ -4912,6 +5087,7 @@ target-specific cancellation policy, not HTTP replay.
   exchange-response diagnostics are source-hardened by F-34. Ordinary switching
   key ownership is source-hardened by F-35, and add-account ownership by F-36;
   deferred runtime legacy-key ownership is source-hardened by F-37, and startup
-  partial-bundle cleanup by F-38. Storage-selection copies, local planning/
-  state/message diagnostic redaction, other external-status paths, and the rest
-  of Track 9 require completion before a final verdict.
+  partial-bundle cleanup by F-38. Storage-selection and cleanup ownership are
+  source-hardened by F-40. Local planning/state/message diagnostic redaction,
+  other external-status paths, and the rest of Track 9 require completion
+  before a final verdict.
