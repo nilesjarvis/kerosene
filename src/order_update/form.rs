@@ -36,11 +36,14 @@ impl fmt::Debug for OrderQuantityProvenance {
             .field("account_address", &"<redacted>")
             .field("account_data_revision", &self.account_data_revision)
             .field("spot_balances_revision", &self.spot_balances_revision)
-            .field("symbol_key", &self.symbol_key)
+            .field("symbol_key", &format_args!("<redacted>"))
             .field("quantity_is_usd", &self.quantity_is_usd)
             .field("percentage", &"<redacted>")
             .field("order_kind", &self.order_kind)
-            .field("reference_price", &self.reference_price)
+            .field(
+                "reference_price",
+                &self.reference_price.as_ref().map(|_| "<redacted>"),
+            )
             .field("reduce_only", &self.reduce_only)
             .field("market_universe", &self.market_universe)
             .finish()

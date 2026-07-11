@@ -1,4 +1,4 @@
-use super::{OrderSizingBasis, TradingTerminal, position_size_for_symbol};
+use super::{OrderQuantityProvenance, OrderSizingBasis, TradingTerminal, position_size_for_symbol};
 use crate::account::{
     AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
     Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
@@ -189,22 +189,47 @@ fn percentage_quantity_records_source_and_manual_edit_clears_it() {
 }
 
 #[test]
-fn order_quantity_provenance_debug_redacts_account_address() {
-    let mut terminal = terminal_with_position("BTC", "0");
-    terminal.order_quantity_is_usd = true;
+fn order_quantity_provenance_debug_redacts_sizing_context_without_changing_it() {
+    const SYMBOL: &str = "private-ticket-symbol-sentinel";
+    const PERCENTAGE: f32 = 42.42;
+    const REFERENCE_PRICE: f64 = 98_765.432_1;
+    let provenance = OrderQuantityProvenance {
+        account_address: TEST_ACCOUNT.to_string(),
+        account_data_revision: 7,
+        spot_balances_revision: 3,
+        symbol_key: SYMBOL.to_string(),
+        quantity_is_usd: true,
+        percentage: PERCENTAGE,
+        order_kind: OrderKind::Limit,
+        reference_price: Some(REFERENCE_PRICE),
+        reduce_only: true,
+        market_universe: crate::config::MarketUniverseConfig::default(),
+    };
 
-    terminal.handle_order_percentage_changed(50.0);
+    let rendered = format!("{provenance:?}");
 
-    let rendered = format!(
-        "{:?}",
-        terminal
-            .order_quantity_provenance
-            .as_ref()
-            .expect("percentage provenance")
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(!rendered.contains(TEST_ACCOUNT), "{rendered}");
+    assert!(!rendered.contains(SYMBOL), "{rendered}");
+    assert!(!rendered.contains(&format!("{PERCENTAGE:?}")), "{rendered}");
+    assert!(
+        !rendered.contains(&format!("{REFERENCE_PRICE:?}")),
+        "{rendered}"
     );
+    assert!(rendered.contains("account_data_revision: 7"), "{rendered}");
+    assert!(rendered.contains("spot_balances_revision: 3"), "{rendered}");
+    assert!(rendered.contains("quantity_is_usd: true"), "{rendered}");
+    assert!(rendered.contains("order_kind: Limit"), "{rendered}");
+    assert!(rendered.contains("reduce_only: true"), "{rendered}");
+    assert!(rendered.contains("market_universe: All"), "{rendered}");
 
-    assert!(rendered.contains("<redacted>"));
-    assert!(!rendered.contains(TEST_ACCOUNT));
+    assert_eq!(provenance.account_address, TEST_ACCOUNT);
+    assert_eq!(provenance.symbol_key, SYMBOL);
+    assert_eq!(provenance.percentage.to_bits(), PERCENTAGE.to_bits());
+    assert_eq!(
+        provenance.reference_price.map(f64::to_bits),
+        Some(REFERENCE_PRICE.to_bits())
+    );
 }
 
 #[test]

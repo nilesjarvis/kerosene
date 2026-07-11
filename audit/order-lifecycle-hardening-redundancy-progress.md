@@ -3916,6 +3916,73 @@ target-specific cancellation policy, not HTTP replay.
   `OrderQuantityProvenance`, order-preset/config-layout diagnostics, and the
   remaining raw external-status messages require separate Track 9 audits.
 
+### F-54 — Ticket quantity provenance exposes symbol and reference price
+
+- Status: addressed in Turn 47; focused test expanded, but executable
+  validation is blocked before Kerosene compilation by the missing system ALSA
+  package
+- Severity: Medium order-intent privacy and diagnostic-boundary hardening; no
+  stale-size bypass, wrong quantity, or known production disclosure was found
+- Scope: the sole ticket `OrderQuantityProvenance` definition, its percentage-
+  sizing constructor, spot-side sizing reader, pre-submission stale-context
+  validator, every explicit invalidation path, the already-hardened quick-order
+  counterpart, and nearby form/submission tests
+- Preconditions/event ordering:
+  1. Selecting a percentage derives a quantity and captures the exact account,
+     account and spot-balance revisions, symbol, denomination, percentage,
+     order kind, reference price, reduce-only flag, and market universe in
+     runtime-only ticket state.
+  2. Manual quantity edits, active-symbol changes, presets, outcome paths, and
+     explicit clears discard provenance. Submission otherwise clones it and
+     compares symbol/context, exact percentage bits, order type/reference price,
+     account identity, revisions, completeness, freshness, and spot side before
+     allowing the existing order path to continue.
+  3. Its custom `Debug` already redacted account and percentage, but formatted
+     the exact symbol and `Option<f64>` reference price. The structurally
+     equivalent quick-order provenance already redacted both.
+- Evidence: parent commit
+  `e89fe57281ad2a28ac07f8bd4492017ba48e2a6d` shows the provenance fields and
+  formatter at `src/order_update/form.rs:19-48`, construction at
+  `src/order_update/form.rs:172-208`, spot-side use at
+  `src/order_update/form.rs:352-369`, and the complete pre-submission fence at
+  `src/order_update/form.rs:466-535`. Invalidation owners are
+  `src/order_update/form.rs:62-65`, `src/order_update/form.rs:466-471`,
+  `src/order_execution/active_symbol.rs:14`, `src/order_update/outcome.rs:75`,
+  `src/order_update/outcome.rs:151`, and `src/order_update/presets.rs:160`.
+  The safe quick-order reference is `src/order_execution.rs:1167-1198`.
+- Violated invariant: an exact account/symbol/price/percentage provenance
+  record may remain in runtime state to prevent stale or retargeted sizing, but
+  its generic diagnostic must not disclose the financial intent it protects.
+- Risk: a state dump, test failure, or future instrumentation could associate a
+  percentage-sized ticket with its selected symbol and reference price. No
+  private key, signature, quantity-calculation error, exchange request, or
+  known live diagnostic is implicated.
+- Why existing checks did not cover it: the existing formatter regression
+  asserted only that the account address was absent. Percentage was already
+  hidden, while symbol/reference-price absence was covered only for the quick-
+  order provenance despite the two types carrying equivalent sizing context.
+- Implemented fix: change only the two formatter fields: symbol now emits a
+  redaction marker, and reference price retains `Some`/`None` shape while hiding
+  the value (`src/order_update/form.rs:33-50`). Revisions, denomination, order
+  kind, reduce-only flag, global market-universe context, and price presence
+  remain allowlisted structural metadata, matching the quick-order formatter.
+- Regression coverage: construct provenance with unique account, symbol,
+  percentage, and reference-price sentinels; require all four absent while safe
+  structural metadata remains; then prove the stored strings and both float bit
+  patterns are unchanged (`src/order_update/form/tests.rs:191-233`). Existing
+  form, spot-side, active-symbol, preset/outcome, and submit tests remain the
+  lifecycle controls for creation, invalidation, recalculation, and rejection.
+- Smallest behavior-preserving fix: two `Debug` field expressions changed. No
+  field, derive, clone/equality behavior, constructor, comparison, float
+  precision, quantity text, stale gate, status copy, task, preparation,
+  signing, persistence, or user-visible behavior changed.
+- Residual uncertainty: Kerosene has not type-checked on this host. Rustfmt,
+  complete ownership/call-site tracing, parity with quick-order provenance, and
+  the mechanical diff establish the intended boundary, but focused and nearby
+  suites cannot execute until ALSA development metadata is available. Order-
+  preset/config-layout diagnostics and remaining raw external-status messages
+  require separate Track 9 audits.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -6791,6 +6858,62 @@ target-specific cancellation policy, not HTTP replay.
   symbol/reference-price redaction and exact provenance invalidation behavior
   before changing only its custom formatter.
 
+## Turn 47 — Redact Ticket Quantity Provenance
+
+- Status: F-54 implemented; executable Rust validation environment-blocked
+- Severity: Medium
+- Scope: runtime ticket percentage-sizing provenance from creation through
+  manual/symbol/preset/outcome invalidation, spot-side sizing, and the complete
+  pre-submission stale-context fence; quick-order parity and nearby lifecycle
+  tests
+- Invariant: the fence must retain and compare exact account, revision, symbol,
+  float, denomination, order-kind, reduce-only, and market-universe context,
+  while generic diagnostics reveal no account, symbol, percentage, or exact
+  reference price.
+- Protected behavior: percentage quantity calculation and text; exact float
+  bits; spot/perpetual/outcome distinctions; denomination toggling; reduce-only
+  sizing; symbol, account, revision, freshness, completeness, order-type,
+  reference-price, and universe invalidation; status copy; submission routing;
+  preparation; signing; persistence; and all UI/trading semantics.
+- Preconditions/event ordering: percentage selection writes one runtime
+  provenance record after deriving quantity. Every established context-change
+  owner still clears or replaces it. Submission still clones and validates the
+  untouched record before preparation; formatting is not part of any decision.
+- Evidence: F-54 records the sole definition, complete construction/read/
+  validation/invalidation graph, quick-order reference formatter, prior test
+  gap, exact bit/string control, and the two-expression mechanical diff.
+- Change: redact only `symbol_key` and the value inside `reference_price` in
+  `OrderQuantityProvenance::fmt`; retain price presence and all previously safe
+  structural fields.
+- Tests/checks:
+  - The baseline and pre-fix expanded provenance regressions stopped in
+    `alsa-sys` before Kerosene compilation because `pkg-config` could not find
+    the system `alsa.pc` file.
+  - Post-fix focused ticket provenance, quick-order parity, complete form,
+    submit, and order-update suites stopped at the same dependency boundary.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no message, view, state transition, task,
+    rendering, or startup behavior changed; compilation is already blocked,
+    and no live exchange or credential-bearing operation was run.
+- Compatibility/UX assessment: the expanded control reads the exact stored
+  account/symbol and float bits after formatting; all lifecycle tests remain
+  source-identical. The custom formatter is the only production change. No
+  visible behavior, timing, schema, precision, signed bytes, or trading
+  semantic changed.
+- Residual risk: Kerosene has not type-checked on this host. F-54 is source-
+  hardened, but order-preset/config-layout diagnostics and remaining raw
+  external-status messages still require type-by-type Track 9 review. The
+  global market-universe selection and control booleans remain deliberately
+  allowlisted, consistent with quick-order provenance.
+- Prior turn commit hash: `e89fe57281ad2a28ac07f8bd4492017ba48e2a6d`
+- Next candidate: audit `OrderPreset` and `OrderPresetsConfig` diagnostics
+  across `Message`, live config, saved layouts, import/export, and serialization
+  tests; harden only formatting while proving exact serde wire compatibility
+  and preset execution values.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -6832,11 +6955,11 @@ target-specific cancellation policy, not HTTP replay.
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: pre-fix PnL privacy/model and Message
-  diagnostics; post-fix PnL privacy/style, Message diagnostic, exact path/error
-  recovery, complete PnL-card, complete Message, account-routing, and account-
-  update suites, `cargo check`, full `cargo test`, and strict clippy at
-  `alsa-sys` system dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: baseline and pre-fix ticket-provenance
+  diagnostics; post-fix focused ticket provenance, quick-order parity, complete
+  form, submit, and order-update suites, `cargo check`, full `cargo test`, and
+  strict clippy at `alsa-sys` system dependency discovery, before Kerosene was
+  compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
@@ -6844,7 +6967,7 @@ target-specific cancellation policy, not HTTP replay.
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
 - F-01 through F-20, F-22/F-23, F-25 through F-28, F-30, F-32 through F-38,
-  F-40, and F-42 through F-53
+  F-40, and F-42 through F-54
   have source fixes and regression coverage but await executable validation on
   a host with ALSA development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -6884,6 +7007,7 @@ target-specific cancellation policy, not HTTP replay.
   history navigation identity are source-hardened by F-50, and all direct
   financial message values by F-51. Boxed account-result diagnostics are
   source-hardened by F-52, and PnL-card model/image/export diagnostics by F-53.
+  Ticket percentage-sizing provenance diagnostics are source-hardened by F-54.
   Remaining independently formattable nested account/order types and external-
   status paths, plus the rest of Track 9, require completion before a final
   verdict.

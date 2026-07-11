@@ -238,6 +238,16 @@ restores each value before existing parsing, clamping, preparation, or state
 changes. Quick-order canvas coordinates remain ordinary control geometry; no
 price, size, preset, slippage, fraction, persistence, or UI behavior changes.
 
+Percentage-derived ticket sizing retains a runtime provenance fence containing
+the originating account, account/balance revisions, symbol, denomination,
+percentage, order kind, reference price, reduce-only state, and market
+universe. Its custom `Debug`, like the quick-order counterpart, hides the
+account, symbol, percentage, and exact reference price while retaining only
+safe revision, mode, boolean, universe, and price-presence metadata. Stale-size
+validation still compares the untouched strings and exact floating-point bits;
+quantity calculation, invalidation, recalculation, submission, and visible
+errors remain unchanged.
+
 Account refresh results for the connected account, wallet-cluster members,
 wallet details, wallet tracker, portfolio history, and income snapshots retain
 their exact success payloads and upstream errors until the established update
