@@ -336,7 +336,10 @@ Unexpected-resting TWAP child cancellation uses the same runtime-only ownership
 rule. A retry trigger must claim the current target and attempt before it can
 dispatch, and only that attempt's result can consume retry budget or settle the
 pending cancellation. The cancel-by-CLOID/OID preference, bounded retry policy,
-and refresh behavior are unchanged.
+and active-order refresh behavior are unchanged. If authoritative fills make
+the TWAP terminal while a cancel is in flight, a retryable cancel result keeps
+the immediate account refresh but does not schedule a retry trigger that
+terminal state can only reject.
 
 ## Advanced Order History
 

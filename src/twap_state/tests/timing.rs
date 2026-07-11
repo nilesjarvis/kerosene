@@ -71,6 +71,26 @@ fn stopped_twap_with_reconciliation_deadline_still_needs_timer_tick() {
 }
 
 #[test]
+fn terminal_twaps_cannot_schedule_or_request_timer_ticks() {
+    let now = Instant::now();
+
+    for status in [
+        TwapStatus::Stopped,
+        TwapStatus::Completed,
+        TwapStatus::CompletedPartial,
+        TwapStatus::Error,
+    ] {
+        let mut twap = test_twap_order(now, 1.0, false, 2);
+        twap.status = status;
+        twap.next_slice_due = now;
+
+        assert!(!twap.can_schedule());
+        assert!(!twap.can_schedule_at(now));
+        assert!(!twap.needs_timer_tick());
+    }
+}
+
+#[test]
 fn retry_delay_exponentially_backs_off_and_caps() {
     assert_eq!(TwapOrder::retry_delay(1), Duration::from_secs(2));
     assert_eq!(TwapOrder::retry_delay(2), Duration::from_secs(4));

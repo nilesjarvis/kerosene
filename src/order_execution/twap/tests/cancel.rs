@@ -569,6 +569,63 @@ fn terminal_fill_history_keeps_financial_metrics_across_cancel_result_order() {
     );
 }
 
+#[test]
+fn terminal_fill_cancel_retry_outcomes_refresh_without_scheduling_retry() {
+    let retry_outcomes = [
+        Ok(empty_cancel_response()),
+        Err("cancel transport outcome unknown".to_string()),
+    ];
+
+    for result in retry_outcomes {
+        let mut terminal = terminal_with_attempted_unexpected_cancel();
+        prepare_single_child_target(&mut terminal, 0.5);
+        terminal.reconcile_twap_fills_for_account("0xabc", &[user_fill(OID, "0.5", "100")]);
+        let history_before = serde_json::to_value(&terminal.advanced_order_history)
+            .expect("history should serialize");
+
+        {
+            let twap = twap_by_id(&terminal, 1);
+            assert_eq!(twap.status, TwapStatus::Completed);
+            assert_eq!(twap.unexpected_cancel_pending_attempt, Some(0));
+            assert!(twap.agent_key.as_str().is_empty());
+        }
+
+        let task = terminal.handle_twap_unexpected_cancel_result(
+            1,
+            Some(OID),
+            Some(CLOID.to_string()),
+            0,
+            result,
+        );
+
+        let twap = twap_by_id(&terminal, 1);
+        assert_eq!(task.units(), 1, "only the account refresh should remain");
+        assert_eq!(twap.status, TwapStatus::Completed);
+        assert_eq!(twap.cancel_retries, 1);
+        assert_eq!(twap.unexpected_cancel_pending_attempt, None);
+        assert!(twap.agent_key.as_str().is_empty());
+        assert_twap_fill_accounting(&terminal, 0.5, 0.0, TwapStatus::Completed);
+        assert_eq!(
+            serde_json::to_value(&terminal.advanced_order_history)
+                .expect("history should serialize"),
+            history_before,
+            "a delayed retry outcome must not rewrite terminal financial history"
+        );
+
+        let retry_task = terminal.handle_twap_unexpected_cancel_retry_due(
+            1,
+            Some(OID),
+            Some(CLOID.to_string()),
+            1,
+        );
+        assert_eq!(retry_task.units(), 0);
+        assert_eq!(
+            twap_by_id(&terminal, 1).unexpected_cancel_pending_attempt,
+            None
+        );
+    }
+}
+
 fn assert_twap_fill_accounting(
     terminal: &TradingTerminal,
     filled_size: f64,

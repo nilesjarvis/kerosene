@@ -44,13 +44,18 @@ fn archive_twap_if_terminal_scrubs_runtime_agent_key() {
     terminal.twap_orders.insert(twap.id, twap);
 
     terminal.archive_twap_if_terminal(7);
+    terminal.archive_twap_if_terminal(7);
 
     let twap = terminal
         .twap_orders
         .get(&7)
         .expect("twap remains available");
     assert!(twap.agent_key.as_str().is_empty());
-    assert_eq!(terminal.advanced_order_history.len(), 1);
+    assert_eq!(
+        terminal.advanced_order_history.len(),
+        1,
+        "repeated terminal archive calls must upsert, not duplicate"
+    );
     let entry = terminal
         .advanced_order_history
         .front()

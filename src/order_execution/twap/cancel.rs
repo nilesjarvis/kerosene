@@ -245,6 +245,17 @@ impl TradingTerminal {
         }
 
         if let Some((oid, cloid, attempt, delay)) = retry_cancel {
+            if self
+                .twap_orders
+                .get(&twap_id)
+                .is_some_and(|twap| twap.status.is_terminal())
+            {
+                // Account fills can complete the TWAP while this exact cancel
+                // attempt is in flight. Preserve the immediate reconciliation
+                // refresh, but do not enqueue a retry trigger that terminal
+                // state can only reject (after the captured key was scrubbed).
+                return self.refresh_after_twap_result(TwapAccountRefresh::Immediate, twap_id);
+            }
             return Task::batch([
                 twap_unexpected_cancel_retry_due_task(twap_id, oid, cloid, attempt, delay),
                 self.refresh_after_twap_result(TwapAccountRefresh::Immediate, twap_id),

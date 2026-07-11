@@ -339,8 +339,11 @@ fn terminal_status_check_result_is_ignored() {
     twap.status_check_retries = 1;
     twap.status_check_pending_attempt = Some(1);
     terminal.twap_orders.insert(1, twap);
+    terminal.archive_twap_if_terminal(1);
+    let history_before =
+        serde_json::to_value(&terminal.advanced_order_history).expect("history should serialize");
 
-    let _task = terminal.handle_twap_order_status_result(
+    let task = terminal.handle_twap_order_status_result(
         1,
         CLOID.to_string(),
         1,
@@ -351,6 +354,13 @@ fn terminal_status_check_result_is_ignored() {
     assert_eq!(twap.status, TwapStatus::Stopped);
     assert!(twap.stop_requested);
     assert_eq!(twap.status_check_cloid.as_deref(), Some(CLOID));
+    assert_eq!(twap.status_check_pending_attempt, Some(1));
     assert_eq!(twap.status_check_retries, 1);
     assert_eq!(twap.child_orders[0].status, TwapChildStatus::StatusUnknown);
+    assert!(twap.agent_key.as_str().is_empty());
+    assert_eq!(task.units(), 0);
+    assert_eq!(
+        serde_json::to_value(&terminal.advanced_order_history).expect("history should serialize"),
+        history_before
+    );
 }
