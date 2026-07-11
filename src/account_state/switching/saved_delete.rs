@@ -6,6 +6,7 @@ use crate::message::Message;
 
 use iced::Task;
 use std::collections::{HashMap, HashSet};
+use zeroize::Zeroize;
 
 #[cfg(test)]
 mod tests;
@@ -15,7 +16,8 @@ mod tests;
 // ---------------------------------------------------------------------------
 
 struct SavedAccountDeleteRollback {
-    accounts: Vec<config::AccountProfile>,
+    removed_index: usize,
+    removed_profile: Option<config::AccountProfile>,
     pending_keychain_profile_deletions: Vec<String>,
     active_account_index: usize,
     ghost_account_secret_ids: HashSet<String>,
@@ -32,9 +34,10 @@ struct SavedAccountDeleteRollback {
 }
 
 impl SavedAccountDeleteRollback {
-    fn capture(terminal: &TradingTerminal) -> Self {
+    fn capture_before_removal(terminal: &TradingTerminal, removed_index: usize) -> Self {
         Self {
-            accounts: terminal.accounts.clone(),
+            removed_index,
+            removed_profile: None,
             pending_keychain_profile_deletions: terminal.pending_keychain_profile_deletions.clone(),
             active_account_index: terminal.active_account_index,
             ghost_account_secret_ids: terminal.ghost_account_secret_ids.clone(),
@@ -53,8 +56,19 @@ impl SavedAccountDeleteRollback {
         }
     }
 
-    fn restore(self, terminal: &mut TradingTerminal) {
-        terminal.accounts = self.accounts;
+    fn retain_removed_profile(&mut self, profile: config::AccountProfile) {
+        debug_assert!(self.removed_profile.is_none());
+        self.removed_profile = Some(profile);
+    }
+
+    fn restore(mut self, terminal: &mut TradingTerminal) {
+        let removed_profile = self
+            .removed_profile
+            .take()
+            .expect("saved-account rollback must retain the removed profile");
+        terminal
+            .accounts
+            .insert(self.removed_index, removed_profile);
         terminal.pending_keychain_profile_deletions = self.pending_keychain_profile_deletions;
         terminal.active_account_index = self.active_account_index;
         terminal.ghost_account_secret_ids = self.ghost_account_secret_ids;
@@ -71,6 +85,13 @@ impl SavedAccountDeleteRollback {
         terminal.encrypted_secrets_unlocked = self.encrypted_secrets_unlocked;
         terminal.secret_migration_save_blocked = self.secret_migration_save_blocked;
         terminal.secret_store_status = self.secret_store_status;
+    }
+
+    fn scrub_after_commit(mut self) {
+        if let Some(profile) = self.removed_profile.as_mut() {
+            profile.agent_key.zeroize();
+            profile.hydromancer_api_key.zeroize();
+        }
     }
 }
 
@@ -144,7 +165,7 @@ impl TradingTerminal {
             index,
             prepare_encrypted_blob,
             config::save_config,
-            config::clear_profile_secrets,
+            config::clear_profile_secrets_by_id,
         )
     }
 
@@ -156,7 +177,7 @@ impl TradingTerminal {
             &config::SecretPayload,
         ) -> Option<config::EncryptedSecretsConfig>,
         mut save_config: impl FnMut(&config::KeroseneConfig) -> Result<(), String>,
-        clear_profile_secrets: impl FnOnce(&config::AccountProfile) -> Result<(), String>,
+        clear_profile_secrets: impl FnOnce(&str) -> Result<(), String>,
     ) -> Task<Message> {
         self.account_picker_open = false;
         self.account_picker_rename_index = None;
@@ -165,7 +186,11 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let Some(profile_snapshot) = self.accounts.get(index).cloned() else {
+        let Some((secret_id, account_label)) = self
+            .accounts
+            .get(index)
+            .map(|profile| (profile.secret_id.clone(), profile.name.clone()))
+        else {
             return Task::none();
         };
 
@@ -176,10 +201,7 @@ impl TradingTerminal {
         // Ghost sessions have their own forget path; this entry point is for
         // saved profiles, which need keychain/encrypted-blob cleanup that
         // ghost accounts never accumulated.
-        if self
-            .ghost_account_secret_ids
-            .contains(&profile_snapshot.secret_id)
-        {
+        if self.ghost_account_secret_ids.contains(&secret_id) {
             return self.forget_ghost_account_task(index);
         }
 
@@ -202,17 +224,14 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let secret_id = profile_snapshot.secret_id.clone();
         let selected_cluster_profile_removed =
             self.selected_wallet_cluster_uses_profile(&secret_id);
-        let account_label = profile_snapshot.name.clone();
         let was_active = self.active_account_index == index;
         let os_keychain_delete =
             self.secret_storage_mode == config::CredentialStorageMode::OsKeychain;
         let encrypted_config_delete =
             self.secret_storage_mode == config::CredentialStorageMode::EncryptedConfig;
         let durable_config_delete = os_keychain_delete || encrypted_config_delete;
-        let mut rollback = durable_config_delete.then(|| SavedAccountDeleteRollback::capture(self));
         let staged_encrypted_blob = if encrypted_config_delete {
             let payload = self.secret_payload_after_saved_account_removal(&secret_id);
             let Some(encrypted) = prepare_encrypted_blob(self, &payload) else {
@@ -226,6 +245,8 @@ impl TradingTerminal {
         } else {
             None
         };
+        let mut rollback = durable_config_delete
+            .then(|| SavedAccountDeleteRollback::capture_before_removal(self, index));
 
         if os_keychain_delete {
             self.stage_pending_keychain_profile_deletion(&secret_id);
@@ -237,7 +258,12 @@ impl TradingTerminal {
         }
         self.journal.account_states.remove(&secret_id);
         self.hidden_positions_by_account.remove(&secret_id);
-        self.accounts.remove(index);
+        let removed_profile = self.accounts.remove(index);
+        if let Some(rollback) = rollback.as_mut() {
+            rollback.retain_removed_profile(removed_profile);
+        } else {
+            drop(removed_profile);
+        }
         self.ghost_account_secret_ids.remove(&secret_id);
         if self.last_persisted_active_account_secret_id.as_deref() == Some(secret_id.as_str()) {
             self.last_persisted_active_account_secret_id = None;
@@ -274,10 +300,16 @@ impl TradingTerminal {
             );
             return Task::none();
         }
+        // After the first durable save, restoring this profile would contradict
+        // the committed deletion. Scrub its rollback-only keys before any
+        // post-commit credential cleanup callback runs.
+        if let Some(rollback) = rollback.take() {
+            rollback.scrub_after_commit();
+        }
 
         let mut deletion_status_toast_shown = false;
         if os_keychain_delete {
-            match clear_profile_secrets(&profile_snapshot) {
+            match clear_profile_secrets(&secret_id) {
                 Ok(()) => {
                     self.clear_pending_keychain_profile_deletion(&secret_id);
                     if let Err(error) = self.persist_config_immediately_with(&mut save_config) {

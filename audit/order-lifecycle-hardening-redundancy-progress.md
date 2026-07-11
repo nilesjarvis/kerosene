@@ -127,6 +127,14 @@
   A config clear started before close completes its established cleanup/error
   handling and then exits when the main-window owner is set. A failed final save
   still clears the fence under the separately deferred F-24 policy.
+- Saved-profile deletion stages encrypted cleanup in existing zeroizing payload
+  scopes, then moves the removed `AccountProfile` into one rollback owner. A
+  pre-install durable-save failure moves that same key allocation back; a
+  successful save scrubs its agent and legacy per-profile integration keys
+  before ID-only keychain cleanup. Plain config snapshots still contain empty
+  credential fields. Post-install config-save failure policy remains separately
+  deferred as F-31 (`src/account_state/switching/saved_delete.rs:18-95`,
+  `src/account_state/switching/saved_delete.rs:235-340`).
 - Chase reconciliation for fills, refreshes, stops, archives, and final
   replacements now derives open-order authority independently for each active
   Chase's origin symbol. Account-wide fill completeness remains a separate
@@ -251,6 +259,17 @@ now clear the key at terminality while preserving the established absence of a
 new visible/persisted history row; nonterminal skips retain the key for later
 slices. Whether final skips should enter history is separately deferred as
 F-29.
+
+Turn 26 closes the saved-profile deletion raw-key owner map. Encrypted deletion
+prepares its replacement blob from `Zeroizing` profile/payload/plaintext values;
+OS keychain deletion first persists its established cleanup intent. Both modes
+then move the removed profile into the same rollback owner. An ordinary durable
+save failure reinserts the original allocation, while success explicitly
+scrubs that owner before keychain cleanup receives only the profile secret ID.
+No raw profile is cloned for cleanup and no unrelated account key is copied.
+The distinct post-install-save marker can still make runtime and disk disagree;
+F-31 preserves and characterizes that exceptional behavior pending an explicit
+durability/feedback decision.
 
 ### Mutation Transport Phase Audit
 
@@ -1979,6 +1998,139 @@ target-specific cancellation policy, not HTTP replay.
 - Residual uncertainty: the history/UI meaning requires a product decision;
   the key-lifetime safety issue is separately closed by F-28.
 
+### F-30 — Saved-account deletion clones and over-retains raw profile keys
+
+- Status: addressed in Turn 26; focused tests added, but executable validation
+  is blocked before Kerosene compilation by the missing system ALSA package
+- Severity: Medium; no current leak or wrong-account dispatch was found, but
+  every profile key was copied into a rollback object and the removed key had a
+  second cleanup copy beyond its only legitimate owner
+- Scope: saved-profile deletion in OS keychain and encrypted-config modes;
+  deletion preparation, rollback, durable save success/failure, profile cleanup,
+  `AccountProfile` zeroizing fields, and redacted errors
+- Preconditions/event ordering:
+  1. A saved-profile deletion passes pending-trading, automation, ghost, lock,
+     and encrypted-password gates.
+  2. The prior implementation cloned the target profile for keychain cleanup
+     and cloned the complete accounts vector into `SavedAccountDeleteRollback`.
+  3. The canonical profile was removed and the post-delete config snapshot was
+     saved or rejected.
+  4. On failure, the cloned vector replaced canonical account state; on
+     success, all rollback clones and the cleanup clone survived until the end
+     of the function even though rollback was no longer legal after the first
+     durable save.
+- Evidence: parent commit
+  `a2f8abf4ac71502e4a619495b6f53eb060752861` shows
+  `SavedAccountDeleteRollback::capture` cloning `terminal.accounts` and
+  `delete_saved_account_task_with_hooks` separately cloning
+  `profile_snapshot`. Config snapshots already synthesize profiles with empty
+  credential fields, encrypted serialization wraps plaintext in `Zeroizing`,
+  and keychain deletion needs only the secret ID
+  (`src/config_persistence/save/snapshot.rs:6-18`,
+  `src/config/secrets/crypto.rs:23-47`,
+  `src/config/secrets/keychain.rs:344-405`).
+- Violated invariant: a raw profile key should have one deliberate owner. A
+  deletion may retain the removed profile only while an ordinary durable-save
+  failure can restore it; cleanup metadata and unrelated profiles do not need
+  raw credential copies.
+- Risk: an inactive-profile delete transiently multiplied every saved signing
+  and legacy per-profile integration key and retained the removed copies across
+  keychain I/O. `Zeroizing` eventually scrubbed them and diagnostics were
+  redacted, so no disclosure is claimed. The unnecessary lifetime enlarges the
+  impact of a future diagnostic, callback, or cleanup regression.
+- Why existing checks did not cover it: deletion tests verified account order,
+  encrypted payload contents, pending cleanup intent, save/cleanup ordering,
+  rollback values, and redacted toasts, but did not distinguish moving the
+  original zeroizing owner from cloning it or constrain the cleanup hook to
+  identity-only input.
+- Implemented fix: capture only non-credential rollback metadata before
+  mutation, move the removed `AccountProfile` into that owner, reinsert it at
+  the original index on ordinary save failure, and explicitly zeroize its two
+  secret fields immediately after a successful first save. Replace the cleanup
+  hook's `&AccountProfile` with `&str` and call the existing ID-only keychain
+  helper. Encrypted staging remains before mutation and retains its existing
+  zeroizing payload/plaintext boundaries
+  (`src/account_state/switching/saved_delete.rs:18-95`,
+  `src/account_state/switching/saved_delete.rs:150-340`).
+- Regression coverage: ordinary encrypted-config and OS-keychain save-failure
+  tests record the original agent-key allocation and require rollback to
+  restore that exact allocation, which the old clone-based implementation
+  cannot do while the original is alive. Existing success/cleanup tests now
+  prove the cleanup boundary receives only the secret ID and retain the exact
+  two-save ordering
+  (`src/account_state/switching/saved_delete/tests.rs:186-301`,
+  `src/account_state/switching/saved_delete/tests.rs:502-582`,
+  `src/account_state/switching/saved_delete/tests.rs:639-721`).
+- Smallest behavior-preserving fix: no storage mode, account index, encrypted
+  blob, keychain intent, cleanup retry, task, toast/status string, trading gate,
+  persistence schema, or successful/failing branch outcome changes. Only raw
+  credential ownership and its drop boundary change.
+- Residual uncertainty: source inspection proves the ownership graph, but Rust
+  type-checking and tests remain blocked by ALSA metadata. F-31 separately owns
+  the already-installed-snapshot branch, where the product must choose which
+  outcome is authoritative.
+
+### F-31 — Installed deletion snapshot can disagree with restored runtime state
+
+- Status: deferred in Turn 26; the current exceptional behavior is
+  characterized because either safe correction changes failure feedback or
+  adds a new durable rollback policy
+- Severity: Medium; this does not dispatch an exchange mutation or expose a
+  key, but it can make saved-profile and credential-cleanup outcome depend on a
+  later save versus restart
+- Scope: the first durable save in OS-keychain and encrypted-config saved-
+  account deletion; post-install filesystem sync/rollback-sidecar/permission
+  errors; runtime rollback; pending keychain profile deletion; failure feedback
+- Preconditions/event ordering:
+  1. Deletion removes the runtime profile and stages a config snapshot without
+     it; OS-keychain mode also includes the pending cleanup ID.
+  2. Config replacement installs that snapshot, then parent-directory sync,
+     rollback-sidecar cleanup, or post-install permission hardening fails.
+  3. `save_config` returns its explicit `config snapshot was installed` marker.
+  4. Saved-account deletion currently treats every `Err` as pre-install
+     failure, restores the runtime profile and prior pending-intent state, skips
+     keychain cleanup, and reports that deletion failed even though disk may
+     already contain the deletion and cleanup intent.
+- Evidence: config replacement distinguishes before-install from after-install
+  failure and exposes the marker (`src/config/files/persistence.rs:16-23`,
+  `src/config/files/persistence.rs:252-310`). Secret-storage migration paths
+  already treat that marker as committed, but saved-account deletion does not
+  branch on it (`src/secret_storage/encrypted.rs:139-151`,
+  `src/account_state/switching/saved_delete.rs:290-301`).
+- Violated invariant: after a destructive persistence operation has installed
+  its snapshot, runtime identity and cleanup ownership must not claim the
+  opposite outcome without a verified durable rollback.
+- Risk: a user can see the profile restored and a failure toast, then a restart
+  can load the installed deletion and retry keychain cleanup. A later successful
+  config save can instead re-persist the restored profile. No active automation
+  crosses the delete gate, but profile availability and credential deletion are
+  timing-dependent.
+- Why existing checks did not cover it: save-failure tests returned ordinary
+  errors only. Generic config persistence tests prove the marker, while secret-
+  storage migration tests cover it in different state machines.
+- Characterization coverage: a marked post-install error currently proves the
+  profile and original key allocation are restored, pending cleanup intent is
+  cleared in memory, keychain cleanup is not called, the established failure
+  toast remains, and injected secret text is redacted
+  (`src/account_state/switching/saved_delete/tests.rs:583-638`).
+- Why deferred: treating the marker as committed would keep the profile deleted,
+  continue cleanup, and replace the current failure result with committed-but-
+  durability-warning semantics. Restoring the current failure outcome instead
+  requires a second verified config replacement plus a policy for failure of
+  that rollback. Both change observable exceptional behavior or durability
+  timing and require explicit approval.
+- Approval options: (1) make the installed deletion authoritative and reuse the
+  existing committed-config warning policy; or (2) attempt a durable rollback
+  so the current failure result remains authoritative, with an explicit outcome
+  for rollback failure.
+- Protected behavior: Turn 26 does not reinterpret the marker, continue
+  keychain cleanup, change account visibility, or change any toast/status copy
+  on this branch.
+- Residual uncertainty: the on-disk snapshot is known to have been installed,
+  but the marker can also report a failed durability sync; the approved policy
+  must state whether runtime follows the installed bytes immediately or tries
+  to restore the prior snapshot.
+
 ## Turn 1 — Baseline and Lifecycle Assurance Matrix
 
 - Status: audited
@@ -3570,6 +3722,74 @@ target-specific cancellation policy, not HTTP replay.
   diagnostics. Then perform the repository-wide order/account `Debug`, external
   error, toast, snapshot, and progress-log redaction audit.
 
+## Turn 26 — Move and Scrub Saved-Profile Delete Keys
+
+- Status: F-30 implemented; F-31 audited and deferred; executable Rust
+  validation environment-blocked
+- Severity: Medium
+- Scope: saved-profile deletion in both credential modes; encrypted payload
+  preparation; rollback snapshots; raw agent/legacy-profile keys; config save
+  success, ordinary failure, and installed-snapshot error; OS keychain cleanup;
+  redacted diagnostics
+- Invariant: the removed profile is the only raw-key owner during deletion. It
+  may survive only while an ordinary failed durable save can restore it, must
+  move back without cloning on that failure, and must be scrubbed before
+  post-commit cleanup receives identity-only input.
+- Protected behavior: pending-trading and automation gates; ghost routing;
+  encrypted unlock/password gates; encrypted payload contents; first/second
+  config-save order; pending keychain cleanup intent and retry; active/fallback
+  indices; journal/hidden-position/cluster-stream cleanup and rollback; account
+  switch/disconnect tasks; every success/failure toast and status; config schema;
+  storage mode; and all trading semantics.
+- Preconditions/event ordering: after encrypted preparation (if selected), the
+  rollback captures non-secret state, OS mode stages its durable cleanup intent,
+  the profile is removed by move, and the first config save runs. Ordinary
+  failure restores; success commits deletion and proceeds to keychain cleanup.
+  F-31 separately characterizes the marker saying replacement installed but a
+  post-install filesystem step failed.
+- Evidence: repository-wide saved-delete/message/caller searches found one UI
+  route and one canonical deletion function. Config snapshots construct empty
+  secret fields; encrypted payload members and serialized plaintext are
+  zeroizing; keychain bundle/legacy cleanup needs only secret ID and redacts
+  external errors. F-30/F-31 contain exact owner and failure-phase references.
+- Change: removed both the target-profile cleanup clone and complete-accounts
+  rollback clone. The removed profile now moves into a rollback slot, returns at
+  its original index on ordinary failure, and is explicitly scrubbed after
+  successful durability before ID-only cleanup. Added allocation-identity
+  regression coverage, an installed-snapshot characterization, and the security
+  architecture note. F-31 leaves exceptional policy unchanged.
+- Tests/checks:
+  - Focused attempts for
+    `os_keychain_account_delete_save_failure_does_not_clear_keychain`,
+    `installed_snapshot_delete_error_preserves_failure_behavior_pending_policy`,
+    and the complete `account_state::switching::saved_delete::tests` module
+    stopped in `alsa-sys` before Kerosene compilation because `pkg-config`
+    could not find the system `alsa.pc` package.
+  - `cargo fmt`, `cargo fmt -- --check`, and `git diff --check` passed.
+  - `cargo check`, full `cargo test`, and
+    `cargo clippy --all-targets --all-features -- -D warnings` each stopped at
+    that same pre-existing dependency boundary before checking Kerosene.
+  - The GUI smoke test was not run: no startup/window/subscription path changed,
+    compilation is already blocked, and no live exchange or credential-bearing
+    operation was run.
+- Compatibility/UX assessment: all branches, call ordering, persistence
+  snapshots, retries, state values, tasks, and strings are unchanged. On
+  ordinary failure, the same profile and key bytes return through the same
+  rollback, but without a clone. On success, zeroization happens earlier and
+  cleanup receives the same ID rather than an unused raw profile. The F-31
+  marker retains its exact current visible and state behavior.
+- Residual risk: Kerosene has not type-checked on this host. F-31 needs an
+  explicit durability/feedback decision. Address-rebinding credential updates
+  still use broader transient account snapshots by design and should be checked
+  during the remaining secret-copy/redaction pass; repository-wide account/order
+  diagnostics remain incomplete.
+- Prior turn commit hash: `a2f8abf4ac71502e4a619495b6f53eb060752861`
+- Next candidate: complete Track 9's repository-wide sensitive diagnostic
+  review, starting with account/profile/order `Debug` implementations and
+  external error-to-toast/status boundaries, while also checking address-
+  rebinding snapshot scopes for unnecessary raw-key copies. Add redaction
+  regressions only for concrete leaks and preserve every visible string.
+
 ## Deferred Findings
 
 - F-21: the live and persisted child label for a filled unexpected-resting
@@ -3583,21 +3803,26 @@ target-specific cancellation policy, not HTTP replay.
 - F-29: final pre-dispatch TWAP skip exhaustion remains absent from advanced
   history. Archiving it would add a visible persisted row; the captured key is
   independently scrubbed pending a product decision.
+- F-31: a config save that reports its snapshot installed but a post-install
+  durability step failed restores saved-delete runtime state while disk may
+  retain the deletion and cleanup intent. Choosing installed-delete authority
+  or a second durable rollback changes exceptional behavior and requires
+  approval.
 
 ## Validation Summary
 
 - Passing this turn: `cargo fmt`, `cargo fmt -- --check`, `git diff --check`.
-- Environment-blocked this turn: focused TWAP initial/retry/nonterminal skip
-  key-lifetime tests and the nearby terminal-archive scrub regression;
-  `cargo check`; full `cargo test`; and strict clippy at `alsa-sys` system
-  dependency discovery, before Kerosene was compiled.
+- Environment-blocked this turn: focused saved-profile delete rollback and
+  installed-snapshot tests plus the complete saved-delete module; `cargo check`;
+  full `cargo test`; and strict clippy at `alsa-sys` system dependency discovery,
+  before Kerosene was compiled.
 - No live exchange mutation or credential-bearing operation was run.
 
 ## Residual Risk
 
 - The remaining audit tracks are incomplete; no overall safety-completion claim
   is made.
-- F-01 through F-20, F-22/F-23, and F-25 through F-28 have source fixes and
+- F-01 through F-20, F-22/F-23, F-25 through F-28, and F-30 have source fixes and
   regression coverage but await executable validation on a host with ALSA
   development metadata.
 - F-21 is explicitly deferred for a visible/history semantics decision; its
@@ -3606,10 +3831,14 @@ target-specific cancellation policy, not HTTP replay.
   successful save/clear intervals are independently fenced by F-23/F-25/F-26.
 - F-29 is explicitly deferred for final-skip advanced-history visibility; its
   secret-lifetime risk is independently addressed by F-28.
+- F-31 is explicitly deferred for post-install saved-profile deletion
+  authority; ordinary failure and successful deletion key ownership are
+  independently hardened by F-30.
 - TWAP terminalization plus successful save/clear final-exit fencing across all
   current mutation intents are source-audited with focused coverage but cannot
   be executed on this host. Ghost-profile cluster stream invalidation is
   source-repaired but likewise uncompiled. TWAP captured-key terminalization is
-  source-complete apart from the deferred history decision. Remaining
-  disconnect/profile secret lifetimes, local planning/state diagnostic
-  redaction, and the rest of Track 9 require completion before a final verdict.
+  source-complete apart from the deferred history decision, and saved-profile
+  delete key ownership is source-hardened apart from F-31. Address-rebinding
+  secret-copy scopes, local planning/state diagnostic redaction, and the rest of
+  Track 9 require completion before a final verdict.

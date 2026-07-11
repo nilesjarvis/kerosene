@@ -222,6 +222,7 @@ fn encrypted_account_delete_save_failure_restores_account_and_original_blob() {
     );
     let save_called = Cell::new(false);
     let keychain_called = Cell::new(false);
+    let removed_agent_key_allocation = terminal.accounts[1].agent_key.as_ptr();
 
     let _task = terminal.delete_saved_account_task_with_hooks(
         1,
@@ -255,6 +256,10 @@ fn encrypted_account_delete_save_failure_restores_account_and_original_blob() {
     assert!(!keychain_called.get());
     assert_eq!(terminal.accounts.len(), 2);
     assert_eq!(terminal.accounts[1].secret_id, "account-b");
+    assert_eq!(
+        terminal.accounts[1].agent_key.as_ptr(),
+        removed_agent_key_allocation
+    );
     assert_eq!(
         terminal.encrypted_secrets.as_ref(),
         Some(&original_encrypted)
@@ -523,6 +528,7 @@ fn os_keychain_account_delete_save_failure_does_not_clear_keychain() {
         },
     );
     let order = RefCell::new(Vec::new());
+    let removed_agent_key_allocation = terminal.accounts[1].agent_key.as_ptr();
 
     let _task = terminal.delete_saved_account_task_with_hooks(
         1,
@@ -551,6 +557,11 @@ fn os_keychain_account_delete_save_failure_does_not_clear_keychain() {
     assert_eq!(order.borrow().as_slice(), ["save"]);
     assert_eq!(terminal.accounts.len(), 2);
     assert_eq!(terminal.accounts[1].secret_id, "account-b");
+    assert_eq!(
+        terminal.accounts[1].agent_key.as_ptr(),
+        removed_agent_key_allocation,
+        "save rollback must restore the original zeroizing key owner without cloning it"
+    );
     assert!(terminal.pending_keychain_profile_deletions.is_empty());
     assert!(
         terminal
@@ -565,6 +576,62 @@ fn os_keychain_account_delete_save_failure_does_not_clear_keychain() {
             .message
             .contains("config save failed: disk full: auth_token=<redacted>")
     );
+    assert!(!toast.message.contains("delete-secret"));
+}
+
+#[test]
+fn installed_snapshot_delete_error_preserves_failure_behavior_pending_policy() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.desktop_notifications = false;
+    terminal.accounts = vec![
+        account(
+            "account-a",
+            "Account A",
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ),
+        account(
+            "account-b",
+            "Account B",
+            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ),
+    ];
+    terminal.active_account_index = 0;
+    terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+    terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+    let keychain_called = Cell::new(false);
+    let removed_agent_key_allocation = terminal.accounts[1].agent_key.as_ptr();
+
+    let _task = terminal.delete_saved_account_task_with_hooks(
+        1,
+        |_terminal, _payload| None,
+        |snapshot| {
+            assert_eq!(snapshot.accounts.len(), 1);
+            assert_eq!(
+                snapshot.pending_keychain_profile_deletions.as_slice(),
+                ["account-b"]
+            );
+            Err(config::installed_config_save_error_for_test(
+                "sync failed: api_key=delete-secret",
+            ))
+        },
+        |_secret_id| {
+            keychain_called.set(true);
+            Ok(())
+        },
+    );
+
+    assert!(!keychain_called.get());
+    assert_eq!(terminal.accounts.len(), 2);
+    assert_eq!(terminal.accounts[1].secret_id, "account-b");
+    assert_eq!(
+        terminal.accounts[1].agent_key.as_ptr(),
+        removed_agent_key_allocation
+    );
+    assert!(terminal.pending_keychain_profile_deletions.is_empty());
+    let toast = last_toast_or_panic(&terminal);
+    assert!(toast.is_error);
+    assert!(toast.message.contains("Could not delete 'Account B'"));
+    assert!(toast.message.contains("api_key=<redacted>"));
     assert!(!toast.message.contains("delete-secret"));
 }
 
@@ -625,10 +692,10 @@ fn os_keychain_account_delete_saves_pending_intent_before_keychain_cleanup() {
                 other => panic!("unexpected save order: {other:?}"),
             }
         },
-        |profile| {
+        |secret_id| {
             assert_eq!(order.borrow().as_slice(), ["save-with-intent"]);
             order.borrow_mut().push("clear-keychain".to_string());
-            assert_eq!(profile.secret_id, "account-b");
+            assert_eq!(secret_id, "account-b");
             Ok(())
         },
     );
@@ -694,10 +761,10 @@ fn os_keychain_account_delete_cleanup_state_save_failure_redacts_toast() {
                 other => panic!("unexpected save order: {other:?}"),
             }
         },
-        |profile| {
+        |secret_id| {
             assert_eq!(order.borrow().as_slice(), ["save-with-intent"]);
             order.borrow_mut().push("clear-keychain".to_string());
-            assert_eq!(profile.secret_id, "account-b");
+            assert_eq!(secret_id, "account-b");
             Ok(())
         },
     );
@@ -787,10 +854,10 @@ fn os_keychain_active_account_delete_saves_fallback_account_before_keychain_clea
                 other => panic!("unexpected save order: {other:?}"),
             }
         },
-        |profile| {
+        |secret_id| {
             assert_eq!(order.borrow().as_slice(), ["save-with-intent"]);
             order.borrow_mut().push("clear-keychain".to_string());
-            assert_eq!(profile.secret_id, "account-b");
+            assert_eq!(secret_id, "account-b");
             Ok(())
         },
     );

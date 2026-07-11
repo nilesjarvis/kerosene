@@ -32,6 +32,13 @@ pub(crate) type SensitiveString = Zeroizing<String>;
 Secret buffers and payloads use `Zeroizing<String>` so memory is cleared on
 drop where practical.
 
+Saved-account deletion moves the removed profile into a narrow rollback owner
+instead of cloning profile credentials. A failed durable config save moves that
+same owner back into account state; after a successful save, its agent and
+legacy per-profile integration keys are scrubbed before keychain cleanup, which
+receives only the profile secret ID. Encrypted deletion staging continues to
+use zeroizing payload and plaintext buffers.
+
 Secret-bearing state includes:
 
 - `wallet_key_input`
