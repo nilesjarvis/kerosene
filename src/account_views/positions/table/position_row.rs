@@ -107,8 +107,10 @@ impl TradingTerminal {
         let close_cell =
             self.view_position_close_cell(pos.coin.clone(), row_can_close, is_hidden, theme);
         let pnl_displays = self.position_row_pnl_displays(&data, &denomination, number_mode);
+        let symbol_icon_key = self.position_row_symbol_icon_key(&pos.coin);
         let symbol_btn = position_symbol_button(
             &pos.coin,
+            symbol_icon_key,
             self.position_row_symbol_label(&pos.coin),
             self.position_row_symbol_exchange_label(&pos.coin),
             theme,
@@ -296,13 +298,27 @@ impl TradingTerminal {
             return self.display_name_for_symbol(coin);
         }
         if self.is_spot_coin(coin) {
-            return self.display_name_for_symbol(coin);
+            return self
+                .exchange_symbol_for_key(coin)
+                .map(|symbol| symbol.ticker.clone())
+                .unwrap_or_else(|| self.display_name_for_symbol(coin));
         }
         if hip3_dex(coin).is_some() {
             return self.display_name_for_symbol(coin);
         }
 
         coin.to_string()
+    }
+
+    fn position_row_symbol_icon_key<'a>(&'a self, coin: &'a str) -> &'a str {
+        if self.is_spot_coin(coin) {
+            return self
+                .exchange_symbol_for_key(coin)
+                .map(|symbol| symbol.ticker.as_str())
+                .unwrap_or(coin);
+        }
+
+        coin
     }
 
     fn position_row_symbol_exchange_label(&self, coin: &str) -> Option<String> {

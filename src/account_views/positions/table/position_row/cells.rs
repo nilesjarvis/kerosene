@@ -12,13 +12,14 @@ use iced::{Color, Element, Theme};
 
 pub(super) fn position_symbol_button(
     coin: &str,
+    icon_key: &str,
     label: String,
     exchange_label: Option<String>,
     theme: &Theme,
 ) -> Element<'static, Message> {
     let coin_key = coin.to_string();
     let mut coin_content = row![];
-    if let Some(icon) = helpers::symbol_icon(coin, 14, theme.palette().text) {
+    if let Some(icon) = helpers::symbol_icon(icon_key, 14, theme.palette().text) {
         coin_content = coin_content.push(icon).push(Space::new().width(4.0));
     }
     coin_content = coin_content

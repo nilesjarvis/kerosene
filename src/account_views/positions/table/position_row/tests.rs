@@ -284,8 +284,19 @@ fn position_row_symbol_label_resolves_outcome_coins_without_synthetic_ticker() {
         terminal.position_row_symbol_label("#960"),
         "NO: Will ETH close red?"
     );
-    assert_eq!(terminal.position_row_symbol_label("@107"), "HYPE/USDC");
+    assert_eq!(terminal.position_row_symbol_label("@107"), "HYPE");
     assert_eq!(terminal.position_row_symbol_label("BTC"), "BTC");
+}
+
+#[test]
+fn spot_position_symbol_uses_ticker_for_label_and_logo() {
+    let mut terminal = crate::app_state::TradingTerminal::boot().0;
+    terminal.exchange_symbols.push(spot_symbol("@142", "UBTC"));
+
+    assert_eq!(terminal.position_row_symbol_label("@142"), "UBTC");
+    let icon_key = terminal.position_row_symbol_icon_key("@142");
+    assert_eq!(icon_key, "UBTC");
+    assert!(crate::helpers::symbol_svg_logo(icon_key).is_some());
 }
 
 #[test]
