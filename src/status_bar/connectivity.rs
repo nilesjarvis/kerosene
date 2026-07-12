@@ -147,7 +147,7 @@ impl TradingTerminal {
             .color(theme.palette().primary),
         );
 
-        let row = if should_show_hydromancer_api_latency_label(
+        if should_show_hydromancer_api_latency_label(
             self.read_data_provider,
             self.hydromancer_api_key.trim(),
         ) {
@@ -162,9 +162,7 @@ impl TradingTerminal {
             )
         } else {
             row
-        };
-
-        row
+        }
     }
 
     fn status_right_row(&self, separated: bool) -> Row<'static, Message> {

@@ -15,7 +15,7 @@ pub(crate) use paths::{user_config_dir, user_config_path};
 pub(crate) use persistence::config_save_installed_snapshot;
 #[cfg(test)]
 pub(crate) use persistence::installed_config_save_error_for_test;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(super) use persistence::write_with_restricted_permissions;
 pub(super) use persistence::{load_config_from_path, save_config_to_path};
 

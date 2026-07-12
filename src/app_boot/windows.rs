@@ -19,7 +19,7 @@ impl TradingTerminal {
             min_size: Some(main_min_size),
             position: self
                 .main_window_pos
-                .map(window::Position::Specific)
+                .map(crate::window_chrome::restored_position)
                 .unwrap_or_else(|| window::Position::Centered),
             ..crate::window_chrome::settings(self.custom_window_chrome_active)
         };
@@ -34,7 +34,7 @@ impl TradingTerminal {
                     .wallet_tracker
                     .x
                     .zip(self.wallet_tracker.y)
-                    .map(|(x, y)| window::Position::Specific(Point::new(x, y)))
+                    .map(|(x, y)| crate::window_chrome::restored_position(Point::new(x, y)))
                     .unwrap_or_else(|| window::Position::Centered),
                 ..crate::window_chrome::settings(self.custom_window_chrome_active)
             };

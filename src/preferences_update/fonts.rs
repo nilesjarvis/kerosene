@@ -225,6 +225,7 @@ mod tests {
     #[test]
     fn completed_font_import_is_discarded_after_config_clear() {
         let (mut terminal, _) = TradingTerminal::boot();
+        let original_display_font = terminal.display_font.clone();
         terminal.config_cleared_this_session = true;
 
         let _task =
@@ -234,7 +235,7 @@ mod tests {
             })));
 
         assert!(terminal.custom_fonts.is_empty());
-        assert_eq!(terminal.display_font, DisplayFontConfig::System);
+        assert_eq!(terminal.display_font, original_display_font);
         assert!(terminal.config_save_due_at.is_none());
     }
 

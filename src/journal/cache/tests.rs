@@ -1,4 +1,4 @@
-use super::{clear_cache_path_family, unique_temp_cache_path};
+use super::{clear_cache_path_family, replace_cache_file, unique_temp_cache_path};
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -90,4 +90,28 @@ fn clear_cache_path_family_errors_redact_cache_path() {
     assert!(!error.contains("0xabc0000000000000000000000000000000000000"));
 
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn replacing_an_existing_cache_works_on_the_host_platform() {
+    let dir = std::env::temp_dir().join(format!(
+        "kerosene-journal-cache-replace-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).expect("create temp test directory");
+    let target = dir.join("journal_cache_0xabc.json");
+    let temp = dir.join("journal_cache_0xabc.json.tmp.test");
+    std::fs::write(&target, "old").expect("write old cache");
+    std::fs::write(&temp, "new").expect("write new cache");
+
+    replace_cache_file(&temp, &target).expect("replace existing cache");
+
+    assert_eq!(std::fs::read_to_string(&target).unwrap_or_default(), "new");
+    assert!(!temp.exists());
+    let _ = std::fs::remove_file(target);
+    let _ = std::fs::remove_dir(dir);
 }

@@ -4,6 +4,8 @@ mod formatting;
 mod order_book;
 mod symbols;
 mod ui;
+#[cfg(target_os = "windows")]
+mod windows_security;
 
 pub(crate) use aggregation::{add_optional_f64, positive_percent_change, sum_optional_f64};
 pub(crate) use fees::{is_usd_stable_fee_token, non_perp_fee_usd};
@@ -32,6 +34,8 @@ pub use ui::{
     order_type_button, pane_title, sell_button, signed_number_color, text_color_for_bg,
     text_input_style, vertical_spacer,
 };
+#[cfg(target_os = "windows")]
+pub(crate) use windows_security::restrict_path_to_owner;
 
 #[cfg(test)]
 pub(crate) fn assert_close(actual: f64, expected: f64) {

@@ -497,7 +497,7 @@ pub(crate) fn wallet_cluster_window_settings(
         position: state
             .x
             .zip(state.y)
-            .map(|(x, y)| window::Position::Specific(iced::Point::new(x, y)))
+            .map(|(x, y)| crate::window_chrome::restored_position(iced::Point::new(x, y)))
             .unwrap_or_else(|| window::Position::Centered),
         ..crate::window_chrome::settings(custom_chrome)
     }

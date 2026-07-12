@@ -7,9 +7,18 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
+
+if ($Target -ne "x86_64-pc-windows-msvc") {
+    throw "Unsupported Windows package target '$Target'; expected x86_64-pc-windows-msvc"
+}
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$Metadata = cargo metadata --no-deps --format-version 1 --manifest-path (Join-Path $Root "Cargo.toml") | ConvertFrom-Json
+$MetadataJson = cargo metadata --no-deps --format-version 1 --manifest-path (Join-Path $Root "Cargo.toml")
+if ($LASTEXITCODE -ne 0) {
+    throw "cargo metadata failed with exit code $LASTEXITCODE"
+}
+$Metadata = $MetadataJson | ConvertFrom-Json
 $Package = $Metadata.packages | Where-Object { $_.name -eq "kerosene" } | Select-Object -First 1
 if (!$Package) {
     throw "Could not find kerosene package metadata"
@@ -25,6 +34,12 @@ $ChecksumPath = Join-Path $DistDir "SHA256SUMS.txt"
 
 function Write-Info([string]$Message) {
     Write-Host "[+] $Message"
+}
+
+function Assert-NativeSuccess([string]$Operation) {
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Operation failed with exit code $LASTEXITCODE"
+    }
 }
 
 function New-IcoFromPng([string]$PngPath, [string]$OutputPath) {
@@ -105,11 +120,19 @@ function Invoke-SignFile([string]$Path) {
     if ([string]::IsNullOrWhiteSpace($TempRoot)) {
         $TempRoot = [System.IO.Path]::GetTempPath()
     }
-    $PfxPath = Join-Path $TempRoot "kerosene-signing.pfx"
+    $PfxPath = Join-Path $TempRoot ("kerosene-signing-{0}.pfx" -f [Guid]::NewGuid().ToString("N"))
     [System.IO.File]::WriteAllBytes($PfxPath, [Convert]::FromBase64String($PfxBase64))
-    & $SignTool sign /f $PfxPath /p $PfxPassword /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256 $Path
-    & $SignTool verify /pa /v $Path
-    Remove-Item $PfxPath -Force
+    try {
+        & $SignTool sign /f $PfxPath /p $PfxPassword /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256 $Path
+        Assert-NativeSuccess "Authenticode signing for $Path"
+        & $SignTool verify /pa /v $Path
+        Assert-NativeSuccess "Authenticode verification for $Path"
+    }
+    finally {
+        if (Test-Path $PfxPath) {
+            Remove-Item $PfxPath -Force
+        }
+    }
 }
 
 function Get-SignTool {
@@ -146,9 +169,14 @@ New-IcoFromPng (Join-Path $Root "assets\kerosene.png") $IconPath
 
 Write-Info "Installing Rust target $Target if needed"
 rustup target add $Target
+Assert-NativeSuccess "rustup target installation"
 
 Write-Info "Building Windows release binary"
+if (Test-Path $ExePath) {
+    Remove-Item $ExePath -Force
+}
 cargo build --release --target $Target --manifest-path (Join-Path $Root "Cargo.toml")
+Assert-NativeSuccess "cargo Windows release build"
 
 if (!(Test-Path $ExePath)) {
     throw "Missing Windows executable at $ExePath"
@@ -174,10 +202,15 @@ if (!$SkipInstaller) {
     Write-Info "Building MSI installer"
     & $Wix.Source build `
         (Join-Path $Root "packaging\windows\Kerosene.wxs") `
+        -arch x64 `
         -d "ProductVersion=$Version" `
         -d "SourceDir=$ReleaseDir" `
         -d "IconPath=$IconPath" `
         -out $MsiPath
+    Assert-NativeSuccess "WiX MSI build"
+    if (!(Test-Path $MsiPath)) {
+        throw "WiX reported success but did not create $MsiPath"
+    }
     Invoke-SignFile $MsiPath
 }
 

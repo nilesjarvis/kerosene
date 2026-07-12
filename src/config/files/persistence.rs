@@ -32,10 +32,9 @@ pub(crate) fn installed_config_save_error_for_test(error: &str) -> String {
 ///
 /// The file is opened with exclusive creation so callers never truncate or
 /// rewrite a pre-existing world-readable file while sensitive config bytes are
-/// being written. On Unix the mode is applied at creation time, before the
-/// first byte is written; on non-Unix platforms this still uses exclusive
-/// creation and syncs the file, but Windows ACL hardening is a separate
-/// problem.
+/// being written. On Unix the mode is applied at creation time. On Windows an
+/// owner-only protected ACL is applied immediately after exclusive creation
+/// and before the first byte is written.
 pub(in crate::config) fn write_with_restricted_permissions(
     path: &Path,
     contents: &[u8],
@@ -59,6 +58,13 @@ pub(in crate::config) fn write_with_restricted_permissions(
             .map_err(|e| format!("create {} failed: {e}", user_config_path(path)))?
     };
 
+    #[cfg(target_os = "windows")]
+    if let Err(error) = set_restricted_permissions(path) {
+        drop(file);
+        cleanup_file_best_effort(path);
+        return Err(error);
+    }
+
     if let Err(e) = file.write_all(contents) {
         drop(file);
         cleanup_file_best_effort(path);
@@ -78,6 +84,12 @@ pub(in crate::config) fn write_with_restricted_permissions(
 fn set_restricted_permissions(path: &Path) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| format!("set permissions {} failed: {e}", user_config_path(path)))
+}
+
+#[cfg(target_os = "windows")]
+fn set_restricted_permissions(path: &Path) -> Result<(), String> {
+    crate::helpers::restrict_path_to_owner(path)
         .map_err(|e| format!("set permissions {} failed: {e}", user_config_path(path)))
 }
 
@@ -343,7 +355,7 @@ fn replace_with_restricted_permissions(path: &Path, contents: &[u8]) -> Result<(
         return Err(e.to_string());
     }
 
-    #[cfg(unix)]
+    #[cfg(any(unix, target_os = "windows"))]
     set_restricted_permissions(path)?;
 
     Ok(())
@@ -607,10 +619,10 @@ pub(in crate::config) fn save_config_to_path(
         remove_missing_primary_save_artifacts(path).map_err(installed_snapshot_error)?;
     }
 
-    // The rename above carries the temp file's 0o600 onto `path`, so this
-    // is belt-and-braces in case the prior on-disk config had looser
-    // permissions for some reason.
-    #[cfg(unix)]
+    // The rename above carries the temp file's restricted permissions onto
+    // `path`; this is belt-and-braces in case replacement semantics retained a
+    // prior destination's looser mode or ACL.
+    #[cfg(any(unix, target_os = "windows"))]
     set_restricted_permissions(path).map_err(installed_snapshot_error)?;
 
     Ok(())

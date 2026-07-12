@@ -12,6 +12,7 @@ use iced::Task;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn queue_positioning_info_fetch(
         &mut self,
         id: PositioningInfoId,

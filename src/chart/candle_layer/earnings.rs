@@ -103,10 +103,10 @@ impl CandlestickChart {
             || price_h <= 0.0
             || !pos.x.is_finite()
             || !pos.y.is_finite()
-            || pos.x < 0.0
-            || pos.x > chart_w
-            || pos.y < 0.0
-            || pos.y > price_h
+            || pos.x < -EARNINGS_DOT_HIT_RADIUS
+            || pos.x > chart_w + EARNINGS_DOT_HIT_RADIUS
+            || pos.y < -EARNINGS_DOT_HIT_RADIUS
+            || pos.y > price_h + EARNINGS_DOT_HIT_RADIUS
         {
             return None;
         }

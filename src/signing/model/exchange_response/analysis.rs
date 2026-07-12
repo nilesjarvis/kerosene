@@ -70,6 +70,31 @@ impl ExchangeResponse {
             && !self.is_error()
     }
 
+    /// Whether every returned order status explicitly reports a fill with an
+    /// order id, even if the exchange omitted the fill size. Automation must
+    /// reconcile the size before counting the fill as complete.
+    pub fn reports_filled(&self) -> bool {
+        let Some(statuses) = self
+            .response
+            .as_ref()
+            .and_then(|r| r.data.as_ref())
+            .map(|d| d.statuses.as_slice())
+        else {
+            return false;
+        };
+        !statuses.is_empty()
+            && statuses.iter().all(|status| {
+                status
+                    .get("filled")
+                    .and_then(|filled| filled.get("oid"))
+                    .and_then(|value| value.as_u64())
+                    .is_some()
+                    && status.get("resting").is_none()
+                    && status.get("error").is_none()
+            })
+            && !self.is_error()
+    }
+
     pub fn filled_total_size(&self) -> Option<f64> {
         let statuses = self
             .response

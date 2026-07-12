@@ -228,7 +228,7 @@ impl TradingTerminal {
                             false,
                         ));
                         twap.retry_slice = None;
-                    } else if response.is_fully_filled() {
+                    } else if response.reports_filled() {
                         finish_attempt = false;
                         if let Some(child) = twap.child_order_mut(pending.index) {
                             child.status = TwapChildStatus::AwaitingReconciliation;

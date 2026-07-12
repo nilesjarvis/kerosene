@@ -49,7 +49,8 @@ fn twap_fill_summary_does_not_invent_missing_fill_size() {
         "test exchange response should deserialize",
     );
 
-    assert!(response.is_fully_filled());
+    assert!(!response.is_fully_filled());
+    assert!(response.reports_filled());
     let summary = twap_response_fill_summary(&response);
     assert_eq!(summary.oid, Some(77));
     assert_eq!(summary.filled_size, 0.0);

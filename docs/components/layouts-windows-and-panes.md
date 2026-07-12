@@ -230,12 +230,16 @@ Detach/close behavior must keep these maps consistent:
 
 `window_chrome.rs` and `main_view/title_bar.rs` handle platform-aware chrome.
 Settings can enable custom chrome where supported. The setting may require
-platform-specific behavior:
+a restart before all windows use the new decorations. Platform-specific
+behavior:
 
 - Linux can apply decoration changes live.
 - macOS may require restart for OS bar preference changes.
-- Windows uses `windows_subsystem = "windows"` and platform resources for
-  packaged builds.
+- Windows always uses native decorations and hides the unsupported custom
+  chrome toggle. It also validates restored positions against the current
+  virtual desktop and centers off-screen windows.
+- Packaged Windows builds use `windows_subsystem = "windows"` and platform
+  resources.
 
 ## Tests To Check
 

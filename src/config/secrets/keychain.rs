@@ -4,9 +4,37 @@ use crate::config::in_memory_config_mode;
 use crate::helpers::redact_sensitive_response_text;
 use zeroize::Zeroizing;
 
+#[cfg(target_os = "windows")]
+use serde::{Deserialize, Serialize};
+#[cfg(target_os = "windows")]
+use std::sync::atomic::{AtomicU64, Ordering};
+
 const KEYCHAIN_SERVICE: &str = "kerosene";
 const GLOBAL_SECRET_ID: &str = "global";
 const KEYCHAIN_PAYLOAD_FIELD: &str = "secrets_v1";
+#[cfg(target_os = "windows")]
+const KEYCHAIN_SHARD_MANIFEST_FIELD: &str = "secrets_v2_manifest";
+#[cfg(target_os = "windows")]
+const KEYCHAIN_SHARD_FIELD_PREFIX: &str = "secrets_v2_chunk";
+#[cfg(target_os = "windows")]
+const KEYCHAIN_SHARD_SCHEMA: &str = "kerosene.keychain.shards.v1";
+/// Windows Generic Credentials allow 2,560 bytes. `keyring` encodes passwords
+/// as UTF-16, so keeping chunks below 1,000 code units leaves ample headroom.
+#[cfg(target_os = "windows")]
+const KEYCHAIN_SHARD_UTF16_LIMIT: usize = 1_000;
+#[cfg(target_os = "windows")]
+const KEYCHAIN_MAX_SHARDS: usize = 256;
+
+#[cfg(target_os = "windows")]
+static KEYCHAIN_SHARD_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Serialize, Deserialize)]
+struct KeychainShardManifest {
+    schema: String,
+    generation: String,
+    chunks: usize,
+}
 
 fn keychain_account(secret_id: &str, field: &str) -> String {
     format!("{secret_id}:{field}")
@@ -89,6 +117,11 @@ pub fn load_keychain_secret_payload() -> Result<Option<SecretPayload>, String> {
         return Ok(None);
     }
 
+    #[cfg(target_os = "windows")]
+    if let Some(payload) = load_sharded_keychain_secret_payload()? {
+        return Ok(Some(payload));
+    }
+
     let Some(json) = keychain_get(GLOBAL_SECRET_ID, KEYCHAIN_PAYLOAD_FIELD)? else {
         return Ok(None);
     };
@@ -109,16 +142,190 @@ pub fn store_secret_payload(payload: &SecretPayload) -> Result<(), String> {
     }
 
     if payload.is_empty() {
-        return keychain_set(GLOBAL_SECRET_ID, KEYCHAIN_PAYLOAD_FIELD, "");
+        return clear_keychain_secret_payload();
     }
 
     let mut payload = payload.clone();
     payload.schema = SECRET_PAYLOAD_SCHEMA.to_string();
+
+    #[cfg(target_os = "windows")]
+    return store_sharded_keychain_secret_payload(&payload);
+
+    #[cfg(not(target_os = "windows"))]
     let json = Zeroizing::new(
         serde_json::to_string(&payload)
             .map_err(|e| format!("keychain payload encode failed: {e}"))?,
     );
-    keychain_set(GLOBAL_SECRET_ID, KEYCHAIN_PAYLOAD_FIELD, json.as_str())
+
+    #[cfg(not(target_os = "windows"))]
+    return keychain_set(GLOBAL_SECRET_ID, KEYCHAIN_PAYLOAD_FIELD, json.as_str());
+}
+
+#[cfg(target_os = "windows")]
+fn load_sharded_keychain_secret_payload() -> Result<Option<SecretPayload>, String> {
+    let Some(manifest_json) = keychain_get(GLOBAL_SECRET_ID, KEYCHAIN_SHARD_MANIFEST_FIELD)? else {
+        return Ok(None);
+    };
+    let manifest = parse_keychain_shard_manifest(manifest_json.as_str())?;
+    let mut json = Zeroizing::new(String::new());
+    for index in 0..manifest.chunks {
+        let field = keychain_shard_field(&manifest.generation, index);
+        let Some(chunk) = keychain_get(GLOBAL_SECRET_ID, &field)? else {
+            return Err("keychain credential bundle is incomplete".to_string());
+        };
+        json.push_str(chunk.as_str());
+    }
+
+    let payload: SecretPayload = serde_json::from_str(json.as_str())
+        .map_err(|e| redacted_secret_payload_parse_error("keychain payload parse failed", e))?;
+    if payload.schema != SECRET_PAYLOAD_SCHEMA {
+        return Err(format!(
+            "keychain payload schema is unsupported; expected '{SECRET_PAYLOAD_SCHEMA}'"
+        ));
+    }
+    Ok(Some(payload))
+}
+
+#[cfg(target_os = "windows")]
+fn store_sharded_keychain_secret_payload(payload: &SecretPayload) -> Result<(), String> {
+    let json = Zeroizing::new(
+        serde_json::to_string(payload)
+            .map_err(|e| format!("keychain payload encode failed: {e}"))?,
+    );
+    let chunks = split_keychain_payload(json.as_str());
+    if chunks.is_empty() || chunks.len() > KEYCHAIN_MAX_SHARDS {
+        return Err("keychain credential bundle is too large".to_string());
+    }
+
+    let previous_manifest = keychain_get(GLOBAL_SECRET_ID, KEYCHAIN_SHARD_MANIFEST_FIELD)?
+        .map(|json| parse_keychain_shard_manifest(json.as_str()))
+        .transpose()?;
+    let generation = new_keychain_shard_generation();
+    let mut written = 0;
+    for (index, chunk) in chunks.iter().enumerate() {
+        let field = keychain_shard_field(&generation, index);
+        if let Err(error) = keychain_set(GLOBAL_SECRET_ID, &field, chunk) {
+            clear_keychain_shard_generation_best_effort(&generation, written);
+            return Err(error);
+        }
+        written += 1;
+    }
+
+    let manifest = KeychainShardManifest {
+        schema: KEYCHAIN_SHARD_SCHEMA.to_string(),
+        generation: generation.clone(),
+        chunks: chunks.len(),
+    };
+    let manifest_json = Zeroizing::new(
+        serde_json::to_string(&manifest)
+            .map_err(|e| format!("keychain shard manifest encode failed: {e}"))?,
+    );
+    if let Err(error) = keychain_set(
+        GLOBAL_SECRET_ID,
+        KEYCHAIN_SHARD_MANIFEST_FIELD,
+        manifest_json.as_str(),
+    ) {
+        clear_keychain_shard_generation_best_effort(&generation, written);
+        return Err(error);
+    }
+
+    let mut cleanup_errors = Vec::new();
+    if let Some(previous) = previous_manifest
+        && previous.generation != generation
+        && let Err(error) = clear_keychain_shard_generation(&previous)
+    {
+        cleanup_errors.push(error);
+    }
+    if let Err(error) = keychain_set(GLOBAL_SECRET_ID, KEYCHAIN_PAYLOAD_FIELD, "") {
+        cleanup_errors.push(error);
+    }
+
+    if cleanup_errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "keychain credential bundle saved but old credential cleanup failed: {}",
+            cleanup_errors.join("; ")
+        ))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn parse_keychain_shard_manifest(json: &str) -> Result<KeychainShardManifest, String> {
+    let manifest: KeychainShardManifest =
+        serde_json::from_str(json).map_err(|_| "keychain shard manifest is invalid".to_string())?;
+    let safe_generation = !manifest.generation.is_empty()
+        && manifest
+            .generation
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-');
+    if manifest.schema != KEYCHAIN_SHARD_SCHEMA
+        || !safe_generation
+        || manifest.chunks == 0
+        || manifest.chunks > KEYCHAIN_MAX_SHARDS
+    {
+        return Err("keychain shard manifest is invalid".to_string());
+    }
+    Ok(manifest)
+}
+
+#[cfg(target_os = "windows")]
+fn split_keychain_payload(value: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut chunk = String::new();
+    let mut utf16_len = 0;
+    for character in value.chars() {
+        let character_len = character.len_utf16();
+        if utf16_len + character_len > KEYCHAIN_SHARD_UTF16_LIMIT && !chunk.is_empty() {
+            chunks.push(std::mem::take(&mut chunk));
+            utf16_len = 0;
+        }
+        chunk.push(character);
+        utf16_len += character_len;
+    }
+    if !chunk.is_empty() {
+        chunks.push(chunk);
+    }
+    chunks
+}
+
+#[cfg(target_os = "windows")]
+fn new_keychain_shard_generation() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let counter = KEYCHAIN_SHARD_GENERATION.fetch_add(1, Ordering::Relaxed);
+    format!("{}-{nanos}-{counter}", std::process::id())
+}
+
+#[cfg(target_os = "windows")]
+fn keychain_shard_field(generation: &str, index: usize) -> String {
+    format!("{KEYCHAIN_SHARD_FIELD_PREFIX}:{generation}:{index}")
+}
+
+#[cfg(target_os = "windows")]
+fn clear_keychain_shard_generation(manifest: &KeychainShardManifest) -> Result<(), String> {
+    let mut errors = Vec::new();
+    for index in 0..manifest.chunks {
+        let field = keychain_shard_field(&manifest.generation, index);
+        if let Err(error) = keychain_set(GLOBAL_SECRET_ID, &field, "") {
+            errors.push(error);
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn clear_keychain_shard_generation_best_effort(generation: &str, chunks: usize) {
+    for index in 0..chunks {
+        let field = keychain_shard_field(generation, index);
+        let _ = keychain_set(GLOBAL_SECRET_ID, &field, "");
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -490,7 +697,36 @@ pub fn clear_keychain_secret_payload() -> Result<(), String> {
         return Ok(());
     }
 
-    clear_secret_payload_entry()
+    let mut errors = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        match keychain_get(GLOBAL_SECRET_ID, KEYCHAIN_SHARD_MANIFEST_FIELD) {
+            Ok(Some(json)) => match parse_keychain_shard_manifest(json.as_str()) {
+                Ok(manifest) => {
+                    if let Err(error) = clear_keychain_shard_generation(&manifest) {
+                        errors.push(error);
+                    }
+                }
+                Err(error) => errors.push(error),
+            },
+            Ok(None) => {}
+            Err(error) => errors.push(error),
+        }
+        if let Err(error) = keychain_set(GLOBAL_SECRET_ID, KEYCHAIN_SHARD_MANIFEST_FIELD, "") {
+            errors.push(error);
+        }
+    }
+
+    if let Err(error) = clear_secret_payload_entry() {
+        errors.push(error);
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
 }
 
 fn combined_keychain_cleanup_warning(
@@ -969,5 +1205,41 @@ mod tests {
             stored_payloads[0].profile_agent_key("kept-profile"),
             Some("agent-key")
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_keychain_payload_chunks_stay_within_utf16_limit_and_round_trip() {
+        let value = format!(
+            "{}{}{}",
+            "a".repeat(KEYCHAIN_SHARD_UTF16_LIMIT - 1),
+            '🚀',
+            "b".repeat(KEYCHAIN_SHARD_UTF16_LIMIT + 7)
+        );
+
+        let chunks = split_keychain_payload(&value);
+
+        assert!(chunks.len() >= 3);
+        assert!(
+            chunks
+                .iter()
+                .all(|chunk| { chunk.encode_utf16().count() <= KEYCHAIN_SHARD_UTF16_LIMIT })
+        );
+        assert_eq!(chunks.concat(), value);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_keychain_manifest_rejects_unsafe_or_unbounded_values() {
+        let unsafe_generation = format!(
+            r#"{{"schema":"{KEYCHAIN_SHARD_SCHEMA}","generation":"../secret","chunks":1}}"#
+        );
+        let excessive_chunks = format!(
+            r#"{{"schema":"{KEYCHAIN_SHARD_SCHEMA}","generation":"safe-1","chunks":{}}}"#,
+            KEYCHAIN_MAX_SHARDS + 1
+        );
+
+        assert!(parse_keychain_shard_manifest(&unsafe_generation).is_err());
+        assert!(parse_keychain_shard_manifest(&excessive_chunks).is_err());
     }
 }

@@ -326,6 +326,10 @@ mod tests {
         oid: u64,
         symbol: &str,
     ) {
+        // The status request is armed only after the original modify result has
+        // consumed its indicator and context.
+        terminal.pending_order_indicators.clear();
+        terminal.pending_move_order_contexts.clear();
         terminal.pending_move_status_request = Some(PendingMoveStatusRequest::new(
             account_address.to_string(),
             oid,

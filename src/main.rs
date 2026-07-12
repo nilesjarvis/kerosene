@@ -124,6 +124,7 @@ mod positions_funding_tests;
 // ---------------------------------------------------------------------------
 
 pub fn main() -> iced::Result {
+    configure_graphics_backend();
     let config = startup_config();
     let settings = app_fonts::settings_from_config(&config);
 
@@ -139,6 +140,23 @@ pub fn main() -> iced::Result {
     .scale_factor(TradingTerminal::window_scale_factor)
     .run()
 }
+
+#[cfg(target_os = "windows")]
+fn configure_graphics_backend() {
+    if std::env::var_os("WGPU_BACKEND").is_none() {
+        // iced reads WGPU_BACKEND while creating its compositor. This runs at
+        // the very start of main, before Kerosene can create worker threads.
+        // DX12 avoids reproducible NVIDIA Vulkan/OpenGL driver stack overflows
+        // on mixed-adapter Windows systems while preserving an explicit user
+        // override for diagnostics.
+        unsafe {
+            std::env::set_var("WGPU_BACKEND", "dx12");
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_graphics_backend() {}
 
 fn startup_config() -> config::KeroseneConfig {
     if in_memory_test_mode_requested(std::env::args_os()) {

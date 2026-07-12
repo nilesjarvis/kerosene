@@ -9,7 +9,11 @@ use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
 use iced::Task;
+#[cfg(not(target_os = "windows"))]
 use std::process::Command;
+
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
 
 // ---------------------------------------------------------------------------
 // SEC Earnings Markers
@@ -630,11 +634,27 @@ fn open_external_url_with_system(url: &str) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn open_external_url_with_system(url: &str) -> Result<(), String> {
-    Command::new("cmd")
-        .args(["/C", "start", "", url])
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("start command failed: {e}"))
+    let operation = "open\0".encode_utf16().collect::<Vec<_>>();
+    let url = url
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            operation.as_ptr(),
+            url.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    let status = result as isize;
+    if status > 32 {
+        Ok(())
+    } else {
+        Err(format!("Windows URL launch failed with status {status}"))
+    }
 }
 
 #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]

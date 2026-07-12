@@ -1,18 +1,24 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use iced::mouse;
 #[cfg(target_os = "linux")]
 use iced::widget::stack;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use iced::widget::svg::Handle as SvgHandle;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use iced::widget::{Space, column, container, mouse_area, row, svg};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use iced::widget::{button, text, tooltip};
-use iced::{Alignment, Element, Fill, Length, window};
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use iced::{Alignment, Fill, Length};
+use iced::{Element, window};
 
 // ---------------------------------------------------------------------------
 // Main Window Title Bar
 // ---------------------------------------------------------------------------
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 const TITLE_BAR_HEIGHT: f32 = 34.0;
 #[cfg(target_os = "macos")]
 const MACOS_TRAFFIC_LIGHT_SPACER: f32 = 72.0;
