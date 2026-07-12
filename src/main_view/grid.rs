@@ -5,8 +5,10 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::pane_title;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
-use components::{pane_close_button, pane_drag_ghost_body, pane_refresh_button};
-use iced::widget::{container, pane_grid, row, text};
+use components::{
+    pane_close_button, pane_drag_ghost_body, pane_refresh_button, widget_placement_overlay,
+};
+use iced::widget::{container, pane_grid, row, stack, text};
 use iced::{Element, Fill, Theme};
 use styles::{
     PANE_BORDER_WIDTH, drag_ghost_title_color, pane_content_style, pane_drag_ghost_style,
@@ -23,6 +25,8 @@ impl TradingTerminal {
         let pane_count = self.panes.iter().count();
         let pane_border_thickness = self.pane_border_thickness;
         let pane_corner_radius = self.pane_corner_radius;
+        let placing_widget = self.placing_widget;
+        let placement_hover = self.widget_placement_hover;
 
         let pane_grid_widget = pane_grid(&self.panes, |pane, kind, _is_maximized| {
             let title = pane_title(kind);
@@ -57,6 +61,20 @@ impl TradingTerminal {
             } else {
                 content
             };
+            let content = if let Some(widget) = placing_widget {
+                let hovered_placement = placement_hover.and_then(|(hovered_pane, placement)| {
+                    (hovered_pane == pane).then_some(placement)
+                });
+                stack![
+                    content,
+                    widget_placement_overlay(pane, widget.label(), hovered_placement)
+                ]
+                .width(Fill)
+                .height(Fill)
+                .into()
+            } else {
+                content
+            };
             let close_btn = pane_close_button(pane, pane_count, kind.can_be_closed());
             let controls_row = if let PaneKind::Chart(chart_id) = kind {
                 let header_collapsed = self
@@ -88,9 +106,13 @@ impl TradingTerminal {
                 .style(|theme: &Theme| iced::widget::text::Style {
                     color: Some(subtle_pane_title_color(theme)),
                 });
-            let title_bar = pane_grid::TitleBar::new(title_text)
-                .controls(controls)
-                .always_show_controls()
+            let title_bar = pane_grid::TitleBar::new(title_text);
+            let title_bar = if placing_widget.is_some() {
+                title_bar
+            } else {
+                title_bar.controls(controls).always_show_controls()
+            };
+            let title_bar = title_bar
                 .padding([3, 6])
                 .style(move |theme: &Theme| pane_title_bar_style(theme, pane_corner_radius));
 
@@ -102,9 +124,13 @@ impl TradingTerminal {
         .height(Fill)
         .spacing(pane_border_thickness)
         .min_size(self.pane_grid_min_size())
-        .on_resize(6, Message::PaneResized)
-        .on_drag(Message::PaneDragged)
-        .on_click(Message::PaneClicked)
+        .on_click(move |pane| {
+            if placing_widget.is_some() {
+                Message::NoOp
+            } else {
+                Message::PaneClicked(pane)
+            }
+        })
         .style(move |theme: &Theme| {
             let palette = theme.palette();
             pane_grid::Style {
@@ -126,6 +152,13 @@ impl TradingTerminal {
                 },
             }
         });
+        let pane_grid_widget = if placing_widget.is_some() {
+            pane_grid_widget
+        } else {
+            pane_grid_widget
+                .on_resize(6, Message::PaneResized)
+                .on_drag(Message::PaneDragged)
+        };
 
         container(pane_grid_widget)
             .width(Fill)

@@ -1,6 +1,7 @@
 mod grid;
 mod onboarding;
 mod panes;
+mod placement;
 mod title_bar;
 mod unlock;
 mod windows;
@@ -32,6 +33,9 @@ impl TradingTerminal {
             .height(Fill);
         if self.ticker_tape_enabled {
             main_column = main_column.push(self.view_ticker_tape_bar());
+        }
+        if let Some(placement_bar) = self.view_widget_placement_bar(&theme) {
+            main_column = main_column.push(placement_bar);
         }
         let main_content: Element<'_, Message> =
             main_column.push(self.view_main_pane_grid()).into();

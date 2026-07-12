@@ -1,5 +1,4 @@
 use crate::message::Message;
-use crate::pane_management::AddWidgetPlacement;
 use iced::widget::container as container_style;
 use iced::widget::{button, container, row, text};
 use iced::{Color, Element, Fill, Theme, color};
@@ -77,42 +76,5 @@ pub(super) fn section_label(label: &'static str, theme: &Theme) -> Element<'stat
     container(text(label).size(10).color(color).width(Fill))
         .padding([6, 10])
         .width(Fill)
-        .into()
-}
-
-pub(super) fn placement_button(
-    selected: bool,
-    placement: AddWidgetPlacement,
-    label: &'static str,
-) -> Element<'static, Message> {
-    button(text(label).size(10).center().width(Fill))
-        .on_press(Message::SetAddWidgetPlacement(placement))
-        .padding([4, 8])
-        .width(Fill)
-        .style(move |theme: &Theme, status| {
-            let bg = match (selected, status) {
-                (true, _) => theme.extended_palette().background.strong.color,
-                (false, button::Status::Hovered) => theme.extended_palette().background.weak.color,
-                _ => Color::TRANSPARENT,
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: if selected {
-                    theme.palette().primary
-                } else {
-                    theme.extended_palette().background.weak.text
-                },
-                border: iced::Border {
-                    radius: 3.0.into(),
-                    width: if selected { 1.0 } else { 0.0 },
-                    color: if selected {
-                        theme.palette().primary
-                    } else {
-                        Color::TRANSPARENT
-                    },
-                },
-                ..Default::default()
-            }
-        })
         .into()
 }

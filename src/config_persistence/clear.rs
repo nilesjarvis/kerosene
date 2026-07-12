@@ -224,6 +224,8 @@ impl TradingTerminal {
         self.account_picker_rename_index = None;
         self.add_widget_menu_open = false;
         self.add_widget_placement = AddWidgetPlacement::Below;
+        self.placing_widget = None;
+        self.widget_placement_hover = None;
 
         let main_profile = AccountProfile {
             secret_id: config::new_secret_id(),

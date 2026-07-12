@@ -3,7 +3,7 @@ mod header;
 mod sections;
 
 use self::context::AddWidgetMenuContext;
-use self::header::{placement_controls, target_header};
+use self::header::target_header;
 use self::sections::{
     add_account_section, add_chart_section, add_feed_section, add_tool_section, add_window_section,
 };
@@ -24,8 +24,7 @@ impl TradingTerminal {
         let menu = Column::new()
             .spacing(2)
             .width(Fill)
-            .push(target_header(&context, theme))
-            .push(placement_controls(context.placement));
+            .push(target_header(&context, theme));
         let menu = add_chart_section(menu, &context, theme);
         let menu = add_account_section(menu, &context, theme);
         let menu = add_feed_section(menu, &context, theme);

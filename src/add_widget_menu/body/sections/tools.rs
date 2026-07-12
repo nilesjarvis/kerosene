@@ -1,5 +1,6 @@
 use super::super::context::AddWidgetMenuContext;
 use crate::message::Message;
+use crate::pane_management::AddWidgetKind;
 
 use super::super::super::components::{menu_item, section_label};
 use iced::Theme;
@@ -15,14 +16,14 @@ pub(in crate::add_widget_menu::body) fn add_tool_section(
         .push(menu_item(
             "Order Book",
             "Pane",
-            Some(Message::AddOrderBookPane),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::OrderBook)),
             context.can_add_pane,
             theme,
         ))
         .push(menu_item(
             "Live Watchlist",
             "Pane",
-            Some(Message::AddLiveWatchlistPane),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::LiveWatchlist)),
             context.can_add_pane,
             theme,
         ))
@@ -40,14 +41,16 @@ pub(in crate::add_widget_menu::body) fn add_tool_section(
         .push(menu_item(
             "Positioning Information",
             "Pane",
-            Some(Message::AddPositioningInfoPane),
+            Some(Message::BeginWidgetPlacement(
+                AddWidgetKind::PositioningInfo,
+            )),
             context.can_add_pane,
             theme,
         ))
         .push(menu_item(
             "Advanced Orders",
             "Pane",
-            Some(Message::AddAdvancedOrdersPane),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::AdvancedOrders)),
             context.can_add_pane,
             theme,
         ))

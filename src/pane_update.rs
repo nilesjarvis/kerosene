@@ -14,7 +14,11 @@ impl TradingTerminal {
             | Message::ToggleAddWidgetMenu
             | Message::ToggleLayoutMenu
             | Message::ToggleTickerTape
-            | Message::SetAddWidgetPlacement(_) => self.update_pane_menu(message),
+            | Message::BeginWidgetPlacement(_)
+            | Message::WidgetPlacementHovered(_, _)
+            | Message::WidgetPlacementExited(_)
+            | Message::PlaceWidget(_, _)
+            | Message::CancelWidgetPlacement => self.update_pane_menu(message),
             Message::AddTradingJournal => self.add_trading_journal_window(),
             Message::AddPositionsHistoryPane
             | Message::AddPortfolioPane
@@ -98,6 +102,106 @@ mod tests {
                 active_tab: crate::account_state::BottomTab::Positions
             }
         )));
+    }
+
+    #[test]
+    fn add_widget_selection_waits_for_explicit_pane_placement() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.add_widget_menu_open = true;
+        let pane_count = terminal.panes.iter().count();
+
+        let _task = terminal.update_panes(Message::BeginWidgetPlacement(
+            crate::pane_management::AddWidgetKind::OrderBook,
+        ));
+
+        assert!(!terminal.add_widget_menu_open);
+        assert_eq!(
+            terminal.placing_widget,
+            Some(crate::pane_management::AddWidgetKind::OrderBook)
+        );
+        assert_eq!(terminal.panes.iter().count(), pane_count);
+    }
+
+    #[test]
+    fn placement_hover_and_cancel_clear_transient_state() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let pane = *terminal.panes.iter().next().expect("default pane").0;
+        let _task = terminal.update_panes(Message::BeginWidgetPlacement(
+            crate::pane_management::AddWidgetKind::LiveWatchlist,
+        ));
+
+        let _task = terminal.update_panes(Message::WidgetPlacementHovered(
+            pane,
+            crate::pane_management::AddWidgetPlacement::Right,
+        ));
+        assert_eq!(
+            terminal.widget_placement_hover,
+            Some((pane, crate::pane_management::AddWidgetPlacement::Right))
+        );
+
+        let _task = terminal.update_panes(Message::CancelWidgetPlacement);
+        assert_eq!(terminal.placing_widget, None);
+        assert_eq!(terminal.widget_placement_hover, None);
+    }
+
+    #[test]
+    fn placing_widget_uses_clicked_pane_as_the_add_target() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let widget = crate::pane_management::AddWidgetKind::SessionData;
+        let target = terminal
+            .panes
+            .iter()
+            .map(|(pane, _)| *pane)
+            .find(|pane| Some(*pane) != terminal.focus)
+            .expect("default layout has another target pane");
+        let pane_count = terminal.panes.iter().count();
+        let _task = terminal.update_panes(Message::BeginWidgetPlacement(widget));
+
+        let _task = terminal.update_panes(Message::PlaceWidget(
+            target,
+            crate::pane_management::AddWidgetPlacement::Left,
+        ));
+
+        assert_eq!(terminal.focus, Some(target));
+        assert_eq!(
+            terminal.add_widget_placement,
+            crate::pane_management::AddWidgetPlacement::Left
+        );
+        assert_eq!(terminal.placing_widget, None);
+        assert_eq!(terminal.widget_placement_hover, None);
+
+        let _task = terminal.update(menu::add_widget_message(widget, target));
+        assert_eq!(terminal.panes.iter().count(), pane_count + 1);
+        assert!(terminal.pane_is_open(|kind| matches!(kind, PaneKind::SessionData(_))));
+        let added = terminal
+            .find_pane_matching(|kind| matches!(kind, PaneKind::SessionData(_)))
+            .expect("placed Session Data pane");
+        assert_eq!(
+            terminal
+                .panes
+                .adjacent(target, iced::widget::pane_grid::Direction::Left),
+            Some(added)
+        );
+        assert_eq!(
+            terminal.add_widget_placement,
+            crate::pane_management::AddWidgetPlacement::Below
+        );
+    }
+
+    #[test]
+    fn selecting_open_singleton_focuses_it_without_entering_placement_mode() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let positions = terminal
+            .find_pane_matching(|kind| matches!(kind, PaneKind::BottomTabs { .. }))
+            .expect("default positions pane");
+        terminal.focus = terminal.find_pane_matching(|kind| matches!(kind, PaneKind::Chart(_)));
+
+        let _task = terminal.update_panes(Message::BeginWidgetPlacement(
+            crate::pane_management::AddWidgetKind::PositionsHistory,
+        ));
+
+        assert_eq!(terminal.focus, Some(positions));
+        assert_eq!(terminal.placing_widget, None);
     }
 
     #[test]

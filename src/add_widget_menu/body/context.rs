@@ -1,15 +1,9 @@
 use crate::app_state::TradingTerminal;
-use crate::pane_management::AddWidgetPlacement;
 use crate::pane_state::PaneKind;
 
-use iced::widget::pane_grid;
-
 pub(super) struct AddWidgetMenuContext {
-    pub(super) target: Option<pane_grid::Pane>,
-    pub(super) target_title: String,
     pub(super) can_add_pane: bool,
     pub(super) can_add_income: bool,
-    pub(super) placement: AddWidgetPlacement,
     pub(super) positions_history_open: bool,
     pub(super) portfolio_open: bool,
     pub(super) income_open: bool,
@@ -31,14 +25,9 @@ pub(super) struct AddWidgetMenuContext {
 
 impl AddWidgetMenuContext {
     pub(super) fn new(terminal: &TradingTerminal, can_add_income: bool) -> Self {
-        let target = terminal.add_target_pane();
-
         Self {
-            target,
-            target_title: terminal.add_target_title(),
-            can_add_pane: target.is_some(),
+            can_add_pane: terminal.add_target_pane().is_some(),
             can_add_income,
-            placement: terminal.add_widget_placement,
             positions_history_open: terminal
                 .pane_is_open(|kind| matches!(kind, PaneKind::BottomTabs { .. })),
             portfolio_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::Portfolio)),

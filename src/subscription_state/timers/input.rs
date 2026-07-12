@@ -9,6 +9,20 @@ use iced::Subscription;
 
 impl TradingTerminal {
     pub(super) fn push_keyboard_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
+        if self.placing_widget.is_some() {
+            subs.push(iced::event::listen_with(|event, _status, _window_id| {
+                if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                    ..
+                }) = event
+                {
+                    Some(Message::CancelWidgetPlacement)
+                } else {
+                    None
+                }
+            }));
+        }
+
         if self.recording_hotkey_for.is_some()
             || self.alfred.open
             || !self.hotkeys.is_empty()

@@ -1,5 +1,6 @@
 use super::super::context::AddWidgetMenuContext;
 use crate::message::Message;
+use crate::pane_management::AddWidgetKind;
 
 use super::super::super::components::{menu_item, section_label};
 use iced::Theme;
@@ -19,7 +20,9 @@ pub(in crate::add_widget_menu::body) fn add_account_section(
             } else {
                 "Pane"
             },
-            Some(Message::AddPositionsHistoryPane),
+            Some(Message::BeginWidgetPlacement(
+                AddWidgetKind::PositionsHistory,
+            )),
             context.can_add_pane,
             theme,
         ))
@@ -30,14 +33,15 @@ pub(in crate::add_widget_menu::body) fn add_account_section(
             } else {
                 "Pane"
             },
-            Some(Message::AddPortfolioPane),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::Portfolio)),
             context.can_add_pane,
             theme,
         ))
         .push(menu_item(
             "Income",
             income_tag(context),
-            (context.income_open || context.can_add_income).then_some(Message::AddIncomePane),
+            (context.income_open || context.can_add_income)
+                .then_some(Message::BeginWidgetPlacement(AddWidgetKind::Income)),
             context.can_add_pane && (context.income_open || context.can_add_income),
             theme,
         ))

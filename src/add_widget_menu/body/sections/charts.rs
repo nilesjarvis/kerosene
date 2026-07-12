@@ -1,5 +1,6 @@
 use super::super::context::AddWidgetMenuContext;
 use crate::message::Message;
+use crate::pane_management::AddWidgetKind;
 
 use super::super::super::components::{menu_item, section_label};
 use iced::Theme;
@@ -15,28 +16,32 @@ pub(in crate::add_widget_menu::body) fn add_chart_section(
         .push(menu_item(
             "Candlestick Chart",
             "Pane",
-            context.target.map(Message::AddChart),
+            Some(Message::BeginWidgetPlacement(
+                AddWidgetKind::CandlestickChart,
+            )),
             context.can_add_pane,
             theme,
         ))
         .push(menu_item(
             "Comparison Chart",
             "Pane",
-            Some(Message::AddComparisonChart),
+            Some(Message::BeginWidgetPlacement(
+                AddWidgetKind::ComparisonChart,
+            )),
             context.can_add_pane,
             theme,
         ))
         .push(menu_item(
             "Pair Ratio",
             "Pane",
-            Some(Message::AddPairRatioChart),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::PairRatioChart)),
             context.can_add_pane,
             theme,
         ))
         .push(menu_item(
             "Session Data",
             "Pane",
-            Some(Message::AddSessionDataPane),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::SessionData)),
             context.can_add_pane,
             theme,
         ))

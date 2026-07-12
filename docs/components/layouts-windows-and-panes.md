@@ -64,11 +64,12 @@ When adding a pane type, update all of these surfaces:
 
 1. Account summary/top bar.
 2. Optional ticker tape.
-3. Main pane grid.
-4. Toast overlay.
-5. Alfred overlay.
-6. Encrypted-credentials unlock overlay.
-7. Status bar.
+3. Optional widget-placement bar.
+4. Main pane grid.
+5. Toast overlay.
+6. Alfred overlay.
+7. Encrypted-credentials unlock overlay.
+8. Status bar.
 
 `main_view/grid.rs` builds the pane grid. It supplies pane title bars, close
 controls, chart-specific buttons, add-widget affordances, drag styling, resize
@@ -93,8 +94,16 @@ The add-widget menu uses:
 - `add_widget_menu/` for body, sections, and UI components.
 - `pane_management.rs` for insertion helpers and placement.
 - `pane_update/` for message handling.
-- `AddWidgetPlacement` to control where a new pane is inserted relative to the
-  active pane.
+
+Selecting a pane widget enters a transient placement mode instead of using the
+previously focused pane. `BeginWidgetPlacement` records the requested
+`AddWidgetKind`. Moving across a pane selects the nearest supported left,
+right, or bottom edge from the cursor's relative position and shows that
+half-pane preview only on the hovered pane. `PlaceWidget` focuses the clicked
+pane and dispatches the existing feature-specific add message with the inferred placement.
+`CancelWidgetPlacement` or Escape exits without changing the layout. Pane
+dragging and resizing are disabled while this mode is active. Already-open
+singleton widgets skip placement and focus their existing pane.
 
 Singleton panes such as `BottomTabs` should still be exposed here so users can
 restore them after closing them. `BottomTabs` is presented to users as

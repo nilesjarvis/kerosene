@@ -28,7 +28,7 @@ use crate::order_execution::{
     OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext, QuickOrderRecovery,
     QuickOrderSubmissionSnapshot, TicketOrderSubmissionSnapshot, TwapOrderStartSnapshot,
 };
-use crate::pane_management::AddWidgetPlacement;
+use crate::pane_management::{AddWidgetKind, AddWidgetPlacement};
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
 use crate::portfolio_state::{PnlValueDisplayMode, PortfolioScope, PortfolioWindow};
 use crate::positioning_state::{
@@ -678,7 +678,11 @@ pub(crate) enum Message {
     TogglePresetsMenu,
     TogglePresetCurrency,
     TogglePresetEditMode,
-    SetAddWidgetPlacement(AddWidgetPlacement),
+    BeginWidgetPlacement(AddWidgetKind),
+    WidgetPlacementHovered(pane_grid::Pane, AddWidgetPlacement),
+    WidgetPlacementExited(pane_grid::Pane),
+    PlaceWidget(pane_grid::Pane, AddWidgetPlacement),
+    CancelWidgetPlacement,
     EditPresetStart(crate::signing::OrderKind, usize, String),
     EditPresetChanged(String),
     EditPresetSave(crate::signing::OrderKind, usize),

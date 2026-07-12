@@ -167,6 +167,8 @@ impl TradingTerminal {
             layout_rename_index: None,
             layout_rename_input: String::new(),
             add_widget_placement: AddWidgetPlacement::Below,
+            placing_widget: None,
+            widget_placement_hover: None,
             account_picker_open: false,
             account_picker_rename_index: None,
             calendar_events: Vec::new(),

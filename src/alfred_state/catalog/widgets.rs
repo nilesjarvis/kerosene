@@ -1,6 +1,7 @@
 use crate::alfred_state::{AlfredCommand, AlfredCommandId, AlfredCommandKind};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::pane_management::AddWidgetKind;
 use crate::pane_state::PaneKind;
 
 use super::availability::{AlfredCommandAvailability, income_tag, open_tag};
@@ -11,8 +12,7 @@ use super::availability::{AlfredCommandAvailability, income_tag, open_tag};
 
 impl TradingTerminal {
     pub(super) fn alfred_widget_commands(&self) -> Vec<AlfredCommand> {
-        let target = self.add_target_pane();
-        let can_add_pane = target.is_some();
+        let can_add_pane = self.add_target_pane().is_some();
         let no_pane_reason = "Alfred needs an open pane to add this widget";
         let can_add_income = self
             .connected_order_account_snapshot()
@@ -40,7 +40,9 @@ impl TradingTerminal {
                 "Add chart pane",
                 "Pane",
                 AlfredCommandKind::AddWidget,
-                target.map(Message::AddChart),
+                Some(Message::BeginWidgetPlacement(
+                    AddWidgetKind::CandlestickChart,
+                )),
                 &["candle", "chart", "price", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
@@ -50,7 +52,9 @@ impl TradingTerminal {
                 "Add multi-symbol chart pane",
                 "Pane",
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddComparisonChart),
+                Some(Message::BeginWidgetPlacement(
+                    AddWidgetKind::ComparisonChart,
+                )),
                 &["compare", "spaghetti", "relative", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
@@ -60,7 +64,7 @@ impl TradingTerminal {
                 "Add ratio chart pane",
                 "Pane",
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddPairRatioChart),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::PairRatioChart)),
                 &["pair", "ratio", "spread", "comparison", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
@@ -70,7 +74,7 @@ impl TradingTerminal {
                 "Market session returns pane",
                 "Pane",
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddSessionDataPane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::SessionData)),
                 &[
                     "session", "data", "returns", "market", "hours", "widget", "add",
                 ],
@@ -82,7 +86,9 @@ impl TradingTerminal {
                 "Positions, orders, balances, trade history, and funding pane",
                 open_tag(positions_history_open, "Pane"),
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddPositionsHistoryPane),
+                Some(Message::BeginWidgetPlacement(
+                    AddWidgetKind::PositionsHistory,
+                )),
                 &[
                     "positions",
                     "orders",
@@ -102,7 +108,7 @@ impl TradingTerminal {
                 "Account overview pane",
                 open_tag(portfolio_open, "Pane"),
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddPortfolioPane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::Portfolio)),
                 &["account", "pnl", "equity", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
@@ -112,7 +118,7 @@ impl TradingTerminal {
                 "Portfolio margin income pane",
                 income_tag(income_open, can_add_income),
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddIncomePane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::Income)),
                 &["funding", "interest", "account", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason)
@@ -126,7 +132,7 @@ impl TradingTerminal {
                 "Prediction market feed pane",
                 open_tag(outcomes_open, "Pane"),
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddOutcomesPane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::Outcomes)),
                 &["prediction", "markets", "feed", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
@@ -136,7 +142,7 @@ impl TradingTerminal {
                 "ETF flow pane",
                 open_tag(hype_etfs_open, "Pane"),
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddHypeEtfsPane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::HypeEtfs)),
                 &["etf", "flow", "feed", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
@@ -146,7 +152,9 @@ impl TradingTerminal {
                 "Upcoming HYPE unlocks pane",
                 open_tag(hype_unstaking_queue_open, "Pane"),
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddHypeUnstakingQueuePane),
+                Some(Message::BeginWidgetPlacement(
+                    AddWidgetKind::HypeUnstakingQueue,
+                )),
                 &[
                     "unstake",
                     "unstaking",
@@ -165,7 +173,7 @@ impl TradingTerminal {
                 "Live liquidation feed pane",
                 open_tag(liquidations_open, "Pane"),
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddLiquidationsPane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::Liquidations)),
                 &["liq", "liquidation", "feed", "hydromancer", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
@@ -175,7 +183,9 @@ impl TradingTerminal {
                 "HyperDash liquidation depth pane",
                 open_tag(liquidations_distribution_open, "Pane"),
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddLiquidationsDistributionPane),
+                Some(Message::BeginWidgetPlacement(
+                    AddWidgetKind::LiquidationsDistribution,
+                )),
                 &[
                     "liq",
                     "liquidation",
@@ -193,7 +203,7 @@ impl TradingTerminal {
                 "Tracked trades pane",
                 open_tag(tracked_trades_open, "Pane"),
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddTrackedTradesPane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::TrackedTrades)),
                 &[
                     "wallet", "tracker", "tracked", "trades", "feed", "widget", "add",
                 ],
@@ -205,7 +215,7 @@ impl TradingTerminal {
                 "Telegram channel feed pane",
                 open_tag(telegram_feed_open, "Pane"),
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddTelegramFeedPane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::TelegramFeed)),
                 &["telegram", "news", "channel", "feed", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
@@ -215,7 +225,7 @@ impl TradingTerminal {
                 "Following and Lists feed pane",
                 "Pane",
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddXFeedPane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::XFeed)),
                 &[
                     "x",
                     "twitter",
@@ -234,7 +244,7 @@ impl TradingTerminal {
                 "Economic calendar pane",
                 open_tag(calendar_open, "Pane"),
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddCalendarPane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::Calendar)),
                 &["events", "macro", "economic", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
@@ -244,7 +254,7 @@ impl TradingTerminal {
                 "Market depth pane",
                 "Pane",
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddOrderBookPane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::OrderBook)),
                 &["book", "depth", "dom", "ladder", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
@@ -254,7 +264,7 @@ impl TradingTerminal {
                 "Symbol watchlist pane",
                 "Pane",
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddLiveWatchlistPane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::LiveWatchlist)),
                 &["watch", "symbols", "list", "ticker", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
@@ -273,7 +283,9 @@ impl TradingTerminal {
                 "Trader positioning pane",
                 "Pane",
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddPositioningInfoPane),
+                Some(Message::BeginWidgetPlacement(
+                    AddWidgetKind::PositioningInfo,
+                )),
                 &[
                     "positioning",
                     "traders",
@@ -290,7 +302,7 @@ impl TradingTerminal {
                 "Chase and TWAP controls pane",
                 "Pane",
                 AlfredCommandKind::AddWidget,
-                Some(Message::AddAdvancedOrdersPane),
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::AdvancedOrders)),
                 &["chase", "twap", "orders", "tools", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),

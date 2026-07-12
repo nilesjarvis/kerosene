@@ -1,5 +1,6 @@
 use super::super::context::AddWidgetMenuContext;
 use crate::message::Message;
+use crate::pane_management::AddWidgetKind;
 
 use super::super::super::components::{menu_item, section_label};
 use iced::Theme;
@@ -19,7 +20,7 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
             } else {
                 "Pane"
             },
-            Some(Message::AddOutcomesPane),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::Outcomes)),
             context.can_add_pane,
             theme,
         ))
@@ -30,7 +31,7 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
             } else {
                 "Pane"
             },
-            Some(Message::AddHypeEtfsPane),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::HypeEtfs)),
             context.can_add_pane,
             theme,
         ))
@@ -41,7 +42,9 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
             } else {
                 "Pane"
             },
-            Some(Message::AddHypeUnstakingQueuePane),
+            Some(Message::BeginWidgetPlacement(
+                AddWidgetKind::HypeUnstakingQueue,
+            )),
             context.can_add_pane,
             theme,
         ))
@@ -52,7 +55,7 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
             } else {
                 "Pane"
             },
-            Some(Message::AddLiquidationsPane),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::Liquidations)),
             context.can_add_pane,
             theme,
         ))
@@ -63,7 +66,9 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
             } else {
                 "Pane"
             },
-            Some(Message::AddLiquidationsDistributionPane),
+            Some(Message::BeginWidgetPlacement(
+                AddWidgetKind::LiquidationsDistribution,
+            )),
             context.can_add_pane,
             theme,
         ))
@@ -74,7 +79,7 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
             } else {
                 "Pane"
             },
-            Some(Message::AddTrackedTradesPane),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::TrackedTrades)),
             context.can_add_pane,
             theme,
         ))
@@ -85,14 +90,14 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
             } else {
                 "Pane"
             },
-            Some(Message::AddTelegramFeedPane),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::TelegramFeed)),
             context.can_add_pane,
             theme,
         ))
         .push(menu_item(
             "X Feed",
             "Pane",
-            Some(Message::AddXFeedPane),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::XFeed)),
             context.can_add_pane,
             theme,
         ))
@@ -103,7 +108,7 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
             } else {
                 "Pane"
             },
-            Some(Message::AddCalendarPane),
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::Calendar)),
             context.can_add_pane,
             theme,
         ))

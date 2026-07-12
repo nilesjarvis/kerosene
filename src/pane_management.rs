@@ -2,7 +2,6 @@ use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
 use crate::pane_state::PaneKind;
 
-use crate::helpers::pane_title;
 use iced::widget::pane_grid;
 
 // ---------------------------------------------------------------------------
@@ -16,7 +15,59 @@ pub(crate) enum AddPaneOutcome {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AddWidgetKind {
+    CandlestickChart,
+    ComparisonChart,
+    PairRatioChart,
+    SessionData,
+    PositionsHistory,
+    Portfolio,
+    Income,
+    Outcomes,
+    HypeEtfs,
+    HypeUnstakingQueue,
+    Liquidations,
+    LiquidationsDistribution,
+    TrackedTrades,
+    TelegramFeed,
+    XFeed,
+    Calendar,
+    OrderBook,
+    LiveWatchlist,
+    PositioningInfo,
+    AdvancedOrders,
+}
+
+impl AddWidgetKind {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::CandlestickChart => "Candlestick Chart",
+            Self::ComparisonChart => "Comparison Chart",
+            Self::PairRatioChart => "Pair Ratio",
+            Self::SessionData => "Session Data",
+            Self::PositionsHistory => "Positions / History",
+            Self::Portfolio => "Portfolio",
+            Self::Income => "Income",
+            Self::Outcomes => "Outcomes",
+            Self::HypeEtfs => "HYPE ETFs",
+            Self::HypeUnstakingQueue => "HYPE Unstaking Queue",
+            Self::Liquidations => "Liquidations Feed",
+            Self::LiquidationsDistribution => "Liquidations Distribution",
+            Self::TrackedTrades => "Wallet Tracker",
+            Self::TelegramFeed => "Telegram Feed",
+            Self::XFeed => "X Feed",
+            Self::Calendar => "Calendar",
+            Self::OrderBook => "Order Book",
+            Self::LiveWatchlist => "Live Watchlist",
+            Self::PositioningInfo => "Positioning Information",
+            Self::AdvancedOrders => "Advanced Orders",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AddWidgetPlacement {
+    Left,
     Below,
     Right,
 }
@@ -78,17 +129,42 @@ impl TradingTerminal {
             .or_else(|| self.panes.iter().next().map(|(pane, _)| *pane))
     }
 
-    pub(crate) fn add_target_title(&self) -> String {
-        self.add_target_pane()
-            .and_then(|pane| self.panes.get(pane))
-            .map(pane_title)
-            .unwrap_or_else(|| "No pane selected".to_string())
+    pub(crate) fn existing_pane_for_add_widget(
+        &self,
+        widget: AddWidgetKind,
+    ) -> Option<pane_grid::Pane> {
+        self.find_pane_matching(|kind| match widget {
+            AddWidgetKind::PositionsHistory => matches!(kind, PaneKind::BottomTabs { .. }),
+            AddWidgetKind::Portfolio => matches!(kind, PaneKind::Portfolio),
+            AddWidgetKind::Income => matches!(kind, PaneKind::Income),
+            AddWidgetKind::Outcomes => matches!(kind, PaneKind::Outcomes),
+            AddWidgetKind::HypeEtfs => matches!(kind, PaneKind::HypeEtfs),
+            AddWidgetKind::HypeUnstakingQueue => {
+                matches!(kind, PaneKind::HypeUnstakingQueue)
+            }
+            AddWidgetKind::Liquidations => matches!(kind, PaneKind::Liquidations),
+            AddWidgetKind::LiquidationsDistribution => {
+                matches!(kind, PaneKind::LiquidationsDistribution)
+            }
+            AddWidgetKind::TrackedTrades => matches!(kind, PaneKind::TrackedTrades),
+            AddWidgetKind::TelegramFeed => matches!(kind, PaneKind::TelegramFeed),
+            AddWidgetKind::Calendar => matches!(kind, PaneKind::Calendar),
+            AddWidgetKind::AdvancedOrders => matches!(kind, PaneKind::AdvancedOrders),
+            AddWidgetKind::CandlestickChart
+            | AddWidgetKind::ComparisonChart
+            | AddWidgetKind::PairRatioChart
+            | AddWidgetKind::SessionData
+            | AddWidgetKind::XFeed
+            | AddWidgetKind::OrderBook
+            | AddWidgetKind::LiveWatchlist
+            | AddWidgetKind::PositioningInfo => false,
+        })
     }
 
     pub(crate) fn add_widget_axis(&self) -> pane_grid::Axis {
         match self.add_widget_placement {
             AddWidgetPlacement::Below => pane_grid::Axis::Horizontal,
-            AddWidgetPlacement::Right => pane_grid::Axis::Vertical,
+            AddWidgetPlacement::Left | AddWidgetPlacement::Right => pane_grid::Axis::Vertical,
         }
     }
 
@@ -99,8 +175,14 @@ impl TradingTerminal {
         kind: PaneKind,
         label: &str,
     ) -> Option<pane_grid::Pane> {
+        let placement = self.add_widget_placement;
+        self.add_widget_placement = AddWidgetPlacement::Below;
+
         match self.panes.split(axis, target, kind) {
             Some((pane, _split)) => {
+                if placement == AddWidgetPlacement::Left && axis == pane_grid::Axis::Vertical {
+                    self.panes.swap(pane, target);
+                }
                 self.focus = Some(pane);
                 self.persist_config();
                 Some(pane)

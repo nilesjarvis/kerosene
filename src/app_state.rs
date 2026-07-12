@@ -26,7 +26,7 @@ use crate::order_update::{
     NukeConfirmation, OrderQuantityProvenance, PendingCancelStatusRequest,
     PendingMoveStatusRequest, PendingOneShotStatusRequest,
 };
-use crate::pane_management::AddWidgetPlacement;
+use crate::pane_management::{AddWidgetKind, AddWidgetPlacement};
 use crate::pane_state::PaneKind;
 use crate::pnl_card::PnlCardWindowState;
 use crate::portfolio_state::{IncomeState, PortfolioState};
@@ -344,6 +344,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) layout_rename_index: Option<usize>,
     pub(crate) layout_rename_input: String,
     pub(crate) add_widget_placement: AddWidgetPlacement,
+    pub(crate) placing_widget: Option<AddWidgetKind>,
+    pub(crate) widget_placement_hover: Option<(pane_grid::Pane, AddWidgetPlacement)>,
     pub(crate) account_picker_open: bool,
     pub(crate) account_picker_rename_index: Option<usize>,
     // Calendar state
