@@ -111,6 +111,18 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
             chart: Some(ChartThemeSpec::candles("#FF7A1A", "#F8EFE2")),
         },
         ThemeSpec {
+            name: "Cursor",
+            colors: [
+                "#14120B", "#EDECEC", "#F54E00", "#1F8A65", "#F54E00", "#CF2D56",
+            ],
+            chart: Some(ChartThemeSpec {
+                bull: "#1F8A65",
+                bear: "#CF2D56",
+                line: Some("#F54E00"),
+                line_gradient: None,
+            }),
+        },
+        ThemeSpec {
             name: "Hyperliquid",
             colors: [
                 "#0F1A1E", "#F6FEFD", "#50D2C1", "#50D2C1", "#FFB648", "#ED7088",

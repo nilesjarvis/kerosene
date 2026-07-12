@@ -84,6 +84,25 @@ fn normalizes_missing_chart_line_without_overwriting_custom_value() {
 }
 
 #[test]
+fn adds_cursor_theme_to_existing_config() {
+    let mut config = KeroseneConfig {
+        custom_themes: Vec::new(),
+        ..KeroseneConfig::default()
+    };
+
+    normalize_loaded_config(&mut config);
+
+    let cursor = config
+        .custom_themes
+        .iter()
+        .find(|theme| theme.name == "Cursor")
+        .expect("Cursor theme should be present");
+    assert_eq!(cursor.background, "#14120B");
+    assert_eq!(cursor.text, "#EDECEC");
+    assert_eq!(cursor.primary, "#F54E00");
+}
+
+#[test]
 fn normalizes_out_of_range_market_slippage() {
     let mut value =
         serde_json::to_value(KeroseneConfig::default()).expect("default config serializes");
