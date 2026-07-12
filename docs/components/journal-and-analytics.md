@@ -70,7 +70,10 @@ boundaries so same-millisecond fills are not skipped.
 ```
 
 Platform-specific config directories are used on macOS and Windows. Cache
-writes are atomic, and Unix permissions are restricted where supported.
+writes replace the destination atomically where the platform supports it, and
+Unix permissions are restricted where supported. On Windows, where renaming
+onto an existing destination is not atomic, the writer temporarily stages the
+old cache and restores it if installing the new file fails.
 
 Cache files contain market/account history and should not include private keys
 or API keys.

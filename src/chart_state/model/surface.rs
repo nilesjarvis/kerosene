@@ -90,7 +90,7 @@ impl DetachedChartWindowState {
         self.x
             .zip(self.y)
             .and_then(|(x, y)| finite_chart_window_point(x, y))
-            .map(window::Position::Specific)
+            .map(crate::window_chrome::restored_position)
             .unwrap_or(window::Position::Centered)
     }
 }

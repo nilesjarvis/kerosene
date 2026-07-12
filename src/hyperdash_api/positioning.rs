@@ -16,6 +16,7 @@ mod response;
 // ---------------------------------------------------------------------------
 
 /// Fetch wallet-level perp positioning for one HyperDash ticker.
+#[allow(clippy::too_many_arguments)]
 pub async fn fetch_ticker_positions(
     coin: String,
     limit: u32,
@@ -129,7 +130,7 @@ fn positioning_entry_range_filters(
     if let Some(entry_max) = entry_max {
         filters.insert("maxEntry".to_string(), serde_json::json!(entry_max));
     }
-    (!filters.is_empty()).then(|| serde_json::Value::Object(filters))
+    (!filters.is_empty()).then_some(serde_json::Value::Object(filters))
 }
 
 /// Fetch wallet-level position-size changes for one HyperDash perp market.

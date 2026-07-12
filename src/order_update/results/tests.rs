@@ -1217,6 +1217,9 @@ fn cancel_result_ambiguous_ack_uses_pending_request_after_indicator_expires() {
 #[test]
 fn cancel_order_status_open_keeps_cancel_uncertain_and_local_order() {
     let (mut terminal, _pending_id) = terminal_with_pending_cancel();
+    // A status check starts after the original cancellation indicator has
+    // expired or been consumed by its exchange result.
+    terminal.pending_order_indicators.clear();
 
     let _task = terminal.handle_cancel_order_status_result(
         TEST_ACCOUNT.to_string(),

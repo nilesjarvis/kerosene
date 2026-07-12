@@ -894,10 +894,15 @@ pub(crate) enum Message {
     WindowClosed(window::Id),
     WindowResized(window::Id, Size),
     WindowMoved(window::Id, Point),
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     WindowDrag(window::Id),
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     WindowDragResize(window::Id, window::Direction),
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     WindowMinimize(window::Id),
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     WindowToggleMaximize(window::Id),
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     WindowClose(window::Id),
     // Trading Journal
     JournalFillsLoaded {
@@ -1073,7 +1078,9 @@ pub(crate) enum Message {
     SpinnerTick,
     StatusBarTick,
     ConfigSaved(Result<(), String>),
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     ToggleSound,
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     ToggleDesktopNotifications,
     ToggleOptimisticAccountUpdates(bool),
     PlaceOrder {
@@ -1315,6 +1322,7 @@ pub(crate) enum Message {
     KeyboardEvent(window::Id, iced::keyboard::Event, iced::event::Status),
     AddChart(pane_grid::Pane),
     ClosePane(pane_grid::Pane),
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     ToggleHidePnl,
     // Quick order form (right-click on chart)
     OpenQuickOrder(ChartId, ChartSurfaceId, f64, f32, f32, f32, f32),

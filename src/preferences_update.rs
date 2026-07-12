@@ -290,6 +290,9 @@ impl TradingTerminal {
             Message::ToggleCustomWindowChrome(enabled)
                 if self.custom_window_chrome_enabled != enabled =>
             {
+                if !crate::window_chrome::custom_chrome_supported() {
+                    return Task::none();
+                }
                 self.custom_window_chrome_enabled = enabled;
                 self.persist_config();
 

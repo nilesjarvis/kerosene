@@ -71,7 +71,7 @@ impl TradingTerminal {
         } else {
             "border off"
         };
-        let os_bar = if self.custom_window_chrome_enabled {
+        let os_bar = if self.custom_window_chrome_active {
             "OS bar custom"
         } else {
             "OS bar native"

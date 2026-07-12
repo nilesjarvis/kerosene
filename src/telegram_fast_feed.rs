@@ -1186,7 +1186,12 @@ fn tighten_directory_permissions(path: &Path) {
     let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
 }
 
-#[cfg(not(unix))]
+#[cfg(target_os = "windows")]
+fn tighten_directory_permissions(path: &Path) {
+    let _ = crate::helpers::restrict_path_to_owner(path);
+}
+
+#[cfg(not(any(unix, target_os = "windows")))]
 fn tighten_directory_permissions(_path: &Path) {}
 
 #[cfg(unix)]
@@ -1199,7 +1204,16 @@ fn tighten_session_permissions(path: &Path) {
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(target_os = "windows")]
+fn tighten_session_permissions(path: &Path) {
+    for candidate in session_file_family(path) {
+        if candidate.exists() {
+            let _ = crate::helpers::restrict_path_to_owner(&candidate);
+        }
+    }
+}
+
+#[cfg(not(any(unix, target_os = "windows")))]
 fn tighten_session_permissions(_path: &Path) {}
 
 pub(crate) fn clear_telegram_fast_session_files() -> Result<usize, String> {

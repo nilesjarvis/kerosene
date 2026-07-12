@@ -55,10 +55,10 @@ pub fn save_cache(address: &str, fills: &[UserFill]) -> Result<(), String> {
     let _ = file.sync_all();
     drop(file);
 
-    // On Unix `rename` atomically replaces the destination. Do not delete the
-    // existing cache on failure: a failed save should leave the last good cache
-    // available for recovery.
-    if let Err(rename_err) = std::fs::rename(&temp_path, &path) {
+    // Windows does not allow rename to replace an existing destination. Stage
+    // the old cache beside it so a failed replacement can restore the last
+    // good file instead of deleting it first.
+    if let Err(rename_err) = replace_cache_file(&temp_path, &path) {
         let _ = std::fs::remove_file(&temp_path);
         return Err(format!(
             "Failed to move cache file into place; previous cache left untouched: {rename_err}"
@@ -158,6 +158,55 @@ fn unique_temp_cache_path(path: &std::path::Path) -> std::path::PathBuf {
         nanos,
         counter
     ))
+}
+
+fn replace_cache_file(temp_path: &std::path::Path, path: &std::path::Path) -> Result<(), String> {
+    match std::fs::rename(temp_path, path) {
+        Ok(()) => Ok(()),
+        Err(first_error) if cfg!(windows) && path.is_file() => {
+            let rollback_path = unique_cache_sidecar_path(path, "replace-old");
+            std::fs::rename(path, &rollback_path)
+                .map_err(|error| format!("stage existing cache failed: {error}"))?;
+
+            match std::fs::rename(temp_path, path) {
+                Ok(()) => std::fs::remove_file(&rollback_path)
+                    .map_err(|error| format!("replacement installed but cleanup failed: {error}")),
+                Err(replace_error) => {
+                    let restore_result = std::fs::rename(&rollback_path, path);
+                    match restore_result {
+                        Ok(()) => Err(format!(
+                            "replacement failed: {replace_error}; original cache was restored; initial error: {first_error}"
+                        )),
+                        Err(restore_error) => Err(format!(
+                            "replacement failed: {replace_error}; original cache restore failed: {restore_error}; initial error: {first_error}"
+                        )),
+                    }
+                }
+            }
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn unique_cache_sidecar_path(path: &std::path::Path, marker: &str) -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let counter = JOURNAL_CACHE_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let mut file_name = path
+        .file_name()
+        .map(std::ffi::OsString::from)
+        .unwrap_or_else(|| std::ffi::OsString::from("journal_cache.json"));
+    file_name.push(format!(
+        ".{marker}.{}.{}.{}",
+        std::process::id(),
+        nanos,
+        counter
+    ));
+    path.parent()
+        .map(|parent| parent.join(&file_name))
+        .unwrap_or_else(|| std::path::PathBuf::from(file_name))
 }
 
 #[cfg(test)]

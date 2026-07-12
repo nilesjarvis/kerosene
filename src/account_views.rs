@@ -13,6 +13,7 @@ pub(in crate::account_views) mod table_helpers;
 mod tabs;
 
 use crate::helpers::invalid_data_placeholder;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) use summary::account_summary_bar_style;
 
 #[cfg(test)]

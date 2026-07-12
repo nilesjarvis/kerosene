@@ -128,7 +128,8 @@ impl TradingTerminal {
             widget_padding_default: widget_padding.default_px,
             widget_padding_overrides,
             custom_window_chrome_enabled: cfg.custom_window_chrome_enabled,
-            custom_window_chrome_active: cfg.custom_window_chrome_enabled,
+            custom_window_chrome_active: cfg.custom_window_chrome_enabled
+                && crate::window_chrome::custom_chrome_supported(),
             focus: None,
             order_price: String::new(),
             order_quantity: String::new(),

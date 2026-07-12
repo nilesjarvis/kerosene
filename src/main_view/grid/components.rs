@@ -135,37 +135,6 @@ fn placement_for_cursor(position: Point, size: Size) -> AddWidgetPlacement {
     }
 }
 
-#[cfg(test)]
-mod placement_tests {
-    use super::*;
-
-    #[test]
-    fn cursor_position_selects_the_nearest_supported_edge() {
-        let size = Size::new(800.0, 400.0);
-
-        assert_eq!(
-            placement_for_cursor(Point::new(50.0, 50.0), size),
-            AddWidgetPlacement::Left
-        );
-        assert_eq!(
-            placement_for_cursor(Point::new(700.0, 50.0), size),
-            AddWidgetPlacement::Right
-        );
-        assert_eq!(
-            placement_for_cursor(Point::new(100.0, 350.0), size),
-            AddWidgetPlacement::Below
-        );
-    }
-
-    #[test]
-    fn cursor_placement_handles_degenerate_bounds() {
-        assert_eq!(
-            placement_for_cursor(Point::new(f32::NAN, 1.0), Size::ZERO),
-            AddWidgetPlacement::Below
-        );
-    }
-}
-
 pub(super) fn pane_refresh_button() -> button::Button<'static, Message> {
     button(
         text("\u{21bb}")
@@ -233,5 +202,36 @@ pub(super) fn pane_close_button(
                 ..Default::default()
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::*;
+
+    #[test]
+    fn cursor_position_selects_the_nearest_supported_edge() {
+        let size = Size::new(800.0, 400.0);
+
+        assert_eq!(
+            placement_for_cursor(Point::new(50.0, 50.0), size),
+            AddWidgetPlacement::Left
+        );
+        assert_eq!(
+            placement_for_cursor(Point::new(700.0, 50.0), size),
+            AddWidgetPlacement::Right
+        );
+        assert_eq!(
+            placement_for_cursor(Point::new(100.0, 350.0), size),
+            AddWidgetPlacement::Below
+        );
+    }
+
+    #[test]
+    fn cursor_placement_handles_degenerate_bounds() {
+        assert_eq!(
+            placement_for_cursor(Point::new(f32::NAN, 1.0), Size::ZERO),
+            AddWidgetPlacement::Below
+        );
     }
 }

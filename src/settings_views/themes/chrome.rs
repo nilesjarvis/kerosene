@@ -66,21 +66,21 @@ impl TradingTerminal {
         ]
         .spacing(9);
 
-        let window_controls = column![
-            toggle_status_row(
-                &theme,
-                "Outer widget border",
-                self.outer_widget_border_enabled,
-                Message::ToggleOuterWidgetBorder,
-            ),
-            toggle_status_row(
+        let mut window_controls = column![toggle_status_row(
+            &theme,
+            "Outer widget border",
+            self.outer_widget_border_enabled,
+            Message::ToggleOuterWidgetBorder,
+        )];
+        if crate::window_chrome::custom_chrome_supported() {
+            window_controls = window_controls.push(toggle_status_row(
                 &theme,
                 "Custom OS bar",
                 self.custom_window_chrome_enabled,
                 Message::ToggleCustomWindowChrome,
-            ),
-        ]
-        .spacing(8);
+            ));
+        }
+        let window_controls = window_controls.spacing(8);
 
         let mut background_controls = column![
             toggle_status_row(
@@ -222,7 +222,7 @@ impl TradingTerminal {
                     pane_corner_radius: self.pane_corner_radius,
                     widget_padding: self.widget_padding_default,
                     outer_widget_border_enabled: self.outer_widget_border_enabled,
-                    custom_window_chrome_enabled: self.custom_window_chrome_enabled,
+                    custom_window_chrome_enabled: self.custom_window_chrome_active,
                     chart_dotted_background: self.chart_dotted_background,
                     chart_dotted_background_opacity: self.chart_dotted_background_opacity,
                     chart_gradient_background: self.chart_gradient_background,

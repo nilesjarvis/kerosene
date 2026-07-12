@@ -166,12 +166,7 @@ pub(crate) fn sec_filing_document_url(
 
     let accession_digits = accession_digits(accession_number)?;
     let primary_document = primary_document.trim().trim_start_matches('/');
-    if accession_digits.is_empty()
-        || primary_document.is_empty()
-        || primary_document.contains("://")
-        || primary_document.contains('\\')
-        || primary_document.contains("..")
-    {
+    if accession_digits.is_empty() || !safe_sec_document_path(primary_document) {
         return None;
     }
 
@@ -186,17 +181,24 @@ fn sec_filing_archive_text_url(cik: u64, accession_number: &str) -> Option<Strin
     }
     let accession_digits = accession_digits(accession_number)?;
     let accession_number = accession_number.trim();
-    if accession_number.is_empty()
-        || accession_number.contains("://")
-        || accession_number.contains('/')
-        || accession_number.contains('\\')
-        || accession_number.contains("..")
-    {
+    if !safe_sec_accession_number(accession_number) {
         return None;
     }
     Some(format!(
         "{SEC_ARCHIVES_BASE_URL}/{cik}/{accession_digits}/{accession_number}.txt"
     ))
+}
+
+fn safe_sec_accession_number(value: &str) -> bool {
+    !value.is_empty() && value.chars().all(|c| c.is_ascii_digit() || c == '-')
+}
+
+fn safe_sec_document_path(value: &str) -> bool {
+    !value.is_empty()
+        && !value.contains("..")
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/'))
 }
 
 fn accession_digits(accession_number: &str) -> Option<String> {
@@ -314,13 +316,11 @@ fn select_filing_summary_documents<'a>(
             .then_with(|| left_doc.filename.cmp(&right_doc.filename))
     });
 
-    let selected = scored
+    scored
         .into_iter()
         .take(limit)
         .map(|(_, document)| document)
-        .collect::<Vec<_>>();
-
-    selected
+        .collect::<Vec<_>>()
 }
 
 fn filing_summary_document_score(document_type: &str, name: &str, primary_document: &str) -> i32 {
@@ -665,15 +665,54 @@ fn fallback_filing_snippet(text: &str, exclude: Option<&str>) -> Option<String> 
 }
 
 fn snippet_around(text: &str, index: usize, before: usize, after: usize) -> String {
-    let start = text[..index]
-        .rfind(['.', ';', ':'])
+    let start = previous_summary_delimiter(text, index)
         .map(|pos| pos + 1)
         .unwrap_or_else(|| previous_char_boundary(text, index.saturating_sub(before)));
-    let end = text[index..]
-        .find(['.', ';'])
-        .map(|pos| index + pos + 1)
+    let end = next_summary_delimiter(text, index)
+        .map(|pos| pos + 1)
         .unwrap_or_else(|| next_char_boundary(text, (index + after).min(text.len())));
     text[start..end].to_string()
+}
+
+fn previous_summary_delimiter(text: &str, before: usize) -> Option<usize> {
+    let mut found = None;
+    for (index, character) in text.char_indices() {
+        if index >= before {
+            break;
+        }
+        if summary_delimiter_at(text, index, character, true) {
+            found = Some(index);
+        }
+    }
+    found
+}
+
+fn next_summary_delimiter(text: &str, from: usize) -> Option<usize> {
+    text.char_indices()
+        .skip_while(|(index, _)| *index < from)
+        .find_map(|(index, character)| {
+            summary_delimiter_at(text, index, character, false).then_some(index)
+        })
+}
+
+fn summary_delimiter_at(text: &str, index: usize, character: char, include_colon: bool) -> bool {
+    match character {
+        ';' => true,
+        ':' => include_colon,
+        '.' => {
+            let previous_is_digit = text[..index]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_ascii_digit());
+            let next_index = index + character.len_utf8();
+            let next_is_digit = text[next_index..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_digit());
+            !(previous_is_digit && next_is_digit)
+        }
+        _ => false,
+    }
 }
 
 fn previous_char_boundary(text: &str, index: usize) -> usize {
@@ -993,6 +1032,10 @@ mod tests {
         assert!(sec_filing_document_url(1, "0001", "../index.htm").is_none());
         assert!(sec_filing_document_url(1, "0001", "https://example.com").is_none());
         assert!(sec_filing_document_url(1, "0001", "nested\\file.htm").is_none());
+        assert!(sec_filing_document_url(1, "0001", "report.htm&calc.exe").is_none());
+        assert!(sec_filing_document_url(1, "0001", "report.htm|more").is_none());
+        assert!(sec_filing_document_url(1, "0001", "report.htm?download=1").is_none());
+        assert!(sec_filing_document_url(1, "0001", "report.htm#section").is_none());
     }
 
     #[test]
@@ -1082,7 +1125,8 @@ mod tests {
         assert!(
             highlights
                 .iter()
-                .any(|item| item.contains("Revenue was $44.1 billion"))
+                .any(|item| item.contains("Revenue was $44.1 billion")),
+            "highlights: {highlights:?}"
         );
         assert!(highlights.iter().any(|item| item.contains("diluted EPS")));
         assert!(
@@ -1103,7 +1147,8 @@ mod tests {
         assert!(
             highlights
                 .iter()
-                .any(|item| item.contains("Total quarterly revenue increased 16% YoY to $22.4B"))
+                .any(|item| item.contains("Total quarterly revenue increased 16% YoY to $22.4B")),
+            "highlights: {highlights:?}"
         );
     }
 }

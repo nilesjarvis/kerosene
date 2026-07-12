@@ -43,6 +43,12 @@ A timeout after the window starts is acceptable. A panic is not.
 Use this when changing startup, iced settings, main shell, window routing,
 canvas rendering, or platform packaging behavior.
 
+On Windows, Kerosene selects DirectX 12 when `WGPU_BACKEND` is not already
+set. This avoids known NVIDIA driver stack overflows seen through the Vulkan
+and OpenGL paths. Developers can still set `WGPU_BACKEND` explicitly when
+testing another backend. A Windows startup smoke test should launch the normal
+binary with the variable unset and confirm that the window remains responsive.
+
 ## Focused Test Areas
 
 | Change area | Useful tests |
@@ -137,13 +143,26 @@ Windows packaging uses PowerShell:
 pwsh ./scripts/package-windows.ps1
 ```
 
+For an unsigned portable-only validation build:
+
+```powershell
+pwsh ./scripts/package-windows.ps1 -SkipSigning -SkipInstaller
+```
+
 The workflow builds the MSVC release binary, creates a portable zip, can sign
-artifacts, can build a WiX MSI, and emits SHA256 sums.
+artifacts, can build an x64 WiX MSI, and emits SHA256 sums. Native build,
+signing, verification, and WiX failures stop the script instead of leaving a
+partial release that appears successful.
 
 Release builds should be Authenticode-signed when distributed.
 
 `build.rs` generates Windows resources, icon handling, version metadata, and a
 DPI-aware manifest.
+
+`.github/workflows/windows.yml` runs formatting, strict Clippy, the complete
+test suite, and the unsigned portable packaging path on Windows. The repository
+toolchain is pinned in `rust-toolchain.toml` so local and CI results use the same
+compiler and components.
 
 ## Dependency Changes
 

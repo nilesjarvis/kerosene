@@ -53,6 +53,14 @@ Credential storage supports:
 
 OS keychain mode stores profile/global secrets outside plaintext config.
 
+Windows Credential Manager limits the size of one generic credential record.
+Kerosene therefore stores the serialized payload as bounded, generation-based
+chunks and commits a small manifest last. Loading validates the manifest and
+reassembles every chunk before parsing. Existing single-record `secrets_v1`
+credentials remain readable and are removed after a successful sharded write.
+Never log chunk contents, names derived from user data, or the reassembled
+payload.
+
 Encrypted config mode stores an encrypted blob in `KeroseneConfig` using:
 
 - Argon2id key derivation
@@ -144,7 +152,9 @@ without echoing the value.
 
 Config paths use platform config directories. Imported asset file names are
 validated before being referenced. Journal caches and Telegram session files
-should use restrictive permissions where supported.
+should use restrictive permissions where supported. Config snapshots and
+Telegram session files use owner-only modes on Unix and protected owner-only
+ACLs on Windows; permission hardening happens before config bytes are written.
 
 Do not accept arbitrary stored paths for future secret or asset features without
 normalization and tests.

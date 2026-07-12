@@ -17,7 +17,7 @@ use iced::{Rectangle, Renderer, Theme};
 
 pub(super) enum ChartDrawState<'a> {
     Current(&'a ChartState),
-    PendingReset(ChartState),
+    PendingReset(Box<ChartState>),
 }
 
 impl ChartDrawState<'_> {
@@ -34,7 +34,7 @@ impl CandlestickChart {
         if state.reset_epoch_seen == self.reset_epoch {
             ChartDrawState::Current(state)
         } else {
-            ChartDrawState::PendingReset(ChartState::reset_for_epoch(self.reset_epoch))
+            ChartDrawState::PendingReset(Box::new(ChartState::reset_for_epoch(self.reset_epoch)))
         }
     }
 

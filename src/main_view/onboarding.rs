@@ -162,6 +162,7 @@ impl TradingTerminal {
         self.view_onboarding_body(None)
     }
 
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     pub(super) fn view_onboarding_with_top_bar<'a>(
         &'a self,
         top_bar: Element<'a, Message>,
