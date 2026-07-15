@@ -43,22 +43,24 @@ impl TradingTerminal {
         id: OrderBookId,
         inst: &OrderBookInstance,
     ) -> Element<'_, Message> {
-        let tracking_text = match &inst.mode {
-            OrderBookSymbolMode::Active => format!("Active: {}", self.active_symbol_display),
+        let is_active = matches!(inst.mode, OrderBookSymbolMode::Active);
+
+        let tracking_label = match &inst.mode {
+            OrderBookSymbolMode::Active => self.active_symbol_display.clone(),
             OrderBookSymbolMode::Fixed(symbol) => self.display_name_for_symbol(symbol),
         };
 
         let book_has_rows = !inst.book.bids.is_empty() || !inst.book.asks.is_empty();
-        let mut title = row![
-            text(format!("Order Book ({tracking_text})"))
-                .size(13)
-                .style(move |theme: &Theme| text::Style {
-                    color: Some(theme.palette().text)
-                })
-                .width(Fill),
-        ]
-        .spacing(2)
-        .align_y(iced::Alignment::Center);
+
+        let tracking_text = text(tracking_label)
+            .size(10)
+            .style(move |theme: &Theme| text::Style {
+                color: Some(theme.extended_palette().background.strong.text),
+            });
+
+        let mut title = row![active_indicator(is_active), tracking_text]
+            .spacing(2)
+            .align_y(iced::Alignment::Center);
 
         // Fixed-size status badges live in the title row so background
         // refreshes and transient errors never reflow the book below.
@@ -72,6 +74,7 @@ impl TradingTerminal {
         }
 
         title
+            .push(iced::widget::Space::new().width(Fill))
             .push(Element::from(display_mode_button(
                 id,
                 inst.display_mode,
@@ -188,6 +191,23 @@ fn header_cell(label: &'static str) -> Element<'static, Message> {
         .width(Fill)
         .align_x(iced::alignment::Horizontal::Right)
         .into()
+}
+
+/// Small colored dot that signals the order book is tracking the active
+/// (flicking) symbol rather than a pinned one.
+fn active_indicator(is_active: bool) -> Element<'static, Message> {
+    if !is_active {
+        return text("").into();
+    }
+    container(
+        text("\u{2022}")
+            .size(14)
+            .style(|theme: &Theme| text::Style {
+                color: Some(theme.palette().primary),
+            }),
+    )
+    .padding(iced::Padding::new(0.0).left(2.0))
+    .into()
 }
 
 /// Compact constant-size indicator that the displayed book is a stale
