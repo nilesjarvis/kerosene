@@ -72,6 +72,8 @@ impl TradingTerminal {
         if let Some(instance) = self.charts.get_mut(&id) {
             instance.interval = tf;
             instance.chart.set_timeframe(tf);
+            instance.reset_primary_candle_trust();
+            instance.reset_secondary_candle_trust();
             instance.chart.clear_hud_armed();
             Self::clear_chart_market_display_state(instance);
             instance.chart.request_view_reset();

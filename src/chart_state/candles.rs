@@ -1,6 +1,6 @@
 use super::{
-    CandleFetchMode, CandleFetchRequest, ChartBackfillFetchContext, ChartBackfillRequestContext,
-    ChartId, ChartInstance,
+    CandleCacheTarget, CandleFetchMode, CandleFetchRequest, ChartBackfillFetchContext,
+    ChartBackfillRequestContext, ChartId, ChartInstance,
 };
 use crate::api::{self, Candle};
 use crate::app_state::TradingTerminal;
@@ -25,12 +25,14 @@ impl TradingTerminal {
         instance.chart.candle_cache.clear();
         instance.candle_fetch_request = None;
         instance.candle_fetch_error = None;
+        instance.reset_primary_candle_trust();
         instance.candle_backfill_exhausted = false;
         if instance.secondary_symbol.is_some() {
             instance.chart.set_secondary_candles(Vec::new());
         }
         instance.secondary_candle_fetch_request = None;
         instance.secondary_candle_fetch_error = None;
+        instance.reset_secondary_candle_trust();
         instance.secondary_candle_backfill_exhausted = false;
         instance.heatmap_last_fetch = None;
         instance.heatmap_viewport = None;
@@ -129,14 +131,10 @@ impl TradingTerminal {
         coin: &str,
         tf: Timeframe,
         backfill: ChartBackfillRequestContext,
-        cached_start_ms: Option<u64>,
+        _cached_start_ms: Option<u64>,
         attempt: u8,
     ) -> CandleFetchRequest {
         let now_ms = Self::now_ms();
-        let start = match cached_start_ms {
-            Some(t) => t.saturating_sub(tf.duration_ms().saturating_mul(2)),
-            None => now_ms.saturating_sub(tf.lookback_ms()),
-        };
         CandleFetchRequest {
             chart_id,
             symbol: coin.to_string(),
@@ -145,7 +143,10 @@ impl TradingTerminal {
             source: backfill.source,
             read_data_provider_generation: backfill.read_data_provider_generation,
             hydromancer_key_generation: backfill.hydromancer_key_generation,
-            start_ms: start,
+            // Cached candles are presentation-only until the provider answers.
+            // Always revalidate the full visible lookback so a truncated cache
+            // tail cannot permanently suppress missing history.
+            start_ms: now_ms.saturating_sub(tf.lookback_ms()),
             end_ms: now_ms,
             attempt,
         }
@@ -251,18 +252,45 @@ impl TradingTerminal {
                 if delay_ms > 0 {
                     tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                 }
-                api::fetch_chart_backfill_candles(
-                    fetch_request.source,
+                let policy = fetch_request.fetch_policy();
+                api::fetch_chart_backfill_candles(api::ChartCandleFetchRequest {
+                    source: fetch_request.source,
                     hydromancer_api_key,
                     schwab_access_token,
-                    fetch_request.symbol,
-                    fetch_request.timeframe.api_str().to_string(),
-                    fetch_request.start_ms,
-                    fetch_request.end_ms,
-                )
+                    coin: fetch_request.symbol,
+                    interval: fetch_request.timeframe.api_str().to_string(),
+                    start_time: fetch_request.start_ms,
+                    end_time: fetch_request.end_ms,
+                    policy,
+                })
                 .await
             },
             move |result| Message::ChartCandlesLoaded(request.clone(), result),
+        )
+    }
+
+    /// Hydrate a booting chart from disk without delaying construction of the
+    /// first frame. The matching provider request runs independently and is the
+    /// only path that marks this history as verified.
+    pub(crate) fn load_cached_candles_task(
+        request: CandleFetchRequest,
+        target: CandleCacheTarget,
+    ) -> Task<Message> {
+        let cache_request = request.clone();
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    crate::api_cache::load_fresh_candles(
+                        cache_request.source,
+                        &cache_request.symbol,
+                        cache_request.timeframe,
+                        Self::now_ms(),
+                    )
+                })
+                .await
+                .map_err(|error| format!("Candle cache task failed: {error}"))?
+            },
+            move |result| Message::ChartCachedCandlesLoaded(request.clone(), target, result),
         )
     }
 
@@ -278,15 +306,17 @@ impl TradingTerminal {
                 if delay_ms > 0 {
                     tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                 }
-                api::fetch_chart_backfill_candles(
-                    fetch_request.source,
+                let policy = fetch_request.fetch_policy();
+                api::fetch_chart_backfill_candles(api::ChartCandleFetchRequest {
+                    source: fetch_request.source,
                     hydromancer_api_key,
                     schwab_access_token,
-                    fetch_request.symbol,
-                    fetch_request.timeframe.api_str().to_string(),
-                    fetch_request.start_ms,
-                    fetch_request.end_ms,
-                )
+                    coin: fetch_request.symbol,
+                    interval: fetch_request.timeframe.api_str().to_string(),
+                    start_time: fetch_request.start_ms,
+                    end_time: fetch_request.end_ms,
+                    policy,
+                })
                 .await
             },
             move |result| Message::ChartSecondaryCandlesLoaded(request.clone(), result),
@@ -309,6 +339,7 @@ impl TradingTerminal {
         if let Some(instance) = self.charts.get_mut(&request.chart_id) {
             instance.candle_fetch_request = Some(request.clone());
             instance.candle_fetch_error = None;
+            instance.candle_ws_updates_during_fetch.clear();
             if instance.chart.candles.is_empty() {
                 instance.chart.status = ChartStatus::Loading;
             }
@@ -356,6 +387,7 @@ impl TradingTerminal {
         if let Some(instance) = self.charts.get_mut(&request.chart_id) {
             instance.secondary_candle_fetch_request = Some(request.clone());
             instance.secondary_candle_fetch_error = None;
+            instance.secondary_candle_ws_updates_during_fetch.clear();
         }
         Self::fetch_secondary_candles_task(
             request,
@@ -517,7 +549,6 @@ impl TradingTerminal {
                     timeframe,
                     session,
                     session_granularity,
-                    None,
                     ChartBackfillFetchContext::new(
                         source,
                         backfill_context.read_data_provider_generation,
@@ -536,14 +567,21 @@ impl TradingTerminal {
         if candles.is_empty() {
             return;
         }
+        let observed_at_ms = Self::now_ms();
+        let finalized_candles = candles
+            .iter()
+            .filter(|candle| candle.close_time <= observed_at_ms)
+            .cloned()
+            .collect();
+        let source = self.chart_backfill_source_for_symbol_timeframe(symbol, tf);
         store_normalized_candles(
             &mut self.candle_data_cache,
             &mut self.candle_data_cache_order,
+            source,
             symbol,
             tf,
-            candles.clone(),
+            finalized_candles,
         );
-        let source = self.chart_backfill_source_for_symbol_timeframe(symbol, tf);
         let _ = crate::api_cache::save_candles_snapshot(source, symbol, tf, candles);
     }
 
@@ -553,42 +591,27 @@ impl TradingTerminal {
         tf: Timeframe,
     ) -> Option<Vec<Candle>> {
         let now_ms = Self::now_ms();
-        if let Some(candles) = get_fresh_cached_candles(
+        let source = self.chart_backfill_source_for_symbol_timeframe(symbol, tf);
+        // Interactive update handlers must never perform filesystem I/O. Disk
+        // hydration is an explicit boot task; within a running session this LRU
+        // is the only immediate-display cache and the provider refresh proceeds
+        // independently.
+        get_fresh_cached_candles(
             &mut self.candle_data_cache,
             &mut self.candle_data_cache_order,
+            source,
             symbol,
             tf,
             now_ms,
-        ) {
-            return Some(candles);
-        }
-
-        let source = self.chart_backfill_source_for_symbol_timeframe(symbol, tf);
-        if source == ChartBackfillSource::Schwab && !self.schwab.has_access_token() {
-            return None;
-        }
-        if !crate::api_cache::cache_eligible(source, tf, &self.hydromancer_api_key) {
-            return None;
-        }
-        let candles = crate::api_cache::load_fresh_candles(source, symbol, tf, now_ms)
-            .ok()
-            .flatten()?;
-        store_normalized_candles(
-            &mut self.candle_data_cache,
-            &mut self.candle_data_cache_order,
-            symbol,
-            tf,
-            candles.clone(),
-        );
-        Some(candles)
+        )
     }
 
     pub(crate) fn remove_cached_candles(&mut self, symbol: &str, tf: Timeframe) {
-        let key = (symbol.to_string(), tf);
+        let source = self.chart_backfill_source_for_symbol_timeframe(symbol, tf);
+        let key = (source, symbol.to_string(), tf);
         self.candle_data_cache.remove(&key);
         self.candle_data_cache_order
             .retain(|existing| existing != &key);
-        let source = self.chart_backfill_source_for_symbol_timeframe(symbol, tf);
         let _ = crate::api_cache::remove_candles(source, symbol, tf);
     }
 }
@@ -597,6 +620,24 @@ impl TradingTerminal {
 mod tests {
     use super::*;
     use crate::chart_state::ChartInstance;
+
+    #[test]
+    fn refresh_request_revalidates_full_lookback_even_with_a_cached_tail() {
+        let request = TradingTerminal::build_candle_fetch_request(
+            1,
+            "BTC",
+            Timeframe::H1,
+            ChartBackfillRequestContext::new(ChartBackfillSource::Hyperliquid, 0, 0),
+            Some(u64::MAX),
+            0,
+        );
+
+        assert_eq!(
+            request.end_ms.saturating_sub(request.start_ms),
+            Timeframe::H1.lookback_ms()
+        );
+        assert_eq!(request.fetch_policy(), api::CandleFetchPolicy::NetworkOnly);
+    }
 
     #[test]
     fn source_change_clears_tick_chart_candles_without_backfill_request() {
@@ -638,5 +679,24 @@ mod tests {
         );
         assert!(tick_chart.secondary_candle_fetch_request.is_none());
         assert!(tick_chart.secondary_candle_fetch_error.is_none());
+    }
+
+    #[test]
+    fn refresh_fetches_bypass_cache_while_older_pagination_may_reuse_it() {
+        let context = ChartBackfillRequestContext::new(ChartBackfillSource::Hyperliquid, 0, 0);
+        let refresh =
+            TradingTerminal::build_candle_fetch_request(1, "BTC", Timeframe::H1, context, None, 0);
+        let older = TradingTerminal::build_older_candle_fetch_request(
+            1,
+            "BTC",
+            Timeframe::H1,
+            context,
+            3_600_000,
+            100,
+        )
+        .expect("older request");
+
+        assert_eq!(refresh.fetch_policy(), api::CandleFetchPolicy::NetworkOnly);
+        assert_eq!(older.fetch_policy(), api::CandleFetchPolicy::CacheFirst);
     }
 }

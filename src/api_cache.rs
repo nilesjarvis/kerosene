@@ -1,6 +1,7 @@
 use crate::api::{
-    Candle, ExchangeSymbolsPayload, WatchlistContext, candles_have_interior_gap, normalize_candles,
-    trailing_contiguous_run_start,
+    Candle, ExchangeSymbolsPayload, WatchlistContext, candles_have_interior_gap,
+    candles_have_interval_discontinuity, normalize_candles, trailing_contiguous_run_start,
+    trailing_exact_run_start,
 };
 use crate::config::{self, ChartBackfillSource};
 use crate::timeframe::Timeframe;
@@ -18,6 +19,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::os::unix::fs::OpenOptionsExt;
 
 const CACHE_SCHEMA_VERSION: u32 = 1;
+// The namespace change invalidates only legacy candle snapshots whose mutable
+// tail may have been frozen as complete. Other API caches retain compatibility.
+const CANDLE_CACHE_NAMESPACE: &str = "candles_v2";
 const MAX_CACHED_CANDLES: usize = 12_000;
 const EXCHANGE_SYMBOLS_FRESH_MS: u64 = 6 * 60 * 60 * 1000;
 const WATCHLIST_CONTEXT_FRESH_MS: u64 = 15_000;
@@ -61,7 +65,7 @@ fn load_fresh_candles_from_dir(
     else {
         return Ok(None);
     };
-    let Some(last_time) = candles.last().map(|candle| candle.open_time) else {
+    let Some(last_time) = candles.last().map(|candle| candle.close_time) else {
         return Ok(None);
     };
     if now_ms.saturating_sub(last_time) > timeframe.cache_display_max_age_ms() {
@@ -72,7 +76,11 @@ fn load_fresh_candles_from_dir(
     // and re-saved on every boot, rendering as a phantom price jump. Serve only
     // the trailing contiguous run; older history is repopulated by backfill.
     let mut candles = candles;
-    let start = trailing_contiguous_run_start(&candles, timeframe.duration_ms());
+    let start = if cache_requires_exact_intervals(source, symbol, timeframe.api_str()) {
+        trailing_exact_run_start(&candles, timeframe.duration_ms())
+    } else {
+        trailing_contiguous_run_start(&candles, timeframe.duration_ms())
+    };
     if start > 0 {
         candles.drain(0..start);
     }
@@ -108,6 +116,7 @@ pub(crate) fn save_candles_snapshot(
         symbol: symbol.to_string(),
         interval: timeframe.api_str().to_string(),
         candles,
+        observed_at_ms: now_ms(),
     });
     Ok(())
 }
@@ -124,6 +133,7 @@ pub(crate) fn merge_candle_page(
         symbol: symbol.to_string(),
         interval: interval.to_string(),
         candles,
+        observed_at_ms: now_ms(),
     });
     Ok(())
 }
@@ -135,7 +145,7 @@ pub(crate) fn remove_candles(
 ) -> Result<(), String> {
     let path = json_path(
         &cache_root()?,
-        "candles",
+        CANDLE_CACHE_NAMESPACE,
         &candle_key(source, symbol, timeframe.api_str()),
     );
     enqueue(CacheWrite::Remove { path });
@@ -227,8 +237,11 @@ fn load_candle_snapshot_from_dir(
     symbol: &str,
     interval: &str,
 ) -> Result<Option<Vec<Candle>>, String> {
-    let Some(cached) =
-        load_json::<Vec<Candle>>(root, "candles", &candle_key(source, symbol, interval))?
+    let Some(cached) = load_json::<Vec<Candle>>(
+        root,
+        CANDLE_CACHE_NAMESPACE,
+        &candle_key(source, symbol, interval),
+    )?
     else {
         return Ok(None);
     };
@@ -244,8 +257,11 @@ fn load_candles_for_range_from_dir(
     start_time: u64,
     end_time: u64,
 ) -> Result<Option<Vec<Candle>>, String> {
-    let Some(cached) =
-        load_json::<Vec<Candle>>(root, "candles", &candle_key(source, symbol, interval))?
+    let Some(cached) = load_json::<Vec<Candle>>(
+        root,
+        CANDLE_CACHE_NAMESPACE,
+        &candle_key(source, symbol, interval),
+    )?
     else {
         return Ok(None);
     };
@@ -273,14 +289,20 @@ fn load_candles_for_range_from_dir(
     // an interior hole can still satisfy a spanning range. Miss in that case so
     // the caller fetches the gap from the network instead of serving a gapped
     // subset that would be merged straight into the chart.
-    if let Some(interval_ms) = candle_interval_ms(interval)
-        && candles_have_interior_gap(&subset, interval_ms)
-    {
-        return Ok(None);
+    if let Some(interval_ms) = candle_interval_ms(interval) {
+        let has_gap = if cache_requires_exact_intervals(source, symbol, interval) {
+            candles_have_interval_discontinuity(&subset, interval_ms)
+        } else {
+            candles_have_interior_gap(&subset, interval_ms)
+        };
+        if has_gap {
+            return Ok(None);
+        }
     }
     Ok(Some(subset))
 }
 
+#[cfg(test)]
 fn save_candle_snapshot(
     root: PathBuf,
     source: ChartBackfillSource,
@@ -288,7 +310,25 @@ fn save_candle_snapshot(
     interval: &str,
     candles: Vec<Candle>,
 ) -> Result<(), String> {
-    let candles = trim_cached_candles(normalize_candles(candles));
+    save_candle_snapshot_at(root, source, symbol, interval, candles, now_ms())
+}
+
+fn save_candle_snapshot_at(
+    root: PathBuf,
+    source: ChartBackfillSource,
+    symbol: &str,
+    interval: &str,
+    candles: Vec<Candle>,
+    observed_at_ms: u64,
+) -> Result<(), String> {
+    // A provider snapshot and every live chart vector can contain the active
+    // bucket. Its close is mutable, so capturing it would freeze a partial
+    // value and manufacture a discontinuity after restart.
+    let closed = candles
+        .into_iter()
+        .filter(|candle| candle.close_time <= observed_at_ms)
+        .collect();
+    let candles = trim_cached_candles(normalize_candles(closed));
     if candles.is_empty() {
         return Ok(());
     }
@@ -296,18 +336,18 @@ fn save_candle_snapshot(
     // actually contiguous; a gapped vec must not certify coverage across its
     // hole (see `candles_cover_range`).
     let contiguous = candle_interval_ms(interval)
-        .map(|interval_ms| !candles_have_interior_gap(&candles, interval_ms))
+        .map(|interval_ms| !candles_have_interval_discontinuity(&candles, interval_ms))
         .unwrap_or(true);
     let complete_through_ms = if contiguous {
-        candles.last().map(|candle| candle.open_time)
+        candles.last().map(|candle| candle.close_time)
     } else {
         None
     };
     save_json(
         &root,
-        "candles",
+        CANDLE_CACHE_NAMESPACE,
         &candle_key(source, symbol, interval),
-        now_ms(),
+        observed_at_ms,
         complete_through_ms,
         &candles,
     )
@@ -319,14 +359,25 @@ fn merge_candle_page_into_dir(
     symbol: &str,
     interval: &str,
     candles: Vec<Candle>,
+    observed_at_ms: u64,
 ) -> Result<(), String> {
-    let mut merged =
-        match load_json::<Vec<Candle>>(root, "candles", &candle_key(source, symbol, interval)) {
-            Ok(Some(cached)) => cached.payload,
-            Ok(None) | Err(_) => Vec::new(),
-        };
+    let mut merged = match load_json::<Vec<Candle>>(
+        root,
+        CANDLE_CACHE_NAMESPACE,
+        &candle_key(source, symbol, interval),
+    ) {
+        Ok(Some(cached)) => cached.payload,
+        Ok(None) | Err(_) => Vec::new(),
+    };
     merged.extend(candles);
-    save_candle_snapshot(root.to_path_buf(), source, symbol, interval, merged)
+    save_candle_snapshot_at(
+        root.to_path_buf(),
+        source,
+        symbol,
+        interval,
+        merged,
+        observed_at_ms,
+    )
 }
 
 fn load_fresh_watchlist_contexts_from_dir(
@@ -368,16 +419,13 @@ fn candles_cover_range(
     let Some(first) = candles.first() else {
         return false;
     };
-    let Some(last) = candles.last() else {
-        return false;
-    };
     if first.open_time > start_time {
         return false;
     }
 
-    let cached_tail = complete_through_ms
-        .unwrap_or(last.open_time)
-        .max(last.open_time);
+    let Some(cached_tail) = complete_through_ms else {
+        return false;
+    };
     let required_tail = candle_interval_ms(interval)
         .map(|interval_ms| end_time.saturating_sub(interval_ms.saturating_mul(2)))
         .unwrap_or(end_time);
@@ -409,24 +457,21 @@ fn source_key(source: ChartBackfillSource) -> &'static str {
 }
 
 fn candle_interval_ms(interval: &str) -> Option<u64> {
-    Some(match interval {
-        "1s" => 1_000,
-        "1m" => 60_000,
-        "3m" => 3 * 60_000,
-        "5m" => 5 * 60_000,
-        "15m" => 15 * 60_000,
-        "30m" => 30 * 60_000,
-        "1h" => 60 * 60_000,
-        "2h" => 2 * 60 * 60_000,
-        "4h" => 4 * 60 * 60_000,
-        "8h" => 8 * 60 * 60_000,
-        "12h" => 12 * 60 * 60_000,
-        "1d" => 24 * 60 * 60_000,
-        "3d" => 3 * 24 * 60 * 60_000,
-        "1w" => 7 * 24 * 60 * 60_000,
-        "1M" => 31 * 24 * 60 * 60_000,
-        _ => return None,
-    })
+    Timeframe::from_api_str_opt(interval)
+        .filter(|timeframe| timeframe.uses_candle_backfill())
+        .map(Timeframe::duration_ms)
+}
+
+pub(crate) fn cache_requires_exact_intervals(
+    source: ChartBackfillSource,
+    symbol: &str,
+    interval: &str,
+) -> bool {
+    source != ChartBackfillSource::Schwab
+        && !symbol.starts_with('@')
+        && !symbol.starts_with('#')
+        && !symbol.contains('/')
+        && interval != Timeframe::Mo1.api_str()
 }
 
 fn cache_root() -> Result<PathBuf, String> {
@@ -436,14 +481,13 @@ fn cache_root() -> Result<PathBuf, String> {
 // ---------------------------------------------------------------------------
 // Background cache writer
 //
-// Cache writes serialize candle vectors and `fsync` files, and they fire from
-// hot paths: candle snapshots persist on every websocket tick for charts with
-// a secondary series, and watchlist contexts persist one file per symbol. None
-// of that may block the iced update thread or a tokio worker, so every write is
-// handed to a single dedicated thread. Routing merges through the same thread
-// also serializes the read-modify-write so concurrent fetches of the same key
-// can't clobber each other. Bursts are coalesced: a plain save made redundant
-// by a later save/removal of the same file is dropped before touching disk.
+// Cache writes serialize candle vectors and `fsync` files. Candle rollovers,
+// REST pages, and watchlist contexts can all enqueue writes from live update
+// paths, so none of that may block the iced thread or a tokio worker. Every
+// write is handed to one dedicated thread. Routing merges through that thread
+// also serializes read-modify-write operations so concurrent fetches of the
+// same key cannot clobber one another. Bursts are coalesced: a plain save made
+// redundant by a later save/removal of the same file is dropped before I/O.
 // ---------------------------------------------------------------------------
 
 enum CacheWrite {
@@ -453,6 +497,7 @@ enum CacheWrite {
         symbol: String,
         interval: String,
         candles: Vec<Candle>,
+        observed_at_ms: u64,
     },
     MergeCandles {
         root: PathBuf,
@@ -460,6 +505,7 @@ enum CacheWrite {
         symbol: String,
         interval: String,
         candles: Vec<Candle>,
+        observed_at_ms: u64,
     },
     SaveBytes {
         path: PathBuf,
@@ -487,7 +533,11 @@ impl CacheWrite {
                 symbol,
                 interval,
                 ..
-            } => json_path(root, "candles", &candle_key(*source, symbol, interval)),
+            } => json_path(
+                root,
+                CANDLE_CACHE_NAMESPACE,
+                &candle_key(*source, symbol, interval),
+            ),
             CacheWrite::SaveBytes { path, .. } | CacheWrite::Remove { path } => path.clone(),
         }
     }
@@ -518,8 +568,16 @@ impl CacheWrite {
                 symbol,
                 interval,
                 candles,
+                observed_at_ms,
             } => {
-                let _ = save_candle_snapshot(root, source, &symbol, &interval, candles);
+                let _ = save_candle_snapshot_at(
+                    root,
+                    source,
+                    &symbol,
+                    &interval,
+                    candles,
+                    observed_at_ms,
+                );
             }
             CacheWrite::MergeCandles {
                 root,
@@ -527,8 +585,16 @@ impl CacheWrite {
                 symbol,
                 interval,
                 candles,
+                observed_at_ms,
             } => {
-                let _ = merge_candle_page_into_dir(&root, source, &symbol, &interval, candles);
+                let _ = merge_candle_page_into_dir(
+                    &root,
+                    source,
+                    &symbol,
+                    &interval,
+                    candles,
+                    observed_at_ms,
+                );
             }
             CacheWrite::SaveBytes { path, bytes } => {
                 let _ = write_bytes_atomic(&path, &bytes);
@@ -859,6 +925,7 @@ mod tests {
                 symbol: "BTC".to_string(),
                 interval: "1m".to_string(),
                 candles: Vec::new(),
+                observed_at_ms: 1,
             },
             CacheWrite::MergeCandles {
                 root: PathBuf::from("/tmp/cache"),
@@ -866,6 +933,7 @@ mod tests {
                 symbol: "BTC".to_string(),
                 interval: "1m".to_string(),
                 candles: Vec::new(),
+                observed_at_ms: 1,
             },
         ];
         assert_eq!(writes_to_run(&merge), vec![true, true]);
@@ -973,11 +1041,58 @@ mod tests {
     }
 
     #[test]
+    fn sparse_spot_startup_cache_keeps_a_small_legitimate_trade_gap() {
+        let root = test_cache_dir("fresh-sparse-spot");
+        let now_ms = 10_000_000_000;
+        save_candle_snapshot(
+            root.clone(),
+            ChartBackfillSource::Hyperliquid,
+            "@3",
+            "1m",
+            vec![
+                Candle::test_flat(now_ms - 180_000, 100.0),
+                Candle::test_flat(now_ms - 60_000, 101.0),
+            ],
+        )
+        .expect("snapshot save succeeds");
+
+        let served = load_fresh_candles_from_dir(
+            &root,
+            ChartBackfillSource::Hyperliquid,
+            "@3",
+            Timeframe::M1,
+            now_ms,
+        )
+        .expect("load succeeds")
+        .expect("sparse tail is fresh");
+
+        assert_eq!(served.len(), 2);
+        assert_eq!(served[0].open_time, now_ms - 180_000);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn api_named_spot_pair_does_not_require_continuous_market_spacing() {
+        assert!(!cache_requires_exact_intervals(
+            ChartBackfillSource::Hyperliquid,
+            "PURR/USDC",
+            "1m"
+        ));
+        assert!(cache_requires_exact_intervals(
+            ChartBackfillSource::Hyperliquid,
+            "BTC",
+            "1m"
+        ));
+    }
+
+    #[test]
     fn load_fresh_candles_rejects_tail_older_than_display_window() {
         let root = test_cache_dir("fresh-stale-tail");
         let timeframe = Timeframe::H1;
         let last_time = 1_000_000;
-        let now_ms = last_time + timeframe.cache_display_max_age_ms() + 1;
+        let last_close_time = last_time + 59_999;
+        let now_ms = last_close_time + timeframe.cache_display_max_age_ms() + 1;
         save_candle_snapshot(
             root.clone(),
             ChartBackfillSource::Hyperliquid,
@@ -1029,7 +1144,10 @@ mod tests {
         .expect("range load succeeds");
         assert!(spanning.is_none());
 
-        // A range wholly inside the recent block is still served.
+        // A snapshot with any uncertified hole is never allowed to suppress a
+        // provider request, even when the requested range happens to sit in its
+        // recent tail. Startup display may use that contained tail, but fetch
+        // cache hits require whole-snapshot completeness metadata.
         let recent_only = load_candles_for_range_from_dir(
             &root,
             ChartBackfillSource::Hyperliquid,
@@ -1038,9 +1156,8 @@ mod tests {
             now_ms - 180_000,
             now_ms,
         )
-        .expect("range load succeeds")
-        .expect("recent block is covered");
-        assert_eq!(recent_only.len(), 3);
+        .expect("range load succeeds");
+        assert!(recent_only.is_none());
 
         let _ = fs::remove_dir_all(root);
     }
@@ -1060,12 +1177,74 @@ mod tests {
 
         let cached = load_json::<Vec<Candle>>(
             &root,
-            "candles",
+            CANDLE_CACHE_NAMESPACE,
             &candle_key(ChartBackfillSource::Hyperliquid, "HYPE", "1m"),
         )
         .expect("load succeeds")
         .expect("snapshot exists");
         assert_eq!(cached.complete_through_ms, None);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn snapshot_excludes_candle_that_was_still_open_when_observed() {
+        let root = test_cache_dir("closed-only");
+        let closed = Candle::test_ohlcv(60_000, 119_999, [100.0, 101.0, 99.0, 100.5], 10.0);
+        let forming = Candle::test_ohlcv(120_000, 179_999, [100.5, 110.0, 100.0, 109.0], 20.0);
+
+        save_candle_snapshot_at(
+            root.clone(),
+            ChartBackfillSource::Hyperliquid,
+            "BTC",
+            "1m",
+            vec![closed, forming],
+            150_000,
+        )
+        .expect("snapshot save succeeds");
+
+        let cached = load_json::<Vec<Candle>>(
+            &root,
+            CANDLE_CACHE_NAMESPACE,
+            &candle_key(ChartBackfillSource::Hyperliquid, "BTC", "1m"),
+        )
+        .expect("load succeeds")
+        .expect("snapshot exists");
+        assert_eq!(cached.payload.len(), 1);
+        assert_eq!(cached.payload[0].open_time, 60_000);
+        assert_eq!(cached.complete_through_ms, Some(119_999));
+        assert_eq!(cached.fetched_at_ms, 150_000);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn incomplete_snapshot_cannot_satisfy_a_range_from_endpoint_coverage_alone() {
+        let root = test_cache_dir("incomplete-range");
+        let candles = vec![
+            Candle::test_flat(60_000, 100.0),
+            Candle::test_flat(180_000, 102.0),
+        ];
+        save_candle_snapshot_at(
+            root.clone(),
+            ChartBackfillSource::Hyperliquid,
+            "BTC",
+            "1m",
+            candles,
+            300_000,
+        )
+        .expect("snapshot save succeeds");
+
+        let cached = load_candles_for_range_from_dir(
+            &root,
+            ChartBackfillSource::Hyperliquid,
+            "BTC",
+            "1m",
+            60_000,
+            240_000,
+        )
+        .expect("range load succeeds");
+        assert!(cached.is_none());
 
         let _ = fs::remove_dir_all(root);
     }

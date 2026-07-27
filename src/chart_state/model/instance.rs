@@ -60,10 +60,18 @@ impl ChartInstance {
             heatmap_fetching: false,
             candle_fetch_request: None,
             candle_fetch_error: None,
+            candle_history_verified_at_ms: None,
+            candle_ws_updated_at_ms: None,
+            candle_ws_updates_during_fetch: Vec::new(),
+            candle_interval_gap: false,
             candle_backfill_exhausted: false,
             spot_candle_gap_reloaded_at_ms: None,
             secondary_candle_fetch_request: None,
             secondary_candle_fetch_error: None,
+            secondary_candle_history_verified_at_ms: None,
+            secondary_candle_ws_updated_at_ms: None,
+            secondary_candle_ws_updates_during_fetch: Vec::new(),
+            secondary_candle_interval_gap: false,
             secondary_candle_backfill_exhausted: false,
             secondary_spot_candle_gap_reloaded_at_ms: None,
             last_price_flash: None,
@@ -90,6 +98,7 @@ impl ChartInstance {
         self.chart.set_symbol_key(symbol);
         self.chart.set_symbol_label(display);
         if changed {
+            self.reset_primary_candle_trust();
             self.candle_backfill_exhausted = false;
             self.spot_candle_gap_reloaded_at_ms = None;
             self.reset_asset_context_rest_retry();
@@ -108,6 +117,7 @@ impl ChartInstance {
         self.secondary_symbol_display = Some(display.clone());
         self.chart.set_secondary_series_identity(symbol, display);
         if changed {
+            self.reset_secondary_candle_trust();
             self.secondary_candle_backfill_exhausted = false;
             self.secondary_spot_candle_gap_reloaded_at_ms = None;
         }
@@ -122,6 +132,7 @@ impl ChartInstance {
         self.secondary_editor_selected_index = None;
         self.secondary_candle_fetch_request = None;
         self.secondary_candle_fetch_error = None;
+        self.reset_secondary_candle_trust();
         self.secondary_candle_backfill_exhausted = false;
         self.secondary_spot_candle_gap_reloaded_at_ms = None;
         self.chart.clear_secondary_series();
@@ -172,10 +183,18 @@ impl ChartInstance {
             heatmap_fetching: false,
             candle_fetch_request: None,
             candle_fetch_error: self.candle_fetch_error.clone(),
+            candle_history_verified_at_ms: self.candle_history_verified_at_ms,
+            candle_ws_updated_at_ms: self.candle_ws_updated_at_ms,
+            candle_ws_updates_during_fetch: Vec::new(),
+            candle_interval_gap: self.candle_interval_gap,
             candle_backfill_exhausted: self.candle_backfill_exhausted,
             spot_candle_gap_reloaded_at_ms: self.spot_candle_gap_reloaded_at_ms,
             secondary_candle_fetch_request: None,
             secondary_candle_fetch_error: self.secondary_candle_fetch_error.clone(),
+            secondary_candle_history_verified_at_ms: self.secondary_candle_history_verified_at_ms,
+            secondary_candle_ws_updated_at_ms: self.secondary_candle_ws_updated_at_ms,
+            secondary_candle_ws_updates_during_fetch: Vec::new(),
+            secondary_candle_interval_gap: self.secondary_candle_interval_gap,
             secondary_candle_backfill_exhausted: self.secondary_candle_backfill_exhausted,
             secondary_spot_candle_gap_reloaded_at_ms: self.secondary_spot_candle_gap_reloaded_at_ms,
             last_price_flash: None,
@@ -197,6 +216,34 @@ impl ChartInstance {
 
     pub(crate) fn set_asset_context(&mut self, asset_ctx: Option<AssetContext>) {
         self.set_asset_context_at(asset_ctx, crate::app_time::now_ms());
+    }
+
+    pub(crate) fn reset_primary_candle_trust(&mut self) {
+        self.candle_history_verified_at_ms = None;
+        self.candle_ws_updated_at_ms = None;
+        self.candle_ws_updates_during_fetch.clear();
+        self.candle_interval_gap = false;
+    }
+
+    pub(crate) fn reset_secondary_candle_trust(&mut self) {
+        self.secondary_candle_history_verified_at_ms = None;
+        self.secondary_candle_ws_updated_at_ms = None;
+        self.secondary_candle_ws_updates_during_fetch.clear();
+        self.secondary_candle_interval_gap = false;
+    }
+
+    pub(crate) fn remember_primary_ws_candle(&mut self, candle: crate::api::Candle, now_ms: u64) {
+        self.candle_ws_updated_at_ms = Some(now_ms);
+        if self.candle_fetch_request.is_some() {
+            remember_ws_candle(&mut self.candle_ws_updates_during_fetch, candle);
+        }
+    }
+
+    pub(crate) fn remember_secondary_ws_candle(&mut self, candle: crate::api::Candle, now_ms: u64) {
+        self.secondary_candle_ws_updated_at_ms = Some(now_ms);
+        if self.secondary_candle_fetch_request.is_some() {
+            remember_ws_candle(&mut self.secondary_candle_ws_updates_during_fetch, candle);
+        }
     }
 
     pub(crate) fn set_asset_context_at(&mut self, asset_ctx: Option<AssetContext>, now_ms: u64) {
@@ -359,10 +406,18 @@ impl ChartInstance {
             heatmap_fetching: false,
             candle_fetch_request: None,
             candle_fetch_error: None,
+            candle_history_verified_at_ms: None,
+            candle_ws_updated_at_ms: None,
+            candle_ws_updates_during_fetch: Vec::new(),
+            candle_interval_gap: false,
             candle_backfill_exhausted: false,
             spot_candle_gap_reloaded_at_ms: None,
             secondary_candle_fetch_request: None,
             secondary_candle_fetch_error: None,
+            secondary_candle_history_verified_at_ms: None,
+            secondary_candle_ws_updated_at_ms: None,
+            secondary_candle_ws_updates_during_fetch: Vec::new(),
+            secondary_candle_interval_gap: false,
             secondary_candle_backfill_exhausted: false,
             secondary_spot_candle_gap_reloaded_at_ms: None,
             last_price_flash: None,
@@ -379,6 +434,27 @@ impl ChartInstance {
             open_interest_as_notional: false,
             asset_volume_as_notional: true,
             outcome_volume_as_notional: false,
+        }
+    }
+}
+
+/// Keep one latest live update per bucket and bound pathological provider
+/// behaviour while a slow request is in flight.
+fn remember_ws_candle(buffer: &mut Vec<crate::api::Candle>, candle: crate::api::Candle) {
+    if let Some(existing) = buffer
+        .iter_mut()
+        .find(|existing| existing.open_time == candle.open_time)
+    {
+        *existing = candle;
+    } else {
+        buffer.push(candle);
+        buffer.sort_by_key(|candle| candle.open_time);
+        // One hour of 1s buckets. This remains bounded, but is deliberately
+        // large enough that a slow request/retry cycle cannot let its older
+        // snapshot overwrite most of the live sequence.
+        const MAX_BUFFERED_WS_CANDLES: usize = 4_096;
+        if buffer.len() > MAX_BUFFERED_WS_CANDLES {
+            buffer.drain(0..buffer.len() - MAX_BUFFERED_WS_CANDLES);
         }
     }
 }

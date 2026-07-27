@@ -48,12 +48,32 @@ fn get_fresh_cached_candles_returns_only_trailing_run_across_gap() {
 }
 
 #[test]
+fn get_fresh_cached_candles_never_returns_the_forming_bucket() {
+    let closed = Candle::test_ohlcv(60_000, 119_999, [100.0, 101.0, 99.0, 100.5], 1.0);
+    let forming = Candle::test_ohlcv(120_000, 179_999, [100.5, 110.0, 100.0, 109.0], 2.0);
+    let mut cache = HashMap::from([(cache_key("BTC", Timeframe::M1), vec![closed, forming])]);
+    let mut order = VecDeque::from([cache_key("BTC", Timeframe::M1)]);
+
+    let candles = fresh_candles_or_panic(&mut cache, &mut order, "BTC", Timeframe::M1, 150_000);
+
+    assert_eq!(candles.len(), 1);
+    assert_eq!(candles[0].open_time, 60_000);
+}
+
+#[test]
 fn get_fresh_cached_candles_evicts_stale_entries() {
     let mut cache = HashMap::from([(cache_key("BTC", Timeframe::M1), vec![candle(0, 100.0)])]);
     let mut order = VecDeque::from([cache_key("BTC", Timeframe::M1)]);
-    let now_ms = Timeframe::M1.cache_display_max_age_ms() + 1;
+    let now_ms = 59_999 + Timeframe::M1.cache_display_max_age_ms() + 1;
 
-    let candles = get_fresh_cached_candles(&mut cache, &mut order, "BTC", Timeframe::M1, now_ms);
+    let candles = get_fresh_cached_candles(
+        &mut cache,
+        &mut order,
+        ChartBackfillSource::Hyperliquid,
+        "BTC",
+        Timeframe::M1,
+        now_ms,
+    );
 
     assert!(candles.is_none());
     assert!(cache.is_empty());

@@ -16,17 +16,10 @@ impl TradingTerminal {
         tf: Timeframe,
         session: Option<spaghetti::Session>,
         session_granularity: Option<Timeframe>,
-        cached_start_ms: Option<u64>,
         backfill: ChartBackfillFetchContext,
     ) -> Task<Message> {
         let now_ms = now_ms();
-        let (api_tf, mut start) =
-            Self::spaghetti_fetch_plan(tf, session, session_granularity, now_ms);
-        if let Some(c) = cached_start_ms
-            && c > start
-        {
-            start = c;
-        }
+        let (api_tf, start) = Self::spaghetti_fetch_plan(tf, session, session_granularity, now_ms);
         let sid = spaghetti_id;
         let coin_str = coin.to_string();
         let request = SpaghettiCandleFetch {
@@ -40,15 +33,16 @@ impl TradingTerminal {
             session_granularity,
         };
         Task::perform(
-            api::fetch_chart_backfill_candles(
-                backfill.source,
-                backfill.hydromancer_api_key,
-                zeroize::Zeroizing::new(String::new()),
-                coin_str.clone(),
-                api_tf.api_str().to_string(),
-                start,
-                now_ms,
-            ),
+            api::fetch_chart_backfill_candles(api::ChartCandleFetchRequest {
+                source: backfill.source,
+                hydromancer_api_key: backfill.hydromancer_api_key,
+                schwab_access_token: zeroize::Zeroizing::new(String::new()),
+                coin: coin_str.clone(),
+                interval: api_tf.api_str().to_string(),
+                start_time: start,
+                end_time: now_ms,
+                policy: api::CandleFetchPolicy::NetworkOnly,
+            }),
             move |result| Message::SpaghettiCandlesLoaded(request.clone(), result),
         )
     }

@@ -35,6 +35,7 @@ impl TradingTerminal {
             instance.chart.candles.clear();
             instance.chart.status = ChartStatus::Loading;
             instance.candle_fetch_error = None;
+            instance.reset_primary_candle_trust();
             instance.candle_backfill_exhausted = false;
             Self::clear_chart_market_display_state(instance);
             instance.chart.candle_cache.clear();
@@ -66,6 +67,7 @@ impl TradingTerminal {
 
         if let Some(instance) = self.charts.get_mut(&id) {
             instance.secondary_candle_fetch_error = None;
+            instance.reset_secondary_candle_trust();
             instance.secondary_candle_backfill_exhausted = false;
             if instance.chart.secondary_series.is_none()
                 && let Some(symbol) = instance.secondary_symbol.clone()

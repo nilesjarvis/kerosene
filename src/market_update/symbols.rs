@@ -315,7 +315,6 @@ impl TradingTerminal {
                     timeframe,
                     session,
                     session_granularity,
-                    None,
                     ChartBackfillFetchContext::new(
                         chart_backfill_source,
                         read_data_provider_generation,

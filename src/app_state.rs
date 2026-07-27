@@ -613,8 +613,9 @@ pub(crate) struct TradingTerminal {
     // Last status bar tick instant, used by render code that displays monotonic timers.
     pub(crate) status_bar_now: Instant,
     // Global cache for candlestick data
-    pub(crate) candle_data_cache: HashMap<(String, Timeframe), Vec<api::Candle>>,
-    pub(crate) candle_data_cache_order: VecDeque<(String, Timeframe)>,
+    pub(crate) candle_data_cache:
+        HashMap<(config::ChartBackfillSource, String, Timeframe), Vec<api::Candle>>,
+    pub(crate) candle_data_cache_order: VecDeque<(config::ChartBackfillSource, String, Timeframe)>,
     // Shared cache/dedupe for HyperDash historical heatmap requests
     pub(crate) heatmap_data_cache: HashMap<String, LiquidationHeatmap>,
     pub(crate) heatmap_data_cache_order: VecDeque<String>,

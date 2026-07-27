@@ -708,15 +708,16 @@ impl TradingTerminal {
         let fetch_request = request.clone();
 
         Task::perform(
-            api::fetch_chart_backfill_candles(
-                fetch_request.source,
+            api::fetch_chart_backfill_candles(api::ChartCandleFetchRequest {
+                source: fetch_request.source,
                 hydromancer_api_key,
-                zeroize::Zeroizing::new(String::new()),
-                fetch_request.coin,
-                fetch_request.timeframe.api_str().to_string(),
-                fetch_request.start_ms,
-                fetch_request.end_ms,
-            ),
+                schwab_access_token: zeroize::Zeroizing::new(String::new()),
+                coin: fetch_request.coin,
+                interval: fetch_request.timeframe.api_str().to_string(),
+                start_time: fetch_request.start_ms,
+                end_time: fetch_request.end_ms,
+                policy: api::CandleFetchPolicy::CacheFirst,
+            }),
             move |result| Message::JournalSnapshotLoaded {
                 account_key: account_key.clone().into(),
                 address: address.clone().into(),

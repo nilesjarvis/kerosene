@@ -46,6 +46,13 @@ impl Timeframe {
         Self::from_config_str_opt(s).unwrap_or(Timeframe::H1)
     }
 
+    pub(crate) fn from_api_str_opt(s: &str) -> Option<Self> {
+        API_STRS
+            .iter()
+            .position(|api_str| *api_str == s)
+            .map(|idx| ALL_TIMEFRAMES[idx])
+    }
+
     pub(crate) fn config_str(self) -> &'static str {
         CONFIG_STRS[self.index()]
     }

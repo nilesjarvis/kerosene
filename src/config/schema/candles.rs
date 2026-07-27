@@ -56,7 +56,7 @@ impl std::fmt::Display for ReadDataProvider {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize)]
 pub enum ChartBackfillSource {
     #[default]
     Hyperliquid,

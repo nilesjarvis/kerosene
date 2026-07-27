@@ -1,4 +1,5 @@
 use crate::api::Candle;
+use crate::config::ChartBackfillSource;
 use crate::timeframe::Timeframe;
 
 use super::*;
@@ -12,7 +13,11 @@ fn candle(open_time: u64, close: f64) -> Candle {
 }
 
 fn cache_key(symbol: &str, timeframe: Timeframe) -> CandleCacheKey {
-    (symbol.to_string(), timeframe)
+    (
+        ChartBackfillSource::Hyperliquid,
+        symbol.to_string(),
+        timeframe,
+    )
 }
 
 fn cached_candles_or_panic<'a>(
@@ -33,7 +38,14 @@ fn fresh_candles_or_panic(
     timeframe: Timeframe,
     now_ms: u64,
 ) -> Vec<Candle> {
-    match get_fresh_cached_candles(cache, order, symbol, timeframe, now_ms) {
+    match get_fresh_cached_candles(
+        cache,
+        order,
+        ChartBackfillSource::Hyperliquid,
+        symbol,
+        timeframe,
+        now_ms,
+    ) {
         Some(candles) => candles,
         None => panic!("missing fresh cached candles for {symbol}"),
     }

@@ -58,17 +58,17 @@ fn ws_candle_update_fans_out_to_matching_chart_instances() {
 
     let mut first = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
     first.chart.status = ChartStatus::Loaded;
-    first.chart.set_candles(vec![candle(1_000, 100.0)]);
+    first.chart.set_candles(vec![candle(3_600_000, 100.0)]);
 
     let mut second = ChartInstance::new(2, "BTC".to_string(), Timeframe::H1);
     second.chart.status = ChartStatus::Loaded;
-    second.chart.set_candles(vec![candle(1_000, 100.0)]);
+    second.chart.set_candles(vec![candle(3_600_000, 100.0)]);
 
     let mut different_timeframe = ChartInstance::new(3, "BTC".to_string(), Timeframe::M5);
     different_timeframe.chart.status = ChartStatus::Loaded;
     different_timeframe
         .chart
-        .set_candles(vec![candle(1_000, 100.0)]);
+        .set_candles(vec![candle(3_600_000, 100.0)]);
 
     terminal.charts.insert(1, first);
     terminal.charts.insert(2, second);
@@ -79,12 +79,43 @@ fn ws_candle_update_fans_out_to_matching_chart_instances() {
         "BTC".to_string(),
         "1h".to_string(),
         source_context(&terminal, None),
-        candle(2_000, 101.0),
+        candle(7_200_000, 101.0),
     );
 
     assert_eq!(last_close(&terminal, 1), Some(101.0));
     assert_eq!(last_close(&terminal, 2), Some(101.0));
     assert_eq!(last_close(&terminal, 3), Some(100.0));
+}
+
+#[test]
+fn rollover_cache_prefers_provider_verified_duplicate_chart() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    terminal.candle_data_cache.clear();
+    terminal.candle_data_cache_order.clear();
+
+    let mut unverified = ChartInstance::new(1, "BTC".to_string(), Timeframe::M1);
+    unverified.chart.set_candles(vec![candle(60_000, 90.0)]);
+    unverified.candle_ws_updated_at_ms = Some(u64::MAX);
+
+    let mut verified = ChartInstance::new(2, "BTC".to_string(), Timeframe::M1);
+    verified.chart.set_candles(vec![candle(60_000, 100.0)]);
+    verified.candle_history_verified_at_ms = Some(1);
+
+    terminal.charts.insert(1, unverified);
+    terminal.charts.insert(2, verified);
+    terminal.cache_primary_candles_for("BTC", "1m");
+
+    let key = (
+        crate::config::ChartBackfillSource::Hyperliquid,
+        "BTC".to_string(),
+        Timeframe::M1,
+    );
+    let cached = terminal
+        .candle_data_cache
+        .get(&key)
+        .expect("shared candle cache");
+    assert_eq!(cached.last().map(|candle| candle.close), Some(100.0));
 }
 
 #[test]
@@ -162,6 +193,7 @@ fn sparse_spot_gap_during_backoff_appends_without_reload_churn() {
     let instance = terminal.charts.get(&1).expect("chart");
     assert!(instance.candle_fetch_request.is_none());
     assert_eq!(instance.chart.candles.len(), 2);
+    assert!(instance.candle_interval_gap);
     assert_eq!(last_close(&terminal, 1), Some(200.0));
 }
 
@@ -187,6 +219,97 @@ fn ws_candle_one_interval_ahead_appends_without_reload() {
     let instance = terminal.charts.get(&1).expect("chart");
     assert!(instance.candle_fetch_request.is_none());
     assert_eq!(last_close(&terminal, 1), Some(101.0));
+}
+
+#[test]
+fn misaligned_forward_ws_candle_reloads_continuous_market() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+
+    let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(3_600_000, 100.0)]);
+    terminal.charts.insert(1, chart);
+
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, None),
+        candle(3_900_000, 101.0),
+    );
+
+    let instance = terminal.charts.get(&1).expect("chart");
+    assert!(instance.candle_fetch_request.is_some());
+    assert!(instance.chart.candles.is_empty());
+}
+
+#[test]
+fn ws_candle_skipping_one_interval_reloads_continuous_market() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+
+    let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(3_600_000, 100.0)]);
+    terminal.charts.insert(1, chart);
+
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, None),
+        candle(10_800_000, 105.0),
+    );
+
+    let instance = terminal.charts.get(&1).expect("chart");
+    assert!(instance.candle_fetch_request.is_some());
+    assert!(instance.chart.candles.is_empty());
+}
+
+#[test]
+fn out_of_order_ws_candle_triggers_network_reconciliation() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+
+    let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(7_200_000, 100.0)]);
+    terminal.charts.insert(1, chart);
+
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, None),
+        candle(3_600_000, 90.0),
+    );
+
+    let instance = terminal.charts.get(&1).expect("chart");
+    assert!(instance.candle_fetch_request.is_some());
+    assert!(instance.chart.candles.is_empty());
+}
+
+#[test]
+fn live_candle_is_accepted_while_history_is_still_loading() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    terminal
+        .charts
+        .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
+
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, None),
+        candle(3_600_000, 101.0),
+    );
+
+    let instance = terminal.charts.get(&1).expect("chart");
+    assert!(matches!(instance.chart.status, ChartStatus::Loaded));
+    assert_eq!(instance.chart.candles.len(), 1);
+    assert!(instance.candle_ws_updated_at_ms.is_some());
 }
 
 #[test]
@@ -235,7 +358,7 @@ fn stale_hydromancer_ws_candle_generation_does_not_update_chart() {
 
     let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
     chart.chart.status = ChartStatus::Loaded;
-    chart.chart.set_candles(vec![candle(1_000, 100.0)]);
+    chart.chart.set_candles(vec![candle(3_600_000, 100.0)]);
     terminal.charts.insert(1, chart);
 
     let _task = terminal.apply_chart_ws_candle_update(
@@ -243,7 +366,7 @@ fn stale_hydromancer_ws_candle_generation_does_not_update_chart() {
         "BTC".to_string(),
         "1h".to_string(),
         source_context(&terminal, Some(1)),
-        candle(2_000, 101.0),
+        candle(7_200_000, 101.0),
     );
 
     assert_eq!(last_close(&terminal, 1), Some(100.0));
@@ -329,7 +452,7 @@ fn ws_candle_update_gates_provider_source() {
 
     let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
     chart.chart.status = ChartStatus::Loaded;
-    chart.chart.set_candles(vec![candle(1_000, 100.0)]);
+    chart.chart.set_candles(vec![candle(3_600_000, 100.0)]);
     terminal.charts.insert(1, chart);
 
     let _task = terminal.apply_chart_ws_candle_update(
@@ -337,7 +460,7 @@ fn ws_candle_update_gates_provider_source() {
         "BTC".to_string(),
         "1h".to_string(),
         source_context(&terminal, Some(2)),
-        candle(2_000, 101.0),
+        candle(7_200_000, 101.0),
     );
     assert_eq!(last_close(&terminal, 1), Some(100.0));
 
@@ -348,7 +471,7 @@ fn ws_candle_update_gates_provider_source() {
         "BTC".to_string(),
         "1h".to_string(),
         source_context(&terminal, None),
-        candle(3_000, 102.0),
+        candle(7_200_000, 102.0),
     );
     assert_eq!(last_close(&terminal, 1), Some(102.0));
 }

@@ -8,6 +8,24 @@ use crate::chart::model::SecondarySeries;
 
 pub(crate) const MAX_CHART_CANDLES: usize = 10_000;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CandlePushResult {
+    RejectedInvalid,
+    RejectedOutOfOrder,
+    Updated,
+    Appended,
+}
+
+impl CandlePushResult {
+    pub(crate) fn applied(self) -> bool {
+        matches!(self, Self::Updated | Self::Appended)
+    }
+
+    pub(crate) fn appended(self) -> bool {
+        matches!(self, Self::Appended)
+    }
+}
+
 impl CandlestickChart {
     /// Replace all candle data (e.g. after initial fetch or interval change).
     pub fn set_candles(&mut self, candles: Vec<Candle>) {
@@ -33,21 +51,29 @@ impl CandlestickChart {
     }
 
     /// Append or update the latest candle from a real-time feed.
-    pub fn push_candle(&mut self, candle: Candle) {
+    pub(crate) fn push_candle(&mut self, candle: Candle) -> CandlePushResult {
         if !is_valid_candle(&candle) {
-            return;
+            return CandlePushResult::RejectedInvalid;
         }
-        if let Some(last) = self.candles.last_mut() {
+        let result = if let Some(last) = self.candles.last_mut() {
             if last.open_time == candle.open_time {
                 *last = candle;
+                CandlePushResult::Updated
+            } else if candle.open_time < last.open_time {
+                CandlePushResult::RejectedOutOfOrder
             } else {
                 self.candles.push(candle);
                 trim_to_max_chart_candles(&mut self.candles);
+                CandlePushResult::Appended
             }
         } else {
             self.candles.push(candle);
+            CandlePushResult::Appended
+        };
+        if result.applied() {
+            self.candle_cache.clear();
         }
-        self.candle_cache.clear();
+        result
     }
 
     pub(crate) fn set_secondary_series_identity(
@@ -92,24 +118,32 @@ impl CandlestickChart {
         self.candle_cache.clear();
     }
 
-    pub(crate) fn push_secondary_candle(&mut self, candle: Candle) {
+    pub(crate) fn push_secondary_candle(&mut self, candle: Candle) -> CandlePushResult {
         if !is_valid_candle(&candle) {
-            return;
+            return CandlePushResult::RejectedInvalid;
         }
         let Some(series) = self.secondary_series.as_mut() else {
-            return;
+            return CandlePushResult::RejectedInvalid;
         };
-        if let Some(last) = series.candles.last_mut() {
+        let result = if let Some(last) = series.candles.last_mut() {
             if last.open_time == candle.open_time {
                 *last = candle;
+                CandlePushResult::Updated
+            } else if candle.open_time < last.open_time {
+                CandlePushResult::RejectedOutOfOrder
             } else {
                 series.candles.push(candle);
                 trim_to_max_chart_candles(&mut series.candles);
+                CandlePushResult::Appended
             }
         } else {
             series.candles.push(candle);
+            CandlePushResult::Appended
+        };
+        if result.applied() {
+            self.candle_cache.clear();
         }
-        self.candle_cache.clear();
+        result
     }
 
     pub fn set_error(&mut self, msg: String) {
