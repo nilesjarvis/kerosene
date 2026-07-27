@@ -23,7 +23,7 @@ Choose the artifact for your platform and follow the platform-specific install n
 ## Preview
 
 <p align="center">
-  <img src="assets/screenshots/themes/dark.png" alt="Kerosene trading terminal in a dark theme with charts, live watchlists, order book, positions, and order entry panes" width="100%">
+  <img src="assets/screenshots/themes/dark.png" alt="Current Kerosene trading terminal with a HYPE candlestick chart, live order book, symbol search, positions, and order entry panes" width="100%">
 </p>
 
 <table>
@@ -39,9 +39,24 @@ Choose the artifact for your platform and follow the platform-specific install n
       <sub><strong>Build the layout.</strong> Add charts, order books, watchlists, tools, and account panes as your workflow changes.</sub>
     </td>
     <td width="33%" valign="top">
-      <img src="assets/screenshots/theme%20selector.png" alt="Theme selector showing bundled and custom Kerosene themes">
+      <img src="assets/screenshots/theme%20selector.png" alt="Built-in Themes settings window showing bundled Kerosene color palettes">
       <br>
       <sub><strong>Make it yours.</strong> Switch between bundled themes or keep custom palettes for different desks and sessions.</sub>
+    </td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/add-account-window.png" alt="Dedicated Add Hyperliquid Account window for creating a watch-only or trading profile">
+      <br>
+      <sub><strong>Manage account profiles.</strong> Add a watch-only account or attach an agent key from a focused, separate window.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/wallet-clusters-window.png" alt="Wallet Clusters window for grouping profiles and coordinating weighted orders">
+      <br>
+      <sub><strong>Coordinate wallet clusters.</strong> Group saved trading profiles, weight members, and manage split orders from one window.</sub>
     </td>
   </tr>
 </table>
