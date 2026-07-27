@@ -72,3 +72,8 @@ fn tick_candles_are_realtime_only() {
     assert!(interval_uses_orderbook_ticks("tick"));
     assert!(!interval_uses_orderbook_ticks("1s"));
 }
+
+#[test]
+fn calendar_months_are_not_gap_filled_as_fixed_durations() {
+    assert_eq!(candle_interval_ms("1M"), None);
+}

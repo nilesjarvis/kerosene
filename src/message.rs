@@ -7,7 +7,9 @@ use crate::api::{self, Candle, OrderBook};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart::ChartViewport;
 use crate::chart_screenshot::ChartScreenshotState;
-use crate::chart_state::{CandleFetchRequest, ChartId, ChartSurfaceId, FundingFetchRequest};
+use crate::chart_state::{
+    CandleCacheTarget, CandleFetchRequest, ChartId, ChartSurfaceId, FundingFetchRequest,
+};
 use crate::config;
 use crate::hydromancer_api::FundingRatePoint;
 use crate::hype_etf_state::{HypeEtfData, HypeEtfView};
@@ -1253,6 +1255,11 @@ pub(crate) enum Message {
     ChartSwitchTimeframe(ChartId, Timeframe),
     ChartReload(ChartId),
     ChartResetView(ChartId, ChartSurfaceId),
+    ChartCachedCandlesLoaded(
+        CandleFetchRequest,
+        CandleCacheTarget,
+        Result<Option<Vec<Candle>>, String>,
+    ),
     ChartCandlesLoaded(CandleFetchRequest, Result<Vec<Candle>, String>),
     ChartSecondaryCandlesLoaded(CandleFetchRequest, Result<Vec<Candle>, String>),
     ChartFundingHistoryLoaded(

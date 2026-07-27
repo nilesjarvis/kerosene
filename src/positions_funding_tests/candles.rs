@@ -2,7 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::timeframe::Timeframe;
 
 #[test]
-fn candle_fetch_request_overlaps_cached_candle_refresh() {
+fn candle_fetch_request_revalidates_full_lookback_with_cached_candles() {
     let last_candle_ms = 10 * 60 * 60 * 1000;
     let request = TradingTerminal::build_candle_fetch_request(
         7,
@@ -25,8 +25,8 @@ fn candle_fetch_request_overlaps_cached_candle_refresh() {
         crate::config::ChartBackfillSource::Hyperliquid
     );
     assert_eq!(
-        request.start_ms,
-        last_candle_ms - Timeframe::H1.duration_ms() * 2
+        request.end_ms.saturating_sub(request.start_ms),
+        Timeframe::H1.lookback_ms()
     );
     assert_eq!(request.attempt, 0);
 }

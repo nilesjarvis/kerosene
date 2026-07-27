@@ -97,6 +97,19 @@ fn realtime_candle_update_replaces_latest_candle_without_trimming() {
 }
 
 #[test]
+fn realtime_candle_update_rejects_backward_timestamp() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_candles(vec![candle_at(60_000, 10.0), candle_at(120_000, 20.0)]);
+
+    let result = chart.push_candle(candle_at(60_000, 99.0));
+
+    assert!(!result.applied());
+    assert_eq!(chart.candles.len(), 2);
+    assert_eq!(chart.candles[0].close, 10.0);
+    assert_eq!(chart.candles[1].close, 20.0);
+}
+
+#[test]
 fn merge_funding_history_updates_overlaps_and_keeps_sorted_order() {
     let mut chart = CandlestickChart::new(1);
     chart.set_funding_history(vec![

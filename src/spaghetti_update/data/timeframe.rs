@@ -65,31 +65,17 @@ impl TradingTerminal {
         }
 
         let mut tasks = Vec::new();
-        let mut cached_updates = Vec::new();
         let chart_backfill_source = self.chart_backfill_source;
         let read_data_provider_generation = self.read_data_provider_generation;
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
-        let target_tf = Self::spaghetti_effective_timeframe_for(
-            inst_interval,
-            inst_active_session,
-            inst_session_granularity,
-            Self::now_ms(),
-        );
-
         for symbol in to_load {
-            let mut cached_last_time = None;
-            if let Some(cached_candles) = self.get_cached_candles(&symbol, target_tf) {
-                cached_last_time = cached_candles.last().map(|c| c.open_time);
-                cached_updates.push((symbol.clone(), cached_candles));
-            }
             tasks.push(Self::fetch_spaghetti_candles(
                 id,
                 &symbol,
                 inst_interval,
                 inst_active_session,
                 inst_session_granularity,
-                cached_last_time,
                 ChartBackfillFetchContext::new(
                     chart_backfill_source,
                     read_data_provider_generation,
@@ -101,14 +87,8 @@ impl TradingTerminal {
 
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             for series in &mut inst.canvas.series {
-                if let Some((_, candles)) = cached_updates.iter().find(|(s, _)| s == &series.symbol)
-                {
-                    series.candles = candles.clone();
-                    series.loaded = true;
-                } else {
-                    series.candles.clear();
-                    series.loaded = false;
-                }
+                series.candles.clear();
+                series.loaded = false;
             }
             Self::refresh_spaghetti_session_anchor(inst);
             if inst.pair_mode {

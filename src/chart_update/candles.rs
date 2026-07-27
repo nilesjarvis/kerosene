@@ -16,6 +16,9 @@ impl TradingTerminal {
             Message::ChartSwitchTimeframe(id, timeframe) => {
                 self.switch_chart_candle_timeframe(id, timeframe)
             }
+            Message::ChartCachedCandlesLoaded(request, target, result) => {
+                self.apply_chart_cached_candles_loaded(request, target, result)
+            }
             Message::ChartCandlesLoaded(request, result) => {
                 self.apply_chart_candles_loaded(request, result)
             }

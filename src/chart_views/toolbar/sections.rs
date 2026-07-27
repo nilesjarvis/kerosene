@@ -2,7 +2,7 @@ use crate::annotations::{
     AnnotationId, AnnotationStyle, DEFAULT_LEVEL_COLOR, DEFAULT_LINE_COLOR, DEFAULT_MEASURE_COLOR,
     DrawingTool, LineStyle,
 };
-use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
+use crate::chart_state::{CandleFetchMode, ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
 use iced::widget::{Row, button, column, container, rule, text, tooltip};
 use iced::{Color, Element, Fill, Length, Theme};
@@ -125,12 +125,42 @@ pub(super) fn chart_fetch_status_label(
     theme: &Theme,
 ) -> Option<Element<'static, Message>> {
     if has_candles && instance.candle_fetch_request.is_some() {
+        let label = match instance
+            .candle_fetch_request
+            .as_ref()
+            .map(|request| request.mode)
+        {
+            Some(CandleFetchMode::BackfillOlder) => "Loading history",
+            Some(CandleFetchMode::Refresh)
+                if instance.candle_history_verified_at_ms.is_none()
+                    && instance.candle_ws_updated_at_ms.is_none() =>
+            {
+                "Cached · verifying"
+            }
+            Some(CandleFetchMode::Refresh) if instance.candle_history_verified_at_ms.is_none() => {
+                "Live · verifying history"
+            }
+            _ => "Refreshing",
+        };
+        Some(chart_toolbar_status_label(label, theme.palette().warning))
+    } else if has_candles && instance.candle_fetch_error.is_some() {
         Some(chart_toolbar_status_label(
-            "Refreshing",
+            "Candles stale",
+            theme.palette().danger,
+        ))
+    } else if has_candles
+        && instance.candle_history_verified_at_ms.is_none()
+        && instance.candle_ws_updated_at_ms.is_none()
+    {
+        Some(chart_toolbar_status_label(
+            "Cached · unverified",
+            theme.palette().danger,
+        ))
+    } else if instance.candle_interval_gap {
+        Some(chart_toolbar_status_label(
+            "Candle gaps",
             theme.palette().warning,
         ))
-    } else if has_candles && instance.candle_fetch_error.is_some() {
-        Some(chart_toolbar_status_label("Stale", theme.palette().danger))
     } else if instance.secondary_candle_fetch_request.is_some() {
         Some(chart_toolbar_status_label(
             "CMP Refreshing",

@@ -36,14 +36,13 @@ pub fn normalize_candles(mut candles: Vec<Candle>) -> Vec<Candle> {
 // ---------------------------------------------------------------------------
 // Contiguity / gap detection
 //
-// A healthy candle series is exactly interval-spaced. A discontinuity larger
-// than a couple of intervals means missed data: an exchange/stream outage, a
-// sleep/wake reconnect, or a stale-cache stitch (an old block joined to a fresh
-// block with the middle never fetched). Such a series renders as a price jump
-// because the chart positions candles by index, not by wall-clock time, so the
-// cache must never silently serve, persist, or extend across one. One or two
-// legitimately missing candles are tolerated so thin markets neither churn
-// (repeated reloads) nor lose warm-start history.
+// A continuous-market series should be exactly interval-spaced. Missing data
+// can come from an exchange/stream outage, a sleep/wake reconnect, or a stale
+// cache stitch (an old block joined to a fresh tail). Such a series renders as
+// a price jump because the chart positions candles by index, not wall-clock
+// time, so continuous-market cache paths use the exact helpers below. Sparse
+// markets use the separately named tolerant helpers so one or two legitimately
+// empty trade buckets do not discard their warm-start tail.
 // ---------------------------------------------------------------------------
 
 /// Adjacent candles separated by more than this many intervals are treated as a
@@ -57,17 +56,32 @@ fn max_contiguous_gap_ms(interval_ms: u64) -> Option<u64> {
     (interval_ms != 0).then(|| interval_ms.saturating_mul(MAX_CONTIGUOUS_GAP_INTERVALS))
 }
 
-/// Whether `new_open_time` lands far enough past `last_open_time` to indicate a
-/// real gap (missed candles) rather than the next candle or an in-place update.
+/// Whether `new_open_time` skips at least one expected bucket.
 pub fn open_time_starts_after_gap(
     last_open_time: u64,
     new_open_time: u64,
     interval_ms: u64,
 ) -> bool {
-    match max_contiguous_gap_ms(interval_ms) {
-        Some(max_gap) => new_open_time.saturating_sub(last_open_time) > max_gap,
-        None => false,
-    }
+    interval_ms != 0 && new_open_time > last_open_time.saturating_add(interval_ms)
+}
+
+/// Whether an open-time-sorted series omits at least one expected bucket.
+pub fn candles_have_missing_intervals(candles: &[Candle], interval_ms: u64) -> bool {
+    interval_ms != 0
+        && candles
+            .windows(2)
+            .any(|pair| pair[1].open_time > pair[0].open_time.saturating_add(interval_ms))
+}
+
+/// Whether adjacent buckets fail to advance by exactly one interval.
+///
+/// Normalization has already sorted and deduplicated the series, so a shorter
+/// delta is malformed/overlapping data and a longer delta is a missing bucket.
+pub fn candles_have_interval_discontinuity(candles: &[Candle], interval_ms: u64) -> bool {
+    interval_ms != 0
+        && candles
+            .windows(2)
+            .any(|pair| pair[1].open_time != pair[0].open_time.saturating_add(interval_ms))
 }
 
 /// Whether any adjacent pair in an open-time-sorted series is separated by a gap
@@ -102,6 +116,20 @@ pub fn trailing_contiguous_run_start(candles: &[Candle], interval_ms: u64) -> us
     start
 }
 
+/// Index of the first candle in the trailing exactly interval-spaced run.
+pub fn trailing_exact_run_start(candles: &[Candle], interval_ms: u64) -> usize {
+    if interval_ms == 0 {
+        return 0;
+    }
+    let mut start = 0;
+    for i in 1..candles.len() {
+        if candles[i].open_time != candles[i - 1].open_time.saturating_add(interval_ms) {
+            start = i;
+        }
+    }
+    start
+}
+
 #[cfg(test)]
 mod gap_tests {
     use super::*;
@@ -126,7 +154,18 @@ mod gap_tests {
         // One missing candle (delta == 2 intervals) is within tolerance.
         let candles = series(&[60_000, 180_000, 240_000]);
         assert!(!candles_have_interior_gap(&candles, 60_000));
+        assert!(candles_have_missing_intervals(&candles, 60_000));
+        assert!(candles_have_interval_discontinuity(&candles, 60_000));
         assert_eq!(trailing_contiguous_run_start(&candles, 60_000), 0);
+        assert_eq!(trailing_exact_run_start(&candles, 60_000), 1);
+    }
+
+    #[test]
+    fn exact_run_rejects_overlapping_or_misaligned_buckets() {
+        let candles = series(&[60_000, 90_000, 150_000]);
+        assert!(!candles_have_missing_intervals(&candles, 60_000));
+        assert!(candles_have_interval_discontinuity(&candles, 60_000));
+        assert_eq!(trailing_exact_run_start(&candles, 60_000), 1);
     }
 
     #[test]
@@ -146,7 +185,7 @@ mod gap_tests {
     #[test]
     fn open_time_gap_detection_matches_thresholds() {
         assert!(!open_time_starts_after_gap(60_000, 120_000, 60_000)); // next candle
-        assert!(!open_time_starts_after_gap(60_000, 180_000, 60_000)); // one skip
+        assert!(open_time_starts_after_gap(60_000, 180_000, 60_000)); // one skip
         assert!(open_time_starts_after_gap(60_000, 600_000, 60_000)); // real gap
     }
 
@@ -154,7 +193,10 @@ mod gap_tests {
     fn unknown_interval_makes_no_contiguity_decision() {
         let candles = series(&[1, 10_000_000]);
         assert!(!candles_have_interior_gap(&candles, 0));
+        assert!(!candles_have_missing_intervals(&candles, 0));
+        assert!(!candles_have_interval_discontinuity(&candles, 0));
         assert_eq!(trailing_contiguous_run_start(&candles, 0), 0);
+        assert_eq!(trailing_exact_run_start(&candles, 0), 0);
         assert!(!open_time_starts_after_gap(1, 10_000_000, 0));
     }
 }

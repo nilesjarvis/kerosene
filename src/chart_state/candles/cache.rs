@@ -1,4 +1,5 @@
 use crate::api::{self, Candle};
+use crate::config::ChartBackfillSource;
 use crate::timeframe::Timeframe;
 use std::collections::{HashMap, VecDeque};
 
@@ -9,13 +10,14 @@ mod tests;
 // Candle Cache
 // ---------------------------------------------------------------------------
 
-type CandleCacheKey = (String, Timeframe);
+type CandleCacheKey = (ChartBackfillSource, String, Timeframe);
 
 const CANDLE_CACHE_CAPACITY: usize = 100;
 
 pub(super) fn store_normalized_candles(
     cache: &mut HashMap<CandleCacheKey, Vec<Candle>>,
     order: &mut VecDeque<CandleCacheKey>,
+    source: ChartBackfillSource,
     symbol: &str,
     timeframe: Timeframe,
     candles: Vec<Candle>,
@@ -25,7 +27,7 @@ pub(super) fn store_normalized_candles(
         return;
     }
 
-    let key = (symbol.to_string(), timeframe);
+    let key = (source, symbol.to_string(), timeframe);
     order.retain(|existing| existing != &key);
     cache.insert(key.clone(), candles);
     order.push_back(key);
@@ -40,13 +42,19 @@ pub(super) fn store_normalized_candles(
 pub(super) fn get_fresh_cached_candles(
     cache: &mut HashMap<CandleCacheKey, Vec<Candle>>,
     order: &mut VecDeque<CandleCacheKey>,
+    source: ChartBackfillSource,
     symbol: &str,
     timeframe: Timeframe,
     now_ms: u64,
 ) -> Option<Vec<Candle>> {
-    let key = (symbol.to_string(), timeframe);
-    let candles = cache.get(&key)?;
-    let last_time = candles.last().map(|candle| candle.open_time).unwrap_or(0);
+    let key = (source, symbol.to_string(), timeframe);
+    let mut candles = cache.get(&key)?.clone();
+    candles.retain(|candle| candle.close_time <= now_ms);
+    let Some(last_time) = candles.last().map(|candle| candle.close_time) else {
+        cache.remove(&key);
+        order.retain(|existing| existing != &key);
+        return None;
+    };
 
     if now_ms.saturating_sub(last_time) > timeframe.cache_display_max_age_ms() {
         cache.remove(&key);
@@ -60,8 +68,12 @@ pub(super) fn get_fresh_cached_candles(
     // Mirror the on-disk guard: hand back only the trailing contiguous run so an
     // interior gap is never re-displayed. The clean chart series overwrites this
     // entry on the next `cache_candles`, healing the LRU.
-    let mut candles = candles.clone();
-    let start = api::trailing_contiguous_run_start(&candles, timeframe.duration_ms());
+    let start =
+        if crate::api_cache::cache_requires_exact_intervals(source, symbol, timeframe.api_str()) {
+            api::trailing_exact_run_start(&candles, timeframe.duration_ms())
+        } else {
+            api::trailing_contiguous_run_start(&candles, timeframe.duration_ms())
+        };
     if start > 0 {
         candles.drain(0..start);
     }

@@ -1,6 +1,6 @@
 use crate::annotations::{Annotation, AnnotationId};
 use crate::app_state::TradingTerminal;
-use crate::chart_state::{ChartBackfillFetchContext, ChartId, ChartInstance};
+use crate::chart_state::{CandleCacheTarget, ChartBackfillFetchContext, ChartId, ChartInstance};
 use crate::config::{ChartBackfillSource, ChartConfig, SpaghettiChartConfig};
 use crate::message::Message;
 use crate::spaghetti;
@@ -20,8 +20,6 @@ impl TradingTerminal {
     ) -> (HashMap<ChartId, ChartInstance>, Vec<Task<Message>>) {
         let mut boot_tasks = Vec::new();
         let mut charts = HashMap::new();
-        let now_ms = Self::now_ms();
-
         for chart_cfg in chart_configs {
             let id = chart_cfg.id;
             let tf = Timeframe::from_config_str(&chart_cfg.timeframe);
@@ -78,33 +76,21 @@ impl TradingTerminal {
                     let can_load_cached_candles = (source != ChartBackfillSource::Schwab
                         || !schwab_access_token.trim().is_empty())
                         && crate::api_cache::cache_eligible(source, tf, hydromancer_api_key);
-                    let cached_candles = can_load_cached_candles
-                        .then(|| {
-                            crate::api_cache::load_fresh_candles(
-                                source,
-                                &chart_cfg.symbol,
-                                tf,
-                                now_ms,
-                            )
-                            .ok()
-                            .flatten()
-                        })
-                        .flatten();
-                    let cached_start_ms = cached_candles
-                        .as_ref()
-                        .and_then(|candles| candles.last().map(|candle| candle.open_time));
-                    if let Some(candles) = cached_candles {
-                        instance.chart.set_candles(candles);
-                    }
                     let request = Self::build_candle_fetch_request(
                         id,
                         &chart_cfg.symbol,
                         tf,
                         crate::chart_state::ChartBackfillRequestContext::new(source, 0, 0),
-                        cached_start_ms,
+                        None,
                         0,
                     );
                     instance.candle_fetch_request = Some(request.clone());
+                    if can_load_cached_candles {
+                        boot_tasks.push(Self::load_cached_candles_task(
+                            request.clone(),
+                            CandleCacheTarget::Primary,
+                        ));
+                    }
                     boot_tasks.push(Self::fetch_candles_task(
                         request,
                         hydromancer_api_key.clone(),
@@ -138,28 +124,21 @@ impl TradingTerminal {
                 let can_load_cached_candles = (source != ChartBackfillSource::Schwab
                     || !schwab_access_token.trim().is_empty())
                     && crate::api_cache::cache_eligible(source, tf, hydromancer_api_key);
-                let cached_candles = can_load_cached_candles
-                    .then(|| {
-                        crate::api_cache::load_fresh_candles(source, &symbol, tf, now_ms)
-                            .ok()
-                            .flatten()
-                    })
-                    .flatten();
-                let cached_start_ms = cached_candles
-                    .as_ref()
-                    .and_then(|candles| candles.last().map(|candle| candle.open_time));
-                if let Some(candles) = cached_candles {
-                    instance.chart.set_secondary_candles(candles);
-                }
                 let request = Self::build_candle_fetch_request(
                     id,
                     &symbol,
                     tf,
                     crate::chart_state::ChartBackfillRequestContext::new(source, 0, 0),
-                    cached_start_ms,
+                    None,
                     0,
                 );
                 instance.secondary_candle_fetch_request = Some(request.clone());
+                if can_load_cached_candles {
+                    boot_tasks.push(Self::load_cached_candles_task(
+                        request.clone(),
+                        CandleCacheTarget::Secondary,
+                    ));
+                }
                 boot_tasks.push(Self::fetch_secondary_candles_task(
                     request,
                     hydromancer_api_key.clone(),
@@ -184,7 +163,6 @@ impl TradingTerminal {
     ) {
         let mut boot_tasks = Vec::new();
         let mut spaghetti_charts = HashMap::new();
-        let now_ms = Self::now_ms();
 
         for scfg in spaghetti_configs {
             let sid = scfg.id;
@@ -214,33 +192,6 @@ impl TradingTerminal {
                 .filter(|sym_key| !Self::key_matches_muted_tickers(&[], muted_tickers, sym_key))
             {
                 let defer_legacy_api_named_pair = sym_key == "@0";
-                let effective_tf = Self::spaghetti_effective_timeframe_for(
-                    tf,
-                    inst.canvas.active_session,
-                    inst.session_granularity,
-                    now_ms,
-                );
-                let can_load_cached_candles = !defer_legacy_api_named_pair
-                    && crate::api_cache::cache_eligible(
-                        chart_backfill_source,
-                        effective_tf,
-                        hydromancer_api_key,
-                    );
-                let cached_candles = can_load_cached_candles
-                    .then(|| {
-                        crate::api_cache::load_fresh_candles(
-                            chart_backfill_source,
-                            sym_key,
-                            effective_tf,
-                            now_ms,
-                        )
-                        .ok()
-                        .flatten()
-                    })
-                    .flatten();
-                let cached_start_ms = cached_candles
-                    .as_ref()
-                    .and_then(|candles| candles.last().map(|candle| candle.open_time));
                 let color_idx = inst.next_color_idx;
                 inst.next_color_idx += 1;
                 let colors = spaghetti::series_colors(&Theme::Dark);
@@ -249,8 +200,8 @@ impl TradingTerminal {
                 inst.canvas.series.push(spaghetti::Series {
                     symbol: sym_key.clone(),
                     display,
-                    loaded: cached_candles.is_some(),
-                    candles: cached_candles.unwrap_or_default(),
+                    loaded: false,
+                    candles: Vec::new(),
                     color,
                 });
                 if !defer_legacy_api_named_pair {
@@ -260,7 +211,6 @@ impl TradingTerminal {
                         tf,
                         inst.canvas.active_session,
                         inst.session_granularity,
-                        cached_start_ms,
                         ChartBackfillFetchContext::new(
                             chart_backfill_source,
                             0,

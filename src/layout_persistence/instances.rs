@@ -214,7 +214,6 @@ impl TradingTerminal {
                     tf,
                     inst.canvas.active_session,
                     inst.session_granularity,
-                    None,
                     ChartBackfillFetchContext::new(
                         self.chart_backfill_source,
                         self.read_data_provider_generation,

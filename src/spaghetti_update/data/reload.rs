@@ -62,7 +62,6 @@ impl TradingTerminal {
                     inst.interval,
                     inst.canvas.active_session,
                     inst.session_granularity,
-                    None,
                     ChartBackfillFetchContext::new(
                         chart_backfill_source,
                         read_data_provider_generation,

@@ -38,7 +38,24 @@ fn outcome_charts_subscribe_to_asset_context_for_header_metrics() {
     let mut subscriptions = Vec::new();
     terminal.push_chart_market_subscriptions(&mut subscriptions);
 
-    assert_eq!(subscriptions.len(), 1);
+    // Candle streaming starts before REST history so a slow cold load cannot
+    // leave the chart displaying an unqualified stale snapshot.
+    assert_eq!(subscriptions.len(), 2);
+}
+
+#[test]
+fn loading_chart_subscribes_to_live_candles_before_history_arrives() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    terminal
+        .charts
+        .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
+
+    let mut subscriptions = Vec::new();
+    terminal.push_chart_market_subscriptions(&mut subscriptions);
+
+    // One candle stream and one asset-context stream.
+    assert_eq!(subscriptions.len(), 2);
 }
 
 #[test]

@@ -8,7 +8,7 @@ mod toolbar;
 use self::skeleton::chart_skeleton_overlay;
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
-use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
+use crate::chart_state::{CandleFetchMode, ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
 use iced::widget::{button, canvas, column, container, rule, stack, text, text::Wrapping};
 use iced::{Color, Element, Fill, Theme};
@@ -159,7 +159,9 @@ impl TradingTerminal {
             if let Some(indicator_badges) = self.view_chart_indicator_badges(chart_id, instance) {
                 canvas_layers.push(indicator_badges);
             }
-            if let Some(surface_status) = view_chart_surface_status_badge(instance, &theme) {
+            if let Some(surface_status) =
+                view_chart_surface_status_badge(instance, &theme, self.status_bar_now_ms)
+            {
                 canvas_layers.push(surface_status);
             }
             let chart_surface: Element<'_, Message> =
@@ -247,8 +249,9 @@ fn chart_header_separator() -> Element<'static, Message> {
 fn view_chart_surface_status_badge(
     instance: &ChartInstance,
     theme: &Theme,
+    now_ms: u64,
 ) -> Option<Element<'static, Message>> {
-    let (label, is_error) = chart_surface_status_label(instance)?;
+    let (label, is_error) = chart_surface_status_label(instance, now_ms)?;
     let text_color = if is_error {
         theme.palette().danger
     } else {
@@ -296,9 +299,14 @@ fn view_chart_surface_status_badge(
     )
 }
 
-fn chart_surface_status_label(instance: &ChartInstance) -> Option<(String, bool)> {
+fn chart_surface_status_label(instance: &ChartInstance, now_ms: u64) -> Option<(String, bool)> {
     let mut parts = Vec::new();
     let mut is_error = false;
+
+    if let Some((label, candle_error)) = candle_surface_status(instance, now_ms) {
+        parts.push(label);
+        is_error |= candle_error;
+    }
 
     collect_chart_surface_status(
         &mut parts,
@@ -336,6 +344,107 @@ fn chart_surface_status_label(instance: &ChartInstance) -> Option<(String, bool)
     (!parts.is_empty()).then(|| (parts.join(" / "), is_error))
 }
 
+fn candle_surface_status(instance: &ChartInstance, now_ms: u64) -> Option<(String, bool)> {
+    if instance.chart.candles.is_empty() {
+        return None;
+    }
+
+    if let Some(request) = instance.candle_fetch_request.as_ref() {
+        let label = match request.mode {
+            CandleFetchMode::BackfillOlder => "Loading older candles".to_string(),
+            CandleFetchMode::Refresh
+                if instance.candle_history_verified_at_ms.is_none()
+                    && instance.candle_ws_updated_at_ms.is_some() =>
+            {
+                "Live candle · verifying history".to_string()
+            }
+            CandleFetchMode::Refresh if instance.candle_history_verified_at_ms.is_none() => {
+                "Cached candles · verifying provider".to_string()
+            }
+            CandleFetchMode::Refresh => "Refreshing candle history".to_string(),
+        };
+        return Some((label, false));
+    }
+
+    if instance.candle_fetch_error.is_some() {
+        return Some((
+            format!(
+                "CANDLES STALE · latest bucket {}",
+                candle_tail_age_label(instance, now_ms)
+            ),
+            true,
+        ));
+    }
+
+    if instance.candle_history_verified_at_ms.is_none()
+        && instance.candle_ws_updated_at_ms.is_none()
+    {
+        return Some(("CACHED CANDLES · NOT VERIFIED".to_string(), true));
+    }
+
+    if candle_tail_is_stale(instance, now_ms) {
+        return Some((
+            format!(
+                "CANDLES MAY BE STALE · latest bucket {}",
+                candle_tail_age_label(instance, now_ms)
+            ),
+            true,
+        ));
+    }
+
+    if instance.candle_interval_gap {
+        return Some(("Candle interval gap · provider response".to_string(), false));
+    }
+
+    None
+}
+
+fn candle_tail_is_stale(instance: &ChartInstance, now_ms: u64) -> bool {
+    if instance.interval.uses_orderbook_tick_candles()
+        || instance.interval == crate::timeframe::Timeframe::Mo1
+        || instance.symbol.starts_with('@')
+        || instance.symbol.starts_with('#')
+        || instance.symbol.contains('/')
+        || crate::schwab::is_schwab_symbol_key(&instance.symbol)
+    {
+        return false;
+    }
+    let Some(last) = instance.chart.candles.last() else {
+        return false;
+    };
+    let grace_ms = (instance.interval.duration_ms() / 10).clamp(30_000, 5 * 60_000);
+    let last_observed_ms = instance
+        .candle_ws_updated_at_ms
+        .into_iter()
+        .chain(instance.candle_history_verified_at_ms)
+        .max()
+        .unwrap_or(0);
+    now_ms > last.close_time.saturating_add(grace_ms)
+        && now_ms > last_observed_ms.saturating_add(grace_ms)
+}
+
+fn candle_tail_age_label(instance: &ChartInstance, now_ms: u64) -> String {
+    let close_time = instance
+        .chart
+        .candles
+        .last()
+        .map(|candle| candle.close_time)
+        .unwrap_or(now_ms);
+    compact_age(now_ms.saturating_sub(close_time))
+}
+
+fn compact_age(age_ms: u64) -> String {
+    if age_ms < 60_000 {
+        format!("{}s ago", age_ms / 1_000)
+    } else if age_ms < 60 * 60_000 {
+        format!("{}m ago", age_ms / 60_000)
+    } else if age_ms < 24 * 60 * 60_000 {
+        format!("{}h ago", age_ms / (60 * 60_000))
+    } else {
+        format!("{}d ago", age_ms / (24 * 60 * 60_000))
+    }
+}
+
 fn collect_chart_surface_status(
     parts: &mut Vec<String>,
     is_error: &mut bool,
@@ -358,7 +467,9 @@ fn collect_chart_surface_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::Candle;
     use crate::chart_state::ChartInstance;
+    use crate::config::ChartBackfillSource;
     use crate::timeframe::Timeframe;
 
     #[test]
@@ -369,7 +480,7 @@ mod tests {
         instance.show_liquidations = false;
         instance.liquidation_status = Some(("LIQ stale".to_string(), true));
 
-        let (label, is_error) = chart_surface_status_label(&instance).expect("status label");
+        let (label, is_error) = chart_surface_status_label(&instance, 1_000).expect("status label");
 
         assert!(is_error);
         assert_eq!(label, "HEAT no recent data");
@@ -383,7 +494,7 @@ mod tests {
             .chart
             .set_funding_status("Funding fetch failed".to_string(), true);
 
-        let (label, is_error) = chart_surface_status_label(&instance).expect("status label");
+        let (label, is_error) = chart_surface_status_label(&instance, 1_000).expect("status label");
 
         assert!(is_error);
         assert_eq!(label, "Funding fetch failed");
@@ -395,9 +506,96 @@ mod tests {
         instance.show_earnings_markers = true;
         instance.earnings_fetching = true;
 
-        let (label, is_error) = chart_surface_status_label(&instance).expect("status label");
+        let (label, is_error) = chart_surface_status_label(&instance, 1_000).expect("status label");
 
         assert!(!is_error);
         assert_eq!(label, "EARN loading");
+    }
+
+    #[test]
+    fn cached_history_is_explicitly_unverified_while_provider_refreshes() {
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::M1);
+        instance
+            .chart
+            .set_candles(vec![Candle::test_flat(60_000, 100.0)]);
+        instance.candle_fetch_request = Some(crate::chart_state::CandleFetchRequest {
+            chart_id: 1,
+            symbol: "BTC".to_string(),
+            timeframe: Timeframe::M1,
+            mode: CandleFetchMode::Refresh,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: 0,
+            hydromancer_key_generation: 0,
+            start_ms: 0,
+            end_ms: 120_000,
+            attempt: 0,
+        });
+
+        let (label, is_error) =
+            chart_surface_status_label(&instance, 120_000).expect("status label");
+
+        assert!(!is_error);
+        assert_eq!(label, "Cached candles · verifying provider");
+    }
+
+    #[test]
+    fn unverified_cache_without_refresh_is_an_error_status() {
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::M1);
+        instance
+            .chart
+            .set_candles(vec![Candle::test_flat(60_000, 100.0)]);
+
+        let (label, is_error) =
+            chart_surface_status_label(&instance, 120_000).expect("status label");
+
+        assert!(is_error);
+        assert_eq!(label, "CACHED CANDLES · NOT VERIFIED");
+    }
+
+    #[test]
+    fn continuous_market_tail_becomes_visibly_stale_without_updates() {
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::M1);
+        instance
+            .chart
+            .set_candles(vec![Candle::test_flat(60_000, 100.0)]);
+        instance.candle_history_verified_at_ms = Some(120_000);
+
+        let (label, is_error) =
+            chart_surface_status_label(&instance, 300_000).expect("status label");
+
+        assert!(is_error);
+        assert!(label.contains("CANDLES MAY BE STALE"), "{label}");
+    }
+
+    #[test]
+    fn provider_interval_gap_is_visible_without_reclassifying_prices_as_stale() {
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        instance
+            .chart
+            .set_candles(vec![Candle::test_flat(3_600_000, 100.0)]);
+        instance.candle_history_verified_at_ms = Some(3_700_000);
+        instance.candle_interval_gap = true;
+
+        let (label, is_error) =
+            chart_surface_status_label(&instance, 3_700_000).expect("status label");
+
+        assert!(!is_error);
+        assert_eq!(label, "Candle interval gap · provider response");
+    }
+
+    #[test]
+    fn interval_gap_does_not_mask_a_stale_continuous_market_tail() {
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        instance
+            .chart
+            .set_candles(vec![Candle::test_flat(3_600_000, 100.0)]);
+        instance.candle_history_verified_at_ms = Some(3_700_000);
+        instance.candle_interval_gap = true;
+
+        let (label, is_error) =
+            chart_surface_status_label(&instance, 4_100_000).expect("status label");
+
+        assert!(is_error);
+        assert!(label.contains("CANDLES MAY BE STALE"), "{label}");
     }
 }

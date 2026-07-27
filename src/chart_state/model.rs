@@ -41,6 +41,23 @@ pub(crate) enum CandleFetchMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CandleCacheTarget {
+    Primary,
+    Secondary,
+}
+
+impl CandleFetchRequest {
+    /// Visible-chart refreshes must prove freshness against the provider.
+    /// Historical pagination may reuse a complete, finalized cache page.
+    pub(crate) fn fetch_policy(&self) -> crate::api::CandleFetchPolicy {
+        match self.mode {
+            CandleFetchMode::Refresh => crate::api::CandleFetchPolicy::NetworkOnly,
+            CandleFetchMode::BackfillOlder => crate::api::CandleFetchPolicy::CacheFirst,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ChartBackfillRequestContext {
     pub(crate) source: config::ChartBackfillSource,
     pub(crate) read_data_provider_generation: u64,
@@ -187,6 +204,18 @@ pub(crate) struct ChartInstance {
     pub(crate) candle_fetch_request: Option<CandleFetchRequest>,
     /// Non-blocking refresh error shown while previously loaded candles remain visible.
     pub(crate) candle_fetch_error: Option<String>,
+    /// Last successful provider verification of the visible primary history.
+    /// `None` means any displayed history is cache-only and must be labelled.
+    pub(crate) candle_history_verified_at_ms: Option<u64>,
+    /// Last accepted primary candle event from the chart's own WebSocket topic.
+    pub(crate) candle_ws_updated_at_ms: Option<u64>,
+    /// Live updates observed while REST is in flight. They are replayed after
+    /// the response so an older snapshot cannot overwrite newer market data.
+    pub(crate) candle_ws_updates_during_fetch: Vec<crate::api::Candle>,
+    /// The provider-confirmed series has a missing, overlapping, or misaligned
+    /// interval. The chart keeps real OHLC values and surfaces this instead of
+    /// fabricating candles.
+    pub(crate) candle_interval_gap: bool,
     /// Whether older primary candle pagination reached the provider boundary.
     pub(crate) candle_backfill_exhausted: bool,
     /// Last time a spot WebSocket discontinuity triggered a REST
@@ -197,6 +226,10 @@ pub(crate) struct ChartInstance {
     pub(crate) secondary_candle_fetch_request: Option<CandleFetchRequest>,
     /// Non-blocking secondary comparison refresh error.
     pub(crate) secondary_candle_fetch_error: Option<String>,
+    pub(crate) secondary_candle_history_verified_at_ms: Option<u64>,
+    pub(crate) secondary_candle_ws_updated_at_ms: Option<u64>,
+    pub(crate) secondary_candle_ws_updates_during_fetch: Vec<crate::api::Candle>,
+    pub(crate) secondary_candle_interval_gap: bool,
     /// Whether older secondary candle pagination reached the provider boundary.
     pub(crate) secondary_candle_backfill_exhausted: bool,
     pub(crate) secondary_spot_candle_gap_reloaded_at_ms: Option<u64>,

@@ -31,6 +31,9 @@ data, screenshots, and comparison charts.
 - liquidation level overlay state
 - historical heatmap state
 - candle fetch request and non-blocking fetch error
+- candle provider-verification and websocket-observation timestamps
+- bounded websocket updates captured during an in-flight history request
+- explicit candle interval-discontinuity state
 - SEC earnings marker state
 - funding fetch state
 - macro indicator config
@@ -58,10 +61,11 @@ Historical candles are requested through `chart_update/candles/`.
 symbol/timeframe/reload change
   -> queue_candle_fetch_for
   -> CandleFetchRequest stored on ChartInstance
-  -> api::fetch_chart_backfill_candles
+  -> full visible lookback fetched with NetworkOnly policy
   -> Message::ChartCandlesLoaded
   -> stale request guard checks exact request
-  -> candles normalized and merged
+  -> refresh result replaces unverified/cache-backed visible history
+  -> websocket updates received during the request replayed last
   -> shared candle cache updated
   -> chart cache invalidated
   -> overlays and funding/heatmap/liquidations may refresh
@@ -71,6 +75,27 @@ symbol/timeframe/reload change
 and attempt number. Result handling compares the incoming request with the
 currently stored request before applying it.
 
+Refresh requests never use a cache hit as proof of freshness. They revalidate
+the full visible lookback against the selected provider. `BackfillOlder`
+pagination may use a complete, finalized cache page and merges that page into
+the existing history.
+
+At application boot, an optional disk-cache read and the provider refresh run
+as independent tasks:
+
+```text
+first frame
+  -> websocket subscription active immediately
+  -> async disk result -> Message::ChartCachedCandlesLoaded
+  -> exact request/source/generation guard
+  -> cached history may render as "verifying", never as verified
+  -> provider result replaces cached history and certifies freshness
+```
+
+A late disk result is ignored after its request is replaced or completed. If a
+live bucket arrived first, the cached series is installed underneath it so the
+disk task cannot regress the mutable tail.
+
 The backfill source comes from `ReadDataProvider`:
 
 - Hyperliquid for default reads.
@@ -79,9 +104,27 @@ The backfill source comes from `ReadDataProvider`:
 
 ## Shared Candle Cache
 
-`chart_state/candles/cache.rs` stores candle series by `(symbol, Timeframe)`.
-It is reused by regular charts and spaghetti charts. The cache is bounded to
-avoid unbounded memory growth.
+`chart_state/candles/cache.rs` stores the bounded in-memory LRU by
+`(ChartBackfillSource, symbol, Timeframe)`, so data from different providers
+cannot overwrite or satisfy one another.
+
+The persistent cache is owned by `api_cache.rs`. Candle snapshots use their own
+versioned namespace, persist only buckets that were closed when the write was
+queued, and record coverage through the final close time. A snapshot without
+complete coverage cannot satisfy a range request.
+
+Continuous-market cache reads require exact interval spacing and return only
+the trailing exact run after a discontinuity. Sparse spot/outcome/Schwab and
+calendar-month data use the existing tolerant containment rule because missing
+trade buckets or variable calendar spans can be legitimate. Cached OHLC values
+are never rewritten, and the cache-containment logic does not synthesize bridge
+candles.
+
+Filesystem cache reads do not run inside interactive update handlers. Cold
+startup hydration uses a blocking worker task; symbol/timeframe changes can use
+only the in-memory LRU for immediate display while their network refresh runs.
+Spaghetti charts fetch from the network before marking a series loaded because
+they do not currently expose the regular chart's cache-verification status.
 
 Cache invalidation matters when:
 
@@ -97,9 +140,29 @@ Chart candle websocket subscriptions are assembled under
 `subscription_state/market/chart.rs`. Streams are keyed by chart ID, symbol, and
 interval, with deduplication where possible.
 
-`Message::ChartWsCandleUpdate` applies updates to matching loaded chart
-instances. It updates the current series, triggers price flashes, invalidates
-render caches, and can schedule funding refreshes when macro panels need them.
+Subscriptions start while REST history is still loading, so cold provider
+latency does not prevent a current live bucket from arriving. A websocket
+update applies to every matching chart instance, triggers price flashes,
+invalidates render caches, and can schedule funding refreshes when macro panels
+need them.
+
+Backward, skipped, or misaligned buckets on continuous markets are not blindly
+appended; they trigger a network-only reconciliation. Naturally sparse markets
+reconcile once and then use a short backoff to avoid reload churn, while
+surfacing their interval gap. Live buckets received during REST are deduplicated
+by open time in a bounded buffer and replayed after the response so an older
+snapshot cannot overwrite them. Persistent snapshots are queued on bucket
+rollover, not on every mutable-tail update. If duplicate panes share a candle
+key, the most recently provider-verified pane is the cache representative.
+
+The toolbar and chart surface distinguish:
+
+- loading and verifying history
+- cached but unverified history
+- live tail while history is still being verified
+- refresh errors/stale candles
+- interval discontinuities present in a successful provider response
+- continuous-market tails that have aged past their close and update grace
 
 ## Funding Data
 

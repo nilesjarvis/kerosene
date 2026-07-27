@@ -1,5 +1,4 @@
 use crate::app_state::TradingTerminal;
-use crate::chart::ChartStatus;
 use crate::message::Message;
 use crate::timeframe::Timeframe;
 use crate::ws::{
@@ -25,8 +24,8 @@ impl TradingTerminal {
         let mut asset_ctx_streams: BTreeMap<String, u64> = BTreeMap::new();
 
         for instance in self.charts.values() {
-            if matches!(instance.chart.status, ChartStatus::Loaded)
-                && !instance.symbol.is_empty()
+            if !instance.symbol.is_empty()
+                && instance.symbol != "@0"
                 && instance.interval.uses_candle_backfill()
                 && !self.symbol_key_is_hidden(&instance.symbol)
             {
@@ -39,15 +38,10 @@ impl TradingTerminal {
                     .and_modify(|id| *id = (*id).min(instance.id))
                     .or_insert(instance.id);
             }
-            if matches!(instance.chart.status, ChartStatus::Loaded)
-                && let Some(symbol) = instance.secondary_symbol.as_ref()
+            if let Some(symbol) = instance.secondary_symbol.as_ref()
+                && symbol != "@0"
                 && instance.interval.uses_candle_backfill()
                 && !self.symbol_key_is_hidden(symbol)
-                && instance
-                    .chart
-                    .secondary_series
-                    .as_ref()
-                    .is_some_and(|series| !series.candles.is_empty())
             {
                 let key = (symbol.clone(), instance.interval.api_str().to_string());
                 candle_streams

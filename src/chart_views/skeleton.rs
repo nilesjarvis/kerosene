@@ -6,7 +6,7 @@ use crate::message::Message;
 
 use iced::widget::canvas;
 use iced::widget::container as container_style;
-use iced::widget::container;
+use iced::widget::{container, stack, text};
 use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Size, Theme};
 
 mod drawing;
@@ -35,29 +35,39 @@ pub(super) fn chart_skeleton_overlay(
         .then_some(chart.funding_panel_height);
     let session_panel_height = skeleton_session_panel_height(chart);
 
-    container(
-        iced::widget::canvas(ChartSkeleton {
-            phase,
-            price_axis_width,
-            funding_panel_height,
-            session_panel_height,
-        })
-        .width(Fill)
-        .height(Fill),
+    let skeleton: Element<'static, Message> = iced::widget::canvas(ChartSkeleton {
+        phase,
+        price_axis_width,
+        funding_panel_height,
+        session_panel_height,
+    })
+    .width(Fill)
+    .height(Fill)
+    .into();
+    let loading_label: Element<'static, Message> = container(
+        text("Loading and verifying candle history…")
+            .size(12)
+            .font(crate::app_fonts::monospace_font()),
     )
     .width(Fill)
     .height(Fill)
-    .style(|theme: &Theme| container_style::Style {
-        background: Some(
-            Color {
-                a: 0.86,
-                ..theme.extended_palette().background.strong.color
-            }
-            .into(),
-        ),
-        ..Default::default()
-    })
-    .into()
+    .center(Fill)
+    .into();
+
+    container(stack![skeleton, loading_label])
+        .width(Fill)
+        .height(Fill)
+        .style(|theme: &Theme| container_style::Style {
+            background: Some(
+                Color {
+                    a: 0.86,
+                    ..theme.extended_palette().background.strong.color
+                }
+                .into(),
+            ),
+            ..Default::default()
+        })
+        .into()
 }
 
 fn skeleton_session_panel_height(chart: &CandlestickChart) -> Option<f32> {

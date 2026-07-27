@@ -5,7 +5,14 @@ fn store_normalized_candles_ignores_empty_results() {
     let mut cache = HashMap::new();
     let mut order = VecDeque::new();
 
-    store_normalized_candles(&mut cache, &mut order, "BTC", Timeframe::M1, Vec::new());
+    store_normalized_candles(
+        &mut cache,
+        &mut order,
+        ChartBackfillSource::Hyperliquid,
+        "BTC",
+        Timeframe::M1,
+        Vec::new(),
+    );
 
     assert!(cache.is_empty());
     assert!(order.is_empty());
@@ -19,6 +26,7 @@ fn store_normalized_candles_sorts_and_moves_key_to_back() {
     store_normalized_candles(
         &mut cache,
         &mut order,
+        ChartBackfillSource::Hyperliquid,
         "ETH",
         Timeframe::M1,
         vec![candle(2_000, 102.0), candle(1_000, 101.0)],
@@ -40,6 +48,7 @@ fn store_normalized_candles_evicts_oldest_key_after_capacity() {
         store_normalized_candles(
             &mut cache,
             &mut order,
+            ChartBackfillSource::Hyperliquid,
             &symbol,
             Timeframe::M1,
             vec![candle(idx as u64 * 60_000, idx as f64)],
@@ -50,4 +59,46 @@ fn store_normalized_candles_evicts_oldest_key_after_capacity() {
     assert_eq!(order.len(), CANDLE_CACHE_CAPACITY);
     assert!(!cache.contains_key(&cache_key("COIN0", Timeframe::M1)));
     assert_eq!(order.front(), Some(&cache_key("COIN1", Timeframe::M1)));
+}
+
+#[test]
+fn provider_sources_do_not_overwrite_each_other_in_memory() {
+    let mut cache = HashMap::new();
+    let mut order = VecDeque::new();
+    store_normalized_candles(
+        &mut cache,
+        &mut order,
+        ChartBackfillSource::Hyperliquid,
+        "BTC",
+        Timeframe::M1,
+        vec![candle(60_000, 100.0)],
+    );
+    store_normalized_candles(
+        &mut cache,
+        &mut order,
+        ChartBackfillSource::Hydromancer,
+        "BTC",
+        Timeframe::M1,
+        vec![candle(60_000, 101.0)],
+    );
+
+    assert_eq!(cache.len(), 2);
+    assert_eq!(
+        cache[&(
+            ChartBackfillSource::Hyperliquid,
+            "BTC".to_string(),
+            Timeframe::M1
+        )][0]
+            .close,
+        100.0
+    );
+    assert_eq!(
+        cache[&(
+            ChartBackfillSource::Hydromancer,
+            "BTC".to_string(),
+            Timeframe::M1
+        )][0]
+            .close,
+        101.0
+    );
 }

@@ -82,6 +82,26 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         Message::ChartEarningsFilingOpenResult(Ok(())),
         UpdateRoute::Chart,
     );
+    let cache_request = crate::chart_state::CandleFetchRequest {
+        chart_id: 7,
+        symbol: "BTC".to_string(),
+        timeframe: crate::timeframe::Timeframe::H1,
+        mode: crate::chart_state::CandleFetchMode::Refresh,
+        source: crate::config::ChartBackfillSource::Hyperliquid,
+        read_data_provider_generation: 0,
+        hydromancer_key_generation: 0,
+        start_ms: 0,
+        end_ms: 1,
+        attempt: 0,
+    };
+    assert_route(
+        Message::ChartCachedCandlesLoaded(
+            cache_request,
+            crate::chart_state::CandleCacheTarget::Primary,
+            Ok(None),
+        ),
+        UpdateRoute::Chart,
+    );
     assert_route(
         Message::ChartHudControlChanged(
             7,

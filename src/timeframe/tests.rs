@@ -12,6 +12,7 @@ fn timeframe_arrays_round_trip_config_strings() {
             Timeframe::from_config_str_opt(CONFIG_STRS[idx]),
             Some(timeframe)
         );
+        assert_eq!(Timeframe::from_api_str_opt(API_STRS[idx]), Some(timeframe));
         assert_eq!(timeframe.config_str(), CONFIG_STRS[idx]);
         assert_eq!(timeframe.api_str(), API_STRS[idx]);
         assert_eq!(timeframe.label(), LABELS[idx]);
@@ -36,6 +37,7 @@ fn cache_display_freshness_is_shorter_than_historical_lookback() {
 #[test]
 fn invalid_config_timeframe_defaults_to_h1() {
     assert_eq!(Timeframe::from_config_str("missing"), Timeframe::H1);
+    assert_eq!(Timeframe::from_api_str_opt("missing"), None);
 }
 
 #[test]
