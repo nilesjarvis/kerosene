@@ -10,12 +10,51 @@ use crate::spaghetti_state::SpaghettiChartId;
 use iced::widget::{column, container, pane_grid, rule, text};
 use iced::{Color, Element, Fill, Theme};
 
+const DETACHED_SPAGHETTI_WINDOW_TITLE: &str = "Kerosene Comparison Chart";
+
 impl TradingTerminal {
-    pub(crate) fn view_spaghetti_chart(
+    pub(crate) fn view_detached_spaghetti_window(
         &self,
         id: SpaghettiChartId,
-        _pane: pane_grid::Pane,
     ) -> Element<'_, Message> {
+        container(self.view_spaghetti_chart_body(id))
+            .width(Fill)
+            .height(Fill)
+            .padding(4)
+            .style(|theme: &Theme| container::Style {
+                background: Some(theme.extended_palette().background.base.color.into()),
+                text_color: Some(theme.palette().text),
+                ..Default::default()
+            })
+            .into()
+    }
+
+    /// Title string for a detached spaghetti chart window.
+    pub(crate) fn detached_spaghetti_window_title(&self, id: SpaghettiChartId) -> String {
+        if let Some(inst) = self.spaghetti_charts.get(&id) {
+            let mode = if inst.pair_mode {
+                "Pair Ratio Chart"
+            } else {
+                "Comparison Chart"
+            };
+            let symbols: Vec<&str> = inst
+                .canvas
+                .series
+                .iter()
+                .map(|s| s.display.as_str())
+                .collect();
+            if symbols.is_empty() {
+                format!("Kerosene {mode}")
+            } else {
+                format!("Kerosene {mode} - {}", symbols.join(", "))
+            }
+        } else {
+            DETACHED_SPAGHETTI_WINDOW_TITLE.to_string()
+        }
+    }
+
+    /// Shared body for both docked and detached spaghetti charts.
+    fn view_spaghetti_chart_body(&self, id: SpaghettiChartId) -> Element<'_, Message> {
         let theme = self.theme();
         let Some(inst) = self.spaghetti_charts.get(&id) else {
             return container(
@@ -64,6 +103,14 @@ impl TradingTerminal {
             .height(Fill)
             .padding([4, 0])
             .into()
+    }
+
+    pub(crate) fn view_spaghetti_chart(
+        &self,
+        id: SpaghettiChartId,
+        _pane: pane_grid::Pane,
+    ) -> Element<'_, Message> {
+        self.view_spaghetti_chart_body(id)
     }
 }
 

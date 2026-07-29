@@ -2,6 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartSurfaceId, DetachedChartWindowState};
 use crate::config::KeroseneConfig;
 use crate::message::Message;
+use crate::spaghetti_state::DetachedSpaghettiWindowState;
 use crate::wallet_cluster_state::wallet_cluster_window_settings;
 use iced::{Point, Size, Task, window};
 
@@ -79,6 +80,27 @@ impl TradingTerminal {
                     .set_surface_id(ChartSurfaceId::Detached(window_id));
             }
             self.detached_chart_windows.insert(window_id, state);
+            boot_tasks.push(open_task.map(Message::WindowOpened));
+        }
+
+        for detached_cfg in &cfg.detached_spaghetti_windows {
+            if !self.spaghetti_charts.contains_key(&detached_cfg.chart_id)
+                || self
+                    .detached_spaghetti_windows
+                    .values()
+                    .any(|state| state.chart_id == detached_cfg.chart_id)
+            {
+                continue;
+            }
+
+            let state = DetachedSpaghettiWindowState::from_config(detached_cfg);
+            let settings = window::Settings {
+                size: state.size(),
+                position: state.position(),
+                ..crate::window_chrome::settings(self.custom_window_chrome_active)
+            };
+            let (window_id, open_task) = window::open(settings);
+            self.detached_spaghetti_windows.insert(window_id, state);
             boot_tasks.push(open_task.map(Message::WindowOpened));
         }
 

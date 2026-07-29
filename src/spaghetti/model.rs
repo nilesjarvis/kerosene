@@ -44,6 +44,7 @@ pub fn series_colors(theme: &Theme) -> Vec<Color> {
 }
 
 /// A single series in the comparison chart.
+#[derive(Clone)]
 pub struct Series {
     pub symbol: String,
     pub display: String,

@@ -1,5 +1,6 @@
 mod creation;
 mod data;
+mod detached;
 mod editor;
 mod pair;
 mod session;
@@ -42,6 +43,7 @@ impl TradingTerminal {
             Message::ToggleSpaghettiLabels(id) => self.toggle_spaghetti_labels(id),
             Message::SpaghettiSetColorMode(id, mode) => self.set_spaghetti_color_mode(id, mode),
             Message::PairSetCandleMode(id, enabled) => self.set_pair_candle_mode(id, enabled),
+            Message::OpenDetachedSpaghettiChart(id) => self.open_detached_spaghetti_window(id),
             _ => Task::none(),
         }
     }

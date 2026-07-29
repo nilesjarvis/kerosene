@@ -370,6 +370,7 @@ impl TradingTerminal {
             chart_screenshot_window_id: None,
             pnl_card_windows: HashMap::new(),
             detached_chart_windows: HashMap::new(),
+            detached_spaghetti_windows: HashMap::new(),
             chart_screenshot: None,
             chart_screenshot_error: None,
             chart_screenshot_capture_in_progress: false,

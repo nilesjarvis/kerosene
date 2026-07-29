@@ -46,8 +46,8 @@ pub use live_watchlist::{
 };
 pub use order_presets::{OrderPreset, OrderPresetsConfig};
 pub use panes::{
-    ChartConfig, DetachedChartWindowConfig, MacroIndicatorsConfig, OrderBookConfig,
-    OrderBookDisplayModeConfig, OrderBookSymbolModeConfig, PositioningInfoConfig,
+    ChartConfig, DetachedChartWindowConfig, DetachedSpaghettiWindowConfig, MacroIndicatorsConfig,
+    OrderBookConfig, OrderBookDisplayModeConfig, OrderBookSymbolModeConfig, PositioningInfoConfig,
     SessionDataConfig, SpaghettiChartConfig, XFeedConfig, default_detached_chart_window_height,
     default_detached_chart_window_width,
 };

@@ -1,7 +1,29 @@
 use crate::spaghetti::ComparisonColorMode;
 use serde::{Deserialize, Serialize};
 
-use super::super::default_timeframe;
+use super::default_detached_chart_window_height;
+use super::default_detached_chart_window_width;
+use crate::config::default_timeframe;
+
+/// Persisted state for a detached comparison chart window.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DetachedSpaghettiWindowConfig {
+    /// Spaghetti chart instance ID shown in the detached window.
+    #[serde(default)]
+    pub chart_id: u64,
+    /// Last window width in logical pixels.
+    #[serde(default = "default_detached_chart_window_width")]
+    pub width: f32,
+    /// Last window height in logical pixels.
+    #[serde(default = "default_detached_chart_window_height")]
+    pub height: f32,
+    /// Last window X position.
+    #[serde(default)]
+    pub x: Option<f32>,
+    /// Last window Y position.
+    #[serde(default)]
+    pub y: Option<f32>,
+}
 
 /// Persisted state for a comparison chart pane.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

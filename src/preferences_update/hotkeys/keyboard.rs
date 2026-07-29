@@ -91,9 +91,17 @@ impl TradingTerminal {
     }
 
     fn detached_window_has_open_chart_editor(&self, window_id: iced::window::Id) -> bool {
-        self.detached_chart_windows
+        if self
+            .detached_chart_windows
             .get(&window_id)
             .and_then(|state| self.charts.get(&state.chart_id))
+            .is_some_and(|instance| instance.editor_open)
+        {
+            return true;
+        }
+        self.detached_spaghetti_windows
+            .get(&window_id)
+            .and_then(|state| self.spaghetti_charts.get(&state.chart_id))
             .is_some_and(|instance| instance.editor_open)
     }
 }

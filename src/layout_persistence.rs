@@ -128,8 +128,21 @@ impl TradingTerminal {
             self.remove_detached_chart_window_state(*window_id);
         }
 
+        let mut stale_spaghetti_window_ids: Vec<_> = self
+            .detached_spaghetti_windows
+            .iter()
+            .filter_map(|(window_id, state)| {
+                (!self.spaghetti_charts.contains_key(&state.chart_id)).then_some(*window_id)
+            })
+            .collect();
+
+        for window_id in &stale_spaghetti_window_ids {
+            self.remove_detached_spaghetti_window_state(*window_id);
+        }
+
         stale_window_ids
             .into_iter()
+            .chain(stale_spaghetti_window_ids.drain(..))
             .map(iced::window::close)
             .collect()
     }

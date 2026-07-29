@@ -472,6 +472,7 @@ impl TradingTerminal {
         ids.extend(self.advanced_order_history_windows.keys().copied());
         ids.extend(self.pnl_card_windows.keys().copied());
         ids.extend(self.detached_chart_windows.keys().copied());
+        ids.extend(self.detached_spaghetti_windows.keys().copied());
 
         ids
     }

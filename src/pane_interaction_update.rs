@@ -105,6 +105,10 @@ impl TradingTerminal {
                             }
                         }
                         PaneKind::SpaghettiChart(id) => {
+                            detached_window_to_close = self.detached_spaghetti_window_for(id);
+                            if let Some(window_id) = detached_window_to_close {
+                                self.remove_detached_spaghetti_window_state(window_id);
+                            }
                             self.spaghetti_charts.remove(&id);
                         }
                         PaneKind::LiveWatchlist(id) => {

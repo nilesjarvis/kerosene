@@ -7,6 +7,96 @@ const SPAGHETTI_MAX_SESSION_CANDLES: u64 = 10_000;
 
 pub(crate) type SpaghettiChartId = u64;
 
+// ---------------------------------------------------------------------------
+// Detached Spaghetti Window State
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub(crate) struct DetachedSpaghettiWindowState {
+    pub(crate) chart_id: SpaghettiChartId,
+    pub(crate) width: f32,
+    pub(crate) height: f32,
+    pub(crate) x: Option<f32>,
+    pub(crate) y: Option<f32>,
+}
+
+impl DetachedSpaghettiWindowState {
+    pub(crate) fn new(chart_id: SpaghettiChartId) -> Self {
+        Self {
+            chart_id,
+            width: crate::config::default_detached_chart_window_width(),
+            height: crate::config::default_detached_chart_window_height(),
+            x: None,
+            y: None,
+        }
+    }
+
+    pub(crate) fn from_config(config: &crate::config::DetachedSpaghettiWindowConfig) -> Self {
+        Self {
+            chart_id: config.chart_id,
+            width: normalize_detached_spaghetti_dimension(
+                config.width,
+                crate::config::default_detached_chart_window_width(),
+            ),
+            height: normalize_detached_spaghetti_dimension(
+                config.height,
+                crate::config::default_detached_chart_window_height(),
+            ),
+            x: config.x.and_then(finite_f32_value),
+            y: config.y.and_then(finite_f32_value),
+        }
+    }
+
+    pub(crate) fn to_config(&self) -> crate::config::DetachedSpaghettiWindowConfig {
+        crate::config::DetachedSpaghettiWindowConfig {
+            chart_id: self.chart_id,
+            width: normalize_detached_spaghetti_dimension(
+                self.width,
+                crate::config::default_detached_chart_window_width(),
+            ),
+            height: normalize_detached_spaghetti_dimension(
+                self.height,
+                crate::config::default_detached_chart_window_height(),
+            ),
+            x: self.x.and_then(finite_f32_value),
+            y: self.y.and_then(finite_f32_value),
+        }
+    }
+
+    pub(crate) fn size(&self) -> iced::Size {
+        iced::Size::new(
+            normalize_detached_spaghetti_dimension(
+                self.width,
+                crate::config::default_detached_chart_window_width(),
+            ),
+            normalize_detached_spaghetti_dimension(
+                self.height,
+                crate::config::default_detached_chart_window_height(),
+            ),
+        )
+    }
+
+    pub(crate) fn position(&self) -> iced::window::Position {
+        self.x
+            .zip(self.y)
+            .and_then(|(x, y)| finite_spaghetti_window_point(x, y))
+            .map(crate::window_chrome::restored_position)
+            .unwrap_or(iced::window::Position::Centered)
+    }
+}
+
+fn normalize_detached_spaghetti_dimension(value: f32, fallback: f32) -> f32 {
+    finite_f32_value(value).map_or(fallback, |value| value.max(320.0))
+}
+
+fn finite_spaghetti_window_point(x: f32, y: f32) -> Option<iced::Point> {
+    Some(iced::Point::new(finite_f32_value(x)?, finite_f32_value(y)?))
+}
+
+fn finite_f32_value(value: f32) -> Option<f32> {
+    value.is_finite().then_some(value)
+}
+
 pub(crate) struct SpaghettiChartInstance {
     pub(crate) id: SpaghettiChartId,
     pub(crate) canvas: spaghetti::SpaghettiCanvas,
@@ -46,6 +136,41 @@ impl SpaghettiChartInstance {
         inst.interval = Timeframe::M5;
         inst.editor_open = true;
         inst
+    }
+
+    /// Create a clone for a detached window with fresh viewport/editor state.
+    pub(crate) fn clone_for_detached_window(&self, id: SpaghettiChartId) -> Self {
+        // The canvas cache is not Clone; create a fresh one.
+        let mut canvas = spaghetti::SpaghettiCanvas::new();
+        canvas.series = self.canvas.series.clone();
+        canvas.color_mode = self.canvas.color_mode;
+        canvas.show_labels = self.canvas.show_labels;
+        canvas.pair_ratio_mode = self.canvas.pair_ratio_mode;
+        canvas.pair_candle_mode = self.canvas.pair_candle_mode;
+        canvas.dotted_background = self.canvas.dotted_background;
+        canvas.dotted_background_opacity = self.canvas.dotted_background_opacity;
+        canvas.gradient_background = self.canvas.gradient_background;
+        canvas.gradient_contrast = self.canvas.gradient_contrast;
+        canvas.hollow_candle_mode = self.canvas.hollow_candle_mode;
+        canvas.crosshair_style = self.canvas.crosshair_style;
+        canvas.crosshair_guides_enabled = self.canvas.crosshair_guides_enabled;
+        canvas.crosshair_scale = self.canvas.crosshair_scale;
+        canvas.reset_epoch = self.canvas.reset_epoch;
+        canvas.base_timestamp = self.canvas.base_timestamp;
+        canvas.active_session = self.canvas.active_session;
+
+        Self {
+            id,
+            canvas,
+            interval: self.interval,
+            pair_mode: self.pair_mode,
+            pair_candle_mode: self.pair_candle_mode,
+            session_granularity: self.session_granularity,
+            style_menu_open: false,
+            editor_open: false,
+            editor_search_query: String::new(),
+            next_color_idx: self.next_color_idx,
+        }
     }
 }
 
