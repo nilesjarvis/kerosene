@@ -90,6 +90,10 @@ fn journal_spaghetti_and_wallet_tracker_routes_stay_on_feature_modules() {
         Message::SpaghettiSetColorMode(7, crate::spaghetti::ComparisonColorMode::Single),
         UpdateRoute::Spaghetti,
     );
+    assert_route(
+        Message::OpenDetachedSpaghettiChart(7),
+        UpdateRoute::Spaghetti,
+    );
 
     assert_route(Message::OpenWalletTrackerWindow, UpdateRoute::WalletTracker);
     assert_route(
