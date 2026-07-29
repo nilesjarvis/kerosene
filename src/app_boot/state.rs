@@ -163,6 +163,7 @@ impl TradingTerminal {
             primary_chart_id: None,
             spaghetti_charts: parts.spaghetti_charts,
             next_spaghetti_id: parts.next_spaghetti_id,
+            spaghetti_instance_epoch: 0,
             add_widget_menu_open: false,
             layout_menu_open: false,
             layout_rename_index: None,

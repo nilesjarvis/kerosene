@@ -340,6 +340,8 @@ pub(crate) struct TradingTerminal {
     // Spaghetti (comparison) charts
     pub(crate) spaghetti_charts: HashMap<SpaghettiChartId, SpaghettiChartInstance>,
     pub(crate) next_spaghetti_id: SpaghettiChartId,
+    /// Invalidates queued spaghetti REST/stream events when layouts replace instances.
+    pub(crate) spaghetti_instance_epoch: u64,
     // Add-widget menu state
     pub(crate) add_widget_menu_open: bool,
     pub(crate) layout_menu_open: bool,

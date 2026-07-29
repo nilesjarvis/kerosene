@@ -12,6 +12,7 @@ impl TradingTerminal {
     /// Build a Task that fetches candles for a spaghetti chart series.
     pub(crate) fn fetch_spaghetti_candles(
         spaghetti_id: SpaghettiChartId,
+        instance_epoch: u64,
         coin: &str,
         tf: Timeframe,
         session: Option<spaghetti::Session>,
@@ -24,6 +25,7 @@ impl TradingTerminal {
         let coin_str = coin.to_string();
         let request = SpaghettiCandleFetch {
             chart_id: sid,
+            instance_epoch,
             symbol: coin_str.clone(),
             timeframe: api_tf,
             source: backfill.source,

@@ -12,6 +12,9 @@ impl TradingTerminal {
         request: SpaghettiCandleFetch,
         result: Result<Vec<Candle>, String>,
     ) -> Task<Message> {
+        if request.instance_epoch != self.spaghetti_instance_epoch {
+            return Task::none();
+        }
         if request.source == ChartBackfillSource::Hydromancer
             && !self.hydromancer_key_generation_is_current(request.hydromancer_key_generation)
         {
@@ -105,7 +108,8 @@ impl TradingTerminal {
         &self,
         context: &SpaghettiWsCandleContext,
     ) -> bool {
-        if !self.market_stream_source_is_current(context.source_context)
+        if context.instance_epoch != self.spaghetti_instance_epoch
+            || !self.market_stream_source_is_current(context.source_context)
             || self.symbol_key_is_hidden(&context.symbol)
         {
             return false;

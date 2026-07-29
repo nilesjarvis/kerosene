@@ -36,7 +36,7 @@ impl TradingTerminal {
                 .canvas
                 .series
                 .iter()
-                .filter(|s| !s.symbol.is_empty())
+                .filter(|s| !s.loaded && !s.symbol.is_empty())
                 .map(|s| s.symbol.clone())
                 .collect();
             (
@@ -59,6 +59,7 @@ impl TradingTerminal {
         let read_data_provider_generation = self.read_data_provider_generation;
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
+        let instance_epoch = self.spaghetti_instance_epoch;
 
         self.spaghetti_charts.insert(detached_id, detached_instance);
         self.detached_spaghetti_windows.insert(window_id, state);
@@ -68,6 +69,7 @@ impl TradingTerminal {
         for symbol in &symbols_to_fetch {
             tasks.push(Self::fetch_spaghetti_candles(
                 detached_id,
+                instance_epoch,
                 symbol,
                 interval,
                 session,

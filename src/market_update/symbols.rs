@@ -301,6 +301,7 @@ impl TradingTerminal {
         }
         self.persist_config();
 
+        let spaghetti_instance_epoch = self.spaghetti_instance_epoch;
         let mut tasks = Vec::new();
         tasks.extend(
             order_book_ids
@@ -311,6 +312,7 @@ impl TradingTerminal {
             |(chart_id, symbol, timeframe, session, session_granularity)| {
                 Self::fetch_spaghetti_candles(
                     chart_id,
+                    spaghetti_instance_epoch,
                     &symbol,
                     timeframe,
                     session,

@@ -44,6 +44,11 @@ impl TradingTerminal {
     }
 
     pub(crate) fn register_last_layout(cfg: &mut KeroseneConfig) {
+        let detached_spaghetti_ids: std::collections::BTreeSet<_> = cfg
+            .detached_spaghetti_windows
+            .iter()
+            .map(|window| window.chart_id)
+            .collect();
         let mut last_layout = SavedLayout {
             name: "last".to_string(),
             pane_layout: cfg.pane_layout.clone(),
@@ -54,7 +59,12 @@ impl TradingTerminal {
             positioning_infos: cfg.positioning_infos.clone(),
             session_data: cfg.session_data.clone(),
             x_feeds: cfg.x_feeds.clone(),
-            spaghetti_charts: cfg.spaghetti_charts.clone(),
+            spaghetti_charts: cfg
+                .spaghetti_charts
+                .iter()
+                .filter(|chart| !detached_spaghetti_ids.contains(&chart.id))
+                .cloned()
+                .collect(),
             widget_padding: cfg.widget_padding.clone().normalized(),
             active_symbol: cfg.active_symbol.clone(),
             liquidation_distribution_symbol: Some(
@@ -170,5 +180,33 @@ mod tests {
             TradingTerminal::boot_layout_ratios(&cfg),
             [0.5, 0.0, 0.25, 1.0]
         );
+    }
+
+    #[test]
+    fn last_layout_excludes_detached_spaghetti_instances() {
+        let mut cfg = KeroseneConfig {
+            spaghetti_charts: vec![
+                crate::config::SpaghettiChartConfig::empty(7),
+                crate::config::SpaghettiChartConfig::empty(8),
+            ],
+            detached_spaghetti_windows: vec![crate::config::DetachedSpaghettiWindowConfig {
+                chart_id: 8,
+                width: 1200.0,
+                height: 760.0,
+                x: None,
+                y: None,
+            }],
+            ..KeroseneConfig::default()
+        };
+
+        TradingTerminal::register_last_layout(&mut cfg);
+
+        let last = cfg
+            .saved_layouts
+            .iter()
+            .find(|layout| layout.name == "last")
+            .expect("last layout");
+        let ids: Vec<_> = last.spaghetti_charts.iter().map(|chart| chart.id).collect();
+        assert_eq!(ids, vec![7]);
     }
 }

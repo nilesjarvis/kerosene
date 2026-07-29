@@ -177,6 +177,7 @@ impl SpaghettiChartInstance {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SpaghettiCandleFetch {
     pub(crate) chart_id: SpaghettiChartId,
+    pub(crate) instance_epoch: u64,
     pub(crate) symbol: String,
     pub(crate) timeframe: Timeframe,
     pub(crate) source: crate::config::ChartBackfillSource,
@@ -189,6 +190,7 @@ pub(crate) struct SpaghettiCandleFetch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SpaghettiWsCandleContext {
     pub(crate) chart_id: SpaghettiChartId,
+    pub(crate) instance_epoch: u64,
     pub(crate) symbol: String,
     pub(crate) timeframe: Timeframe,
     pub(crate) source_context: crate::read_data_provider::MarketDataSourceContext,

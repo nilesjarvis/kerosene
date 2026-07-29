@@ -125,6 +125,10 @@ startup hydration uses a blocking worker task; symbol/timeframe changes can use
 only the in-memory LRU for immediate display while their network refresh runs.
 Spaghetti charts fetch from the network before marking a series loaded because
 they do not currently expose the regular chart's cache-verification status.
+Detached spaghetti charts reuse any already-loaded cloned history and fetch only
+series that were still unloaded when detached. Their REST completions and
+websocket subscription identities carry a runtime instance epoch so queued work
+from a replaced layout cannot mutate a new chart that reuses the same numeric ID.
 
 Cache invalidation matters when:
 
