@@ -956,6 +956,7 @@ pub(crate) enum Message {
     ToggleSpaghettiLabels(SpaghettiChartId),
     SpaghettiSetColorMode(SpaghettiChartId, spaghetti::ComparisonColorMode),
     PairSetCandleMode(SpaghettiChartId, bool),
+    OpenDetachedSpaghettiChart(SpaghettiChartId),
     WalletTrackerInputChanged(RedactedAddress),
     WalletTrackerLabelInputChanged(String),
     WalletTrackerAdd,

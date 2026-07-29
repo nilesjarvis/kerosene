@@ -254,6 +254,7 @@ pub fn ws_hydromancer_spaghetti_candle_stream(
     params: &(
         HydromancerStreamKey,
         u64,
+        u64,
         String,
         crate::timeframe::Timeframe,
         Option<crate::spaghetti::Session>,
@@ -262,16 +263,18 @@ pub fn ws_hydromancer_spaghetti_candle_stream(
 ) -> SpaghettiCandleStream {
     let stream_key = params.0.clone();
     let id = params.1;
-    let coin = params.2.clone();
-    let timeframe = params.3;
-    let session = params.4;
-    let session_granularity = params.5;
-    let interval = params.3.api_str().to_string();
+    let instance_epoch = params.2;
+    let coin = params.3.clone();
+    let timeframe = params.4;
+    let session = params.5;
+    let session_granularity = params.6;
+    let interval = params.4.api_str().to_string();
     let inner = hydromancer_candle_stream(stream_key, coin.clone(), interval);
     Box::pin(futures::StreamExt::map(inner, move |event| match event {
         HydromancerCandleStreamEvent::Item(hydromancer_key_generation, candle) => {
             SpaghettiCandleStreamEvent::Item {
                 id,
+                instance_epoch,
                 symbol: coin.clone(),
                 timeframe,
                 hydromancer_key_generation,
@@ -285,6 +288,7 @@ pub fn ws_hydromancer_spaghetti_candle_stream(
             skipped,
         } => SpaghettiCandleStreamEvent::Lagged {
             id,
+            instance_epoch,
             symbol: coin.clone(),
             timeframe,
             hydromancer_key_generation,

@@ -420,7 +420,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleSpaghettiStyleMenu(_)
         | Message::ToggleSpaghettiLabels(_)
         | Message::SpaghettiSetColorMode(_, _)
-        | Message::PairSetCandleMode(_, _) => UpdateRoute::Spaghetti,
+        | Message::PairSetCandleMode(_, _)
+        | Message::OpenDetachedSpaghettiChart(_) => UpdateRoute::Spaghetti,
 
         Message::OpenWalletClustersWindow
         | Message::WalletClusterNameInputChanged(_)

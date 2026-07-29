@@ -36,7 +36,9 @@ use crate::screener_state::ScreenerState;
 use crate::session_data_state::{SessionDataId, SessionDataInstance};
 use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::signing::{ChaseOrder, OrderKind};
-use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
+use crate::spaghetti_state::{
+    DetachedSpaghettiWindowState, SpaghettiChartId, SpaghettiChartInstance,
+};
 use crate::telegram_feed::TelegramFeedState;
 use crate::timeframe::Timeframe;
 use crate::twap_state::{TwapOrder, TwapOrderForm};
@@ -338,6 +340,8 @@ pub(crate) struct TradingTerminal {
     // Spaghetti (comparison) charts
     pub(crate) spaghetti_charts: HashMap<SpaghettiChartId, SpaghettiChartInstance>,
     pub(crate) next_spaghetti_id: SpaghettiChartId,
+    /// Invalidates queued spaghetti REST/stream events when layouts replace instances.
+    pub(crate) spaghetti_instance_epoch: u64,
     // Add-widget menu state
     pub(crate) add_widget_menu_open: bool,
     pub(crate) layout_menu_open: bool,
@@ -557,6 +561,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) chart_screenshot_window_id: Option<window::Id>,
     pub(crate) pnl_card_windows: HashMap<window::Id, PnlCardWindowState>,
     pub(crate) detached_chart_windows: HashMap<window::Id, DetachedChartWindowState>,
+    pub(crate) detached_spaghetti_windows: HashMap<window::Id, DetachedSpaghettiWindowState>,
     pub(crate) chart_screenshot: Option<ChartScreenshotState>,
     pub(crate) chart_screenshot_error: Option<String>,
     pub(crate) chart_screenshot_capture_in_progress: bool,

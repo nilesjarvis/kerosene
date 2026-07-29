@@ -22,6 +22,7 @@ impl TradingTerminal {
     ) -> Vec<Task<Message>> {
         let mut boot_tasks = Vec::new();
         self.restore_saved_chart_instances(chart_configs, next_chart_id, &mut boot_tasks);
+        self.spaghetti_instance_epoch = self.spaghetti_instance_epoch.wrapping_add(1);
         self.restore_saved_spaghetti_instances(
             spaghetti_configs,
             next_spaghetti_id,
@@ -210,6 +211,7 @@ impl TradingTerminal {
                 });
                 boot_tasks.push(Self::fetch_spaghetti_candles(
                     sid,
+                    self.spaghetti_instance_epoch,
                     &canonical_key,
                     tf,
                     inst.canvas.active_session,

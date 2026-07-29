@@ -45,6 +45,8 @@ impl TradingTerminal {
             self.view_pnl_card_window(window_id)
         } else if let Some(state) = self.detached_chart_windows.get(&window_id) {
             self.view_detached_chart_window(state.chart_id, ChartSurfaceId::Detached(window_id))
+        } else if let Some(state) = self.detached_spaghetti_windows.get(&window_id) {
+            self.view_detached_spaghetti_window(state.chart_id)
         } else {
             self.view_main()
         };
@@ -112,6 +114,8 @@ impl TradingTerminal {
                     )
                 })
                 .unwrap_or_else(|| "Kerosene Chart".to_string())
+        } else if let Some(state) = self.detached_spaghetti_windows.get(&window_id) {
+            self.detached_spaghetti_window_title(state.chart_id)
         } else {
             "Kerosene Trading Terminal".to_string()
         }

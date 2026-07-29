@@ -70,6 +70,9 @@ impl TradingTerminal {
         let next_spaghetti_id = widget_configs.next_spaghetti_id;
 
         self.clear_all_chart_pending_request_state();
+        // Close detached spaghetti windows before replacing chart instances
+        // so the new layout's IDs cannot collide with existing detached windows.
+        boot_tasks.extend(self.close_detached_spaghetti_windows());
         boot_tasks.extend(self.restore_layout_chart_instances(
             &chart_configs,
             &spaghetti_configs,
@@ -115,6 +118,14 @@ impl TradingTerminal {
         Task::batch(boot_tasks)
     }
 
+    fn close_detached_spaghetti_windows(&mut self) -> Vec<Task<Message>> {
+        let ids: Vec<_> = self.detached_spaghetti_windows.keys().copied().collect();
+        for window_id in &ids {
+            self.remove_detached_spaghetti_window_state(*window_id);
+        }
+        ids.into_iter().map(iced::window::close).collect()
+    }
+
     fn close_detached_windows_for_missing_charts(&mut self) -> Vec<Task<Message>> {
         let stale_window_ids: Vec<_> = self
             .detached_chart_windows
@@ -128,8 +139,21 @@ impl TradingTerminal {
             self.remove_detached_chart_window_state(*window_id);
         }
 
+        let mut stale_spaghetti_window_ids: Vec<_> = self
+            .detached_spaghetti_windows
+            .iter()
+            .filter_map(|(window_id, state)| {
+                (!self.spaghetti_charts.contains_key(&state.chart_id)).then_some(*window_id)
+            })
+            .collect();
+
+        for window_id in &stale_spaghetti_window_ids {
+            self.remove_detached_spaghetti_window_state(*window_id);
+        }
+
         stale_window_ids
             .into_iter()
+            .chain(stale_spaghetti_window_ids.drain(..))
             .map(iced::window::close)
             .collect()
     }

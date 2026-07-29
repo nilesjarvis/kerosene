@@ -69,9 +69,11 @@ impl TradingTerminal {
         let read_data_provider_generation = self.read_data_provider_generation;
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
+        let instance_epoch = self.spaghetti_instance_epoch;
         for symbol in to_load {
             tasks.push(Self::fetch_spaghetti_candles(
                 id,
+                instance_epoch,
                 &symbol,
                 inst_interval,
                 inst_active_session,

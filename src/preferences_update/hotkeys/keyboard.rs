@@ -34,11 +34,17 @@ impl TradingTerminal {
         }
 
         if !is_main_window {
-            if self.detached_window_has_open_chart_editor(window_id)
-                && let Some(editor_task) =
+            if self.detached_window_has_open_chart_editor(window_id) {
+                if let Some(editor_task) =
                     self.handle_chart_editor_keyboard(key.as_ref(), modifiers)
-            {
-                return editor_task;
+                {
+                    return editor_task;
+                }
+                return Task::none();
+            }
+            if self.detached_window_has_open_spaghetti_editor(window_id) {
+                // Spaghetti editor handles keyboard at the widget level
+                return Task::none();
             }
             return Task::none();
         }
@@ -94,6 +100,13 @@ impl TradingTerminal {
         self.detached_chart_windows
             .get(&window_id)
             .and_then(|state| self.charts.get(&state.chart_id))
+            .is_some_and(|instance| instance.editor_open)
+    }
+
+    fn detached_window_has_open_spaghetti_editor(&self, window_id: iced::window::Id) -> bool {
+        self.detached_spaghetti_windows
+            .get(&window_id)
+            .and_then(|state| self.spaghetti_charts.get(&state.chart_id))
             .is_some_and(|instance| instance.editor_open)
     }
 }

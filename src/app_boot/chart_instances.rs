@@ -207,6 +207,7 @@ impl TradingTerminal {
                 if !defer_legacy_api_named_pair {
                     boot_tasks.push(Self::fetch_spaghetti_candles(
                         sid,
+                        0,
                         sym_key,
                         tf,
                         inst.canvas.active_session,

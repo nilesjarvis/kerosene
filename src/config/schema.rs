@@ -3,8 +3,8 @@ use super::layouts::{PaneLayoutConfig, SavedLayout, WidgetPaddingConfig};
 use super::live_watchlist::LiveWatchlistConfig;
 use super::order_presets::OrderPresetsConfig;
 use super::panes::{
-    ChartConfig, DetachedChartWindowConfig, OrderBookConfig, PositioningInfoConfig,
-    SessionDataConfig, SpaghettiChartConfig, XFeedConfig,
+    ChartConfig, DetachedChartWindowConfig, DetachedSpaghettiWindowConfig, OrderBookConfig,
+    PositioningInfoConfig, SessionDataConfig, SpaghettiChartConfig, XFeedConfig,
 };
 use super::screenshot::ChartScreenshotSettingsConfig;
 use super::secrets::EncryptedSecretsConfig;
@@ -401,6 +401,9 @@ pub struct KeroseneConfig {
     /// Per-spaghetti (comparison) chart configurations.
     #[serde(default)]
     pub spaghetti_charts: Vec<SpaghettiChartConfig>,
+    /// Detached comparison chart windows to reopen on startup.
+    #[serde(default)]
+    pub detached_spaghetti_windows: Vec<DetachedSpaghettiWindowConfig>,
     /// Wallet tracker window state.
     #[serde(default)]
     pub wallet_tracker: WalletTrackerConfig,

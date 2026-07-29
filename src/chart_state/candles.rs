@@ -515,6 +515,7 @@ impl TradingTerminal {
             )
         }));
 
+        let spaghetti_instance_epoch = self.spaghetti_instance_epoch;
         let spaghetti_requests: Vec<_> = self
             .spaghetti_charts
             .iter()
@@ -545,6 +546,7 @@ impl TradingTerminal {
             |(chart_id, symbol, timeframe, session, session_granularity)| {
                 Self::fetch_spaghetti_candles(
                     chart_id,
+                    spaghetti_instance_epoch,
                     &symbol,
                     timeframe,
                     session,

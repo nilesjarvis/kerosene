@@ -43,6 +43,7 @@ impl TradingTerminal {
                                 (
                                     api_key,
                                     10000 + inst.id,
+                                    self.spaghetti_instance_epoch,
                                     series.symbol.clone(),
                                     ws_tf,
                                     inst.canvas.active_session,
@@ -58,6 +59,7 @@ impl TradingTerminal {
                             Subscription::run_with(
                                 (
                                     10000 + inst.id,
+                                    self.spaghetti_instance_epoch,
                                     series.symbol.clone(),
                                     ws_tf,
                                     inst.canvas.active_session,
@@ -84,6 +86,7 @@ fn spaghetti_candle_stream_event_to_message(
     match event {
         SpaghettiCandleStreamEvent::Item {
             id,
+            instance_epoch,
             symbol,
             timeframe,
             hydromancer_key_generation,
@@ -96,6 +99,7 @@ fn spaghetti_candle_stream_event_to_message(
             Message::SpaghettiWsCandleUpdate(
                 SpaghettiWsCandleContext {
                     chart_id: id.saturating_sub(10000),
+                    instance_epoch,
                     symbol,
                     timeframe,
                     source_context,
@@ -107,6 +111,7 @@ fn spaghetti_candle_stream_event_to_message(
         }
         SpaghettiCandleStreamEvent::Lagged {
             id,
+            instance_epoch,
             symbol,
             timeframe,
             hydromancer_key_generation,
@@ -119,6 +124,7 @@ fn spaghetti_candle_stream_event_to_message(
             Message::SpaghettiWsCandleLagged(
                 SpaghettiWsCandleContext {
                     chart_id: id.saturating_sub(10000),
+                    instance_epoch,
                     symbol,
                     timeframe,
                     source_context,

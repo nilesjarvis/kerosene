@@ -167,6 +167,10 @@ Saved layouts are user-named snapshots. They include:
 
 Saved layout application should preserve compatibility with old configs. If a
 new pane cannot be restored safely, prune it rather than panicking.
+Detached-only spaghetti instances are excluded from both named layouts and the
+synthetic `last` layout so loading a workspace cannot convert detached windows
+into docked panes. Replacing layout-owned spaghetti instances also advances a
+runtime epoch that fences their outstanding REST and websocket events.
 
 ## Config Wire Types
 

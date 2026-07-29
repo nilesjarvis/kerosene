@@ -16,6 +16,7 @@ impl TradingTerminal {
         let read_data_provider_generation = self.read_data_provider_generation;
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
+        let instance_epoch = self.spaghetti_instance_epoch;
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             inst.canvas.active_session = session;
             Self::normalize_spaghetti_session_granularity(inst, Self::now_ms());
@@ -29,6 +30,7 @@ impl TradingTerminal {
                 series.loaded = false;
                 tasks.push(Self::fetch_spaghetti_candles(
                     id,
+                    instance_epoch,
                     &series.symbol,
                     inst.interval,
                     inst.canvas.active_session,
@@ -57,6 +59,7 @@ impl TradingTerminal {
         let read_data_provider_generation = self.read_data_provider_generation;
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
+        let instance_epoch = self.spaghetti_instance_epoch;
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             if inst.session_granularity.is_none() {
                 return Task::none();
@@ -74,6 +77,7 @@ impl TradingTerminal {
                 series.loaded = false;
                 tasks.push(Self::fetch_spaghetti_candles(
                     id,
+                    instance_epoch,
                     &series.symbol,
                     inst.interval,
                     inst.canvas.active_session,

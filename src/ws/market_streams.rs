@@ -80,6 +80,7 @@ pub enum KeyedCandleStreamEvent {
 pub enum SpaghettiCandleStreamEvent {
     Item {
         id: u64,
+        instance_epoch: u64,
         symbol: String,
         timeframe: Timeframe,
         hydromancer_key_generation: Option<u64>,
@@ -89,6 +90,7 @@ pub enum SpaghettiCandleStreamEvent {
     },
     Lagged {
         id: u64,
+        instance_epoch: u64,
         symbol: String,
         timeframe: Timeframe,
         hydromancer_key_generation: Option<u64>,

@@ -179,17 +179,18 @@ mod tests {
 
     #[test]
     fn calendar_refresh_due_uses_supplied_tick_clock() {
-        let now = Instant::now();
+        let base = Instant::now();
+        let interval = Duration::from_secs(CALENDAR_REFRESH_INTERVAL_SECS);
+        let now = base
+            .checked_add(interval)
+            .expect("test timestamp should be representable");
 
         assert!(calendar_refresh_is_due(None, now));
         assert!(!calendar_refresh_is_due(
-            Some(now - Duration::from_secs(CALENDAR_REFRESH_INTERVAL_SECS - 1)),
+            Some(base + Duration::from_secs(1)),
             now
         ));
-        assert!(calendar_refresh_is_due(
-            Some(now - Duration::from_secs(CALENDAR_REFRESH_INTERVAL_SECS)),
-            now
-        ));
+        assert!(calendar_refresh_is_due(Some(base), now));
         assert!(!calendar_refresh_is_due(
             Some(now + Duration::from_secs(1)),
             now

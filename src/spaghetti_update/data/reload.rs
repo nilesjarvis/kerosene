@@ -40,6 +40,7 @@ impl TradingTerminal {
         let read_data_provider_generation = self.read_data_provider_generation;
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
+        let instance_epoch = self.spaghetti_instance_epoch;
         let mut removed_cache_keys = Vec::new();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             Self::normalize_spaghetti_session_granularity(inst, Self::now_ms());
@@ -58,6 +59,7 @@ impl TradingTerminal {
 
                 tasks.push(Self::fetch_spaghetti_candles(
                     id,
+                    instance_epoch,
                     &series.symbol,
                     inst.interval,
                     inst.canvas.active_session,
