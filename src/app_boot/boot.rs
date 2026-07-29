@@ -81,6 +81,11 @@ impl TradingTerminal {
             .iter()
             .map(|window| window.chart_id)
             .collect();
+        let detached_spaghetti_ids: std::collections::BTreeSet<_> = cfg
+            .detached_spaghetti_windows
+            .iter()
+            .map(|window| window.chart_id)
+            .collect();
         let first_chart_id = charts
             .keys()
             .copied()
@@ -141,7 +146,11 @@ impl TradingTerminal {
             );
         }
 
-        state.ensure_boot_layout_chart_panes(first_chart_id, &detached_chart_ids);
+        state.ensure_boot_layout_chart_panes(
+            first_chart_id,
+            &detached_chart_ids,
+            &detached_spaghetti_ids,
+        );
         state.boot_order_book_instances(&cfg, &muted_tickers);
         state.boot_positioning_info_instances(&cfg, &muted_tickers);
         state.boot_session_data_instances(&cfg, &muted_tickers);

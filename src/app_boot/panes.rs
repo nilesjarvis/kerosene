@@ -11,6 +11,7 @@ impl TradingTerminal {
         &mut self,
         first_chart_id: ChartId,
         detached_chart_ids: &BTreeSet<ChartId>,
+        detached_spaghetti_ids: &BTreeSet<SpaghettiChartId>,
     ) {
         let mut chart_ids_in_layout = BTreeSet::new();
         let mut spaghetti_ids_in_layout = BTreeSet::new();
@@ -38,7 +39,7 @@ impl TradingTerminal {
         }
 
         self.ensure_loaded_chart_panes(&mut chart_ids_in_layout, detached_chart_ids);
-        self.ensure_loaded_spaghetti_panes(&mut spaghetti_ids_in_layout);
+        self.ensure_loaded_spaghetti_panes(&mut spaghetti_ids_in_layout, detached_spaghetti_ids);
 
         self.sync_primary_chart_id_from_panes();
     }
@@ -70,13 +71,14 @@ impl TradingTerminal {
     fn ensure_loaded_spaghetti_panes(
         &mut self,
         spaghetti_ids_in_layout: &mut BTreeSet<SpaghettiChartId>,
+        detached_spaghetti_ids: &BTreeSet<SpaghettiChartId>,
     ) {
         let mut all_spaghetti_ids: Vec<SpaghettiChartId> =
             self.spaghetti_charts.keys().copied().collect();
         all_spaghetti_ids.sort_unstable();
 
         for sid in all_spaghetti_ids {
-            if spaghetti_ids_in_layout.contains(&sid) {
+            if spaghetti_ids_in_layout.contains(&sid) || detached_spaghetti_ids.contains(&sid) {
                 continue;
             }
 
