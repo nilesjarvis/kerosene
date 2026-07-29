@@ -164,7 +164,7 @@ impl TradingTerminal {
             telegram_feed_channels: self.telegram_feed.channels.clone(),
             telegram_feed_private_channels: self.telegram_feed.private_channels.clone(),
 
-            spaghetti_charts: layout_snapshot.spaghetti_charts,
+            spaghetti_charts: self.spaghetti_chart_configs_snapshot(),
             detached_spaghetti_windows: self.detached_spaghetti_window_configs_snapshot(),
             wallet_tracker: self.wallet_tracker.to_config(&self.address_book),
             wallet_clusters: self.wallet_clusters.to_config(),

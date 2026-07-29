@@ -36,7 +36,7 @@ impl TradingTerminal {
                 .canvas
                 .series
                 .iter()
-                .filter(|s| s.loaded && !s.symbol.is_empty())
+                .filter(|s| !s.symbol.is_empty())
                 .map(|s| s.symbol.clone())
                 .collect();
             (
