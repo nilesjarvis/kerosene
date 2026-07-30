@@ -7,6 +7,24 @@ use crate::message::Message;
 use crate::positioning_state::PositioningInfoInstance;
 
 #[test]
+fn refresh_all_includes_canvas_positioning_instances() {
+    let (mut terminal, _) =
+        TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default());
+    let id = 17;
+    terminal
+        .positioning_infos
+        .insert(id, PositioningInfoInstance::new(id, "HYPE".to_string()));
+    terminal.insert_test_canvas_pane(7, crate::pane_state::PaneKind::PositioningInfo(id));
+
+    let _task = terminal.request_positioning_info_refresh_all(true);
+
+    assert_eq!(
+        terminal.positioning_infos[&id].error.as_deref(),
+        Some("Add HyperDash key in Settings > Integrations")
+    );
+}
+
+#[test]
 fn request_key_scopes_positioning_fetch_parameters() {
     assert_eq!(
         positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc", None, None),

@@ -20,9 +20,8 @@ use planning::{PositioningInfoChangeRequestPlan, PositioningInfoRequestPlan};
 impl TradingTerminal {
     pub(crate) fn request_positioning_info_refresh_all(&mut self, force: bool) -> Task<Message> {
         let ids: Vec<PositioningInfoId> = self
-            .panes
-            .iter()
-            .filter_map(|(_, kind)| {
+            .workspace_pane_kinds()
+            .filter_map(|(_, _, kind)| {
                 if let PaneKind::PositioningInfo(id) = kind {
                     Some(*id)
                 } else {

@@ -165,4 +165,30 @@ impl TradingTerminal {
                     .map(move |(pane, kind)| (workspace, *pane, kind))
             })
     }
+
+    #[cfg(test)]
+    pub(crate) fn insert_test_canvas_pane(
+        &mut self,
+        id: CanvasId,
+        kind: PaneKind,
+    ) -> pane_grid::Pane {
+        let (panes, pane) = pane_grid::State::new(kind);
+        self.canvases.insert(
+            id,
+            CanvasState {
+                id,
+                label: format!("Canvas {}", id.saturating_add(1)),
+                window_id: None,
+                panes,
+                focus: Some(pane),
+                dragging_pane: None,
+                width: config::DEFAULT_CANVAS_WIDTH,
+                height: config::DEFAULT_CANVAS_HEIGHT,
+                x: None,
+                y: None,
+                preserved_loaded_pane_layout: None,
+            },
+        );
+        pane
+    }
 }

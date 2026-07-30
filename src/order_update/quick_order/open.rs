@@ -33,16 +33,16 @@ impl TradingTerminal {
         } = request;
 
         if self.primary_chart_id != Some(chart_id) {
-            let target_pane = self
-                .panes
-                .iter()
-                .find(|(_, kind)| matches!(kind, PaneKind::Chart(id) if *id == chart_id))
-                .map(|(pane, _)| *pane);
+            let target_pane = self.find_workspace_pane_matching(
+                |kind| matches!(kind, PaneKind::Chart(id) if *id == chart_id),
+            );
             if self.charts.contains_key(&chart_id) {
                 self.primary_chart_id = Some(chart_id);
             }
-            if let Some(pane) = target_pane {
-                self.focus = Some(pane);
+            if let Some((workspace, pane)) = target_pane {
+                self.set_workspace_focus(workspace, Some(pane));
+                self.last_focused_workspace = workspace;
+                self.add_widget_workspace = workspace;
 
                 let chart_sym = self.charts.get(&chart_id).and_then(|inst| {
                     let sym = inst.symbol.clone();
@@ -77,7 +77,7 @@ impl TradingTerminal {
                     self.sync_all_chart_overlays();
                     self.persist_config();
                 }
-            } else {
+            } else if self.last_focused_workspace == crate::canvas_state::WorkspaceId::Main {
                 self.focus = None;
             }
         }

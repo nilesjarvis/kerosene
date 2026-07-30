@@ -17,11 +17,7 @@ impl TradingTerminal {
         let hydromancer_key =
             HydromancerStreamKey::new(hydromancer_key, self.hydromancer_key_generation);
 
-        if self
-            .panes
-            .iter()
-            .any(|(_, kind)| matches!(kind, PaneKind::Liquidations))
-        {
+        if self.pane_is_open(|kind| matches!(kind, PaneKind::Liquidations)) {
             let hydromancer_key_generation = self.hydromancer_key_generation;
             let reconnect_nonce = self.liquidations_reconnect_nonce;
             subs.push(
@@ -40,11 +36,7 @@ impl TradingTerminal {
             );
         }
 
-        if self
-            .panes
-            .iter()
-            .any(|(_, kind)| matches!(kind, PaneKind::TrackedTrades))
-        {
+        if self.pane_is_open(|kind| matches!(kind, PaneKind::TrackedTrades)) {
             let tracked_addresses = self.tracked_trade_subscription_addresses();
             if !tracked_addresses.is_empty() {
                 let hydromancer_key_generation = self.hydromancer_key_generation;
@@ -112,5 +104,38 @@ mod tests {
         terminal.push_hydromancer_subscriptions(&mut subscriptions);
 
         assert_eq!(subscriptions.len(), 1);
+    }
+
+    #[test]
+    fn canvas_liquidations_pane_starts_hydromancer_stream() {
+        let (mut terminal, _) =
+            TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default());
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.insert_test_canvas_pane(7, PaneKind::Liquidations);
+        let mut subscriptions = Vec::new();
+
+        terminal.push_hydromancer_subscriptions(&mut subscriptions);
+
+        assert_eq!(subscriptions.len(), 2);
+    }
+
+    #[test]
+    fn canvas_tracked_trades_pane_starts_hydromancer_stream() {
+        let (mut terminal, _) =
+            TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default());
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.address_book.insert(
+            "0xabc0000000000000000000000000000000000000".to_string(),
+            crate::wallet_state::AddressBookEntry {
+                label: "Tracked".to_string(),
+                ..Default::default()
+            },
+        );
+        terminal.insert_test_canvas_pane(7, PaneKind::TrackedTrades);
+        let mut subscriptions = Vec::new();
+
+        terminal.push_hydromancer_subscriptions(&mut subscriptions);
+
+        assert_eq!(subscriptions.len(), 2);
     }
 }

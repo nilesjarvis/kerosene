@@ -1,7 +1,9 @@
 use super::*;
 use crate::api::{ExchangeSymbol, MarketType};
+use crate::canvas_state::WorkspaceId;
 use crate::chart_state::ChartInstance;
-use crate::config::AccountProfile;
+use crate::config::{self, AccountProfile};
+use crate::pane_state::PaneKind;
 use crate::timeframe::Timeframe;
 
 const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
@@ -131,4 +133,39 @@ fn open_quick_order_accepts_committed_key_when_draft_differs() {
     let instance = terminal.charts.get(&chart_id).expect("chart instance");
     assert!(instance.quick_order.is_some());
     assert!(terminal.order_status.is_none());
+}
+
+#[test]
+fn open_quick_order_from_canvas_updates_global_symbol_context() {
+    let (mut terminal, _) = TradingTerminal::boot_from_config(config::KeroseneConfig::default());
+    connect_test_account(&mut terminal);
+    terminal.set_committed_agent_key_for_test("committed-agent-key");
+    terminal.exchange_symbols = vec![symbol("BTC"), symbol("ETH")];
+    terminal.active_symbol = "BTC".to_string();
+
+    let chart_id = 77;
+    terminal.charts.insert(
+        chart_id,
+        ChartInstance::new(chart_id, "ETH".to_string(), Timeframe::H1),
+    );
+    let pane = terminal.insert_test_canvas_pane(7, PaneKind::Chart(chart_id));
+    terminal.primary_chart_id = terminal
+        .first_chart_pane()
+        .map(|(_, main_chart_id)| main_chart_id);
+
+    let _task = terminal.handle_open_quick_order(QuickOrderOpenRequest {
+        chart_id,
+        surface_id: ChartSurfaceId::Docked(chart_id),
+        price: 101.0,
+        click_x: 10.0,
+        click_y: 20.0,
+        chart_w: 300.0,
+        chart_h: 200.0,
+    });
+
+    assert_eq!(terminal.active_symbol, "ETH");
+    assert_eq!(terminal.primary_chart_id, Some(chart_id));
+    assert_eq!(terminal.last_focused_workspace, WorkspaceId::Canvas(7));
+    assert_eq!(terminal.workspace_focus(WorkspaceId::Canvas(7)), Some(pane));
+    assert!(terminal.charts[&chart_id].quick_order.is_some());
 }
