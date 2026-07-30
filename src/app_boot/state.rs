@@ -59,19 +59,21 @@ impl TradingTerminal {
         let mut advanced_order_history = VecDeque::from(cfg.advanced_order_history.clone());
         prune_advanced_order_history(&mut advanced_order_history);
         let mut canvases = BTreeMap::new();
+        let mut preserved_unavailable_canvases = Vec::new();
         let mut next_canvas_id = 0;
         for canvas_config in &cfg.canvases {
+            next_canvas_id = next_canvas_id.max(canvas_config.id.saturating_add(1));
             let Some(pane_config) = canvas_config
                 .pane_layout
                 .as_ref()
                 .and_then(TradingTerminal::pane_layout_to_configuration)
             else {
+                preserved_unavailable_canvases.push(canvas_config.clone());
                 continue;
             };
             if canvases.contains_key(&canvas_config.id) {
                 continue;
             }
-            next_canvas_id = next_canvas_id.max(canvas_config.id.saturating_add(1));
             canvases.insert(
                 canvas_config.id,
                 CanvasState::from_config(
@@ -104,6 +106,7 @@ impl TradingTerminal {
             panes: pane_grid::State::with_configuration(parts.pane_config),
             dragging_pane: None,
             canvases,
+            preserved_unavailable_canvases,
             next_canvas_id,
             last_focused_workspace: WorkspaceId::Main,
             active_theme: cfg.active_theme.clone(),

@@ -52,6 +52,7 @@ impl TradingTerminal {
             spaghetti_configs,
             next_chart_id,
             next_spaghetti_id,
+            default_main_chart_id,
         } = Self::boot_layout_widget_configs(&cfg, &symbol);
         let chart_backfill_source = cfg.read_data_provider.chart_backfill_source();
         let hydromancer_api_key =
@@ -76,26 +77,19 @@ impl TradingTerminal {
         );
         boot_tasks.extend(spaghetti_tasks);
 
-        let detached_chart_ids: std::collections::BTreeSet<_> = cfg
+        let detached_chart_ids = cfg
             .detached_chart_windows
             .iter()
             .map(|window| window.chart_id)
-            .collect();
-        let detached_spaghetti_ids: std::collections::BTreeSet<_> = cfg
+            .collect::<std::collections::BTreeSet<_>>();
+        let detached_spaghetti_ids = cfg
             .detached_spaghetti_windows
             .iter()
             .map(|window| window.chart_id)
-            .collect();
-        let first_chart_id = charts
-            .keys()
-            .copied()
-            .filter(|id| !detached_chart_ids.contains(id))
-            .min()
-            .or_else(|| charts.keys().copied().min())
-            .unwrap_or(0);
-
+            .collect::<std::collections::BTreeSet<_>>();
+        let first_chart_id = default_main_chart_id;
         let default_pane_config =
-            Self::default_boot_pane_configuration(first_chart_id, layout_ratios);
+            Self::default_boot_pane_configuration(default_main_chart_id, layout_ratios);
 
         let pane_config = cfg
             .pane_layout

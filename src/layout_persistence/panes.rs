@@ -22,21 +22,24 @@ impl TradingTerminal {
             .filter_map(|canvas| canvas.window_id)
             .collect::<Vec<_>>();
         self.canvases.clear();
+        self.preserved_unavailable_canvases.clear();
         self.next_canvas_id = 0;
 
         let mut open_ids = Vec::new();
         for canvas_config in canvas_configs {
+            self.next_canvas_id = self.next_canvas_id.max(canvas_config.id.saturating_add(1));
             let Some(configuration) = canvas_config
                 .pane_layout
                 .as_ref()
                 .and_then(Self::pane_layout_to_configuration)
             else {
+                self.preserved_unavailable_canvases
+                    .push(canvas_config.clone());
                 continue;
             };
             if self.canvases.contains_key(&canvas_config.id) {
                 continue;
             }
-            self.next_canvas_id = self.next_canvas_id.max(canvas_config.id.saturating_add(1));
             self.canvases.insert(
                 canvas_config.id,
                 CanvasState::from_config(
@@ -67,9 +70,12 @@ impl TradingTerminal {
         tasks
     }
 
-    pub(super) fn restore_layout_panes(&mut self, layout: &config::SavedLayout) {
-        let first_chart_id = self.charts.keys().copied().min().unwrap_or(0);
-        let default_pane_config = default_pane_configuration(layout, first_chart_id);
+    pub(super) fn restore_layout_panes(
+        &mut self,
+        layout: &config::SavedLayout,
+        default_main_chart_id: ChartId,
+    ) {
+        let default_pane_config = default_pane_configuration(layout, default_main_chart_id);
         let pane_config = layout
             .pane_layout
             .as_ref()
@@ -77,7 +83,7 @@ impl TradingTerminal {
             .unwrap_or(default_pane_config);
 
         self.panes = pane_grid::State::with_configuration(pane_config);
-        self.reconcile_layout_widget_panes(first_chart_id);
+        self.reconcile_layout_widget_panes(default_main_chart_id);
         self.sync_primary_chart_id_from_panes();
     }
 

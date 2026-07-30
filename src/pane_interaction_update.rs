@@ -119,52 +119,61 @@ impl TradingTerminal {
                     self.set_workspace_focus(workspace, Some(sibling));
                     self.last_focused_workspace = workspace;
                     let mut detached_window_to_close = None;
-                    self.remove_widget_padding_override_for_kind(&closed_kind);
+                    let closed_target =
+                        crate::config::WidgetPaddingTargetConfig::from_pane_kind(&closed_kind);
+                    let instance_still_open = self.workspace_pane_kinds().any(|(_, _, kind)| {
+                        crate::config::WidgetPaddingTargetConfig::from_pane_kind(kind)
+                            == closed_target
+                    });
 
-                    match closed_kind {
-                        PaneKind::Chart(id) => {
-                            self.clear_chart_surface_state(id, ChartSurfaceId::Docked(id));
-                            detached_window_to_close = self.detached_chart_window_for(id);
-                            if let Some(window_id) = detached_window_to_close {
-                                self.remove_detached_chart_window_state(window_id);
+                    if !instance_still_open {
+                        self.remove_widget_padding_override_for_kind(&closed_kind);
+
+                        match closed_kind {
+                            PaneKind::Chart(id) => {
+                                self.clear_chart_surface_state(id, ChartSurfaceId::Docked(id));
+                                detached_window_to_close = self.detached_chart_window_for(id);
+                                if let Some(window_id) = detached_window_to_close {
+                                    self.remove_detached_chart_window_state(window_id);
+                                }
+                                self.clear_chart_pending_request_state(id);
+                                self.charts.remove(&id);
+                                if self.primary_chart_id == Some(id) {
+                                    self.primary_chart_id = self.charts.keys().next().copied();
+                                }
                             }
-                            self.clear_chart_pending_request_state(id);
-                            self.charts.remove(&id);
-                            if self.primary_chart_id == Some(id) {
-                                self.primary_chart_id = self.charts.keys().next().copied();
+                            PaneKind::SpaghettiChart(id) => {
+                                detached_window_to_close = self.detached_spaghetti_window_for(id);
+                                if let Some(window_id) = detached_window_to_close {
+                                    self.remove_detached_spaghetti_window_state(window_id);
+                                }
+                                self.spaghetti_charts.remove(&id);
                             }
-                        }
-                        PaneKind::SpaghettiChart(id) => {
-                            detached_window_to_close = self.detached_spaghetti_window_for(id);
-                            if let Some(window_id) = detached_window_to_close {
-                                self.remove_detached_spaghetti_window_state(window_id);
+                            PaneKind::LiveWatchlist(id) => {
+                                self.live_watchlists.remove(&id);
+                                if self.live_watchlist_settings_menu_open == Some(id) {
+                                    self.live_watchlist_settings_menu_open = None;
+                                }
                             }
-                            self.spaghetti_charts.remove(&id);
-                        }
-                        PaneKind::LiveWatchlist(id) => {
-                            self.live_watchlists.remove(&id);
-                            if self.live_watchlist_settings_menu_open == Some(id) {
-                                self.live_watchlist_settings_menu_open = None;
+                            PaneKind::PositioningInfo(id) => {
+                                self.positioning_infos.remove(&id);
+                                for pending in self.positioning_info_pending.values_mut() {
+                                    pending.retain(|pending_id| *pending_id != id);
+                                }
+                                self.positioning_info_pending
+                                    .retain(|_, pending| !pending.is_empty());
                             }
-                        }
-                        PaneKind::PositioningInfo(id) => {
-                            self.positioning_infos.remove(&id);
-                            for pending in self.positioning_info_pending.values_mut() {
-                                pending.retain(|pending_id| *pending_id != id);
+                            PaneKind::OrderBook(id) => {
+                                self.order_books.remove(&id);
                             }
-                            self.positioning_info_pending
-                                .retain(|_, pending| !pending.is_empty());
+                            PaneKind::SessionData(id) => {
+                                self.session_data.remove(&id);
+                            }
+                            PaneKind::XFeed(id) => {
+                                self.x_feed.instances.remove(&id);
+                            }
+                            _ => {}
                         }
-                        PaneKind::OrderBook(id) => {
-                            self.order_books.remove(&id);
-                        }
-                        PaneKind::SessionData(id) => {
-                            self.session_data.remove(&id);
-                        }
-                        PaneKind::XFeed(id) => {
-                            self.x_feed.instances.remove(&id);
-                        }
-                        _ => {}
                     }
                     self.persist_config();
                     let mut tasks = Vec::new();

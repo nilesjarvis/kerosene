@@ -23,7 +23,8 @@ Representative fields:
 
 - `panes: pane_grid::State<PaneKind>`
 - `focus`, `dragging_pane`
-- `canvases: BTreeMap<CanvasId, CanvasState>`, `next_canvas_id`
+- `canvases: BTreeMap<CanvasId, CanvasState>`,
+  `preserved_unavailable_canvases`, and `next_canvas_id`
 - `last_focused_workspace` and the workspace targeted by the add-widget flow
 - `saved_layouts`, `active_layout_name`, `layout_input`
 - `app_onboarding_dismissed`, which gates the first-run welcome screen

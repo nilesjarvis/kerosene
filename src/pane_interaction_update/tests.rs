@@ -40,6 +40,32 @@ fn closing_chart_pane_prunes_pending_request_registries() {
     assert_pending_chart_requests_pruned(&terminal, other_chart_id);
 }
 
+#[test]
+fn closing_duplicate_chart_pane_keeps_instance_used_by_another_workspace() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let chart_pane = terminal
+        .find_pane_matching(|kind| matches!(kind, PaneKind::Chart(_)))
+        .expect("main chart pane");
+    let chart_id = match terminal.panes.get(chart_pane).expect("chart pane kind") {
+        PaneKind::Chart(chart_id) => *chart_id,
+        _ => panic!("expected chart pane"),
+    };
+    terminal.insert_test_canvas_pane(7, PaneKind::Chart(chart_id));
+
+    let _task = terminal.update_pane_interactions(Message::ClosePane(
+        crate::canvas_state::WorkspaceId::Main,
+        chart_pane,
+    ));
+
+    assert!(terminal.charts.contains_key(&chart_id));
+    assert!(
+        terminal.canvases[&7]
+            .panes
+            .iter()
+            .any(|(_, kind)| matches!(kind, PaneKind::Chart(id) if *id == chart_id))
+    );
+}
+
 fn seed_pending_chart_requests(
     terminal: &mut TradingTerminal,
     chart_id: ChartId,

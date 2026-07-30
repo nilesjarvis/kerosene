@@ -84,6 +84,48 @@ impl TradingTerminal {
             }
         }
 
+        let mut canvas_chart_ids = BTreeSet::new();
+        let mut ignored_spaghetti_ids = BTreeSet::new();
+        for pane_layout in cfg
+            .canvases
+            .iter()
+            .filter_map(|canvas| canvas.pane_layout.as_ref())
+        {
+            Self::collect_layout_widget_ids(
+                pane_layout,
+                &mut canvas_chart_ids,
+                &mut ignored_spaghetti_ids,
+            );
+        }
+        let detached_chart_ids = cfg
+            .detached_chart_windows
+            .iter()
+            .map(|window| window.chart_id)
+            .collect::<BTreeSet<_>>();
+        let main_layout_available = cfg
+            .pane_layout
+            .as_ref()
+            .and_then(Self::pane_layout_to_configuration)
+            .is_some();
+        let default_main_chart_id = if main_layout_available {
+            chart_configs.first().map(|config| config.id).unwrap_or(0)
+        } else if let Some(id) = chart_configs
+            .iter()
+            .map(|config| config.id)
+            .find(|id| !canvas_chart_ids.contains(id) && !detached_chart_ids.contains(id))
+        {
+            id
+        } else {
+            let id = next_chart_id;
+            chart_configs.push(ChartConfig::empty(
+                id,
+                active_symbol,
+                cfg.active_timeframe.clone(),
+            ));
+            next_chart_id = next_chart_id.max(id.saturating_add(1));
+            id
+        };
+
         chart_configs.sort_by_key(|config| config.id);
         spaghetti_configs.sort_by_key(|config| config.id);
 
@@ -92,6 +134,7 @@ impl TradingTerminal {
             spaghetti_configs,
             next_chart_id,
             next_spaghetti_id,
+            default_main_chart_id,
         }
     }
 }

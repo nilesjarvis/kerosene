@@ -232,6 +232,66 @@ mod tests {
                 .iter()
                 .any(|(_, kind)| matches!(kind, PaneKind::Chart(42)))
         );
+        let main_chart_id = terminal
+            .panes
+            .iter()
+            .find_map(|(_, kind)| match kind {
+                PaneKind::Chart(id) => Some(*id),
+                _ => None,
+            })
+            .expect("default main chart");
+        assert_ne!(main_chart_id, 42);
+        assert!(terminal.charts.contains_key(&main_chart_id));
         assert!(terminal.charts.contains_key(&42));
+    }
+
+    #[test]
+    fn boot_preserves_unavailable_future_canvas_for_the_next_save() {
+        let future_pane = serde_json::json!({
+            "FuturePane": {
+                "id": 9,
+                "label": "newer-version"
+            }
+        });
+        let pane_layout =
+            config::PaneLayoutConfig::Leaf(config::PaneKindConfig::Unknown(future_pane));
+        let cfg = config::KeroseneConfig {
+            canvases: vec![config::CanvasConfig {
+                id: 8,
+                label: "Future monitor".to_string(),
+                open: true,
+                pane_layout: Some(pane_layout.clone()),
+                width: 1200.0,
+                height: 800.0,
+                x: Some(30.0),
+                y: Some(40.0),
+            }],
+            ..config::KeroseneConfig::default()
+        };
+
+        let (mut terminal, _) = TradingTerminal::boot_from_config(cfg);
+
+        assert!(terminal.canvases.is_empty());
+        assert_eq!(terminal.preserved_unavailable_canvases.len(), 1);
+        assert_eq!(terminal.next_canvas_id, 9);
+        let snapshot = terminal.saved_layout_snapshot("future".to_string());
+        assert_eq!(snapshot.canvases.len(), 1);
+        assert_eq!(snapshot.canvases[0].id, 8);
+        assert_eq!(snapshot.canvases[0].pane_layout, Some(pane_layout));
+
+        let _task = terminal.update_canvas(Message::CreateCanvas);
+        assert!(terminal.canvases.contains_key(&9));
+        assert_eq!(
+            terminal
+                .saved_layout_snapshot("future-plus-local".to_string())
+                .canvases
+                .len(),
+            2
+        );
+
+        let _task = terminal.apply_layout(snapshot);
+        assert!(terminal.canvases.is_empty());
+        assert_eq!(terminal.preserved_unavailable_canvases.len(), 1);
+        assert_eq!(terminal.next_canvas_id, 9);
     }
 }

@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::chart_state::ChartSurfaceId;
 use crate::message::Message;
 
@@ -399,11 +400,13 @@ impl TradingTerminal {
     }
 
     fn handle_order_escape_pressed(&mut self, window_id: iced::window::Id) {
-        if self
-            .main_window_id
-            .is_none_or(|main_id| main_id == window_id)
-        {
-            self.clear_transient_order_ui();
+        if let Some(workspace) = self.workspace_for_window(window_id) {
+            self.clear_workspace_transient_order_ui(workspace);
+            return;
+        }
+
+        if self.main_window_id.is_none() {
+            self.clear_workspace_transient_order_ui(WorkspaceId::Main);
             return;
         }
 

@@ -118,11 +118,12 @@ impl TradingTerminal {
             }
             Message::ChartFocused(id) if self.charts.contains_key(&id) => {
                 self.primary_chart_id = Some(id);
-                self.focus = self
-                    .panes
-                    .iter()
-                    .find(|(_, kind)| matches!(kind, PaneKind::Chart(chart_id) if *chart_id == id))
-                    .map(|(pane, _)| *pane);
+                if let Some((workspace, pane)) = self.find_workspace_pane_matching(
+                    |kind| matches!(kind, PaneKind::Chart(chart_id) if *chart_id == id),
+                ) {
+                    self.set_workspace_focus(workspace, Some(pane));
+                    self.last_focused_workspace = workspace;
+                }
             }
             message @ (Message::ChartReload(_)
             | Message::ChartSwitchTimeframe(_, _)
@@ -576,6 +577,33 @@ mod tests {
             .charts
             .insert(7, ChartInstance::new(7, "BTC".to_string(), Timeframe::H1));
         terminal
+    }
+
+    #[test]
+    fn chart_focus_updates_the_owning_canvas_without_clearing_main_focus() {
+        let mut terminal = TradingTerminal::boot().0;
+        let main_focus = terminal.focus;
+        let canvas_chart_id = terminal.next_chart_id;
+        terminal.next_chart_id = terminal.next_chart_id.saturating_add(1);
+        terminal.charts.insert(
+            canvas_chart_id,
+            ChartInstance::new(canvas_chart_id, "ETH".to_string(), Timeframe::H1),
+        );
+        let canvas_pane = terminal.insert_test_canvas_pane(7, PaneKind::Chart(canvas_chart_id));
+        terminal.set_workspace_focus(crate::canvas_state::WorkspaceId::Canvas(7), None);
+
+        let _task = terminal.update_chart(Message::ChartFocused(canvas_chart_id));
+
+        assert_eq!(terminal.focus, main_focus);
+        assert_eq!(
+            terminal.workspace_focus(crate::canvas_state::WorkspaceId::Canvas(7)),
+            Some(canvas_pane)
+        );
+        assert_eq!(
+            terminal.last_focused_workspace,
+            crate::canvas_state::WorkspaceId::Canvas(7)
+        );
+        assert_eq!(terminal.primary_chart_id, Some(canvas_chart_id));
     }
 
     #[test]

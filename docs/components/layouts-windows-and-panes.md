@@ -178,6 +178,10 @@ Saved layouts are user-named snapshots. They include:
 9. Queuing refresh tasks for open data-dependent panes.
 10. Syncing chart colors and chart display preferences.
 
+Loaded and imported layouts normalize Canvas geometry and repair duplicate
+Canvas or multi-instance widget IDs before runtime instances are rebuilt. This
+keeps identically numbered chart panes in separate workspaces independent.
+
 Saved layout application should preserve compatibility with old configs. If a
 new pane cannot be restored safely, prune it rather than panicking.
 Detached-only spaghetti instances are excluded from both named layouts and the
@@ -251,11 +255,15 @@ remain in runtime/config, and the main Widgets dropdown lists it so it can be
 opened again. A Canvas is only replaced when a saved layout containing a
 different Canvas set is applied or config is cleared. Window size and position
 are restored on a best-effort basis; platform window managers may adjust them.
+Canvas trees containing only pane types from a newer Kerosene version cannot be
+rendered by an older build, but are retained unchanged in the next config or
+layout snapshot instead of being discarded.
 
 Window focus updates `last_focused_workspace`. Workspace hotkeys, chart
 timeframe targeting, Alfred, and focused-widget padding use that value, while
 keyboard events from detached non-workspace windows retain their specialized
-handling.
+handling. Escape clears chart editors, quick-order forms, and drawing tools only
+in the workspace window that received the key event.
 
 ## Detached Charts
 

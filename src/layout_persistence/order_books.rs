@@ -4,6 +4,7 @@ use crate::market_state::{OrderBookDisplayMode, OrderBookInstance, OrderBookSymb
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 use iced::Task;
+use std::collections::hash_map::Entry;
 
 // ---------------------------------------------------------------------------
 // Layout Order-Book Restoration
@@ -63,14 +64,14 @@ impl TradingTerminal {
             })
             .collect::<Vec<_>>();
         for id in pane_ids {
-            if !self.order_books.contains_key(&id) {
+            if let Entry::Vacant(entry) = self.order_books.entry(id) {
                 let mut instance = OrderBookInstance::new(
                     id,
                     OrderBookSymbolMode::Active,
                     Self::normalized_book_tick_size(layout.book_tick_size),
                 );
                 instance.book_loading = true;
-                self.order_books.insert(id, instance);
+                entry.insert(instance);
                 self.next_order_book_id = self.next_order_book_id.max(id + 1);
             }
         }

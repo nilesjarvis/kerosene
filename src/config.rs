@@ -18,7 +18,6 @@ mod themes;
 mod wallets;
 
 pub use clear::{ClearConfigSummary, clear_all_configs};
-pub(crate) use files::in_memory_config_mode;
 #[cfg(test)]
 pub(crate) use files::installed_config_save_error_for_test;
 pub(crate) use files::set_in_memory_config_mode;
@@ -27,6 +26,7 @@ pub use files::{
     load_config, save_config, sound_storage_dir,
 };
 pub(crate) use files::{config_save_installed_snapshot, user_config_dir, user_config_path};
+pub(crate) use files::{in_memory_config_mode, normalize_imported_saved_layout};
 pub(crate) use fonts::{
     BUNDLED_DISPLAY_FONT_FAMILIES, DM_SANS_FONT_FAMILY, INTER_FONT_FAMILY, QUANTICO_FONT_FAMILY,
     ROBOTO_FONT_FAMILY, ROBOTO_MONO_FONT_FAMILY, UBUNTU_SANS_FONT_FAMILY,

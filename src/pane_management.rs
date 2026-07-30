@@ -208,10 +208,11 @@ impl TradingTerminal {
             .and_then(|panes| panes.split(axis, target, kind));
         match split_result {
             Some((pane, _split)) => {
-                if placement == AddWidgetPlacement::Left && axis == pane_grid::Axis::Vertical {
-                    if let Some(panes) = self.workspace_panes_mut(workspace) {
-                        panes.swap(pane, target);
-                    }
+                if placement == AddWidgetPlacement::Left
+                    && axis == pane_grid::Axis::Vertical
+                    && let Some(panes) = self.workspace_panes_mut(workspace)
+                {
+                    panes.swap(pane, target);
                 }
                 self.set_workspace_focus(workspace, Some(pane));
                 self.last_focused_workspace = workspace;

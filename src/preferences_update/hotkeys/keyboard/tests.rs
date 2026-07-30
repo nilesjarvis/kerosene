@@ -2,7 +2,9 @@ use super::{ChartEditorSelectionStep, next_chart_editor_selection};
 use crate::account_state::ActiveAccountSource;
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::chart_state::{ChartInstance, ChartSurfaceId, DetachedChartWindowState};
+use crate::pane_state::PaneKind;
 use crate::schwab::SchwabState;
 use crate::timeframe::Timeframe;
 use crate::{config, message::Message};
@@ -112,6 +114,50 @@ fn chart_editor_keyboard_handles_detached_window_event() {
             .get(&chart_id)
             .and_then(|instance| instance.editor_selected_index),
         Some(0)
+    );
+}
+
+#[test]
+fn main_window_keyboard_does_not_drive_hidden_canvas_editor() {
+    let mut terminal = TradingTerminal::boot().0;
+    let main_window_id = iced::window::Id::unique();
+    let canvas_window_id = iced::window::Id::unique();
+    let main_chart_id = terminal
+        .panes
+        .iter()
+        .find_map(|(_, kind)| match kind {
+            PaneKind::Chart(id) => Some(*id),
+            _ => None,
+        })
+        .expect("main chart");
+    let canvas_chart_id = terminal.next_chart_id;
+    terminal.next_chart_id = terminal.next_chart_id.saturating_add(1);
+    terminal.main_window_id = Some(main_window_id);
+    terminal.exchange_symbols = vec![symbol("BTC"), symbol("ETH")];
+    let mut canvas_chart = ChartInstance::new(canvas_chart_id, "ETH".to_string(), Timeframe::H1);
+    canvas_chart.editor_open = true;
+    terminal.charts.insert(canvas_chart_id, canvas_chart);
+    terminal.insert_test_canvas_pane(7, PaneKind::Chart(canvas_chart_id));
+    terminal.canvases.get_mut(&7).expect("Canvas").window_id = Some(canvas_window_id);
+    terminal.last_focused_workspace = WorkspaceId::Main;
+    terminal.primary_chart_id = Some(canvas_chart_id);
+
+    let _ = terminal.handle_hotkey_keyboard_event(Message::KeyboardEvent(
+        main_window_id,
+        key_pressed(
+            iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown),
+            iced::keyboard::Modifiers::NONE,
+        ),
+        iced::event::Status::Captured,
+    ));
+
+    assert_eq!(terminal.active_candlestick_chart_id(), Some(main_chart_id));
+    assert_eq!(
+        terminal
+            .charts
+            .get(&canvas_chart_id)
+            .and_then(|instance| instance.editor_selected_index),
+        None
     );
 }
 

@@ -263,6 +263,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) panes: pane_grid::State<PaneKind>,
     pub(crate) dragging_pane: Option<pane_grid::Pane>,
     pub(crate) canvases: BTreeMap<CanvasId, CanvasState>,
+    pub(crate) preserved_unavailable_canvases: Vec<config::CanvasConfig>,
     pub(crate) next_canvas_id: CanvasId,
     pub(crate) last_focused_workspace: WorkspaceId,
     pub(crate) active_theme: String,

@@ -831,6 +831,75 @@ fn normalizes_canvas_ids_geometry_and_labels() {
 }
 
 #[test]
+fn repairs_chart_widget_ids_across_main_and_canvas_trees() {
+    let workspace_tree = crate::config::PaneLayoutConfig::Split {
+        axis: crate::config::AxisConfig::Vertical,
+        ratio: 0.5,
+        a: Box::new(crate::config::PaneLayoutConfig::Leaf(
+            crate::config::PaneKindConfig::Chart { chart_id: 7 },
+        )),
+        b: Box::new(crate::config::PaneLayoutConfig::Leaf(
+            crate::config::PaneKindConfig::SpaghettiChart { spaghetti_id: 9 },
+        )),
+    };
+    let mut config = KeroseneConfig {
+        charts: vec![crate::config::ChartConfig::empty(7, "BTC", "H1")],
+        spaghetti_charts: vec![crate::config::SpaghettiChartConfig::empty(9)],
+        pane_layout: Some(workspace_tree.clone()),
+        canvases: vec![crate::config::CanvasConfig {
+            id: 0,
+            label: String::new(),
+            open: false,
+            pane_layout: Some(workspace_tree),
+            width: crate::config::DEFAULT_CANVAS_WIDTH,
+            height: crate::config::DEFAULT_CANVAS_HEIGHT,
+            x: None,
+            y: None,
+        }],
+        ..KeroseneConfig::default()
+    };
+
+    normalize_loaded_config(&mut config);
+
+    let main_layout = config.pane_layout.as_ref().expect("main layout");
+    let canvas_layout = config.canvases[0]
+        .pane_layout
+        .as_ref()
+        .expect("Canvas layout");
+    let main_chart_ids = non_chart_leaf_ids(main_layout, |kind| match kind {
+        crate::config::PaneKindConfig::Chart { chart_id } => Some(*chart_id),
+        _ => None,
+    });
+    let canvas_chart_ids = non_chart_leaf_ids(canvas_layout, |kind| match kind {
+        crate::config::PaneKindConfig::Chart { chart_id } => Some(*chart_id),
+        _ => None,
+    });
+    let main_spaghetti_ids = non_chart_leaf_ids(main_layout, |kind| match kind {
+        crate::config::PaneKindConfig::SpaghettiChart { spaghetti_id } => Some(*spaghetti_id),
+        _ => None,
+    });
+    let canvas_spaghetti_ids = non_chart_leaf_ids(canvas_layout, |kind| match kind {
+        crate::config::PaneKindConfig::SpaghettiChart { spaghetti_id } => Some(*spaghetti_id),
+        _ => None,
+    });
+
+    assert_ne!(main_chart_ids, canvas_chart_ids);
+    assert_ne!(main_spaghetti_ids, canvas_spaghetti_ids);
+    assert!(
+        config
+            .charts
+            .iter()
+            .any(|chart| chart.id == canvas_chart_ids[0] && chart.symbol == "BTC")
+    );
+    assert!(
+        config
+            .spaghetti_charts
+            .iter()
+            .any(|chart| chart.id == canvas_spaghetti_ids[0])
+    );
+}
+
+#[test]
 fn repairs_non_chart_widget_ids_across_main_and_canvas_trees() {
     let mut config = KeroseneConfig {
         order_books: vec![order_book_config(0)],

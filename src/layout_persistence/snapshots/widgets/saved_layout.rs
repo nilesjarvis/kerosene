@@ -96,7 +96,8 @@ impl TradingTerminal {
     }
 
     pub(crate) fn canvas_configs_snapshot(&self) -> Vec<config::CanvasConfig> {
-        self.canvases
+        let mut configs = self
+            .canvases
             .values()
             .map(|canvas| {
                 let runtime_layout = Self::collect_pane_layout_from(&canvas.panes);
@@ -121,6 +122,18 @@ impl TradingTerminal {
                     y: canvas.y,
                 }
             })
-            .collect()
+            .collect::<Vec<_>>();
+        let runtime_ids = configs
+            .iter()
+            .map(|canvas| canvas.id)
+            .collect::<std::collections::BTreeSet<_>>();
+        configs.extend(
+            self.preserved_unavailable_canvases
+                .iter()
+                .filter(|canvas| !runtime_ids.contains(&canvas.id))
+                .cloned(),
+        );
+        configs.sort_by_key(|canvas| canvas.id);
+        configs
     }
 }

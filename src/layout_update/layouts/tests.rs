@@ -231,6 +231,75 @@ fn layout_import_preserves_unknown_future_panes() {
 }
 
 #[test]
+fn layout_import_normalizes_canvas_and_chart_instance_ids() {
+    let mut imported = saved_layout("Duplicate Canvas IDs");
+    imported.charts = vec![ChartConfig::empty(7, "BTC", "H1")];
+    imported.pane_layout = Some(crate::config::PaneLayoutConfig::Leaf(
+        crate::config::PaneKindConfig::Chart { chart_id: 7 },
+    ));
+    imported.canvases = vec![
+        crate::config::CanvasConfig {
+            id: 3,
+            label: "  Desk  ".to_string(),
+            open: false,
+            pane_layout: Some(crate::config::PaneLayoutConfig::Leaf(
+                crate::config::PaneKindConfig::Chart { chart_id: 7 },
+            )),
+            width: 100.0,
+            height: f32::NAN,
+            x: Some(f32::INFINITY),
+            y: None,
+        },
+        crate::config::CanvasConfig {
+            id: 3,
+            label: String::new(),
+            open: false,
+            pane_layout: Some(crate::config::PaneLayoutConfig::Leaf(
+                crate::config::PaneKindConfig::Watchlist,
+            )),
+            width: crate::config::DEFAULT_CANVAS_WIDTH,
+            height: crate::config::DEFAULT_CANVAS_HEIGHT,
+            x: None,
+            y: None,
+        },
+    ];
+
+    let (mut terminal, _) = TradingTerminal::boot();
+    let _task = terminal.update_saved_layouts(Message::LayoutImported(Ok(imported)));
+
+    let imported = terminal
+        .saved_layouts
+        .iter()
+        .find(|layout| layout.name == "Duplicate Canvas IDs")
+        .expect("imported layout");
+    assert_ne!(imported.canvases[0].id, imported.canvases[1].id);
+    assert_eq!(imported.canvases[0].label, "Desk");
+    assert_eq!(imported.canvases[0].width, 320.0);
+    assert_eq!(
+        imported.canvases[0].height,
+        crate::config::DEFAULT_CANVAS_HEIGHT
+    );
+    assert_eq!(imported.canvases[0].x, None);
+    let canvas_chart_id = match imported.canvases[0]
+        .pane_layout
+        .as_ref()
+        .expect("Canvas pane layout")
+    {
+        crate::config::PaneLayoutConfig::Leaf(crate::config::PaneKindConfig::Chart {
+            chart_id,
+        }) => *chart_id,
+        other => panic!("expected Canvas chart, got {other:?}"),
+    };
+    assert_ne!(canvas_chart_id, 7);
+    assert!(
+        imported
+            .charts
+            .iter()
+            .any(|chart| chart.id == canvas_chart_id && chart.symbol == "BTC")
+    );
+}
+
+#[test]
 fn saved_layout_snapshot_includes_liquidation_distribution_symbol() {
     let (mut terminal, _) = TradingTerminal::boot();
     terminal.liquidation_distribution.symbol = " BTC ".to_string();
