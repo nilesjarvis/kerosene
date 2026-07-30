@@ -66,8 +66,10 @@ impl TradingTerminal {
     }
 
     pub(crate) fn active_candlestick_chart_id(&self) -> Option<ChartId> {
-        if let Some(pane) = self.focus
-            && let Some(PaneKind::Chart(id)) = self.panes.get(pane)
+        if let Some(pane) = self.workspace_focus(self.last_focused_workspace)
+            && let Some(PaneKind::Chart(id)) = self
+                .workspace_panes(self.last_focused_workspace)
+                .and_then(|panes| panes.get(pane))
             && self.charts.contains_key(id)
         {
             return Some(*id);
@@ -79,15 +81,18 @@ impl TradingTerminal {
             return Some(id);
         }
 
-        self.panes.iter().find_map(|(_, kind)| match kind {
-            PaneKind::Chart(id) if self.charts.contains_key(id) => Some(*id),
-            _ => None,
-        })
+        self.workspace_pane_kinds()
+            .find_map(|(_, _, kind)| match kind {
+                PaneKind::Chart(id) if self.charts.contains_key(id) => Some(*id),
+                _ => None,
+            })
     }
 
     pub(crate) fn active_chart_editor_id(&self) -> Option<ChartId> {
-        if let Some(pane) = self.focus
-            && let Some(PaneKind::Chart(id)) = self.panes.get(pane)
+        if let Some(pane) = self.workspace_focus(self.last_focused_workspace)
+            && let Some(PaneKind::Chart(id)) = self
+                .workspace_panes(self.last_focused_workspace)
+                .and_then(|panes| panes.get(pane))
             && self
                 .charts
                 .get(id)
@@ -111,8 +116,10 @@ impl TradingTerminal {
     }
 
     pub(crate) fn active_chart_secondary_editor_id(&self) -> Option<ChartId> {
-        if let Some(pane) = self.focus
-            && let Some(PaneKind::Chart(id)) = self.panes.get(pane)
+        if let Some(pane) = self.workspace_focus(self.last_focused_workspace)
+            && let Some(PaneKind::Chart(id)) = self
+                .workspace_panes(self.last_focused_workspace)
+                .and_then(|panes| panes.get(pane))
             && self
                 .charts
                 .get(id)

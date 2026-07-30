@@ -300,11 +300,44 @@ fn prune_pane_layout(
     }
 }
 
+pub const DEFAULT_CANVAS_WIDTH: f32 = 1100.0;
+pub const DEFAULT_CANVAS_HEIGHT: f32 = 720.0;
+
+fn default_canvas_width() -> f32 {
+    DEFAULT_CANVAS_WIDTH
+}
+
+fn default_canvas_height() -> f32 {
+    DEFAULT_CANVAS_HEIGHT
+}
+
+/// A persisted, independently windowed pane workspace.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CanvasConfig {
+    pub id: u64,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub open: bool,
+    #[serde(default)]
+    pub pane_layout: Option<PaneLayoutConfig>,
+    #[serde(default = "default_canvas_width")]
+    pub width: f32,
+    #[serde(default = "default_canvas_height")]
+    pub height: f32,
+    #[serde(default)]
+    pub x: Option<f32>,
+    #[serde(default)]
+    pub y: Option<f32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SavedLayout {
     pub name: String,
     #[serde(default)]
     pub pane_layout: Option<PaneLayoutConfig>,
+    #[serde(default)]
+    pub canvases: Vec<CanvasConfig>,
     #[serde(default)]
     pub layout_ratios: Vec<f32>,
     #[serde(default)]

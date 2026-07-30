@@ -21,9 +21,7 @@ pub(crate) enum CalendarWindowFilter {
 
 impl TradingTerminal {
     pub(crate) fn is_calendar_open(&self) -> bool {
-        self.panes
-            .iter()
-            .any(|(_, kind)| matches!(kind, PaneKind::Calendar))
+        self.pane_is_open(|kind| matches!(kind, PaneKind::Calendar))
     }
 
     pub(crate) fn request_calendar_refresh(&mut self, force: bool) -> Task<Message> {

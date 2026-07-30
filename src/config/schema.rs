@@ -261,6 +261,9 @@ pub struct KeroseneConfig {
     /// Full pane layout tree (widget placement + split ratios).
     #[serde(default)]
     pub pane_layout: Option<PaneLayoutConfig>,
+    /// Independently windowed pane workspaces.
+    #[serde(default)]
+    pub canvases: Vec<super::CanvasConfig>,
     /// Per-chart pane configurations. Empty = legacy single-chart.
     #[serde(default)]
     pub charts: Vec<ChartConfig>,

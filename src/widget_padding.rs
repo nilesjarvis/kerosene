@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::config::{
     WidgetPaddingConfig, WidgetPaddingOverrideConfig, WidgetPaddingTargetConfig,
     normalize_widget_padding,
@@ -92,15 +93,22 @@ impl TradingTerminal {
 
     pub(crate) fn focused_widget_padding_target(
         &self,
-    ) -> Option<(pane_grid::Pane, WidgetPaddingTargetConfig)> {
-        let pane = self.focus?;
-        let kind = self.panes.get(pane)?;
-        Some((pane, WidgetPaddingTargetConfig::from_pane_kind(kind)))
+    ) -> Option<(WorkspaceId, pane_grid::Pane, WidgetPaddingTargetConfig)> {
+        let workspace = self.last_focused_workspace;
+        let pane = self.workspace_focus(self.last_focused_workspace)?;
+        let kind = self
+            .workspace_panes(self.last_focused_workspace)?
+            .get(pane)?;
+        Some((
+            workspace,
+            pane,
+            WidgetPaddingTargetConfig::from_pane_kind(kind),
+        ))
     }
 
     pub(crate) fn focused_widget_padding(&self) -> Option<f32> {
         self.focused_widget_padding_target()
-            .map(|(_, target)| self.widget_padding_for_target(&target))
+            .map(|(_, _, target)| self.widget_padding_for_target(&target))
     }
 
     pub(crate) fn set_default_widget_padding(&mut self, value: f32) {
@@ -111,7 +119,7 @@ impl TradingTerminal {
     }
 
     pub(crate) fn set_focused_widget_padding(&mut self, value: f32) -> bool {
-        let Some((_, target)) = self.focused_widget_padding_target() else {
+        let Some((_, _, target)) = self.focused_widget_padding_target() else {
             return false;
         };
 
@@ -126,7 +134,7 @@ impl TradingTerminal {
     }
 
     pub(crate) fn reset_focused_widget_padding(&mut self) -> bool {
-        let Some((_, target)) = self.focused_widget_padding_target() else {
+        let Some((_, _, target)) = self.focused_widget_padding_target() else {
             return false;
         };
 
@@ -139,9 +147,8 @@ impl TradingTerminal {
     }
 
     fn active_widget_padding_targets(&self) -> Vec<WidgetPaddingTargetConfig> {
-        self.panes
-            .iter()
-            .map(|(_, kind)| WidgetPaddingTargetConfig::from_pane_kind(kind))
+        self.workspace_pane_kinds()
+            .map(|(_, _, kind)| WidgetPaddingTargetConfig::from_pane_kind(kind))
             .collect()
     }
 }
@@ -180,7 +187,10 @@ mod tests {
             .find_map(|(pane, kind)| matches!(kind, PaneKind::Watchlist).then_some(*pane))
             .expect("default layout should include watchlist");
 
-        let _ = terminal.update(Message::PaneClicked(pane));
+        let _ = terminal.update(Message::PaneClicked(
+            crate::canvas_state::WorkspaceId::Main,
+            pane,
+        ));
         assert_eq!(terminal.focused_widget_padding(), Some(4.0));
 
         assert!(terminal.set_focused_widget_padding(12.0));

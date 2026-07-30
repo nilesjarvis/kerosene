@@ -78,6 +78,7 @@ fn saved_layout(name: &str) -> SavedLayout {
     SavedLayout {
         name: name.to_string(),
         pane_layout: cfg.pane_layout,
+        canvases: cfg.canvases,
         layout_ratios: cfg.layout_ratios,
         charts: cfg.charts,
         order_books: cfg.order_books,

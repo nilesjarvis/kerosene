@@ -46,6 +46,7 @@ impl TradingTerminal {
             order_books: layout_snapshot.order_books,
             layout_ratios: layout_snapshot.layout_ratios,
             pane_layout: layout_snapshot.pane_layout,
+            canvases: layout_snapshot.canvases,
             charts: self.chart_configs_snapshot(),
             detached_chart_windows: self.detached_chart_window_configs_snapshot(),
             active_symbol: layout_snapshot.active_symbol,

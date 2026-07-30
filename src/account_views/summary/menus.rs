@@ -1,6 +1,7 @@
 mod anchored;
 
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::message::Message;
 
 use anchored::{AnchoredAccountMenu, AnchoredMenuLayer, MenuAlignment, MenuKind};
@@ -33,11 +34,11 @@ impl TradingTerminal {
                 alignment: MenuAlignment::End,
                 content: opaque(self.view_layout_switcher_dropdown()),
             })
-        } else if self.add_widget_menu_open {
+        } else if self.add_widget_menu_open && self.add_widget_workspace == WorkspaceId::Main {
             Some(AnchoredMenuLayer {
                 kind: MenuKind::AddWidget,
                 alignment: MenuAlignment::End,
-                content: opaque(self.view_add_widget_menu_card(&theme, can_add_income)),
+                content: opaque(self.view_add_widget_menu_card(&theme, can_add_income, true)),
             })
         } else {
             None

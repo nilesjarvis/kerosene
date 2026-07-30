@@ -17,9 +17,8 @@ impl TradingTerminal {
             .collect();
 
         let missing_ids = self
-            .panes
-            .iter()
-            .filter_map(|(_, kind)| match kind {
+            .workspace_pane_kinds()
+            .filter_map(|(_, _, kind)| match kind {
                 PaneKind::XFeed(id) if !self.x_feed.instances.contains_key(id) => Some(*id),
                 _ => None,
             })

@@ -100,7 +100,7 @@ impl TradingTerminal {
             | Message::ChartSecondaryCloseEditor(_)
             | Message::ChartSecondaryEditorSearchChanged(_, _)
             | Message::ChartSecondaryEditorSubmit(_)
-            | Message::AddChart(_)) => {
+            | Message::AddChart(_, _)) => {
                 return self.update_chart_editor(message);
             }
             Message::OpenDetachedChart(id) => return self.open_detached_chart_window(id),

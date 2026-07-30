@@ -36,9 +36,10 @@ pub(crate) use fonts::{
 pub use fonts::{CustomFontConfig, DisplayFontConfig};
 pub use hotkeys::{HotkeyAction, HotkeyConfig, HotkeyPrefixConfig};
 pub use layouts::{
-    AxisConfig, BottomTabConfig, PaneKindConfig, PaneLayoutConfig, SavedLayout,
-    WidgetPaddingConfig, WidgetPaddingOverrideConfig, WidgetPaddingTargetConfig,
-    prune_legacy_unsupported_pane_layout, prune_unsupported_pane_layout,
+    AxisConfig, BottomTabConfig, CanvasConfig, DEFAULT_CANVAS_HEIGHT, DEFAULT_CANVAS_WIDTH,
+    PaneKindConfig, PaneLayoutConfig, SavedLayout, WidgetPaddingConfig,
+    WidgetPaddingOverrideConfig, WidgetPaddingTargetConfig, prune_legacy_unsupported_pane_layout,
+    prune_unsupported_pane_layout,
 };
 pub use live_watchlist::{
     LiveWatchlistColumn, LiveWatchlistConfig, LiveWatchlistSortColumn, SortDirection,

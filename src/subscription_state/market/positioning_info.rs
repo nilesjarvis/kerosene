@@ -24,7 +24,7 @@ impl TradingTerminal {
         }
 
         let mut symbols = Vec::new();
-        for (_, kind) in self.panes.iter() {
+        for (_, _, kind) in self.workspace_pane_kinds() {
             let PaneKind::PositioningInfo(id) = kind else {
                 continue;
             };

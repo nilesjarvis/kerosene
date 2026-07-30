@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::config::KeroseneConfig;
 use crate::pane_state::PaneKind;
-use crate::session_data_state::{SessionDataId, SessionDataInstance};
+use crate::session_data_state::SessionDataInstance;
 use std::collections::HashSet;
 
 impl TradingTerminal {
@@ -23,7 +23,14 @@ impl TradingTerminal {
             self.next_session_data_id = self.next_session_data_id.max(config.id + 1);
         }
 
-        for id in session_data_pane_ids(&self.panes) {
+        let pane_ids = self
+            .workspace_pane_kinds()
+            .filter_map(|(_, _, kind)| match kind {
+                PaneKind::SessionData(id) => Some(*id),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for id in pane_ids {
             if !self.session_data.contains_key(&id) {
                 self.session_data.insert(
                     id,
@@ -33,19 +40,6 @@ impl TradingTerminal {
             }
         }
     }
-}
-
-fn session_data_pane_ids(panes: &iced::widget::pane_grid::State<PaneKind>) -> Vec<SessionDataId> {
-    panes
-        .iter()
-        .filter_map(|(_, kind)| {
-            if let PaneKind::SessionData(id) = kind {
-                Some(*id)
-            } else {
-                None
-            }
-        })
-        .collect()
 }
 
 #[cfg(test)]

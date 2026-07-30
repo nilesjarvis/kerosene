@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::message::Message;
 use iced::widget::{button, pick_list, row, text};
 use iced::{Element, Length, Theme};
@@ -46,7 +47,8 @@ impl TradingTerminal {
     }
 
     pub(crate) fn summary_widgets_button(&self) -> Element<'_, Message> {
-        let chevron = if self.add_widget_menu_open {
+        let chevron = if self.add_widget_menu_open && self.add_widget_workspace == WorkspaceId::Main
+        {
             DROPDOWN_CHEVRON_UP
         } else {
             DROPDOWN_CHEVRON_DOWN
@@ -62,7 +64,7 @@ impl TradingTerminal {
             .spacing(4)
             .align_y(iced::Alignment::Center),
         )
-        .on_press(Message::ToggleAddWidgetMenu)
+        .on_press(Message::ToggleAddWidgetMenu(WorkspaceId::Main))
         .padding([4, 8])
         .style(summary_primary_action_style)
         .into()

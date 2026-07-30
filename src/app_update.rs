@@ -21,6 +21,7 @@ impl TradingTerminal {
             UpdateRoute::Screener => self.update_screener(message),
             UpdateRoute::Settings => self.update_settings(message),
             UpdateRoute::Calendar => self.update_calendar(message),
+            UpdateRoute::Canvas => self.update_canvas(message),
             UpdateRoute::Window => self.update_window(message),
             UpdateRoute::Journal => self.update_journal(message),
             UpdateRoute::Spaghetti => self.update_spaghetti(message),

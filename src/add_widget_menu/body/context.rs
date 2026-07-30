@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::CanvasId;
 use crate::pane_state::PaneKind;
 
 pub(super) struct AddWidgetMenuContext {
@@ -21,12 +22,20 @@ pub(super) struct AddWidgetMenuContext {
     pub(super) wallet_clusters_open: bool,
     pub(super) screener_open: bool,
     pub(super) settings_open: bool,
+    pub(super) include_main_actions: bool,
+    pub(super) canvases: Vec<(CanvasId, String, bool)>,
 }
 
 impl AddWidgetMenuContext {
-    pub(super) fn new(terminal: &TradingTerminal, can_add_income: bool) -> Self {
+    pub(super) fn new(
+        terminal: &TradingTerminal,
+        can_add_income: bool,
+        include_main_actions: bool,
+    ) -> Self {
         Self {
-            can_add_pane: terminal.add_target_pane().is_some(),
+            can_add_pane: terminal
+                .add_target_pane_in(terminal.add_widget_workspace)
+                .is_some(),
             can_add_income,
             positions_history_open: terminal
                 .pane_is_open(|kind| matches!(kind, PaneKind::BottomTabs { .. })),
@@ -50,6 +59,12 @@ impl AddWidgetMenuContext {
             wallet_clusters_open: terminal.wallet_clusters.window_id.is_some(),
             screener_open: terminal.screener.window_id.is_some(),
             settings_open: terminal.settings_window_id.is_some(),
+            include_main_actions,
+            canvases: terminal
+                .canvases
+                .values()
+                .map(|canvas| (canvas.id, canvas.label.clone(), canvas.window_id.is_some()))
+                .collect(),
         }
     }
 }

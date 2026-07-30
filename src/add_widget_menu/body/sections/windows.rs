@@ -10,8 +10,16 @@ pub(in crate::add_widget_menu::body) fn add_window_section(
     context: &AddWidgetMenuContext,
     theme: &Theme,
 ) -> Column<'static, Message> {
-    menu.push(rule::horizontal(1))
+    let mut menu = menu
+        .push(rule::horizontal(1))
         .push(section_label("Windows", theme))
+        .push(menu_item(
+            "New Canvas",
+            "Window",
+            Some(Message::CreateCanvas),
+            true,
+            theme,
+        ))
         .push(menu_item(
             "Trading Journal",
             if context.journal_open {
@@ -66,5 +74,17 @@ pub(in crate::add_widget_menu::body) fn add_window_section(
             Some(Message::OpenSettingsWindow),
             true,
             theme,
-        ))
+        ));
+
+    for (id, label, open) in &context.canvases {
+        menu = menu.push(menu_item(
+            label.clone(),
+            if *open { "Open" } else { "Closed" },
+            Some(Message::OpenCanvas(*id)),
+            true,
+            theme,
+        ));
+    }
+
+    menu
 }

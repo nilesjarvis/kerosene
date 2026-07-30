@@ -44,7 +44,9 @@ impl TradingTerminal {
     }
 
     fn add_chart_from_hotkey(&mut self) -> Task<Message> {
-        let Some(pane) = self.add_target_pane() else {
+        let workspace = self.last_focused_workspace;
+        self.add_widget_workspace = workspace;
+        let Some(pane) = self.add_target_pane_in(workspace) else {
             self.push_toast(
                 "Could not add Candlestick Chart: no pane is available".to_string(),
                 true,
@@ -57,6 +59,7 @@ impl TradingTerminal {
         self.charts.insert(id, instance);
         if self
             .add_pane_to_target(
+                workspace,
                 self.add_widget_axis(),
                 pane,
                 PaneKind::Chart(id),

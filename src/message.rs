@@ -5,6 +5,7 @@ use crate::alfred_state::{AlfredCommandId, AlfredSelectionStep};
 use crate::annotations::{Annotation, AnnotationId, AnnotationStyle, DrawingTool};
 use crate::api::{self, Candle, OrderBook};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
+use crate::canvas_state::{CanvasId, WorkspaceId};
 use crate::chart::ChartViewport;
 use crate::chart_screenshot::ChartScreenshotState;
 use crate::chart_state::{
@@ -572,6 +573,8 @@ impl fmt::Debug for SchwabAccountsMessageResult {
 
 #[derive(Debug, Clone)]
 pub(crate) enum Message {
+    CreateCanvas,
+    OpenCanvas(CanvasId),
     SaveLayout(String),
     LoadLayout(config::SavedLayout),
     DeleteLayout(String),
@@ -653,10 +656,10 @@ pub(crate) enum Message {
     ForgetGhostAccount(usize),
     DeleteSavedAccount(usize),
     SaveCredentials,
-    PaneResized(pane_grid::ResizeEvent),
-    PaneDragged(pane_grid::DragEvent),
-    PaneClicked(pane_grid::Pane),
-    SwitchBottomTab(BottomTab),
+    PaneResized(WorkspaceId, pane_grid::ResizeEvent),
+    PaneDragged(WorkspaceId, pane_grid::DragEvent),
+    PaneClicked(WorkspaceId, pane_grid::Pane),
+    SwitchBottomTab(WorkspaceId, pane_grid::Pane, BottomTab),
     OrderPriceChanged(RedactedOrderInput),
     SetMidPrice,
     OrderBookPriceSelected {
@@ -681,9 +684,9 @@ pub(crate) enum Message {
     TogglePresetCurrency,
     TogglePresetEditMode,
     BeginWidgetPlacement(AddWidgetKind),
-    WidgetPlacementHovered(pane_grid::Pane, AddWidgetPlacement),
-    WidgetPlacementExited(pane_grid::Pane),
-    PlaceWidget(pane_grid::Pane, AddWidgetPlacement),
+    WidgetPlacementHovered(WorkspaceId, pane_grid::Pane, AddWidgetPlacement),
+    WidgetPlacementExited(WorkspaceId, pane_grid::Pane),
+    PlaceWidget(WorkspaceId, pane_grid::Pane, AddWidgetPlacement),
     CancelWidgetPlacement,
     EditPresetStart(crate::signing::OrderKind, usize, String),
     EditPresetChanged(String),
@@ -700,7 +703,7 @@ pub(crate) enum Message {
         Result<crate::api::WatchlistContextsResponse, String>,
     ),
     // Add widget menu
-    ToggleAddWidgetMenu,
+    ToggleAddWidgetMenu(WorkspaceId),
     ToggleLayoutMenu,
     ToggleMacroMenu(ChartId),
     ToggleMacroIndicator(ChartId, String),
@@ -894,6 +897,7 @@ pub(crate) enum Message {
     WalletDetailsWsUpdate(Option<RedactedAddress>, Box<WsUserData>),
     WindowOpened(window::Id),
     WindowClosed(window::Id),
+    WindowFocused(window::Id),
     WindowResized(window::Id, Size),
     WindowMoved(window::Id, Point),
     #[cfg_attr(target_os = "windows", allow(dead_code))]
@@ -1328,8 +1332,8 @@ pub(crate) enum Message {
     CloseChartScreenshotWindow,
     // Hotkeys related messages
     KeyboardEvent(window::Id, iced::keyboard::Event, iced::event::Status),
-    AddChart(pane_grid::Pane),
-    ClosePane(pane_grid::Pane),
+    AddChart(WorkspaceId, pane_grid::Pane),
+    ClosePane(WorkspaceId, pane_grid::Pane),
     #[cfg_attr(target_os = "windows", allow(dead_code))]
     ToggleHidePnl,
     // Quick order form (right-click on chart)

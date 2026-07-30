@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::chart_state::ChartId;
 use crate::message::Message;
 use iced::widget::svg::Handle as SvgHandle;
@@ -83,10 +84,14 @@ impl TradingTerminal {
         .into()
     }
 
-    pub(crate) fn view_chart_add_button(&self, pane: pane_grid::Pane) -> Element<'static, Message> {
+    pub(crate) fn view_chart_add_button(
+        &self,
+        workspace: WorkspaceId,
+        pane: pane_grid::Pane,
+    ) -> Element<'static, Message> {
         tooltip(
             button(text("+").size(11).center())
-                .on_press(Message::AddChart(pane))
+                .on_press(Message::AddChart(workspace, pane))
                 .padding([2, 6])
                 .style(|theme: &Theme, status| {
                     let bg = match status {

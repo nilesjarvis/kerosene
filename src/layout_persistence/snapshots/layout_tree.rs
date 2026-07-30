@@ -63,6 +63,12 @@ impl TradingTerminal {
 
     /// Serialize the full pane tree (layout + widget placement).
     pub(crate) fn collect_pane_layout(&self) -> Option<PaneLayoutConfig> {
+        Self::collect_pane_layout_from(&self.panes)
+    }
+
+    pub(crate) fn collect_pane_layout_from(
+        panes: &pane_grid::State<PaneKind>,
+    ) -> Option<PaneLayoutConfig> {
         fn walk(
             state: &pane_grid::State<PaneKind>,
             node: &pane_grid::Node,
@@ -89,12 +95,16 @@ impl TradingTerminal {
             }
         }
 
-        walk(&self.panes, self.panes.layout())
+        walk(panes, panes.layout())
     }
 
     /// Extract the current pane layout split ratios by walking the Node tree
     /// in pre-order (matching the order used by boot()'s Configuration).
     pub(crate) fn collect_layout_ratios(&self) -> Vec<f32> {
+        Self::collect_layout_ratios_from(&self.panes)
+    }
+
+    pub(crate) fn collect_layout_ratios_from(panes: &pane_grid::State<PaneKind>) -> Vec<f32> {
         fn walk(node: &pane_grid::Node, ratios: &mut Vec<f32>) {
             if let pane_grid::Node::Split { ratio, a, b, .. } = node {
                 ratios.push(*ratio);
@@ -103,7 +113,7 @@ impl TradingTerminal {
             }
         }
         let mut ratios = Vec::new();
-        walk(self.panes.layout(), &mut ratios);
+        walk(panes.layout(), &mut ratios);
         ratios
     }
 }

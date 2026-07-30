@@ -18,9 +18,8 @@ impl TradingTerminal {
     }
 
     pub(crate) fn chart_is_docked(&self, chart_id: ChartId) -> bool {
-        self.panes
-            .iter()
-            .any(|(_, kind)| matches!(kind, PaneKind::Chart(id) if *id == chart_id))
+        self.workspace_pane_kinds()
+            .any(|(_, _, kind)| matches!(kind, PaneKind::Chart(id) if *id == chart_id))
     }
 
     pub(crate) fn active_chart_surface_tool(

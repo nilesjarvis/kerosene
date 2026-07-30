@@ -31,7 +31,10 @@ fn closing_chart_pane_prunes_pending_request_registries() {
     let other_chart_id = chart_id.saturating_add(100);
     seed_pending_chart_requests(&mut terminal, chart_id, other_chart_id);
 
-    let _task = terminal.update_pane_interactions(Message::ClosePane(chart_pane));
+    let _task = terminal.update_pane_interactions(Message::ClosePane(
+        crate::canvas_state::WorkspaceId::Main,
+        chart_pane,
+    ));
 
     assert!(!terminal.charts.contains_key(&chart_id));
     assert_pending_chart_requests_pruned(&terminal, other_chart_id);

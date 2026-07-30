@@ -2,6 +2,7 @@ mod components;
 mod styles;
 
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::helpers::pane_title;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
@@ -21,17 +22,26 @@ use styles::{
 
 impl TradingTerminal {
     pub(super) fn view_main_pane_grid(&self) -> Element<'_, Message> {
+        self.view_workspace_pane_grid(WorkspaceId::Main)
+    }
+
+    pub(crate) fn view_workspace_pane_grid(&self, workspace: WorkspaceId) -> Element<'_, Message> {
+        let Some(panes) = self.workspace_panes(workspace) else {
+            return container(text("Canvas unavailable")).into();
+        };
         let chart_count = self.charts.len();
-        let pane_count = self.panes.iter().count();
+        let pane_count = panes.iter().count();
         let pane_border_thickness = self.pane_border_thickness;
         let pane_corner_radius = self.pane_corner_radius;
-        let placing_widget = self.placing_widget;
+        let placing_widget = (self.add_widget_workspace == workspace)
+            .then_some(self.placing_widget)
+            .flatten();
         let placement_hover = self.widget_placement_hover;
 
-        let pane_grid_widget = pane_grid(&self.panes, |pane, kind, _is_maximized| {
+        let pane_grid_widget = pane_grid(panes, |pane, kind, _is_maximized| {
             let title = pane_title(kind);
 
-            if self.dragging_pane == Some(pane) {
+            if self.workspace_dragging_pane(workspace) == Some(pane) {
                 let title_bar = pane_grid::TitleBar::new(
                     text(title)
                         .size(11)
@@ -50,7 +60,7 @@ impl TradingTerminal {
                     .style(move |theme: &Theme| pane_drag_ghost_style(theme, pane_corner_radius));
             }
 
-            let content = self.view_pane_content(pane, kind, chart_count);
+            let content = self.view_pane_content(workspace, pane, kind, chart_count);
             let widget_padding = self.widget_padding_for_kind(kind);
             let content = if widget_padding > 0.0 {
                 container(content)
@@ -67,7 +77,7 @@ impl TradingTerminal {
                 });
                 stack![
                     content,
-                    widget_placement_overlay(pane, widget.label(), hovered_placement)
+                    widget_placement_overlay(workspace, pane, widget.label(), hovered_placement)
                 ]
                 .width(Fill)
                 .height(Fill)
@@ -75,7 +85,7 @@ impl TradingTerminal {
             } else {
                 content
             };
-            let close_btn = pane_close_button(pane, pane_count, kind.can_be_closed());
+            let close_btn = pane_close_button(workspace, pane, pane_count, kind.can_be_closed());
             let controls_row = if let PaneKind::Chart(chart_id) = kind {
                 let header_collapsed = self
                     .charts
@@ -83,7 +93,7 @@ impl TradingTerminal {
                     .is_some_and(|instance| instance.header_collapsed);
                 row![
                     self.view_chart_header_collapse_button(*chart_id, header_collapsed),
-                    self.view_chart_add_button(pane),
+                    self.view_chart_add_button(workspace, pane),
                     self.view_detach_chart_button(*chart_id),
                     close_btn
                 ]
@@ -128,7 +138,7 @@ impl TradingTerminal {
             if placing_widget.is_some() {
                 Message::NoOp
             } else {
-                Message::PaneClicked(pane)
+                Message::PaneClicked(workspace, pane)
             }
         })
         .style(move |theme: &Theme| {
@@ -156,8 +166,8 @@ impl TradingTerminal {
             pane_grid_widget
         } else {
             pane_grid_widget
-                .on_resize(6, Message::PaneResized)
-                .on_drag(Message::PaneDragged)
+                .on_resize(6, move |event| Message::PaneResized(workspace, event))
+                .on_drag(move |event| Message::PaneDragged(workspace, event))
         };
 
         container(pane_grid_widget)

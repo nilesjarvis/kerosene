@@ -19,8 +19,9 @@ impl TradingTerminal {
         &self,
         theme: &Theme,
         can_add_income: bool,
+        include_main_actions: bool,
     ) -> Column<'static, Message> {
-        let context = AddWidgetMenuContext::new(self, can_add_income);
+        let context = AddWidgetMenuContext::new(self, can_add_income, include_main_actions);
         let menu = Column::new()
             .spacing(2)
             .width(Fill)
@@ -30,6 +31,10 @@ impl TradingTerminal {
         let menu = add_feed_section(menu, &context, theme);
         let menu = add_tool_section(menu, &context, theme);
 
-        add_window_section(menu, &context, theme)
+        if include_main_actions {
+            add_window_section(menu, &context, theme)
+        } else {
+            menu
+        }
     }
 }

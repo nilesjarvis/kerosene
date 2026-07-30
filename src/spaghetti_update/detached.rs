@@ -87,9 +87,9 @@ impl TradingTerminal {
     }
 
     pub(crate) fn spaghetti_is_docked(&self, chart_id: SpaghettiChartId) -> bool {
-        self.panes
-            .iter()
-            .any(|(_, kind)| matches!(kind, crate::pane_state::PaneKind::SpaghettiChart(id) if *id == chart_id))
+        self.workspace_pane_kinds().any(
+            |(_, _, kind)| matches!(kind, crate::pane_state::PaneKind::SpaghettiChart(id) if *id == chart_id),
+        )
     }
 
     pub(crate) fn detached_spaghetti_window_for(

@@ -13,7 +13,8 @@ use iced::Task;
 impl TradingTerminal {
     pub(super) fn add_positioning_info_pane(&mut self) -> Task<Message> {
         self.add_widget_menu_open = false;
-        let Some(focus) = self.add_target_pane() else {
+        let workspace = self.add_widget_workspace;
+        let Some(focus) = self.add_target_pane_in(workspace) else {
             self.push_toast(
                 "Could not add Positioning Information: no pane is available".to_string(),
                 true,
@@ -29,6 +30,7 @@ impl TradingTerminal {
 
         if self
             .add_pane_to_target(
+                workspace,
                 self.add_widget_axis(),
                 focus,
                 PaneKind::PositioningInfo(id),

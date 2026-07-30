@@ -5,7 +5,7 @@ use crate::account::{
 };
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
-use crate::config::AccountProfile;
+use crate::config::{self, AccountProfile};
 use crate::order_execution::PendingOrderAction;
 
 const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
@@ -157,6 +157,29 @@ fn alfred_catalog_includes_positions_history_widget() {
     assert_eq!(command.title, "Positions / History");
     assert_eq!(command.kind, AlfredCommandKind::AddWidget);
     assert!(command.message.is_some());
+}
+
+#[test]
+fn alfred_catalog_includes_canvas_lifecycle_commands() {
+    let (mut terminal, _) = TradingTerminal::boot_from_config(config::KeroseneConfig::default());
+    let _task = terminal.update_canvas(crate::message::Message::CreateCanvas);
+
+    let commands = terminal.alfred_filtered_commands();
+    let create = commands
+        .iter()
+        .find(|command| command.id == AlfredCommandId::CreateCanvas)
+        .expect("New Canvas should be an Alfred window command");
+    let reopen = commands
+        .iter()
+        .find(|command| command.id == AlfredCommandId::OpenCanvas(0))
+        .expect("existing Canvas should be an Alfred window command");
+
+    assert_eq!(create.kind, AlfredCommandKind::OpenWindow);
+    assert_eq!(reopen.title, "Canvas 1");
+    assert!(matches!(
+        reopen.message,
+        Some(crate::message::Message::OpenCanvas(0))
+    ));
 }
 
 #[test]

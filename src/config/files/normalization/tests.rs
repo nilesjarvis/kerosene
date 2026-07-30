@@ -785,6 +785,83 @@ fn repairs_duplicate_non_chart_widget_ids() {
     );
 }
 
+#[test]
+fn normalizes_canvas_ids_geometry_and_labels() {
+    let mut config = KeroseneConfig {
+        canvases: vec![
+            crate::config::CanvasConfig {
+                id: 3,
+                label: "  Desk  ".to_string(),
+                open: false,
+                pane_layout: Some(crate::config::PaneLayoutConfig::Leaf(
+                    crate::config::PaneKindConfig::Chart { chart_id: 1 },
+                )),
+                width: f32::NAN,
+                height: 100.0,
+                x: Some(f32::INFINITY),
+                y: Some(25.0),
+            },
+            crate::config::CanvasConfig {
+                id: 3,
+                label: String::new(),
+                open: false,
+                pane_layout: Some(crate::config::PaneLayoutConfig::Leaf(
+                    crate::config::PaneKindConfig::Chart { chart_id: 2 },
+                )),
+                width: 800.0,
+                height: 600.0,
+                x: None,
+                y: None,
+            },
+        ],
+        ..KeroseneConfig::default()
+    };
+
+    normalize_loaded_config(&mut config);
+
+    assert_eq!(config.canvases[0].label, "Desk");
+    assert_eq!(
+        config.canvases[0].width,
+        crate::config::DEFAULT_CANVAS_WIDTH
+    );
+    assert_eq!(config.canvases[0].height, 320.0);
+    assert_eq!(config.canvases[0].x, None);
+    assert_eq!(config.canvases[0].y, Some(25.0));
+    assert_ne!(config.canvases[0].id, config.canvases[1].id);
+}
+
+#[test]
+fn repairs_non_chart_widget_ids_across_main_and_canvas_trees() {
+    let mut config = KeroseneConfig {
+        order_books: vec![order_book_config(0)],
+        pane_layout: Some(crate::config::PaneLayoutConfig::Leaf(
+            crate::config::PaneKindConfig::OrderBook { id: 0 },
+        )),
+        canvases: vec![crate::config::CanvasConfig {
+            id: 0,
+            label: String::new(),
+            open: false,
+            pane_layout: Some(crate::config::PaneLayoutConfig::Leaf(
+                crate::config::PaneKindConfig::OrderBook { id: 0 },
+            )),
+            width: crate::config::DEFAULT_CANVAS_WIDTH,
+            height: crate::config::DEFAULT_CANVAS_HEIGHT,
+            x: None,
+            y: None,
+        }],
+        ..KeroseneConfig::default()
+    };
+
+    normalize_loaded_config(&mut config);
+
+    assert!(matches!(
+        config.canvases[0].pane_layout,
+        Some(crate::config::PaneLayoutConfig::Leaf(
+            crate::config::PaneKindConfig::OrderBook { id: 1 }
+        ))
+    ));
+}
+
 fn order_book_config(id: u64) -> crate::config::OrderBookConfig {
     serde_json::from_value(serde_json::json!({ "id": id })).expect("order book config")
 }

@@ -49,6 +49,7 @@ Current route groups:
 | `Alfred` | `alfred_update.rs` | Command palette query, selection, and command execution. |
 | `Annotations` | `annotation_update.rs` | Chart drawing tools and persisted annotations. |
 | `Calendar` | `calendar_update.rs` | Economic calendar fetches and filters. |
+| `Canvas` | `canvas_update.rs` | Create and reopen persistent Canvas workspace windows. |
 | `Chart` | `chart_update.rs` | Chart symbol/timeframe/editing, candle/funding data, HUD, overlays, detached charts. |
 | `ChartScreenshot` | `chart_screenshot/update.rs` | Screenshot capture, bitmap output, screenshot window lifecycle. |
 | `Chrome` | `chrome_update.rs` | Toasts, status bar, sound toggles, top-level UI cleanup. |
@@ -58,7 +59,7 @@ Current route groups:
 | `Layout` | `layout_update.rs` | Saved layouts, import/export, wallet label import/export. |
 | `Market` | `market_update.rs` | Symbols, watchlists, ticker tape, order books, positioning info, session data, HYPE widgets. |
 | `Order` | `order_update.rs` | Order form, submit/cancel, quick/HUD orders, close/nuke, Chase, TWAP, move-order. |
-| `PaneInteractions` | `pane_interaction_update.rs` | Pane grid resize/drag/click and minimum sizing. |
+| `PaneInteractions` | `pane_interaction_update.rs` | Workspace-qualified pane grid resize/drag/click and minimum sizing. |
 | `Panes` | `pane_update.rs` | Add/remove panes and add-widget menu behavior. |
 | `PortfolioIncome` | `portfolio_update.rs` | Portfolio and income fetches for portfolio panes/windows. |
 | `Preferences` | `preferences_update.rs` | Themes, UI scale, chart preferences, fonts, sounds, hotkeys, risk preferences. |

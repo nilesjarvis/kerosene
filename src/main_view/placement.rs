@@ -1,14 +1,19 @@
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::message::Message;
 
 use iced::widget::{Space, button, container, row, text, tooltip};
 use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
-    pub(super) fn view_widget_placement_bar(
+    pub(crate) fn view_widget_placement_bar(
         &self,
+        workspace: WorkspaceId,
         theme: &Theme,
     ) -> Option<Element<'static, Message>> {
+        if self.add_widget_workspace != workspace {
+            return None;
+        }
         let widget = self.placing_widget?;
         let weak_text = theme.extended_palette().background.weak.text;
 

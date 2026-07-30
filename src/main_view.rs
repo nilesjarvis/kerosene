@@ -7,6 +7,7 @@ mod unlock;
 mod windows;
 
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{column, container, stack};
@@ -34,7 +35,7 @@ impl TradingTerminal {
         if self.ticker_tape_enabled {
             main_column = main_column.push(self.view_ticker_tape_bar());
         }
-        if let Some(placement_bar) = self.view_widget_placement_bar(&theme) {
+        if let Some(placement_bar) = self.view_widget_placement_bar(WorkspaceId::Main, &theme) {
             main_column = main_column.push(placement_bar);
         }
         let main_content: Element<'_, Message> =
@@ -46,7 +47,9 @@ impl TradingTerminal {
             layers.push(toast_overlay);
         }
 
-        if let Some(alfred_overlay) = self.view_alfred_overlay(&theme) {
+        if self.last_focused_workspace == WorkspaceId::Main
+            && let Some(alfred_overlay) = self.view_alfred_overlay(&theme)
+        {
             layers.push(alfred_overlay);
         }
 

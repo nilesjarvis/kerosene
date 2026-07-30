@@ -40,6 +40,31 @@ impl TradingTerminal {
                 )
             })
             .collect();
+        let missing_ids = self
+            .workspace_pane_kinds()
+            .filter_map(|(_, _, kind)| match kind {
+                crate::pane_state::PaneKind::LiveWatchlist(id)
+                    if !self.live_watchlists.contains_key(id) =>
+                {
+                    Some(*id)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for id in missing_ids {
+            self.live_watchlists.insert(
+                id,
+                LiveWatchlistInstance {
+                    id,
+                    symbols: Vec::new(),
+                    search_query: String::new(),
+                    sort_column: Default::default(),
+                    sort_direction: Default::default(),
+                    visible_columns: config::default_live_watchlist_columns(),
+                    row_cache: Vec::new(),
+                },
+            );
+        }
         self.refresh_live_watchlist_row_caches();
     }
 }

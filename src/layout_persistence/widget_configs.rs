@@ -60,7 +60,13 @@ impl TradingTerminal {
             next_spaghetti_id = next_spaghetti_id.max(spaghetti_cfg.id.saturating_add(1));
         }
 
-        if let Some(pane_layout) = &layout.pane_layout {
+        let pane_layouts = layout.pane_layout.iter().chain(
+            layout
+                .canvases
+                .iter()
+                .filter_map(|canvas| canvas.pane_layout.as_ref()),
+        );
+        for pane_layout in pane_layouts {
             let mut layout_chart_ids = std::collections::BTreeSet::new();
             let mut layout_spaghetti_ids = std::collections::BTreeSet::new();
             Self::collect_layout_widget_ids(

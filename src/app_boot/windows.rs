@@ -28,6 +28,18 @@ impl TradingTerminal {
         self.main_window_id = Some(main_id);
         boot_tasks.push(main_open_task.map(Message::WindowOpened));
 
+        let canvas_ids = cfg
+            .canvases
+            .iter()
+            .filter(|canvas| canvas.open)
+            .map(|canvas| canvas.id)
+            .collect::<Vec<_>>();
+        for canvas_id in canvas_ids {
+            if self.canvases.contains_key(&canvas_id) {
+                boot_tasks.push(self.open_canvas_window(canvas_id));
+            }
+        }
+
         if self.wallet_tracker.open {
             let tracker_settings = window::Settings {
                 size: Size::new(self.wallet_tracker.width, self.wallet_tracker.height),

@@ -55,7 +55,12 @@ impl TradingTerminal {
             next_spaghetti_id = next_spaghetti_id.max(scfg.id.saturating_add(1));
         }
 
-        if let Some(layout) = &cfg.pane_layout {
+        let layouts = cfg.pane_layout.iter().chain(
+            cfg.canvases
+                .iter()
+                .filter_map(|canvas| canvas.pane_layout.as_ref()),
+        );
+        for layout in layouts {
             let mut layout_chart_ids = BTreeSet::new();
             let mut layout_spaghetti_ids = BTreeSet::new();
             Self::collect_layout_widget_ids(

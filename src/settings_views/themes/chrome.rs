@@ -246,13 +246,16 @@ impl TradingTerminal {
     }
 
     fn view_focused_widget_padding_controls(&self, theme: &Theme) -> Element<'_, Message> {
-        let Some((pane, target)) = self.focused_widget_padding_target() else {
+        let Some((workspace, pane, target)) = self.focused_widget_padding_target() else {
             return text("Selected widget: none")
                 .size(11)
                 .color(theme.extended_palette().background.weak.text)
                 .into();
         };
-        let Some(kind) = self.panes.get(pane) else {
+        let Some(kind) = self
+            .workspace_panes(workspace)
+            .and_then(|panes| panes.get(pane))
+        else {
             return text("Selected widget: none")
                 .size(11)
                 .color(theme.extended_palette().background.weak.text)

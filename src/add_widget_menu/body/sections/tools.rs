@@ -11,7 +11,8 @@ pub(in crate::add_widget_menu::body) fn add_tool_section(
     context: &AddWidgetMenuContext,
     theme: &Theme,
 ) -> Column<'static, Message> {
-    menu.push(rule::horizontal(1))
+    let menu = menu
+        .push(rule::horizontal(1))
         .push(section_label("Tools", theme))
         .push(menu_item(
             "Order Book",
@@ -26,8 +27,9 @@ pub(in crate::add_widget_menu::body) fn add_tool_section(
             Some(Message::BeginWidgetPlacement(AddWidgetKind::LiveWatchlist)),
             context.can_add_pane,
             theme,
-        ))
-        .push(menu_item(
+        ));
+    let menu = if context.include_main_actions {
+        menu.push(menu_item(
             "Ticker Tape",
             if context.ticker_tape_open {
                 "Open"
@@ -38,20 +40,24 @@ pub(in crate::add_widget_menu::body) fn add_tool_section(
             true,
             theme,
         ))
-        .push(menu_item(
-            "Positioning Information",
-            "Pane",
-            Some(Message::BeginWidgetPlacement(
-                AddWidgetKind::PositioningInfo,
-            )),
-            context.can_add_pane,
-            theme,
-        ))
-        .push(menu_item(
-            "Advanced Orders",
-            "Pane",
-            Some(Message::BeginWidgetPlacement(AddWidgetKind::AdvancedOrders)),
-            context.can_add_pane,
-            theme,
-        ))
+    } else {
+        menu
+    };
+
+    menu.push(menu_item(
+        "Positioning Information",
+        "Pane",
+        Some(Message::BeginWidgetPlacement(
+            AddWidgetKind::PositioningInfo,
+        )),
+        context.can_add_pane,
+        theme,
+    ))
+    .push(menu_item(
+        "Advanced Orders",
+        "Pane",
+        Some(Message::BeginWidgetPlacement(AddWidgetKind::AdvancedOrders)),
+        context.can_add_pane,
+        theme,
+    ))
 }

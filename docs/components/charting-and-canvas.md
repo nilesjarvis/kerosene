@@ -304,7 +304,8 @@ They maintain:
 - detached window geometry
 
 Closing a detached chart must remove the detached window state without deleting
-the chart instance if the chart is still present in the main pane grid.
+the chart instance if the chart is still present in any main or Canvas pane
+grid.
 
 ## Chart Screenshots
 

@@ -43,17 +43,22 @@ impl TradingTerminal {
             self.next_order_book_id = self.next_order_book_id.max(ob_cfg.id + 1);
         }
 
-        for (_, pane_cfg) in self.panes.iter() {
-            if let PaneKind::OrderBook(id) = pane_cfg
-                && !self.order_books.contains_key(id)
-            {
+        let pane_ids = self
+            .workspace_pane_kinds()
+            .filter_map(|(_, _, kind)| match kind {
+                PaneKind::OrderBook(id) => Some(*id),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for id in pane_ids {
+            if !self.order_books.contains_key(&id) {
                 let mut inst = OrderBookInstance::new(
-                    *id,
+                    id,
                     OrderBookSymbolMode::Active,
                     Self::normalized_book_tick_size(cfg.book_tick_size),
                 );
                 inst.book_loading = true;
-                self.order_books.insert(*id, inst);
+                self.order_books.insert(id, inst);
                 self.next_order_book_id = self.next_order_book_id.max(id + 1);
             }
         }

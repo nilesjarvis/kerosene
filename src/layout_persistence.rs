@@ -83,6 +83,7 @@ impl TradingTerminal {
         self.prune_chart_surface_state();
 
         self.preserved_loaded_pane_layout = layout.pane_layout.clone();
+        boot_tasks.extend(self.restore_layout_canvases(&layout.canvases));
         self.restore_layout_panes(&layout);
         boot_tasks.push(self.restore_layout_liquidation_distribution_symbol(
             layout.liquidation_distribution_symbol.as_deref(),

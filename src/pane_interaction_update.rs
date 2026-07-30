@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::chart_state::ChartSurfaceId;
 use crate::market_state::OrderBookSymbolMode;
 use crate::message::Message;
@@ -11,30 +12,49 @@ mod min_size;
 impl TradingTerminal {
     pub(crate) fn update_pane_interactions(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
-                let ratio = self.clamp_order_entry_resize_ratio(split, ratio);
-                self.panes.resize(split, ratio);
+            Message::PaneResized(workspace, pane_grid::ResizeEvent { split, ratio }) => {
+                let ratio = if workspace == WorkspaceId::Main {
+                    self.clamp_order_entry_resize_ratio(split, ratio)
+                } else {
+                    ratio
+                };
+                if let Some(panes) = self.workspace_panes_mut(workspace) {
+                    panes.resize(split, ratio);
+                }
                 self.persist_config();
             }
-            Message::PaneDragged(pane_grid::DragEvent::Picked { pane }) => {
-                self.dragging_pane = Some(pane);
+            Message::PaneDragged(workspace, pane_grid::DragEvent::Picked { pane }) => {
+                self.set_workspace_dragging_pane(workspace, Some(pane));
+                self.last_focused_workspace = workspace;
                 self.close_chart_header_menus();
             }
-            Message::PaneDragged(pane_grid::DragEvent::Dropped { pane, target }) => {
-                self.dragging_pane = None;
-                self.panes.drop(pane, target);
+            Message::PaneDragged(workspace, pane_grid::DragEvent::Dropped { pane, target }) => {
+                self.set_workspace_dragging_pane(workspace, None);
+                if let Some(panes) = self.workspace_panes_mut(workspace) {
+                    panes.drop(pane, target);
+                }
                 self.persist_config();
-                return self.sync_main_window_min_size();
+                return if workspace == WorkspaceId::Main {
+                    self.sync_main_window_min_size()
+                } else {
+                    Task::none()
+                };
             }
-            Message::PaneDragged(pane_grid::DragEvent::Canceled { .. }) => {
-                self.dragging_pane = None;
+            Message::PaneDragged(workspace, pane_grid::DragEvent::Canceled { .. }) => {
+                self.set_workspace_dragging_pane(workspace, None);
             }
-            Message::PaneClicked(pane) => {
-                self.focus = Some(pane);
+            Message::PaneClicked(workspace, pane) => {
+                self.set_workspace_focus(workspace, Some(pane));
+                self.last_focused_workspace = workspace;
+                self.add_widget_workspace = workspace;
 
                 self.close_chart_header_menus();
 
-                if let Some(PaneKind::Chart(id)) = self.panes.get(pane).cloned() {
+                if let Some(PaneKind::Chart(id)) = self
+                    .workspace_panes(workspace)
+                    .and_then(|panes| panes.get(pane))
+                    .cloned()
+                {
                     self.primary_chart_id = Some(id);
 
                     let chart_sym = self.charts.get(&id).and_then(|inst| {
@@ -81,13 +101,23 @@ impl TradingTerminal {
                     }
                 }
             }
-            Message::ClosePane(pane) => {
-                let can_close_pane = self.panes.get(pane).is_some_and(PaneKind::can_be_closed);
+            Message::ClosePane(workspace, pane) => {
+                let can_close_pane = self
+                    .workspace_panes(workspace)
+                    .and_then(|panes| panes.get(pane))
+                    .is_some_and(PaneKind::can_be_closed);
+                let pane_count = self
+                    .workspace_panes(workspace)
+                    .map(|panes| panes.iter().count())
+                    .unwrap_or_default();
                 if can_close_pane
-                    && self.panes.iter().count() > 1
-                    && let Some((closed_kind, sibling)) = self.panes.close(pane)
+                    && pane_count > 1
+                    && let Some((closed_kind, sibling)) = self
+                        .workspace_panes_mut(workspace)
+                        .and_then(|panes| panes.close(pane))
                 {
-                    self.focus = Some(sibling);
+                    self.set_workspace_focus(workspace, Some(sibling));
+                    self.last_focused_workspace = workspace;
                     let mut detached_window_to_close = None;
                     self.remove_widget_padding_override_for_kind(&closed_kind);
 
@@ -137,7 +167,10 @@ impl TradingTerminal {
                         _ => {}
                     }
                     self.persist_config();
-                    let mut tasks = vec![self.sync_main_window_min_size()];
+                    let mut tasks = Vec::new();
+                    if workspace == WorkspaceId::Main {
+                        tasks.push(self.sync_main_window_min_size());
+                    }
                     if let Some(window_id) = detached_window_to_close {
                         tasks.push(iced::window::close(window_id));
                     }

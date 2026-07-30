@@ -23,6 +23,14 @@ impl TradingTerminal {
                 } else if Some(id) == self.main_window_id {
                     self.main_window_pos = Some(point);
                     self.persist_config();
+                } else if let Some(canvas) = self
+                    .canvases
+                    .values_mut()
+                    .find(|canvas| canvas.window_id == Some(id))
+                {
+                    canvas.x = Some(point.x);
+                    canvas.y = Some(point.y);
+                    self.persist_config();
                 } else if let Some(state) = self.detached_chart_windows.get_mut(&id) {
                     state.x = Some(point.x);
                     state.y = Some(point.y);
@@ -39,6 +47,23 @@ impl TradingTerminal {
                 }
                 if Some(id) == self.settings_window_id {
                     self.settings_window_id = None;
+                }
+                if let Some(canvas) = self
+                    .canvases
+                    .values_mut()
+                    .find(|canvas| canvas.window_id == Some(id))
+                {
+                    canvas.window_id = None;
+                    if self.add_widget_workspace
+                        == crate::canvas_state::WorkspaceId::Canvas(canvas.id)
+                    {
+                        self.add_widget_menu_open = false;
+                        self.cancel_widget_placement();
+                        self.add_widget_workspace = crate::canvas_state::WorkspaceId::Main;
+                    }
+                    self.last_focused_workspace = crate::canvas_state::WorkspaceId::Main;
+                    self.persist_config();
+                    return Task::none();
                 }
                 if self
                     .add_account_window
@@ -104,6 +129,15 @@ impl TradingTerminal {
                     self.persist_config();
                     return self.sync_main_window_min_size();
                 }
+                if let Some(canvas) = self
+                    .canvases
+                    .values_mut()
+                    .find(|canvas| canvas.window_id == Some(id))
+                {
+                    canvas.width = size.width;
+                    canvas.height = size.height;
+                    self.persist_config();
+                }
                 if let Some(state) = self.detached_chart_windows.get_mut(&id) {
                     state.width = size.width;
                     state.height = size.height;
@@ -122,6 +156,12 @@ impl TradingTerminal {
                     self.journal.width = size.width;
                     self.journal.height = size.height;
                     self.persist_config();
+                }
+            }
+            Message::WindowFocused(id) => {
+                if let Some(workspace) = self.workspace_for_window(id) {
+                    self.last_focused_workspace = workspace;
+                    self.add_widget_workspace = workspace;
                 }
             }
             Message::WindowDrag(id) => {

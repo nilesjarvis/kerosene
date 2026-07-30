@@ -2,6 +2,7 @@ use crate::account_state::PositionsSortColumn;
 use crate::advanced_order_history::prune_advanced_order_history;
 use crate::app_state::TradingTerminal;
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
+use crate::canvas_state::{CanvasState, WorkspaceId};
 use crate::chart_state::{ChartId, ChartInstance};
 use crate::config::{self, KeroseneConfig};
 use crate::journal;
@@ -57,6 +58,28 @@ impl TradingTerminal {
             .collect();
         let mut advanced_order_history = VecDeque::from(cfg.advanced_order_history.clone());
         prune_advanced_order_history(&mut advanced_order_history);
+        let mut canvases = BTreeMap::new();
+        let mut next_canvas_id = 0;
+        for canvas_config in &cfg.canvases {
+            let Some(pane_config) = canvas_config
+                .pane_layout
+                .as_ref()
+                .and_then(TradingTerminal::pane_layout_to_configuration)
+            else {
+                continue;
+            };
+            if canvases.contains_key(&canvas_config.id) {
+                continue;
+            }
+            next_canvas_id = next_canvas_id.max(canvas_config.id.saturating_add(1));
+            canvases.insert(
+                canvas_config.id,
+                CanvasState::from_config(
+                    canvas_config,
+                    pane_grid::State::with_configuration(pane_config),
+                ),
+            );
+        }
 
         let mut state = Self {
             saved_layouts: cfg.saved_layouts.clone(),
@@ -80,6 +103,9 @@ impl TradingTerminal {
             live_watchlist_settings_menu_open: None,
             panes: pane_grid::State::with_configuration(parts.pane_config),
             dragging_pane: None,
+            canvases,
+            next_canvas_id,
+            last_focused_workspace: WorkspaceId::Main,
             active_theme: cfg.active_theme.clone(),
             ui_scale: cfg.ui_scale,
             chart_dotted_background: cfg.chart_dotted_background,
@@ -165,6 +191,7 @@ impl TradingTerminal {
             next_spaghetti_id: parts.next_spaghetti_id,
             spaghetti_instance_epoch: 0,
             add_widget_menu_open: false,
+            add_widget_workspace: WorkspaceId::Main,
             layout_menu_open: false,
             layout_rename_index: None,
             layout_rename_input: String::new(),

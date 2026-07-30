@@ -30,6 +30,7 @@ impl TradingTerminal {
         match event {
             window::Event::Resized(size) => Message::WindowResized(id, size),
             window::Event::Moved(point) => Message::WindowMoved(id, point),
+            window::Event::Focused => Message::WindowFocused(id),
             _ => Message::NoOp,
         }
     }
@@ -58,12 +59,12 @@ mod tests {
     }
 
     #[test]
-    fn ignored_window_events_do_not_emit_calendar_tick() {
+    fn focused_window_events_track_the_hotkey_workspace() {
         let id = window::Id::unique();
 
         assert!(matches!(
             TradingTerminal::window_event_message(id, window::Event::Focused),
-            Message::NoOp
+            Message::WindowFocused(message_id) if message_id == id
         ));
     }
 }

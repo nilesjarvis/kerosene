@@ -23,6 +23,7 @@ pub(super) fn normalize_loaded_config(config: &mut KeroseneConfig) {
     merge_default_themes(config);
     ensure_layout_ratios(config);
     prune_unsupported_pane_layouts(config);
+    normalize_canvases(config);
     repair_duplicate_non_chart_widget_ids(config);
     normalize_market_slippage(config);
     normalize_pane_chrome(config);
@@ -32,6 +33,43 @@ pub(super) fn normalize_loaded_config(config: &mut KeroseneConfig) {
     apply_pending_keychain_profile_deletions(config);
     ensure_account_profile(config);
     clamp_active_account(config);
+}
+
+fn normalize_canvases(config: &mut KeroseneConfig) {
+    let mut repaired_ids = normalize_canvas_list(&mut config.canvases);
+    for layout in &mut config.saved_layouts {
+        repaired_ids |= normalize_canvas_list(&mut layout.canvases);
+    }
+    if repaired_ids {
+        push_config_warning("Duplicate Canvas identifiers were repaired.".to_string());
+    }
+}
+
+fn normalize_canvas_list(canvases: &mut [crate::config::CanvasConfig]) -> bool {
+    let mut used_ids = BTreeSet::new();
+    let mut repaired_ids = false;
+    for canvas in canvases {
+        if !used_ids.insert(canvas.id) {
+            canvas.id = next_unused_widget_id(&used_ids);
+            used_ids.insert(canvas.id);
+            repaired_ids = true;
+        }
+        canvas.label = canvas.label.trim().to_string();
+        canvas.width = normalize_canvas_extent(canvas.width, crate::config::DEFAULT_CANVAS_WIDTH);
+        canvas.height =
+            normalize_canvas_extent(canvas.height, crate::config::DEFAULT_CANVAS_HEIGHT);
+        canvas.x = canvas.x.filter(|value| value.is_finite());
+        canvas.y = canvas.y.filter(|value| value.is_finite());
+    }
+    repaired_ids
+}
+
+fn normalize_canvas_extent(value: f32, fallback: f32) -> f32 {
+    if value.is_finite() && value > 0.0 {
+        value.max(320.0)
+    } else {
+        fallback
+    }
 }
 
 fn migrate_read_data_provider(config: &mut KeroseneConfig) {
@@ -48,12 +86,24 @@ fn prune_unsupported_pane_layouts(config: &mut KeroseneConfig) {
         .pane_layout
         .take()
         .and_then(prune_legacy_unsupported_pane_layout);
+    for canvas in &mut config.canvases {
+        canvas.pane_layout = canvas
+            .pane_layout
+            .take()
+            .and_then(prune_legacy_unsupported_pane_layout);
+    }
 
     for layout in &mut config.saved_layouts {
         layout.pane_layout = layout
             .pane_layout
             .take()
             .and_then(prune_legacy_unsupported_pane_layout);
+        for canvas in &mut layout.canvases {
+            canvas.pane_layout = canvas
+                .pane_layout
+                .take()
+                .and_then(prune_legacy_unsupported_pane_layout);
+        }
     }
 }
 
@@ -158,11 +208,21 @@ fn ensure_layout_ratios(config: &mut KeroseneConfig) {
     if let Some(layout) = &mut config.pane_layout {
         layout.normalize_split_ratios();
     }
+    for canvas in &mut config.canvases {
+        if let Some(layout) = &mut canvas.pane_layout {
+            layout.normalize_split_ratios();
+        }
+    }
 
     for layout in &mut config.saved_layouts {
         normalize_layout_ratio_values(&mut layout.layout_ratios);
         if let Some(pane_layout) = &mut layout.pane_layout {
             pane_layout.normalize_split_ratios();
+        }
+        for canvas in &mut layout.canvases {
+            if let Some(pane_layout) = &mut canvas.pane_layout {
+                pane_layout.normalize_split_ratios();
+            }
         }
     }
 }
@@ -190,6 +250,7 @@ fn repair_duplicate_non_chart_widget_ids(config: &mut KeroseneConfig) {
         &mut config.session_data,
         &mut config.x_feeds,
         config.pane_layout.as_mut(),
+        &mut config.canvases,
     );
 
     for layout in &mut config.saved_layouts {
@@ -200,6 +261,7 @@ fn repair_duplicate_non_chart_widget_ids(config: &mut KeroseneConfig) {
             &mut layout.session_data,
             &mut layout.x_feeds,
             layout.pane_layout.as_mut(),
+            &mut layout.canvases,
         );
     }
 
@@ -218,6 +280,7 @@ fn repair_duplicate_non_chart_widget_ids_for_layout(
     session_data: &mut [crate::config::SessionDataConfig],
     x_feeds: &mut [crate::config::XFeedConfig],
     pane_layout: Option<&mut PaneLayoutConfig>,
+    canvases: &mut [crate::config::CanvasConfig],
 ) -> bool {
     let (order_books_repaired, order_book_ids) =
         repair_duplicate_ids(order_books, |config| &mut config.id);
@@ -235,16 +298,22 @@ fn repair_duplicate_non_chart_widget_ids_for_layout(
         || session_data_repaired
         || x_feeds_repaired;
 
+    let mut seen = NonChartWidgetIds::default();
+    let mut reserved = NonChartWidgetIds {
+        order_books: order_book_ids,
+        live_watchlists: live_watchlist_ids,
+        positioning_infos: positioning_info_ids,
+        session_data: session_data_ids,
+        x_feeds: x_feed_ids,
+    };
     if let Some(pane_layout) = pane_layout {
-        let mut seen = NonChartWidgetIds::default();
-        let mut reserved = NonChartWidgetIds {
-            order_books: order_book_ids,
-            live_watchlists: live_watchlist_ids,
-            positioning_infos: positioning_info_ids,
-            session_data: session_data_ids,
-            x_feeds: x_feed_ids,
-        };
         repaired_any |= repair_duplicate_non_chart_pane_ids(pane_layout, &mut seen, &mut reserved);
+    }
+    for canvas in canvases {
+        if let Some(pane_layout) = &mut canvas.pane_layout {
+            repaired_any |=
+                repair_duplicate_non_chart_pane_ids(pane_layout, &mut seen, &mut reserved);
+        }
     }
 
     repaired_any
