@@ -51,7 +51,12 @@ impl TradingTerminal {
         if let Some(placement) = self.view_widget_placement_bar(workspace, &theme) {
             body = body.push(placement);
         }
-        body = body.push(self.view_workspace_pane_grid(workspace));
+        body = body.push(
+            container(self.view_workspace_pane_grid(workspace))
+                .width(Fill)
+                .height(Fill)
+                .padding([self.outer_widget_border_padding(), 0.0]),
+        );
 
         let mut layers: Vec<Element<'_, Message>> = vec![body.into()];
         if menu_open {
