@@ -20,7 +20,26 @@ impl TradingTerminal {
     ) -> Option<Task<Message>> {
         let secondary_editor_id = self.active_chart_secondary_editor_id();
         let editor_id = secondary_editor_id.or_else(|| self.active_chart_editor_id())?;
-        let secondary = secondary_editor_id == Some(editor_id);
+        self.handle_chart_editor_keyboard_for_chart(editor_id, key, modifiers)
+    }
+
+    pub(super) fn handle_chart_editor_keyboard_for_chart(
+        &mut self,
+        editor_id: crate::chart_state::ChartId,
+        key: iced::keyboard::Key<&str>,
+        modifiers: iced::keyboard::Modifiers,
+    ) -> Option<Task<Message>> {
+        let secondary = self
+            .charts
+            .get(&editor_id)
+            .is_some_and(|instance| instance.secondary_editor_open);
+        let editor_open = self
+            .charts
+            .get(&editor_id)
+            .is_some_and(|instance| instance.editor_open);
+        if !secondary && !editor_open {
+            return None;
+        }
         if modifiers.control() || modifiers.alt() || modifiers.logo() {
             return None;
         }

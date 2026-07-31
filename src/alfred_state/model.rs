@@ -1,3 +1,4 @@
+use crate::canvas_state::CanvasId;
 use crate::message::Message;
 
 // ---------------------------------------------------------------------------
@@ -53,6 +54,8 @@ pub(crate) enum AlfredCommandId {
     OpenWalletClustersWindow,
     OpenScreenerWindow,
     OpenSettingsWindow,
+    CreateCanvas,
+    OpenCanvas(CanvasId),
     NaturalLanguageTrading,
     NukePositions,
     ClosePosition,

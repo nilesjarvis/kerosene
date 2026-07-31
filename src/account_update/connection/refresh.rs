@@ -164,10 +164,7 @@ impl TradingTerminal {
                 self.sync_order_leverage_form_for_active_symbol();
                 self.account_error = None;
                 self.sync_all_chart_overlays();
-                let income_pane_open = self
-                    .panes
-                    .iter()
-                    .any(|(_, kind)| matches!(kind, PaneKind::Income));
+                let income_pane_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Income));
                 // This snapshot predates a refresh request that arrived while
                 // it was in flight. Store it for display, but do not let it
                 // drive exchange-emitting automation reconciliation.

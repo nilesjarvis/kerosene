@@ -6,7 +6,7 @@ use iced::Task;
 
 impl TradingTerminal {
     pub(super) fn add_chart_pane(&mut self, message: Message) -> Task<Message> {
-        let Message::AddChart(from_pane) = message else {
+        let Message::AddChart(workspace, from_pane) = message else {
             return Task::none();
         };
 
@@ -17,6 +17,7 @@ impl TradingTerminal {
         self.charts.insert(id, instance);
         if self
             .add_pane_to_target(
+                workspace,
                 self.add_widget_axis(),
                 from_pane,
                 PaneKind::Chart(id),

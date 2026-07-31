@@ -298,9 +298,8 @@ impl TradingTerminal {
 
     pub(crate) fn request_x_feed_open_refresh(&mut self, visible: bool) -> Task<Message> {
         let open_ids = self
-            .panes
-            .iter()
-            .filter_map(|(_, kind)| match kind {
+            .workspace_pane_kinds()
+            .filter_map(|(_, _, kind)| match kind {
                 PaneKind::XFeed(id) => Some(*id),
                 _ => None,
             })
@@ -533,5 +532,29 @@ impl TradingTerminal {
                 profile.image_failed_at_ms = Some(Self::now_ms());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn open_refresh_includes_canvas_x_feed_instances() {
+        let (mut terminal, _) =
+            TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default());
+        let id = 17;
+        terminal
+            .x_feed
+            .instances
+            .insert(id, XFeedInstance::new(id, XFeedSource::Following));
+        terminal.insert_test_canvas_pane(7, PaneKind::XFeed(id));
+
+        let _task = terminal.request_x_feed_open_refresh(true);
+
+        assert_eq!(
+            terminal.x_feed.instances[&id].last_error.as_deref(),
+            Some("Paste an X OAuth 2.0 user access token")
+        );
     }
 }

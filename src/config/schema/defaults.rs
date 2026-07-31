@@ -340,6 +340,7 @@ impl Default for KeroseneConfig {
             chart_screenshot_settings: Default::default(),
             layout_ratios: default_layout_ratios(),
             pane_layout: None,
+            canvases: Vec::new(),
             charts: Vec::new(),
             detached_chart_windows: Vec::new(),
             order_books: Vec::new(),

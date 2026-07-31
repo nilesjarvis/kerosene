@@ -32,11 +32,7 @@ pub(in crate::subscription_state::market) fn source_context_for_stream_event(
 
 impl TradingTerminal {
     pub(super) fn push_market_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
-        if self
-            .panes
-            .iter()
-            .any(|(_, kind)| matches!(kind, PaneKind::LiveWatchlist(_)))
-        {
+        if self.pane_is_open(|kind| matches!(kind, PaneKind::LiveWatchlist(_))) {
             subs.push(
                 iced::time::every(std::time::Duration::from_secs(15))
                     .map(|_| Message::LiveWatchlistRefreshTick),

@@ -1,5 +1,6 @@
 use crate::account_state::BottomTab;
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::message::Message;
 use iced::widget::{Row, Space, button, column, container, row, rule, text};
 use iced::{Color, Element, Fill, Theme};
@@ -9,7 +10,12 @@ use iced::{Color, Element, Fill, Theme};
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(crate) fn view_bottom_tabs(&self, active_tab: BottomTab) -> Element<'_, Message> {
+    pub(crate) fn view_bottom_tabs(
+        &self,
+        workspace: WorkspaceId,
+        pane: iced::widget::pane_grid::Pane,
+        active_tab: BottomTab,
+    ) -> Element<'_, Message> {
         let position_count = self.open_position_tab_count();
         let open_order_count = self.open_order_tab_count();
         let tabs = Row::new()
@@ -17,35 +23,35 @@ impl TradingTerminal {
                 "Positions",
                 Some(position_count),
                 active_tab == BottomTab::Positions,
-                Message::SwitchBottomTab(BottomTab::Positions),
+                Message::SwitchBottomTab(workspace, pane, BottomTab::Positions),
             ))
             .push(bottom_tab_separator())
             .push(bottom_tab_button(
                 "Open Orders",
                 Some(open_order_count),
                 active_tab == BottomTab::OpenOrders,
-                Message::SwitchBottomTab(BottomTab::OpenOrders),
+                Message::SwitchBottomTab(workspace, pane, BottomTab::OpenOrders),
             ))
             .push(bottom_tab_separator())
             .push(bottom_tab_button(
                 "Balances",
                 None,
                 active_tab == BottomTab::Balances,
-                Message::SwitchBottomTab(BottomTab::Balances),
+                Message::SwitchBottomTab(workspace, pane, BottomTab::Balances),
             ))
             .push(bottom_tab_separator())
             .push(bottom_tab_button(
                 "Trade History",
                 None,
                 active_tab == BottomTab::TradeHistory,
-                Message::SwitchBottomTab(BottomTab::TradeHistory),
+                Message::SwitchBottomTab(workspace, pane, BottomTab::TradeHistory),
             ))
             .push(bottom_tab_separator())
             .push(bottom_tab_button(
                 "Funding",
                 None,
                 active_tab == BottomTab::FundingHistory,
-                Message::SwitchBottomTab(BottomTab::FundingHistory),
+                Message::SwitchBottomTab(workspace, pane, BottomTab::FundingHistory),
             ))
             .push(Space::new().width(Fill))
             .push(bottom_tab_separator())

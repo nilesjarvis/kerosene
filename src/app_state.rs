@@ -5,6 +5,7 @@ use crate::alfred_state::AlfredState;
 use crate::annotations::DrawingTool;
 use crate::api::{self, ExchangeSymbol};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
+use crate::canvas_state::{CanvasId, CanvasState, WorkspaceId};
 use crate::chart::ChartViewport;
 use crate::chart_screenshot::ChartScreenshotState;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId, DetachedChartWindowState};
@@ -261,6 +262,10 @@ pub(crate) struct TradingTerminal {
     pub(crate) preserved_loaded_pane_layout: Option<config::PaneLayoutConfig>,
     pub(crate) panes: pane_grid::State<PaneKind>,
     pub(crate) dragging_pane: Option<pane_grid::Pane>,
+    pub(crate) canvases: BTreeMap<CanvasId, CanvasState>,
+    pub(crate) preserved_unavailable_canvases: Vec<config::CanvasConfig>,
+    pub(crate) next_canvas_id: CanvasId,
+    pub(crate) last_focused_workspace: WorkspaceId,
     pub(crate) active_theme: String,
     pub(crate) ui_scale: f32,
     pub(crate) chart_dotted_background: bool,
@@ -344,6 +349,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) spaghetti_instance_epoch: u64,
     // Add-widget menu state
     pub(crate) add_widget_menu_open: bool,
+    pub(crate) add_widget_workspace: WorkspaceId,
     pub(crate) layout_menu_open: bool,
     pub(crate) layout_rename_index: Option<usize>,
     pub(crate) layout_rename_input: String,

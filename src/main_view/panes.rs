@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 use iced::Element;
@@ -11,6 +12,7 @@ use iced::widget::pane_grid;
 impl TradingTerminal {
     pub(super) fn view_pane_content(
         &self,
+        workspace: WorkspaceId,
         pane: pane_grid::Pane,
         kind: &PaneKind,
         chart_count: usize,
@@ -25,7 +27,9 @@ impl TradingTerminal {
             PaneKind::Watchlist => self.view_watchlist(),
             PaneKind::Portfolio => self.view_portfolio(),
             PaneKind::Income => self.view_income(),
-            PaneKind::BottomTabs { active_tab } => self.view_bottom_tabs(*active_tab),
+            PaneKind::BottomTabs { active_tab } => {
+                self.view_bottom_tabs(workspace, pane, *active_tab)
+            }
             PaneKind::OrderEntry => self.view_order_entry(),
             PaneKind::AdvancedOrders => self.view_advanced_orders(),
             PaneKind::SpaghettiChart(id) => self.view_spaghetti_chart(*id, pane),

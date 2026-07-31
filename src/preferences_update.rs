@@ -467,6 +467,7 @@ impl TradingTerminal {
             ids.push(id);
         }
 
+        ids.extend(self.canvases.values().filter_map(|canvas| canvas.window_id));
         ids.extend(self.wallet_detail_windows.keys().copied());
         ids.extend(self.twap_orders.values().filter_map(|twap| twap.window_id));
         ids.extend(self.advanced_order_history_windows.keys().copied());
@@ -511,6 +512,17 @@ mod tests {
         );
         assert!(!rendered.contains("/home/alice"));
         assert!(!rendered.contains("font-secret"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn decoration_sync_includes_open_canvas_windows() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let canvas_window_id = iced::window::Id::unique();
+        terminal.insert_test_canvas_pane(7, crate::pane_state::PaneKind::Watchlist);
+        terminal.canvases.get_mut(&7).expect("Canvas").window_id = Some(canvas_window_id);
+
+        assert!(terminal.open_window_ids().contains(&canvas_window_id));
     }
 
     #[test]

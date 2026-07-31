@@ -9,15 +9,15 @@ use iced::Task;
 impl TradingTerminal {
     pub(crate) fn update_panes(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::SwitchBottomTab(_)
+            Message::SwitchBottomTab(_, _, _)
             | Message::CloseAllMenus
-            | Message::ToggleAddWidgetMenu
+            | Message::ToggleAddWidgetMenu(_)
             | Message::ToggleLayoutMenu
             | Message::ToggleTickerTape
             | Message::BeginWidgetPlacement(_)
-            | Message::WidgetPlacementHovered(_, _)
-            | Message::WidgetPlacementExited(_)
-            | Message::PlaceWidget(_, _)
+            | Message::WidgetPlacementHovered(_, _, _)
+            | Message::WidgetPlacementExited(_, _)
+            | Message::PlaceWidget(_, _, _)
             | Message::CancelWidgetPlacement => self.update_pane_menu(message),
             Message::AddTradingJournal => self.add_trading_journal_window(),
             Message::AddPositionsHistoryPane
@@ -90,7 +90,10 @@ mod tests {
         let bottom_tabs = terminal
             .find_pane_matching(|kind| matches!(kind, PaneKind::BottomTabs { .. }))
             .expect("default bottom tabs pane");
-        let _task = terminal.update_pane_interactions(Message::ClosePane(bottom_tabs));
+        let _task = terminal.update_pane_interactions(Message::ClosePane(
+            crate::canvas_state::WorkspaceId::Main,
+            bottom_tabs,
+        ));
         terminal.add_widget_menu_open = true;
 
         let _task = terminal.update_panes(Message::AddPositionsHistoryPane);
@@ -131,6 +134,7 @@ mod tests {
         ));
 
         let _task = terminal.update_panes(Message::WidgetPlacementHovered(
+            crate::canvas_state::WorkspaceId::Main,
             pane,
             crate::pane_management::AddWidgetPlacement::Right,
         ));
@@ -158,6 +162,7 @@ mod tests {
         let _task = terminal.update_panes(Message::BeginWidgetPlacement(widget));
 
         let _task = terminal.update_panes(Message::PlaceWidget(
+            crate::canvas_state::WorkspaceId::Main,
             target,
             crate::pane_management::AddWidgetPlacement::Left,
         ));
@@ -170,7 +175,11 @@ mod tests {
         assert_eq!(terminal.placing_widget, None);
         assert_eq!(terminal.widget_placement_hover, None);
 
-        let _task = terminal.update(menu::add_widget_message(widget, target));
+        let _task = terminal.update(menu::add_widget_message(
+            widget,
+            crate::canvas_state::WorkspaceId::Main,
+            target,
+        ));
         assert_eq!(terminal.panes.iter().count(), pane_count + 1);
         assert!(terminal.pane_is_open(|kind| matches!(kind, PaneKind::SessionData(_))));
         let added = terminal

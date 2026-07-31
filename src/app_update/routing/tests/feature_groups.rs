@@ -20,6 +20,8 @@ fn alfred_screener_settings_and_window_routes_stay_on_feature_modules() {
         UpdateRoute::Panes,
     );
     assert_route(Message::CancelWidgetPlacement, UpdateRoute::Panes);
+    assert_route(Message::CreateCanvas, UpdateRoute::Canvas);
+    assert_route(Message::OpenCanvas(7), UpdateRoute::Canvas);
 
     assert_route(Message::OpenScreenerWindow, UpdateRoute::Screener);
     assert_route(

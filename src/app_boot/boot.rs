@@ -52,6 +52,7 @@ impl TradingTerminal {
             spaghetti_configs,
             next_chart_id,
             next_spaghetti_id,
+            default_main_chart_id,
         } = Self::boot_layout_widget_configs(&cfg, &symbol);
         let chart_backfill_source = cfg.read_data_provider.chart_backfill_source();
         let hydromancer_api_key =
@@ -76,26 +77,19 @@ impl TradingTerminal {
         );
         boot_tasks.extend(spaghetti_tasks);
 
-        let detached_chart_ids: std::collections::BTreeSet<_> = cfg
+        let detached_chart_ids = cfg
             .detached_chart_windows
             .iter()
             .map(|window| window.chart_id)
-            .collect();
-        let detached_spaghetti_ids: std::collections::BTreeSet<_> = cfg
+            .collect::<std::collections::BTreeSet<_>>();
+        let detached_spaghetti_ids = cfg
             .detached_spaghetti_windows
             .iter()
             .map(|window| window.chart_id)
-            .collect();
-        let first_chart_id = charts
-            .keys()
-            .copied()
-            .filter(|id| !detached_chart_ids.contains(id))
-            .min()
-            .or_else(|| charts.keys().copied().min())
-            .unwrap_or(0);
-
+            .collect::<std::collections::BTreeSet<_>>();
+        let first_chart_id = default_main_chart_id;
         let default_pane_config =
-            Self::default_boot_pane_configuration(first_chart_id, layout_ratios);
+            Self::default_boot_pane_configuration(default_main_chart_id, layout_ratios);
 
         let pane_config = cfg
             .pane_layout
@@ -132,9 +126,8 @@ impl TradingTerminal {
         }
 
         let missing_x_feed_ids = state
-            .panes
-            .iter()
-            .filter_map(|(_, kind)| match kind {
+            .workspace_pane_kinds()
+            .filter_map(|(_, _, kind)| match kind {
                 PaneKind::XFeed(id) if !state.x_feed.instances.contains_key(id) => Some(*id),
                 _ => None,
             })
@@ -143,6 +136,27 @@ impl TradingTerminal {
             state.x_feed.instances.insert(
                 id,
                 crate::x_feed::XFeedInstance::new(id, crate::x_feed::XFeedSource::Following),
+            );
+        }
+        let missing_live_watchlist_ids = state
+            .workspace_pane_kinds()
+            .filter_map(|(_, _, kind)| match kind {
+                PaneKind::LiveWatchlist(id) if !state.live_watchlists.contains_key(id) => Some(*id),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for id in missing_live_watchlist_ids {
+            state.live_watchlists.insert(
+                id,
+                crate::market_state::LiveWatchlistInstance {
+                    id,
+                    symbols: Vec::new(),
+                    search_query: String::new(),
+                    sort_column: Default::default(),
+                    sort_direction: Default::default(),
+                    visible_columns: config::default_live_watchlist_columns(),
+                    row_cache: Vec::new(),
+                },
             );
         }
 

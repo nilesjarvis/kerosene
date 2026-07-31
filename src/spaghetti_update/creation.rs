@@ -19,6 +19,7 @@ impl TradingTerminal {
         build_instance: impl FnOnce(u64) -> SpaghettiChartInstance,
         title: &'static str,
     ) -> Task<Message> {
+        let workspace = self.add_widget_workspace;
         self.add_widget_menu_open = false;
         let id = self.next_spaghetti_id;
         self.next_spaghetti_id += 1;
@@ -44,7 +45,12 @@ impl TradingTerminal {
             .set_crosshair_scale(self.chart_crosshair_scale);
         self.spaghetti_charts.insert(id, instance);
         if self
-            .add_pane_next_to_focus(self.add_widget_axis(), PaneKind::SpaghettiChart(id), title)
+            .add_pane_next_to_focus(
+                workspace,
+                self.add_widget_axis(),
+                PaneKind::SpaghettiChart(id),
+                title,
+            )
             .is_none()
         {
             self.spaghetti_charts.remove(&id);

@@ -120,11 +120,7 @@ impl TradingTerminal {
                     }
 
                     let mut final_layout = layout;
-                    final_layout.pane_layout = final_layout
-                        .pane_layout
-                        .take()
-                        .and_then(config::prune_legacy_unsupported_pane_layout);
-                    final_layout.widget_padding = final_layout.widget_padding.normalized();
+                    config::normalize_imported_saved_layout(&mut final_layout);
                     let base_name = final_layout.name.clone();
                     let mut counter = 1;
                     while self

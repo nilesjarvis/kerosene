@@ -66,8 +66,13 @@ impl TradingTerminal {
     }
 
     pub(crate) fn active_candlestick_chart_id(&self) -> Option<ChartId> {
-        if let Some(pane) = self.focus
-            && let Some(PaneKind::Chart(id)) = self.panes.get(pane)
+        let workspace = self.last_focused_workspace;
+        let panes = self.workspace_panes(workspace)?;
+
+        if let Some(pane) = self.workspace_focus(workspace)
+            && let Some(PaneKind::Chart(id)) = self
+                .workspace_panes(workspace)
+                .and_then(|panes| panes.get(pane))
             && self.charts.contains_key(id)
         {
             return Some(*id);
@@ -75,19 +80,27 @@ impl TradingTerminal {
 
         if let Some(id) = self.primary_chart_id
             && self.charts.contains_key(&id)
+            && panes
+                .iter()
+                .any(|(_, kind)| matches!(kind, PaneKind::Chart(chart_id) if *chart_id == id))
         {
             return Some(id);
         }
 
-        self.panes.iter().find_map(|(_, kind)| match kind {
+        panes.iter().find_map(|(_, kind)| match kind {
             PaneKind::Chart(id) if self.charts.contains_key(id) => Some(*id),
             _ => None,
         })
     }
 
     pub(crate) fn active_chart_editor_id(&self) -> Option<ChartId> {
-        if let Some(pane) = self.focus
-            && let Some(PaneKind::Chart(id)) = self.panes.get(pane)
+        let workspace = self.last_focused_workspace;
+        let panes = self.workspace_panes(workspace)?;
+
+        if let Some(pane) = self.workspace_focus(workspace)
+            && let Some(PaneKind::Chart(id)) = self
+                .workspace_panes(workspace)
+                .and_then(|panes| panes.get(pane))
             && self
                 .charts
                 .get(id)
@@ -101,18 +114,34 @@ impl TradingTerminal {
                 .charts
                 .get(&id)
                 .is_some_and(|instance| instance.editor_open)
+            && panes
+                .iter()
+                .any(|(_, kind)| matches!(kind, PaneKind::Chart(chart_id) if *chart_id == id))
         {
             return Some(id);
         }
 
-        self.charts
-            .iter()
-            .find_map(|(id, instance)| instance.editor_open.then_some(*id))
+        panes.iter().find_map(|(_, kind)| match kind {
+            PaneKind::Chart(id)
+                if self
+                    .charts
+                    .get(id)
+                    .is_some_and(|instance| instance.editor_open) =>
+            {
+                Some(*id)
+            }
+            _ => None,
+        })
     }
 
     pub(crate) fn active_chart_secondary_editor_id(&self) -> Option<ChartId> {
-        if let Some(pane) = self.focus
-            && let Some(PaneKind::Chart(id)) = self.panes.get(pane)
+        let workspace = self.last_focused_workspace;
+        let panes = self.workspace_panes(workspace)?;
+
+        if let Some(pane) = self.workspace_focus(workspace)
+            && let Some(PaneKind::Chart(id)) = self
+                .workspace_panes(workspace)
+                .and_then(|panes| panes.get(pane))
             && self
                 .charts
                 .get(id)
@@ -126,13 +155,24 @@ impl TradingTerminal {
                 .charts
                 .get(&id)
                 .is_some_and(|instance| instance.secondary_editor_open)
+            && panes
+                .iter()
+                .any(|(_, kind)| matches!(kind, PaneKind::Chart(chart_id) if *chart_id == id))
         {
             return Some(id);
         }
 
-        self.charts
-            .iter()
-            .find_map(|(id, instance)| instance.secondary_editor_open.then_some(*id))
+        panes.iter().find_map(|(_, kind)| match kind {
+            PaneKind::Chart(id)
+                if self
+                    .charts
+                    .get(id)
+                    .is_some_and(|instance| instance.secondary_editor_open) =>
+            {
+                Some(*id)
+            }
+            _ => None,
+        })
     }
 
     pub(crate) fn open_quick_symbol_search(&mut self) -> Task<Message> {

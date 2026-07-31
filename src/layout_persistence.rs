@@ -20,7 +20,8 @@ pub(crate) use widget_configs::LayoutWidgetConfigs;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(crate) fn apply_layout(&mut self, layout: config::SavedLayout) -> Task<Message> {
+    pub(crate) fn apply_layout(&mut self, mut layout: config::SavedLayout) -> Task<Message> {
+        config::normalize_imported_saved_layout(&mut layout);
         let mut boot_tasks = Vec::new();
 
         let order_kind = crate::signing::OrderKind::from_config_str(&layout.order_kind);
@@ -68,6 +69,7 @@ impl TradingTerminal {
         let spaghetti_configs = widget_configs.spaghetti_configs;
         let next_chart_id = widget_configs.next_chart_id;
         let next_spaghetti_id = widget_configs.next_spaghetti_id;
+        let default_main_chart_id = widget_configs.default_main_chart_id;
 
         self.clear_all_chart_pending_request_state();
         // Close detached spaghetti windows before replacing chart instances
@@ -83,7 +85,8 @@ impl TradingTerminal {
         self.prune_chart_surface_state();
 
         self.preserved_loaded_pane_layout = layout.pane_layout.clone();
-        self.restore_layout_panes(&layout);
+        boot_tasks.extend(self.restore_layout_canvases(&layout.canvases));
+        self.restore_layout_panes(&layout, default_main_chart_id);
         boot_tasks.push(self.restore_layout_liquidation_distribution_symbol(
             layout.liquidation_distribution_symbol.as_deref(),
         ));

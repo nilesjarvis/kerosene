@@ -24,7 +24,7 @@ impl TradingTerminal {
             | Message::ChartSecondaryCloseEditor(_)
             | Message::ChartSecondaryEditorSearchChanged(_, _)
             | Message::ChartSecondaryEditorSubmit(_)) => self.update_chart_editor_controls(message),
-            message @ Message::AddChart(_) => self.add_chart_pane(message),
+            message @ Message::AddChart(_, _) => self.add_chart_pane(message),
             _ => Task::none(),
         }
     }

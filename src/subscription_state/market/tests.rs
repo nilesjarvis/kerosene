@@ -59,3 +59,17 @@ fn split_positioning_pane(
         panic!("split should add positioning pane {id}");
     }
 }
+
+#[test]
+fn canvas_live_watchlist_enables_refresh_timer() {
+    let (mut terminal, _) =
+        TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default());
+    let mut baseline = Vec::new();
+    terminal.push_market_subscriptions(&mut baseline);
+
+    terminal.insert_test_canvas_pane(7, PaneKind::LiveWatchlist(17));
+    let mut with_canvas = Vec::new();
+    terminal.push_market_subscriptions(&mut with_canvas);
+
+    assert_eq!(with_canvas.len(), baseline.len() + 1);
+}

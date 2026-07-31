@@ -8,7 +8,8 @@ use iced::Task;
 impl TradingTerminal {
     pub(in crate::market_update::order_book) fn add_order_book_pane(&mut self) -> Task<Message> {
         self.add_widget_menu_open = false;
-        let Some(focus) = self.add_target_pane() else {
+        let workspace = self.add_widget_workspace;
+        let Some(focus) = self.add_target_pane_in(workspace) else {
             self.push_toast(
                 "Could not add Order Book: no pane is available".to_string(),
                 true,
@@ -28,6 +29,7 @@ impl TradingTerminal {
 
         if self
             .add_pane_to_target(
+                workspace,
                 self.add_widget_axis(),
                 focus,
                 PaneKind::OrderBook(id),

@@ -15,7 +15,7 @@ use iced::Task;
 
 impl TradingTerminal {
     pub(crate) fn open_live_watchlist_ids(&self) -> std::collections::HashSet<LiveWatchlistId> {
-        open_live_watchlist_ids(self.panes.iter().map(|(_, kind)| kind))
+        open_live_watchlist_ids(self.workspace_pane_kinds().map(|(_, _, kind)| kind))
     }
 
     pub(crate) fn watched_live_watchlist_symbols(&self) -> Vec<String> {

@@ -14,9 +14,16 @@ impl TradingTerminal {
         let Message::KeyboardEvent(window_id, event, status) = message else {
             return Task::none();
         };
-        let is_main_window = self
-            .main_window_id
-            .is_none_or(|main_id| main_id == window_id);
+        let workspace = self.workspace_for_window(window_id).or_else(|| {
+            self.main_window_id
+                .is_none()
+                .then_some(crate::canvas_state::WorkspaceId::Main)
+        });
+        if let Some(workspace) = workspace {
+            self.last_focused_workspace = workspace;
+            self.add_widget_workspace = workspace;
+        }
+        let is_workspace_window = workspace.is_some();
 
         if let iced::keyboard::Event::ModifiersChanged(modifiers) = event {
             if self.recording_hotkey_for == Some(config::HotkeyAction::ChartTimeframePrefix) {
@@ -33,10 +40,10 @@ impl TradingTerminal {
             return self.apply_recorded_hotkey(action, key, modifiers);
         }
 
-        if !is_main_window {
-            if self.detached_window_has_open_chart_editor(window_id) {
+        if !is_workspace_window {
+            if let Some(chart_id) = self.detached_window_open_chart_editor_id(window_id) {
                 if let Some(editor_task) =
-                    self.handle_chart_editor_keyboard(key.as_ref(), modifiers)
+                    self.handle_chart_editor_keyboard_for_chart(chart_id, key.as_ref(), modifiers)
                 {
                     return editor_task;
                 }
@@ -96,11 +103,18 @@ impl TradingTerminal {
         Task::none()
     }
 
-    fn detached_window_has_open_chart_editor(&self, window_id: iced::window::Id) -> bool {
+    fn detached_window_open_chart_editor_id(
+        &self,
+        window_id: iced::window::Id,
+    ) -> Option<crate::chart_state::ChartId> {
         self.detached_chart_windows
             .get(&window_id)
-            .and_then(|state| self.charts.get(&state.chart_id))
-            .is_some_and(|instance| instance.editor_open)
+            .map(|state| state.chart_id)
+            .filter(|chart_id| {
+                self.charts
+                    .get(chart_id)
+                    .is_some_and(|instance| instance.editor_open || instance.secondary_editor_open)
+            })
     }
 
     fn detached_window_has_open_spaghetti_editor(&self, window_id: iced::window::Id) -> bool {

@@ -17,9 +17,10 @@ impl TradingTerminal {
         &'a self,
         theme: &Theme,
         can_add_income: bool,
+        include_main_actions: bool,
     ) -> Element<'a, Message> {
         container(
-            scrollable(self.view_add_widget_menu_body(theme, can_add_income))
+            scrollable(self.view_add_widget_menu_body(theme, can_add_income, include_main_actions))
                 .height(Length::Shrink),
         )
         .padding(6)

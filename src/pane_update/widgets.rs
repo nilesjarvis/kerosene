@@ -8,10 +8,12 @@ use iced::Task;
 
 impl TradingTerminal {
     pub(super) fn add_widget_pane(&mut self, message: Message) -> Task<Message> {
+        let workspace = self.add_widget_workspace;
         match message {
             Message::AddPositionsHistoryPane => {
                 self.add_widget_menu_open = false;
                 self.add_or_focus_singleton_pane(
+                    workspace,
                     self.add_widget_axis(),
                     PaneKind::BottomTabs {
                         active_tab: BottomTab::Positions,
@@ -23,6 +25,7 @@ impl TradingTerminal {
             Message::AddPortfolioPane => {
                 self.add_widget_menu_open = false;
                 let outcome = self.add_or_focus_singleton_pane(
+                    workspace,
                     self.add_widget_axis(),
                     PaneKind::Portfolio,
                     "Portfolio",
@@ -41,9 +44,11 @@ impl TradingTerminal {
                 let is_pm = self
                     .connected_order_account_snapshot()
                     .is_some_and(|(_, data)| data.is_portfolio_margin());
-                if let Some(pane) = self.find_pane_matching(|kind| matches!(kind, PaneKind::Income))
+                if let Some((existing_workspace, pane)) =
+                    self.find_workspace_pane_matching(|kind| matches!(kind, PaneKind::Income))
                 {
-                    self.focus = Some(pane);
+                    self.set_workspace_focus(existing_workspace, Some(pane));
+                    self.last_focused_workspace = existing_workspace;
                     self.push_toast("Income is already open".to_string(), false);
                     if is_pm
                         && self.income.data.is_none()
@@ -63,6 +68,7 @@ impl TradingTerminal {
                 }
 
                 let outcome = self.add_or_focus_singleton_pane(
+                    workspace,
                     self.add_widget_axis(),
                     PaneKind::Income,
                     "Income",
@@ -79,6 +85,7 @@ impl TradingTerminal {
             Message::AddCalendarPane => {
                 self.add_widget_menu_open = false;
                 let outcome = self.add_or_focus_singleton_pane(
+                    workspace,
                     self.add_widget_axis(),
                     PaneKind::Calendar,
                     "Calendar",
@@ -91,6 +98,7 @@ impl TradingTerminal {
             Message::AddLiquidationsPane => {
                 self.add_widget_menu_open = false;
                 self.add_or_focus_singleton_pane(
+                    workspace,
                     self.add_widget_axis(),
                     PaneKind::Liquidations,
                     "Liquidations",
@@ -100,6 +108,7 @@ impl TradingTerminal {
             Message::AddLiquidationsDistributionPane => {
                 self.add_widget_menu_open = false;
                 let outcome = self.add_or_focus_singleton_pane(
+                    workspace,
                     self.add_widget_axis(),
                     PaneKind::LiquidationsDistribution,
                     "Liquidations Distribution",
@@ -112,6 +121,7 @@ impl TradingTerminal {
             Message::AddAdvancedOrdersPane => {
                 self.add_widget_menu_open = false;
                 self.add_or_focus_singleton_pane(
+                    workspace,
                     self.add_widget_axis(),
                     PaneKind::AdvancedOrders,
                     "Advanced Orders",
@@ -121,6 +131,7 @@ impl TradingTerminal {
             Message::AddTrackedTradesPane => {
                 self.add_widget_menu_open = false;
                 self.add_or_focus_singleton_pane(
+                    workspace,
                     self.add_widget_axis(),
                     PaneKind::TrackedTrades,
                     "Wallet Tracker",
@@ -130,6 +141,7 @@ impl TradingTerminal {
             Message::AddTelegramFeedPane => {
                 self.add_widget_menu_open = false;
                 let outcome = self.add_or_focus_singleton_pane(
+                    workspace,
                     self.add_widget_axis(),
                     PaneKind::TelegramFeed,
                     "Telegram Feed",
@@ -144,15 +156,20 @@ impl TradingTerminal {
                 self.add_widget_menu_open = false;
                 let mut id = 0;
                 while self.x_feed.instances.contains_key(&id)
-                    || self.panes.iter().any(
-                        |(_, kind)| matches!(kind, PaneKind::XFeed(existing) if *existing == id),
+                    || self.workspace_pane_kinds().any(
+                        |(_, _, kind)| matches!(kind, PaneKind::XFeed(existing) if *existing == id),
                     )
                 {
                     id = id.saturating_add(1);
                 }
 
                 if self
-                    .add_pane_next_to_focus(self.add_widget_axis(), PaneKind::XFeed(id), "X Feed")
+                    .add_pane_next_to_focus(
+                        workspace,
+                        self.add_widget_axis(),
+                        PaneKind::XFeed(id),
+                        "X Feed",
+                    )
                     .is_some()
                 {
                     self.x_feed
@@ -165,6 +182,7 @@ impl TradingTerminal {
             Message::AddOutcomesPane => {
                 self.add_widget_menu_open = false;
                 self.add_or_focus_singleton_pane(
+                    workspace,
                     self.add_widget_axis(),
                     PaneKind::Outcomes,
                     "Outcomes",
@@ -174,6 +192,7 @@ impl TradingTerminal {
             Message::AddHypeEtfsPane => {
                 self.add_widget_menu_open = false;
                 let outcome = self.add_or_focus_singleton_pane(
+                    workspace,
                     self.add_widget_axis(),
                     PaneKind::HypeEtfs,
                     "HYPE ETFs",
@@ -186,6 +205,7 @@ impl TradingTerminal {
             Message::AddHypeUnstakingQueuePane => {
                 self.add_widget_menu_open = false;
                 let outcome = self.add_or_focus_singleton_pane(
+                    workspace,
                     self.add_widget_axis(),
                     PaneKind::HypeUnstakingQueue,
                     "HYPE Unstaking Queue",

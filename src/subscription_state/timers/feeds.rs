@@ -47,7 +47,7 @@ impl TradingTerminal {
         }
 
         let has_positioning_infos = !self.hyperdash_api_key.is_empty()
-            && self.panes.iter().any(|(_, kind)| {
+            && self.workspace_pane_kinds().any(|(_, _, kind)| {
                 let PaneKind::PositioningInfo(id) = kind else {
                     return false;
                 };

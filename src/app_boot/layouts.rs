@@ -52,6 +52,7 @@ impl TradingTerminal {
         let mut last_layout = SavedLayout {
             name: "last".to_string(),
             pane_layout: cfg.pane_layout.clone(),
+            canvases: cfg.canvases.clone(),
             layout_ratios: cfg.layout_ratios.clone(),
             charts: cfg.charts.clone(),
             order_books: cfg.order_books.clone(),

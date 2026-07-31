@@ -1,5 +1,6 @@
 use crate::account_state::BottomTab;
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::{CanvasState, WorkspaceId};
 use crate::chart_state::ChartId;
 use crate::config;
 use crate::pane_state::PaneKind;
@@ -11,9 +12,70 @@ use iced::widget::pane_grid;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(super) fn restore_layout_panes(&mut self, layout: &config::SavedLayout) {
-        let first_chart_id = self.charts.keys().copied().min().unwrap_or(0);
-        let default_pane_config = default_pane_configuration(layout, first_chart_id);
+    pub(super) fn restore_layout_canvases(
+        &mut self,
+        canvas_configs: &[config::CanvasConfig],
+    ) -> Vec<iced::Task<crate::message::Message>> {
+        let old_window_ids = self
+            .canvases
+            .values()
+            .filter_map(|canvas| canvas.window_id)
+            .collect::<Vec<_>>();
+        self.canvases.clear();
+        self.preserved_unavailable_canvases.clear();
+        self.next_canvas_id = 0;
+
+        let mut open_ids = Vec::new();
+        for canvas_config in canvas_configs {
+            self.next_canvas_id = self.next_canvas_id.max(canvas_config.id.saturating_add(1));
+            let Some(configuration) = canvas_config
+                .pane_layout
+                .as_ref()
+                .and_then(Self::pane_layout_to_configuration)
+            else {
+                self.preserved_unavailable_canvases
+                    .push(canvas_config.clone());
+                continue;
+            };
+            if self.canvases.contains_key(&canvas_config.id) {
+                continue;
+            }
+            self.canvases.insert(
+                canvas_config.id,
+                CanvasState::from_config(
+                    canvas_config,
+                    pane_grid::State::with_configuration(configuration),
+                ),
+            );
+            if canvas_config.open {
+                open_ids.push(canvas_config.id);
+            }
+        }
+
+        self.last_focused_workspace = WorkspaceId::Main;
+        self.add_widget_workspace = WorkspaceId::Main;
+        self.add_widget_menu_open = false;
+        self.placing_widget = None;
+        self.widget_placement_hover = None;
+
+        let mut tasks = old_window_ids
+            .into_iter()
+            .map(iced::window::close)
+            .collect::<Vec<_>>();
+        tasks.extend(
+            open_ids
+                .into_iter()
+                .map(|canvas_id| self.open_canvas_window(canvas_id)),
+        );
+        tasks
+    }
+
+    pub(super) fn restore_layout_panes(
+        &mut self,
+        layout: &config::SavedLayout,
+        default_main_chart_id: ChartId,
+    ) {
+        let default_pane_config = default_pane_configuration(layout, default_main_chart_id);
         let pane_config = layout
             .pane_layout
             .as_ref()
@@ -21,14 +83,14 @@ impl TradingTerminal {
             .unwrap_or(default_pane_config);
 
         self.panes = pane_grid::State::with_configuration(pane_config);
-        self.reconcile_layout_widget_panes(first_chart_id);
+        self.reconcile_layout_widget_panes(default_main_chart_id);
         self.sync_primary_chart_id_from_panes();
     }
 
     fn reconcile_layout_widget_panes(&mut self, first_chart_id: ChartId) {
         let mut chart_ids_in_layout = std::collections::BTreeSet::new();
         let mut spaghetti_ids_in_layout = std::collections::BTreeSet::new();
-        for (_, kind) in self.panes.iter() {
+        for (_, _, kind) in self.workspace_pane_kinds() {
             match kind {
                 PaneKind::Chart(id) => {
                     chart_ids_in_layout.insert(*id);

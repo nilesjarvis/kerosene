@@ -14,6 +14,8 @@ The application is organized around one central state object:
   feature-specific update modules.
 - `src/main_view.rs` and `src/main_view/` render the main shell and route panes
   and windows to feature views.
+- `src/canvas_state.rs`, `src/canvas_update.rs`, and `src/canvas_views.rs` own
+  optional multi-window pane workspaces.
 - `src/subscription_state.rs` and `src/subscription_state/` build websocket,
   timer, keyboard, and window subscriptions.
 
@@ -86,7 +88,7 @@ is returned as iced `Task<Message>` values.
 | Journal | `journal/`, `journal_update.rs`, `journal_views/` | Fill cache, trade aggregation, notes, summary charts, chart snapshots. |
 | Integrations and feeds | `feed_state/`, `feed_update/`, `feed_views/`, `hydromancer_api/`, `hyperdash_api/`, `hyperdash_update/`, `telegram_*`, `calendar_*`, `screener_*` | Optional external data sources, feed panes, alerts, external API keys. |
 | Chrome and preferences | `settings_*`, `preferences_update/`, `app_theme/`, `status_bar/`, `toast_overlay/`, `hotkey_state/`, `sound/`, `window_chrome.rs` | Settings UI, themes, fonts, sounds, hotkeys, notifications, status bar, custom chrome. |
-| Layout and panes | `pane_state.rs`, `pane_update/`, `pane_interaction_update/`, `pane_management.rs`, `layout_update/`, `layout_preview/` | Pane definitions, add/remove/split, resize, layout import/export, layout compatibility. |
+| Layout and panes | `pane_state.rs`, `canvas_state.rs`, `canvas_update.rs`, `canvas_views.rs`, `pane_update/`, `pane_interaction_update/`, `pane_management.rs`, `layout_update/`, `layout_preview/` | Main/Canvas workspace identity, pane definitions, add/remove/split, resize, Canvas windows, layout import/export, layout compatibility. |
 
 ## External Service Boundaries
 
@@ -111,6 +113,7 @@ Most UI is ordinary iced widgets returned from `view_*` functions. Charts and
 some visual exports use canvas or image-oriented rendering:
 
 - Main window: `TradingTerminal::view_main`.
+- Canvas workspace windows: `TradingTerminal::view_canvas`.
 - Pane content routing: `main_view/panes.rs`.
 - Auxiliary windows: `main_view/windows.rs`.
 - Chart pane: `chart_views.rs` and `chart/`.

@@ -15,7 +15,7 @@ impl TradingTerminal {
     ) {
         let mut chart_ids_in_layout = BTreeSet::new();
         let mut spaghetti_ids_in_layout = BTreeSet::new();
-        for (_, kind) in self.panes.iter() {
+        for (_, _, kind) in self.workspace_pane_kinds() {
             match kind {
                 PaneKind::Chart(id) => {
                     chart_ids_in_layout.insert(*id);

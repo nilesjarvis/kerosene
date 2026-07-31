@@ -10,10 +10,7 @@ use iced::Subscription;
 
 impl TradingTerminal {
     pub(super) fn push_analytics_timer_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
-        let has_income_pane = self
-            .panes
-            .iter()
-            .any(|(_, kind)| matches!(kind, PaneKind::Income));
+        let has_income_pane = self.pane_is_open(|kind| matches!(kind, PaneKind::Income));
         let income_poll_enabled = has_income_pane
             && self.connected_address.is_some()
             && self
@@ -26,10 +23,7 @@ impl TradingTerminal {
             );
         }
 
-        let has_portfolio_pane = self
-            .panes
-            .iter()
-            .any(|(_, kind)| matches!(kind, PaneKind::Portfolio));
+        let has_portfolio_pane = self.pane_is_open(|kind| matches!(kind, PaneKind::Portfolio));
         if has_portfolio_pane && self.connected_address.is_some() {
             let has_live_positions =
                 self.connected_order_account_snapshot()
@@ -50,5 +44,23 @@ impl TradingTerminal {
                     .map(|_| Message::RefreshPortfolio),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canvas_portfolio_pane_enables_analytics_polling() {
+        let (mut terminal, _) =
+            TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default());
+        terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+        terminal.insert_test_canvas_pane(7, PaneKind::Portfolio);
+        let mut subscriptions = Vec::new();
+
+        terminal.push_analytics_timer_subscriptions(&mut subscriptions);
+
+        assert_eq!(subscriptions.len(), 1);
     }
 }

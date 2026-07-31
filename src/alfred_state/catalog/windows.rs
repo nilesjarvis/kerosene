@@ -10,7 +10,16 @@ use super::availability::open_tag;
 
 impl TradingTerminal {
     pub(super) fn alfred_window_commands(&self) -> Vec<AlfredCommand> {
-        vec![
+        let mut commands = vec![
+            AlfredCommand::new(
+                AlfredCommandId::CreateCanvas,
+                "New Canvas",
+                "Open a customizable workspace window",
+                "Window",
+                AlfredCommandKind::OpenWindow,
+                Some(Message::CreateCanvas),
+                &["canvas", "workspace", "monitor", "window", "new", "open"],
+            ),
             AlfredCommand::new(
                 AlfredCommandId::OpenTradingJournal,
                 "Trading Journal",
@@ -58,6 +67,26 @@ impl TradingTerminal {
                 Some(Message::OpenSettingsWindow),
                 &["preferences", "config", "hotkeys", "window", "open"],
             ),
-        ]
+        ];
+
+        commands.extend(self.canvases.iter().map(|(id, canvas)| {
+            let open = canvas.window_id.is_some();
+            AlfredCommand::new(
+                AlfredCommandId::OpenCanvas(*id),
+                "Canvas",
+                "Open Canvas workspace window",
+                open_tag(open, "Closed"),
+                AlfredCommandKind::OpenWindow,
+                Some(Message::OpenCanvas(*id)),
+                &["canvas", "workspace", "monitor", "window", "open", "reopen"],
+            )
+            .with_dynamic_text(
+                canvas.label.clone(),
+                format!("Open {} workspace window", canvas.label),
+                open_tag(open, "Closed").to_string(),
+            )
+        }));
+
+        commands
     }
 }

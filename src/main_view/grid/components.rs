@@ -1,3 +1,4 @@
+use crate::canvas_state::WorkspaceId;
 use crate::message::Message;
 use crate::pane_management::AddWidgetPlacement;
 use iced::widget::{
@@ -13,17 +14,21 @@ pub(super) fn pane_drag_ghost_body() -> Element<'static, Message> {
 }
 
 pub(super) fn widget_placement_overlay(
+    workspace: WorkspaceId,
     pane: pane_grid::Pane,
     label: &'static str,
     hovered_placement: Option<AddWidgetPlacement>,
 ) -> Element<'static, Message> {
-    responsive(move |size| widget_placement_overlay_sized(pane, label, hovered_placement, size))
-        .width(Fill)
-        .height(Fill)
-        .into()
+    responsive(move |size| {
+        widget_placement_overlay_sized(workspace, pane, label, hovered_placement, size)
+    })
+    .width(Fill)
+    .height(Fill)
+    .into()
 }
 
 fn widget_placement_overlay_sized(
+    workspace: WorkspaceId,
     pane: pane_grid::Pane,
     label: &'static str,
     hovered_placement: Option<AddWidgetPlacement>,
@@ -32,10 +37,18 @@ fn widget_placement_overlay_sized(
     let Some(placement) = hovered_placement else {
         return mouse_area(container(Space::new().width(Fill).height(Fill)))
             .on_move(move |position| {
-                Message::WidgetPlacementHovered(pane, placement_for_cursor(position, size))
+                Message::WidgetPlacementHovered(
+                    workspace,
+                    pane,
+                    placement_for_cursor(position, size),
+                )
             })
-            .on_exit(Message::WidgetPlacementExited(pane))
-            .on_press(Message::PlaceWidget(pane, AddWidgetPlacement::Below))
+            .on_exit(Message::WidgetPlacementExited(workspace, pane))
+            .on_press(Message::PlaceWidget(
+                workspace,
+                pane,
+                AddWidgetPlacement::Below,
+            ))
             .interaction(iced::mouse::Interaction::Crosshair)
             .into();
     };
@@ -96,10 +109,10 @@ fn widget_placement_overlay_sized(
 
     mouse_area(overlay)
         .on_move(move |position| {
-            Message::WidgetPlacementHovered(pane, placement_for_cursor(position, size))
+            Message::WidgetPlacementHovered(workspace, pane, placement_for_cursor(position, size))
         })
-        .on_exit(Message::WidgetPlacementExited(pane))
-        .on_press(Message::PlaceWidget(pane, placement))
+        .on_exit(Message::WidgetPlacementExited(workspace, pane))
+        .on_press(Message::PlaceWidget(workspace, pane, placement))
         .interaction(iced::mouse::Interaction::Crosshair)
         .into()
 }
@@ -168,13 +181,14 @@ pub(super) fn pane_refresh_button() -> button::Button<'static, Message> {
 }
 
 pub(super) fn pane_close_button(
+    workspace: WorkspaceId,
     pane: pane_grid::Pane,
     pane_count: usize,
     can_close_pane: bool,
 ) -> button::Button<'static, Message> {
     if pane_count > 1 && can_close_pane {
         button(text("x").size(10).center())
-            .on_press(Message::ClosePane(pane))
+            .on_press(Message::ClosePane(workspace, pane))
             .padding([2, 5])
             .style(|theme: &Theme, status| {
                 let bg = match status {

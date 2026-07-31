@@ -7,6 +7,7 @@ use crate::message::Message;
 use crate::order_execution::{
     OneShotPlacementContext, OrderSurface, PendingNukeExecution, QuickOrderForm,
 };
+use crate::pane_state::PaneKind;
 use crate::signing::ExchangeOrderKind;
 use crate::timeframe::Timeframe;
 
@@ -220,6 +221,75 @@ fn quick_order_form() -> QuickOrderForm {
         chart_w: 300.0,
         chart_h: 200.0,
     }
+}
+
+#[test]
+fn workspace_escape_clears_only_the_originating_workspace() {
+    let mut terminal = TradingTerminal::boot().0;
+    let main_window_id = iced::window::Id::unique();
+    let canvas_window_id = iced::window::Id::unique();
+    let main_chart_id = terminal
+        .panes
+        .iter()
+        .find_map(|(_, kind)| match kind {
+            PaneKind::Chart(id) => Some(*id),
+            _ => None,
+        })
+        .expect("main chart");
+    let canvas_chart_id = terminal.next_chart_id;
+    terminal.next_chart_id = terminal.next_chart_id.saturating_add(1);
+    terminal.main_window_id = Some(main_window_id);
+
+    let main_chart = terminal.charts.get_mut(&main_chart_id).expect("main chart");
+    main_chart
+        .chart
+        .set_surface_id(ChartSurfaceId::Docked(main_chart_id));
+    main_chart.editor_open = true;
+    main_chart.chart.active_tool = Some(DrawingTool::TrendLine);
+    main_chart.set_quick_order(quick_order_form());
+
+    let mut canvas_chart = ChartInstance::new(canvas_chart_id, "ETH".to_string(), Timeframe::H1);
+    canvas_chart.editor_open = true;
+    canvas_chart.chart.active_tool = Some(DrawingTool::HorizontalLevel);
+    canvas_chart.set_quick_order(quick_order_form());
+    terminal.charts.insert(canvas_chart_id, canvas_chart);
+    terminal.insert_test_canvas_pane(7, PaneKind::Chart(canvas_chart_id));
+    terminal.canvases.get_mut(&7).expect("Canvas").window_id = Some(canvas_window_id);
+    terminal
+        .chart_quick_order_surface
+        .insert(main_chart_id, ChartSurfaceId::Docked(main_chart_id));
+    terminal
+        .chart_quick_order_surface
+        .insert(canvas_chart_id, ChartSurfaceId::Docked(canvas_chart_id));
+    terminal.chart_surface_active_tools.insert(
+        ChartSurfaceId::Docked(main_chart_id),
+        DrawingTool::TrendLine,
+    );
+    terminal.chart_surface_active_tools.insert(
+        ChartSurfaceId::Docked(canvas_chart_id),
+        DrawingTool::HorizontalLevel,
+    );
+
+    let _ = terminal.update_order(Message::EscapePressed(main_window_id));
+
+    let main_chart = terminal.charts.get(&main_chart_id).expect("main chart");
+    assert!(!main_chart.editor_open);
+    assert!(main_chart.quick_order.is_none());
+    assert_eq!(main_chart.chart.active_tool, None);
+    let canvas_chart = terminal.charts.get(&canvas_chart_id).expect("Canvas chart");
+    assert!(canvas_chart.editor_open);
+    assert!(canvas_chart.quick_order.is_some());
+    assert_eq!(
+        canvas_chart.chart.active_tool,
+        Some(DrawingTool::HorizontalLevel)
+    );
+
+    let _ = terminal.update_order(Message::EscapePressed(canvas_window_id));
+
+    let canvas_chart = terminal.charts.get(&canvas_chart_id).expect("Canvas chart");
+    assert!(!canvas_chart.editor_open);
+    assert!(canvas_chart.quick_order.is_none());
+    assert_eq!(canvas_chart.chart.active_tool, None);
 }
 
 #[test]

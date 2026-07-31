@@ -1,14 +1,16 @@
 # Layouts, Panes, And Windows
 
-Kerosene's main workspace is an iced `pane_grid` plus a set of auxiliary
-windows. The layout system is responsible for creating panes, routing panes to
-views, saving pane trees, restoring widget instances, and keeping window state
-compatible across releases.
+Kerosene has a main iced `pane_grid`, any number of optional Canvas workspaces,
+and a set of auxiliary windows. The layout system is responsible for creating
+panes, routing panes to views, saving every pane tree, restoring widget
+instances, and keeping window state compatible across releases.
 
 ## Runtime Components
 
 | Component | Key files | Responsibility |
 | --- | --- | --- |
+| Workspace identity and Canvas state | `src/canvas_state.rs` | `WorkspaceId`, stable Canvas IDs, independent pane trees, focus, window geometry. |
+| Canvas lifecycle and view | `src/canvas_update.rs`, `src/canvas_views.rs` | Create/reopen Canvas windows and render the slim Canvas shell. |
 | Pane definitions | `src/pane_state.rs` | Runtime `PaneKind` enum and pane defaults. |
 | Pane creation | `src/pane_update/`, `src/pane_management.rs`, `src/add_widget_menu/` | Add-widget menu, insert/split helpers, pane focus behavior. |
 | Pane interactions | `src/pane_interaction_update.rs`, `src/pane_interaction_update/min_size.rs` | Resize, drag/drop, click/focus, close cleanup, minimum sizing. |
@@ -19,7 +21,8 @@ compatible across releases.
 
 ## PaneKind
 
-`PaneKind` is the runtime routing enum for the main pane grid. It includes
+`PaneKind` is the runtime routing enum for the main pane grid and every Canvas
+pane grid. It includes
 instance-aware variants for multi-instance widgets:
 
 - `Chart(ChartId)`
@@ -71,9 +74,11 @@ When adding a pane type, update all of these surfaces:
 7. Encrypted-credentials unlock overlay.
 8. Status bar.
 
-`main_view/grid.rs` builds the pane grid. It supplies pane title bars, close
-controls, chart-specific buttons, add-widget affordances, drag styling, resize
-events, and pane click messages.
+`main_view/grid.rs` builds a pane grid for a supplied `WorkspaceId`. It supplies
+pane title bars, close controls, chart-specific buttons, add-widget
+affordances, drag styling, resize events, and pane click messages. Pane IDs are
+only unique inside their own iced pane grid, so pane interaction messages must
+carry both `WorkspaceId` and `pane_grid::Pane`.
 
 `main_view/panes.rs` is the final dispatch point:
 
@@ -95,12 +100,13 @@ The add-widget menu uses:
 - `pane_management.rs` for insertion helpers and placement.
 - `pane_update/` for message handling.
 
-Selecting a pane widget enters a transient placement mode instead of using the
-previously focused pane. `BeginWidgetPlacement` records the requested
+Selecting a pane widget enters a transient placement mode in the workspace
+whose menu was opened. `BeginWidgetPlacement` records the requested
 `AddWidgetKind`. Moving across a pane selects the nearest supported left,
 right, or bottom edge from the cursor's relative position and shows that
-half-pane preview only on the hovered pane. `PlaceWidget` focuses the clicked
-pane and dispatches the existing feature-specific add message with the inferred placement.
+half-pane preview only on the hovered pane. `PlaceWidget` carries the
+`WorkspaceId`, focuses the clicked pane, and dispatches the existing
+feature-specific add message with the inferred placement.
 `CancelWidgetPlacement` or Escape exits without changing the layout. Pane
 dragging and resizing are disabled while this mode is active. Already-open
 singleton widgets skip placement and focus their existing pane.
@@ -122,6 +128,9 @@ persists config.
 - `PaneClicked`
 - pane close messages
 
+All four routes carry `WorkspaceId`; never resolve a bare pane ID across
+multiple workspaces.
+
 Important side effects:
 
 - Chart click can update focus/primary chart and active symbol.
@@ -140,7 +149,9 @@ important surfaces such as order entry from collapsing below usable dimensions.
 
 Saved layouts are user-named snapshots. They include:
 
-- pane tree and split ratios
+- main pane tree and split ratios
+- every Canvas pane tree, label, open/closed state, and best-effort window
+  geometry
 - active symbol and order form defaults
 - active theme and custom themes
 - ticker tape, favourites, alert toggles, and slippage settings
@@ -159,11 +170,17 @@ Saved layouts are user-named snapshots. They include:
 2. Applying theme/order/favourite/alert settings.
 3. Restoring chart and spaghetti instances.
 4. Closing detached chart windows for missing charts.
-5. Restoring the pane tree.
-6. Applying widget padding.
-7. Restoring order books, live watchlists, positioning info, and session data.
-8. Queuing refresh tasks for open data-dependent panes.
-9. Syncing chart colors and chart display preferences.
+5. Closing the prior Canvas windows and restoring the saved Canvas workspaces.
+6. Restoring the main pane tree.
+7. Applying widget padding.
+8. Restoring order books, live watchlists, positioning info, and session data
+   across all workspace trees.
+9. Queuing refresh tasks for open data-dependent panes.
+10. Syncing chart colors and chart display preferences.
+
+Loaded and imported layouts normalize Canvas geometry and repair duplicate
+Canvas or multi-instance widget IDs before runtime instances are rebuilt. This
+keeps identically numbered chart panes in separate workspaces independent.
 
 Saved layout application should preserve compatibility with old configs. If a
 new pane cannot be restored safely, prune it rather than panicking.
@@ -178,6 +195,7 @@ Runtime layout types are not serialized directly. Persisted wire types live in
 `src/config/layouts.rs` and `src/config/panes.rs`:
 
 - `SavedLayout`
+- `CanvasConfig`
 - `PaneLayoutConfig`
 - `PaneKindConfig`
 - `AxisConfig`
@@ -198,6 +216,7 @@ Kerosene is an iced daemon app, so the runtime can render more than one window.
 `main_view/windows.rs` routes `window::Id` values to:
 
 - main trading terminal
+- Canvas workspaces
 - settings
 - screener
 - journal
@@ -215,6 +234,36 @@ Kerosene is an iced daemon app, so the runtime can render more than one window.
 `window_update.rs` owns size, move, close, and open-window state. When opening a
 new window, the update module should store the returned `window::Id` in the
 owning feature state so later messages can target it.
+
+## Canvas Workspaces
+
+A Canvas is an independently arranged pane grid intended for multi-monitor
+setups. Creating one allocates a stable `CanvasId`, a new chart instance, and a
+window. Canvas widgets use the same global feature maps as main-window widgets,
+but every multi-instance widget receives its own globally unique instance ID.
+Trading account, active symbol/order context, theme, and settings remain global.
+
+The Canvas toolbar intentionally stays small: it contains the pane-widget
+dropdown and an automatic label at the right. Main-shell actions such as ticker
+tape and auxiliary-window launchers remain in the main window's dropdown.
+Existing singleton pane restrictions apply across the main workspace and every
+Canvas. Selecting a singleton that lives in a hidden Canvas reopens and focuses
+that Canvas.
+
+Closing a Canvas window does not delete it. Its pane tree and widget instances
+remain in runtime/config, and the main Widgets dropdown lists it so it can be
+opened again. A Canvas is only replaced when a saved layout containing a
+different Canvas set is applied or config is cleared. Window size and position
+are restored on a best-effort basis; platform window managers may adjust them.
+Canvas trees containing only pane types from a newer Kerosene version cannot be
+rendered by an older build, but are retained unchanged in the next config or
+layout snapshot instead of being discarded.
+
+Window focus updates `last_focused_workspace`. Workspace hotkeys, chart
+timeframe targeting, Alfred, and focused-widget padding use that value, while
+keyboard events from detached non-workspace windows retain their specialized
+handling. Escape clears chart editors, quick-order forms, and drawing tools only
+in the workspace window that received the key event.
 
 ## Detached Charts
 
@@ -250,6 +299,7 @@ behavior:
 Use focused tests when changing this area:
 
 - `src/app_boot/chart_instances/tests.rs`
+- tests in `src/canvas_update.rs`
 - `src/layout_persistence/snapshots/layout_tree/tests.rs`
 - `src/layout_persistence/snapshots/widgets/**`
 - `src/pane_interaction_update/tests.rs`

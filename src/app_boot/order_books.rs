@@ -5,7 +5,7 @@ use crate::message::Message;
 use crate::pane_state::PaneKind;
 
 use iced::Task;
-use std::collections::HashSet;
+use std::collections::{HashSet, hash_map::Entry};
 
 impl TradingTerminal {
     pub(super) fn boot_order_book_instances(
@@ -43,17 +43,22 @@ impl TradingTerminal {
             self.next_order_book_id = self.next_order_book_id.max(ob_cfg.id + 1);
         }
 
-        for (_, pane_cfg) in self.panes.iter() {
-            if let PaneKind::OrderBook(id) = pane_cfg
-                && !self.order_books.contains_key(id)
-            {
+        let pane_ids = self
+            .workspace_pane_kinds()
+            .filter_map(|(_, _, kind)| match kind {
+                PaneKind::OrderBook(id) => Some(*id),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for id in pane_ids {
+            if let Entry::Vacant(entry) = self.order_books.entry(id) {
                 let mut inst = OrderBookInstance::new(
-                    *id,
+                    id,
                     OrderBookSymbolMode::Active,
                     Self::normalized_book_tick_size(cfg.book_tick_size),
                 );
                 inst.book_loading = true;
-                self.order_books.insert(*id, inst);
+                entry.insert(inst);
                 self.next_order_book_id = self.next_order_book_id.max(id + 1);
             }
         }

@@ -23,6 +23,9 @@ Representative fields:
 
 - `panes: pane_grid::State<PaneKind>`
 - `focus`, `dragging_pane`
+- `canvases: BTreeMap<CanvasId, CanvasState>`,
+  `preserved_unavailable_canvases`, and `next_canvas_id`
+- `last_focused_workspace` and the workspace targeted by the add-widget flow
 - `saved_layouts`, `active_layout_name`, `layout_input`
 - `app_onboarding_dismissed`, which gates the first-run welcome screen
 - `add_widget_menu_open`, `layout_menu_open`, `add_widget_placement`
@@ -33,6 +36,7 @@ Representative fields:
 Primary modules:
 
 - `pane_state.rs`
+- `canvas_state.rs`, `canvas_update.rs`, `canvas_views.rs`
 - `pane_update/`
 - `pane_interaction_update/`
 - `pane_management.rs`
@@ -45,6 +49,7 @@ Persisted through:
 
 - `config::SavedLayout`
 - `config::PaneLayoutConfig`
+- `config::CanvasConfig` in both current config and saved layouts
 - widget config snapshots in `layout_persistence/`
 - window size/position fields in `KeroseneConfig`
 - first-run app onboarding dismissal in `KeroseneConfig`

@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::message::Message;
 use crate::pane_management::AddWidgetKind;
 use crate::pane_state::PaneKind;
@@ -8,25 +9,31 @@ use iced::widget::pane_grid;
 impl TradingTerminal {
     pub(super) fn update_pane_menu(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::SwitchBottomTab(tab) => {
-                for (_pane, kind) in self.panes.iter_mut() {
-                    if let PaneKind::BottomTabs { active_tab } = kind {
-                        *active_tab = tab;
-                    }
+            Message::SwitchBottomTab(workspace, pane, tab) => {
+                if let Some(PaneKind::BottomTabs { active_tab }) = self
+                    .workspace_panes_mut(workspace)
+                    .and_then(|panes| panes.get_mut(pane))
+                {
+                    *active_tab = tab;
                 }
+                self.set_workspace_focus(workspace, Some(pane));
+                self.last_focused_workspace = workspace;
+                self.persist_config();
             }
             Message::CloseAllMenus => {
                 self.close_chart_header_menus();
                 self.alfred.close();
                 self.cancel_widget_placement();
             }
-            Message::ToggleAddWidgetMenu => {
-                let opening = !self.add_widget_menu_open;
+            Message::ToggleAddWidgetMenu(workspace) => {
+                let opening = !self.add_widget_menu_open || self.add_widget_workspace != workspace;
                 if opening {
                     self.close_chart_header_menus();
                     self.alfred.close();
                     self.cancel_widget_placement();
                 }
+                self.add_widget_workspace = workspace;
+                self.last_focused_workspace = workspace;
                 self.add_widget_menu_open = opening;
             }
             Message::ToggleLayoutMenu => {
@@ -55,34 +62,43 @@ impl TradingTerminal {
                 self.close_chart_header_menus();
                 self.alfred.close();
 
-                if let Some(pane) = self.existing_pane_for_add_widget(widget) {
-                    self.focus = Some(pane);
-                    return Task::done(add_widget_message(widget, pane));
+                if let Some((workspace, pane)) = self.existing_pane_for_add_widget(widget) {
+                    self.set_workspace_focus(workspace, Some(pane));
+                    self.push_toast(format!("{} is already open", widget.label()), false);
+                    return self.focus_workspace_window(workspace);
                 }
 
-                self.dragging_pane = None;
+                self.set_workspace_dragging_pane(self.add_widget_workspace, None);
                 self.placing_widget = Some(widget);
                 self.widget_placement_hover = None;
             }
-            Message::WidgetPlacementHovered(pane, placement)
+            Message::WidgetPlacementHovered(workspace, pane, placement)
                 if self.placing_widget.is_some()
-                    && self.panes.get(pane).is_some()
+                    && self.add_widget_workspace == workspace
+                    && self
+                        .workspace_panes(workspace)
+                        .is_some_and(|panes| panes.get(pane).is_some())
                     && self.widget_placement_hover != Some((pane, placement)) =>
             {
                 self.widget_placement_hover = Some((pane, placement));
             }
-            Message::WidgetPlacementExited(pane)
-                if self
-                    .widget_placement_hover
-                    .is_some_and(|(hovered, _)| hovered == pane) =>
+            Message::WidgetPlacementExited(workspace, pane)
+                if self.add_widget_workspace == workspace
+                    && self
+                        .widget_placement_hover
+                        .is_some_and(|(hovered, _)| hovered == pane) =>
             {
                 self.widget_placement_hover = None;
             }
-            Message::PlaceWidget(pane, placement) => {
+            Message::PlaceWidget(workspace, pane, placement) => {
                 let Some(widget) = self.placing_widget else {
                     return Task::none();
                 };
-                if self.panes.get(pane).is_none() {
+                if self.add_widget_workspace != workspace
+                    || self
+                        .workspace_panes(workspace)
+                        .is_none_or(|panes| panes.get(pane).is_none())
+                {
                     self.cancel_widget_placement();
                     self.push_toast(
                         "Could not place widget: pane is unavailable".to_string(),
@@ -91,10 +107,12 @@ impl TradingTerminal {
                     return Task::none();
                 }
 
-                self.focus = Some(pane);
+                self.set_workspace_focus(workspace, Some(pane));
+                self.last_focused_workspace = workspace;
+                self.add_widget_workspace = workspace;
                 self.add_widget_placement = placement;
                 self.cancel_widget_placement();
-                return Task::done(add_widget_message(widget, pane));
+                return Task::done(add_widget_message(widget, workspace, pane));
             }
             Message::CancelWidgetPlacement => self.cancel_widget_placement(),
             _ => {}
@@ -103,15 +121,19 @@ impl TradingTerminal {
         Task::none()
     }
 
-    fn cancel_widget_placement(&mut self) {
+    pub(crate) fn cancel_widget_placement(&mut self) {
         self.placing_widget = None;
         self.widget_placement_hover = None;
     }
 }
 
-pub(super) fn add_widget_message(widget: AddWidgetKind, pane: pane_grid::Pane) -> Message {
+pub(super) fn add_widget_message(
+    widget: AddWidgetKind,
+    workspace: WorkspaceId,
+    pane: pane_grid::Pane,
+) -> Message {
     match widget {
-        AddWidgetKind::CandlestickChart => Message::AddChart(pane),
+        AddWidgetKind::CandlestickChart => Message::AddChart(workspace, pane),
         AddWidgetKind::ComparisonChart => Message::AddComparisonChart,
         AddWidgetKind::PairRatioChart => Message::AddPairRatioChart,
         AddWidgetKind::SessionData => Message::AddSessionDataPane,

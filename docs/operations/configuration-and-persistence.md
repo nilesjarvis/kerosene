@@ -43,6 +43,7 @@ Related storage:
 - saved layouts and active layout name
 - first-run app onboarding dismissal
 - pane layout and legacy layout ratios
+- Canvas workspace trees, labels, open state, and window geometry
 - widget configs
 - detached chart windows
 - active symbol and order defaults
@@ -68,6 +69,10 @@ Important snapshot behavior:
 
 - If config was cleared this session, snapshot returns default config.
 - Layout state is captured through `saved_layout_snapshot("current")`.
+- Canvas runtime state is captured as `CanvasConfig`; runtime `window::Id`
+  values are never serialized.
+- Canvas pane trees that contain only unknown future pane types are preserved
+  even though the current build cannot open them.
 - Account profiles are converted through persisted account snapshots.
 - Hidden positions are scoped to persisted accounts.
 - Journal entries are scoped by account and omit ghost account data where
@@ -104,6 +109,7 @@ Saved layouts are separate from the app's global config snapshot. They capture a
 workspace:
 
 - pane tree
+- Canvas workspace trees and best-effort window placement
 - chart configs
 - spaghetti configs
 - order book configs
@@ -117,8 +123,12 @@ workspace:
 - widget padding
 
 Applying a layout rebuilds runtime instances and queues refresh tasks for
-data-backed widgets. Layout loading should be tolerant of unsupported or older
-pane config.
+data-backed widgets. It also replaces the current Canvas set, closes obsolete
+Canvas windows, and reopens those saved as open. Layout loading should be
+tolerant of unsupported or older pane config. Older configs deserialize with an
+empty Canvas list. Imported layouts run the same Canvas geometry and
+multi-instance ID normalization used for loaded config before they are stored
+or applied.
 
 ## Backward Compatibility
 

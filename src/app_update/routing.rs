@@ -10,6 +10,7 @@ pub(super) enum UpdateRoute {
     Alfred,
     Annotations,
     Calendar,
+    Canvas,
     Chart,
     ChartScreenshot,
     Chrome,
@@ -34,6 +35,8 @@ pub(super) enum UpdateRoute {
 
 pub(super) fn message_route(message: &Message) -> UpdateRoute {
     match message {
+        Message::CreateCanvas | Message::OpenCanvas(_) => UpdateRoute::Canvas,
+
         Message::LayoutInputChanged(_)
         | Message::SaveLayout(_)
         | Message::LoadLayout(_)
@@ -51,20 +54,20 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WalletLabelsExported(_)
         | Message::WalletLabelsImported(_) => UpdateRoute::Layout,
 
-        Message::PaneResized(_)
-        | Message::PaneDragged(_)
-        | Message::PaneClicked(_)
-        | Message::ClosePane(_) => UpdateRoute::PaneInteractions,
+        Message::PaneResized(_, _)
+        | Message::PaneDragged(_, _)
+        | Message::PaneClicked(_, _)
+        | Message::ClosePane(_, _) => UpdateRoute::PaneInteractions,
 
-        Message::SwitchBottomTab(_)
+        Message::SwitchBottomTab(_, _, _)
         | Message::CloseAllMenus
-        | Message::ToggleAddWidgetMenu
+        | Message::ToggleAddWidgetMenu(_)
         | Message::ToggleLayoutMenu
         | Message::ToggleTickerTape
         | Message::BeginWidgetPlacement(_)
-        | Message::WidgetPlacementHovered(_, _)
-        | Message::WidgetPlacementExited(_)
-        | Message::PlaceWidget(_, _)
+        | Message::WidgetPlacementHovered(_, _, _)
+        | Message::WidgetPlacementExited(_, _)
+        | Message::PlaceWidget(_, _, _)
         | Message::CancelWidgetPlacement
         | Message::AddPositionsHistoryPane
         | Message::AddPortfolioPane
@@ -361,6 +364,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         Message::WindowMoved(_, _)
         | Message::WindowOpened(_)
         | Message::WindowClosed(_)
+        | Message::WindowFocused(_)
         | Message::WindowResized(_, _)
         | Message::WindowDrag(_)
         | Message::WindowDragResize(_, _)
@@ -537,7 +541,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartSecondaryEditorSearchChanged(_, _)
         | Message::ChartSecondaryEditorSubmit(_)
         | Message::OpenDetachedChart(_)
-        | Message::AddChart(_) => UpdateRoute::Chart,
+        | Message::AddChart(_, _) => UpdateRoute::Chart,
 
         Message::PositionsSortChanged(_)
         | Message::ToggleHiddenPosition(_)

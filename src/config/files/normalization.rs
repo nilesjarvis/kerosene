@@ -2,16 +2,16 @@ use crate::config::themes::{
     default_custom_themes, is_known_default_bloomberg_theme, is_known_default_hyperliquid_theme,
 };
 use crate::config::{
-    AccountProfile, KeroseneConfig, PaneKindConfig, PaneLayoutConfig, default_layout_ratios,
-    default_market_slippage_pct, new_secret_id, normalize_alfred_popup_scale,
-    normalize_chart_chromatic_aberration_strength, normalize_chart_dotted_background_opacity,
-    normalize_chart_edge_blur_strength, normalize_chart_fisheye_strength,
-    normalize_chart_gradient_contrast, normalize_chart_hud_order_sound_volume,
-    normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
-    normalize_pane_split_ratio, normalize_ui_scale, prune_legacy_unsupported_pane_layout,
-    push_config_warning,
+    AccountProfile, KeroseneConfig, PaneKindConfig, PaneLayoutConfig, SavedLayout,
+    default_layout_ratios, default_market_slippage_pct, new_secret_id,
+    normalize_alfred_popup_scale, normalize_chart_chromatic_aberration_strength,
+    normalize_chart_dotted_background_opacity, normalize_chart_edge_blur_strength,
+    normalize_chart_fisheye_strength, normalize_chart_gradient_contrast,
+    normalize_chart_hud_order_sound_volume, normalize_market_slippage_pct,
+    normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_pane_split_ratio,
+    normalize_ui_scale, prune_legacy_unsupported_pane_layout, push_config_warning,
 };
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet, btree_map::Entry};
 use zeroize::Zeroize;
 
 // ---------------------------------------------------------------------------
@@ -23,6 +23,8 @@ pub(super) fn normalize_loaded_config(config: &mut KeroseneConfig) {
     merge_default_themes(config);
     ensure_layout_ratios(config);
     prune_unsupported_pane_layouts(config);
+    normalize_canvases(config);
+    repair_duplicate_chart_widget_ids(config);
     repair_duplicate_non_chart_widget_ids(config);
     normalize_market_slippage(config);
     normalize_pane_chrome(config);
@@ -32,6 +34,296 @@ pub(super) fn normalize_loaded_config(config: &mut KeroseneConfig) {
     apply_pending_keychain_profile_deletions(config);
     ensure_account_profile(config);
     clamp_active_account(config);
+}
+
+pub(crate) fn normalize_imported_saved_layout(layout: &mut SavedLayout) {
+    layout.pane_layout = layout
+        .pane_layout
+        .take()
+        .and_then(prune_legacy_unsupported_pane_layout);
+    for canvas in &mut layout.canvases {
+        canvas.pane_layout = canvas
+            .pane_layout
+            .take()
+            .and_then(prune_legacy_unsupported_pane_layout);
+    }
+
+    let repaired_canvas_ids = normalize_canvas_list(&mut layout.canvases);
+    normalize_layout_ratio_values(&mut layout.layout_ratios);
+    if let Some(pane_layout) = &mut layout.pane_layout {
+        pane_layout.normalize_split_ratios();
+    }
+    for canvas in &mut layout.canvases {
+        if let Some(pane_layout) = &mut canvas.pane_layout {
+            pane_layout.normalize_split_ratios();
+        }
+    }
+
+    let repaired_chart_ids = repair_duplicate_chart_widget_ids_for_layout(
+        &mut layout.charts,
+        &mut layout.spaghetti_charts,
+        layout.pane_layout.as_mut(),
+        &mut layout.canvases,
+    );
+    let repaired_non_chart_ids = repair_duplicate_non_chart_widget_ids_for_layout(
+        &mut layout.order_books,
+        &mut layout.live_watchlists,
+        &mut layout.positioning_infos,
+        &mut layout.session_data,
+        &mut layout.x_feeds,
+        layout.pane_layout.as_mut(),
+        &mut layout.canvases,
+    );
+
+    layout.market_slippage_pct = normalized_market_slippage_pct(layout.market_slippage_pct);
+    layout.widget_padding = layout.widget_padding.clone().normalized();
+
+    if repaired_canvas_ids {
+        push_config_warning("Duplicate Canvas identifiers were repaired.".to_string());
+    }
+    if repaired_chart_ids {
+        push_config_warning(
+            "Duplicate chart widget identifiers were repaired in persisted layouts.".to_string(),
+        );
+    }
+    if repaired_non_chart_ids {
+        push_config_warning(
+            "Duplicate non-chart widget identifiers were repaired in persisted layouts."
+                .to_string(),
+        );
+    }
+}
+
+fn normalize_canvases(config: &mut KeroseneConfig) {
+    let mut repaired_ids = normalize_canvas_list(&mut config.canvases);
+    for layout in &mut config.saved_layouts {
+        repaired_ids |= normalize_canvas_list(&mut layout.canvases);
+    }
+    if repaired_ids {
+        push_config_warning("Duplicate Canvas identifiers were repaired.".to_string());
+    }
+}
+
+fn normalize_canvas_list(canvases: &mut [crate::config::CanvasConfig]) -> bool {
+    let mut used_ids = BTreeSet::new();
+    let mut repaired_ids = false;
+    for canvas in canvases {
+        if !used_ids.insert(canvas.id) {
+            canvas.id = next_unused_widget_id(&used_ids);
+            used_ids.insert(canvas.id);
+            repaired_ids = true;
+        }
+        canvas.label = canvas.label.trim().to_string();
+        canvas.width = normalize_canvas_extent(canvas.width, crate::config::DEFAULT_CANVAS_WIDTH);
+        canvas.height =
+            normalize_canvas_extent(canvas.height, crate::config::DEFAULT_CANVAS_HEIGHT);
+        canvas.x = canvas.x.filter(|value| value.is_finite());
+        canvas.y = canvas.y.filter(|value| value.is_finite());
+    }
+    repaired_ids
+}
+
+fn normalize_canvas_extent(value: f32, fallback: f32) -> f32 {
+    if value.is_finite() && value > 0.0 {
+        value.max(320.0)
+    } else {
+        fallback
+    }
+}
+
+fn repair_duplicate_chart_widget_ids(config: &mut KeroseneConfig) {
+    let mut repaired_any = repair_duplicate_chart_widget_ids_for_layout(
+        &mut config.charts,
+        &mut config.spaghetti_charts,
+        config.pane_layout.as_mut(),
+        &mut config.canvases,
+    );
+
+    for layout in &mut config.saved_layouts {
+        repaired_any |= repair_duplicate_chart_widget_ids_for_layout(
+            &mut layout.charts,
+            &mut layout.spaghetti_charts,
+            layout.pane_layout.as_mut(),
+            &mut layout.canvases,
+        );
+    }
+
+    if repaired_any {
+        push_config_warning(
+            "Duplicate chart widget identifiers were repaired in persisted layouts.".to_string(),
+        );
+    }
+}
+
+fn repair_duplicate_chart_widget_ids_for_layout(
+    chart_configs: &mut Vec<crate::config::ChartConfig>,
+    spaghetti_configs: &mut Vec<crate::config::SpaghettiChartConfig>,
+    pane_layout: Option<&mut PaneLayoutConfig>,
+    canvases: &mut [crate::config::CanvasConfig],
+) -> bool {
+    let (chart_templates, mut repaired_any) =
+        deduplicate_widget_configs(chart_configs, |config| config.id);
+    let (spaghetti_templates, spaghetti_configs_repaired) =
+        deduplicate_widget_configs(spaghetti_configs, |config| config.id);
+    repaired_any |= spaghetti_configs_repaired;
+
+    let mut reserved_charts = chart_templates.keys().copied().collect::<BTreeSet<_>>();
+    let mut reserved_spaghetti = spaghetti_templates.keys().copied().collect::<BTreeSet<_>>();
+    if let Some(layout) = pane_layout.as_deref() {
+        collect_chart_pane_ids(layout, &mut reserved_charts, &mut reserved_spaghetti);
+    }
+    for canvas in canvases.iter() {
+        if let Some(layout) = &canvas.pane_layout {
+            collect_chart_pane_ids(layout, &mut reserved_charts, &mut reserved_spaghetti);
+        }
+    }
+
+    let mut seen_charts = BTreeSet::new();
+    let mut seen_spaghetti = BTreeSet::new();
+    if let Some(layout) = pane_layout {
+        repaired_any |= repair_duplicate_chart_pane_ids(
+            layout,
+            &mut seen_charts,
+            &mut seen_spaghetti,
+            &mut reserved_charts,
+            &mut reserved_spaghetti,
+            &chart_templates,
+            &spaghetti_templates,
+            chart_configs,
+            spaghetti_configs,
+        );
+    }
+    for canvas in canvases {
+        if let Some(layout) = &mut canvas.pane_layout {
+            repaired_any |= repair_duplicate_chart_pane_ids(
+                layout,
+                &mut seen_charts,
+                &mut seen_spaghetti,
+                &mut reserved_charts,
+                &mut reserved_spaghetti,
+                &chart_templates,
+                &spaghetti_templates,
+                chart_configs,
+                spaghetti_configs,
+            );
+        }
+    }
+
+    repaired_any
+}
+
+fn deduplicate_widget_configs<T: Clone>(
+    configs: &mut Vec<T>,
+    id_for: impl Fn(&T) -> u64,
+) -> (BTreeMap<u64, T>, bool) {
+    let mut templates = BTreeMap::new();
+    let mut unique = Vec::with_capacity(configs.len());
+    let mut repaired = false;
+
+    for config in configs.drain(..) {
+        match templates.entry(id_for(&config)) {
+            Entry::Vacant(entry) => {
+                entry.insert(config.clone());
+                unique.push(config);
+            }
+            Entry::Occupied(_) => repaired = true,
+        }
+    }
+    *configs = unique;
+
+    (templates, repaired)
+}
+
+fn collect_chart_pane_ids(
+    layout: &PaneLayoutConfig,
+    chart_ids: &mut BTreeSet<u64>,
+    spaghetti_ids: &mut BTreeSet<u64>,
+) {
+    match layout {
+        PaneLayoutConfig::Leaf(PaneKindConfig::Chart { chart_id }) => {
+            chart_ids.insert(*chart_id);
+        }
+        PaneLayoutConfig::Leaf(PaneKindConfig::SpaghettiChart { spaghetti_id }) => {
+            spaghetti_ids.insert(*spaghetti_id);
+        }
+        PaneLayoutConfig::Leaf(_) => {}
+        PaneLayoutConfig::Split { a, b, .. } => {
+            collect_chart_pane_ids(a, chart_ids, spaghetti_ids);
+            collect_chart_pane_ids(b, chart_ids, spaghetti_ids);
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn repair_duplicate_chart_pane_ids(
+    layout: &mut PaneLayoutConfig,
+    seen_charts: &mut BTreeSet<u64>,
+    seen_spaghetti: &mut BTreeSet<u64>,
+    reserved_charts: &mut BTreeSet<u64>,
+    reserved_spaghetti: &mut BTreeSet<u64>,
+    chart_templates: &BTreeMap<u64, crate::config::ChartConfig>,
+    spaghetti_templates: &BTreeMap<u64, crate::config::SpaghettiChartConfig>,
+    chart_configs: &mut Vec<crate::config::ChartConfig>,
+    spaghetti_configs: &mut Vec<crate::config::SpaghettiChartConfig>,
+) -> bool {
+    match layout {
+        PaneLayoutConfig::Leaf(PaneKindConfig::Chart { chart_id }) => {
+            if seen_charts.insert(*chart_id) {
+                return false;
+            }
+            let original_id = *chart_id;
+            let replacement = next_unused_widget_id(reserved_charts);
+            *chart_id = replacement;
+            seen_charts.insert(replacement);
+            reserved_charts.insert(replacement);
+            if let Some(template) = chart_templates.get(&original_id) {
+                let mut config = template.clone();
+                config.id = replacement;
+                chart_configs.push(config);
+            }
+            true
+        }
+        PaneLayoutConfig::Leaf(PaneKindConfig::SpaghettiChart { spaghetti_id }) => {
+            if seen_spaghetti.insert(*spaghetti_id) {
+                return false;
+            }
+            let original_id = *spaghetti_id;
+            let replacement = next_unused_widget_id(reserved_spaghetti);
+            *spaghetti_id = replacement;
+            seen_spaghetti.insert(replacement);
+            reserved_spaghetti.insert(replacement);
+            if let Some(template) = spaghetti_templates.get(&original_id) {
+                let mut config = template.clone();
+                config.id = replacement;
+                spaghetti_configs.push(config);
+            }
+            true
+        }
+        PaneLayoutConfig::Leaf(_) => false,
+        PaneLayoutConfig::Split { a, b, .. } => {
+            repair_duplicate_chart_pane_ids(
+                a,
+                seen_charts,
+                seen_spaghetti,
+                reserved_charts,
+                reserved_spaghetti,
+                chart_templates,
+                spaghetti_templates,
+                chart_configs,
+                spaghetti_configs,
+            ) | repair_duplicate_chart_pane_ids(
+                b,
+                seen_charts,
+                seen_spaghetti,
+                reserved_charts,
+                reserved_spaghetti,
+                chart_templates,
+                spaghetti_templates,
+                chart_configs,
+                spaghetti_configs,
+            )
+        }
+    }
 }
 
 fn migrate_read_data_provider(config: &mut KeroseneConfig) {
@@ -48,12 +340,24 @@ fn prune_unsupported_pane_layouts(config: &mut KeroseneConfig) {
         .pane_layout
         .take()
         .and_then(prune_legacy_unsupported_pane_layout);
+    for canvas in &mut config.canvases {
+        canvas.pane_layout = canvas
+            .pane_layout
+            .take()
+            .and_then(prune_legacy_unsupported_pane_layout);
+    }
 
     for layout in &mut config.saved_layouts {
         layout.pane_layout = layout
             .pane_layout
             .take()
             .and_then(prune_legacy_unsupported_pane_layout);
+        for canvas in &mut layout.canvases {
+            canvas.pane_layout = canvas
+                .pane_layout
+                .take()
+                .and_then(prune_legacy_unsupported_pane_layout);
+        }
     }
 }
 
@@ -158,11 +462,21 @@ fn ensure_layout_ratios(config: &mut KeroseneConfig) {
     if let Some(layout) = &mut config.pane_layout {
         layout.normalize_split_ratios();
     }
+    for canvas in &mut config.canvases {
+        if let Some(layout) = &mut canvas.pane_layout {
+            layout.normalize_split_ratios();
+        }
+    }
 
     for layout in &mut config.saved_layouts {
         normalize_layout_ratio_values(&mut layout.layout_ratios);
         if let Some(pane_layout) = &mut layout.pane_layout {
             pane_layout.normalize_split_ratios();
+        }
+        for canvas in &mut layout.canvases {
+            if let Some(pane_layout) = &mut canvas.pane_layout {
+                pane_layout.normalize_split_ratios();
+            }
         }
     }
 }
@@ -190,6 +504,7 @@ fn repair_duplicate_non_chart_widget_ids(config: &mut KeroseneConfig) {
         &mut config.session_data,
         &mut config.x_feeds,
         config.pane_layout.as_mut(),
+        &mut config.canvases,
     );
 
     for layout in &mut config.saved_layouts {
@@ -200,6 +515,7 @@ fn repair_duplicate_non_chart_widget_ids(config: &mut KeroseneConfig) {
             &mut layout.session_data,
             &mut layout.x_feeds,
             layout.pane_layout.as_mut(),
+            &mut layout.canvases,
         );
     }
 
@@ -218,6 +534,7 @@ fn repair_duplicate_non_chart_widget_ids_for_layout(
     session_data: &mut [crate::config::SessionDataConfig],
     x_feeds: &mut [crate::config::XFeedConfig],
     pane_layout: Option<&mut PaneLayoutConfig>,
+    canvases: &mut [crate::config::CanvasConfig],
 ) -> bool {
     let (order_books_repaired, order_book_ids) =
         repair_duplicate_ids(order_books, |config| &mut config.id);
@@ -235,16 +552,22 @@ fn repair_duplicate_non_chart_widget_ids_for_layout(
         || session_data_repaired
         || x_feeds_repaired;
 
+    let mut seen = NonChartWidgetIds::default();
+    let mut reserved = NonChartWidgetIds {
+        order_books: order_book_ids,
+        live_watchlists: live_watchlist_ids,
+        positioning_infos: positioning_info_ids,
+        session_data: session_data_ids,
+        x_feeds: x_feed_ids,
+    };
     if let Some(pane_layout) = pane_layout {
-        let mut seen = NonChartWidgetIds::default();
-        let mut reserved = NonChartWidgetIds {
-            order_books: order_book_ids,
-            live_watchlists: live_watchlist_ids,
-            positioning_infos: positioning_info_ids,
-            session_data: session_data_ids,
-            x_feeds: x_feed_ids,
-        };
         repaired_any |= repair_duplicate_non_chart_pane_ids(pane_layout, &mut seen, &mut reserved);
+    }
+    for canvas in canvases {
+        if let Some(pane_layout) = &mut canvas.pane_layout {
+            repaired_any |=
+                repair_duplicate_non_chart_pane_ids(pane_layout, &mut seen, &mut reserved);
+        }
     }
 
     repaired_any

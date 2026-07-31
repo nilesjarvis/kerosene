@@ -59,6 +59,7 @@ impl TradingTerminal {
         config::SavedLayout {
             name,
             pane_layout: self.pane_layout_config_snapshot(),
+            canvases: self.canvas_configs_snapshot(),
             layout_ratios: self.collect_layout_ratios(),
             charts: self.docked_chart_configs_snapshot(),
             order_books: self.order_book_configs_snapshot(),
@@ -92,5 +93,47 @@ impl TradingTerminal {
             preset_is_usd: self.preset_is_usd,
             order_presets: self.order_presets.clone(),
         }
+    }
+
+    pub(crate) fn canvas_configs_snapshot(&self) -> Vec<config::CanvasConfig> {
+        let mut configs = self
+            .canvases
+            .values()
+            .map(|canvas| {
+                let runtime_layout = Self::collect_pane_layout_from(&canvas.panes);
+                let pane_layout = canvas
+                    .preserved_loaded_pane_layout
+                    .as_ref()
+                    .filter(|preserved| {
+                        config::prune_unsupported_pane_layout((*preserved).clone())
+                            == runtime_layout
+                    })
+                    .cloned()
+                    .or(runtime_layout);
+
+                config::CanvasConfig {
+                    id: canvas.id,
+                    label: canvas.label.clone(),
+                    open: canvas.window_id.is_some(),
+                    pane_layout,
+                    width: canvas.width,
+                    height: canvas.height,
+                    x: canvas.x,
+                    y: canvas.y,
+                }
+            })
+            .collect::<Vec<_>>();
+        let runtime_ids = configs
+            .iter()
+            .map(|canvas| canvas.id)
+            .collect::<std::collections::BTreeSet<_>>();
+        configs.extend(
+            self.preserved_unavailable_canvases
+                .iter()
+                .filter(|canvas| !runtime_ids.contains(&canvas.id))
+                .cloned(),
+        );
+        configs.sort_by_key(|canvas| canvas.id);
+        configs
     }
 }

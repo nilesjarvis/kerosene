@@ -8,6 +8,7 @@ pub(crate) struct LayoutWidgetConfigs {
     pub(crate) spaghetti_configs: Vec<config::SpaghettiChartConfig>,
     pub(crate) next_chart_id: ChartId,
     pub(crate) next_spaghetti_id: SpaghettiChartId,
+    pub(crate) default_main_chart_id: ChartId,
 }
 
 impl TradingTerminal {
@@ -60,7 +61,13 @@ impl TradingTerminal {
             next_spaghetti_id = next_spaghetti_id.max(spaghetti_cfg.id.saturating_add(1));
         }
 
-        if let Some(pane_layout) = &layout.pane_layout {
+        let pane_layouts = layout.pane_layout.iter().chain(
+            layout
+                .canvases
+                .iter()
+                .filter_map(|canvas| canvas.pane_layout.as_ref()),
+        );
+        for pane_layout in pane_layouts {
             let mut layout_chart_ids = std::collections::BTreeSet::new();
             let mut layout_spaghetti_ids = std::collections::BTreeSet::new();
             Self::collect_layout_widget_ids(
@@ -84,6 +91,43 @@ impl TradingTerminal {
             }
         }
 
+        let mut canvas_chart_ids = std::collections::BTreeSet::new();
+        let mut ignored_spaghetti_ids = std::collections::BTreeSet::new();
+        for pane_layout in layout
+            .canvases
+            .iter()
+            .filter_map(|canvas| canvas.pane_layout.as_ref())
+        {
+            Self::collect_layout_widget_ids(
+                pane_layout,
+                &mut canvas_chart_ids,
+                &mut ignored_spaghetti_ids,
+            );
+        }
+        let main_layout_available = layout
+            .pane_layout
+            .as_ref()
+            .and_then(Self::pane_layout_to_configuration)
+            .is_some();
+        let default_main_chart_id = if main_layout_available {
+            chart_configs.first().map(|config| config.id).unwrap_or(0)
+        } else if let Some(id) = chart_configs
+            .iter()
+            .map(|config| config.id)
+            .find(|id| !canvas_chart_ids.contains(id))
+        {
+            id
+        } else {
+            let id = next_chart_id;
+            chart_configs.push(config::ChartConfig::empty(
+                id,
+                self.active_symbol.clone(),
+                layout.active_timeframe.clone(),
+            ));
+            next_chart_id = next_chart_id.max(id.saturating_add(1));
+            id
+        };
+
         chart_configs.sort_by_key(|chart| chart.id);
         spaghetti_configs.sort_by_key(|spaghetti| spaghetti.id);
 
@@ -92,6 +136,7 @@ impl TradingTerminal {
             spaghetti_configs,
             next_chart_id,
             next_spaghetti_id,
+            default_main_chart_id,
         }
     }
 }

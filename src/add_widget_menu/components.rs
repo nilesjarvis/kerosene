@@ -33,12 +33,13 @@ fn tag_color(label: &str, theme: &Theme) -> Color {
 }
 
 pub(super) fn menu_item(
-    label: &'static str,
+    label: impl Into<String>,
     tag: &'static str,
     message: Option<Message>,
     enabled: bool,
     theme: &Theme,
 ) -> Element<'static, Message> {
+    let label = label.into();
     let press_message = if enabled { message } else { None };
 
     button(
