@@ -4,7 +4,7 @@ use crate::app_state::TradingTerminal;
 use crate::canvas_state::WorkspaceId;
 use crate::message::Message;
 
-use anchored::{AnchoredAccountMenu, AnchoredMenuLayer, MenuAlignment, MenuKind};
+pub(crate) use anchored::{AnchoredAccountMenu, AnchoredMenuLayer, MenuAlignment, MenuKind};
 use iced::Element;
 use iced::widget::opaque;
 

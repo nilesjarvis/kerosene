@@ -22,7 +22,7 @@ use overlay::clamp_to_viewport;
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy)]
-pub(super) enum MenuAlignment {
+pub(crate) enum MenuAlignment {
     Start,
     End,
 }
@@ -30,25 +30,25 @@ pub(super) enum MenuAlignment {
 /// Identifies which summary menu is being shown so the reveal animation can
 /// replay when switching directly between different menus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum MenuKind {
+pub(crate) enum MenuKind {
     AccountPicker,
     LayoutSwitcher,
     AddWidget,
 }
 
-pub(super) struct AnchoredMenuLayer<'a> {
-    pub(super) kind: MenuKind,
-    pub(super) alignment: MenuAlignment,
-    pub(super) content: Element<'a, Message>,
+pub(crate) struct AnchoredMenuLayer<'a> {
+    pub(crate) kind: MenuKind,
+    pub(crate) alignment: MenuAlignment,
+    pub(crate) content: Element<'a, Message>,
 }
 
-pub(super) struct AnchoredAccountMenu<'a> {
+pub(crate) struct AnchoredAccountMenu<'a> {
     content: Element<'a, Message>,
     menu: Option<AnchoredMenuLayer<'a>>,
 }
 
 impl<'a> AnchoredAccountMenu<'a> {
-    pub(super) fn new(content: Element<'a, Message>, menu: Option<AnchoredMenuLayer<'a>>) -> Self {
+    pub(crate) fn new(content: Element<'a, Message>, menu: Option<AnchoredMenuLayer<'a>>) -> Self {
         Self { content, menu }
     }
 }

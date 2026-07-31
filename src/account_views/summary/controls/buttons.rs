@@ -47,8 +47,11 @@ impl TradingTerminal {
     }
 
     pub(crate) fn summary_widgets_button(&self) -> Element<'_, Message> {
-        let chevron = if self.add_widget_menu_open && self.add_widget_workspace == WorkspaceId::Main
-        {
+        self.widgets_dropdown_button(WorkspaceId::Main)
+    }
+
+    pub(crate) fn widgets_dropdown_button(&self, workspace: WorkspaceId) -> Element<'_, Message> {
+        let chevron = if self.add_widget_menu_open && self.add_widget_workspace == workspace {
             DROPDOWN_CHEVRON_UP
         } else {
             DROPDOWN_CHEVRON_DOWN
@@ -64,7 +67,7 @@ impl TradingTerminal {
             .spacing(4)
             .align_y(iced::Alignment::Center),
         )
-        .on_press(Message::ToggleAddWidgetMenu(WorkspaceId::Main))
+        .on_press(Message::ToggleAddWidgetMenu(workspace))
         .padding([4, 8])
         .style(summary_primary_action_style)
         .into()

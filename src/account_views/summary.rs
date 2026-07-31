@@ -12,6 +12,8 @@ use iced::widget::container as container_style;
 use iced::widget::{Space, button, column, container, row, text};
 use iced::{Element, Fill, Length, Theme};
 
+pub(crate) use menus::{AnchoredAccountMenu, AnchoredMenuLayer, MenuAlignment, MenuKind};
+
 pub(crate) const CONNECTED_SUMMARY_ACTION_BREAKPOINT: f32 = 1180.0;
 pub(crate) const CONNECTED_STATUS_ACTION_BREAKPOINT: f32 = 820.0;
 
