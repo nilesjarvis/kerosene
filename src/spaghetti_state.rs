@@ -300,14 +300,10 @@ impl TradingTerminal {
             return;
         };
 
-        let latest_candle_ts = inst
-            .canvas
-            .series
-            .iter()
-            .filter_map(|s| s.candles.last().map(|c| c.open_time))
-            .max()
-            .unwrap_or_else(Self::now_ms);
-
-        inst.canvas.base_timestamp = Some(session.last_open_ms(latest_candle_ts));
+        // Use wall-clock time for the session anchor so the open is correct
+        // immediately at session start (e.g., 9:30 AM ET), not delayed until
+        // the first completed candle arrives.
+        let now = Self::now_ms();
+        inst.canvas.base_timestamp = Some(session.last_open_ms(now));
     }
 }
