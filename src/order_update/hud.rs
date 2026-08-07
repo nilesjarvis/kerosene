@@ -356,13 +356,15 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::{ExchangeSymbol, MarketType};
+    use crate::api::{ExchangeSymbol, MarketType, OrderBook};
     use crate::app_state::sensitive_string;
     use crate::chart_state::{ChartInstance, ChartSurfaceId};
     use crate::config::{AccountProfile, ChartCrosshairStyle};
     use crate::order_execution::{HudOrderSide, MAX_INFLIGHT_HUD_PLACEMENTS, PendingOrderAction};
     use crate::order_update::PendingOneShotStatusRequest;
+    use crate::pane_state::PaneKind;
     use crate::timeframe::Timeframe;
+    use iced::widget::pane_grid;
 
     const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
 
@@ -564,6 +566,31 @@ mod tests {
         assert!(chart.hud_order_animation_active());
         assert_eq!(chart.hud_feed.len(), 1);
         assert_eq!(chart.hud_feed[0].label, "CHASE SHORT 2.5");
+    }
+
+    #[test]
+    fn hud_chase_empty_initial_book_pushes_toast_with_chart_only_layout() {
+        let mut terminal = terminal_with_hud_chart(true);
+        let (panes, _) = pane_grid::State::new(PaneKind::Chart(1));
+        terminal.panes = panes;
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        terminal.sound_enabled = false;
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.order_type = HudOrderType::Chase;
+
+        let _task = terminal.handle_submit_hud_order(request);
+        let chase_id = terminal
+            .selected_chase()
+            .expect("HUD Chase should start")
+            .id;
+        let _task = terminal.handle_chase_initial_book_loaded(chase_id, Ok(OrderBook::empty()));
+
+        assert!(terminal.chase_orders.is_empty());
+        assert_eq!(terminal.pending_order_action, None);
+        assert_eq!(
+            error_toast_messages(&terminal),
+            vec!["Chase stopped: no book data to place"]
+        );
     }
 
     #[test]

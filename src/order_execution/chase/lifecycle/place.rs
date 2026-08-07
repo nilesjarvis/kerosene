@@ -43,7 +43,7 @@ impl TradingTerminal {
         match result {
             Ok(book) => {
                 let Some(best) = Self::best_chase_price_from_book(&book, is_buy) else {
-                    self.order_status = Some(("Chase stopped: no book data to place".into(), true));
+                    self.set_order_status("Chase stopped: no book data to place".into(), true);
                     self.pending_order_action = None;
                     self.remove_chase_order(chase_id);
                     return Task::none();
@@ -52,8 +52,7 @@ impl TradingTerminal {
             }
             Err(error) => {
                 let error = redact_sensitive_response_text(&error);
-                self.order_status =
-                    Some((format!("Chase stopped: book load failed: {error}"), true));
+                self.set_order_status(format!("Chase stopped: book load failed: {error}"), true);
                 self.pending_order_action = None;
                 self.remove_chase_order(chase_id);
                 Task::none()

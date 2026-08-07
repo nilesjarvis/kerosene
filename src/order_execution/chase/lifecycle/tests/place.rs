@@ -137,6 +137,9 @@ fn initial_book_load_failure_redacts_provider_error() {
     assert!(message.contains("Chase stopped: book load failed"));
     assert!(message.contains("api_key=<redacted>"));
     assert!(!message.contains("super-secret"));
+    let toast = terminal.toasts.last().expect("book load failure toast");
+    assert!(toast.is_error);
+    assert_eq!(toast.message, *message);
 }
 
 #[test]
