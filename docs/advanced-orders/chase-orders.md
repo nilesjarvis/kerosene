@@ -34,6 +34,14 @@ From the order-entry pane:
 
 Kerosene fetches the current order book, chooses the best bid for a buy or the best ask for a sell, then submits a limit order at that price.
 
+The chart Gaming HUD can start the same Chase lifecycle without using the
+order-entry pane. Press `H` to select Chase mode, choose the side with `Y`
+(long/buy) or `X` (short/sell), set the coin size with `S`, arm the HUD with
+`A`, and click the chart. The click location triggers the action but does not
+set the Chase price; Chase still starts from the live best bid or ask. The HUD
+uses the symbol shown on that chart rather than the order ticket's active
+symbol.
+
 You can also adopt an existing resting order into the Chase lifecycle from order actions. In that case Kerosene tracks the existing order id, side, size, price, and reduce-only metadata, then begins repricing from that current order.
 
 ### What you will see

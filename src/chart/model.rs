@@ -281,7 +281,7 @@ pub(crate) struct HudFeedEntry {
 /// Which loadout list the transient HUD weapon selector is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HudSelectorKind {
-    /// Order type swap: LIMIT / MARKET (the L/M "weapon switch").
+    /// Order type swap: LIMIT / MARKET / CHASE (the L/M/H "weapon switch").
     Mode,
     /// Market side: LONG / SHORT (the Y/X "fire selector").
     Side,
@@ -291,7 +291,9 @@ impl HudSelectorKind {
     pub(crate) fn for_control(control: crate::sound::HudUiSound) -> Option<Self> {
         use crate::sound::HudUiSound;
         match control {
-            HudUiSound::ModeLimit | HudUiSound::ModeMarket => Some(Self::Mode),
+            HudUiSound::ModeLimit | HudUiSound::ModeMarket | HudUiSound::ModeChase => {
+                Some(Self::Mode)
+            }
             HudUiSound::SideLong | HudUiSound::SideShort => Some(Self::Side),
             _ => None,
         }

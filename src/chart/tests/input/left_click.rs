@@ -250,6 +250,39 @@ fn hud_left_click_submits_hud_order_without_starting_pan() {
 }
 
 #[test]
+fn hud_chase_left_click_uses_selected_side() {
+    let mut chart = chart_with_input_candles();
+    chart.set_symbol_key("BTC".to_string());
+    chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+    chart.set_hud_armed_at(true, 0);
+    let mut state = ChartState {
+        hud_order_kind: HudOrderKind::Chase,
+        hud_market_side: HudMarketSide::Short,
+        hud_size_input: "2.5".to_string(),
+        ..ChartState::default()
+    };
+
+    let action = action_or_panic(
+        chart.handle_left_press(&mut state, Point::new(120.0, 80.0), CHART_W, CHART_H, 260.0),
+        "HUD Chase left click should submit an order request",
+    );
+    let (message, _, status) = action.into_inner();
+
+    match message_or_panic(message, "submit HUD Chase message") {
+        Message::SubmitHudOrder(request) => {
+            assert_eq!(request.symbol_key, "BTC");
+            assert_eq!(request.quantity, "2.5");
+            assert_eq!(request.order_type, HudOrderType::Chase);
+            assert_eq!(request.market_side, HudOrderSide::Short);
+            assert_eq!(request.limit_side, None);
+        }
+        other => panic!("expected SubmitHudOrder, got {other:?}"),
+    }
+    assert_eq!(status, iced::event::Status::Captured);
+    assert!(state.drag.is_none());
+}
+
+#[test]
 fn hud_armed_click_inside_weapon_station_is_swallowed() {
     let mut chart = chart_with_input_candles();
     chart.set_crosshair_style(ChartCrosshairStyle::Hud);

@@ -30,6 +30,7 @@ pub enum SoundKind {
     HudOrder,
     HudModeLimit,
     HudModeMarket,
+    HudModeChase,
     HudSideLong,
     HudSideShort,
     HudArm,
@@ -45,6 +46,7 @@ pub enum SoundKind {
 pub enum HudUiSound {
     ModeLimit,
     ModeMarket,
+    ModeChase,
     SideLong,
     SideShort,
     Arm,
@@ -60,6 +62,7 @@ impl HudUiSound {
         match self {
             Self::ModeLimit => SoundKind::HudModeLimit,
             Self::ModeMarket => SoundKind::HudModeMarket,
+            Self::ModeChase => SoundKind::HudModeChase,
             Self::SideLong => SoundKind::HudSideLong,
             Self::SideShort => SoundKind::HudSideShort,
             Self::Arm => SoundKind::HudArm,

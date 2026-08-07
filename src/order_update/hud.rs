@@ -56,6 +56,10 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        if request.order_type == HudOrderType::Chase {
+            return self.handle_submit_hud_chase(request, chart_symbol);
+        }
+
         let is_market_order = request.order_type == HudOrderType::Market;
         let order_kind = if is_market_order {
             ExchangeOrderKind::Market
@@ -119,6 +123,10 @@ impl TradingTerminal {
                     invalid_message: Some("Invalid HUD market price"),
                     usd_size_reference: MarketUsdSizeReference::ExecutionPrice,
                 },
+                HudOrderType::Chase => {
+                    self.set_order_status("HUD chase routing failed".into(), true);
+                    return Task::none();
+                }
             },
             quantity_source: QuantitySource::UserInput {
                 value: request.quantity.clone(),
@@ -139,6 +147,38 @@ impl TradingTerminal {
         self.submit_prepared_hud_order(key, account_address, request, prepared, is_market_order)
     }
 
+    fn handle_submit_hud_chase(
+        &mut self,
+        request: HudOrderRequest,
+        chart_symbol: String,
+    ) -> Task<Message> {
+        let is_buy = request.market_side.is_buy();
+        let chase_count = self.chase_orders.len();
+        let task = self.start_chase_from_hud(is_buy, chart_symbol, request.quantity.clone());
+
+        if self.chase_orders.len() == chase_count {
+            return task;
+        }
+
+        let Some((target_size, is_spot)) = self
+            .selected_chase()
+            .map(|chase| (chase.target_size, chase.is_spot))
+        else {
+            return task;
+        };
+        self.start_hud_order_animation(&request, is_buy, false);
+        self.push_hud_chase_feed_entry(&request, is_buy, target_size, is_spot);
+        if self.sound_enabled {
+            sound::play_hud_order(
+                self.chart_hud_order_sound,
+                self.chart_hud_order_sound_path(),
+                self.chart_hud_order_sound_volume,
+            );
+        }
+
+        task
+    }
+
     fn submit_prepared_hud_order(
         &mut self,
         key: Zeroizing<String>,
@@ -150,6 +190,7 @@ impl TradingTerminal {
         let kind_label = match request.order_type {
             HudOrderType::Limit => "limit",
             HudOrderType::Market => "market",
+            HudOrderType::Chase => "chase",
         };
         let side_label = hud_side_label(prepared.market_type, prepared.is_buy);
         // Spot symbol keys are raw "@{index}" pair indices; show the pair name.
@@ -250,6 +291,7 @@ impl TradingTerminal {
         let kind_label = match request.order_type {
             HudOrderType::Limit => "LIMIT",
             HudOrderType::Market => "MKT",
+            HudOrderType::Chase => "CHASE",
         };
         let side_label = hud_side_label(prepared.market_type, prepared.is_buy);
         let label = format!(
@@ -259,6 +301,33 @@ impl TradingTerminal {
         instance
             .chart
             .push_hud_feed(label, prepared.is_buy, Self::now_ms());
+    }
+
+    fn push_hud_chase_feed_entry(
+        &mut self,
+        request: &HudOrderRequest,
+        is_buy: bool,
+        target_size: f64,
+        is_spot: bool,
+    ) {
+        let Some(instance) = self.charts.get_mut(&request.chart_id) else {
+            return;
+        };
+        if instance.chart.surface_id() != request.surface_id {
+            return;
+        }
+
+        let side_label = match (is_spot, is_buy) {
+            (true, true) => "BUY",
+            (true, false) => "SELL",
+            (false, true) => "LONG",
+            (false, false) => "SHORT",
+        };
+        instance.chart.push_hud_feed(
+            format!("CHASE {side_label} {target_size}"),
+            is_buy,
+            Self::now_ms(),
+        );
     }
 
     fn start_hud_order_animation(
@@ -454,6 +523,47 @@ mod tests {
             error_toast_messages(&terminal),
             vec!["Invalid HUD order size"]
         );
+    }
+
+    #[test]
+    fn hud_chase_submission_uses_chart_context_and_selected_side() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.exchange_symbols = vec![
+            symbol("BTC", MarketType::Perp),
+            symbol("ETH", MarketType::Perp),
+        ];
+        terminal.active_symbol = "ETH".to_string();
+        terminal.active_symbol_display = "ETH".to_string();
+        terminal.order_quantity = "999".to_string();
+        terminal.order_reduce_only = true;
+        terminal.sound_enabled = false;
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.order_type = HudOrderType::Chase;
+        request.market_side = HudOrderSide::Short;
+        request.quantity = "2.5".to_string();
+
+        let _task = terminal.handle_submit_hud_order(request);
+
+        let chase = terminal.selected_chase().expect("HUD Chase should start");
+        assert_eq!(chase.coin, "BTC");
+        assert_eq!(chase.target_size, 2.5);
+        assert!(!chase.is_buy);
+        assert!(chase.reduce_only);
+        assert_eq!(terminal.active_symbol, "ETH");
+        assert_eq!(terminal.order_quantity, "999");
+        assert_eq!(
+            terminal.pending_order_action,
+            Some(PendingOrderAction::ChaseSell)
+        );
+        assert_eq!(
+            order_status_of(&terminal),
+            Some(("Chase SELL 2.5 BTC: loading book...", false))
+        );
+
+        let chart = &terminal.charts.get(&1).expect("HUD chart").chart;
+        assert!(chart.hud_order_animation_active());
+        assert_eq!(chart.hud_feed.len(), 1);
+        assert_eq!(chart.hud_feed[0].label, "CHASE SHORT 2.5");
     }
 
     #[test]
