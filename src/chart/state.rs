@@ -35,6 +35,7 @@ pub(super) enum DragKind {
 pub(super) enum HudOrderKind {
     Limit,
     Market,
+    Chase,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

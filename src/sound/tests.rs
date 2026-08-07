@@ -7,6 +7,7 @@ fn hud_ui_sounds_map_to_distinct_silent_fallback_kinds() {
     let sounds = [
         HudUiSound::ModeLimit,
         HudUiSound::ModeMarket,
+        HudUiSound::ModeChase,
         HudUiSound::SideLong,
         HudUiSound::SideShort,
         HudUiSound::Arm,
@@ -37,6 +38,7 @@ fn hud_action_clicks_use_the_square_waveform() {
     for kind in [
         SoundKind::HudModeLimit,
         SoundKind::HudModeMarket,
+        SoundKind::HudModeChase,
         SoundKind::HudSideLong,
         SoundKind::HudSideShort,
         SoundKind::HudDisarm,

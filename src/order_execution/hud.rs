@@ -11,6 +11,7 @@ use std::fmt;
 pub(crate) enum HudOrderType {
     Limit,
     Market,
+    Chase,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

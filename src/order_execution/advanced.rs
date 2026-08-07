@@ -186,13 +186,22 @@ impl TradingTerminal {
         &mut self,
         kind: AdvancedOrderKind,
     ) -> Option<AdvancedOrderStartContext> {
+        let symbol_key = self.active_symbol.clone();
+        self.advanced_order_start_context_for_symbol(kind, &symbol_key)
+    }
+
+    pub(super) fn advanced_order_start_context_for_symbol(
+        &mut self,
+        kind: AdvancedOrderKind,
+        symbol_key: &str,
+    ) -> Option<AdvancedOrderStartContext> {
         if self.reject_if_advanced_order_start_blocked(kind) {
             return None;
         }
 
         let (agent_key, account_address) = self.captured_order_signing_context()?;
 
-        if self.symbol_key_is_hidden(&self.active_symbol) {
+        if self.symbol_key_is_hidden(symbol_key) {
             self.order_status = Some(("Active ticker is hidden in Settings > Risk".into(), true));
             return None;
         }

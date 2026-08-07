@@ -165,9 +165,10 @@ impl CandlestickChart {
             // physical cursor.
             let station_hit = super::super::crosshair::hud_station_metrics(chart_w, price_h)
                 .is_some_and(|metrics| metrics.bounds.contains(visual_pos));
-            let selector_hit = self.hud_weapon_selector.is_some()
-                && super::super::crosshair::hud_selector_bounds(chart_w, price_h)
-                    .is_some_and(|bounds| bounds.contains(visual_pos));
+            let selector_hit = self.hud_weapon_selector.is_some_and(|selector| {
+                super::super::crosshair::hud_selector_bounds(chart_w, price_h, selector.kind)
+                    .is_some_and(|bounds| bounds.contains(visual_pos))
+            });
             if station_hit || selector_hit {
                 return Some(canvas::Action::request_redraw().and_capture());
             }
@@ -177,6 +178,7 @@ impl CandlestickChart {
             let order_type = match state.hud_order_kind {
                 super::super::state::HudOrderKind::Limit => HudOrderType::Limit,
                 super::super::state::HudOrderKind::Market => HudOrderType::Market,
+                super::super::state::HudOrderKind::Chase => HudOrderType::Chase,
             };
             let limit_side = if order_type == HudOrderType::Limit {
                 self.hud_limit_click_is_buy(price).map(|is_buy| {

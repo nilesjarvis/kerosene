@@ -603,7 +603,7 @@ impl CandlestickChart {
                 a: 1.0,
                 ..theme.palette().text
             },
-            HudOrderKind::Market => {
+            HudOrderKind::Market | HudOrderKind::Chase => {
                 let color = match state.hud_market_side {
                     HudMarketSide::Long => theme.palette().success,
                     HudMarketSide::Short => theme.palette().danger,
@@ -836,11 +836,16 @@ impl CandlestickChart {
             });
         }
         match state.hud_order_kind {
-            HudOrderKind::Market => {
+            HudOrderKind::Market | HudOrderKind::Chase => {
                 let is_long = state.hud_market_side == HudMarketSide::Long;
                 let side_color = if is_long { success } else { danger };
+                let kind_label = if state.hud_order_kind == HudOrderKind::Market {
+                    "MKT "
+                } else {
+                    "CHASE "
+                };
                 segments.push(HudSummarySegment {
-                    content: "MKT ".to_string(),
+                    content: kind_label.to_string(),
                     color: accent,
                     triangle_up: None,
                 });

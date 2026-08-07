@@ -89,6 +89,27 @@ const HUD_MODE_MARKET_TONES: &[Tone] = &[
     },
 ];
 
+const HUD_MODE_CHASE_TONES: &[Tone] = &[
+    Tone {
+        freq_hz: 783.99,
+        duration_ms: 24,
+        amplitude: 0.22,
+        waveform: Waveform::Square,
+    },
+    Tone {
+        freq_hz: 880.0,
+        duration_ms: 24,
+        amplitude: 0.23,
+        waveform: Waveform::Square,
+    },
+    Tone {
+        freq_hz: 783.99,
+        duration_ms: 36,
+        amplitude: 0.21,
+        waveform: Waveform::Square,
+    },
+];
+
 const HUD_SIDE_LONG_TONES: &[Tone] = &[
     Tone {
         freq_hz: 659.25,
@@ -243,6 +264,11 @@ pub(super) fn sound_spec(kind: SoundKind) -> SoundSpec {
         SoundKind::HudModeMarket => SoundSpec {
             tones: HUD_MODE_MARKET_TONES,
             gap_ms: 6,
+            fallback_event: None,
+        },
+        SoundKind::HudModeChase => SoundSpec {
+            tones: HUD_MODE_CHASE_TONES,
+            gap_ms: 5,
             fallback_event: None,
         },
         SoundKind::HudSideLong => SoundSpec {

@@ -424,10 +424,20 @@ pub(in crate::chart) fn hud_station_metrics(
 
 /// Bounds of the transient weapon-selector popup above the station; `None`
 /// when there is no room for it (or no station to anchor to).
-pub(in crate::chart) fn hud_selector_bounds(chart_w: f32, price_h: f32) -> Option<Rectangle> {
+pub(in crate::chart) fn hud_selector_bounds(
+    chart_w: f32,
+    price_h: f32,
+    kind: HudSelectorKind,
+) -> Option<Rectangle> {
     let station = hud_station_metrics(chart_w, price_h)?;
     let width = station.bounds.width;
-    let height = 2.0 * SELECTOR_SLOT_H + SELECTOR_SLOT_GAP + 2.0 * SELECTOR_PAD;
+    let slot_count: usize = match kind {
+        HudSelectorKind::Mode => 3,
+        HudSelectorKind::Side => 2,
+    };
+    let height = slot_count as f32 * SELECTOR_SLOT_H
+        + slot_count.saturating_sub(1) as f32 * SELECTOR_SLOT_GAP
+        + 2.0 * SELECTOR_PAD;
     let y = station.bounds.y - SELECTOR_GAP - height;
     (y >= 4.0).then_some(Rectangle {
         x: station.bounds.x,
@@ -524,12 +534,12 @@ impl CandlestickChart {
         y += 11.0;
 
         // Equipped weapon line: only what is loaded fires here. The full
-        // loadout list lives in the transient selector popup (L/M/Y/X).
+        // loadout list lives in the transient selector popup (L/M/H/Y/X).
         self.draw_hud_equipped_weapon(ctx, Point::new(left, y), accent);
         y += STATION_ROW_H;
         draw_hud_text_sized(
             ctx.frame,
-            "[L][M] SWAP \u{b7} [Y][X] SIDE",
+            "[L/M/H] MODE \u{b7} [Y/X] SIDE",
             Point::new(left + 9.0, y),
             Color { a: 0.38, ..text },
             alignment::Horizontal::Left,
@@ -543,7 +553,7 @@ impl CandlestickChart {
     }
 
     /// The persistent bottom-right readout of the loaded order type: name,
-    /// fire pips (1 = limit/single, 3 = market/auto), and the side word.
+    /// fire pips (1 = limit, 2 = Chase, 3 = market), and the side word.
     fn draw_hud_equipped_weapon<PriceToY>(
         &self,
         ctx: &mut CrosshairOverlayContext<'_, PriceToY>,
@@ -553,11 +563,14 @@ impl CandlestickChart {
         PriceToY: Fn(f64) -> f32,
     {
         let text = ctx.theme.palette().text;
-        let market_mode = ctx.state.hud_order_kind == HudOrderKind::Market;
         let bright = Color { a: 0.95, ..accent };
+        let (name, fire_pips, uses_explicit_side) = match ctx.state.hud_order_kind {
+            HudOrderKind::Limit => ("LIMIT", 1, false),
+            HudOrderKind::Market => ("MARKET", 3, true),
+            HudOrderKind::Chase => ("CHASE", 2, true),
+        };
 
         fill_chevron_right(ctx.frame, Point::new(origin.x + 2.0, origin.y), 3.0, bright);
-        let name = if market_mode { "MARKET" } else { "LIMIT" };
         draw_hud_text_sized(
             ctx.frame,
             name,
@@ -570,12 +583,12 @@ impl CandlestickChart {
         draw_fire_pips(
             ctx.frame,
             Point::new(after_name, origin.y),
-            if market_mode { 3 } else { 1 },
+            fire_pips,
             bright,
         );
         let after_pips = after_name + 3.0 * 4.5 + 7.0;
 
-        if market_mode {
+        if uses_explicit_side {
             let is_long = ctx.state.hud_market_side == HudMarketSide::Long;
             let side_color = if is_long {
                 ctx.theme.palette().success
@@ -772,6 +785,7 @@ fn hud_station_compact_summary(state: &ChartState) -> String {
     match state.hud_order_kind {
         HudOrderKind::Limit => format!("L>LIMIT {size}"),
         HudOrderKind::Market => format!("M>{} {size}", state.hud_market_side.label()),
+        HudOrderKind::Chase => format!("H>{} {size}", state.hud_market_side.label()),
     }
 }
 
@@ -802,8 +816,8 @@ fn draw_station_rule(frame: &mut canvas::Frame, left: f32, right: f32, y: f32, a
     );
 }
 
-/// Classic fire-selector pips: one rectangle for single-shot (limit), three
-/// for full-auto (market).
+/// Classic fire-selector pips: one rectangle for limit, two for Chase, and
+/// three for full-auto market.
 fn draw_fire_pips(frame: &mut canvas::Frame, origin: Point, count: usize, color: Color) {
     for index in 0..count {
         frame.fill_rectangle(
@@ -853,7 +867,7 @@ impl CandlestickChart {
         let Some(selector) = self.hud_weapon_selector else {
             return;
         };
-        let Some(bounds) = hud_selector_bounds(ctx.chart_w, ctx.price_h) else {
+        let Some(bounds) = hud_selector_bounds(ctx.chart_w, ctx.price_h, selector.kind) else {
             return;
         };
         let alpha = hud_selector_alpha(selector.age);
@@ -864,29 +878,48 @@ impl CandlestickChart {
         let text = ctx.theme.palette().text;
         let success = ctx.theme.palette().success;
         let danger = ctx.theme.palette().danger;
-        let market_mode = ctx.state.hud_order_kind == HudOrderKind::Market;
         let long_side = ctx.state.hud_market_side == HudMarketSide::Long;
 
-        let slots: [HudSelectorSlot<'_>; 2] = match selector.kind {
-            HudSelectorKind::Mode => [
+        let slots = match selector.kind {
+            HudSelectorKind::Mode => vec![
                 HudSelectorSlot {
                     key: "[L]",
                     name: "LIMIT",
                     pips: Some(1),
                     triangle_up: None,
-                    color: if market_mode { text } else { accent },
-                    selected: !market_mode,
+                    color: if ctx.state.hud_order_kind == HudOrderKind::Limit {
+                        accent
+                    } else {
+                        text
+                    },
+                    selected: ctx.state.hud_order_kind == HudOrderKind::Limit,
                 },
                 HudSelectorSlot {
                     key: "[M]",
                     name: "MARKET",
                     pips: Some(3),
                     triangle_up: None,
-                    color: if market_mode { accent } else { text },
-                    selected: market_mode,
+                    color: if ctx.state.hud_order_kind == HudOrderKind::Market {
+                        accent
+                    } else {
+                        text
+                    },
+                    selected: ctx.state.hud_order_kind == HudOrderKind::Market,
+                },
+                HudSelectorSlot {
+                    key: "[H]",
+                    name: "CHASE",
+                    pips: Some(2),
+                    triangle_up: None,
+                    color: if ctx.state.hud_order_kind == HudOrderKind::Chase {
+                        accent
+                    } else {
+                        text
+                    },
+                    selected: ctx.state.hud_order_kind == HudOrderKind::Chase,
                 },
             ],
-            HudSelectorKind::Side => [
+            HudSelectorKind::Side => vec![
                 HudSelectorSlot {
                     key: "[Y]",
                     name: "LONG",
@@ -1099,11 +1132,15 @@ impl CandlestickChart {
 /// what-will-fire confirmation.
 fn hud_context_prompt_label(armed: bool, state: &ChartState) -> String {
     if !armed {
-        return "[A] ARM  ·  [S] SIZE  ·  [L]/[M] MODE  ·  [C] CAM".to_string();
+        return "[A] ARM  ·  [S] SIZE  ·  [L]/[M]/[H] MODE  ·  [C] CAM".to_string();
     }
     match state.hud_order_kind {
         HudOrderKind::Market => format!(
             "CLICK > FIRE MKT {}  ·  [Y]/[X] SIDE  ·  [A] SAFE",
+            state.hud_market_side.label()
+        ),
+        HudOrderKind::Chase => format!(
+            "CLICK > START CHASE {}  ·  [Y]/[X] SIDE  ·  [A] SAFE",
             state.hud_market_side.label()
         ),
         HudOrderKind::Limit => "CLICK > FIRE LIMIT (SIDE BY PRICE)  ·  [A] SAFE".to_string(),
@@ -1244,13 +1281,20 @@ mod tests {
     #[test]
     fn selector_popup_sits_above_the_station_with_room_to_spare() {
         let station = hud_station_metrics(800.0, 500.0).expect("station should fit");
-        let selector = hud_selector_bounds(800.0, 500.0).expect("selector should fit");
+        let selector =
+            hud_selector_bounds(800.0, 500.0, HudSelectorKind::Mode).expect("selector should fit");
+        let side_selector = hud_selector_bounds(800.0, 500.0, HudSelectorKind::Side)
+            .expect("side selector should fit");
 
         assert_eq!(selector.x, station.bounds.x);
         assert_eq!(selector.width, station.bounds.width);
         assert!(selector.y + selector.height <= station.bounds.y);
+        assert!(selector.height > side_selector.height);
         // No station to anchor to: no popup either.
-        assert_eq!(hud_selector_bounds(800.0, STATION_MIN_H - 2.0), None);
+        assert_eq!(
+            hud_selector_bounds(800.0, STATION_MIN_H - 2.0, HudSelectorKind::Mode),
+            None
+        );
     }
 
     #[test]
@@ -1284,6 +1328,9 @@ mod tests {
 
         state.hud_order_kind = HudOrderKind::Limit;
         assert!(hud_context_prompt_label(true, &state).contains("FIRE LIMIT"));
+
+        state.hud_order_kind = HudOrderKind::Chase;
+        assert!(hud_context_prompt_label(true, &state).contains("START CHASE SHORT"));
     }
 
     #[test]
@@ -1342,5 +1389,7 @@ mod tests {
         state.hud_order_kind = HudOrderKind::Market;
         state.hud_market_side = HudMarketSide::Short;
         assert_eq!(hud_station_compact_summary(&state), "M>SHORT 2.5");
+        state.hud_order_kind = HudOrderKind::Chase;
+        assert_eq!(hud_station_compact_summary(&state), "H>SHORT 2.5");
     }
 }

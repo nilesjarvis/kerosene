@@ -230,6 +230,11 @@ They handle:
 - range measurement
 - reset-view behavior
 
+Gaming HUD order modes are key-bound: `L` selects Limit, `M` selects Market,
+and `H` selects Chase. Market and Chase use the `Y`/`X` side selector; Limit
+infers its side from the clicked price. An armed Chase click routes through the
+normal client-side Chase lifecycle for the chart's symbol.
+
 Interaction messages should carry chart ID and surface ID so detached windows
 and inline panes do not fight over state.
 

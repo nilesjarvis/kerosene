@@ -15,6 +15,15 @@ mod lifecycle;
 #[cfg(test)]
 mod tests;
 
+struct ChaseStartInputs {
+    symbol_key: String,
+    display_symbol: String,
+    quantity_input: String,
+    quantity_is_usd: bool,
+    reduce_only: bool,
+    use_ticket_percentage_sizing: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Chase Order Helpers
 // ---------------------------------------------------------------------------
@@ -119,30 +128,75 @@ impl TradingTerminal {
     }
 
     pub(crate) fn start_chase(&mut self, is_buy: bool) -> Task<Message> {
+        self.start_chase_with_inputs(
+            is_buy,
+            ChaseStartInputs {
+                symbol_key: self.active_symbol.clone(),
+                display_symbol: self.active_symbol_display.clone(),
+                quantity_input: self.order_quantity.clone(),
+                quantity_is_usd: self.order_quantity_is_usd,
+                reduce_only: self.order_reduce_only,
+                use_ticket_percentage_sizing: true,
+            },
+        )
+    }
+
+    pub(crate) fn start_chase_from_hud(
+        &mut self,
+        is_buy: bool,
+        symbol_key: String,
+        quantity_input: String,
+    ) -> Task<Message> {
+        let display_symbol = self.display_name_for_symbol(&symbol_key);
+        self.start_chase_with_inputs(
+            is_buy,
+            ChaseStartInputs {
+                symbol_key,
+                display_symbol,
+                quantity_input,
+                quantity_is_usd: false,
+                reduce_only: self.order_reduce_only,
+                use_ticket_percentage_sizing: false,
+            },
+        )
+    }
+
+    fn start_chase_with_inputs(&mut self, is_buy: bool, inputs: ChaseStartInputs) -> Task<Message> {
+        let ChaseStartInputs {
+            symbol_key,
+            display_symbol,
+            quantity_input,
+            quantity_is_usd,
+            reduce_only,
+            use_ticket_percentage_sizing,
+        } = inputs;
         let _theme = self.theme();
-        let Some(start_context) = self.advanced_order_start_context(AdvancedOrderKind::Chase)
+        let Some(start_context) =
+            self.advanced_order_start_context_for_symbol(AdvancedOrderKind::Chase, &symbol_key)
         else {
             self.toast_order_status();
             return Task::none();
         };
-        if let Err(message) = self
-            .validate_spot_quantity_denomination(&self.active_symbol, self.order_quantity_is_usd)
+        if let Err(message) = self.validate_spot_quantity_denomination(&symbol_key, quantity_is_usd)
         {
             self.set_order_status(message, true);
             self.toast_order_status();
             return Task::none();
         }
-        if let Err(message) = self.validate_spot_automation_quote(&self.active_symbol, "Chase") {
+        if let Err(message) = self.validate_spot_automation_quote(&symbol_key, "Chase") {
             self.set_order_status(message, true);
             self.toast_order_status();
             return Task::none();
         }
-        if let Some(task) = self.stale_percentage_order_quantity_task("starting a chase", is_buy) {
+        if use_ticket_percentage_sizing
+            && let Some(task) =
+                self.stale_percentage_order_quantity_task("starting a chase", is_buy)
+        {
             self.toast_order_status();
             return task;
         }
 
-        let raw_qty: f64 = match helpers::parse_positive_number(&self.order_quantity) {
+        let raw_qty: f64 = match helpers::parse_positive_number(&quantity_input) {
             Some(v) => v,
             _ => {
                 self.set_order_status("Invalid quantity".into(), true);
@@ -153,10 +207,10 @@ impl TradingTerminal {
         let sym = self
             .exchange_symbols
             .iter()
-            .find(|s| s.key == self.active_symbol)
+            .find(|s| s.key == symbol_key)
             .cloned();
         let Some(sym) = sym else {
-            self.set_order_status(format!("Symbol '{}' not found", self.active_symbol), true);
+            self.set_order_status(format!("Symbol '{symbol_key}' not found"), true);
             return Task::none();
         };
         if let Err(error) = self.validate_exchange_symbol_orderable(
@@ -181,33 +235,33 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let exact_spot_percentage = (sym.market_type == MarketType::Spot)
+        let exact_spot_percentage = (use_ticket_percentage_sizing
+            && sym.market_type == MarketType::Spot)
             .then(|| self.ticket_spot_percentage_balance_for_side(is_buy))
             .flatten();
         let mut percentage_buy_budget_mid = None;
-        let reference_price =
-            if self.order_quantity_is_usd || exact_spot_percentage.is_some_and(|_| is_buy) {
-                let Some(mut price) = self.resolve_mid_for_symbol(&self.active_symbol) else {
-                    self.set_order_status(
-                        format!(
-                            concat!(
-                                "Cannot start USD Chase: no fresh mid price for {}. ",
-                                "Wait for market data or enter size in coin units."
-                            ),
-                            self.active_symbol
+        let reference_price = if quantity_is_usd || exact_spot_percentage.is_some_and(|_| is_buy) {
+            let Some(mut price) = self.resolve_mid_for_symbol(&symbol_key) else {
+                self.set_order_status(
+                    format!(
+                        concat!(
+                            "Cannot start USD Chase: no fresh mid price for {}. ",
+                            "Wait for market data or enter size in coin units."
                         ),
-                        true,
-                    );
-                    return Task::none();
-                };
-                if exact_spot_percentage.is_some() && is_buy {
-                    percentage_buy_budget_mid = Some(price);
-                    price *= 1.0 + MAX_CHASE_DRIFT_FRACTION;
-                }
-                price
-            } else {
-                1.0
+                        symbol_key
+                    ),
+                    true,
+                );
+                return Task::none();
             };
+            if exact_spot_percentage.is_some() && is_buy {
+                percentage_buy_budget_mid = Some(price);
+                price *= 1.0 + MAX_CHASE_DRIFT_FRACTION;
+            }
+            price
+        } else {
+            1.0
+        };
 
         let (sizing_quantity, sizing_uses_price) = exact_spot_percentage
             .map(|(balance, percentage)| {
@@ -218,7 +272,7 @@ impl TradingTerminal {
                     is_buy,
                 )
             })
-            .unwrap_or((raw_qty, self.order_quantity_is_usd));
+            .unwrap_or((raw_qty, quantity_is_usd));
         let Some(qty) = order_size_from_quantity_input(
             sizing_quantity,
             reference_price,
@@ -235,18 +289,14 @@ impl TradingTerminal {
         let is_spot = sym.market_type == MarketType::Spot;
         let started_at = std::time::Instant::now();
         let started_at_ms = Self::now_ms();
-        let reduce_only = if is_spot {
-            false
-        } else {
-            self.order_reduce_only
-        };
+        let reduce_only = !is_spot && reduce_only;
         let chase_id = self.next_chase_id();
 
         self.chase_orders.insert(
             chase_id,
             ChaseOrder {
                 id: chase_id,
-                coin: self.active_symbol.clone(),
+                coin: symbol_key.clone(),
                 account_address: start_context.account_address,
                 agent_key: start_context.agent_key,
                 is_buy,
@@ -285,10 +335,7 @@ impl TradingTerminal {
 
         let side_str = if is_buy { "BUY" } else { "SELL" };
         self.order_status = Some((
-            format!(
-                "Chase {side_str} {qty} {}: loading book...",
-                self.active_symbol_display
-            ),
+            format!("Chase {side_str} {qty} {}: loading book...", display_symbol),
             false,
         ));
         self.pending_order_action = Some(if is_buy {
@@ -297,9 +344,8 @@ impl TradingTerminal {
             PendingOrderAction::ChaseSell
         });
 
-        let symbol = self.active_symbol.clone();
-        let sigfigs = self.chase_book_fetch_sigfigs(&symbol);
-        Task::perform(fetch_order_book(symbol, sigfigs), move |result| {
+        let sigfigs = self.chase_book_fetch_sigfigs(&symbol_key);
+        Task::perform(fetch_order_book(symbol_key, sigfigs), move |result| {
             Message::ChaseInitialBookLoaded {
                 chase_id,
                 result: Box::new(result),

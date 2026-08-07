@@ -41,6 +41,9 @@ impl CandlestickChart {
             keyboard::Key::Character(value) if value.eq_ignore_ascii_case("m") => {
                 Some(self.set_hud_order_kind(state, HudOrderKind::Market))
             }
+            keyboard::Key::Character(value) if value.eq_ignore_ascii_case("h") => {
+                Some(self.set_hud_order_kind(state, HudOrderKind::Chase))
+            }
             keyboard::Key::Character(value) if value.eq_ignore_ascii_case("y") => {
                 Some(self.set_hud_market_side(state, HudMarketSide::Long))
             }
@@ -149,6 +152,7 @@ impl CandlestickChart {
         let sound = match kind {
             HudOrderKind::Limit => HudUiSound::ModeLimit,
             HudOrderKind::Market => HudUiSound::ModeMarket,
+            HudOrderKind::Chase => HudUiSound::ModeChase,
         };
         self.hud_control_action(changed, sound)
     }
@@ -335,6 +339,15 @@ mod tests {
         assert_eq!(
             pressed_control(&chart, &mut state, "m"),
             Some((HudUiSound::ModeMarket, false))
+        );
+
+        assert_eq!(
+            pressed_control(&chart, &mut state, "h"),
+            Some((HudUiSound::ModeChase, true))
+        );
+        assert_eq!(
+            pressed_control(&chart, &mut state, "h"),
+            Some((HudUiSound::ModeChase, false))
         );
     }
 
