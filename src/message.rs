@@ -1,6 +1,8 @@
 use crate::account::{AccountData, AssetContext, WalletDetailsData, WalletTrackerSnapshot};
 use crate::account_analytics::{IncomeSnapshot, PortfolioHistory};
 use crate::account_state::{BottomTab, PositionsSortColumn};
+use crate::agent_runtime::AgentRuntimeEvent;
+use crate::agent_state::AgentPrompt;
 use crate::alfred_state::{AlfredCommandId, AlfredSelectionStep};
 use crate::annotations::{Annotation, AnnotationId, AnnotationStyle, DrawingTool};
 use crate::api::{self, Candle, OrderBook};
@@ -719,6 +721,13 @@ pub(crate) enum Message {
     AddIncomePane,
     AddComparisonChart,
     AddPairRatioChart,
+    OpenAgentWindow,
+    AgentInputChanged(AgentPrompt),
+    AgentSubmit,
+    AgentSnapshotPrepared(u64, u64, Result<PathBuf, String>),
+    AgentRuntimeEvent(AgentRuntimeEvent),
+    AgentAbort,
+    AgentNewChat,
     OpenSettingsWindow,
     OpenIntegrationsSettings,
     OpenScreenerWindow,

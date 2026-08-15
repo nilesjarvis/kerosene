@@ -7,6 +7,7 @@ use crate::message::Message;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum UpdateRoute {
     Account,
+    Agent,
     Alfred,
     Annotations,
     Calendar,
@@ -35,6 +36,14 @@ pub(super) enum UpdateRoute {
 
 pub(super) fn message_route(message: &Message) -> UpdateRoute {
     match message {
+        Message::OpenAgentWindow
+        | Message::AgentInputChanged(_)
+        | Message::AgentSubmit
+        | Message::AgentSnapshotPrepared(_, _, _)
+        | Message::AgentRuntimeEvent(_)
+        | Message::AgentAbort
+        | Message::AgentNewChat => UpdateRoute::Agent,
+
         Message::CreateCanvas | Message::OpenCanvas(_) => UpdateRoute::Canvas,
 
         Message::LayoutInputChanged(_)

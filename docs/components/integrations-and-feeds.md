@@ -15,7 +15,7 @@ streams.
 | Hydromancer | `src/hydromancer_api.rs`, `src/ws/hydromancer/`, `src/feed_update/connection.rs` | Funding history, authenticated liquidation/tracked-trade feeds, optional read-data provider. |
 | HyperDash | `src/hyperdash_api.rs`, `src/hyperdash_update/` | GraphQL liquidation heatmaps, liquidation levels, positioning info, liquidation distribution. |
 | Schwab | `src/schwab.rs`, `src/account_update/schwab.rs`, `src/settings_views/integrations.rs`, chart backfill paths | User-supplied OAuth credentials, linked brokerage account summaries, and Schwab price-history candles. |
-| OpenRouter | `src/openrouter_api.rs`, `src/openrouter_update.rs` | AI chat-completion client foundation for news and TradFi filing summaries; key validation and default-model selection. |
+| OpenRouter | `src/openrouter_api.rs`, `src/openrouter_update.rs`, `src/agent_*` | AI completion foundation plus the Pi-backed Kerosene Assistant; key validation and default-model selection. |
 | Feeds | `src/feed_state/`, `src/feed_update/`, `src/feed_views/` | Liquidation feed, tracked trades, Telegram feed, aggregation, alerts, rendering. |
 | Telegram | `src/telegram_feed.rs`, `src/telegram_fast_feed.rs` | Public channel scraping and optional MTProto fast/private feed. |
 | Calendar and screener | `src/calendar_*`, `src/screener_*` | Economic calendar, market screener contexts/history. |
@@ -160,8 +160,8 @@ approval for the relevant Schwab API scopes.
 
 ## OpenRouter
 
-OpenRouter is the foundation for AI-assisted features (news and TradFi filing
-summaries). The user supplies an API key in Settings > Integrations; saving it
+OpenRouter is the foundation for AI-assisted features (the Kerosene Assistant,
+news summaries, and TradFi filing summaries). The user supplies an API key in Settings > Integrations; saving it
 persists the key through the selected secret storage backend and validates it
 against `GET /api/v1/key`, surfacing usage/limit status in the settings UI.
 
@@ -183,6 +183,9 @@ arrive after a key change are dropped.
 
 The OpenRouter key is secret-bearing. The default model slug is plain,
 non-secret config (`openrouter_model`).
+
+The assistant's Pi RPC process, read-only snapshot contract, and packaging
+requirements are documented in [Kerosene Assistant And Pi](assistant-and-pi.md).
 
 ## Liquidation Feed
 

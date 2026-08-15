@@ -71,6 +71,18 @@ fn openrouter_routes_stay_on_openrouter_module() {
 }
 
 #[test]
+fn assistant_routes_stay_on_agent_module() {
+    assert_route(Message::OpenAgentWindow, UpdateRoute::Agent);
+    assert_route(
+        Message::AgentInputChanged("private question".to_string().into()),
+        UpdateRoute::Agent,
+    );
+    assert_route(Message::AgentSubmit, UpdateRoute::Agent);
+    assert_route(Message::AgentAbort, UpdateRoute::Agent);
+    assert_route(Message::AgentNewChat, UpdateRoute::Agent);
+}
+
+#[test]
 fn journal_spaghetti_and_wallet_tracker_routes_stay_on_feature_modules() {
     assert_route(Message::JournalRefresh, UpdateRoute::Journal);
     assert_route(

@@ -1,0 +1,330 @@
+use crate::agent_state::{AgentChatEntry, AgentChatRole, AgentStatus};
+use crate::app_state::TradingTerminal;
+use crate::helpers;
+use crate::message::Message;
+
+use iced::widget::container as container_style;
+use iced::widget::{
+    Column, Space, button, column, container, row, rule, scrollable, text, text_input,
+};
+use iced::{Alignment, Border, Color, Element, Fill, Length, Theme};
+
+// ---------------------------------------------------------------------------
+// Kerosene Assistant View
+// ---------------------------------------------------------------------------
+
+impl TradingTerminal {
+    pub(crate) fn view_agent_window(&self) -> Element<'_, Message> {
+        let theme = self.theme();
+        let status_color = match self.agent.status {
+            AgentStatus::Ready => theme.palette().success,
+            AgentStatus::Error => theme.palette().danger,
+            AgentStatus::Thinking | AgentStatus::Preparing | AgentStatus::Starting => {
+                theme.palette().warning
+            }
+            AgentStatus::Stopped => theme.extended_palette().background.weak.text,
+        };
+
+        let status_chip = container(
+            row![
+                text("●").size(9).color(status_color),
+                text(self.agent.status.label()).size(11).color(status_color),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+        )
+        .padding([5, 9])
+        .style(move |theme: &Theme| chip_style(theme, status_color));
+
+        let header = row![
+            column![
+                text("Kerosene Assistant")
+                    .size(17)
+                    .color(theme.palette().text),
+                text(format!(
+                    "Pi · OpenRouter · {}",
+                    self.openrouter_model_for_task()
+                ))
+                .size(11)
+                .color(theme.extended_palette().background.weak.text),
+            ]
+            .spacing(2)
+            .width(Fill),
+            status_chip,
+            button(text("New chat").size(11))
+                .padding([6, 10])
+                .on_press(Message::AgentNewChat),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center);
+
+        let conversation = if self.agent.entries.is_empty() {
+            self.view_agent_empty_state()
+        } else {
+            let mut messages = Column::new().spacing(12).width(Fill);
+            for entry in &self.agent.entries {
+                messages = messages.push(agent_entry(entry, &theme));
+            }
+            messages.into()
+        };
+
+        let scroll = scrollable(container(conversation).width(Fill).padding([16, 10]))
+            .id(iced::widget::Id::new("kerosene-agent-chat"))
+            .width(Fill)
+            .height(Fill);
+
+        let status_detail: Element<'_, Message> = if let Some(detail) = &self.agent.status_detail {
+            let color = if self.agent.status == AgentStatus::Error {
+                theme.palette().danger
+            } else {
+                theme.extended_palette().background.weak.text
+            };
+            container(text(detail).size(11).color(color))
+                .padding([5, 8])
+                .width(Fill)
+                .into()
+        } else {
+            Space::new().height(Length::Fixed(0.0)).into()
+        };
+
+        let can_send = self.openrouter_configured()
+            && !self.agent.status.is_busy()
+            && !self.agent.input.trim().is_empty();
+        let input = text_input(
+            "Ask about your portfolio, positions, or markets…",
+            &self.agent.input,
+        )
+        .style(helpers::text_input_style)
+        .on_input(|value| Message::AgentInputChanged(value.into()))
+        .on_submit_maybe(can_send.then_some(Message::AgentSubmit))
+        .padding([10, 12])
+        .size(13)
+        .width(Fill);
+
+        let action = if self.agent.status == AgentStatus::Thinking {
+            button(text("Stop").size(12))
+                .padding([10, 16])
+                .on_press(Message::AgentAbort)
+        } else {
+            button(text("Send").size(12))
+                .padding([10, 16])
+                .on_press_maybe(can_send.then_some(Message::AgentSubmit))
+        };
+
+        let usage = match (self.agent.total_tokens, self.agent.total_cost_usd) {
+            (Some(tokens), Some(cost)) => format!("{tokens} tokens · ${cost:.4}"),
+            (Some(tokens), None) => format!("{tokens} tokens"),
+            _ => "Ephemeral session".to_string(),
+        };
+        let footer = row![
+            text("Read-only data access")
+                .size(10)
+                .color(theme.palette().success),
+            Space::new().width(Fill),
+            text(usage)
+                .size(10)
+                .color(theme.extended_palette().background.weak.text),
+        ]
+        .align_y(Alignment::Center);
+
+        let configure: Element<'_, Message> = if self.openrouter_configured() {
+            Space::new().height(Length::Fixed(0.0)).into()
+        } else {
+            button(text("Configure OpenRouter").size(11))
+                .padding([7, 10])
+                .on_press(Message::OpenIntegrationsSettings)
+                .into()
+        };
+
+        let composer = column![
+            status_detail,
+            configure,
+            row![input, action].spacing(8).align_y(Alignment::Center),
+            footer,
+        ]
+        .spacing(7);
+
+        container(
+            column![
+                container(header).padding([14, 16]),
+                rule::horizontal(1),
+                scroll,
+                rule::horizontal(1),
+                container(composer).padding([12, 16]),
+            ]
+            .height(Fill),
+        )
+        .width(Fill)
+        .height(Fill)
+        .style(|theme: &Theme| container_style::Style {
+            background: Some(theme.extended_palette().background.base.color.into()),
+            ..Default::default()
+        })
+        .into()
+    }
+
+    fn view_agent_empty_state(&self) -> Element<'_, Message> {
+        let theme = self.theme();
+        container(
+            column![
+                text("Ask Kerosene anything")
+                    .size(20)
+                    .color(theme.palette().text),
+                text("The assistant can inspect a fresh, sanitized snapshot of your account, portfolio, live mids, aggregate positioning, and session analytics.")
+                    .size(12)
+                    .color(theme.extended_palette().background.weak.text),
+                container(
+                    column![
+                        text("Try asking").size(11).color(theme.palette().primary),
+                        text("• Where is my portfolio most concentrated?\n• Summarize my open-position risk.\n• Compare my active market with current positioning.")
+                            .size(12)
+                            .color(theme.palette().text),
+                    ]
+                    .spacing(7),
+                )
+                .padding(14)
+                .width(Fill)
+                .style(agent_empty_card_style),
+                text("Financial account data in the snapshot is sent to the selected OpenRouter model when needed. Keys and wallet addresses are never included.")
+                    .size(10)
+                    .color(theme.extended_palette().background.weak.text),
+            ]
+            .spacing(14)
+            .max_width(560.0),
+        )
+        .center_x(Fill)
+        .center_y(Fill)
+        .into()
+    }
+}
+
+fn agent_entry<'a>(entry: &'a AgentChatEntry, theme: &Theme) -> Element<'a, Message> {
+    match entry {
+        AgentChatEntry::Message { role, text: body } => {
+            let label = match role {
+                AgentChatRole::User => "You",
+                AgentChatRole::Assistant => "Assistant",
+            };
+            let bubble = container(
+                column![
+                    text(label)
+                        .size(10)
+                        .color(theme.extended_palette().background.weak.text),
+                    text(body.as_str()).size(13).color(theme.palette().text),
+                ]
+                .spacing(5),
+            )
+            .padding([10, 12])
+            .max_width(580.0)
+            .style(match role {
+                AgentChatRole::User => user_bubble_style,
+                AgentChatRole::Assistant => assistant_bubble_style,
+            });
+
+            match role {
+                AgentChatRole::User => row![Space::new().width(Fill), bubble].into(),
+                AgentChatRole::Assistant => row![bubble, Space::new().width(Fill)].into(),
+            }
+        }
+        AgentChatEntry::Tool {
+            name,
+            finished,
+            is_error,
+            ..
+        } => {
+            let (icon, label, color) = if *is_error {
+                ("×", "Data read failed", theme.palette().danger)
+            } else if *finished {
+                ("✓", "Read current Kerosene data", theme.palette().success)
+            } else {
+                (
+                    "…",
+                    "Reading current Kerosene data",
+                    theme.palette().warning,
+                )
+            };
+            container(
+                row![
+                    text(icon).size(12).color(color),
+                    column![
+                        text(label).size(11).color(theme.palette().text),
+                        text(name.as_str())
+                            .size(9)
+                            .color(theme.extended_palette().background.weak.text),
+                    ]
+                    .spacing(1),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+            )
+            .padding([7, 10])
+            .max_width(300.0)
+            .style(agent_tool_style)
+            .into()
+        }
+    }
+}
+
+fn chip_style(theme: &Theme, color: Color) -> container_style::Style {
+    let mut background = color;
+    background.a = 0.08;
+    container_style::Style {
+        background: Some(background.into()),
+        border: Border {
+            radius: 99.0.into(),
+            width: 1.0,
+            color: theme.extended_palette().background.strong.color,
+        },
+        ..Default::default()
+    }
+}
+
+fn user_bubble_style(theme: &Theme) -> container_style::Style {
+    let mut background = theme.palette().primary;
+    background.a = 0.12;
+    container_style::Style {
+        background: Some(background.into()),
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: theme.palette().primary,
+        },
+        ..Default::default()
+    }
+}
+
+fn assistant_bubble_style(theme: &Theme) -> container_style::Style {
+    container_style::Style {
+        background: Some(theme.extended_palette().background.weak.color.into()),
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: theme.extended_palette().background.strong.color,
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_tool_style(theme: &Theme) -> container_style::Style {
+    container_style::Style {
+        background: Some(theme.extended_palette().background.weak.color.into()),
+        border: Border {
+            radius: 6.0.into(),
+            width: 1.0,
+            color: theme.extended_palette().background.strong.color,
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_empty_card_style(theme: &Theme) -> container_style::Style {
+    container_style::Style {
+        background: Some(theme.extended_palette().background.weak.color.into()),
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: theme.extended_palette().background.strong.color,
+        },
+        ..Default::default()
+    }
+}

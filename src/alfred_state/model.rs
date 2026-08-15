@@ -53,6 +53,7 @@ pub(crate) enum AlfredCommandId {
     OpenWalletTrackerWindow,
     OpenWalletClustersWindow,
     OpenScreenerWindow,
+    OpenAgentWindow,
     OpenSettingsWindow,
     CreateCanvas,
     OpenCanvas(CanvasId),

@@ -43,7 +43,11 @@ impl TradingTerminal {
             }
             Message::WindowClosed(id) => {
                 if Some(id) == self.main_window_id {
+                    self.close_agent_session();
                     return self.flush_pending_config_save_and_exit();
+                }
+                if Some(id) == self.agent.window_id {
+                    self.close_agent_session();
                 }
                 if Some(id) == self.settings_window_id {
                     self.settings_window_id = None;

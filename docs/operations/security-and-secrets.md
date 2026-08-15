@@ -11,6 +11,7 @@ Secret-bearing values include:
 - Hyperliquid agent private keys
 - Hydromancer API key
 - HyperDash API key
+- OpenRouter API key
 - X OAuth access token, Client ID, and refresh token
 - Telegram fast-mode login code/password/API hash while in memory
 - Telegram API hash embedded at build time through
@@ -43,6 +44,11 @@ Secret-bearing state includes:
 
 Do not clone secrets unnecessarily. When a task must own a key, keep the
 ownership scope narrow.
+
+The Kerosene Assistant passes an owned OpenRouter key to the Pi child process
+through its environment. The key must never appear in process arguments, the
+assistant snapshot, RPC payloads, transcripts, or debug output. Pi runs with an
+isolated config directory and no session persistence.
 
 ## Storage Modes
 

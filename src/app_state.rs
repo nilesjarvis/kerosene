@@ -1,6 +1,7 @@
 use crate::account::AccountData;
 use crate::account_state::{ActiveAccountSource, AddAccountWindowState, PositionsSortColumn};
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
+use crate::agent_state::AgentState;
 use crate::alfred_state::AlfredState;
 use crate::annotations::DrawingTool;
 use crate::api::{self, ExchangeSymbol};
@@ -545,6 +546,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) openrouter_key_input: SensitiveString,
     pub(crate) openrouter_key_status: Option<(String, bool)>,
     pub(crate) openrouter_model: String,
+    pub(crate) agent: AgentState,
     // Toast notification queue
     pub(crate) toasts: Vec<Toast>,
     pub(crate) next_toast_id: u64,
