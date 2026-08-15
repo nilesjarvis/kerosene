@@ -25,7 +25,7 @@ const TICKER_TAPE_ITEM_HORIZONTAL_PADDING: u16 = 12;
 const TICKER_TAPE_ITEM_SPACING: u32 = 5;
 const TICKER_TAPE_SEPARATOR_WIDTH: f32 = 1.0;
 const TICKER_TAPE_SECTION_SEPARATOR_WIDTH: f32 = 1.0;
-const TICKER_TAPE_EXCHANGE_STATS_WIDTH: f32 = 184.0;
+const TICKER_TAPE_EXCHANGE_STATS_WIDTH: f32 = 356.0;
 const TICKER_TAPE_TEXT_CHAR_WIDTH: f32 = 7.0;
 
 impl TradingTerminal {
@@ -131,15 +131,15 @@ impl TradingTerminal {
             .into()
         };
 
-        let volume_24h = self
-            .ticker_tape_exchange_stats
-            .map(|stats| stats.volume_24h_notional_usd);
+        let exchange_stats = self.ticker_tape_exchange_stats;
+        let volume_24h = exchange_stats.map(|stats| stats.volume_24h_notional_usd);
+        let open_interest = exchange_stats.map(|stats| stats.open_interest_notional_usd);
 
         container(
             row![
                 tape_layer,
                 ticker_tape_section_separator(),
-                ticker_tape_exchange_stats(volume_24h, &theme, stats_width),
+                ticker_tape_exchange_stats(volume_24h, open_interest, &theme, stats_width),
             ]
             .spacing(0)
             .width(Fill)

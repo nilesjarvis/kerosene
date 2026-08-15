@@ -226,7 +226,8 @@ The ticker tape is an optional full-width strip below the top bar. It displays
 favourite symbols and scrolls continuously. A fixed exchange-stats section on
 the right remains visible while the favourites move. Its 24-hour volume sums
 the live `dayNtlVlm` values from Hyperliquid's main-perp, HIP-3, and spot asset
-contexts.
+contexts. Notional open interest sums `openInterest * markPx` across main-perp
+and HIP-3 contexts; spot is excluded because it has no open interest.
 
 State includes:
 

@@ -48,9 +48,9 @@ pub(super) fn percent_label(pct: Option<f64>) -> String {
         .unwrap_or_else(|| "-".to_string())
 }
 
-pub(super) fn exchange_volume_label(volume: Option<f64>) -> String {
-    volume
-        .filter(|volume| volume.is_finite() && *volume >= 0.0)
+pub(super) fn exchange_stat_usd_label(value: Option<f64>) -> String {
+    value
+        .filter(|value| value.is_finite() && *value >= 0.0)
         .map(format_compact_usd)
         .unwrap_or_else(|| "-".to_string())
 }

@@ -3,7 +3,7 @@ use crate::app_state::TradingTerminal;
 use crate::denomination::DisplayDenominationContext;
 
 use super::formatting::{
-    TickerTapeItem, exchange_volume_label, percent_change, percent_label, price_label,
+    TickerTapeItem, exchange_stat_usd_label, percent_change, percent_label, price_label,
     ticker_tape_item_width,
 };
 use super::{TICKER_TAPE_ITEM_MAX_WIDTH, TICKER_TAPE_ITEM_MIN_WIDTH};
@@ -107,9 +107,9 @@ fn ticker_tape_labels_use_existing_placeholder_and_sign_conventions() {
     assert_eq!(percent_label(None), "-");
     assert_eq!(percent_label(Some(1.234)), "+1.23%");
     assert_eq!(percent_label(Some(-1.234)), "-1.23%");
-    assert_eq!(exchange_volume_label(None), "-");
-    assert_eq!(exchange_volume_label(Some(4_250_000_000.0)), "$4.25B");
-    assert_eq!(exchange_volume_label(Some(f64::NAN)), "-");
+    assert_eq!(exchange_stat_usd_label(None), "-");
+    assert_eq!(exchange_stat_usd_label(Some(4_250_000_000.0)), "$4.25B");
+    assert_eq!(exchange_stat_usd_label(Some(f64::NAN)), "-");
 }
 
 #[test]

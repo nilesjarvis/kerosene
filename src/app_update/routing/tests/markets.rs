@@ -141,6 +141,7 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
             10,
             Ok(crate::api::ExchangeStats {
                 volume_24h_notional_usd: 4_250_000_000.0,
+                open_interest_notional_usd: 11_750_000_000.0,
             }),
         ),
         UpdateRoute::Market,

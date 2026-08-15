@@ -257,9 +257,13 @@ mod tests {
         terminal
     }
 
-    fn exchange_stats(volume_24h_notional_usd: f64) -> api::ExchangeStats {
+    fn exchange_stats(
+        volume_24h_notional_usd: f64,
+        open_interest_notional_usd: f64,
+    ) -> api::ExchangeStats {
         api::ExchangeStats {
             volume_24h_notional_usd,
+            open_interest_notional_usd,
         }
     }
 
@@ -283,13 +287,13 @@ mod tests {
         let _task = terminal.update_ticker_tape_market(Message::TickerTapeExchangeStatsLoaded(
             request_id,
             10,
-            Ok(exchange_stats(4_250_000_000.0)),
+            Ok(exchange_stats(4_250_000_000.0, 11_750_000_000.0)),
         ));
 
         assert!(!terminal.ticker_tape_exchange_stats_loading);
         assert_eq!(
             terminal.ticker_tape_exchange_stats,
-            Some(exchange_stats(4_250_000_000.0))
+            Some(exchange_stats(4_250_000_000.0, 11_750_000_000.0))
         );
         assert_eq!(terminal.ticker_tape_exchange_stats_last_fetch_ms, Some(10));
     }
@@ -297,7 +301,8 @@ mod tests {
     #[test]
     fn ticker_tape_exchange_stats_error_preserves_last_complete_snapshot() {
         let mut terminal = terminal_with_ticker_tape(&[]);
-        terminal.ticker_tape_exchange_stats = Some(exchange_stats(4_000_000_000.0));
+        terminal.ticker_tape_exchange_stats =
+            Some(exchange_stats(4_000_000_000.0, 11_000_000_000.0));
         terminal.ticker_tape_exchange_stats_last_fetch_ms = Some(5);
         let _task = terminal.request_ticker_tape_exchange_stats_refresh(true);
         let request_id = terminal.ticker_tape_exchange_stats_request_id;
@@ -311,7 +316,7 @@ mod tests {
         assert!(!terminal.ticker_tape_exchange_stats_loading);
         assert_eq!(
             terminal.ticker_tape_exchange_stats,
-            Some(exchange_stats(4_000_000_000.0))
+            Some(exchange_stats(4_000_000_000.0, 11_000_000_000.0))
         );
         assert_eq!(terminal.ticker_tape_exchange_stats_last_fetch_ms, Some(5));
     }

@@ -3,7 +3,7 @@ use crate::helpers;
 use crate::message::Message;
 
 use super::formatting::{
-    TickerTapeItem, exchange_volume_label, pct_color, percent_label, price_label,
+    TickerTapeItem, exchange_stat_usd_label, pct_color, percent_label, price_label,
 };
 use super::{
     TICKER_TAPE_HEIGHT, TICKER_TAPE_ICON_SIZE, TICKER_TAPE_ITEM_HORIZONTAL_PADDING,
@@ -102,18 +102,15 @@ pub(super) fn ticker_tape_section_separator() -> Element<'static, Message> {
 
 pub(super) fn ticker_tape_exchange_stats(
     volume_24h: Option<f64>,
+    open_interest: Option<f64>,
     theme: &Theme,
     width: f32,
 ) -> Element<'static, Message> {
     let content = row![
-        text("24h Volume")
-            .size(11)
-            .color(theme.extended_palette().background.weak.text),
-        text(exchange_volume_label(volume_24h))
-            .size(12)
-            .font(crate::app_fonts::monospace_font()),
+        ticker_tape_exchange_stat("24h Volume", volume_24h, theme),
+        ticker_tape_exchange_stat("Open Interest", open_interest, theme),
     ]
-    .spacing(8)
+    .spacing(20)
     .align_y(iced::Alignment::Center);
 
     container(content)
@@ -123,6 +120,24 @@ pub(super) fn ticker_tape_exchange_stats(
         .center_y(Length::Fixed(TICKER_TAPE_HEIGHT))
         .clip(true)
         .into()
+}
+
+fn ticker_tape_exchange_stat(
+    label: &'static str,
+    value: Option<f64>,
+    theme: &Theme,
+) -> Element<'static, Message> {
+    row![
+        text(label)
+            .size(11)
+            .color(theme.extended_palette().background.weak.text),
+        text(exchange_stat_usd_label(value))
+            .size(12)
+            .font(crate::app_fonts::monospace_font()),
+    ]
+    .spacing(8)
+    .align_y(iced::Alignment::Center)
+    .into()
 }
 
 pub(super) fn ticker_tape_bar_style(theme: &Theme, corner_radius: f32) -> container_style::Style {
