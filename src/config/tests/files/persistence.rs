@@ -109,23 +109,44 @@ fn config_save_errors_do_not_expose_config_directory_path() {
 }
 
 #[test]
-fn config_load_ignores_backup_when_primary_is_missing() {
+fn config_load_recovers_backup_when_primary_is_missing() {
     let _warning_guard = config_warning_guard();
     let path = test_path("missing-primary-backup");
     let backup_path = backup_config_path(&path);
-    let config = address_book_config(
-        "0xbabababababababababababababababababababa",
-        "Missing Primary Backup",
-        None,
-        &[],
+    let password = "backup-password";
+    let config = encrypted_config_fixture(
+        &[(
+            "acct-a",
+            "0xbabababababababababababababababababababa",
+            "agent-a",
+        )],
+        password,
     );
 
     create_parent_dir(&path);
     write_file(&backup_path, config_json(&config));
 
     let loaded = load_config_from_path(&path).expect("missing primary should not fail");
-    assert!(loaded.is_none());
-    assert!(take_config_warnings().is_empty());
+    let loaded = loaded.expect("valid backup should recover a missing primary config");
+    assert_eq!(loaded.accounts[0].secret_id, "acct-a");
+    assert_eq!(
+        loaded.credential_storage_mode,
+        CredentialStorageMode::EncryptedConfig
+    );
+    let payload = decrypt_secrets(
+        loaded
+            .encrypted_secrets
+            .as_ref()
+            .expect("encrypted credential blob should be recovered"),
+        password,
+    )
+    .expect("recovered credential blob should decrypt");
+    assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
+    assert!(
+        take_config_warnings()
+            .iter()
+            .any(|warning| warning.contains("primary config was missing"))
+    );
 
     cleanup_path(&path);
 }

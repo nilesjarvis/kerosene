@@ -515,15 +515,62 @@ fn corrupt_bundle_does_not_fall_back_to_legacy_keychain_or_overwrite() {
     assert_eq!(stores.get(), 0);
     assert_eq!(cleanups.get(), 0);
     assert_eq!(config.accounts[0].agent_key.as_str(), "");
-    assert!(!config.secret_migration_save_blocked);
+    assert!(config.secret_migration_save_blocked);
     assert!(
         warnings
             .borrow()
             .iter()
             .any(|warning| warning.contains("left unchanged")
+                && warning.contains("config saves are paused")
                 && warning.contains("api_key=<redacted>")
                 && !warning.contains("super-secret"))
     );
+}
+
+#[test]
+fn missing_config_recovers_accounts_from_keychain_bundle() {
+    let wallet_a = "0xabc0000000000000000000000000000000000000";
+    let wallet_b = "0xdef0000000000000000000000000000000000000";
+    let mut config = KeroseneConfig {
+        accounts: vec![test_profile("new-random-id", "")],
+        ..KeroseneConfig::default()
+    };
+    let bundle = SecretPayload::from_credentials(
+        &[
+            test_profile_with_wallet("account-a", wallet_a, "agent-a"),
+            test_profile_with_wallet("account-b", wallet_b, "agent-b"),
+        ],
+        "hydro-key",
+        "",
+    );
+    let warnings = RefCell::new(Vec::new());
+
+    load_os_keychain_secrets_with_account_recovery(
+        &mut config,
+        true,
+        || Ok(Some(bundle.clone())),
+        |_| Ok(()),
+        cleanup_hooks(|_| Ok(())),
+        |_| panic!("valid bundle should not read legacy profile keychain entries"),
+        no_legacy_global_secrets,
+        |warning| warnings.borrow_mut().push(warning),
+    );
+
+    assert_eq!(config.accounts.len(), 2);
+    assert_eq!(config.accounts[0].secret_id, "account-a");
+    assert_eq!(config.accounts[0].name, "Main Trading");
+    assert_eq!(config.accounts[0].wallet_address, wallet_a);
+    assert_eq!(config.accounts[0].agent_key.as_str(), "agent-a");
+    assert_eq!(config.accounts[1].secret_id, "account-b");
+    assert_eq!(config.accounts[1].name, "Recovered Account 2");
+    assert_eq!(config.accounts[1].wallet_address, wallet_b);
+    assert_eq!(config.accounts[1].agent_key.as_str(), "agent-b");
+    assert_eq!(config.hydromancer_api_key.as_str(), "hydro-key");
+    assert_eq!(config.active_account_index, 0);
+    assert!(config.secret_cleanup_state_dirty);
+    assert!(warnings.borrow().iter().any(|warning| {
+        warning.contains("Recovered 2 saved account profile(s) from the OS keychain")
+    }));
 }
 
 #[test]
