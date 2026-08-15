@@ -22,8 +22,8 @@ pub use clear::{ClearConfigSummary, clear_all_configs};
 pub(crate) use files::installed_config_save_error_for_test;
 pub(crate) use files::set_in_memory_config_mode;
 pub use files::{
-    api_cache_dir, custom_font_path, custom_sound_path, font_storage_dir, journal_cache_path,
-    load_config, save_config, sound_storage_dir,
+    api_cache_dir, assistant_sessions_path, custom_font_path, custom_sound_path, font_storage_dir,
+    journal_cache_path, load_config, save_config, sound_storage_dir,
 };
 pub(crate) use files::{config_save_installed_snapshot, user_config_dir, user_config_path};
 pub(crate) use files::{in_memory_config_mode, normalize_imported_saved_layout};

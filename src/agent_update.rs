@@ -1,3 +1,4 @@
+use crate::agent_persistence;
 use crate::agent_runtime::{self, AgentRuntimeConfig, AgentRuntimeEvent};
 use crate::agent_snapshot;
 use crate::agent_state::{AgentChatEntry, AgentChatRole, AgentPrompt, AgentStatus};
@@ -35,18 +36,10 @@ impl TradingTerminal {
                 self.agent.status_detail = Some("Stopping the current response…".to_string());
                 Task::none()
             }
-            Message::AgentNewChat => {
-                let generation = self.agent.runtime_generation;
-                let request_id = self.agent.snapshot_request_id;
-                let workspace_dir = agent_snapshot::workspace_dir();
-                agent_runtime::shutdown(generation);
-                agent_snapshot::clear_sensitive_runtime_files(
-                    &workspace_dir,
-                    generation,
-                    request_id,
-                );
-                self.agent.reset_session();
-                Task::none()
+            Message::AgentNewChat => self.create_agent_session(),
+            Message::AgentSelectSession(id) => self.select_agent_session(id),
+            Message::AgentSessionsSaved(generation, result) => {
+                self.handle_agent_sessions_saved(generation, result.into_result())
             }
             Message::AgentOpenLink(uri) => {
                 let uri = uri.into_string().trim().to_string();
@@ -97,8 +90,8 @@ impl TradingTerminal {
         }
 
         let settings = window::Settings {
-            size: Size::new(760.0, 720.0),
-            min_size: Some(Size::new(520.0, 480.0)),
+            size: Size::new(940.0, 720.0),
+            min_size: Some(Size::new(720.0, 480.0)),
             ..crate::window_chrome::settings(self.custom_window_chrome_active)
         };
         let (id, task) = window::open(settings);
@@ -137,6 +130,8 @@ impl TradingTerminal {
             }
         };
 
+        let runtime_prompt = self.agent.runtime_prompt(&prompt);
+        self.agent.note_user_prompt(&prompt, Self::now_ms());
         self.agent.input.clear();
         self.agent.entries.push(AgentChatEntry::Message {
             role: AgentChatRole::User,
@@ -147,13 +142,14 @@ impl TradingTerminal {
         if !self.agent.runtime_connected {
             self.agent.begin_new_runtime();
         }
-        let (generation, request_id) = self.agent.begin_snapshot(prompt.into());
+        let (generation, request_id) = self.agent.begin_snapshot(runtime_prompt);
         let workspace_dir = agent_snapshot::workspace_dir();
 
-        Task::perform(
+        let snapshot_task = Task::perform(
             agent_snapshot::write_agent_snapshot(workspace_dir, generation, request_id, snapshot),
             move |result| Message::AgentSnapshotPrepared(generation, request_id, result),
-        )
+        );
+        Task::batch([snapshot_task, self.persist_agent_sessions()])
     }
 
     fn handle_agent_snapshot_prepared(
@@ -219,11 +215,13 @@ impl TradingTerminal {
 
         match agent_runtime::send_prompt(self.agent.runtime_generation, prompt) {
             Ok(()) => {
+                self.agent.mark_context_replayed();
                 self.agent.status = AgentStatus::Thinking;
                 self.agent.status_detail = None;
             }
             Err(error) => {
                 self.agent.runtime_connected = false;
+                self.agent.require_context_replay();
                 self.agent.status = AgentStatus::Error;
                 self.agent.status_detail = Some(redact_sensitive_response_text(&error));
             }
@@ -313,6 +311,7 @@ impl TradingTerminal {
                             agent_runtime::send_prompt(self.agent.runtime_generation, retry)
                         {
                             self.agent.runtime_connected = false;
+                            self.agent.require_context_replay();
                             self.agent.status = AgentStatus::Error;
                             self.agent.status_detail = Some(redact_sensitive_response_text(&error));
                         }
@@ -325,7 +324,8 @@ impl TradingTerminal {
                                 .to_string(),
                         );
                         self.agent.assistant_entry_index = None;
-                        return Task::none();
+                        self.agent.mark_active_session_updated(Self::now_ms());
+                        return self.persist_agent_sessions();
                     }
                     EmptyResponseAction::Accept => {}
                 }
@@ -334,22 +334,109 @@ impl TradingTerminal {
                 self.agent.status_detail = None;
                 self.agent.assistant_entry_index = None;
                 self.agent.suppress_empty_response_retry = false;
+                self.agent.mark_active_session_updated(Self::now_ms());
+                return self.persist_agent_sessions();
             }
             AgentRuntimeEvent::Error { message, .. } => {
                 self.agent.pending_prompt = None;
                 self.agent.status = AgentStatus::Error;
                 self.agent.status_detail = Some(self.redact_agent_runtime_error(&message));
                 self.agent.assistant_entry_index = None;
+                self.agent.mark_active_session_updated(Self::now_ms());
+                return self.persist_agent_sessions();
             }
             AgentRuntimeEvent::Exited { .. } => {
                 self.agent.runtime_connected = false;
+                self.agent.require_context_replay();
                 if self.agent.status != AgentStatus::Error
                     && self.agent.status != AgentStatus::Stopped
                 {
                     self.agent.status = AgentStatus::Error;
                     self.agent.status_detail = Some("Pi stopped unexpectedly.".to_string());
                 }
+                if self.agent.current_turn_has_text {
+                    self.agent.mark_active_session_updated(Self::now_ms());
+                    return self.persist_agent_sessions();
+                }
             }
+        }
+        Task::none()
+    }
+
+    fn create_agent_session(&mut self) -> Task<Message> {
+        if self.agent.status.is_busy() {
+            self.agent.status_detail =
+                Some("Stop the current response before creating a session.".to_string());
+            return Task::none();
+        }
+        let generation = self.agent.runtime_generation;
+        let request_id = self.agent.snapshot_request_id;
+        if !self.agent.create_session(Self::now_ms()) {
+            return Task::none();
+        }
+        self.shutdown_agent_runtime_files(generation, request_id);
+        Task::batch([
+            self.persist_agent_sessions(),
+            self.snap_agent_chat_to_latest(),
+        ])
+    }
+
+    fn select_agent_session(&mut self, id: u64) -> Task<Message> {
+        if self.agent.status.is_busy() {
+            self.agent.status_detail =
+                Some("Stop the current response before switching sessions.".to_string());
+            return Task::none();
+        }
+        let generation = self.agent.runtime_generation;
+        let request_id = self.agent.snapshot_request_id;
+        if !self.agent.switch_session(id) {
+            return Task::none();
+        }
+        self.shutdown_agent_runtime_files(generation, request_id);
+        Task::batch([
+            self.persist_agent_sessions(),
+            self.snap_agent_chat_to_latest(),
+        ])
+    }
+
+    fn shutdown_agent_runtime_files(&self, generation: u64, request_id: u64) {
+        agent_runtime::shutdown(generation);
+        agent_snapshot::clear_sensitive_runtime_files(
+            &agent_snapshot::workspace_dir(),
+            generation,
+            request_id,
+        );
+    }
+
+    fn persist_agent_sessions(&mut self) -> Task<Message> {
+        if self.agent.persistence_in_flight {
+            self.agent.persistence_dirty = true;
+            return Task::none();
+        }
+        self.agent.persistence_generation = self.agent.persistence_generation.wrapping_add(1);
+        let generation = self.agent.persistence_generation;
+        self.agent.persistence_in_flight = true;
+        self.agent.persistence_dirty = false;
+        let store = self.agent.persisted_store();
+        Task::perform(agent_persistence::save_agent_store(store), move |result| {
+            Message::AgentSessionsSaved(generation, result.into())
+        })
+    }
+
+    fn handle_agent_sessions_saved(
+        &mut self,
+        generation: u64,
+        result: Result<(), String>,
+    ) -> Task<Message> {
+        if generation != self.agent.persistence_generation {
+            return Task::none();
+        }
+        self.agent.persistence_in_flight = false;
+        self.agent.persistence_error = result.err().map(|error| {
+            redact_sensitive_response_text(&format!("Could not save Assistant sessions: {error}"))
+        });
+        if self.agent.persistence_dirty {
+            return self.persist_agent_sessions();
         }
         Task::none()
     }
@@ -384,23 +471,21 @@ impl TradingTerminal {
     pub(crate) fn invalidate_agent_runtime(&mut self) {
         let generation = self.agent.runtime_generation;
         let request_id = self.agent.snapshot_request_id;
-        agent_runtime::shutdown(generation);
-        agent_snapshot::clear_sensitive_runtime_files(
-            &agent_snapshot::workspace_dir(),
-            generation,
-            request_id,
-        );
-        self.agent.reset_session();
+        self.shutdown_agent_runtime_files(generation, request_id);
+        self.agent.reset_runtime();
     }
 
     pub(crate) fn close_agent_session(&mut self) {
         let generation = self.agent.runtime_generation;
         let request_id = self.agent.snapshot_request_id;
-        let workspace_dir = agent_snapshot::workspace_dir();
-        agent_runtime::shutdown(generation);
-        agent_snapshot::clear_sensitive_runtime_files(&workspace_dir, generation, request_id);
-        self.agent.reset_session();
+        self.shutdown_agent_runtime_files(generation, request_id);
+        self.agent.reset_runtime();
         self.agent.window_id = None;
+        if let Err(error) = agent_persistence::save_agent_store_now(&self.agent.persisted_store()) {
+            self.agent.persistence_error = Some(redact_sensitive_response_text(&format!(
+                "Could not save Assistant sessions: {error}"
+            )));
+        }
     }
 }
 
@@ -537,5 +622,45 @@ mod tests {
             empty_response_action(true, false, 0),
             EmptyResponseAction::Accept
         );
+    }
+
+    #[test]
+    fn new_chat_creates_a_saved_session_instead_of_erasing_the_previous_one() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let first_id = terminal.agent.active_session_id;
+        terminal.agent.entries.push(AgentChatEntry::Message {
+            role: AgentChatRole::User,
+            text: "private first session".to_string(),
+            markdown: None,
+        });
+
+        let _ = terminal.update_agent(Message::AgentNewChat);
+
+        assert_ne!(terminal.agent.active_session_id, first_id);
+        assert!(terminal.agent.entries.is_empty());
+        assert_eq!(terminal.agent.sessions.len(), 1);
+        assert!(matches!(
+            terminal.agent.sessions[0].entries.as_slice(),
+            [AgentChatEntry::Message { text, .. }] if text == "private first session"
+        ));
+    }
+
+    #[test]
+    fn closing_assistant_preserves_active_transcript() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.agent.window_id = Some(window::Id::unique());
+        terminal.agent.entries.push(AgentChatEntry::Message {
+            role: AgentChatRole::Assistant,
+            text: "saved answer".to_string(),
+            markdown: Some(Box::new(iced::widget::markdown::Content::parse(
+                "saved answer",
+            ))),
+        });
+
+        terminal.close_agent_session();
+
+        assert!(terminal.agent.window_id.is_none());
+        assert_eq!(terminal.agent.entries.len(), 1);
+        assert!(terminal.agent.needs_context_replay);
     }
 }

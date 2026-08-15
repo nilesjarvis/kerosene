@@ -50,6 +50,12 @@ through its environment. The key must never appear in process arguments, the
 assistant snapshot, RPC payloads, transcripts, or debug output. Pi runs with an
 isolated config directory and no session persistence.
 
+Kerosene itself persists bounded Assistant chats in the owner-only
+`assistant_sessions.json` side-file. Chat content is sensitive account context,
+not a secret credential: persistence types and save-result messages must redact
+content from `Debug`, the side-file must never contain the OpenRouter key or raw
+tool payloads, and Clear All Config must remove it.
+
 ## Storage Modes
 
 Credential storage supports:

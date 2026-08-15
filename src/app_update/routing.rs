@@ -43,6 +43,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AgentRuntimeEvent(_)
         | Message::AgentAbort
         | Message::AgentNewChat
+        | Message::AgentSelectSession(_)
+        | Message::AgentSessionsSaved(_, _)
         | Message::AgentOpenLink(_)
         | Message::AgentLinkOpened(_) => UpdateRoute::Agent,
 

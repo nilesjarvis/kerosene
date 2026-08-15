@@ -39,11 +39,11 @@ impl TradingTerminal {
 
         let header = row![
             column![
-                text("Kerosene Assistant")
+                text(self.agent.active_session_title.as_str())
                     .size(17)
                     .color(theme.palette().text),
                 text(format!(
-                    "Pi · OpenRouter · {}",
+                    "Kerosene Assistant · Pi · OpenRouter · {}",
                     self.openrouter_model_for_task()
                 ))
                 .size(11)
@@ -52,9 +52,6 @@ impl TradingTerminal {
             .spacing(2)
             .width(Fill),
             status_chip,
-            button(text("New chat").size(11))
-                .padding([6, 10])
-                .on_press(Message::AgentNewChat),
         ]
         .spacing(10)
         .align_y(Alignment::Center);
@@ -115,7 +112,7 @@ impl TradingTerminal {
         let usage = match (self.agent.total_tokens, self.agent.total_cost_usd) {
             (Some(tokens), Some(cost)) => format!("{tokens} tokens · ${cost:.4}"),
             (Some(tokens), None) => format!("{tokens} tokens"),
-            _ => "Ephemeral session".to_string(),
+            _ => "Saved session".to_string(),
         };
         let footer = row![
             text("Read-only data access")
@@ -145,7 +142,7 @@ impl TradingTerminal {
         ]
         .spacing(7);
 
-        container(
+        let main_panel = container(
             column![
                 container(header).padding([14, 16]),
                 rule::horizontal(1),
@@ -160,7 +157,95 @@ impl TradingTerminal {
         .style(|theme: &Theme| container_style::Style {
             background: Some(theme.extended_palette().background.base.color.into()),
             ..Default::default()
+        });
+
+        container(row![
+            self.view_agent_session_sidebar(),
+            rule::vertical(1),
+            main_panel,
+        ])
+        .width(Fill)
+        .height(Fill)
+        .style(|theme: &Theme| container_style::Style {
+            background: Some(theme.extended_palette().background.base.color.into()),
+            ..Default::default()
         })
+        .into()
+    }
+
+    fn view_agent_session_sidebar(&self) -> Element<'_, Message> {
+        let theme = self.theme();
+        let can_change_session = !self.agent.status.is_busy();
+        let new_session = button(
+            row![text("+").size(15), text("New session").size(12)]
+                .spacing(7)
+                .align_y(Alignment::Center),
+        )
+        .padding([8, 10])
+        .width(Fill)
+        .on_press_maybe(can_change_session.then_some(Message::AgentNewChat));
+
+        let mut sessions = Column::new().spacing(4).width(Fill);
+        for item in self.agent.session_items() {
+            let count = match item.message_count {
+                0 => "No messages".to_string(),
+                1 => "1 message".to_string(),
+                count => format!("{count} messages"),
+            };
+            let content = column![
+                text(item.title).size(12).color(theme.palette().text),
+                text(count)
+                    .size(9)
+                    .color(theme.extended_palette().background.weak.text),
+            ]
+            .spacing(3)
+            .width(Fill);
+            let active = item.active;
+            sessions = sessions.push(
+                button(content)
+                    .padding([9, 10])
+                    .width(Fill)
+                    .on_press_maybe(
+                        (can_change_session && !active)
+                            .then_some(Message::AgentSelectSession(item.id)),
+                    )
+                    .style(move |theme, status| agent_session_button_style(theme, status, active)),
+            );
+        }
+
+        let persistence_status: Element<'_, Message> =
+            if let Some(error) = &self.agent.persistence_error {
+                text(error).size(9).color(theme.palette().danger).into()
+            } else if self.agent.persistence_in_flight || self.agent.persistence_dirty {
+                text("Saving locally…")
+                    .size(9)
+                    .color(theme.extended_palette().background.weak.text)
+                    .into()
+            } else {
+                text("Saved locally")
+                    .size(9)
+                    .color(theme.palette().success)
+                    .into()
+            };
+
+        container(
+            column![
+                text("SESSIONS")
+                    .size(10)
+                    .font(app_fonts::monospace_font())
+                    .color(theme.extended_palette().background.weak.text),
+                new_session,
+                rule::horizontal(1),
+                scrollable(sessions).height(Fill),
+                persistence_status,
+            ]
+            .spacing(10)
+            .height(Fill),
+        )
+        .width(Length::Fixed(220.0))
+        .height(Fill)
+        .padding([14, 12])
+        .style(agent_session_sidebar_style)
         .into()
     }
 
@@ -361,6 +446,47 @@ fn agent_tool_style(theme: &Theme) -> container_style::Style {
             radius: 6.0.into(),
             width: 1.0,
             color: theme.extended_palette().background.strong.color,
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_session_sidebar_style(theme: &Theme) -> container_style::Style {
+    container_style::Style {
+        background: Some(theme.extended_palette().background.weak.color.into()),
+        ..Default::default()
+    }
+}
+
+fn agent_session_button_style(
+    theme: &Theme,
+    status: button::Status,
+    active: bool,
+) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    let mut background = if active {
+        theme.palette().primary
+    } else {
+        theme.palette().text
+    };
+    background.a = if active {
+        0.13
+    } else if hovered {
+        0.06
+    } else {
+        0.0
+    };
+    button::Style {
+        background: Some(background.into()),
+        text_color: theme.palette().text,
+        border: Border {
+            radius: 6.0.into(),
+            width: if active { 1.0 } else { 0.0 },
+            color: if active {
+                theme.palette().primary
+            } else {
+                Color::TRANSPARENT
+            },
         },
         ..Default::default()
     }

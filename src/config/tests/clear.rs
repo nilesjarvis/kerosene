@@ -68,6 +68,8 @@ fn clear_config_files_removes_credential_and_account_cache_files() {
         parent.join("journal_cache_0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.tmp.1");
     let journal_cache_other_path =
         parent.join("journal_cache_0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json");
+    let assistant_sessions_path = parent.join("assistant_sessions.json");
+    let assistant_sessions_temp_path = parent.join("assistant_sessions.json.tmp");
     let api_cache_dir = parent.join("cache");
     let api_cache_file = api_cache_dir
         .join("v1")
@@ -95,6 +97,8 @@ fn clear_config_files_removes_credential_and_account_cache_files() {
         &journal_cache_path,
         &journal_cache_temp_path,
         &journal_cache_other_path,
+        &assistant_sessions_path,
+        &assistant_sessions_temp_path,
         &api_cache_file,
         &unrelated_journal_path,
         &unrelated_path,
@@ -104,7 +108,7 @@ fn clear_config_files_removes_credential_and_account_cache_files() {
 
     let summary = clear_config_files_at(&path);
 
-    assert_eq!(summary.files_removed, 14);
+    assert_eq!(summary.files_removed, 16);
     assert!(!summary.file_cleanup_failed);
     assert!(summary.warnings.is_empty());
     for candidate in [
@@ -121,6 +125,8 @@ fn clear_config_files_removes_credential_and_account_cache_files() {
         &journal_cache_path,
         &journal_cache_temp_path,
         &journal_cache_other_path,
+        &assistant_sessions_path,
+        &assistant_sessions_temp_path,
     ] {
         assert!(
             !candidate.exists(),

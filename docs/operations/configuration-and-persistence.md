@@ -16,6 +16,7 @@ Related storage:
 
 - backup config: `config.json.bak`
 - journal cache: `journal_cache_<address>.json`
+- Assistant sessions: `assistant_sessions.json`
 - imported fonts: `fonts/`
 - imported sounds: `sounds/`
 - Telegram fast-feed session files in platform config storage
@@ -35,6 +36,7 @@ Related storage:
 | `src/config/live_watchlist.rs` | Live watchlist columns and sort config. |
 | `src/config_persistence/` | Debounced saves, snapshot creation, clear-config flow. |
 | `src/layout_persistence/` | Saved layout application and widget snapshot conversion. |
+| `src/agent_persistence.rs` | Bounded, owner-only Assistant session side-file load and atomic save. |
 
 ## KeroseneConfig
 
@@ -169,6 +171,18 @@ restrictive on Unix where supported.
 
 Do not put journal cache payloads inside `KeroseneConfig`; they can be large and
 wallet-specific.
+
+## Assistant Sessions
+
+Assistant chats are stored in a separate, schema-versioned
+`assistant_sessions.json` side-file. This keeps potentially large conversation
+history out of `KeroseneConfig` and lets Assistant saves follow their own
+lifecycle. Writes use a temporary file and replacement, owner-only permissions
+on Unix, an owner-only ACL on Windows, and a 32 MiB file limit. Clear All Config
+removes the durable file and its interrupted-save temp file.
+
+The side-file contains bounded drafts and user/assistant messages, but never the
+OpenRouter API key, tool activity cards, Pi process state, or raw tool payloads.
 
 ## Runtime-Only State
 

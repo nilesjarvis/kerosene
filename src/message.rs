@@ -2,7 +2,7 @@ use crate::account::{AccountData, AssetContext, WalletDetailsData, WalletTracker
 use crate::account_analytics::{IncomeSnapshot, PortfolioHistory};
 use crate::account_state::{BottomTab, PositionsSortColumn};
 use crate::agent_runtime::AgentRuntimeEvent;
-use crate::agent_state::{AgentPrompt, AgentUri};
+use crate::agent_state::{AgentPersistenceResult, AgentPrompt, AgentUri};
 use crate::alfred_state::{AlfredCommandId, AlfredSelectionStep};
 use crate::annotations::{Annotation, AnnotationId, AnnotationStyle, DrawingTool};
 use crate::api::{self, Candle, OrderBook};
@@ -728,6 +728,8 @@ pub(crate) enum Message {
     AgentRuntimeEvent(AgentRuntimeEvent),
     AgentAbort,
     AgentNewChat,
+    AgentSelectSession(u64),
+    AgentSessionsSaved(u64, AgentPersistenceResult),
     AgentOpenLink(AgentUri),
     AgentLinkOpened(Result<(), String>),
     OpenSettingsWindow,
