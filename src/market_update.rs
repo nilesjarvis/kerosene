@@ -38,7 +38,8 @@ impl TradingTerminal {
                 return self.update_hype_unstaking_queue_market(message);
             }
             message @ (Message::TickerTapeRefreshTick
-            | Message::TickerTapeContextsLoaded(_, _, _, _)) => {
+            | Message::TickerTapeContextsLoaded(_, _, _, _)
+            | Message::TickerTapeExchangeStatsLoaded(_, _, _)) => {
                 return self.update_ticker_tape_market(message);
             }
             message if is_live_watchlist_market_message(&message) => {

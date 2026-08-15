@@ -102,7 +102,7 @@ impl TradingTerminal {
         }
         boot_tasks.push(self.request_x_feed_open_refresh(false));
 
-        boot_tasks.push(self.request_ticker_tape_context_refresh(true));
+        boot_tasks.push(self.request_ticker_tape_refresh(true));
         boot_tasks.push(self.request_live_watchlist_refresh(true));
         boot_tasks.push(self.sync_main_window_min_size());
         self.apply_chart_theme_colors();

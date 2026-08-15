@@ -197,6 +197,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         Message::ToggleFavourite(_)
         | Message::TickerTapeRefreshTick
         | Message::TickerTapeContextsLoaded(_, _, _, _)
+        | Message::TickerTapeExchangeStatsLoaded(_, _, _)
         | Message::SymbolsLoaded(_)
         | Message::ExchangeSymbolsRefreshTick
         | Message::LiveWatchlistSortChanged(_, _)

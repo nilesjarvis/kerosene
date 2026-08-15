@@ -136,6 +136,16 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::Market,
     );
     assert_route(
+        Message::TickerTapeExchangeStatsLoaded(
+            1,
+            10,
+            Ok(crate::api::ExchangeStats {
+                volume_24h_notional_usd: 4_250_000_000.0,
+            }),
+        ),
+        UpdateRoute::Market,
+    );
+    assert_route(
         Message::OrderBookWsBookLagged {
             id: 7,
             coin: "BTC".to_string(),

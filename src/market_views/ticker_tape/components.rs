@@ -2,10 +2,12 @@ use crate::denomination::DisplayDenominationContext;
 use crate::helpers;
 use crate::message::Message;
 
-use super::formatting::{TickerTapeItem, pct_color, percent_label, price_label};
+use super::formatting::{
+    TickerTapeItem, exchange_volume_label, pct_color, percent_label, price_label,
+};
 use super::{
     TICKER_TAPE_HEIGHT, TICKER_TAPE_ICON_SIZE, TICKER_TAPE_ITEM_HORIZONTAL_PADDING,
-    TICKER_TAPE_ITEM_SPACING, TICKER_TAPE_SEPARATOR_WIDTH,
+    TICKER_TAPE_ITEM_SPACING, TICKER_TAPE_SECTION_SEPARATOR_WIDTH, TICKER_TAPE_SEPARATOR_WIDTH,
 };
 use iced::widget::container as container_style;
 use iced::widget::{button, container, row, rule, text};
@@ -80,6 +82,47 @@ pub(super) fn ticker_tape_separator() -> Element<'static, Message> {
     .height(18)
     .center_y(Length::Fixed(TICKER_TAPE_HEIGHT))
     .into()
+}
+
+pub(super) fn ticker_tape_section_separator() -> Element<'static, Message> {
+    container(rule::vertical(1).style(|theme: &Theme| rule::Style {
+        color: Color {
+            a: 0.28,
+            ..theme.extended_palette().background.weak.text
+        },
+        radius: 0.0.into(),
+        fill_mode: rule::FillMode::Full,
+        snap: true,
+    }))
+    .width(Length::Fixed(TICKER_TAPE_SECTION_SEPARATOR_WIDTH))
+    .height(22)
+    .center_y(Length::Fixed(TICKER_TAPE_HEIGHT))
+    .into()
+}
+
+pub(super) fn ticker_tape_exchange_stats(
+    volume_24h: Option<f64>,
+    theme: &Theme,
+    width: f32,
+) -> Element<'static, Message> {
+    let content = row![
+        text("24h Volume")
+            .size(11)
+            .color(theme.extended_palette().background.weak.text),
+        text(exchange_volume_label(volume_24h))
+            .size(12)
+            .font(crate::app_fonts::monospace_font()),
+    ]
+    .spacing(8)
+    .align_y(iced::Alignment::Center);
+
+    container(content)
+        .width(Length::Fixed(width))
+        .height(Length::Fixed(TICKER_TAPE_HEIGHT))
+        .padding([0, 12])
+        .center_y(Length::Fixed(TICKER_TAPE_HEIGHT))
+        .clip(true)
+        .into()
 }
 
 pub(super) fn ticker_tape_bar_style(theme: &Theme, corner_radius: f32) -> container_style::Style {

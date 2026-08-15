@@ -1,4 +1,5 @@
 use crate::denomination::DisplayDenominationContext;
+use crate::denomination::format_compact_usd;
 pub(super) use crate::helpers::positive_percent_change as percent_change;
 use iced::{Color, Theme};
 
@@ -44,6 +45,13 @@ pub(super) fn price_label(price: Option<f64>, denomination: &DisplayDenomination
 
 pub(super) fn percent_label(pct: Option<f64>) -> String {
     pct.map(|pct| format!("{pct:+.2}%"))
+        .unwrap_or_else(|| "-".to_string())
+}
+
+pub(super) fn exchange_volume_label(volume: Option<f64>) -> String {
+    volume
+        .filter(|volume| volume.is_finite() && *volume >= 0.0)
+        .map(format_compact_usd)
         .unwrap_or_else(|| "-".to_string())
 }
 

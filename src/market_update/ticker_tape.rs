@@ -9,8 +9,18 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 // ---------------------------------------------------------------------------
 
 const TICKER_TAPE_CONTEXT_REFRESH_MS: u64 = 300_000;
+// A complete total queries every perp DEX plus spot. Keep the cadence below
+// Hyperliquid's shared weighted REST limit while still updating continuously.
+const TICKER_TAPE_EXCHANGE_STATS_REFRESH_MS: u64 = 60_000;
 
 impl TradingTerminal {
+    pub(crate) fn request_ticker_tape_refresh(&mut self, force: bool) -> Task<Message> {
+        Task::batch([
+            self.request_ticker_tape_context_refresh(force),
+            self.request_ticker_tape_exchange_stats_refresh(force),
+        ])
+    }
+
     pub(crate) fn request_ticker_tape_context_refresh(&mut self, force: bool) -> Task<Message> {
         if !self.ticker_tape_enabled {
             self.invalidate_ticker_tape_context_request();
@@ -58,7 +68,7 @@ impl TradingTerminal {
 
     pub(super) fn update_ticker_tape_market(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::TickerTapeRefreshTick => self.request_ticker_tape_context_refresh(false),
+            Message::TickerTapeRefreshTick => self.request_ticker_tape_refresh(false),
             Message::TickerTapeContextsLoaded(
                 request_id,
                 requested_symbols,
@@ -70,8 +80,56 @@ impl TradingTerminal {
                 requested_at,
                 result,
             ),
+            Message::TickerTapeExchangeStatsLoaded(request_id, requested_at, result) => {
+                self.apply_ticker_tape_exchange_stats_loaded(request_id, requested_at, result)
+            }
             _ => Task::none(),
         }
+    }
+
+    fn request_ticker_tape_exchange_stats_refresh(&mut self, force: bool) -> Task<Message> {
+        if !self.ticker_tape_enabled {
+            self.invalidate_ticker_tape_exchange_stats_request();
+            return Task::none();
+        }
+
+        let now_ms = Self::now_ms();
+        let stats_stale = self
+            .ticker_tape_exchange_stats_last_fetch_ms
+            .is_none_or(|last| {
+                now_ms.saturating_sub(last) >= TICKER_TAPE_EXCHANGE_STATS_REFRESH_MS
+            });
+        if self.ticker_tape_exchange_stats_loading || (!force && !stats_stale) {
+            return Task::none();
+        }
+
+        self.ticker_tape_exchange_stats_request_id =
+            self.ticker_tape_exchange_stats_request_id.saturating_add(1);
+        let request_id = self.ticker_tape_exchange_stats_request_id;
+        self.ticker_tape_exchange_stats_loading = true;
+        Task::perform(api::fetch_exchange_stats(), move |result| {
+            Message::TickerTapeExchangeStatsLoaded(request_id, now_ms, result)
+        })
+    }
+
+    fn apply_ticker_tape_exchange_stats_loaded(
+        &mut self,
+        request_id: u64,
+        requested_at: u64,
+        result: Result<api::ExchangeStats, String>,
+    ) -> Task<Message> {
+        if !self.ticker_tape_exchange_stats_loading
+            || request_id != self.ticker_tape_exchange_stats_request_id
+        {
+            return Task::none();
+        }
+
+        self.ticker_tape_exchange_stats_loading = false;
+        if let Ok(stats) = result {
+            self.ticker_tape_exchange_stats = Some(stats);
+            self.ticker_tape_exchange_stats_last_fetch_ms = Some(requested_at);
+        }
+        Task::none()
     }
 
     fn ticker_tape_context_symbols(&self) -> Vec<String> {
@@ -161,6 +219,12 @@ impl TradingTerminal {
         self.ticker_tape_contexts_refresh_pending = false;
         self.ticker_tape_contexts_loading = false;
     }
+
+    fn invalidate_ticker_tape_exchange_stats_request(&mut self) {
+        self.ticker_tape_exchange_stats_request_id =
+            self.ticker_tape_exchange_stats_request_id.saturating_add(1);
+        self.ticker_tape_exchange_stats_loading = false;
+    }
 }
 
 #[cfg(test)]
@@ -186,7 +250,70 @@ mod tests {
         terminal.ticker_tape_contexts_request_symbols.clear();
         terminal.ticker_tape_contexts_refresh_pending = false;
         terminal.ticker_tape_contexts_last_fetch_ms = None;
+        terminal.ticker_tape_exchange_stats = None;
+        terminal.ticker_tape_exchange_stats_loading = false;
+        terminal.ticker_tape_exchange_stats_request_id = 0;
+        terminal.ticker_tape_exchange_stats_last_fetch_ms = None;
         terminal
+    }
+
+    fn exchange_stats(volume_24h_notional_usd: f64) -> api::ExchangeStats {
+        api::ExchangeStats {
+            volume_24h_notional_usd,
+        }
+    }
+
+    #[test]
+    fn ticker_tape_refresh_requests_exchange_stats_without_favourites() {
+        let mut terminal = terminal_with_ticker_tape(&[]);
+
+        let _task = terminal.request_ticker_tape_refresh(true);
+
+        assert!(terminal.ticker_tape_exchange_stats_loading);
+        assert_eq!(terminal.ticker_tape_exchange_stats_request_id, 1);
+        assert!(!terminal.ticker_tape_contexts_loading);
+    }
+
+    #[test]
+    fn ticker_tape_exchange_stats_result_updates_complete_snapshot() {
+        let mut terminal = terminal_with_ticker_tape(&[]);
+        let _task = terminal.request_ticker_tape_exchange_stats_refresh(true);
+        let request_id = terminal.ticker_tape_exchange_stats_request_id;
+
+        let _task = terminal.update_ticker_tape_market(Message::TickerTapeExchangeStatsLoaded(
+            request_id,
+            10,
+            Ok(exchange_stats(4_250_000_000.0)),
+        ));
+
+        assert!(!terminal.ticker_tape_exchange_stats_loading);
+        assert_eq!(
+            terminal.ticker_tape_exchange_stats,
+            Some(exchange_stats(4_250_000_000.0))
+        );
+        assert_eq!(terminal.ticker_tape_exchange_stats_last_fetch_ms, Some(10));
+    }
+
+    #[test]
+    fn ticker_tape_exchange_stats_error_preserves_last_complete_snapshot() {
+        let mut terminal = terminal_with_ticker_tape(&[]);
+        terminal.ticker_tape_exchange_stats = Some(exchange_stats(4_000_000_000.0));
+        terminal.ticker_tape_exchange_stats_last_fetch_ms = Some(5);
+        let _task = terminal.request_ticker_tape_exchange_stats_refresh(true);
+        let request_id = terminal.ticker_tape_exchange_stats_request_id;
+
+        let _task = terminal.update_ticker_tape_market(Message::TickerTapeExchangeStatsLoaded(
+            request_id,
+            10,
+            Err("spot: HTTP 503".to_string()),
+        ));
+
+        assert!(!terminal.ticker_tape_exchange_stats_loading);
+        assert_eq!(
+            terminal.ticker_tape_exchange_stats,
+            Some(exchange_stats(4_000_000_000.0))
+        );
+        assert_eq!(terminal.ticker_tape_exchange_stats_last_fetch_ms, Some(5));
     }
 
     #[test]

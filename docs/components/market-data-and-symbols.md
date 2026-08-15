@@ -223,13 +223,17 @@ config snapshots.
 ## Ticker Tape
 
 The ticker tape is an optional full-width strip below the top bar. It displays
-favourite symbols and scrolls continuously.
+favourite symbols and scrolls continuously. A fixed exchange-stats section on
+the right remains visible while the favourites move. Its 24-hour volume sums
+the live `dayNtlVlm` values from Hyperliquid's main-perp, HIP-3, and spot asset
+contexts.
 
 State includes:
 
 - `ticker_tape_enabled`
 - `ticker_tape_scroll_px`
 - `ticker_tape_ctxs`
+- `ticker_tape_exchange_stats`
 - refresh timestamps and loading flags
 
 Messages include:
@@ -238,9 +242,12 @@ Messages include:
 - `TickerTapeTick`
 - `TickerTapeRefreshTick`
 - `TickerTapeContextsLoaded`
+- `TickerTapeExchangeStatsLoaded`
 
 Ticker tape context fetches are separate from live watchlists so disabling or
-changing one surface does not disturb the other.
+changing one surface does not disturb the other. Exchange stats refresh every
+minute while the ticker tape is visible; incomplete API snapshots leave the
+last complete value in place.
 
 ## Positioning Info
 

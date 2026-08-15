@@ -525,6 +525,10 @@ pub(crate) struct TradingTerminal {
     pub(crate) ticker_tape_contexts_request_symbols: Vec<String>,
     pub(crate) ticker_tape_contexts_refresh_pending: bool,
     pub(crate) ticker_tape_contexts_last_fetch_ms: Option<u64>,
+    pub(crate) ticker_tape_exchange_stats: Option<crate::api::ExchangeStats>,
+    pub(crate) ticker_tape_exchange_stats_loading: bool,
+    pub(crate) ticker_tape_exchange_stats_request_id: u64,
+    pub(crate) ticker_tape_exchange_stats_last_fetch_ms: Option<u64>,
     // Favourite symbol keys (displayed at top of symbol search)
     pub(crate) favourite_symbols: Vec<String>,
     // Global risk filter for symbols the trader wants hidden everywhere.

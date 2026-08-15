@@ -5,7 +5,10 @@ mod tests;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use components::{ticker_tape_bar_style, ticker_tape_item, ticker_tape_separator};
+use components::{
+    ticker_tape_bar_style, ticker_tape_exchange_stats, ticker_tape_item,
+    ticker_tape_section_separator, ticker_tape_separator,
+};
 use formatting::{TickerTapeItem, percent_change, ticker_tape_item_width};
 use iced::widget::{Space, container, float, responsive, row, stack, text};
 use iced::{Element, Fill, Length, Theme, Vector};
@@ -21,6 +24,8 @@ const TICKER_TAPE_ITEM_MAX_WIDTH: f32 = 240.0;
 const TICKER_TAPE_ITEM_HORIZONTAL_PADDING: u16 = 12;
 const TICKER_TAPE_ITEM_SPACING: u32 = 5;
 const TICKER_TAPE_SEPARATOR_WIDTH: f32 = 1.0;
+const TICKER_TAPE_SECTION_SEPARATOR_WIDTH: f32 = 1.0;
+const TICKER_TAPE_EXCHANGE_STATS_WIDTH: f32 = 184.0;
 const TICKER_TAPE_TEXT_CHAR_WIDTH: f32 = 7.0;
 
 impl TradingTerminal {
@@ -48,9 +53,13 @@ impl TradingTerminal {
         let items = self.ticker_tape_items();
         let denomination = self.display_denomination_context();
         let pane_corner_radius = self.pane_corner_radius;
+        let stats_width = (available_width - TICKER_TAPE_SECTION_SEPARATOR_WIDTH)
+            .clamp(0.0, TICKER_TAPE_EXCHANGE_STATS_WIDTH);
+        let tape_available_width =
+            (available_width - stats_width - TICKER_TAPE_SECTION_SEPARATOR_WIDTH).max(0.0);
 
-        if items.is_empty() {
-            return container(
+        let tape_layer: Element<'_, Message> = if items.is_empty() {
+            container(
                 text("No favourites")
                     .size(11)
                     .color(theme.extended_palette().background.weak.text),
@@ -59,64 +68,83 @@ impl TradingTerminal {
             .height(Length::Fixed(TICKER_TAPE_HEIGHT))
             .padding([0, 12])
             .center_y(Length::Fixed(TICKER_TAPE_HEIGHT))
-            .style(move |theme: &Theme| ticker_tape_bar_style(theme, pane_corner_radius))
-            .into();
-        }
-
-        let item_widths: Vec<f32> = items
-            .iter()
-            .map(|item| ticker_tape_item_width(item, &denomination))
-            .collect();
-        let sequence_width: f32 = item_widths
-            .iter()
-            .map(|width| width + TICKER_TAPE_SEPARATOR_WIDTH)
-            .sum();
-        let should_scroll = sequence_width > available_width.max(0.0);
-        let offset = if should_scroll {
-            self.ticker_tape_scroll_px.rem_euclid(sequence_width)
+            .into()
         } else {
-            0.0
-        };
-        let repetitions = if should_scroll { 2 } else { 1 };
+            let item_widths: Vec<f32> = items
+                .iter()
+                .map(|item| ticker_tape_item_width(item, &denomination))
+                .collect();
+            let sequence_width: f32 = item_widths
+                .iter()
+                .map(|width| width + TICKER_TAPE_SEPARATOR_WIDTH)
+                .sum();
+            let should_scroll = sequence_width > tape_available_width;
+            let offset = if should_scroll {
+                self.ticker_tape_scroll_px.rem_euclid(sequence_width)
+            } else {
+                0.0
+            };
+            let repetitions = if should_scroll { 2 } else { 1 };
 
-        let mut tape_row = row![]
-            .spacing(0)
-            .height(Length::Fixed(TICKER_TAPE_HEIGHT))
-            .align_y(iced::Alignment::Center);
-        for _ in 0..repetitions {
-            for (item, item_width) in items.iter().zip(item_widths.iter().copied()) {
-                tape_row = tape_row
-                    .push(ticker_tape_item(item, &denomination, &theme, item_width))
-                    .push(ticker_tape_separator());
-            }
-        }
-
-        let tape_width = sequence_width * repetitions as f32;
-        let tape = container(tape_row)
-            .width(Length::Fixed(tape_width))
-            .center_y(Length::Fixed(TICKER_TAPE_HEIGHT));
-
-        let tape_layer: Element<'_, Message> = if should_scroll {
-            float(tape)
-                .translate(move |_bounds, _viewport| Vector::new(-offset, 0.0))
-                .into()
-        } else {
-            tape.into()
-        };
-
-        let layers: Vec<Element<'_, Message>> = vec![
-            Space::new()
-                .width(Fill)
+            let mut tape_row = row![]
+                .spacing(0)
                 .height(Length::Fixed(TICKER_TAPE_HEIGHT))
-                .into(),
-            tape_layer,
-        ];
+                .align_y(iced::Alignment::Center);
+            for _ in 0..repetitions {
+                for (item, item_width) in items.iter().zip(item_widths.iter().copied()) {
+                    tape_row = tape_row
+                        .push(ticker_tape_item(item, &denomination, &theme, item_width))
+                        .push(ticker_tape_separator());
+                }
+            }
+
+            let tape_width = sequence_width * repetitions as f32;
+            let tape = container(tape_row)
+                .width(Length::Fixed(tape_width))
+                .center_y(Length::Fixed(TICKER_TAPE_HEIGHT));
+
+            let moving_tape: Element<'_, Message> = if should_scroll {
+                float(tape)
+                    .translate(move |_bounds, _viewport| Vector::new(-offset, 0.0))
+                    .into()
+            } else {
+                tape.into()
+            };
+
+            let layers: Vec<Element<'_, Message>> = vec![
+                Space::new()
+                    .width(Fill)
+                    .height(Length::Fixed(TICKER_TAPE_HEIGHT))
+                    .into(),
+                moving_tape,
+            ];
+
+            container(
+                stack(layers)
+                    .width(Fill)
+                    .height(Length::Fixed(TICKER_TAPE_HEIGHT))
+                    .clip(true),
+            )
+            .width(Fill)
+            .height(Length::Fixed(TICKER_TAPE_HEIGHT))
+            .clip(true)
+            .into()
+        };
+
+        let volume_24h = self
+            .ticker_tape_exchange_stats
+            .map(|stats| stats.volume_24h_notional_usd);
 
         container(
-            stack(layers)
-                .width(Fill)
-                .height(Length::Fixed(TICKER_TAPE_HEIGHT))
-                .clip(true),
+            row![
+                tape_layer,
+                ticker_tape_section_separator(),
+                ticker_tape_exchange_stats(volume_24h, &theme, stats_width),
+            ]
+            .spacing(0)
+            .width(Fill)
+            .height(Length::Fixed(TICKER_TAPE_HEIGHT))
+            .align_y(iced::Alignment::Center),
         )
         .width(Fill)
         .height(Length::Fixed(TICKER_TAPE_HEIGHT))

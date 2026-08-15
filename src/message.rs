@@ -702,6 +702,7 @@ pub(crate) enum Message {
         u64,
         Result<crate::api::WatchlistContextsResponse, String>,
     ),
+    TickerTapeExchangeStatsLoaded(u64, u64, Result<crate::api::ExchangeStats, String>),
     // Add widget menu
     ToggleAddWidgetMenu(WorkspaceId),
     ToggleLayoutMenu,

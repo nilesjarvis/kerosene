@@ -51,7 +51,7 @@ impl TradingTerminal {
                 self.ticker_tape_scroll_px = 0.0;
                 self.persist_config();
                 return Task::batch([
-                    self.request_ticker_tape_context_refresh(true),
+                    self.request_ticker_tape_refresh(true),
                     self.sync_main_window_min_size(),
                 ]);
             }

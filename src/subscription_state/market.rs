@@ -39,9 +39,9 @@ impl TradingTerminal {
             );
         }
 
-        if self.ticker_tape_enabled && !self.favourite_symbols.is_empty() {
+        if self.ticker_tape_enabled {
             subs.push(
-                iced::time::every(std::time::Duration::from_secs(60 * 5))
+                iced::time::every(std::time::Duration::from_secs(60))
                     .map(|_| Message::TickerTapeRefreshTick),
             );
         }
