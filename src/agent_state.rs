@@ -8,6 +8,7 @@ const MAX_PERSISTED_ENTRIES_PER_SESSION: usize = 500;
 const MAX_PERSISTED_MESSAGE_CHARS: usize = 100_000;
 const MAX_PERSISTED_DRAFT_CHARS: usize = 20_000;
 const MAX_SESSION_TITLE_CHARS: usize = 48;
+const MAX_RUNTIME_MODEL_CHARS: usize = 200;
 const MAX_REPLAY_CONTEXT_CHARS: usize = 48_000;
 
 // ---------------------------------------------------------------------------
@@ -92,6 +93,10 @@ pub(crate) struct AgentStoredSession {
     pub(crate) updated_at_ms: u64,
     pub(crate) input: String,
     pub(crate) entries: Vec<AgentChatEntry>,
+    pub(crate) requested_model: Option<String>,
+    pub(crate) runtime_model: Option<String>,
+    pub(crate) context_tokens: Option<u64>,
+    pub(crate) context_window: Option<u64>,
     pub(crate) total_tokens: Option<u64>,
     pub(crate) total_cost_usd: Option<f64>,
 }
@@ -105,6 +110,16 @@ impl fmt::Debug for AgentStoredSession {
             .field("updated_at_ms", &self.updated_at_ms)
             .field("input", &"<redacted>")
             .field("entries", &format_args!("len={}", self.entries.len()))
+            .field(
+                "requested_model",
+                &self.requested_model.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "runtime_model",
+                &self.runtime_model.as_ref().map(|_| "<redacted>"),
+            )
+            .field("context_tokens", &self.context_tokens)
+            .field("context_window", &self.context_window)
             .field("total_tokens", &self.total_tokens)
             .field("total_cost_usd", &self.total_cost_usd)
             .finish()
@@ -141,6 +156,14 @@ pub(crate) struct PersistedAgentSession {
     pub(crate) total_tokens: Option<u64>,
     #[serde(default)]
     pub(crate) total_cost_usd: Option<f64>,
+    #[serde(default)]
+    pub(crate) requested_model: Option<String>,
+    #[serde(default)]
+    pub(crate) runtime_model: Option<String>,
+    #[serde(default)]
+    pub(crate) context_tokens: Option<u64>,
+    #[serde(default)]
+    pub(crate) context_window: Option<u64>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -201,6 +224,10 @@ pub(crate) struct AgentState {
     pub(crate) empty_response_retry_count: u8,
     pub(crate) suppress_empty_response_retry: bool,
     pub(crate) needs_context_replay: bool,
+    pub(crate) requested_model: Option<String>,
+    pub(crate) runtime_model: Option<String>,
+    pub(crate) context_tokens: Option<u64>,
+    pub(crate) context_window: Option<u64>,
     pub(crate) total_tokens: Option<u64>,
     pub(crate) total_cost_usd: Option<f64>,
     pub(crate) persistence_generation: u64,
@@ -233,6 +260,10 @@ impl Default for AgentState {
             empty_response_retry_count: 0,
             suppress_empty_response_retry: false,
             needs_context_replay: false,
+            requested_model: None,
+            runtime_model: None,
+            context_tokens: None,
+            context_window: None,
             total_tokens: None,
             total_cost_usd: None,
             persistence_generation: 0,
@@ -320,6 +351,57 @@ impl AgentState {
         self.active_session_updated_at_ms = now_ms;
     }
 
+    pub(crate) fn prepare_context_for_model(&mut self, requested_model: &str) {
+        let requested_model = normalized_runtime_model(requested_model);
+        if self.requested_model != requested_model {
+            self.requested_model = requested_model;
+            self.runtime_model = None;
+            self.context_tokens = None;
+            self.context_window = None;
+        }
+    }
+
+    pub(crate) fn update_runtime_model_context(
+        &mut self,
+        runtime_model: Option<String>,
+        context_window: Option<u64>,
+    ) {
+        if let Some(runtime_model) =
+            runtime_model.and_then(|model| normalized_runtime_model(&model))
+        {
+            self.runtime_model = Some(runtime_model);
+        }
+        if let Some(context_window) = context_window.filter(|window| *window > 0) {
+            self.context_window = Some(context_window);
+        }
+    }
+
+    pub(crate) fn replace_context_usage(
+        &mut self,
+        context_tokens: Option<u64>,
+        context_window: Option<u64>,
+    ) {
+        self.context_tokens = context_tokens;
+        if let Some(context_window) = context_window.filter(|window| *window > 0) {
+            self.context_window = Some(context_window);
+        }
+    }
+
+    pub(crate) fn context_metrics_for_model(
+        &self,
+        requested_model: &str,
+    ) -> (Option<&str>, Option<u64>, Option<u64>) {
+        let requested_model = normalized_runtime_model(requested_model);
+        if self.requested_model != requested_model {
+            return (None, None, None);
+        }
+        (
+            self.runtime_model.as_deref(),
+            self.context_tokens,
+            self.context_window,
+        )
+    }
+
     pub(crate) fn runtime_prompt(&self, prompt: &str) -> AgentPrompt {
         if !self.needs_context_replay {
             return AgentPrompt::from(prompt.to_string());
@@ -364,6 +446,10 @@ impl AgentState {
             self.active_session_updated_at_ms,
             &self.input,
             &self.entries,
+            self.requested_model.as_deref(),
+            self.runtime_model.as_deref(),
+            self.context_tokens,
+            self.context_window,
             self.total_tokens,
             self.total_cost_usd,
         ));
@@ -375,6 +461,10 @@ impl AgentState {
                 session.updated_at_ms,
                 &session.input,
                 &session.entries,
+                session.requested_model.as_deref(),
+                session.runtime_model.as_deref(),
+                session.context_tokens,
+                session.context_window,
                 session.total_tokens,
                 session.total_cost_usd,
             )
@@ -503,6 +593,10 @@ impl AgentState {
             updated_at_ms: self.active_session_updated_at_ms,
             input: std::mem::take(&mut self.input),
             entries: std::mem::take(&mut self.entries),
+            requested_model: self.requested_model.take(),
+            runtime_model: self.runtime_model.take(),
+            context_tokens: self.context_tokens.take(),
+            context_window: self.context_window.take(),
             total_tokens: self.total_tokens.take(),
             total_cost_usd: self.total_cost_usd.take(),
         }
@@ -515,6 +609,10 @@ impl AgentState {
         self.active_session_updated_at_ms = session.updated_at_ms;
         self.input = session.input;
         self.entries = session.entries;
+        self.requested_model = session.requested_model;
+        self.runtime_model = session.runtime_model;
+        self.context_tokens = session.context_tokens;
+        self.context_window = session.context_window;
         self.total_tokens = session.total_tokens;
         self.total_cost_usd = session.total_cost_usd;
         self.reset_runtime();
@@ -523,6 +621,10 @@ impl AgentState {
     fn clear_active_session_content(&mut self) {
         self.input.clear();
         self.entries.clear();
+        self.requested_model = None;
+        self.runtime_model = None;
+        self.context_tokens = None;
+        self.context_window = None;
         self.total_tokens = None;
         self.total_cost_usd = None;
         self.reset_runtime();
@@ -572,6 +674,15 @@ fn message_count(entries: &[AgentChatEntry]) -> usize {
         .count()
 }
 
+fn normalized_runtime_model(model: &str) -> Option<String> {
+    let model = model.trim();
+    if model.is_empty() {
+        None
+    } else {
+        Some(bounded_text(model, MAX_RUNTIME_MODEL_CHARS))
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn persisted_session(
     id: u64,
@@ -580,6 +691,10 @@ fn persisted_session(
     updated_at_ms: u64,
     input: &str,
     entries: &[AgentChatEntry],
+    requested_model: Option<&str>,
+    runtime_model: Option<&str>,
+    context_tokens: Option<u64>,
+    context_window: Option<u64>,
     total_tokens: Option<u64>,
     total_cost_usd: Option<f64>,
 ) -> PersistedAgentSession {
@@ -610,6 +725,10 @@ fn persisted_session(
         updated_at_ms,
         input: bounded_text(input, MAX_PERSISTED_DRAFT_CHARS),
         entries,
+        requested_model: requested_model.and_then(normalized_runtime_model),
+        runtime_model: runtime_model.and_then(normalized_runtime_model),
+        context_tokens,
+        context_window: context_window.filter(|window| *window > 0),
         total_tokens,
         total_cost_usd: total_cost_usd.filter(|cost| cost.is_finite() && *cost >= 0.0),
     }
@@ -649,6 +768,16 @@ fn stored_session_from_persisted(session: PersistedAgentSession) -> AgentStoredS
         updated_at_ms: session.updated_at_ms.max(session.created_at_ms),
         input: bounded_text(&session.input, MAX_PERSISTED_DRAFT_CHARS),
         entries,
+        requested_model: session
+            .requested_model
+            .as_deref()
+            .and_then(normalized_runtime_model),
+        runtime_model: session
+            .runtime_model
+            .as_deref()
+            .and_then(normalized_runtime_model),
+        context_tokens: session.context_tokens,
+        context_window: session.context_window.filter(|window| *window > 0),
         total_tokens: session.total_tokens,
         total_cost_usd: session
             .total_cost_usd
@@ -858,6 +987,9 @@ mod tests {
             text: "## Saved answer".to_string(),
             markdown: Some(Box::new(markdown::Content::parse("## Saved answer"))),
         });
+        state.prepare_context_for_model("openrouter/auto");
+        state.update_runtime_model_context(Some("openrouter/auto".to_string()), Some(2_000_000));
+        state.replace_context_usage(Some(12_000), Some(2_000_000));
         let active_id = state.active_session_id;
 
         let restored = AgentState::from_persisted_store(state.persisted_store());
@@ -873,6 +1005,10 @@ mod tests {
             }
         ));
         assert!(restored.needs_context_replay);
+        assert_eq!(
+            restored.context_metrics_for_model("openrouter/auto"),
+            (Some("openrouter/auto"), Some(12_000), Some(2_000_000))
+        );
     }
 
     #[test]
@@ -911,6 +1047,10 @@ mod tests {
                 text: "private message".to_string(),
                 markdown: None,
             }],
+            requested_model: Some("openrouter/auto".to_string()),
+            runtime_model: Some("openrouter/auto".to_string()),
+            context_tokens: Some(1_024),
+            context_window: Some(2_000_000),
             total_tokens: None,
             total_cost_usd: None,
         };
@@ -920,6 +1060,7 @@ mod tests {
         for private in ["private title", "private draft", "private message"] {
             assert!(!debug.contains(private));
         }
+        assert!(!debug.contains("openrouter/auto"));
         assert!(debug.contains("<redacted>"));
     }
 
@@ -938,5 +1079,50 @@ mod tests {
 
         assert!(!debug.contains("private save detail"));
         assert_eq!(debug, "AgentPersistenceResult(Err(<redacted>))");
+    }
+
+    #[test]
+    fn context_metrics_follow_each_session_and_reset_for_a_new_model() {
+        let mut state = AgentState::default();
+        let first_id = state.active_session_id;
+        state.prepare_context_for_model("openrouter/auto");
+        state.update_runtime_model_context(Some("openrouter/auto".to_string()), Some(2_000_000));
+        state.replace_context_usage(Some(12_000), Some(2_000_000));
+
+        assert!(state.create_session(20));
+        state.prepare_context_for_model("anthropic/claude-sonnet-4.5");
+        state.update_runtime_model_context(
+            Some("anthropic/claude-sonnet-4.5".to_string()),
+            Some(1_000_000),
+        );
+        state.replace_context_usage(Some(4_000), Some(1_000_000));
+
+        assert!(state.switch_session(first_id));
+        assert_eq!(
+            state.context_metrics_for_model("openrouter/auto"),
+            (Some("openrouter/auto"), Some(12_000), Some(2_000_000))
+        );
+
+        state.prepare_context_for_model("google/gemini-2.5-pro");
+        assert_eq!(
+            state.context_metrics_for_model("google/gemini-2.5-pro"),
+            (None, None, None)
+        );
+    }
+
+    #[test]
+    fn legacy_persisted_sessions_default_context_metrics_to_unknown() {
+        let session = serde_json::from_value::<PersistedAgentSession>(serde_json::json!({
+            "id": 1,
+            "title": "Legacy session",
+            "created_at_ms": 1,
+            "updated_at_ms": 2
+        }))
+        .expect("legacy Assistant session should deserialize");
+
+        assert_eq!(session.requested_model, None);
+        assert_eq!(session.runtime_model, None);
+        assert_eq!(session.context_tokens, None);
+        assert_eq!(session.context_window, None);
     }
 }

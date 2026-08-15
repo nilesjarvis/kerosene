@@ -130,6 +130,8 @@ impl TradingTerminal {
             }
         };
 
+        let model = self.openrouter_model_for_task();
+        self.agent.prepare_context_for_model(&model);
         let runtime_prompt = self.agent.runtime_prompt(&prompt);
         self.agent.note_user_prompt(&prompt, Self::now_ms());
         self.agent.input.clear();
@@ -235,10 +237,11 @@ impl TradingTerminal {
         }
 
         match event {
-            AgentRuntimeEvent::Ready { .. } => {
+            AgentRuntimeEvent::Ready { generation } => {
                 self.agent.runtime_connected = true;
                 self.agent.status = AgentStatus::Ready;
                 self.agent.status_detail = None;
+                let _ = agent_runtime::inspect_context(generation);
                 return self.send_pending_agent_prompt();
             }
             AgentRuntimeEvent::Thinking { .. } => {
@@ -275,6 +278,24 @@ impl TradingTerminal {
             } => {
                 self.agent.finish_tool(&call_id, is_error);
                 self.agent.status_detail = None;
+            }
+            AgentRuntimeEvent::ModelContext {
+                model,
+                context_window,
+                ..
+            } => {
+                self.agent
+                    .update_runtime_model_context(model, context_window);
+                return self.persist_agent_sessions();
+            }
+            AgentRuntimeEvent::ContextUsage {
+                context_tokens,
+                context_window,
+                ..
+            } => {
+                self.agent
+                    .replace_context_usage(context_tokens, context_window);
+                return self.persist_agent_sessions();
             }
             AgentRuntimeEvent::Settled {
                 total_tokens,
@@ -325,6 +346,7 @@ impl TradingTerminal {
                         );
                         self.agent.assistant_entry_index = None;
                         self.agent.mark_active_session_updated(Self::now_ms());
+                        let _ = agent_runtime::inspect_context(self.agent.runtime_generation);
                         return self.persist_agent_sessions();
                     }
                     EmptyResponseAction::Accept => {}
@@ -335,6 +357,7 @@ impl TradingTerminal {
                 self.agent.assistant_entry_index = None;
                 self.agent.suppress_empty_response_retry = false;
                 self.agent.mark_active_session_updated(Self::now_ms());
+                let _ = agent_runtime::inspect_context(self.agent.runtime_generation);
                 return self.persist_agent_sessions();
             }
             AgentRuntimeEvent::Error { message, .. } => {
@@ -662,5 +685,50 @@ mod tests {
         assert!(terminal.agent.window_id.is_none());
         assert_eq!(terminal.agent.entries.len(), 1);
         assert!(terminal.agent.needs_context_replay);
+    }
+
+    #[test]
+    fn runtime_context_updates_are_scoped_to_the_active_generation() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.agent.runtime_generation = 4;
+        terminal
+            .agent
+            .prepare_context_for_model("anthropic/claude-sonnet-4.5");
+
+        let _ = terminal.update_agent(Message::AgentRuntimeEvent(
+            AgentRuntimeEvent::ModelContext {
+                generation: 4,
+                model: Some("anthropic/claude-sonnet-4.5".to_string()),
+                context_window: Some(1_000_000),
+            },
+        ));
+        let _ = terminal.update_agent(Message::AgentRuntimeEvent(
+            AgentRuntimeEvent::ContextUsage {
+                generation: 4,
+                context_tokens: Some(25_000),
+                context_window: Some(1_000_000),
+            },
+        ));
+
+        assert_eq!(terminal.agent.context_tokens, Some(25_000));
+        assert_eq!(terminal.agent.context_window, Some(1_000_000));
+
+        let _ = terminal.update_agent(Message::AgentRuntimeEvent(
+            AgentRuntimeEvent::ContextUsage {
+                generation: 3,
+                context_tokens: Some(999_999),
+                context_window: Some(1_000_000),
+            },
+        ));
+        assert_eq!(terminal.agent.context_tokens, Some(25_000));
+
+        let _ = terminal.update_agent(Message::AgentRuntimeEvent(
+            AgentRuntimeEvent::ContextUsage {
+                generation: 4,
+                context_tokens: None,
+                context_window: Some(1_000_000),
+            },
+        ));
+        assert_eq!(terminal.agent.context_tokens, None);
     }
 }

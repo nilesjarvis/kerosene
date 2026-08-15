@@ -193,6 +193,8 @@ mod tests {
             loaded.sessions[0].entries[0].text,
             "private portfolio question"
         );
+        assert_eq!(loaded.sessions[0].context_tokens, Some(1_024));
+        assert_eq!(loaded.sessions[0].context_window, Some(2_000_000));
         let _ = std::fs::remove_file(&path);
         let _ = path
             .parent()
@@ -242,6 +244,10 @@ mod tests {
                 ],
                 total_tokens: Some(42),
                 total_cost_usd: Some(0.01),
+                requested_model: Some("openrouter/auto".to_string()),
+                runtime_model: Some("openrouter/auto".to_string()),
+                context_tokens: Some(1_024),
+                context_window: Some(2_000_000),
             }],
         }
     }

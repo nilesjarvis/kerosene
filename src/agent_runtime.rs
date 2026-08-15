@@ -52,6 +52,16 @@ pub(crate) enum AgentRuntimeEvent {
         call_id: String,
         is_error: bool,
     },
+    ModelContext {
+        generation: u64,
+        model: Option<String>,
+        context_window: Option<u64>,
+    },
+    ContextUsage {
+        generation: u64,
+        context_tokens: Option<u64>,
+        context_window: Option<u64>,
+    },
     Settled {
         generation: u64,
         total_tokens: Option<u64>,
@@ -75,6 +85,8 @@ impl AgentRuntimeEvent {
             | Self::TextDelta { generation, .. }
             | Self::ToolStarted { generation, .. }
             | Self::ToolFinished { generation, .. }
+            | Self::ModelContext { generation, .. }
+            | Self::ContextUsage { generation, .. }
             | Self::Settled { generation, .. }
             | Self::Error { generation, .. }
             | Self::Exited { generation } => *generation,
@@ -108,6 +120,26 @@ impl fmt::Debug for AgentRuntimeEvent {
                 .field("generation", generation)
                 .field("is_error", is_error)
                 .finish(),
+            Self::ModelContext {
+                generation,
+                model,
+                context_window,
+            } => f
+                .debug_struct("ModelContext")
+                .field("generation", generation)
+                .field("model", &model.as_ref().map(|_| "<redacted>"))
+                .field("context_window", context_window)
+                .finish(),
+            Self::ContextUsage {
+                generation,
+                context_tokens,
+                context_window,
+            } => f
+                .debug_struct("ContextUsage")
+                .field("generation", generation)
+                .field("context_tokens", context_tokens)
+                .field("context_window", context_window)
+                .finish(),
             Self::Settled { generation, .. } => f.debug_tuple("Settled").field(generation).finish(),
             Self::Error { generation, .. } => f
                 .debug_struct("Error")
@@ -121,6 +153,7 @@ impl fmt::Debug for AgentRuntimeEvent {
 
 enum AgentRuntimeCommand {
     Prompt(AgentPrompt),
+    InspectContext,
     Abort,
     Shutdown,
 }
@@ -174,6 +207,10 @@ pub(crate) fn send_prompt(generation: u64, prompt: AgentPrompt) -> Result<(), St
 
 pub(crate) fn abort(generation: u64) {
     let _ = send_command(generation, AgentRuntimeCommand::Abort);
+}
+
+pub(crate) fn inspect_context(generation: u64) -> Result<(), String> {
+    send_command(generation, AgentRuntimeCommand::InspectContext)
 }
 
 pub(crate) fn shutdown(generation: u64) {
@@ -345,6 +382,14 @@ fn run_runtime(
                     break;
                 }
             }
+            Ok(AgentRuntimeCommand::InspectContext) => {
+                if write_rpc_command(&mut stdin, &json!({ "type": "get_state" })).is_err()
+                    || write_rpc_command(&mut stdin, &json!({ "type": "get_session_stats" }))
+                        .is_err()
+                {
+                    break;
+                }
+            }
             Ok(AgentRuntimeCommand::Abort) => {
                 let _ = write_rpc_command(&mut stdin, &json!({ "type": "abort" }));
             }
@@ -509,6 +554,44 @@ fn parse_rpc_event(generation: u64, value: &Value) -> Option<AgentRuntimeEvent> 
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
         }),
+        "response"
+            if value.get("success").and_then(Value::as_bool) == Some(true)
+                && value.get("command").and_then(Value::as_str) == Some("get_state") =>
+        {
+            Some(AgentRuntimeEvent::ModelContext {
+                generation,
+                model: value
+                    .pointer("/data/model/id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                context_window: value
+                    .pointer("/data/model/contextWindow")
+                    .and_then(Value::as_u64),
+            })
+        }
+        "response"
+            if value.get("success").and_then(Value::as_bool) == Some(true)
+                && value.get("command").and_then(Value::as_str) == Some("get_session_stats") =>
+        {
+            Some(AgentRuntimeEvent::ContextUsage {
+                generation,
+                context_tokens: value
+                    .pointer("/data/contextUsage/tokens")
+                    .and_then(Value::as_u64),
+                context_window: value
+                    .pointer("/data/contextUsage/contextWindow")
+                    .and_then(Value::as_u64),
+            })
+        }
+        "response"
+            if value.get("success").and_then(Value::as_bool) == Some(false)
+                && matches!(
+                    value.get("command").and_then(Value::as_str),
+                    Some("get_state" | "get_session_stats")
+                ) =>
+        {
+            None
+        }
         "response" if value.get("success").and_then(Value::as_bool) == Some(false) => {
             Some(AgentRuntimeEvent::Error {
                 generation,
@@ -606,6 +689,9 @@ fn agent_end_has_visible_text(value: &Value) -> bool {
                 })
         })
 }
+
+#[cfg(test)]
+mod context_tests;
 
 #[cfg(test)]
 mod tests {

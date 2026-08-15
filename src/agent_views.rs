@@ -42,12 +42,9 @@ impl TradingTerminal {
                 text(self.agent.active_session_title.as_str())
                     .size(17)
                     .color(theme.palette().text),
-                text(format!(
-                    "Kerosene Assistant · Pi · OpenRouter · {}",
-                    self.openrouter_model_for_task()
-                ))
-                .size(11)
-                .color(theme.extended_palette().background.weak.text),
+                text("Kerosene Assistant · Pi · OpenRouter")
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text),
             ]
             .spacing(2)
             .width(Fill),
@@ -109,19 +106,30 @@ impl TradingTerminal {
                 .on_press_maybe(can_send.then_some(Message::AgentSubmit))
         };
 
-        let usage = match (self.agent.total_tokens, self.agent.total_cost_usd) {
-            (Some(tokens), Some(cost)) => format!("{tokens} tokens · ${cost:.4}"),
-            (Some(tokens), None) => format!("{tokens} tokens"),
-            _ => "Saved session".to_string(),
-        };
+        let requested_model = self.openrouter_model_for_task();
+        let (runtime_model, context_tokens, context_window) =
+            self.agent.context_metrics_for_model(&requested_model);
+        let display_model = runtime_model.unwrap_or(&requested_model);
+        let mut context_and_usage = context_usage_summary(context_tokens, context_window);
+        if let Some(usage) = api_usage_summary(self.agent.total_tokens, self.agent.total_cost_usd) {
+            context_and_usage.push_str(" · ");
+            context_and_usage.push_str(&usage);
+        }
         let footer = row![
             text("Read-only data access")
                 .size(10)
                 .color(theme.palette().success),
             Space::new().width(Fill),
-            text(usage)
-                .size(10)
-                .color(theme.extended_palette().background.weak.text),
+            column![
+                text(format!("Model · {display_model}"))
+                    .size(10)
+                    .color(theme.palette().text),
+                text(context_and_usage)
+                    .size(10)
+                    .color(theme.extended_palette().background.weak.text),
+            ]
+            .spacing(2)
+            .align_x(Alignment::End),
         ]
         .align_y(Alignment::Center);
 
@@ -281,6 +289,45 @@ impl TradingTerminal {
         .center_x(Fill)
         .center_y(Fill)
         .into()
+    }
+}
+
+fn context_usage_summary(context_tokens: Option<u64>, context_window: Option<u64>) -> String {
+    match (context_tokens, context_window.filter(|window| *window > 0)) {
+        (Some(tokens), Some(window)) => format!(
+            "Context · {} / {} ({:.1}%)",
+            compact_token_count(tokens),
+            compact_token_count(window),
+            (tokens as f64 / window as f64) * 100.0
+        ),
+        (None, Some(window)) => format!("Context · — / {}", compact_token_count(window)),
+        (Some(tokens), None) => format!("Context · {} / —", compact_token_count(tokens)),
+        (None, None) => "Context · — / —".to_string(),
+    }
+}
+
+fn api_usage_summary(total_tokens: Option<u64>, total_cost_usd: Option<f64>) -> Option<String> {
+    match (total_tokens, total_cost_usd) {
+        (Some(tokens), Some(cost)) => Some(format!(
+            "API usage · {} tokens · ${cost:.4}",
+            compact_token_count(tokens)
+        )),
+        (Some(tokens), None) => Some(format!(
+            "API usage · {} tokens",
+            compact_token_count(tokens)
+        )),
+        (None, Some(cost)) => Some(format!("API usage · ${cost:.4}")),
+        (None, None) => None,
+    }
+}
+
+fn compact_token_count(tokens: u64) -> String {
+    if tokens >= 1_000_000 {
+        format!("{:.1}M", tokens as f64 / 1_000_000.0)
+    } else if tokens >= 1_000 {
+        format!("{:.1}K", tokens as f64 / 1_000.0)
+    } else {
+        tokens.to_string()
     }
 }
 
@@ -501,5 +548,30 @@ fn agent_empty_card_style(theme: &Theme) -> container_style::Style {
             color: theme.extended_palette().background.strong.color,
         },
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn context_summary_shows_used_available_and_percentage() {
+        assert_eq!(
+            context_usage_summary(Some(12_500), Some(200_000)),
+            "Context · 12.5K / 200.0K (6.2%)"
+        );
+        assert_eq!(
+            context_usage_summary(None, Some(1_000_000)),
+            "Context · — / 1.0M"
+        );
+        assert_eq!(context_usage_summary(None, None), "Context · — / —");
+    }
+
+    #[test]
+    fn compact_token_counts_keep_footer_readable() {
+        assert_eq!(compact_token_count(999), "999");
+        assert_eq!(compact_token_count(1_250), "1.2K");
+        assert_eq!(compact_token_count(2_000_000), "2.0M");
     }
 }

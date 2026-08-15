@@ -3,8 +3,9 @@
 The Kerosene Assistant supports multiple local chat sessions. The session
 selector is the left column of the Assistant window; it lets the user create a
 session and switch between saved sessions. A session keeps its draft, user and
-assistant messages, title, and usage totals. In-progress turns cannot be
-switched so one Pi runtime cannot write into another session.
+assistant messages, title, usage totals, resolved model, and latest context
+measurement. In-progress turns cannot be switched so one Pi runtime cannot
+write into another session.
 
 ## State And Runtime Boundaries
 
@@ -12,8 +13,9 @@ switched so one Pi runtime cannot write into another session.
   applies storage bounds, and builds the bounded transcript used to resume a
   saved conversation.
 - `src/agent_update.rs` coordinates create/switch actions, stops the previous Pi
-  process, and schedules session saves.
-- `src/agent_views.rs` renders the session sidebar and persistence status.
+  process, requests Pi context metrics, and schedules session saves.
+- `src/agent_views.rs` renders the session sidebar, persistence status, and the
+  active session's model/context footer.
 - `src/agent_persistence.rs` loads and atomically saves the side-file.
 
 Pi continues to run with `--no-session`. After an app restart, runtime exit, or
@@ -21,6 +23,15 @@ session switch, Kerosene gives the next Pi process a bounded copy of that
 session's prior messages. The replay explicitly labels the content as chat
 history and instructs Pi to use fresh Kerosene tools for current application
 facts.
+
+After Pi starts and after each settled turn, Kerosene requests Pi's RPC state
+and session statistics. The footer shows the resolved model and context as
+`used / available (percent)`. These are Pi's model context-window metadata and
+its own context-token estimate, not cumulative API billing tokens. If Pi cannot
+provide a trustworthy token estimate, including immediately after compaction,
+the used value is shown as unknown rather than retaining a stale measurement.
+Before the first runtime starts, the configured OpenRouter model is shown and
+context capacity remains unknown.
 
 ## Persistence Contract
 
