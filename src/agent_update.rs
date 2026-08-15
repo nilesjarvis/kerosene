@@ -76,7 +76,13 @@ impl TradingTerminal {
         self.account_picker_rename_index = None;
 
         if let Some(id) = self.agent.window_id {
-            return window::gain_focus(id);
+            let focus = window::gain_focus(id);
+            let journal = if self.connected_address.is_some() {
+                self.load_journal_for_active_account(false)
+            } else {
+                Task::none()
+            };
+            return Task::batch([focus, journal]);
         }
 
         if !self.openrouter_configured() {
@@ -97,7 +103,12 @@ impl TradingTerminal {
         };
         let (id, task) = window::open(settings);
         self.agent.window_id = Some(id);
-        task.map(Message::WindowOpened)
+        let journal = if self.connected_address.is_some() {
+            self.load_journal_for_active_account(false)
+        } else {
+            Task::none()
+        };
+        Task::batch([task.map(Message::WindowOpened), journal])
     }
 
     fn submit_agent_prompt(&mut self) -> Task<Message> {

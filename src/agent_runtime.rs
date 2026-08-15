@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 const EXTENSION_SOURCE: &str = include_str!("../assets/agent/kerosene.ts");
 const RUNTIME_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const PI_RPC_ARGS: [&str; 3] = ["--mode", "rpc", "--no-session"];
-const PI_TOOL_ALLOWLIST: &str = "kerosene_data,kerosene_market_data,kerosene_activity,kerosene_calculate,kerosene_risk,kerosene_positioning,kerosene_ohlcv,kerosene_sessions";
+const PI_TOOL_ALLOWLIST: &str = "kerosene_data,kerosene_market_data,kerosene_activity,kerosene_journal,kerosene_calculate,kerosene_risk,kerosene_positioning,kerosene_ohlcv,kerosene_sessions";
 
 // ---------------------------------------------------------------------------
 // Pi RPC Runtime
@@ -615,7 +615,8 @@ mod tests {
     fn pi_rpc_arguments_match_current_cli_contract() {
         assert_eq!(PI_RPC_ARGS, ["--mode", "rpc", "--no-session"]);
         let tools = PI_TOOL_ALLOWLIST.split(',').collect::<Vec<_>>();
-        assert_eq!(tools.len(), 8);
+        assert_eq!(tools.len(), 9);
+        assert!(tools.contains(&"kerosene_journal"));
         assert!(tools.iter().all(|tool| tool.starts_with("kerosene_")));
         assert!(
             !tools

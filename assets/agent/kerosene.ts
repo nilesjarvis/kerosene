@@ -7,6 +7,7 @@ const PUBLIC_SECTION_NAMES = [
   "account",
   "portfolio",
   "markets",
+  "journal",
   "positioning",
   "sessions",
 ] as const;
@@ -15,6 +16,7 @@ const HYPERLIQUID_INFO_URL = "https://api.hyperliquid.xyz/info";
 const HYPERDASH_API_URL = "https://api.hyperdash.com/graphql";
 const MAX_MARKET_SYMBOLS = 20;
 const MAX_ACTIVITY_ROWS = 200;
+const MAX_JOURNAL_ROWS = 200;
 const MAX_POSITIONING_SYMBOLS = 3;
 const MAX_CANDLES = 500;
 const MAX_CANDLE_LOOKBACK_MS = 90 * 24 * 60 * 60_000;
@@ -205,6 +207,125 @@ function aggregateFunding(rows: JsonObject[]) {
       paid_usdc: byCoin.reduce((sum, row) => sum + row.paid_usdc, 0),
       net_usdc: byCoin.reduce((sum, row) => sum + row.net_usdc, 0),
       absolute_usdc: byCoin.reduce((sum, row) => sum + row.absolute_usdc, 0),
+    },
+  };
+}
+
+function journalRows(snapshot: JsonObject): JsonObject[] {
+  const rows = snapshot?._tool_data?.journal?.trades;
+  return Array.isArray(rows) ? rows : [];
+}
+
+function journalMetric(row: JsonObject, metric: string): number | null {
+  if (metric === "gross_pnl") return finiteNumber(row.gross_realized_pnl_usd);
+  if (metric === "return_on_entry_pct") return finiteNumber(row.return_on_entry_pct);
+  if (metric === "net_pnl_per_volume_pct") return finiteNumber(row.net_pnl_per_volume_pct);
+  return finiteNumber(row.net_realized_pnl_usd);
+}
+
+function journalMetricDefinition(metric: string): string {
+  if (metric === "gross_pnl") return "gross realized PnL before journal fees";
+  if (metric === "return_on_entry_pct") return "net realized PnL / entry notional × 100";
+  if (metric === "net_pnl_per_volume_pct") return "net realized PnL / traded volume × 100";
+  return "gross realized PnL - journal fees";
+}
+
+function filterJournalRows(rows: JsonObject[], params: JsonObject): JsonObject[] {
+  const symbol = normalizedSymbol(params.symbol);
+  const startMs = finiteNumber(params.start_ms);
+  const endMs = finiteNumber(params.end_ms);
+  const status = normalizedSymbol(params.status);
+  const side = normalizedSymbol(params.side);
+  const marketType = normalizedSymbol(params.market_type);
+  return rows.filter((row) => {
+    if (symbol && ![row.symbol, row.display_symbol].some((value) => normalizedSymbol(value) === symbol)) {
+      return false;
+    }
+    if (status && normalizedSymbol(row.status) !== status) return false;
+    if (side && normalizedSymbol(row.side) !== side) return false;
+    if (marketType && normalizedSymbol(row.market_type) !== marketType) return false;
+    if (params.annotated_only && !row.annotated) return false;
+    if (typeof params.basis_complete === "boolean" && Boolean(row.basis_complete) !== params.basis_complete) {
+      return false;
+    }
+    const time = finiteNumber(row.start_time_ms);
+    if (startMs !== null && (time === null || time < startMs)) return false;
+    if (endMs !== null && (time === null || time > endMs)) return false;
+    return true;
+  });
+}
+
+function rankJournalRows(rows: JsonObject[], metric: string, ascending: boolean): JsonObject[] {
+  return [...rows].sort((left, right) => {
+    const leftMetric = journalMetric(left, metric);
+    const rightMetric = journalMetric(right, metric);
+    if (leftMetric === null && rightMetric === null) return numericOrZero(right.start_time_ms) - numericOrZero(left.start_time_ms);
+    if (leftMetric === null) return 1;
+    if (rightMetric === null) return -1;
+    const comparison = ascending ? leftMetric - rightMetric : rightMetric - leftMetric;
+    return comparison || numericOrZero(right.start_time_ms) - numericOrZero(left.start_time_ms);
+  });
+}
+
+function journalStats(rows: JsonObject[]) {
+  const closed = rows.filter((row) => normalizedSymbol(row.status) === "CLOSED");
+  const netValues = closed.map((row) => numericOrZero(row.net_realized_pnl_usd));
+  const wins = netValues.filter((value) => value > 0);
+  const losses = netValues.filter((value) => value < 0);
+  const flats = netValues.length - wins.length - losses.length;
+  const grossProfit = wins.reduce((sum, value) => sum + value, 0);
+  const grossLoss = losses.reduce((sum, value) => sum + Math.abs(value), 0);
+  const netPnl = rows.reduce((sum, row) => sum + numericOrZero(row.net_realized_pnl_usd), 0);
+  return {
+    trade_count: rows.length,
+    closed_trade_count: closed.length,
+    open_trade_count: rows.length - closed.length,
+    annotated_trade_count: rows.filter((row) => row.annotated).length,
+    basis_complete_count: rows.filter((row) => row.basis_complete).length,
+    wins: wins.length,
+    losses: losses.length,
+    flats,
+    win_rate_pct: closed.length ? wins.length / closed.length * 100 : null,
+    gross_realized_pnl_usd: rows.reduce((sum, row) => sum + numericOrZero(row.gross_realized_pnl_usd), 0),
+    fees_usd: rows.reduce((sum, row) => sum + numericOrZero(row.fees_usd), 0),
+    net_realized_pnl_usd: netPnl,
+    average_net_pnl_usd: rows.length ? netPnl / rows.length : null,
+    average_win_usd: wins.length ? grossProfit / wins.length : null,
+    average_loss_usd: losses.length ? -grossLoss / losses.length : null,
+    profit_factor: grossLoss > 0 ? grossProfit / grossLoss : null,
+  };
+}
+
+function journalGroupedStats(rows: JsonObject[], values: (row: JsonObject) => string[]) {
+  const groups = new Map<string, JsonObject[]>();
+  for (const row of rows) {
+    for (const rawKey of values(row)) {
+      const key = String(rawKey || "unknown").trim() || "unknown";
+      const group = groups.get(key) ?? [];
+      group.push(row);
+      groups.set(key, group);
+    }
+  }
+  return [...groups.entries()]
+    .map(([label, groupRows]) => ({ label, ...journalStats(groupRows) }))
+    .sort((left, right) => right.net_realized_pnl_usd - left.net_realized_pnl_usd)
+    .slice(0, MAX_JOURNAL_ROWS);
+}
+
+function summarizeJournal(rows: JsonObject[]) {
+  return {
+    overall: journalStats(rows),
+    by_symbol: journalGroupedStats(rows, (row) => [row.display_symbol ?? row.symbol ?? "unknown"]),
+    by_side: journalGroupedStats(rows, (row) => [row.side ?? "unknown"]),
+    by_tag: journalGroupedStats(rows, (row) => {
+      const tags = row?.reflection?.tags;
+      return Array.isArray(tags) && tags.length ? tags : ["untagged"];
+    }),
+    formulas: {
+      net_realized_pnl_usd: "gross_realized_pnl_usd - fees_usd",
+      return_on_entry_pct: "net_realized_pnl_usd / entry_notional_usd × 100",
+      net_pnl_per_volume_pct: "net_realized_pnl_usd / volume_usd × 100",
+      profit_factor: "sum(positive net PnL) / abs(sum(negative net PnL))",
     },
   };
 }
@@ -594,7 +715,7 @@ export default function keroseneExtension(pi: ExtensionAPI) {
     name: "kerosene_data",
     label: "Kerosene snapshot",
     description: "Read one public section of the current sanitized Kerosene snapshot. Prefer a narrow section; use all only for a true cross-component summary.",
-    promptSnippet: "Read current public Kerosene account, portfolio, market, positioning, and session state",
+    promptSnippet: "Read current public Kerosene account, portfolio, market, journal, positioning, and session state",
     promptGuidelines: [
       "Use this tool before claims about current Kerosene state.",
       "Read coverage and provenance fields literally: endpoint completeness and Assistant truncation are different concepts.",
@@ -698,6 +819,132 @@ export default function keroseneExtension(pi: ExtensionAPI) {
           source: sourceCoverage,
         }),
       }, { kind: params.kind, mode: params.mode });
+    },
+  });
+
+  pi.registerTool({
+    name: "kerosene_journal",
+    label: "Kerosene trading journal",
+    description: "Query and deterministically rank the active account's sanitized reconstructed journal trades, performance metrics, reflections, and tags.",
+    promptSnippet: "Find best/worst journal trades and analyze performance patterns from reconstructed trade records",
+    promptGuidelines: [
+      "For best/worst trades, use this tool instead of recent fills or portfolio PnL.",
+      "Unless the user specifies otherwise, rank closed, basis-complete trades by fee-adjusted net realized PnL.",
+      "State the ranking metric and journal coverage; do not claim complete history when source coverage is truncated or sync is incomplete.",
+      "Treat reflections as user-authored context, not verified market facts.",
+    ],
+    parameters: Type.Object({
+      operation: Type.Union([
+        Type.Literal("list"),
+        Type.Literal("best"),
+        Type.Literal("worst"),
+        Type.Literal("summary"),
+      ]),
+      metric: Type.Optional(Type.Union([
+        Type.Literal("net_pnl"),
+        Type.Literal("gross_pnl"),
+        Type.Literal("return_on_entry_pct"),
+        Type.Literal("net_pnl_per_volume_pct"),
+      ])),
+      symbol: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+      status: Type.Optional(Type.Union([Type.Literal("OPEN"), Type.Literal("CLOSED")])),
+      side: Type.Optional(Type.Union([
+        Type.Literal("long"),
+        Type.Literal("short"),
+        Type.Literal("spot"),
+        Type.Literal("outcome"),
+      ])),
+      market_type: Type.Optional(Type.Union([
+        Type.Literal("perp"),
+        Type.Literal("spot"),
+        Type.Literal("outcome"),
+      ])),
+      start_ms: Type.Optional(Type.Number({ minimum: 0 })),
+      end_ms: Type.Optional(Type.Number({ minimum: 0 })),
+      annotated_only: Type.Optional(Type.Boolean()),
+      basis_complete: Type.Optional(Type.Boolean()),
+      include_reflections: Type.Optional(Type.Boolean()),
+      cursor: Type.Optional(Type.Integer({ minimum: 0 })),
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_JOURNAL_ROWS })),
+    }),
+    async execute(_toolCallId, params) {
+      const snapshot = await readSnapshot();
+      const journal = snapshot?._tool_data?.journal;
+      if (!journal?.available) {
+        return toolPayload({
+          available: false,
+          data_state: journal?.data_state ?? snapshot?.journal?.data_state ?? "unavailable",
+          reason: "active_account_journal_unavailable",
+          coverage: journal?.coverage ?? snapshot?.journal?.coverage ?? null,
+        }, { operation: params.operation });
+      }
+
+      const metric = params.metric ?? "net_pnl";
+      const effectiveParams = { ...params };
+      if (params.operation === "best" || params.operation === "worst") {
+        if (effectiveParams.status === undefined) effectiveParams.status = "CLOSED";
+        if (effectiveParams.basis_complete === undefined) effectiveParams.basis_complete = true;
+      }
+      const filtered = filterJournalRows(journalRows(snapshot), effectiveParams);
+      const sourceCoverage = journal.coverage ?? null;
+      const filter = {
+        symbol: params.symbol ?? null,
+        status: effectiveParams.status ?? null,
+        side: params.side ?? null,
+        market_type: params.market_type ?? null,
+        start_ms: params.start_ms ?? null,
+        end_ms: params.end_ms ?? null,
+        annotated_only: Boolean(params.annotated_only),
+        basis_complete: effectiveParams.basis_complete ?? null,
+      };
+
+      if (params.operation === "summary") {
+        return toolPayload({
+          available: true,
+          operation: params.operation,
+          data_state: journal.data_state ?? null,
+          as_of_ms: journal.as_of_ms ?? null,
+          filter,
+          summary: summarizeJournal(filtered),
+          coverage: {
+            matched_rows: filtered.length,
+            source: sourceCoverage,
+            aggregation_covers_all_serialized_matches: true,
+          },
+        }, { operation: params.operation, matched_rows: filtered.length });
+      }
+
+      const ordered = params.operation === "best"
+        ? rankJournalRows(filtered, metric, false)
+        : params.operation === "worst"
+          ? rankJournalRows(filtered, metric, true)
+          : [...filtered].sort((left, right) => numericOrZero(right.start_time_ms) - numericOrZero(left.start_time_ms));
+      const cursor = params.cursor ?? 0;
+      const limit = params.limit ?? (params.operation === "list" ? 50 : 5);
+      const includeReflections = params.include_reflections ?? true;
+      const rows = ordered.slice(cursor, cursor + limit).map((row) => {
+        if (includeReflections) return row;
+        const { reflection: _reflection, ...withoutReflection } = row;
+        return withoutReflection;
+      });
+      const nextCursor = cursor + rows.length < ordered.length ? cursor + rows.length : null;
+      return toolPayload({
+        available: true,
+        operation: params.operation,
+        data_state: journal.data_state ?? null,
+        metric: params.operation === "list" ? null : metric,
+        metric_definition: params.operation === "list" ? null : journalMetricDefinition(metric),
+        as_of_ms: journal.as_of_ms ?? null,
+        filter,
+        rows,
+        coverage: coverage(rows.length, ordered.length, {
+          cursor,
+          next_cursor: nextCursor,
+          source: sourceCoverage,
+          ranking_complete_for_loaded_journal: sourceCoverage?.truncated === false,
+          journal_sync_complete: sourceCoverage?.endpoint_fetch_complete ?? null,
+        }),
+      }, { operation: params.operation, metric, returned_rows: rows.length });
     },
   });
 
@@ -926,6 +1173,6 @@ export default function keroseneExtension(pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event) => ({
     systemPrompt:
       event.systemPrompt +
-      `\n\nYou are the Kerosene trading-data assistant. You can explain, compare, and calculate, but you cannot trade or mutate Kerosene. Use only Kerosene's typed tools for application facts. Start with the narrowest decisive tool; do not call extra sections after a complete empty-state result. Use kerosene_calculate or kerosene_activity aggregate mode for arithmetic. Never guess raw @N/#N symbol mappings. Treat provenance, timestamps, coverage, and truncation fields as authoritative. Distinguish current empty state, unavailable data, and historical activity. Clearinghouse, spot, portfolio, and income fields have different scopes; do not call a residual a defect without evidence. Never imply that you placed, changed, or cancelled an order. Do not provide individualized investment instructions; frame outputs as analytical information. Always finish with visible answer text. Use ordinary Markdown formulas and fenced code, not LaTeX delimiters.`,
+      `\n\nYou are the Kerosene trading-data assistant. You can explain, compare, and calculate, but you cannot trade or mutate Kerosene. Use only Kerosene's typed tools for application facts. Start with the narrowest decisive tool; do not call extra sections after a complete empty-state result. For questions about best/worst trades, trading performance, journal reflections, or tags, use kerosene_journal rather than recent fills or portfolio PnL. Unless the user specifies another definition, best/worst means closed, basis-complete journal trades ranked by fee-adjusted net realized PnL. Use kerosene_calculate or kerosene_activity aggregate mode for other arithmetic. Never guess raw @N/#N symbol mappings. Treat provenance, timestamps, coverage, and truncation fields as authoritative. Distinguish current empty state, unavailable data, and historical activity. Clearinghouse, spot, portfolio, and income fields have different scopes; do not call a residual a defect without evidence. Treat journal reflections as user-authored context, not verified market facts. Never imply that you placed, changed, or cancelled an order. Do not provide individualized investment instructions; frame outputs as analytical information. Always finish with visible answer text. Use ordinary Markdown formulas and fenced code, not LaTeX delimiters.`,
   }));
 }

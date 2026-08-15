@@ -9,7 +9,7 @@ impl TradingTerminal {
         let account_key = self.active_journal_account_key();
         self.journal.switch_active_account(account_key.clone());
 
-        if self.journal.window_id.is_none() {
+        if self.journal.window_id.is_none() && self.agent.window_id.is_none() {
             return Task::none();
         }
 
@@ -71,5 +71,25 @@ impl TradingTerminal {
                 result,
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn assistant_window_is_a_journal_data_consumer() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.connected_address = Some("0xabc".to_string());
+
+        let _ = terminal.load_journal_for_active_account(false);
+        assert!(!terminal.journal.loading);
+
+        terminal.agent.window_id = Some(iced::window::Id::unique());
+        let _ = terminal.load_journal_for_active_account(false);
+
+        assert!(terminal.journal.loading);
+        assert_eq!(terminal.journal.loaded_address.as_deref(), Some("0xabc"));
     }
 }

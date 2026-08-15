@@ -1,6 +1,7 @@
 use crate::app_state::TradingTerminal;
 
 use serde_json::{Value, json};
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -11,6 +12,9 @@ const MAX_MARKETS: usize = 250;
 const MAX_ACCOUNT_ROWS: usize = 100;
 const MAX_RECENT_ROWS: usize = 50;
 const MAX_TOOL_ACTIVITY_ROWS: usize = 2_000;
+const MAX_TOOL_JOURNAL_TRADES: usize = 5_000;
+const MAX_JOURNAL_REFLECTION_CHARS: usize = 2_000;
+const MAX_JOURNAL_TAGS: usize = 32;
 
 // ---------------------------------------------------------------------------
 // Read-only Agent Snapshot
@@ -30,13 +34,17 @@ impl TradingTerminal {
                     "private_keys",
                     "wallet_addresses",
                     "order_ids",
-                    "transaction_hashes"
+                    "transaction_hashes",
+                    "internal_journal_trade_ids",
+                    "legacy_journal_note_ids"
                 ],
                 "row_limits": {
                     "markets": MAX_MARKETS,
                     "account_rows": MAX_ACCOUNT_ROWS,
                     "recent_rows": MAX_RECENT_ROWS,
-                    "tool_activity_rows": MAX_TOOL_ACTIVITY_ROWS
+                    "tool_activity_rows": MAX_TOOL_ACTIVITY_ROWS,
+                    "tool_journal_trades": MAX_TOOL_JOURNAL_TRADES,
+                    "journal_reflection_chars": MAX_JOURNAL_REFLECTION_CHARS
                 },
                 "list_contract": "returned_count is the number serialized in the section; total_count is the number available in Kerosene state; endpoint_fetch_complete does not mean an Assistant-capped list is untruncated",
                 "market_symbol_contract": "symbol is the raw exchange/API key; canonical_symbol and display_symbol provide user-facing identity where metadata is available"
@@ -45,6 +53,7 @@ impl TradingTerminal {
             "account": self.agent_account_snapshot(generated_at_ms),
             "portfolio": self.agent_portfolio_snapshot(generated_at_ms),
             "markets": self.agent_markets_snapshot(generated_at_ms),
+            "journal": self.agent_journal_snapshot(generated_at_ms),
             "positioning": self.agent_positioning_snapshot(generated_at_ms),
             "sessions": self.agent_sessions_snapshot(generated_at_ms),
             "_tool_data": self.agent_tool_data_snapshot(generated_at_ms),
@@ -371,6 +380,160 @@ impl TradingTerminal {
         })
     }
 
+    fn agent_journal_snapshot(&self, generated_at_ms: u64) -> Value {
+        let available =
+            self.connected_address.is_some() && self.journal.active_account_key.is_some();
+        let total_trade_count = self.journal.trades.len();
+        let annotated_trade_count = self
+            .journal
+            .trades
+            .iter()
+            .filter(|trade| crate::journal::note_for_trade(&self.journal.entries, trade).is_some())
+            .count();
+        let as_of_ms = self.journal.last_refresh_time.unwrap_or(generated_at_ms);
+        let data_state = if !available {
+            "account_not_connected"
+        } else if self.journal.loading && total_trade_count == 0 {
+            "loading"
+        } else if self.journal.error.is_some() && total_trade_count == 0 {
+            "unavailable"
+        } else if total_trade_count == 0 && self.journal.sync_status.complete {
+            "complete_empty"
+        } else if total_trade_count == 0 {
+            "not_loaded_or_partial"
+        } else if self.journal.loading || !self.journal.sync_status.complete {
+            "partial"
+        } else {
+            "ready"
+        };
+
+        json!({
+            "provenance": section_provenance("kerosene_account_scoped_trading_journal", Some(as_of_ms)),
+            "available": available,
+            "data_state": data_state,
+            "loading": self.journal.loading,
+            "error_present": self.journal.error.is_some(),
+            "warning_present": self.journal.warning.is_some(),
+            "last_refresh_time_ms": self.journal.last_refresh_time,
+            "total_trade_count": total_trade_count,
+            "annotated_trade_count": annotated_trade_count,
+            "include_fees_in_journal_ui": self.journal.include_fees_in_pnl,
+            "sync": {
+                "complete": self.journal.sync_status.complete,
+                "pages_loaded": self.journal.sync_status.pages_loaded,
+                "fills_loaded": self.journal.sync_status.fills_loaded,
+                "pagination_warning_present": self.journal.sync_status.pagination_warning.is_some(),
+            },
+            "coverage": {
+                "returned_count": 0,
+                "total_count": total_trade_count,
+                "trades_exposed_in_public_section": false,
+                "on_demand_tool_available": true,
+                "endpoint_fetch_complete": self.journal.sync_status.complete,
+                "complete_for_current_state": !self.journal.loading && self.journal.sync_status.complete,
+            },
+            "ranking_contract": "Best/worst defaults to closed, basis-complete trades ranked by net_realized_pnl_usd (gross realized PnL minus journal fees). The typed journal tool can use other explicit metrics.",
+        })
+    }
+
+    fn agent_journal_tool_snapshot(&self, generated_at_ms: u64) -> Value {
+        let total_count = self.journal.trades.len();
+        let selected_indexes = journal_trade_selection_indexes(
+            &self.journal.trades,
+            &self.journal.entries,
+            MAX_TOOL_JOURNAL_TRADES,
+        );
+        let rows = selected_indexes
+            .iter()
+            .map(|index| self.agent_journal_trade_row(*index))
+            .collect::<Vec<_>>();
+        let returned_count = rows.len();
+
+        json!({
+            "available": self.connected_address.is_some() && self.journal.active_account_key.is_some(),
+            "as_of_ms": self.journal.last_refresh_time.unwrap_or(generated_at_ms),
+            "data_state": self.agent_journal_snapshot(generated_at_ms)["data_state"],
+            "trades": rows,
+            "coverage": list_coverage(
+                returned_count,
+                total_count,
+                self.journal.sync_status.complete,
+                !self.journal.loading && self.journal.sync_status.complete,
+            ),
+            "selection_policy": "All trades when within the cap. Above the cap, annotated trades plus the largest/smallest net-PnL, largest return-on-entry, and most recent trades are prioritized; overall net-PnL extremes are preserved.",
+            "ranking_defaults": {
+                "status": "CLOSED",
+                "basis_complete": true,
+                "metric": "net_pnl",
+                "net_pnl_formula": "gross_realized_pnl_usd - fees_usd",
+            },
+            "privacy": "Wallet addresses, fill/order/transaction identifiers, and internal journal trade IDs are omitted. Free-form reflections and tags are bounded and credential-redacted.",
+        })
+    }
+
+    fn agent_journal_trade_row(&self, index: usize) -> Value {
+        let trade = &self.journal.trades[index];
+        let market_type = journal_market_type(&trade.coin);
+        let side = match market_type {
+            "perp" if trade.is_long => "long",
+            "perp" => "short",
+            "spot" => "spot",
+            _ => "outcome",
+        };
+        let net_pnl = trade.pnl - trade.fee;
+        let return_on_entry_pct = positive_ratio_pct(net_pnl, trade.total_entry_notional);
+        let net_pnl_per_volume_pct = positive_ratio_pct(net_pnl, trade.volume);
+        let reflection = crate::journal::note_for_trade(&self.journal.entries, trade).map(|note| {
+            json!({
+                "open_thesis": self.sanitized_journal_text(&note.open),
+                "close_reflection": self.sanitized_journal_text(&note.close),
+                "cause_of_error": self.sanitized_journal_text(&note.cause_of_error),
+                "tags": note.tags.iter().take(MAX_JOURNAL_TAGS).map(|tag| self.sanitized_journal_text(tag)).collect::<Vec<_>>(),
+                "tag_count": note.tags.len(),
+                "tags_truncated": note.tags.len() > MAX_JOURNAL_TAGS,
+            })
+        });
+
+        json!({
+            "journal_ref": format!("trade-{}", index.saturating_add(1)),
+            "symbol": trade.coin,
+            "display_symbol": self.display_coin_for_journal(&trade.coin),
+            "market_type": market_type,
+            "side": side,
+            "status": trade.status,
+            "start_time_ms": trade.start_time,
+            "end_time_ms": trade.end_time,
+            "duration_ms": trade.end_time.map(|end| end.saturating_sub(trade.start_time)),
+            "gross_realized_pnl_usd": trade.pnl,
+            "fees_usd": trade.fee,
+            "net_realized_pnl_usd": net_pnl,
+            "return_on_entry_pct": return_on_entry_pct,
+            "net_pnl_per_volume_pct": net_pnl_per_volume_pct,
+            "volume_usd": trade.volume,
+            "max_position": trade.max_position,
+            "average_entry_price": trade.avg_entry_price,
+            "entry_notional_usd": trade.total_entry_notional,
+            "entry_size": trade.total_entry_size,
+            "fill_count": trade.fill_count,
+            "basis_complete": trade.basis_complete,
+            "annotated": reflection.is_some(),
+            "reflection": reflection,
+        })
+    }
+
+    fn sanitized_journal_text(&self, text: &str) -> String {
+        let mut sanitized = crate::helpers::redact_sensitive_response_text(text);
+        for key in [
+            self.openrouter_api_key.trim(),
+            self.hyperdash_api_key.trim(),
+        ] {
+            if !key.is_empty() {
+                sanitized = sanitized.replace(key, "<redacted>");
+            }
+        }
+        crate::helpers::text_excerpt(&sanitized, MAX_JOURNAL_REFLECTION_CHARS)
+    }
+
     fn agent_positioning_snapshot(&self, generated_at_ms: u64) -> Value {
         let mut panes = self
             .positioning_infos
@@ -617,6 +780,7 @@ impl TradingTerminal {
                 "coverage": list_coverage(self.all_mids.len(), self.all_mids.len(), true, true),
             },
             "activity": account_activity,
+            "journal": self.agent_journal_tool_snapshot(generated_at_ms),
             "risk": self.agent_risk_snapshot(generated_at_ms),
             "positioning_cache": self.agent_positioning_snapshot(generated_at_ms),
             "sessions_cache": self.agent_sessions_snapshot(generated_at_ms),
@@ -626,6 +790,7 @@ impl TradingTerminal {
                 "portfolio_history": "Windowed account-value and PnL series may use different baselines; a shorter-window PnL can exceed all-time PnL after earlier losses.",
                 "raw_market_symbols": "@N and #N are real exchange/API identifiers, not Assistant privacy redaction. Use canonical_symbol/display_symbol metadata rather than guessing mappings.",
                 "completeness": "endpoint_fetch_complete describes the upstream fetch. An Assistant list can still be truncated when returned_count is below total_count.",
+                "journal_best_trade": "By default, best/worst journal trades are closed, basis-complete records ranked by fee-adjusted realized PnL. Gross PnL, return on entry, and PnL per volume are separate selectable metrics.",
             }
         })
     }
@@ -685,6 +850,130 @@ impl TradingTerminal {
             },
             "scope_warning": "Clearinghouse, spot, portfolio-history, and income values have different source semantics. Report them separately unless a deterministic reconciliation explicitly bridges them.",
         })
+    }
+}
+
+fn journal_trade_selection_indexes(
+    trades: &[crate::journal::AggregatedTrade],
+    entries: &HashMap<String, crate::journal::JournalNote>,
+    limit: usize,
+) -> Vec<usize> {
+    if trades.len() <= limit {
+        return (0..trades.len()).collect();
+    }
+
+    let quota = (limit / 5).max(1);
+    let mut selected = Vec::with_capacity(limit);
+    let mut seen = HashSet::with_capacity(limit);
+
+    let annotated = trades
+        .iter()
+        .enumerate()
+        .filter(|(_index, trade)| crate::journal::note_for_trade(entries, trade).is_some())
+        .map(|(index, _trade)| index);
+    extend_unique_indexes(&mut selected, &mut seen, annotated, quota, limit);
+
+    let mut by_net_pnl = (0..trades.len()).collect::<Vec<_>>();
+    by_net_pnl.sort_by(|left, right| {
+        journal_trade_net_pnl(&trades[*right])
+            .partial_cmp(&journal_trade_net_pnl(&trades[*left]))
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| left.cmp(right))
+    });
+    extend_unique_indexes(
+        &mut selected,
+        &mut seen,
+        by_net_pnl.iter().copied(),
+        quota,
+        limit,
+    );
+    extend_unique_indexes(
+        &mut selected,
+        &mut seen,
+        by_net_pnl.iter().rev().copied(),
+        quota,
+        limit,
+    );
+
+    let mut by_return = (0..trades.len()).collect::<Vec<_>>();
+    by_return.sort_by(|left, right| {
+        compare_optional_f64_desc(
+            positive_ratio_pct(
+                journal_trade_net_pnl(&trades[*left]),
+                trades[*left].total_entry_notional,
+            ),
+            positive_ratio_pct(
+                journal_trade_net_pnl(&trades[*right]),
+                trades[*right].total_entry_notional,
+            ),
+        )
+        .then_with(|| left.cmp(right))
+    });
+    extend_unique_indexes(&mut selected, &mut seen, by_return, quota, limit);
+
+    let mut recent = (0..trades.len()).collect::<Vec<_>>();
+    recent.sort_by(|left, right| {
+        trades[*right]
+            .start_time
+            .cmp(&trades[*left].start_time)
+            .then_with(|| left.cmp(right))
+    });
+    extend_unique_indexes(&mut selected, &mut seen, recent, limit, limit);
+    extend_unique_indexes(&mut selected, &mut seen, 0..trades.len(), limit, limit);
+
+    selected.sort_by(|left, right| {
+        trades[*right]
+            .start_time
+            .cmp(&trades[*left].start_time)
+            .then_with(|| left.cmp(right))
+    });
+    selected
+}
+
+fn extend_unique_indexes(
+    selected: &mut Vec<usize>,
+    seen: &mut HashSet<usize>,
+    indexes: impl IntoIterator<Item = usize>,
+    category_limit: usize,
+    total_limit: usize,
+) {
+    let mut category_count = 0;
+    for index in indexes {
+        if selected.len() >= total_limit || category_count >= category_limit {
+            break;
+        }
+        if seen.insert(index) {
+            selected.push(index);
+            category_count += 1;
+        }
+    }
+}
+
+fn journal_trade_net_pnl(trade: &crate::journal::AggregatedTrade) -> f64 {
+    trade.pnl - trade.fee
+}
+
+fn positive_ratio_pct(numerator: f64, denominator: f64) -> Option<f64> {
+    (numerator.is_finite() && denominator.is_finite() && denominator > 0.0)
+        .then_some(numerator / denominator * 100.0)
+}
+
+fn compare_optional_f64_desc(left: Option<f64>, right: Option<f64>) -> Ordering {
+    match (left, right) {
+        (Some(left), Some(right)) => right.partial_cmp(&left).unwrap_or(Ordering::Equal),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
+    }
+}
+
+fn journal_market_type(symbol: &str) -> &'static str {
+    if symbol.starts_with('#') {
+        "outcome"
+    } else if symbol.starts_with('@') || symbol.contains('/') {
+        "spot"
+    } else {
+        "perp"
     }
 }
 
@@ -866,5 +1155,100 @@ mod tests {
         assert_eq!(value["markets"]["coverage"]["total_count"], 301);
         assert_eq!(value["markets"]["coverage"]["truncated"], true);
         assert_eq!(private_markets.len(), 301);
+    }
+
+    #[test]
+    fn journal_snapshot_exposes_rankable_trades_and_redacted_reflections() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".into());
+        terminal.journal.active_account_key = Some("private-account-key".to_string());
+        terminal.journal.last_refresh_time = Some(1_234_567);
+        terminal.journal.sync_status.complete = true;
+        terminal.openrouter_api_key = "sk-or-private-journal-key".into();
+        terminal.journal.trades.push(journal_trade(
+            "internal-trade-id",
+            "BTC",
+            250.0,
+            10.0,
+            1_000,
+        ));
+        terminal.journal.entries.insert(
+            "internal-trade-id".to_string(),
+            crate::journal::JournalNote {
+                open: "breakout thesis sk-or-private-journal-key".to_string(),
+                close: "wallet 0xabc0000000000000000000000000000000000000".to_string(),
+                cause_of_error: String::new(),
+                tags: vec!["momentum".to_string()],
+            },
+        );
+
+        let bytes = terminal.build_agent_snapshot().expect("snapshot");
+        let text = String::from_utf8(bytes).expect("utf8");
+        let value: Value = serde_json::from_str(&text).expect("json");
+        let row = &value["_tool_data"]["journal"]["trades"][0];
+
+        assert_eq!(value["journal"]["data_state"], "ready");
+        assert_eq!(value["journal"]["total_trade_count"], 1);
+        assert_eq!(row["symbol"], "BTC");
+        assert_eq!(row["side"], "long");
+        assert_eq!(row["gross_realized_pnl_usd"], 250.0);
+        assert_eq!(row["fees_usd"], 10.0);
+        assert_eq!(row["net_realized_pnl_usd"], 240.0);
+        assert_eq!(row["return_on_entry_pct"], 24.0);
+        assert_eq!(row["reflection"]["tags"][0], "momentum");
+        assert!(
+            row["reflection"]["open_thesis"]
+                .as_str()
+                .is_some_and(|note| note.contains("<redacted>"))
+        );
+        assert!(!text.contains("internal-trade-id"));
+        assert!(!text.contains("private-account-key"));
+        assert!(!text.contains("sk-or-private-journal-key"));
+        assert!(!text.contains("0xabc0000000000000000000000000000000000000"));
+    }
+
+    #[test]
+    fn capped_journal_selection_preserves_net_pnl_extremes() {
+        let trades = vec![
+            journal_trade("best", "BTC", 1_000.0, 0.0, 1),
+            journal_trade("worst", "ETH", -900.0, 0.0, 2),
+            journal_trade("middle-1", "SOL", 5.0, 0.0, 3),
+            journal_trade("middle-2", "HYPE", 4.0, 0.0, 4),
+            journal_trade("middle-3", "DOGE", 3.0, 0.0, 5),
+            journal_trade("recent", "XRP", 2.0, 0.0, 6),
+        ];
+
+        let selected = journal_trade_selection_indexes(&trades, &HashMap::new(), 4);
+
+        assert!(selected.contains(&0), "best trade should be retained");
+        assert!(selected.contains(&1), "worst trade should be retained");
+        assert_eq!(selected.len(), 4);
+    }
+
+    fn journal_trade(
+        id: &str,
+        coin: &str,
+        pnl: f64,
+        fee: f64,
+        start_time: u64,
+    ) -> crate::journal::AggregatedTrade {
+        crate::journal::AggregatedTrade {
+            id: id.to_string(),
+            legacy_note_ids: Vec::new(),
+            coin: coin.to_string(),
+            start_time,
+            end_time: Some(start_time + 60_000),
+            max_position: 1.0,
+            volume: 2_000.0,
+            fee,
+            pnl,
+            status: "CLOSED".to_string(),
+            fill_count: 2,
+            avg_entry_price: 100.0,
+            total_entry_notional: 1_000.0,
+            total_entry_size: 10.0,
+            is_long: true,
+            basis_complete: true,
+        }
     }
 }

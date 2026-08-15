@@ -23,6 +23,12 @@ Settings > Integrations. Closing the window terminates Pi, clears the transcript
 and deletes the sensitive snapshot. Sessions use Pi's `--no-session` mode and
 are never written to Pi's session store.
 
+Opening the Assistant while an account is connected also makes it an active
+journal-data consumer. Kerosene immediately hydrates any local journal cache and
+starts the normal incremental journal sync even when the Trading Journal window
+is closed. A prompt snapshot can therefore use cached trades while a refresh is
+in progress, with partial coverage reported explicitly.
+
 ## Runtime Contract
 
 Kerosene starts Pi with:
@@ -49,6 +55,7 @@ The enabled tool allowlist is:
 - `kerosene_data`
 - `kerosene_market_data`
 - `kerosene_activity`
+- `kerosene_journal`
 - `kerosene_calculate`
 - `kerosene_risk`
 - `kerosene_positioning`
@@ -91,13 +98,16 @@ Sections are:
 - `account`
 - `portfolio`
 - `markets`
+- `journal`
 - `positioning`
 - `sessions`
 - `all`
 
 The account section includes margin summary, positions, spot balances, open
 orders, recent fills, recent funding, and completeness metadata. Portfolio data
-is summarized by bucket. Positioning exposes aggregate totals and aggregate
+is summarized by bucket. The public journal section reports availability, sync
+state, trade/reflection counts, and coverage; individual journal trades remain
+in the private sanitized tool index. Positioning exposes aggregate totals and aggregate
 change statistics, never wallet-level identities. Lists are bounded to prevent
 uncontrolled context growth.
 
@@ -115,6 +125,7 @@ The snapshot explicitly omits:
 - wallet addresses
 - order IDs
 - transaction hashes
+- internal journal trade and legacy-note IDs
 - wallet-level HyperDash identities
 
 Errors are represented as booleans instead of raw upstream messages because
@@ -129,6 +140,13 @@ those messages can contain sensitive request context.
 - `kerosene_activity` filters or deterministically aggregates sanitized fills
   and funding with bounded pagination. Order IDs and transaction hashes remain
   omitted.
+- `kerosene_journal` reads the active account's reconstructed journal trades,
+  including fee-adjusted realized PnL, entry/volume efficiency metrics,
+  basis-quality flags, bounded credential-redacted reflections, and tags. It
+  can list, summarize, or rank best/worst trades with symbol, side, market,
+  annotation, and time filters. Best/worst defaults to closed, basis-complete
+  trades ranked by `gross realized PnL - journal fees`; responses expose sync
+  and truncation coverage.
 - `kerosene_calculate` performs allowlisted exposure, liquidation-buffer,
   stress, fill, funding, and reconciliation calculations. It is not an
   arbitrary code executor.
@@ -145,8 +163,11 @@ those messages can contain sensitive request context.
   independent of whether a Session Data pane is open.
 
 The system prompt directs the model to use deterministic tools for arithmetic,
-avoid guessing symbol mappings, use plain Markdown rather than unsupported
-LaTeX delimiters, and stop after a decisive complete empty-state result.
+route best/worst-trade and reflection questions to `kerosene_journal`, avoid
+guessing symbol mappings, use plain Markdown rather than unsupported LaTeX
+delimiters, and stop after a decisive complete empty-state result. Journal
+reflections are treated as user-authored context rather than verified market
+facts.
 
 If current Pi emits `agent_end` without visible text, Kerosene retries once with
 a short visible-answer instruction. A second empty settlement becomes an
@@ -166,6 +187,9 @@ explicit error instead of being presented as a successful blank response.
   there is no generic URL or query input.
 - Snapshot refresh happens at prompt boundaries, not continuously during a
   single agent turn.
+- Journal analysis reflects the active account's currently loaded journal and
+  reports partial, incomplete, or truncated coverage rather than silently
+  presenting it as full history.
 
 ## Follow-up Scope
 
