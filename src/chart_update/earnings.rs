@@ -724,6 +724,7 @@ mod tests {
             form: "8-K".to_string(),
             filing_date: "2026-05-28".to_string(),
             source_documents: vec!["EX-99.1 q1fy27pr.htm".to_string()],
+            structured_earnings: None,
             headline: Some("NVIDIA reports first quarter fiscal 2027 results".to_string()),
             highlights: vec![
                 "Revenue was $44.1 billion, up 69% from a year ago".to_string(),
