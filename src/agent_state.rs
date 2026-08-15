@@ -1,4 +1,4 @@
-use iced::window;
+use iced::{widget::markdown, window};
 use std::fmt;
 use zeroize::Zeroizing;
 
@@ -40,11 +40,11 @@ pub(crate) enum AgentChatRole {
     Assistant,
 }
 
-#[derive(Clone)]
 pub(crate) enum AgentChatEntry {
     Message {
         role: AgentChatRole,
         text: String,
+        markdown: Option<Box<markdown::Content>>,
     },
     Tool {
         call_id: String,
@@ -77,7 +77,6 @@ impl fmt::Debug for AgentChatEntry {
     }
 }
 
-#[derive(Clone)]
 pub(crate) struct AgentState {
     pub(crate) window_id: Option<window::Id>,
     pub(crate) input: String,
@@ -89,6 +88,9 @@ pub(crate) struct AgentState {
     pub(crate) snapshot_request_id: u64,
     pub(crate) pending_prompt: Option<AgentPrompt>,
     pub(crate) assistant_entry_index: Option<usize>,
+    pub(crate) current_turn_has_text: bool,
+    pub(crate) empty_response_retry_count: u8,
+    pub(crate) suppress_empty_response_retry: bool,
     pub(crate) total_tokens: Option<u64>,
     pub(crate) total_cost_usd: Option<f64>,
 }
@@ -106,6 +108,9 @@ impl Default for AgentState {
             snapshot_request_id: 0,
             pending_prompt: None,
             assistant_entry_index: None,
+            current_turn_has_text: false,
+            empty_response_retry_count: 0,
+            suppress_empty_response_retry: false,
             total_tokens: None,
             total_cost_usd: None,
         }
@@ -123,22 +128,36 @@ impl AgentState {
         self.pending_prompt = Some(prompt);
         self.status = AgentStatus::Preparing;
         self.status_detail = None;
+        self.current_turn_has_text = false;
+        self.empty_response_retry_count = 0;
+        self.suppress_empty_response_retry = false;
         (self.runtime_generation, self.snapshot_request_id)
     }
 
     pub(crate) fn append_assistant_delta(&mut self, delta: &str) {
+        if !delta.trim().is_empty() {
+            self.current_turn_has_text = true;
+        }
         let entry_index = self.assistant_entry_index.unwrap_or_else(|| {
             self.entries.push(AgentChatEntry::Message {
                 role: AgentChatRole::Assistant,
                 text: String::new(),
+                markdown: Some(Box::new(markdown::Content::new())),
             });
             let index = self.entries.len().saturating_sub(1);
             self.assistant_entry_index = Some(index);
             index
         });
 
-        if let Some(AgentChatEntry::Message { text, .. }) = self.entries.get_mut(entry_index) {
+        if let Some(AgentChatEntry::Message { text, markdown, .. }) =
+            self.entries.get_mut(entry_index)
+        {
             text.push_str(delta);
+            if let Some(markdown) = markdown {
+                markdown.push_str(delta);
+            } else {
+                *markdown = Some(Box::new(markdown::Content::parse(text)));
+            }
         }
     }
 
@@ -163,6 +182,9 @@ impl AgentState {
         self.runtime_connected = false;
         self.pending_prompt = None;
         self.assistant_entry_index = None;
+        self.current_turn_has_text = false;
+        self.empty_response_retry_count = 0;
+        self.suppress_empty_response_retry = false;
         self.total_tokens = None;
         self.total_cost_usd = None;
         self.begin_new_runtime();
@@ -194,6 +216,27 @@ impl fmt::Debug for AgentPrompt {
     }
 }
 
+#[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct AgentUri(Zeroizing<String>);
+
+impl AgentUri {
+    pub(crate) fn into_string(self) -> String {
+        self.0.to_string()
+    }
+}
+
+impl From<String> for AgentUri {
+    fn from(value: String) -> Self {
+        Self(value.into())
+    }
+}
+
+impl fmt::Debug for AgentUri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("AgentUri(<redacted>)")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,7 +257,8 @@ mod tests {
             state.entries.as_slice(),
             [AgentChatEntry::Message {
                 role: AgentChatRole::Assistant,
-                text
+                text,
+                ..
             }] if text == "Hello world"
         ));
     }
@@ -224,9 +268,45 @@ mod tests {
         let entry = AgentChatEntry::Message {
             role: AgentChatRole::User,
             text: "private portfolio question".to_string(),
+            markdown: None,
         };
         let debug = format!("{entry:?}");
         assert!(!debug.contains("private portfolio question"));
         assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn streamed_assistant_markdown_builds_rich_blocks_incrementally() {
+        let mut state = AgentState::default();
+        state.append_assistant_delta("## Risk summary\n\n- **BTC** exposure\n\n");
+        state.append_assistant_delta("```rust\nlet risk = 42;\n```\n");
+
+        let [
+            AgentChatEntry::Message {
+                markdown: Some(markdown),
+                ..
+            },
+        ] = state.entries.as_slice()
+        else {
+            panic!("expected one parsed assistant message");
+        };
+
+        assert!(matches!(
+            markdown.items(),
+            [
+                markdown::Item::Heading(..),
+                markdown::Item::List { .. },
+                markdown::Item::CodeBlock { .. }
+            ]
+        ));
+    }
+
+    #[test]
+    fn agent_uri_debug_is_redacted() {
+        let uri = AgentUri::from("https://example.com/private?token=secret".to_string());
+        let debug = format!("{uri:?}");
+
+        assert_eq!(debug, "AgentUri(<redacted>)");
+        assert!(!debug.contains("token=secret"));
     }
 }

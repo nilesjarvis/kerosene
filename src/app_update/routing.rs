@@ -42,7 +42,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AgentSnapshotPrepared(_, _, _)
         | Message::AgentRuntimeEvent(_)
         | Message::AgentAbort
-        | Message::AgentNewChat => UpdateRoute::Agent,
+        | Message::AgentNewChat
+        | Message::AgentOpenLink(_)
+        | Message::AgentLinkOpened(_) => UpdateRoute::Agent,
 
         Message::CreateCanvas | Message::OpenCanvas(_) => UpdateRoute::Canvas,
 

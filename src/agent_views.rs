@@ -1,13 +1,14 @@
 use crate::agent_state::{AgentChatEntry, AgentChatRole, AgentStatus};
+use crate::app_fonts;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
 
 use iced::widget::container as container_style;
 use iced::widget::{
-    Column, Space, button, column, container, row, rule, scrollable, text, text_input,
+    Column, Space, button, column, container, markdown, row, rule, scrollable, text, text_input,
 };
-use iced::{Alignment, Border, Color, Element, Fill, Length, Theme};
+use iced::{Alignment, Border, Color, Element, Fill, Length, Padding, Theme};
 
 // ---------------------------------------------------------------------------
 // Kerosene Assistant View
@@ -200,30 +201,45 @@ impl TradingTerminal {
 
 fn agent_entry<'a>(entry: &'a AgentChatEntry, theme: &Theme) -> Element<'a, Message> {
     match entry {
-        AgentChatEntry::Message { role, text: body } => {
+        AgentChatEntry::Message {
+            role,
+            text: body,
+            markdown: markdown_content,
+        } => {
             let label = match role {
                 AgentChatRole::User => "You",
                 AgentChatRole::Assistant => "Assistant",
+            };
+            let body: Element<'a, Message> = match (role, markdown_content) {
+                (AgentChatRole::Assistant, Some(content)) => {
+                    markdown::view(content.items(), agent_markdown_settings(theme))
+                        .map(|uri| Message::AgentOpenLink(uri.into()))
+                }
+                _ => text(body.as_str())
+                    .size(13)
+                    .color(theme.palette().text)
+                    .into(),
             };
             let bubble = container(
                 column![
                     text(label)
                         .size(10)
                         .color(theme.extended_palette().background.weak.text),
-                    text(body.as_str()).size(13).color(theme.palette().text),
+                    body,
                 ]
                 .spacing(5),
             )
             .padding([10, 12])
-            .max_width(580.0)
             .style(match role {
                 AgentChatRole::User => user_bubble_style,
                 AgentChatRole::Assistant => assistant_bubble_style,
             });
 
             match role {
-                AgentChatRole::User => row![Space::new().width(Fill), bubble].into(),
-                AgentChatRole::Assistant => row![bubble, Space::new().width(Fill)].into(),
+                AgentChatRole::User => {
+                    row![Space::new().width(Fill), bubble.max_width(580.0)].into()
+                }
+                AgentChatRole::Assistant => bubble.width(Fill).max_width(660.0).into(),
             }
         }
         AgentChatEntry::Tool {
@@ -263,6 +279,39 @@ fn agent_entry<'a>(entry: &'a AgentChatEntry, theme: &Theme) -> Element<'a, Mess
             .into()
         }
     }
+}
+
+fn agent_markdown_settings(theme: &Theme) -> markdown::Settings {
+    let mut inline_background = theme.extended_palette().background.strong.color;
+    inline_background.a = 0.55;
+
+    let style = markdown::Style {
+        inline_code_highlight: markdown::Highlight {
+            background: inline_background.into(),
+            border: Border {
+                radius: 4.0.into(),
+                width: 1.0,
+                color: theme.extended_palette().background.strong.color,
+            },
+        },
+        inline_code_padding: Padding::from([1, 4]),
+        inline_code_color: theme.palette().text,
+        inline_code_font: app_fonts::monospace_font(),
+        code_block_font: app_fonts::monospace_font(),
+        link_color: theme.palette().primary,
+        ..markdown::Style::from(theme)
+    };
+
+    let mut settings = markdown::Settings::with_text_size(13, style);
+    settings.h1_size = 20.0.into();
+    settings.h2_size = 18.0.into();
+    settings.h3_size = 16.0.into();
+    settings.h4_size = 15.0.into();
+    settings.h5_size = 14.0.into();
+    settings.h6_size = 13.0.into();
+    settings.code_size = 12.0.into();
+    settings.spacing = 8.0.into();
+    settings
 }
 
 fn chip_style(theme: &Theme, color: Color) -> container_style::Style {
