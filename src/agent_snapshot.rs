@@ -7,7 +7,8 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
+const SNAPSHOT_SCHEMA_VERSION: u32 = 3;
+const ASSISTANT_CURRENT_DATA_MAX_AGE_MS: u64 = 15_000;
 const MAX_MARKETS: usize = 250;
 const MAX_ACCOUNT_ROWS: usize = 100;
 const MAX_RECENT_ROWS: usize = 50;
@@ -47,7 +48,8 @@ impl TradingTerminal {
                     "journal_reflection_chars": MAX_JOURNAL_REFLECTION_CHARS
                 },
                 "list_contract": "returned_count is the number serialized in the section; total_count is the number available in Kerosene state; endpoint_fetch_complete does not mean an Assistant-capped list is untruncated",
-                "market_symbol_contract": "symbol is the raw exchange/API key; canonical_symbol and display_symbol provide user-facing identity where metadata is available"
+                "market_symbol_contract": "symbol is the raw exchange/API key; canonical_symbol and display_symbol provide user-facing identity where metadata is available",
+                "time_contract": "generated_at_ms is when Kerosene serialized the snapshot. provenance.observed_at_ms/as_of_ms is when the underlying data was observed and remains null when unknown; snapshot generation time is never substituted for missing observation time"
             },
             "overview": self.agent_overview_snapshot(generated_at_ms),
             "account": self.agent_account_snapshot(generated_at_ms),
@@ -65,7 +67,12 @@ impl TradingTerminal {
 
     fn agent_overview_snapshot(&self, generated_at_ms: u64) -> Value {
         json!({
-            "provenance": section_provenance("kerosene_state", Some(generated_at_ms)),
+            "provenance": section_provenance(
+                "kerosene_state",
+                Some(generated_at_ms),
+                generated_at_ms,
+                Some(0),
+            ),
             "active_symbol": self.active_symbol,
             "active_symbol_display": self.active_symbol_display,
             "account_connected": self.connected_address.is_some(),
@@ -81,7 +88,12 @@ impl TradingTerminal {
     fn agent_account_snapshot(&self, generated_at_ms: u64) -> Value {
         let Some(data) = self.account_data.as_ref() else {
             return json!({
-                "provenance": section_provenance("kerosene_account_state", Some(generated_at_ms)),
+                "provenance": section_provenance(
+                    "kerosene_account_state",
+                    None,
+                    generated_at_ms,
+                    Some(ASSISTANT_CURRENT_DATA_MAX_AGE_MS),
+                ),
                 "available": false,
                 "loading": self.account_loading,
                 "error_present": self.account_error.is_some(),
@@ -188,7 +200,12 @@ impl TradingTerminal {
 
         let completeness = &data.completeness;
         json!({
-            "provenance": section_provenance("kerosene_account_state", Some(data.fetched_at_ms)),
+            "provenance": section_provenance(
+                "kerosene_account_state",
+                Some(data.fetched_at_ms),
+                generated_at_ms,
+                Some(ASSISTANT_CURRENT_DATA_MAX_AGE_MS),
+            ),
             "available": true,
             "fetched_at_ms": data.fetched_at_ms,
             "account_abstraction": format!("{:?}", data.account_abstraction),
@@ -322,7 +339,9 @@ impl TradingTerminal {
         json!({
             "provenance": section_provenance(
                 "hyperliquid_portfolio_and_kerosene_income_state",
-                latest_timestamp_ms.or(Some(generated_at_ms)),
+                latest_timestamp_ms,
+                generated_at_ms,
+                None,
             ),
             "loading": self.portfolio.loading,
             "error_present": self.portfolio.last_error.is_some(),
@@ -364,7 +383,12 @@ impl TradingTerminal {
         let as_of_ms = self.all_mids_updated_at_ms.values().copied().max();
 
         json!({
-            "provenance": section_provenance("hyperliquid_all_mids_and_kerosene_symbol_metadata", as_of_ms.or(Some(generated_at_ms))),
+            "provenance": section_provenance(
+                "hyperliquid_all_mids_and_kerosene_symbol_metadata",
+                as_of_ms,
+                generated_at_ms,
+                Some(ASSISTANT_CURRENT_DATA_MAX_AGE_MS),
+            ),
             "active_symbol": self.active_symbol,
             "active_symbol_display": self.active_symbol_display,
             "markets": markets,
@@ -390,7 +414,7 @@ impl TradingTerminal {
             .iter()
             .filter(|trade| crate::journal::note_for_trade(&self.journal.entries, trade).is_some())
             .count();
-        let as_of_ms = self.journal.last_refresh_time.unwrap_or(generated_at_ms);
+        let as_of_ms = self.journal.last_refresh_time;
         let data_state = if !available {
             "account_not_connected"
         } else if self.journal.loading && total_trade_count == 0 {
@@ -408,7 +432,12 @@ impl TradingTerminal {
         };
 
         json!({
-            "provenance": section_provenance("kerosene_account_scoped_trading_journal", Some(as_of_ms)),
+            "provenance": section_provenance(
+                "kerosene_account_scoped_trading_journal",
+                as_of_ms,
+                generated_at_ms,
+                None,
+            ),
             "available": available,
             "data_state": data_state,
             "loading": self.journal.loading,
@@ -451,7 +480,7 @@ impl TradingTerminal {
 
         json!({
             "available": self.connected_address.is_some() && self.journal.active_account_key.is_some(),
-            "as_of_ms": self.journal.last_refresh_time.unwrap_or(generated_at_ms),
+            "as_of_ms": self.journal.last_refresh_time,
             "data_state": self.agent_journal_snapshot(generated_at_ms)["data_state"],
             "trades": rows,
             "coverage": list_coverage(
@@ -595,7 +624,12 @@ impl TradingTerminal {
             .filter_map(|instance| instance.last_fetch_ms)
             .max();
         json!({
-            "provenance": section_provenance("hyperdash_aggregate_positioning_cache", as_of_ms.or(Some(generated_at_ms))),
+            "provenance": section_provenance(
+                "hyperdash_aggregate_positioning_cache",
+                as_of_ms,
+                generated_at_ms,
+                None,
+            ),
             "panes": panes,
             "note": "Wallet-level HyperDash addresses and labels are intentionally omitted; only aggregates are exposed.",
             "coverage": {
@@ -646,7 +680,12 @@ impl TradingTerminal {
             .filter_map(|instance| instance.last_fetch_ms)
             .max();
         json!({
-            "provenance": section_provenance("kerosene_session_analysis_cache", as_of_ms.or(Some(generated_at_ms))),
+            "provenance": section_provenance(
+                "kerosene_session_analysis_cache",
+                as_of_ms,
+                generated_at_ms,
+                None,
+            ),
             "panes": sessions,
             "coverage": {
                 "returned_count": self.session_data.len(),
@@ -775,7 +814,7 @@ impl TradingTerminal {
                 "description": "Internal sanitized backing data for typed Kerosene tools; kerosene_data never returns this object.",
             },
             "markets": {
-                "as_of_ms": self.all_mids_updated_at_ms.values().copied().max().unwrap_or(generated_at_ms),
+                "as_of_ms": self.all_mids_updated_at_ms.values().copied().max(),
                 "rows": market_rows,
                 "coverage": list_coverage(self.all_mids.len(), self.all_mids.len(), true, true),
             },
@@ -799,7 +838,8 @@ impl TradingTerminal {
         let Some(data) = self.account_data.as_ref() else {
             return json!({
                 "available": false,
-                "as_of_ms": generated_at_ms,
+                "as_of_ms": null,
+                "snapshot_generated_at_ms": generated_at_ms,
                 "reason": "account_data_unavailable",
             });
         };
@@ -813,6 +853,7 @@ impl TradingTerminal {
         json!({
             "available": true,
             "as_of_ms": data.fetched_at_ms,
+            "snapshot_generated_at_ms": generated_at_ms,
             "account_abstraction": format!("{:?}", data.account_abstraction),
             "portfolio_margin_enabled": data.spot.portfolio_margin_enabled,
             "portfolio_margin_ratio": data.spot.portfolio_margin_ratio,
@@ -977,10 +1018,30 @@ fn journal_market_type(symbol: &str) -> &'static str {
     }
 }
 
-fn section_provenance(source: &str, as_of_ms: Option<u64>) -> Value {
+fn section_provenance(
+    source: &str,
+    observed_at_ms: Option<u64>,
+    snapshot_generated_at_ms: u64,
+    freshness_max_age_ms: Option<u64>,
+) -> Value {
+    let age_ms = observed_at_ms.and_then(|observed| snapshot_generated_at_ms.checked_sub(observed));
+    let freshness_state = match (observed_at_ms, age_ms, freshness_max_age_ms) {
+        (None, _, _) => "unknown",
+        (Some(_), None, _) => "invalid_future_timestamp",
+        (Some(_), Some(age), Some(max_age)) if age <= max_age => "fresh",
+        (Some(_), Some(_), Some(_)) => "stale",
+        (Some(_), Some(_), None) => "not_evaluated",
+    };
     json!({
         "source": source,
-        "as_of_ms": as_of_ms,
+        "as_of_ms": observed_at_ms,
+        "observed_at_ms": observed_at_ms,
+        "snapshot_generated_at_ms": snapshot_generated_at_ms,
+        "age_ms": age_ms,
+        "freshness": {
+            "state": freshness_state,
+            "max_age_ms": freshness_max_age_ms,
+        },
     })
 }
 
@@ -1117,11 +1178,47 @@ mod tests {
 
         assert_eq!(value["schema_version"], SNAPSHOT_SCHEMA_VERSION);
         assert_eq!(value["data_policy"]["access"], "read_only");
+        assert_eq!(value["account"]["provenance"]["as_of_ms"], Value::Null);
+        assert_eq!(
+            value["account"]["provenance"]["observed_at_ms"],
+            Value::Null
+        );
+        assert_eq!(
+            value["account"]["provenance"]["freshness"]["state"],
+            "unknown"
+        );
+        assert!(value["account"]["provenance"]["snapshot_generated_at_ms"].is_u64());
+        assert_eq!(value["_tool_data"]["markets"]["as_of_ms"], Value::Null);
+        assert_eq!(value["_tool_data"]["risk"]["as_of_ms"], Value::Null);
         assert!(!text.contains("0xabc0000000000000000000000000000000000000"));
         assert!(!text.contains("sk-or-secret"));
         assert!(!text.contains("hyperdash-secret"));
         assert_eq!(value["_tool_data"]["contract"]["private"], true);
         assert!(value["_tool_data"]["glossary"]["funding_usdc"].is_string());
+    }
+
+    #[test]
+    fn provenance_reports_age_and_staleness_without_rewriting_observation_time() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.all_mids.insert("BTC".to_string(), 65_000.0);
+        terminal.all_mids_updated_at_ms.insert("BTC".to_string(), 1);
+
+        let bytes = terminal.build_agent_snapshot().expect("snapshot");
+        let value: Value = serde_json::from_slice(&bytes).expect("json");
+        let provenance = &value["markets"]["provenance"];
+
+        assert_eq!(provenance["observed_at_ms"], 1);
+        assert_eq!(provenance["as_of_ms"], 1);
+        assert!(
+            provenance["age_ms"]
+                .as_u64()
+                .is_some_and(|age| age > 15_000)
+        );
+        assert_eq!(provenance["freshness"]["state"], "stale");
+        assert_eq!(
+            provenance["freshness"]["max_age_ms"],
+            ASSISTANT_CURRENT_DATA_MAX_AGE_MS
+        );
     }
 
     #[test]

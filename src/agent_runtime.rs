@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use std::ffi::OsString;
 use std::fmt;
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock, mpsc as std_mpsc};
 use std::time::Duration;
@@ -301,7 +301,7 @@ fn run_runtime(
         Ok(child) => child,
         Err(error) => {
             let message = if error.kind() == std::io::ErrorKind::NotFound {
-                "Pi was not found. Install @earendil-works/pi-coding-agent or set KEROSENE_PI_BINARY to the Pi executable.".to_string()
+                "The Kerosene Assistant component is missing or could not be launched. Reinstall or update Kerosene. Developers can set KEROSENE_PI_BINARY to a Pi executable.".to_string()
             } else {
                 format!("Could not start Pi: {error}")
             };
@@ -453,7 +453,9 @@ fn prepare_runtime_files(workspace_dir: &PathBuf, extension_path: &PathBuf) -> R
 }
 
 fn pi_binary() -> OsString {
-    if let Some(binary) = std::env::var_os("KEROSENE_PI_BINARY") {
+    if let Some(binary) = std::env::var_os("KEROSENE_PI_BINARY")
+        && !binary.is_empty()
+    {
         return binary;
     }
 
@@ -465,20 +467,40 @@ fn pi_binary() -> OsString {
     if let Ok(current_exe) = std::env::current_exe()
         && let Some(binary_dir) = current_exe.parent()
     {
-        let candidates = [
-            binary_dir.join(executable_name),
-            binary_dir.join("resources").join(executable_name),
-            binary_dir
-                .parent()
-                .map(|parent| parent.join("Resources").join(executable_name))
-                .unwrap_or_default(),
-        ];
+        let candidates = packaged_pi_candidates(binary_dir, executable_name);
         if let Some(candidate) = candidates.into_iter().find(|path| path.is_file()) {
             return candidate.into_os_string();
         }
     }
 
     OsString::from(executable_name)
+}
+
+fn packaged_pi_candidates(binary_dir: &Path, executable_name: &str) -> Vec<PathBuf> {
+    let mut candidates = vec![
+        binary_dir.join("pi").join(executable_name),
+        binary_dir
+            .join("resources")
+            .join("pi")
+            .join(executable_name),
+    ];
+
+    if let Some(prefix) = binary_dir.parent() {
+        candidates.push(prefix.join("Resources").join("pi").join(executable_name));
+        candidates.push(
+            prefix
+                .join("lib")
+                .join("kerosene")
+                .join("pi")
+                .join(executable_name),
+        );
+        candidates.push(prefix.join("Resources").join(executable_name));
+    }
+
+    candidates.push(binary_dir.join(executable_name));
+    candidates.push(binary_dir.join("resources").join(executable_name));
+
+    candidates
 }
 
 fn write_rpc_command(stdin: &mut impl Write, value: &Value) -> std::io::Result<()> {
@@ -896,6 +918,48 @@ mod tests {
             !tools
                 .iter()
                 .any(|tool| matches!(*tool, "bash" | "read" | "write" | "edit"))
+        );
+    }
+
+    #[test]
+    fn packaged_pi_candidates_cover_supported_install_layouts() {
+        let linux = packaged_pi_candidates(Path::new("/usr/bin"), "pi");
+        let bundled_linux = PathBuf::from("/usr/lib/kerosene/pi/pi");
+        let legacy_linux = PathBuf::from("/usr/bin/pi");
+        assert!(linux.contains(&bundled_linux));
+        assert!(
+            linux.iter().position(|path| path == &bundled_linux)
+                < linux.iter().position(|path| path == &legacy_linux)
+        );
+
+        let macos =
+            packaged_pi_candidates(Path::new("/Applications/Kerosene.app/Contents/MacOS"), "pi");
+        assert!(macos.contains(&PathBuf::from(
+            "/Applications/Kerosene.app/Contents/Resources/pi/pi"
+        )));
+
+        let portable = packaged_pi_candidates(Path::new("/opt/kerosene"), "pi.exe");
+        assert!(portable.contains(&PathBuf::from("/opt/kerosene/pi/pi.exe")));
+    }
+
+    #[test]
+    fn embedded_extension_contains_evidence_and_validation_contracts() {
+        for requirement in [
+            "Ground every material claim in evidence retrieved during the current turn.",
+            "Never present an inference, hypothesis, or prior-turn value as a current fact.",
+            "If sources conflict, expose the conflict instead of silently choosing one.",
+            "Do not invent confidence percentages",
+            "market_statistics",
+            "excluded instead of treated as zero",
+        ] {
+            assert!(
+                EXTENSION_SOURCE.contains(requirement),
+                "missing embedded Assistant contract: {requirement}"
+            );
+        }
+        assert!(
+            !EXTENSION_SOURCE.contains("numericOrZero"),
+            "financial tool code must not silently coerce missing values to zero"
         );
     }
 

@@ -57,12 +57,22 @@ assemble_app() {
     mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
     install -m 755 "$BUILD_DIR/$BINARY_NAME" "$MACOS_DIR/$BINARY_NAME"
+    local pi_bundle
+    pi_bundle="$(bash "$ROOT/scripts/fetch-pi.sh")"
+    mkdir -p "$RESOURCES_DIR/pi/theme"
+    install -m 755 "$pi_bundle/pi" "$RESOURCES_DIR/pi/pi"
+    install -m 644 "$pi_bundle/package.json" "$RESOURCES_DIR/pi/package.json"
+    install -m 644 "$pi_bundle/theme/dark.json" "$RESOURCES_DIR/pi/theme/dark.json"
+    install -m 644 "$pi_bundle/theme/light.json" "$RESOURCES_DIR/pi/theme/light.json"
+    install -m 644 "$pi_bundle/theme/theme-schema.json" "$RESOURCES_DIR/pi/theme/theme-schema.json"
+    install -m 644 "$ROOT/packaging/pi/LICENSE" "$RESOURCES_DIR/PI-LICENSE.txt"
     write_plist
     create_icon
 }
 
 sign_app() {
     info "Applying ad-hoc code signature..."
+    codesign --force --sign - "$RESOURCES_DIR/pi/pi"
     codesign --force --deep --sign - "$APP_BUNDLE"
     codesign --verify --deep --strict "$APP_BUNDLE"
 }

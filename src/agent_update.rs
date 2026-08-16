@@ -30,11 +30,44 @@ impl TradingTerminal {
                 self.handle_agent_snapshot_prepared(generation, request_id, result)
             }
             Message::AgentRuntimeEvent(event) => self.handle_agent_runtime_event(event),
+            Message::AgentStreamTick => self.advance_agent_stream_presentation(),
             Message::AgentAbort => {
                 self.agent.suppress_empty_response_retry = true;
+                self.agent.flush_assistant_stream();
                 agent_runtime::abort(self.agent.runtime_generation);
                 self.agent.status_detail = Some("Stopping the current response…".to_string());
                 Task::none()
+            }
+            Message::AgentCopyResponse(entry_index) => {
+                let response = self
+                    .agent
+                    .entries
+                    .get(entry_index)
+                    .and_then(|entry| match entry {
+                        AgentChatEntry::Message {
+                            role: AgentChatRole::Assistant,
+                            text,
+                            ..
+                        } => Some(text.clone()),
+                        _ => None,
+                    });
+                response.map_or_else(Task::none, |response| {
+                    self.update(Message::CopyToClipboard(response.into()))
+                })
+            }
+            Message::AgentRegenerateResponse(entry_index) => {
+                self.regenerate_agent_response(entry_index)
+            }
+            Message::AgentToggleEvidence(entry_index) => {
+                self.agent.toggle_evidence(entry_index);
+                Task::none()
+            }
+            Message::AgentFollowUpSelected(prompt) => {
+                if self.agent.status.is_busy() {
+                    return Task::none();
+                }
+                self.agent.input = prompt.into_string();
+                iced::widget::operation::focus(iced::widget::Id::new("kerosene-agent-input"))
             }
             Message::AgentNewChat => self.create_agent_session(),
             Message::AgentSelectSession(id) => self.select_agent_session(id),
@@ -310,13 +343,13 @@ impl TradingTerminal {
                 ..
             } => {
                 self.agent.append_assistant_delta(&delta);
+                self.agent.status = AgentStatus::Thinking;
                 if total_tokens.is_some() {
                     self.agent.total_tokens = total_tokens;
                 }
                 if total_cost_usd.is_some() {
                     self.agent.total_cost_usd = total_cost_usd;
                 }
-                return self.snap_agent_chat_to_latest();
             }
             AgentRuntimeEvent::ToolStarted {
                 call_id,
@@ -324,6 +357,7 @@ impl TradingTerminal {
                 detail,
                 ..
             } => {
+                self.agent.flush_assistant_stream();
                 self.agent.assistant_entry_index = None;
                 let running_label =
                     crate::agent_state::agent_tool_presentation(&name).running_label;
@@ -381,6 +415,7 @@ impl TradingTerminal {
                     self.agent.empty_response_retry_count,
                 ) {
                     EmptyResponseAction::Retry => {
+                        self.agent.flush_assistant_stream();
                         self.agent.empty_response_retry_count = 1;
                         self.agent.current_turn_has_text = false;
                         self.agent.assistant_entry_index = None;
@@ -402,6 +437,7 @@ impl TradingTerminal {
                         return Task::none();
                     }
                     EmptyResponseAction::Error => {
+                        self.agent.feature_latest_assistant_immediately();
                         self.agent.status = AgentStatus::Error;
                         self.agent.status_detail = Some(
                             "Pi completed twice without visible answer text. Try a shorter prompt or another model."
@@ -415,16 +451,18 @@ impl TradingTerminal {
                     EmptyResponseAction::Accept => {}
                 }
 
-                self.agent.status = AgentStatus::Ready;
-                self.agent.status_detail = None;
-                self.agent.assistant_entry_index = None;
                 self.agent.suppress_empty_response_retry = false;
-                self.agent.mark_active_session_updated(Self::now_ms());
-                let _ = agent_runtime::inspect_context(self.agent.runtime_generation);
-                return self.persist_agent_sessions();
+                self.agent.mark_assistant_transport_settled();
+                if self.agent.assistant_stream_ready_to_finalize() {
+                    return self.finish_agent_turn_presentation();
+                }
+                self.agent.status = AgentStatus::Thinking;
+                self.agent.status_detail = None;
+                return Task::none();
             }
             AgentRuntimeEvent::Error { message, .. } => {
                 self.agent.pending_prompt = None;
+                self.agent.feature_latest_assistant_immediately();
                 self.agent.status = AgentStatus::Error;
                 self.agent.status_detail = Some(self.redact_agent_runtime_error(&message));
                 self.agent.assistant_entry_index = None;
@@ -432,6 +470,7 @@ impl TradingTerminal {
                 return self.persist_agent_sessions();
             }
             AgentRuntimeEvent::Exited { .. } => {
+                self.agent.flush_assistant_stream();
                 self.agent.runtime_connected = false;
                 self.agent.require_context_replay();
                 if self.agent.status != AgentStatus::Error
@@ -447,6 +486,82 @@ impl TradingTerminal {
             }
         }
         Task::none()
+    }
+
+    fn advance_agent_stream_presentation(&mut self) -> Task<Message> {
+        let (visible_changed, ready_to_finalize) = self.agent.advance_assistant_stream();
+        if ready_to_finalize {
+            let finish = self.finish_agent_turn_presentation();
+            return if visible_changed {
+                Task::batch([self.snap_agent_chat_to_latest(), finish])
+            } else {
+                finish
+            };
+        }
+        if visible_changed {
+            self.snap_agent_chat_to_latest()
+        } else {
+            Task::none()
+        }
+    }
+
+    fn finish_agent_turn_presentation(&mut self) -> Task<Message> {
+        self.agent.finish_assistant_presentation();
+        self.agent.status = AgentStatus::Ready;
+        self.agent.status_detail = None;
+        self.agent.suppress_empty_response_retry = false;
+        self.agent.mark_active_session_updated(Self::now_ms());
+        let _ = agent_runtime::inspect_context(self.agent.runtime_generation);
+        Task::batch([
+            self.persist_agent_sessions(),
+            self.snap_agent_chat_to_latest(),
+        ])
+    }
+
+    fn regenerate_agent_response(&mut self, entry_index: usize) -> Task<Message> {
+        if self.agent.status.is_busy()
+            || self.agent.stream.featured_entry_index != Some(entry_index)
+        {
+            return Task::none();
+        }
+        let Some(entries_through_response) = self.agent.entries.get(..=entry_index) else {
+            return Task::none();
+        };
+        let Some(user_index) = entries_through_response.iter().rposition(|entry| {
+            matches!(
+                entry,
+                AgentChatEntry::Message {
+                    role: AgentChatRole::User,
+                    ..
+                }
+            )
+        }) else {
+            return Task::none();
+        };
+        let Some(prompt) = self
+            .agent
+            .entries
+            .get(user_index)
+            .and_then(|entry| match entry {
+                AgentChatEntry::Message {
+                    role: AgentChatRole::User,
+                    text,
+                    ..
+                } => Some(text.clone()),
+                _ => None,
+            })
+        else {
+            return Task::none();
+        };
+
+        let generation = self.agent.runtime_generation;
+        let request_id = self.agent.snapshot_request_id;
+        self.agent.entries.truncate(user_index);
+        self.agent.reset_stream_for_entries_change();
+        self.shutdown_agent_runtime_files(generation, request_id);
+        self.agent.reset_runtime();
+        self.agent.input = prompt;
+        self.submit_agent_prompt()
     }
 
     fn create_agent_session(&mut self) -> Task<Message> {
@@ -726,6 +841,51 @@ mod tests {
         assert_eq!(terminal.agent.status, AgentStatus::Ready);
         assert_eq!(terminal.agent.total_tokens, Some(123));
         assert_eq!(terminal.agent.total_cost_usd, Some(0.0042));
+    }
+
+    #[test]
+    fn settled_response_waits_for_visual_queue_before_becoming_ready() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.agent.runtime_generation = 4;
+        terminal.agent.status = AgentStatus::Thinking;
+        terminal.agent.append_assistant_delta("Final answer");
+
+        let _ = terminal.update_agent(Message::AgentRuntimeEvent(AgentRuntimeEvent::Settled {
+            generation: 4,
+            total_tokens: None,
+            total_cost_usd: None,
+            has_visible_text: Some(true),
+        }));
+
+        assert_eq!(terminal.agent.status, AgentStatus::Thinking);
+        assert!(terminal.agent.stream_needs_tick());
+
+        for _ in 0..8 {
+            let _ = terminal.update_agent(Message::AgentStreamTick);
+            if terminal.agent.status == AgentStatus::Ready {
+                break;
+            }
+        }
+
+        assert_eq!(terminal.agent.status, AgentStatus::Ready);
+        assert_eq!(terminal.agent.stream.featured_entry_index, Some(0));
+    }
+
+    #[test]
+    fn evidence_toggle_only_changes_the_featured_response() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.agent.entries.push(AgentChatEntry::Message {
+            role: AgentChatRole::Assistant,
+            text: "Answer".to_string(),
+            markdown: Some(Box::new(iced::widget::markdown::Content::parse("Answer"))),
+        });
+        terminal.agent.stream.featured_entry_index = Some(0);
+
+        let _ = terminal.update_agent(Message::AgentToggleEvidence(1));
+        assert!(!terminal.agent.stream.evidence_open);
+
+        let _ = terminal.update_agent(Message::AgentToggleEvidence(0));
+        assert!(terminal.agent.stream.evidence_open);
     }
 
     #[test]

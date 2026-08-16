@@ -48,6 +48,13 @@ impl TradingTerminal {
             );
         }
 
+        if self.agent.stream_needs_tick() {
+            subs.push(
+                iced::time::every(std::time::Duration::from_millis(16))
+                    .map(|_| Message::AgentStreamTick),
+            );
+        }
+
         if self.screener.window_id.is_some() {
             subs.push(
                 iced::time::every(std::time::Duration::from_secs(15))

@@ -51,8 +51,11 @@ store is limited to 32 MiB and 50 sessions; drafts, message counts, individual
 messages, and replay context are also bounded.
 
 Only user and assistant messages are durable. Tool activity cards are transient
-UI state and are reconstructed only through a future tool call. Assistant
-Markdown is parsed again when a stored session is loaded.
+UI state and are reconstructed only through a future tool call. The active
+response's evidence drawer and follow-up suggestions are transient for the same
+reason. Assistant Markdown is parsed again when a stored session is loaded; the
+most recent restored assistant response still receives Copy and Regenerate
+actions.
 
 Chat content may include account information and trading intent. Persistence
 types and completion messages therefore use redacted `Debug` implementations,

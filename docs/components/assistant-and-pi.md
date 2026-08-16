@@ -30,6 +30,20 @@ context capacity, and whether conditional pricing applies. Selecting a model
 uses the existing persisted OpenRouter default and restarts Pi before the next
 turn.
 
+Assistant text uses an adaptive native reveal queue on top of Pi's real text
+deltas. Short backlogs resolve word by word with a fading leading edge and an
+inline activity cursor; larger backlogs reveal in wider batches so presentation
+does not fall materially behind the model. A settled response flushes the final
+backlog before the turn becomes ready. Tool boundaries and abort/error paths
+also flush pending text so a delta can never be rendered into the wrong message.
+
+Completed responses expose Copy and Regenerate actions, a collapsible summary
+of the actual `kerosene_*` data calls made during that turn, and two deterministic
+follow-up suggestions based on the tool categories used. Follow-up selection
+fills the composer for review instead of sending immediately. These presentation
+controls and tool summaries are transient; persisted session content remains
+limited to user and assistant messages.
+
 Opening the Assistant while an account is connected also makes it an active
 journal-data consumer. Kerosene immediately hydrates any local journal cache and
 starts the normal incremental journal sync even when the Trading Journal window
@@ -74,25 +88,33 @@ Built-in Pi tools such as `bash`, `read`, `write`, and `edit` are not enabled.
 Pi executable discovery checks, in order:
 
 1. `KEROSENE_PI_BINARY`
-2. a `pi`/`pi.exe` binary next to the application or in common packaged
+2. the private Pi runtime bundled in Kerosene's Linux, macOS, Windows, or
+   AppImage resource directory
+3. a legacy `pi`/`pi.exe` binary next to the application or in common packaged
    resource directories
-3. `pi`/`pi.exe` on `PATH`
+4. `pi`/`pi.exe` on `PATH`
+
+Release packaging reads the pinned version from `packaging/pi/version.txt`,
+downloads the matching official standalone archive, and verifies its digest
+against `packaging/pi/SHA256SUMS`. The minimal runtime bundle includes the
+executable plus the package metadata and built-in themes required for RPC
+startup. Packaging fails unless the bundle reports the pinned version and
+passes an offline `get_state` RPC smoke test with Kerosene's embedded extension.
+The upstream Pi license ships beside the runtime.
 
 For development, install Pi with:
 
 ```text
-npm install -g @earendil-works/pi-coding-agent
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 ```
 
-The npm distribution requires Node.js 22.19 or newer. The standalone Pi binary
-does not require a user-installed Node.js runtime.
-
-Packaging a pinned Pi standalone binary beside Kerosene is the intended release
-path; it avoids requiring Node.js on user machines.
+The npm distribution requires Node.js 22.19 or newer. This is a development
+fallback only. Packaged Kerosene releases use the standalone Pi runtime and do
+not require a user-installed Node.js runtime or a shell-visible `pi` command.
 
 ## Snapshot Contract
 
-Each prompt first writes a fresh `schema_version: 2` JSON snapshot to a
+Each prompt first writes a fresh `schema_version: 3` JSON snapshot to a
 per-process temporary directory. On Unix, the directory and file use owner-only
 permissions. The snapshot contains public sections and a private sanitized
 `_tool_data` backing index. `kerosene_data`, including its `all` mode, never
@@ -126,6 +148,12 @@ public cap. The private market index retains every sanitized Kerosene mid and
 its canonical/display metadata for targeted lookup. Raw `@N` and `#N` values
 are documented as exchange identifiers, not privacy redaction.
 
+Snapshot generation time and source observation time are separate. The root
+`generated_at_ms` records serialization time; section provenance keeps
+`observed_at_ms`/the compatibility alias `as_of_ms`, computed age, and an
+explicit freshness state. Missing observation time stays null instead of being
+replaced with snapshot generation time.
+
 The snapshot explicitly omits:
 
 - API and private keys
@@ -146,7 +174,8 @@ those messages can contain sensitive request context.
   the complete private market index.
 - `kerosene_activity` filters or deterministically aggregates sanitized fills
   and funding with bounded pagination. Order IDs and transaction hashes remain
-  omitted.
+  omitted. Malformed financial rows are excluded with validation counts rather
+  than silently converted to zero.
 - `kerosene_journal` reads the active account's reconstructed journal trades,
   including fee-adjusted realized PnL, entry/volume efficiency metrics,
   basis-quality flags, bounded credential-redacted reflections, and tags. It
@@ -155,7 +184,9 @@ those messages can contain sensitive request context.
   trades ranked by `gross realized PnL - journal fees`; responses expose sync
   and truncation coverage.
 - `kerosene_calculate` performs allowlisted exposure, liquidation-buffer,
-  stress, fill, funding, and reconciliation calculations. It is not an
+  stress, fill, funding, reconciliation, and bounded OHLCV-statistics
+  calculations. Candle statistics include deterministic return, dispersion,
+  realized-volatility, drawdown, ATR, and moving-average formulas. It is not an
   arbitrary code executor.
 - `kerosene_risk` returns clearinghouse, spot, portfolio, and income scopes
   separately, along with deterministic ratios and explicit interpretation.
@@ -169,12 +200,23 @@ those messages can contain sensitive request context.
   session summaries from fixed Hyperliquid daily/30-minute candle requests,
   independent of whether a Session Data pane is open.
 
+Every typed tool response includes a normalized `quality` envelope with source,
+observation/retrieval/snapshot times, freshness state, coverage, assumptions,
+exclusions, and warnings. Statistical summaries expose sample counts and
+dispersion; journal summaries additionally report metric-specific missing-value
+coverage rather than treating missing PnL or fee values as zero.
+
 The system prompt directs the model to use deterministic tools for arithmetic,
 route best/worst-trade and reflection questions to `kerosene_journal`, avoid
 guessing symbol mappings, use plain Markdown rather than unsupported LaTeX
 delimiters, and stop after a decisive complete empty-state result. Journal
 reflections are treated as user-authored context rather than verified market
-facts.
+facts. The evidence protocol also requires the model to distinguish
+observations, deterministic calculations, user-authored context, and
+interpretations; disclose scope, time, metric, sample, and coverage for
+material quantitative claims; surface conflicts; avoid unsupported precision
+and causal claims; and state what evidence is missing when a conclusion cannot
+be supported.
 
 If current Pi emits `agent_end` without visible text, Kerosene retries once with
 a short visible-answer instruction. A second empty settlement becomes an
@@ -182,7 +224,6 @@ explicit error instead of being presented as a successful blank response.
 
 ## Current MVP Limits
 
-- Pi must be installed or bundled separately.
 - Chat history is ephemeral and is cleared when the window closes.
 - Assistant output renders streamed Markdown with headings, emphasis, lists,
   quotes, tables, links, inline code, and highlighted fenced code blocks.
@@ -200,8 +241,6 @@ explicit error instead of being presented as a successful blank response.
 
 ## Follow-up Scope
 
-The next production increment should pin and package Pi binaries for macOS,
-Windows, and Linux; cover packaging smoke tests; evaluate whether an additional
-no-network/no-filesystem analysis sandbox is justified beyond the deterministic
-tools; and optionally introduce consented, versioned data plugins beyond the
-current contracts.
+Future work should evaluate whether an additional no-network/no-filesystem
+analysis sandbox is justified beyond the deterministic tools and may introduce
+consented, versioned data plugins beyond the current contracts.

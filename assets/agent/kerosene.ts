@@ -20,6 +20,7 @@ const MAX_JOURNAL_ROWS = 200;
 const MAX_POSITIONING_SYMBOLS = 3;
 const MAX_CANDLES = 500;
 const MAX_CANDLE_LOOKBACK_MS = 90 * 24 * 60 * 60_000;
+const CURRENT_DATA_MAX_AGE_MS = 15_000;
 const CANDLE_INTERVAL_MS: Record<string, number> = {
   "1m": 60_000,
   "3m": 3 * 60_000,
@@ -45,9 +46,14 @@ async function readSnapshot(): Promise<JsonObject> {
   return snapshot;
 }
 
-function toolPayload(payload: unknown, details: JsonObject = {}) {
+function toolPayload(payload: unknown, details: JsonObject = {}, quality?: JsonObject) {
+  const body = quality === undefined
+    ? payload
+    : payload && typeof payload === "object" && !Array.isArray(payload)
+      ? { ...(payload as JsonObject), quality }
+      : { value: payload, quality };
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(payload) }],
+    content: [{ type: "text" as const, text: JSON.stringify(body) }],
     details,
   };
 }
@@ -68,8 +74,98 @@ function finiteNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function numericOrZero(value: unknown): number {
-  return finiteNumber(value) ?? 0;
+function dataQuality(options: {
+  source: string;
+  snapshot?: JsonObject;
+  observedAtMs?: unknown;
+  retrievedAtMs?: unknown;
+  dataState?: string;
+  coverage?: unknown;
+  freshnessMaxAgeMs?: number;
+  assumptions?: string[];
+  exclusions?: string[];
+  warnings?: string[];
+}) {
+  const snapshotGeneratedAtMs = finiteNumber(options.snapshot?.generated_at_ms);
+  const observedAtMs = finiteNumber(options.observedAtMs);
+  const retrievedAtMs = finiteNumber(options.retrievedAtMs);
+  const referenceTimeMs = retrievedAtMs ?? snapshotGeneratedAtMs;
+  const ageMs = observedAtMs !== null && referenceTimeMs !== null && referenceTimeMs >= observedAtMs
+    ? referenceTimeMs - observedAtMs
+    : null;
+  let freshnessState = "not_evaluated";
+  if (options.dataState === "unavailable") freshnessState = "unavailable";
+  else if (observedAtMs === null) freshnessState = "unknown";
+  else if (referenceTimeMs !== null && referenceTimeMs < observedAtMs) freshnessState = "invalid_future_timestamp";
+  else if (options.freshnessMaxAgeMs !== undefined) {
+    freshnessState = ageMs !== null && ageMs <= options.freshnessMaxAgeMs ? "fresh" : "stale";
+  }
+  return {
+    source: options.source,
+    snapshot_generated_at_ms: snapshotGeneratedAtMs,
+    observed_at_ms: observedAtMs,
+    retrieved_at_ms: retrievedAtMs,
+    age_ms: ageMs,
+    data_state: options.dataState ?? "ready",
+    freshness: {
+      state: freshnessState,
+      max_age_ms: options.freshnessMaxAgeMs ?? null,
+    },
+    coverage: options.coverage ?? null,
+    assumptions: options.assumptions ?? [],
+    exclusions: options.exclusions ?? [],
+    warnings: options.warnings ?? [],
+  };
+}
+
+function inferredDataState(value: JsonObject | null | undefined): string {
+  if (!value) return "unavailable";
+  if (typeof value.data_state === "string") return value.data_state;
+  if (value.available === false) return "unavailable";
+  if (value.loading === true) return "loading";
+  if (value.error_present === true) return "error_or_partial";
+  return "ready";
+}
+
+function sectionQuality(snapshot: JsonObject, sectionName: string) {
+  if (sectionName === "all") {
+    return dataQuality({
+      source: "multiple_kerosene_sections",
+      snapshot,
+      dataState: "mixed",
+      warnings: ["Each section has independent observation time, freshness, and coverage metadata."],
+    });
+  }
+  const section = snapshot?.[sectionName];
+  const provenance = section?.provenance ?? {};
+  const maxAge = finiteNumber(provenance?.freshness?.max_age_ms);
+  return dataQuality({
+    source: provenance.source ?? `kerosene_${sectionName}_state`,
+    snapshot,
+    observedAtMs: provenance.observed_at_ms ?? provenance.as_of_ms,
+    dataState: inferredDataState(section),
+    coverage: section?.coverage ?? null,
+    freshnessMaxAgeMs: maxAge ?? undefined,
+    warnings: section?.error_present ? ["The section reports an upstream error or partial state."] : [],
+  });
+}
+
+function incrementCount(counts: Record<string, number>, key: string) {
+  counts[key] = (counts[key] ?? 0) + 1;
+}
+
+function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function sampleStandardDeviation(values: number[]): number | null {
+  if (values.length < 2) return null;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / (values.length - 1);
+  return Math.sqrt(variance);
 }
 
 function activityRows(snapshot: JsonObject, kind: "fills" | "funding"): JsonObject[] {
@@ -132,8 +228,24 @@ function filterActivity(rows: JsonObject[], params: JsonObject): JsonObject[] {
 
 function aggregateFills(rows: JsonObject[]) {
   const groups = new Map<string, JsonObject>();
+  const exclusionReasons: Record<string, number> = {};
+  let includedRows = 0;
   for (const row of rows) {
-    const coin = normalizedSymbol(row.coin) || "UNKNOWN";
+    const coin = normalizedSymbol(row.coin);
+    const size = finiteNumber(row.size);
+    const price = finiteNumber(row.price);
+    const fee = finiteNumber(row.fee);
+    const closedPnl = finiteNumber(row.closed_pnl);
+    const side = normalizedSymbol(row.side);
+    if (!coin) incrementCount(exclusionReasons, "missing_coin");
+    if (size === null) incrementCount(exclusionReasons, "invalid_size");
+    if (price === null) incrementCount(exclusionReasons, "invalid_price");
+    if (fee === null) incrementCount(exclusionReasons, "invalid_fee");
+    if (closedPnl === null) incrementCount(exclusionReasons, "invalid_closed_pnl");
+    if (side !== "B" && side !== "A") incrementCount(exclusionReasons, "unknown_side");
+    if (!coin || size === null || price === null || fee === null || closedPnl === null || (side !== "B" && side !== "A")) {
+      continue;
+    }
     const group = groups.get(coin) ?? {
       coin,
       row_count: 0,
@@ -146,13 +258,11 @@ function aggregateFills(rows: JsonObject[]) {
       first_time_ms: null,
       last_time_ms: null,
     };
-    const size = numericOrZero(row.size);
-    const price = numericOrZero(row.price);
-    const fee = numericOrZero(row.fee);
     const time = finiteNumber(row.time_ms);
-    const isBuy = normalizedSymbol(row.side) === "B";
+    const isBuy = side === "B";
+    includedRows += 1;
     group.row_count += 1;
-    group.closed_pnl += numericOrZero(row.closed_pnl);
+    group.closed_pnl += closedPnl;
     if (isBuy) {
       group.buy_size += size;
       group.buy_notional += size * price;
@@ -168,13 +278,27 @@ function aggregateFills(rows: JsonObject[]) {
     }
     groups.set(coin, group);
   }
-  return [...groups.values()].sort((left, right) => right.row_count - left.row_count);
+  return {
+    by_coin: [...groups.values()].sort((left, right) => right.row_count - left.row_count),
+    validation: {
+      input_rows: rows.length,
+      included_rows: includedRows,
+      excluded_rows: rows.length - includedRows,
+      exclusion_reasons: exclusionReasons,
+    },
+  };
 }
 
 function aggregateFunding(rows: JsonObject[]) {
   const groups = new Map<string, JsonObject>();
+  const exclusionReasons: Record<string, number> = {};
+  let includedRows = 0;
   for (const row of rows) {
-    const coin = normalizedSymbol(row.coin) || "UNKNOWN";
+    const coin = normalizedSymbol(row.coin);
+    const cashFlow = finiteNumber(row.usdc);
+    if (!coin) incrementCount(exclusionReasons, "missing_coin");
+    if (cashFlow === null) incrementCount(exclusionReasons, "invalid_usdc");
+    if (!coin || cashFlow === null) continue;
     const group = groups.get(coin) ?? {
       coin,
       row_count: 0,
@@ -185,8 +309,8 @@ function aggregateFunding(rows: JsonObject[]) {
       first_time_ms: null,
       last_time_ms: null,
     };
-    const cashFlow = numericOrZero(row.usdc);
     const time = finiteNumber(row.time_ms);
+    includedRows += 1;
     group.row_count += 1;
     group.net_usdc += cashFlow;
     group.absolute_usdc += Math.abs(cashFlow);
@@ -207,6 +331,12 @@ function aggregateFunding(rows: JsonObject[]) {
       paid_usdc: byCoin.reduce((sum, row) => sum + row.paid_usdc, 0),
       net_usdc: byCoin.reduce((sum, row) => sum + row.net_usdc, 0),
       absolute_usdc: byCoin.reduce((sum, row) => sum + row.absolute_usdc, 0),
+    },
+    validation: {
+      input_rows: rows.length,
+      included_rows: includedRows,
+      excluded_rows: rows.length - includedRows,
+      exclusion_reasons: exclusionReasons,
     },
   };
 }
@@ -259,23 +389,58 @@ function rankJournalRows(rows: JsonObject[], metric: string, ascending: boolean)
   return [...rows].sort((left, right) => {
     const leftMetric = journalMetric(left, metric);
     const rightMetric = journalMetric(right, metric);
-    if (leftMetric === null && rightMetric === null) return numericOrZero(right.start_time_ms) - numericOrZero(left.start_time_ms);
+    const leftTime = finiteNumber(left.start_time_ms) ?? Number.NEGATIVE_INFINITY;
+    const rightTime = finiteNumber(right.start_time_ms) ?? Number.NEGATIVE_INFINITY;
+    if (leftMetric === null && rightMetric === null) return rightTime - leftTime;
     if (leftMetric === null) return 1;
     if (rightMetric === null) return -1;
     const comparison = ascending ? leftMetric - rightMetric : rightMetric - leftMetric;
-    return comparison || numericOrZero(right.start_time_ms) - numericOrZero(left.start_time_ms);
+    return comparison || rightTime - leftTime;
   });
+}
+
+function finiteFieldValues(rows: JsonObject[], field: string): number[] {
+  return rows.map((row) => finiteNumber(row[field])).filter((value): value is number => value !== null);
+}
+
+function sumAvailable(values: number[], inputCount: number): number | null {
+  if (inputCount === 0) return 0;
+  return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
+}
+
+function maximumDrawdown(values: number[]): number | null {
+  if (!values.length) return null;
+  let cumulative = 0;
+  let peak = 0;
+  let maxDrawdown = 0;
+  for (const value of values) {
+    cumulative += value;
+    peak = Math.max(peak, cumulative);
+    maxDrawdown = Math.max(maxDrawdown, peak - cumulative);
+  }
+  return maxDrawdown;
 }
 
 function journalStats(rows: JsonObject[]) {
   const closed = rows.filter((row) => normalizedSymbol(row.status) === "CLOSED");
-  const netValues = closed.map((row) => numericOrZero(row.net_realized_pnl_usd));
-  const wins = netValues.filter((value) => value > 0);
-  const losses = netValues.filter((value) => value < 0);
-  const flats = netValues.length - wins.length - losses.length;
+  const closedWithValidNet = closed
+    .map((row) => ({ row, net: finiteNumber(row.net_realized_pnl_usd) }))
+    .filter((entry): entry is { row: JsonObject; net: number } => entry.net !== null);
+  const closedNetValues = closedWithValidNet.map((entry) => entry.net);
+  const allNetValues = finiteFieldValues(rows, "net_realized_pnl_usd");
+  const grossValues = finiteFieldValues(rows, "gross_realized_pnl_usd");
+  const feeValues = finiteFieldValues(rows, "fees_usd");
+  const wins = closedNetValues.filter((value) => value > 0);
+  const losses = closedNetValues.filter((value) => value < 0);
+  const flats = closedNetValues.length - wins.length - losses.length;
   const grossProfit = wins.reduce((sum, value) => sum + value, 0);
   const grossLoss = losses.reduce((sum, value) => sum + Math.abs(value), 0);
-  const netPnl = rows.reduce((sum, row) => sum + numericOrZero(row.net_realized_pnl_usd), 0);
+  const netPnl = sumAvailable(allNetValues, rows.length);
+  const chronologicalClosedNet = closedWithValidNet
+    .sort((left, right) => (finiteNumber(left.row.start_time_ms) ?? 0) - (finiteNumber(right.row.start_time_ms) ?? 0))
+    .map((entry) => entry.net);
+  const averageWin = wins.length ? grossProfit / wins.length : null;
+  const averageLoss = losses.length ? -grossLoss / losses.length : null;
   return {
     trade_count: rows.length,
     closed_trade_count: closed.length,
@@ -285,14 +450,27 @@ function journalStats(rows: JsonObject[]) {
     wins: wins.length,
     losses: losses.length,
     flats,
-    win_rate_pct: closed.length ? wins.length / closed.length * 100 : null,
-    gross_realized_pnl_usd: rows.reduce((sum, row) => sum + numericOrZero(row.gross_realized_pnl_usd), 0),
-    fees_usd: rows.reduce((sum, row) => sum + numericOrZero(row.fees_usd), 0),
+    win_rate_pct: closedNetValues.length ? wins.length / closedNetValues.length * 100 : null,
+    win_rate_sample_count: closedNetValues.length,
+    gross_realized_pnl_usd: sumAvailable(grossValues, rows.length),
+    fees_usd: sumAvailable(feeValues, rows.length),
     net_realized_pnl_usd: netPnl,
-    average_net_pnl_usd: rows.length ? netPnl / rows.length : null,
-    average_win_usd: wins.length ? grossProfit / wins.length : null,
-    average_loss_usd: losses.length ? -grossLoss / losses.length : null,
+    average_net_pnl_usd: allNetValues.length && netPnl !== null ? netPnl / allNetValues.length : null,
+    median_net_pnl_usd: median(allNetValues),
+    net_pnl_sample_stddev_usd: sampleStandardDeviation(allNetValues),
+    average_win_usd: averageWin,
+    average_loss_usd: averageLoss,
+    payoff_ratio: averageWin !== null && averageLoss !== null && averageLoss < 0
+      ? averageWin / Math.abs(averageLoss)
+      : null,
     profit_factor: grossLoss > 0 ? grossProfit / grossLoss : null,
+    maximum_closed_trade_drawdown_usd: maximumDrawdown(chronologicalClosedNet),
+    metric_coverage: {
+      net_pnl: { valid_rows: allNetValues.length, missing_rows: rows.length - allNetValues.length },
+      closed_net_pnl: { valid_rows: closedNetValues.length, missing_rows: closed.length - closedNetValues.length },
+      gross_pnl: { valid_rows: grossValues.length, missing_rows: rows.length - grossValues.length },
+      fees: { valid_rows: feeValues.length, missing_rows: rows.length - feeValues.length },
+    },
   };
 }
 
@@ -308,7 +486,11 @@ function journalGroupedStats(rows: JsonObject[], values: (row: JsonObject) => st
   }
   return [...groups.entries()]
     .map(([label, groupRows]) => ({ label, ...journalStats(groupRows) }))
-    .sort((left, right) => right.net_realized_pnl_usd - left.net_realized_pnl_usd)
+    .sort(
+      (left, right) =>
+        (finiteNumber(right.net_realized_pnl_usd) ?? Number.NEGATIVE_INFINITY) -
+        (finiteNumber(left.net_realized_pnl_usd) ?? Number.NEGATIVE_INFINITY),
+    )
     .slice(0, MAX_JOURNAL_ROWS);
 }
 
@@ -326,13 +508,25 @@ function summarizeJournal(rows: JsonObject[]) {
       return_on_entry_pct: "net_realized_pnl_usd / entry_notional_usd × 100",
       net_pnl_per_volume_pct: "net_realized_pnl_usd / volume_usd × 100",
       profit_factor: "sum(positive net PnL) / abs(sum(negative net PnL))",
+      payoff_ratio: "average winning net PnL / abs(average losing net PnL)",
+      maximum_closed_trade_drawdown_usd: "largest peak-to-trough decline in chronological cumulative closed-trade net PnL",
+      net_pnl_sample_stddev_usd: "sample standard deviation of valid net realized PnL values",
     },
   };
 }
 
 function valueSpotBalance(snapshot: JsonObject, balance: JsonObject) {
   const coin = normalizedSymbol(balance.coin);
-  const units = numericOrZero(balance.total);
+  const units = finiteNumber(balance.total);
+  if (!coin || units === null) {
+    return {
+      coin: coin || null,
+      units,
+      value_usd: null,
+      price: null,
+      valuation_method: !coin ? "missing_coin" : "invalid_balance",
+    };
+  }
   if (units === 0) return { coin, units, value_usd: 0, price: null, valuation_method: "zero_balance" };
   if (STABLECOINS.has(coin)) {
     return {
@@ -361,9 +555,17 @@ function calculateExposure(snapshot: JsonObject) {
   const balances = Array.isArray(account.spot?.balances) ? account.spot.balances : [];
   const byAsset = new Map<string, JsonObject>();
   const missingPrices: string[] = [];
+  const exclusionReasons: Record<string, number> = {};
+  let includedBalances = 0;
+  let includedPositions = 0;
 
   for (const balance of balances) {
     const valued = valueSpotBalance(snapshot, balance);
+    if (!valued.coin || valued.units === null) {
+      incrementCount(exclusionReasons, valued.valuation_method);
+      continue;
+    }
+    includedBalances += 1;
     if (valued.value_usd === null && valued.units !== 0) missingPrices.push(valued.coin);
     const group = byAsset.get(valued.coin) ?? {
       coin: valued.coin,
@@ -385,7 +587,12 @@ function calculateExposure(snapshot: JsonObject) {
 
   for (const position of positions) {
     const coin = normalizedSymbol(position.coin);
-    const size = numericOrZero(position.size);
+    const size = finiteNumber(position.size);
+    if (!coin || size === null) {
+      incrementCount(exclusionReasons, !coin ? "missing_position_coin" : "invalid_position_size");
+      continue;
+    }
+    includedPositions += 1;
     const market = preferredMarket(snapshot, coin);
     const mid = finiteNumber(market?.mid);
     const reportedValue = finiteNumber(position.position_value);
@@ -426,6 +633,15 @@ function calculateExposure(snapshot: JsonObject) {
       ? rows.reduce((sum, row) => sum + Math.pow(Math.abs(row.net_value_usd) / gross, 2), 0)
       : 0,
     missing_price_symbols: [...new Set(missingPrices)],
+    validation: {
+      input_balance_rows: balances.length,
+      included_balance_rows: includedBalances,
+      input_position_rows: positions.length,
+      included_position_rows: includedPositions,
+      excluded_rows: balances.length + positions.length - includedBalances - includedPositions,
+      exclusion_reasons: exclusionReasons,
+      fully_valued: missingPrices.length === 0,
+    },
     assumptions: [
       "Known USD stablecoins are valued at par and explicitly labeled as an assumption.",
       "Linear perp value uses size × current mid; reported position value is a fallback when a mid is absent.",
@@ -436,30 +652,38 @@ function calculateExposure(snapshot: JsonObject) {
 
 function calculateLiquidationBuffers(snapshot: JsonObject) {
   const positions = Array.isArray(snapshot.account?.positions) ? snapshot.account.positions : [];
+  let validSizeCount = 0;
   return {
     as_of_ms: snapshot.account?.provenance?.as_of_ms ?? snapshot.account?.fetched_at_ms ?? null,
     rows: positions.map((position: JsonObject) => {
-      const size = numericOrZero(position.size);
+      const size = finiteNumber(position.size);
+      if (size !== null) validSizeCount += 1;
       const market = preferredMarket(snapshot, position.coin);
       const mid = finiteNumber(market?.mid);
       const liquidation = finiteNumber(position.liquidation_price);
-      const bufferPct = mid === null || liquidation === null || mid <= 0
+      const bufferPct = size === null || mid === null || liquidation === null || mid <= 0
         ? null
         : size >= 0
           ? (mid - liquidation) / mid * 100
           : (liquidation - mid) / mid * 100;
       return {
         coin: position.coin,
-        side: size >= 0 ? "long" : "short",
+        side: size === null ? "unknown" : size >= 0 ? "long" : "short",
         size,
         market_symbol: market?.symbol ?? null,
         mid,
         liquidation_price: liquidation,
         buffer_pct: bufferPct,
-        formula: size >= 0 ? "(mid - liquidation_price) / mid × 100" : "(liquidation_price - mid) / mid × 100",
+        formula: size === null
+          ? null
+          : size >= 0
+            ? "(mid - liquidation_price) / mid × 100"
+            : "(liquidation_price - mid) / mid × 100",
       };
     }),
     position_count: positions.length,
+    valid_size_count: validSizeCount,
+    invalid_size_count: positions.length - validSizeCount,
     positions_complete: snapshot.account?.coverage?.positions?.endpoint_fetch_complete ?? null,
   };
 }
@@ -476,10 +700,10 @@ function calculateRisk(snapshot: JsonObject) {
   const spot = (Array.isArray(raw.spot_balances) ? raw.spot_balances : []).map((balance: JsonObject) =>
     valueSpotBalance(snapshot, balance),
   );
-  const observableSpotValue = spot.reduce(
-    (sum: number, row: JsonObject) => sum + (finiteNumber(row.value_usd) ?? 0),
-    0,
-  );
+  const validSpotValues = spot
+    .map((row: JsonObject) => finiteNumber(row.value_usd))
+    .filter((value: number | null): value is number => value !== null);
+  const observableSpotValue = sumAvailable(validSpotValues, spot.length);
   return {
     ...raw,
     deterministic_metrics: {
@@ -490,6 +714,7 @@ function calculateRisk(snapshot: JsonObject) {
       clearinghouse_gross_leverage:
         accountValue !== null && accountValue > 0 && notional !== null ? notional / accountValue : null,
       observable_spot_value_usd: observableSpotValue,
+      observable_spot_value_complete: validSpotValues.length === spot.length,
       portfolio_minus_clearinghouse_account_value:
         portfolioValue !== null && accountValue !== null ? portfolioValue - accountValue : null,
     },
@@ -543,21 +768,109 @@ async function fetchCandles(
     .sort((left, right) => left.open_time_ms - right.open_time_ms);
 }
 
+function marketStatistics(candles: JsonObject[]) {
+  if (!candles.length) {
+    return {
+      available: false,
+      reason: "complete_empty_candle_window",
+      sample_count: 0,
+    };
+  }
+  const closeReturns: number[] = [];
+  const candleReturns: number[] = [];
+  const trueRanges: number[] = [];
+  let peakClose = candles[0].close;
+  let maximumDrawdownPct = 0;
+  for (let index = 0; index < candles.length; index += 1) {
+    const candle = candles[index];
+    if (candle.open > 0) candleReturns.push((candle.close - candle.open) / candle.open * 100);
+    if (index > 0) {
+      const previousClose = candles[index - 1].close;
+      if (previousClose > 0) closeReturns.push((candle.close - previousClose) / previousClose * 100);
+      trueRanges.push(Math.max(
+        candle.high - candle.low,
+        Math.abs(candle.high - previousClose),
+        Math.abs(candle.low - previousClose),
+      ));
+    } else {
+      trueRanges.push(candle.high - candle.low);
+    }
+    peakClose = Math.max(peakClose, candle.close);
+    if (peakClose > 0) maximumDrawdownPct = Math.max(maximumDrawdownPct, (peakClose - candle.close) / peakClose * 100);
+  }
+  const closes = candles.map((candle) => candle.close);
+  const lastClose = closes.at(-1)!;
+  const simpleReturns = closeReturns.map((value) => value / 100);
+  const atrWindow = trueRanges.slice(-Math.min(14, trueRanges.length));
+  const atr14 = atrWindow.length ? atrWindow.reduce((sum, value) => sum + value, 0) / atrWindow.length : null;
+  const movingAverage = (window: number) => {
+    if (closes.length < window) return null;
+    const values = closes.slice(-window);
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  };
+  return {
+    available: true,
+    sample_count: candles.length,
+    first_open_time_ms: candles[0].open_time_ms,
+    last_close_time_ms: candles.at(-1)!.close_time_ms,
+    first_open: candles[0].open,
+    last_close: lastClose,
+    window_high: Math.max(...candles.map((candle) => candle.high)),
+    window_low: Math.min(...candles.map((candle) => candle.low)),
+    period_return_pct: candles[0].open > 0 ? (lastClose - candles[0].open) / candles[0].open * 100 : null,
+    average_candle_return_pct: candleReturns.length
+      ? candleReturns.reduce((sum, value) => sum + value, 0) / candleReturns.length
+      : null,
+    median_candle_return_pct: median(candleReturns),
+    close_return_sample_stddev_pct: sampleStandardDeviation(closeReturns),
+    nonannualized_realized_volatility_pct: simpleReturns.length
+      ? Math.sqrt(simpleReturns.reduce((sum, value) => sum + value * value, 0)) * 100
+      : null,
+    maximum_close_drawdown_pct: maximumDrawdownPct,
+    atr_14: atr14,
+    atr_14_pct_of_last_close: atr14 !== null && lastClose > 0 ? atr14 / lastClose * 100 : null,
+    sma_20: movingAverage(20),
+    sma_50: movingAverage(50),
+    formulas: {
+      period_return_pct: "(last close - first open) / first open × 100",
+      close_return_sample_stddev_pct: "sample standard deviation of consecutive close-to-close percentage returns",
+      nonannualized_realized_volatility_pct: "sqrt(Σ consecutive simple return²) × 100; not annualized",
+      maximum_close_drawdown_pct: "maximum (prior peak close - close) / prior peak close × 100",
+      atr_14: "mean of the latest up-to-14 true ranges",
+    },
+    limitations: [
+      "Statistics cover only the requested bounded candle window.",
+      "Candle statistics describe historical prices and do not establish causation or predict future returns.",
+    ],
+  };
+}
+
 function summarizeReturns(rows: Array<{ key: string; return_pct: number }>) {
-  const groups = new Map<string, { key: string; sample_count: number; total: number; wins: number }>();
+  const groups = new Map<string, { key: string; values: number[] }>();
   for (const row of rows) {
-    const group = groups.get(row.key) ?? { key: row.key, sample_count: 0, total: 0, wins: 0 };
-    group.sample_count += 1;
-    group.total += row.return_pct;
-    if (row.return_pct > 0) group.wins += 1;
+    const group = groups.get(row.key) ?? { key: row.key, values: [] };
+    group.values.push(row.return_pct);
     groups.set(row.key, group);
   }
-  return [...groups.values()].map((group) => ({
-    label: group.key,
-    sample_count: group.sample_count,
-    average_return_pct: group.sample_count ? group.total / group.sample_count : 0,
-    win_rate_pct: group.sample_count ? group.wins / group.sample_count * 100 : 0,
-  }));
+  return [...groups.values()].map((group) => {
+    const wins = group.values.filter((value) => value > 0).length;
+    const losses = group.values.filter((value) => value < 0).length;
+    const total = group.values.reduce((sum, value) => sum + value, 0);
+    return {
+      label: group.key,
+      sample_count: group.values.length,
+      wins,
+      losses,
+      flats: group.values.length - wins - losses,
+      average_return_pct: total / group.values.length,
+      median_return_pct: median(group.values),
+      sample_stddev_return_pct: sampleStandardDeviation(group.values),
+      minimum_return_pct: Math.min(...group.values),
+      maximum_return_pct: Math.max(...group.values),
+      win_rate_pct: wins / group.values.length * 100,
+      small_sample_warning: group.values.length < 10,
+    };
+  });
 }
 
 function dateParts(timestamp: number, timeZone: string) {
@@ -681,10 +994,14 @@ async function fetchPositioning(symbol: string, timeframe: string) {
     const deltas = deltaRaw?.data?.perpDeltas?.deltas;
     if (!aggregate) throw new Error("aggregate unavailable");
     const safeDeltas = Array.isArray(deltas) ? deltas : [];
+    const validDeltas = safeDeltas
+      .map((row) => ({ current: finiteNumber(row.current), delta: finiteNumber(row.delta) }))
+      .filter((row): row is { current: number; delta: number } => row.current !== null && row.delta !== null);
     return {
       symbol,
       available: true,
       source: "hyperdash_aggregate_only",
+      retrieved_at_ms: Date.now(),
       aggregate: {
         coin: aggregate.coin,
         total_long_notional: finiteNumber(aggregate.totalLongNotional),
@@ -698,10 +1015,12 @@ async function fetchPositioning(symbol: string, timeframe: string) {
       },
       changes: {
         timeframe,
-        wallet_count: safeDeltas.length,
-        net_delta: safeDeltas.reduce((sum, row) => sum + numericOrZero(row.delta), 0),
-        gross_delta: safeDeltas.reduce((sum, row) => sum + Math.abs(numericOrZero(row.delta)), 0),
-        net_current: safeDeltas.reduce((sum, row) => sum + numericOrZero(row.current), 0),
+        returned_wallet_rows: safeDeltas.length,
+        valid_wallet_rows: validDeltas.length,
+        excluded_wallet_rows: safeDeltas.length - validDeltas.length,
+        net_delta: validDeltas.length ? validDeltas.reduce((sum, row) => sum + row.delta, 0) : null,
+        gross_delta: validDeltas.length ? validDeltas.reduce((sum, row) => sum + Math.abs(row.delta), 0) : null,
+        net_current: validDeltas.length ? validDeltas.reduce((sum, row) => sum + row.current, 0) : null,
       },
       privacy: "Wallet addresses, labels, and individual rows were neither requested for aggregate positioning nor returned to the model.",
     };
@@ -734,7 +1053,7 @@ export default function keroseneExtension(pi: ExtensionAPI) {
             data_policy: snapshot.data_policy,
             [params.section]: snapshot[params.section],
           };
-      return toolPayload(payload, { section: params.section });
+      return toolPayload(payload, { section: params.section }, sectionQuality(snapshot, params.section));
     },
   });
 
@@ -759,12 +1078,22 @@ export default function keroseneExtension(pi: ExtensionAPI) {
         query,
         matches: resolveMarkets(snapshot, query),
       }));
+      const marketCoverage = snapshot?._tool_data?.markets?.coverage ?? null;
+      const unresolvedCount = results.filter((result) => result.matches.length === 0).length;
       return toolPayload({
         as_of_ms: snapshot?._tool_data?.markets?.as_of_ms ?? null,
         results,
         requested_count: params.symbols.length,
-        full_market_coverage: snapshot?._tool_data?.markets?.coverage ?? null,
-      }, { symbols: params.symbols.length });
+        full_market_coverage: marketCoverage,
+      }, { symbols: params.symbols.length }, dataQuality({
+        source: "hyperliquid_all_mids_and_kerosene_symbol_metadata",
+        snapshot,
+        observedAtMs: snapshot?._tool_data?.markets?.as_of_ms,
+        dataState: marketRows(snapshot).length ? "ready" : "complete_empty_or_unavailable",
+        coverage: marketCoverage,
+        freshnessMaxAgeMs: CURRENT_DATA_MAX_AGE_MS,
+        warnings: unresolvedCount ? [`${unresolvedCount} requested symbol(s) did not resolve.`] : [],
+      }));
     },
   });
 
@@ -793,32 +1122,49 @@ export default function keroseneExtension(pi: ExtensionAPI) {
       const sourceCoverage = snapshot?._tool_data?.activity?.coverage?.[params.kind] ?? null;
       if (params.mode === "aggregate") {
         const aggregate = params.kind === "fills" ? aggregateFills(filtered) : aggregateFunding(filtered);
+        const aggregateCoverage = {
+          matched_rows: filtered.length,
+          source: sourceCoverage,
+          aggregate_covers_all_validated_matches: aggregate.validation.excluded_rows === 0,
+        };
         return toolPayload({
           kind: params.kind,
           mode: params.mode,
           filter: { symbol: params.symbol ?? null, start_ms: params.start_ms ?? null, end_ms: params.end_ms ?? null },
           aggregate,
-          coverage: {
-            matched_rows: filtered.length,
-            source: sourceCoverage,
-            aggregate_covers_all_matched_rows: true,
-          },
-        }, { kind: params.kind, mode: params.mode });
+          coverage: aggregateCoverage,
+        }, { kind: params.kind, mode: params.mode }, dataQuality({
+          source: "kerosene_sanitized_account_activity",
+          snapshot,
+          observedAtMs: snapshot?._tool_data?.activity?.as_of_ms,
+          dataState: snapshot?._tool_data?.activity ? "ready" : "unavailable",
+          coverage: aggregateCoverage,
+          warnings: aggregate.validation.excluded_rows
+            ? [`${aggregate.validation.excluded_rows} malformed row(s) were excluded instead of treated as zero.`]
+            : [],
+        }));
       }
       const cursor = params.cursor ?? 0;
       const limit = params.limit ?? 50;
       const rows = filtered.slice(cursor, cursor + limit);
       const nextCursor = cursor + rows.length < filtered.length ? cursor + rows.length : null;
+      const rowCoverage = coverage(rows.length, filtered.length, {
+        cursor,
+        next_cursor: nextCursor,
+        source: sourceCoverage,
+      });
       return toolPayload({
         kind: params.kind,
         mode: params.mode,
         rows,
-        coverage: coverage(rows.length, filtered.length, {
-          cursor,
-          next_cursor: nextCursor,
-          source: sourceCoverage,
-        }),
-      }, { kind: params.kind, mode: params.mode });
+        coverage: rowCoverage,
+      }, { kind: params.kind, mode: params.mode }, dataQuality({
+        source: "kerosene_sanitized_account_activity",
+        snapshot,
+        observedAtMs: snapshot?._tool_data?.activity?.as_of_ms,
+        dataState: snapshot?._tool_data?.activity ? "ready" : "unavailable",
+        coverage: rowCoverage,
+      }));
     },
   });
 
@@ -871,12 +1217,21 @@ export default function keroseneExtension(pi: ExtensionAPI) {
       const snapshot = await readSnapshot();
       const journal = snapshot?._tool_data?.journal;
       if (!journal?.available) {
+        const unavailableState = journal?.data_state ?? snapshot?.journal?.data_state ?? "unavailable";
+        const unavailableCoverage = journal?.coverage ?? snapshot?.journal?.coverage ?? null;
         return toolPayload({
           available: false,
-          data_state: journal?.data_state ?? snapshot?.journal?.data_state ?? "unavailable",
+          data_state: unavailableState,
           reason: "active_account_journal_unavailable",
-          coverage: journal?.coverage ?? snapshot?.journal?.coverage ?? null,
-        }, { operation: params.operation });
+          coverage: unavailableCoverage,
+        }, { operation: params.operation }, dataQuality({
+          source: "kerosene_account_scoped_trading_journal",
+          snapshot,
+          observedAtMs: journal?.as_of_ms,
+          dataState: "unavailable",
+          coverage: unavailableCoverage,
+          warnings: [`Journal state: ${unavailableState}.`],
+        }));
       }
 
       const metric = params.metric ?? "net_pnl";
@@ -899,6 +1254,11 @@ export default function keroseneExtension(pi: ExtensionAPI) {
       };
 
       if (params.operation === "summary") {
+        const summaryCoverage = {
+          matched_rows: filtered.length,
+          source: sourceCoverage,
+          aggregation_covers_all_serialized_matches: true,
+        };
         return toolPayload({
           available: true,
           operation: params.operation,
@@ -906,19 +1266,29 @@ export default function keroseneExtension(pi: ExtensionAPI) {
           as_of_ms: journal.as_of_ms ?? null,
           filter,
           summary: summarizeJournal(filtered),
-          coverage: {
-            matched_rows: filtered.length,
-            source: sourceCoverage,
-            aggregation_covers_all_serialized_matches: true,
-          },
-        }, { operation: params.operation, matched_rows: filtered.length });
+          coverage: summaryCoverage,
+        }, { operation: params.operation, matched_rows: filtered.length }, dataQuality({
+          source: "kerosene_account_scoped_trading_journal",
+          snapshot,
+          observedAtMs: journal.as_of_ms,
+          dataState: journal.data_state ?? "ready",
+          coverage: summaryCoverage,
+          assumptions: ["Journal trades are reconstructed from the loaded account history."],
+          warnings: filtered.length > 0 && filtered.length < 10
+            ? ["The filtered journal sample contains fewer than 10 trades; patterns may be unstable."]
+            : [],
+        }));
       }
 
       const ordered = params.operation === "best"
         ? rankJournalRows(filtered, metric, false)
         : params.operation === "worst"
           ? rankJournalRows(filtered, metric, true)
-          : [...filtered].sort((left, right) => numericOrZero(right.start_time_ms) - numericOrZero(left.start_time_ms));
+          : [...filtered].sort(
+              (left, right) =>
+                (finiteNumber(right.start_time_ms) ?? Number.NEGATIVE_INFINITY) -
+                (finiteNumber(left.start_time_ms) ?? Number.NEGATIVE_INFINITY),
+            );
       const cursor = params.cursor ?? 0;
       const limit = params.limit ?? (params.operation === "list" ? 50 : 5);
       const includeReflections = params.include_reflections ?? true;
@@ -928,6 +1298,13 @@ export default function keroseneExtension(pi: ExtensionAPI) {
         return withoutReflection;
       });
       const nextCursor = cursor + rows.length < ordered.length ? cursor + rows.length : null;
+      const journalCoverage = coverage(rows.length, ordered.length, {
+        cursor,
+        next_cursor: nextCursor,
+        source: sourceCoverage,
+        ranking_complete_for_loaded_journal: sourceCoverage?.truncated === false,
+        journal_sync_complete: sourceCoverage?.endpoint_fetch_complete ?? null,
+      });
       return toolPayload({
         available: true,
         operation: params.operation,
@@ -937,25 +1314,30 @@ export default function keroseneExtension(pi: ExtensionAPI) {
         as_of_ms: journal.as_of_ms ?? null,
         filter,
         rows,
-        coverage: coverage(rows.length, ordered.length, {
-          cursor,
-          next_cursor: nextCursor,
-          source: sourceCoverage,
-          ranking_complete_for_loaded_journal: sourceCoverage?.truncated === false,
-          journal_sync_complete: sourceCoverage?.endpoint_fetch_complete ?? null,
-        }),
-      }, { operation: params.operation, metric, returned_rows: rows.length });
+        coverage: journalCoverage,
+      }, { operation: params.operation, metric, returned_rows: rows.length }, dataQuality({
+        source: "kerosene_account_scoped_trading_journal",
+        snapshot,
+        observedAtMs: journal.as_of_ms,
+        dataState: journal.data_state ?? "ready",
+        coverage: journalCoverage,
+        assumptions: ["Journal trades are reconstructed from the loaded account history."],
+        warnings: ordered.length > 0 && ordered.length < 10
+          ? ["The filtered journal sample contains fewer than 10 trades; rankings may be unstable."]
+          : [],
+      }));
     },
   });
 
   pi.registerTool({
     name: "kerosene_calculate",
     label: "Kerosene deterministic analysis",
-    description: "Run allowlisted deterministic calculations over sanitized Kerosene data: exposure, liquidation buffers, stress, fills, funding, or reconciliation.",
+    description: "Run allowlisted deterministic calculations over sanitized Kerosene data: exposure, liquidation buffers, stress, fills, funding, reconciliation, or bounded candle statistics.",
     promptSnippet: "Use deterministic formulas for Kerosene arithmetic instead of mental aggregation",
     promptGuidelines: [
       "Prefer this tool for financial arithmetic and quote its formulas, assumptions, and coverage.",
       "Do not replace a null result with an inferred number.",
+      "Use market_statistics instead of manually calculating returns, volatility, drawdown, ATR, or moving averages from candle rows.",
     ],
     parameters: Type.Object({
       operation: Type.Union([
@@ -965,17 +1347,58 @@ export default function keroseneExtension(pi: ExtensionAPI) {
         Type.Literal("fill_aggregation"),
         Type.Literal("funding_aggregation"),
         Type.Literal("portfolio_reconciliation"),
+        Type.Literal("market_statistics"),
       ]),
       symbol: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+      interval: Type.Optional(Type.Union(Object.keys(CANDLE_INTERVAL_MS).map((value) => Type.Literal(value)))),
       start_ms: Type.Optional(Type.Number({ minimum: 0 })),
       end_ms: Type.Optional(Type.Number({ minimum: 0 })),
+      limit: Type.Optional(Type.Integer({ minimum: 2, maximum: MAX_CANDLES })),
       shock_pct: Type.Optional(Type.Number({ minimum: -50, maximum: 50 })),
       include_stablecoins_in_shock: Type.Optional(Type.Boolean()),
     }),
     async execute(_toolCallId, params) {
       const snapshot = await readSnapshot();
       let result: unknown;
-      if (params.operation === "exposure") result = calculateExposure(snapshot);
+      if (params.operation === "market_statistics") {
+        const market = preferredMarket(snapshot, params.symbol ?? "");
+        if (!market || market.market_type === "outcome") {
+          result = { available: false, reason: "perp_or_spot_symbol_not_resolved", query: params.symbol ?? null };
+        } else {
+          const interval = params.interval ?? "1h";
+          const intervalMs = CANDLE_INTERVAL_MS[interval];
+          const endMs = Math.min(params.end_ms ?? Date.now(), Date.now());
+          const limit = params.limit ?? 200;
+          const startMs = Math.max(
+            params.start_ms ?? endMs - intervalMs * limit,
+            endMs - MAX_CANDLE_LOOKBACK_MS,
+          );
+          if (endMs <= startMs) {
+            result = { available: false, reason: "invalid_time_range", symbol: market.symbol, interval };
+          } else {
+            try {
+              const allRows = await fetchCandles(market.symbol, interval, startMs, endMs);
+              const rows = allRows.slice(-limit);
+              const statistics = marketStatistics(rows);
+              result = {
+                available: true,
+                data_state: statistics.available ? "ready" : "complete_empty",
+                source: "hyperliquid_candleSnapshot_computed_by_kerosene",
+                retrieved_at_ms: Date.now(),
+                symbol: market.symbol,
+                canonical_symbol: market.canonical_symbol,
+                interval,
+                requested_start_ms: startMs,
+                requested_end_ms: endMs,
+                statistics,
+                coverage: coverage(rows.length, allRows.length, { provider_window_bounded: true }),
+              };
+            } catch {
+              result = { available: false, reason: "market_statistics_request_failed", symbol: market.symbol, interval };
+            }
+          }
+        }
+      } else if (params.operation === "exposure") result = calculateExposure(snapshot);
       else if (params.operation === "liquidation_buffers") result = calculateLiquidationBuffers(snapshot);
       else if (params.operation === "fill_aggregation") {
         const rows = filterActivity(activityRows(snapshot, "fills"), params);
@@ -996,20 +1419,38 @@ export default function keroseneExtension(pi: ExtensionAPI) {
         const rows = exposure.by_asset.filter(
           (row: JsonObject) => params.include_stablecoins_in_shock || !STABLECOINS.has(normalizedSymbol(row.coin)),
         );
+        const shockValues = rows
+          .map((row: JsonObject) => finiteNumber(row.net_value_usd))
+          .filter((value: number | null): value is number => value !== null)
+          .map((value: number) => value * shockPct / 100);
         result = {
           shock_pct: shockPct,
           include_stablecoins: Boolean(params.include_stablecoins_in_shock),
-          delta_equity_usd: rows.reduce(
-            (sum: number, row: JsonObject) => sum + numericOrZero(row.net_value_usd) * shockPct / 100,
-            0,
-          ),
+          delta_equity_usd: sumAvailable(shockValues, rows.length),
           shocked_assets: rows,
           formula: "delta_equity_usd = Σ(net_observable_value_usd × shock_pct / 100)",
           exclusions: params.include_stablecoins_in_shock ? [] : ["known USD stablecoins"],
           exposure_coverage: exposure,
         };
       }
-      return toolPayload({ operation: params.operation, result }, { operation: params.operation });
+      const resultObject = result as JsonObject;
+      const validation = resultObject?.validation ?? resultObject?.aggregate?.validation;
+      const calculationCoverage = resultObject?.coverage ?? resultObject?.exposure_coverage?.validation ?? null;
+      const observedAtMs = resultObject?.statistics?.last_close_time_ms ??
+        resultObject?.as_of_ms ?? snapshot?.account?.provenance?.observed_at_ms;
+      return toolPayload({ operation: params.operation, result }, { operation: params.operation }, dataQuality({
+        source: resultObject?.source ?? "kerosene_deterministic_calculation",
+        snapshot,
+        observedAtMs,
+        retrievedAtMs: resultObject?.retrieved_at_ms,
+        dataState: resultObject?.data_state ?? (resultObject?.available === false ? "unavailable" : "ready"),
+        coverage: calculationCoverage,
+        assumptions: Array.isArray(resultObject?.assumptions) ? resultObject.assumptions : [],
+        exclusions: Array.isArray(resultObject?.exclusions) ? resultObject.exclusions : [],
+        warnings: validation?.excluded_rows
+          ? [`${validation.excluded_rows} malformed row(s) were excluded instead of treated as zero.`]
+          : [],
+      }));
     },
   });
 
@@ -1025,7 +1466,18 @@ export default function keroseneExtension(pi: ExtensionAPI) {
     parameters: Type.Object({}),
     async execute() {
       const snapshot = await readSnapshot();
-      return toolPayload(calculateRisk(snapshot), { section: "risk" });
+      const result = calculateRisk(snapshot);
+      return toolPayload(result, { section: "risk" }, dataQuality({
+        source: "kerosene_portfolio_margin_risk_inputs",
+        snapshot,
+        observedAtMs: result?.as_of_ms,
+        dataState: result?.available === false ? "unavailable" : "ready",
+        coverage: result?.current_state ?? null,
+        assumptions: ["Clearinghouse, spot, portfolio-history, and income scopes are not interchangeable."],
+        warnings: result?.deterministic_metrics?.observable_spot_value_complete === false
+          ? ["Some spot balances could not be valued and were not treated as zero."]
+          : [],
+      }));
     },
   });
 
@@ -1059,7 +1511,25 @@ export default function keroseneExtension(pi: ExtensionAPI) {
         }
         return { query, ...(await fetchPositioning(market.symbol, timeframe)) };
       }));
-      return toolPayload({ timeframe, results }, { symbols: params.symbols.length });
+      const availableCount = results.filter((result) => result.available).length;
+      const retrievedAtMs = Math.max(
+        ...results.map((result) => finiteNumber(result.retrieved_at_ms) ?? 0),
+      ) || null;
+      const positioningCoverage = {
+        requested_symbols: params.symbols.length,
+        available_symbols: availableCount,
+        unavailable_symbols: params.symbols.length - availableCount,
+      };
+      return toolPayload({ timeframe, results, coverage: positioningCoverage }, { symbols: params.symbols.length }, dataQuality({
+        source: "hyperdash_aggregate_only",
+        snapshot,
+        retrievedAtMs,
+        dataState: availableCount ? "ready_or_partial" : "unavailable",
+        coverage: positioningCoverage,
+        warnings: availableCount < params.symbols.length
+          ? [`${params.symbols.length - availableCount} positioning request(s) were unavailable.`]
+          : [],
+      }));
     },
   });
 
@@ -1083,17 +1553,34 @@ export default function keroseneExtension(pi: ExtensionAPI) {
       const snapshot = await readSnapshot();
       const market = preferredMarket(snapshot, params.symbol);
       if (!market || market.market_type === "outcome") {
-        return toolPayload({ available: false, reason: "perp_or_spot_symbol_not_resolved", query: params.symbol });
+        return toolPayload(
+          { available: false, reason: "perp_or_spot_symbol_not_resolved", query: params.symbol },
+          {},
+          dataQuality({
+            source: "kerosene_symbol_metadata",
+            snapshot,
+            dataState: "unavailable",
+            warnings: ["The requested symbol did not resolve to a supported perp or spot market."],
+          }),
+        );
       }
       const intervalMs = CANDLE_INTERVAL_MS[params.interval];
       const endMs = Math.min(params.end_ms ?? Date.now(), Date.now());
       const limit = params.limit ?? 200;
       const defaultWindow = intervalMs * Math.min(limit, MAX_CANDLES);
       const startMs = Math.max(params.start_ms ?? endMs - defaultWindow, endMs - MAX_CANDLE_LOOKBACK_MS);
-      if (endMs <= startMs) return toolPayload({ available: false, reason: "invalid_time_range" });
+      if (endMs <= startMs) {
+        return toolPayload(
+          { available: false, reason: "invalid_time_range" },
+          {},
+          dataQuality({ source: "hyperliquid_candleSnapshot", snapshot, dataState: "unavailable" }),
+        );
+      }
       try {
         const allRows = await fetchCandles(market.symbol, params.interval, startMs, endMs);
         const rows = allRows.slice(-limit);
+        const rowCoverage = coverage(rows.length, allRows.length, { provider_window_bounded: true });
+        const retrievedAtMs = Date.now();
         return toolPayload({
           available: true,
           source: "hyperliquid_candleSnapshot",
@@ -1102,11 +1589,24 @@ export default function keroseneExtension(pi: ExtensionAPI) {
           interval: params.interval,
           requested_start_ms: startMs,
           requested_end_ms: endMs,
+          retrieved_at_ms: retrievedAtMs,
           rows,
-          coverage: coverage(rows.length, allRows.length, { provider_window_bounded: true }),
-        }, { symbol: market.symbol, interval: params.interval });
+          coverage: rowCoverage,
+        }, { symbol: market.symbol, interval: params.interval }, dataQuality({
+          source: "hyperliquid_candleSnapshot",
+          snapshot,
+          observedAtMs: rows.at(-1)?.close_time_ms,
+          retrievedAtMs,
+          dataState: rows.length ? "ready" : "complete_empty",
+          coverage: rowCoverage,
+          exclusions: ["The provider request and returned rows are bounded to the requested window and output cap."],
+        }));
       } catch {
-        return toolPayload({ available: false, reason: "ohlcv_request_failed", symbol: market.symbol });
+        return toolPayload(
+          { available: false, reason: "ohlcv_request_failed", symbol: market.symbol },
+          {},
+          dataQuality({ source: "hyperliquid_candleSnapshot", snapshot, dataState: "unavailable" }),
+        );
       }
     },
   });
@@ -1133,7 +1633,11 @@ export default function keroseneExtension(pi: ExtensionAPI) {
       const snapshot = await readSnapshot();
       const market = preferredMarket(snapshot, params.symbol);
       if (!market || market.market_type === "outcome") {
-        return toolPayload({ available: false, reason: "perp_or_spot_symbol_not_resolved", query: params.symbol });
+        return toolPayload(
+          { available: false, reason: "perp_or_spot_symbol_not_resolved", query: params.symbol },
+          {},
+          dataQuality({ source: "kerosene_symbol_metadata", snapshot, dataState: "unavailable" }),
+        );
       }
       const lookbackDays = params.lookback_days ?? 28;
       const endMs = Date.now();
@@ -1150,6 +1654,17 @@ export default function keroseneExtension(pi: ExtensionAPI) {
             key: weekdayOrder[new Date(row.open_time_ms).getUTCDay()],
             return_pct: (row.close - row.open) / row.open * 100,
           }));
+        const observedAtMs = Math.max(
+          finiteNumber(daily.at(-1)?.close_time_ms) ?? 0,
+          finiteNumber(intraday.at(-1)?.close_time_ms) ?? 0,
+        ) || null;
+        const sessionCoverage = {
+          daily_sample_count: daily.length,
+          intraday_sample_count: intraday.length,
+          requested_lookback_days: lookbackDays,
+          provider_window_bounded: true,
+        };
+        const retrievedAtMs = Date.now();
         return toolPayload({
           available: true,
           source: "hyperliquid_candleSnapshot_computed_by_kerosene",
@@ -1158,14 +1673,35 @@ export default function keroseneExtension(pi: ExtensionAPI) {
           lookback_days: lookbackDays,
           requested_start_ms: startMs,
           requested_end_ms: endMs,
+          retrieved_at_ms: retrievedAtMs,
           daily_sample_count: daily.length,
           intraday_sample_count: intraday.length,
           weekday_summaries: summarizeReturns(weekdayRows),
           market_session_summaries: sessionSummaries(intraday, startMs, endMs),
           session_definition: "Asia 09:00 Tokyo, London 08:00 London, New York 09:30 New York, Overnight 16:00 New York until next Asia open; DST-aware.",
-        }, { symbol: market.symbol, lookback_days: lookbackDays });
+          coverage: sessionCoverage,
+        }, { symbol: market.symbol, lookback_days: lookbackDays }, dataQuality({
+          source: "hyperliquid_candleSnapshot_computed_by_kerosene",
+          snapshot,
+          observedAtMs,
+          retrievedAtMs,
+          dataState: daily.length || intraday.length ? "ready_or_partial" : "complete_empty",
+          coverage: sessionCoverage,
+          exclusions: ["Statistics cover only the bounded requested lookback."],
+          warnings: daily.length < 10
+            ? ["The daily sample contains fewer than 10 observations; comparisons may be unstable."]
+            : [],
+        }));
       } catch {
-        return toolPayload({ available: false, reason: "session_data_request_failed", symbol: market.symbol });
+        return toolPayload(
+          { available: false, reason: "session_data_request_failed", symbol: market.symbol },
+          {},
+          dataQuality({
+            source: "hyperliquid_candleSnapshot_computed_by_kerosene",
+            snapshot,
+            dataState: "unavailable",
+          }),
+        );
       }
     },
   });
@@ -1173,6 +1709,6 @@ export default function keroseneExtension(pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event) => ({
     systemPrompt:
       event.systemPrompt +
-      `\n\nYou are the Kerosene trading-data assistant. You can explain, compare, and calculate, but you cannot trade or mutate Kerosene. Use only Kerosene's typed tools for application facts. Start with the narrowest decisive tool; do not call extra sections after a complete empty-state result. For questions about best/worst trades, trading performance, journal reflections, or tags, use kerosene_journal rather than recent fills or portfolio PnL. Unless the user specifies another definition, best/worst means closed, basis-complete journal trades ranked by fee-adjusted net realized PnL. Use kerosene_calculate or kerosene_activity aggregate mode for other arithmetic. Never guess raw @N/#N symbol mappings. Treat provenance, timestamps, coverage, and truncation fields as authoritative. Distinguish current empty state, unavailable data, and historical activity. Clearinghouse, spot, portfolio, and income fields have different scopes; do not call a residual a defect without evidence. Treat journal reflections as user-authored context, not verified market facts. Never imply that you placed, changed, or cancelled an order. Do not provide individualized investment instructions; frame outputs as analytical information. Always finish with visible answer text. Use ordinary Markdown formulas and fenced code, not LaTeX delimiters.`,
+      `\n\nYou are the Kerosene trading-data assistant. You can explain, compare, and calculate, but you cannot trade or mutate Kerosene. Use only Kerosene's typed tools for application facts. Start with the narrowest decisive tool; do not call extra sections after a complete empty-state result. For questions about best/worst trades, trading performance, journal reflections, or tags, use kerosene_journal rather than recent fills or portfolio PnL. Unless the user specifies another definition, best/worst means closed, basis-complete journal trades ranked by fee-adjusted net realized PnL. Use kerosene_calculate or kerosene_activity aggregate mode for other arithmetic. Never guess raw @N/#N symbol mappings. Treat provenance, timestamps, coverage, and truncation fields as authoritative. Distinguish current empty state, unavailable data, and historical activity. Clearinghouse, spot, portfolio, and income fields have different scopes; do not call a residual a defect without evidence. Treat journal reflections as user-authored context, not verified market facts. Never imply that you placed, changed, or cancelled an order. Do not provide individualized investment instructions; frame outputs as analytical information. Ground every material claim in evidence retrieved during the current turn. Clearly distinguish observed tool data, deterministic calculations, user-authored journal content, and your own interpretation. Never present an inference, hypothesis, or prior-turn value as a current fact. Treat null, missing, unavailable, errored, incomplete, stale, and truncated data as unknown rather than as zero, none, or complete. For time-sensitive, comparative, ranked, or statistical claims, report the relevant as-of time, scope, filters, time window, metric, units, sample size or denominator, and material coverage limits. Do not call data live or current unless freshness is verified. Preserve signs and units and avoid precision unsupported by the source. If sources conflict, expose the conflict instead of silently choosing one. Do not infer causation, intent, or future performance from correlation. Label causal explanations as hypotheses and include a meaningful alternative when the evidence does not identify a cause. Do not invent confidence percentages; describe confidence through evidence quality and completeness. For nontrivial analysis, lead with the answer, then give supporting evidence, interpretation, assumptions, and limitations. Use the minimum sufficient evidence, but triangulate relevant tools when another source could materially confirm or contradict the conclusion. When ambiguity would materially change the result, ask a clarifying question; otherwise state the default used. If evidence cannot support a claim, say what is unknown and what data would resolve it. Always finish with visible answer text. Use ordinary Markdown formulas and fenced code, not LaTeX delimiters.`,
   }));
 }

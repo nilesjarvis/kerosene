@@ -267,6 +267,39 @@ impl fmt::Debug for AgentPersistenceResult {
     }
 }
 
+const STREAM_REVEAL_FRAME_INTERVAL: u8 = 3;
+const STREAM_WORD_FADE_STEP: f32 = 0.14;
+const STREAM_COMPLETION_FADE_STEP: f32 = 0.08;
+const STREAM_CURSOR_PHASE_STEP: f32 = 0.025;
+
+pub(crate) struct AgentStreamPresentation {
+    pending: String,
+    transport_settled: bool,
+    reveal_frame: u8,
+    pub(crate) word_progress: f32,
+    pub(crate) cursor_visible: bool,
+    cursor_phase: f32,
+    pub(crate) featured_entry_index: Option<usize>,
+    pub(crate) completion_progress: f32,
+    pub(crate) evidence_open: bool,
+}
+
+impl Default for AgentStreamPresentation {
+    fn default() -> Self {
+        Self {
+            pending: String::new(),
+            transport_settled: false,
+            reveal_frame: STREAM_REVEAL_FRAME_INTERVAL,
+            word_progress: 1.0,
+            cursor_visible: true,
+            cursor_phase: 0.0,
+            featured_entry_index: None,
+            completion_progress: 1.0,
+            evidence_open: false,
+        }
+    }
+}
+
 pub(crate) struct AgentState {
     pub(crate) window_id: Option<window::Id>,
     pub(crate) active_session_id: u64,
@@ -284,6 +317,7 @@ pub(crate) struct AgentState {
     pub(crate) snapshot_request_id: u64,
     pub(crate) pending_prompt: Option<AgentPrompt>,
     pub(crate) assistant_entry_index: Option<usize>,
+    pub(crate) stream: AgentStreamPresentation,
     pub(crate) current_turn_has_text: bool,
     pub(crate) empty_response_retry_count: u8,
     pub(crate) suppress_empty_response_retry: bool,
@@ -325,6 +359,7 @@ impl Default for AgentState {
             snapshot_request_id: 0,
             pending_prompt: None,
             assistant_entry_index: None,
+            stream: AgentStreamPresentation::default(),
             current_turn_has_text: false,
             empty_response_retry_count: 0,
             suppress_empty_response_retry: false,
@@ -507,11 +542,13 @@ impl AgentState {
     }
 
     pub(crate) fn reset_runtime(&mut self) {
+        self.flush_assistant_stream();
         self.status = AgentStatus::Stopped;
         self.status_detail = None;
         self.runtime_connected = false;
         self.pending_prompt = None;
         self.assistant_entry_index = None;
+        self.reset_stream_activity();
         self.current_turn_has_text = false;
         self.empty_response_retry_count = 0;
         self.suppress_empty_response_retry = false;
@@ -607,6 +644,7 @@ impl AgentState {
             ..Self::default()
         };
         state.install_active_session(active);
+        state.refresh_featured_assistant();
         state.needs_context_replay = message_count(&state.entries) > 0;
         state
     }
@@ -617,6 +655,9 @@ impl AgentState {
     }
 
     pub(crate) fn begin_snapshot(&mut self, prompt: AgentPrompt) -> (u64, u64) {
+        self.flush_assistant_stream();
+        self.reset_stream_activity();
+        self.stream.evidence_open = false;
         self.snapshot_request_id = self.snapshot_request_id.wrapping_add(1);
         self.pending_prompt = Some(prompt);
         self.status = AgentStatus::Preparing;
@@ -646,12 +687,152 @@ impl AgentState {
             self.entries.get_mut(entry_index)
         {
             text.push_str(delta);
-            if let Some(markdown) = markdown {
-                markdown.push_str(delta);
-            } else {
-                *markdown = Some(Box::new(markdown::Content::parse(text)));
+            if markdown.is_none() {
+                *markdown = Some(Box::new(markdown::Content::new()));
             }
         }
+        self.stream.pending.push_str(delta);
+        self.stream.transport_settled = false;
+        self.stream.reveal_frame = STREAM_REVEAL_FRAME_INTERVAL;
+        self.stream.cursor_visible = true;
+    }
+
+    pub(crate) fn mark_assistant_transport_settled(&mut self) {
+        self.stream.transport_settled = true;
+        self.stream.reveal_frame = STREAM_REVEAL_FRAME_INTERVAL;
+    }
+
+    pub(crate) fn assistant_stream_ready_to_finalize(&self) -> bool {
+        self.stream.transport_settled && self.stream.pending.is_empty()
+    }
+
+    pub(crate) fn advance_assistant_stream(&mut self) -> (bool, bool) {
+        self.stream.word_progress = (self.stream.word_progress + STREAM_WORD_FADE_STEP).min(1.0);
+        self.stream.cursor_phase = (self.stream.cursor_phase + STREAM_CURSOR_PHASE_STEP).fract();
+        self.stream.cursor_visible = self.stream.cursor_phase < 0.58;
+        if self.stream.featured_entry_index.is_some() {
+            self.stream.completion_progress =
+                (self.stream.completion_progress + STREAM_COMPLETION_FADE_STEP).min(1.0);
+        }
+
+        let mut visible_changed = false;
+        if !self.stream.pending.is_empty() {
+            self.stream.reveal_frame = self.stream.reveal_frame.saturating_add(1);
+            if self.stream.reveal_frame >= STREAM_REVEAL_FRAME_INTERVAL {
+                let units = if self.stream.transport_settled {
+                    usize::MAX
+                } else {
+                    reveal_units_for_backlog(self.stream.pending.len())
+                };
+                let prefix_len =
+                    reveal_prefix_len(&self.stream.pending, units, self.stream.transport_settled);
+                if prefix_len > 0 {
+                    let remainder = self.stream.pending.split_off(prefix_len);
+                    let visible = std::mem::replace(&mut self.stream.pending, remainder);
+                    self.append_visible_assistant_text(&visible);
+                    self.stream.reveal_frame = 0;
+                    self.stream.word_progress = 0.0;
+                    visible_changed = true;
+                }
+            }
+        }
+
+        (
+            visible_changed,
+            self.stream.transport_settled && self.stream.pending.is_empty(),
+        )
+    }
+
+    pub(crate) fn flush_assistant_stream(&mut self) -> bool {
+        let visible = std::mem::take(&mut self.stream.pending);
+        if visible.is_empty() {
+            return false;
+        }
+        self.append_visible_assistant_text(&visible);
+        self.stream.word_progress = 1.0;
+        true
+    }
+
+    pub(crate) fn finish_assistant_presentation(&mut self) -> Option<usize> {
+        self.flush_assistant_stream();
+        let featured = self
+            .assistant_entry_index
+            .or_else(|| latest_assistant_after_last_user(&self.entries));
+        self.assistant_entry_index = None;
+        self.reset_stream_activity();
+        self.stream.featured_entry_index = featured;
+        self.stream.completion_progress = if featured.is_some() { 0.0 } else { 1.0 };
+        self.stream.evidence_open = false;
+        featured
+    }
+
+    pub(crate) fn feature_latest_assistant_immediately(&mut self) {
+        self.flush_assistant_stream();
+        self.assistant_entry_index = None;
+        self.reset_stream_activity();
+        self.refresh_featured_assistant();
+        self.stream.completion_progress = 1.0;
+    }
+
+    pub(crate) fn refresh_featured_assistant(&mut self) {
+        self.stream.featured_entry_index = self.entries.iter().rposition(|entry| {
+            matches!(
+                entry,
+                AgentChatEntry::Message {
+                    role: AgentChatRole::Assistant,
+                    ..
+                }
+            )
+        });
+        self.stream.evidence_open = false;
+    }
+
+    pub(crate) fn stream_needs_tick(&self) -> bool {
+        let active_stream = self.assistant_entry_index.is_some()
+            && (!self.stream.transport_settled
+                || !self.stream.pending.is_empty()
+                || self.stream.word_progress < 1.0);
+        active_stream
+            || (self.stream.featured_entry_index.is_some() && self.stream.completion_progress < 1.0)
+    }
+
+    pub(crate) fn toggle_evidence(&mut self, entry_index: usize) {
+        if self.stream.featured_entry_index == Some(entry_index) {
+            self.stream.evidence_open = !self.stream.evidence_open;
+        }
+    }
+
+    pub(crate) fn reset_stream_for_entries_change(&mut self) {
+        self.flush_assistant_stream();
+        self.assistant_entry_index = None;
+        self.reset_stream_activity();
+        self.refresh_featured_assistant();
+        self.stream.completion_progress = 1.0;
+    }
+
+    fn append_visible_assistant_text(&mut self, visible: &str) {
+        let Some(entry_index) = self.assistant_entry_index else {
+            return;
+        };
+        if let Some(AgentChatEntry::Message { markdown, text, .. }) =
+            self.entries.get_mut(entry_index)
+        {
+            if let Some(markdown) = markdown {
+                markdown.push_str(visible);
+            } else {
+                let visible_len = text.len().saturating_sub(self.stream.pending.len());
+                *markdown = Some(Box::new(markdown::Content::parse(&text[..visible_len])));
+            }
+        }
+    }
+
+    fn reset_stream_activity(&mut self) {
+        self.stream.pending.clear();
+        self.stream.transport_settled = false;
+        self.stream.reveal_frame = STREAM_REVEAL_FRAME_INTERVAL;
+        self.stream.word_progress = 1.0;
+        self.stream.cursor_visible = true;
+        self.stream.cursor_phase = 0.0;
     }
 
     pub(crate) fn finish_tool(&mut self, call_id: &str, is_error: bool) {
@@ -697,6 +878,7 @@ impl AgentState {
         self.context_window = session.context_window;
         self.total_tokens = session.total_tokens;
         self.total_cost_usd = session.total_cost_usd;
+        self.refresh_featured_assistant();
         self.reset_runtime();
     }
 
@@ -709,6 +891,8 @@ impl AgentState {
         self.context_window = None;
         self.total_tokens = None;
         self.total_cost_usd = None;
+        self.stream.featured_entry_index = None;
+        self.stream.evidence_open = false;
         self.reset_runtime();
     }
 
@@ -716,6 +900,87 @@ impl AgentState {
         let id = self.next_session_id.max(now_ms).max(1);
         self.next_session_id = id.saturating_add(1);
         id
+    }
+}
+
+fn latest_assistant_after_last_user(entries: &[AgentChatEntry]) -> Option<usize> {
+    let turn_start = entries
+        .iter()
+        .rposition(|entry| {
+            matches!(
+                entry,
+                AgentChatEntry::Message {
+                    role: AgentChatRole::User,
+                    ..
+                }
+            )
+        })
+        .unwrap_or_default();
+    entries
+        .iter()
+        .enumerate()
+        .skip(turn_start)
+        .filter_map(|(index, entry)| {
+            matches!(
+                entry,
+                AgentChatEntry::Message {
+                    role: AgentChatRole::Assistant,
+                    ..
+                }
+            )
+            .then_some(index)
+        })
+        .next_back()
+}
+
+fn reveal_units_for_backlog(bytes: usize) -> usize {
+    match bytes {
+        0..=96 => 1,
+        97..=256 => 2,
+        257..=512 => 4,
+        _ => 8,
+    }
+}
+
+fn reveal_prefix_len(text: &str, max_units: usize, settled: bool) -> usize {
+    if text.is_empty() {
+        return 0;
+    }
+
+    let mut units = 0;
+    let mut inside_unit = false;
+    for (index, character) in text.char_indices() {
+        if character.is_whitespace() {
+            if inside_unit {
+                units += 1;
+                inside_unit = false;
+            }
+        } else {
+            if units >= max_units {
+                return index;
+            }
+            inside_unit = true;
+        }
+    }
+
+    if settled || (!inside_unit && units > 0) {
+        text.len()
+    } else if units > 0 {
+        text.char_indices()
+            .rev()
+            .find_map(|(index, character)| {
+                character
+                    .is_whitespace()
+                    .then_some(index + character.len_utf8())
+            })
+            .unwrap_or_default()
+    } else if text.chars().count() > 64 {
+        text.char_indices()
+            .nth(64)
+            .map(|(index, _)| index)
+            .unwrap_or(text.len())
+    } else {
+        0
     }
 }
 
@@ -993,6 +1258,7 @@ mod tests {
         let mut state = AgentState::default();
         state.append_assistant_delta("## Risk summary\n\n- **BTC** exposure\n\n");
         state.append_assistant_delta("```rust\nlet risk = 42;\n```\n");
+        state.flush_assistant_stream();
 
         let [
             AgentChatEntry::Message {
@@ -1012,6 +1278,58 @@ mod tests {
                 markdown::Item::CodeBlock { .. }
             ]
         ));
+    }
+
+    #[test]
+    fn stream_reveal_preserves_exact_markdown_and_utf8() {
+        let mut state = AgentState::default();
+        let response = "## Risk\n\nBTC → ETH  **spread**\n";
+        state.append_assistant_delta(response);
+
+        for _ in 0..64 {
+            let _ = state.advance_assistant_stream();
+            if state.stream.pending.is_empty() {
+                break;
+            }
+        }
+
+        let Some(AgentChatEntry::Message {
+            text,
+            markdown: Some(markdown),
+            ..
+        }) = state.entries.first()
+        else {
+            panic!("expected streamed Assistant message");
+        };
+        assert_eq!(text, response);
+        assert!(!markdown.items().is_empty());
+        assert!(state.stream.pending.is_empty());
+    }
+
+    #[test]
+    fn settled_partial_word_drains_and_completes() {
+        let mut state = AgentState::default();
+        state.append_assistant_delta("unfinished");
+
+        let (changed, ready) = state.advance_assistant_stream();
+        assert!(!changed);
+        assert!(!ready);
+
+        state.mark_assistant_transport_settled();
+        let (changed, ready) = state.advance_assistant_stream();
+        assert!(changed);
+        assert!(ready);
+        assert!(state.finish_assistant_presentation().is_some());
+        assert!(state.assistant_entry_index.is_none());
+    }
+
+    #[test]
+    fn reveal_prefix_keeps_whitespace_and_waits_for_partial_words() {
+        assert_eq!(reveal_prefix_len("hello world", 1, false), 6);
+        assert_eq!(reveal_prefix_len("hello  \n\n", 1, false), 9);
+        assert_eq!(reveal_prefix_len("partial", 1, false), 0);
+        assert_eq!(reveal_prefix_len("partial", 1, true), 7);
+        assert_eq!(reveal_prefix_len("éclair next", 1, false), 8);
     }
 
     #[test]

@@ -1,4 +1,6 @@
-use crate::agent_state::{AgentChatEntry, AgentChatRole, AgentStatus, agent_tool_presentation};
+use crate::agent_state::{
+    AgentChatEntry, AgentChatRole, AgentPrompt, AgentState, AgentStatus, agent_tool_presentation,
+};
 use crate::app_fonts;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
@@ -7,7 +9,8 @@ use crate::openrouter_api::OpenRouterModel;
 
 use iced::widget::container as container_style;
 use iced::widget::{
-    Column, Space, button, column, container, markdown, row, rule, scrollable, text, text_input,
+    Column, Space, button, column, container, markdown, rich_text, row, rule, scrollable, text,
+    text_input,
 };
 use iced::{Alignment, Border, Color, Element, Fill, Length, Padding, Theme};
 
@@ -60,8 +63,8 @@ impl TradingTerminal {
             self.view_agent_empty_state()
         } else {
             let mut messages = Column::new().spacing(12).width(Fill);
-            for entry in &self.agent.entries {
-                messages = messages.push(agent_entry(entry, &theme));
+            for (index, entry) in self.agent.entries.iter().enumerate() {
+                messages = messages.push(agent_entry(&self.agent, index, entry, &theme));
             }
             messages.into()
         };
@@ -92,6 +95,7 @@ impl TradingTerminal {
             "Ask about your portfolio, positions, or markets…",
             &self.agent.input,
         )
+        .id(iced::widget::Id::new("kerosene-agent-input"))
         .style(helpers::text_input_style)
         .on_input(|value| Message::AgentInputChanged(value.into()))
         .on_submit_maybe(can_send.then_some(Message::AgentSubmit))
@@ -543,7 +547,12 @@ fn compact_token_count(tokens: u64) -> String {
     }
 }
 
-fn agent_entry<'a>(entry: &'a AgentChatEntry, theme: &Theme) -> Element<'a, Message> {
+fn agent_entry<'a>(
+    agent: &'a AgentState,
+    entry_index: usize,
+    entry: &'a AgentChatEntry,
+    theme: &Theme,
+) -> Element<'a, Message> {
     match entry {
         AgentChatEntry::Message {
             role,
@@ -554,7 +563,16 @@ fn agent_entry<'a>(entry: &'a AgentChatEntry, theme: &Theme) -> Element<'a, Mess
                 AgentChatRole::User => "You",
                 AgentChatRole::Assistant => "Assistant",
             };
+            let streaming = *role == AgentChatRole::Assistant
+                && agent.assistant_entry_index == Some(entry_index);
             let body: Element<'a, Message> = match (role, markdown_content) {
+                (AgentChatRole::Assistant, Some(content)) if streaming => agent_streaming_markdown(
+                    content,
+                    agent_markdown_settings(theme),
+                    theme.palette().text,
+                    agent.stream.word_progress,
+                    agent.stream.cursor_visible,
+                ),
                 (AgentChatRole::Assistant, Some(content)) => {
                     markdown::view(content.items(), agent_markdown_settings(theme))
                         .map(|uri| Message::AgentOpenLink(uri.into()))
@@ -564,17 +582,34 @@ fn agent_entry<'a>(entry: &'a AgentChatEntry, theme: &Theme) -> Element<'a, Mess
                     .color(theme.palette().text)
                     .into(),
             };
-            let bubble = container(
-                column![
+            let mut content = Column::new()
+                .push(
                     text(label)
                         .size(10)
                         .color(theme.extended_palette().background.weak.text),
-                    body,
-                ]
-                .spacing(5),
-            )
-            .padding([10, 12])
-            .style(match role {
+                )
+                .push(body)
+                .spacing(5);
+
+            let featured = *role == AgentChatRole::Assistant
+                && agent.stream.featured_entry_index == Some(entry_index);
+            if featured {
+                let evidence = agent_turn_evidence(&agent.entries, entry_index);
+                let progress = agent.stream.completion_progress;
+                content = content.push(agent_response_actions(
+                    entry_index,
+                    evidence.len(),
+                    agent.stream.evidence_open,
+                    progress,
+                    theme,
+                ));
+                if agent.stream.evidence_open && !evidence.is_empty() {
+                    content = content.push(agent_evidence_drawer(&evidence, theme));
+                }
+                content = content.push(agent_follow_up_view(&evidence, progress, theme));
+            }
+
+            let bubble = container(content).padding([10, 12]).style(match role {
                 AgentChatRole::User => user_bubble_style,
                 AgentChatRole::Assistant => assistant_bubble_style,
             });
@@ -644,6 +679,306 @@ fn agent_entry<'a>(entry: &'a AgentChatEntry, theme: &Theme) -> Element<'a, Mess
     }
 }
 
+struct AgentEvidence<'a> {
+    name: &'a str,
+    detail: Option<&'a str>,
+    finished: bool,
+    is_error: bool,
+}
+
+fn agent_turn_evidence<'a>(
+    entries: &'a [AgentChatEntry],
+    entry_index: usize,
+) -> Vec<AgentEvidence<'a>> {
+    let Some(before_entry) = entries.get(..entry_index) else {
+        return Vec::new();
+    };
+    let turn_start = before_entry
+        .iter()
+        .rposition(|entry| {
+            matches!(
+                entry,
+                AgentChatEntry::Message {
+                    role: AgentChatRole::User,
+                    ..
+                }
+            )
+        })
+        .map_or(0, |index| index + 1);
+
+    entries[turn_start..entry_index]
+        .iter()
+        .filter_map(|entry| match entry {
+            AgentChatEntry::Tool {
+                name,
+                detail,
+                finished,
+                is_error,
+                ..
+            } => Some(AgentEvidence {
+                name,
+                detail: detail.as_deref(),
+                finished: *finished,
+                is_error: *is_error,
+            }),
+            AgentChatEntry::Message { .. } => None,
+        })
+        .collect()
+}
+
+fn agent_response_actions<'a>(
+    entry_index: usize,
+    evidence_count: usize,
+    evidence_open: bool,
+    progress: f32,
+    theme: &Theme,
+) -> Element<'a, Message> {
+    let enabled = progress >= 0.72;
+    let color = with_alpha(
+        theme.extended_palette().background.weak.text,
+        0.25 + progress * 0.75,
+    );
+    let copy = button(text("Copy").size(10).color(color))
+        .padding([4, 7])
+        .on_press_maybe(enabled.then_some(Message::AgentCopyResponse(entry_index)))
+        .style(move |theme, status| agent_response_action_style(theme, status, progress));
+    let retry = button(text("Regenerate").size(10).color(color))
+        .padding([4, 7])
+        .on_press_maybe(enabled.then_some(Message::AgentRegenerateResponse(entry_index)))
+        .style(move |theme, status| agent_response_action_style(theme, status, progress));
+
+    let mut actions = row![copy, retry].spacing(2).align_y(Alignment::Center);
+    if evidence_count > 0 {
+        let caret = if evidence_open { "▴" } else { "▾" };
+        let evidence = button(
+            text(format!("{evidence_count} data calls {caret}"))
+                .size(10)
+                .color(color),
+        )
+        .padding([4, 7])
+        .on_press_maybe(enabled.then_some(Message::AgentToggleEvidence(entry_index)))
+        .style(move |theme, status| agent_response_action_style(theme, status, progress));
+        actions = actions.push(evidence);
+    }
+    actions.into()
+}
+
+fn agent_evidence_drawer<'a>(
+    evidence: &[AgentEvidence<'a>],
+    theme: &Theme,
+) -> Element<'a, Message> {
+    let mut rows = Column::new().spacing(2).width(Fill);
+    for item in evidence {
+        let presentation = agent_tool_presentation(item.name);
+        let (status, status_color) = if item.is_error {
+            ("Failed", theme.palette().danger)
+        } else if item.finished {
+            ("Complete", theme.palette().success)
+        } else {
+            ("Running", theme.palette().warning)
+        };
+        let header = row![
+            text(presentation.category)
+                .size(9)
+                .color(theme.palette().primary),
+            text(presentation.title)
+                .size(10)
+                .color(theme.palette().text),
+            Space::new().width(Fill),
+            text(status).size(9).color(status_color),
+        ]
+        .spacing(7)
+        .align_y(Alignment::Center);
+        let mut content = Column::new().push(header).spacing(2).width(Fill);
+        if let Some(detail) = item.detail {
+            content = content.push(
+                text(detail)
+                    .size(9)
+                    .color(theme.extended_palette().background.weak.text),
+            );
+        }
+        rows = rows.push(container(content).padding([5, 7]));
+    }
+    container(rows)
+        .padding(4)
+        .width(Fill)
+        .style(agent_evidence_style)
+        .into()
+}
+
+fn agent_follow_up_view<'a>(
+    evidence: &[AgentEvidence<'a>],
+    progress: f32,
+    theme: &Theme,
+) -> Element<'a, Message> {
+    let follow_ups = agent_follow_ups(evidence);
+    let enabled = progress >= 0.72;
+    let muted = with_alpha(
+        theme.extended_palette().background.weak.text,
+        0.2 + progress * 0.8,
+    );
+    let mut rows = Column::new()
+        .push(text("Follow-ups").size(10).color(muted))
+        .spacing(2)
+        .width(Fill);
+    for (index, follow_up) in follow_ups.into_iter().enumerate() {
+        let stagger = ((progress - index as f32 * 0.18) / 0.82).clamp(0.0, 1.0);
+        let color = with_alpha(theme.palette().text, 0.12 + stagger * 0.88);
+        rows =
+            rows.push(
+                button(
+                    row![
+                        text("↳").size(10).color(muted),
+                        text(follow_up).size(11).color(color),
+                    ]
+                    .spacing(7)
+                    .align_y(Alignment::Center),
+                )
+                .padding([5, 6])
+                .width(Fill)
+                .on_press_maybe(enabled.then(|| {
+                    Message::AgentFollowUpSelected(AgentPrompt::from(follow_up.to_string()))
+                }))
+                .style(move |theme, status| agent_follow_up_style(theme, status, stagger)),
+            );
+    }
+    rows.into()
+}
+
+fn agent_follow_ups(evidence: &[AgentEvidence<'_>]) -> Vec<&'static str> {
+    let mut follow_ups = Vec::with_capacity(2);
+    let used = |name: &str| evidence.iter().any(|item| item.name == name);
+    if used("kerosene_journal") {
+        follow_ups.push("Show the recurring pattern in my weakest trades");
+    }
+    if used("kerosene_risk") || used("kerosene_calculate") {
+        follow_ups.push("Stress this conclusion with a 5% adverse move");
+    }
+    if follow_ups.len() < 2 && (used("kerosene_ohlcv") || used("kerosene_sessions")) {
+        follow_ups.push("Compare this with the previous market session");
+    }
+    if follow_ups.len() < 2 && used("kerosene_market_data") {
+        follow_ups.push("Compare this with the active market");
+    }
+    if follow_ups.len() < 2 {
+        follow_ups.push("What evidence matters most here?");
+    }
+    if follow_ups.len() < 2 {
+        follow_ups.push("Turn this into a concise risk checklist");
+    }
+    follow_ups.truncate(2);
+    follow_ups
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AgentMarkdownViewer;
+
+impl<'a> markdown::Viewer<'a, Message> for AgentMarkdownViewer {
+    fn on_link_click(url: markdown::Uri) -> Message {
+        Message::AgentOpenLink(url.into())
+    }
+}
+
+fn agent_streaming_markdown<'a>(
+    content: &'a markdown::Content,
+    settings: markdown::Settings,
+    base_color: Color,
+    word_progress: f32,
+    cursor_visible: bool,
+) -> Element<'a, Message> {
+    let viewer = AgentMarkdownViewer;
+    let last_index = content.items().len().saturating_sub(1);
+    let animate_paragraph = matches!(content.items().last(), Some(markdown::Item::Paragraph(_)));
+    let mut blocks = Column::new().spacing(settings.spacing);
+    for (index, item) in content.items().iter().enumerate() {
+        if index == last_index
+            && let markdown::Item::Paragraph(paragraph) = item
+        {
+            blocks = blocks.push(agent_streaming_paragraph(
+                paragraph,
+                settings,
+                base_color,
+                word_progress,
+                cursor_visible,
+            ));
+        } else {
+            blocks = blocks.push(markdown::item(&viewer, settings, item, index));
+        }
+    }
+    if !animate_paragraph {
+        let cursor_color = with_alpha(base_color, if cursor_visible { 0.95 } else { 0.18 });
+        blocks = blocks.push(text("▋").size(settings.text_size).color(cursor_color));
+    }
+    blocks.into()
+}
+
+fn agent_streaming_paragraph<'a>(
+    paragraph: &'a markdown::Text,
+    settings: markdown::Settings,
+    base_color: Color,
+    word_progress: f32,
+    cursor_visible: bool,
+) -> Element<'a, Message> {
+    let mut spans = paragraph.spans(settings.style).as_ref().to_vec();
+    animate_latest_span(&mut spans, base_color, word_progress);
+    let cursor_color = with_alpha(base_color, if cursor_visible { 0.95 } else { 0.18 });
+    spans.push(iced::widget::text::Span::new("▋").color(cursor_color));
+    rich_text(spans)
+        .size(settings.text_size)
+        .on_link_click(|url| Message::AgentOpenLink(url.into()))
+        .into()
+}
+
+fn animate_latest_span(
+    spans: &mut Vec<iced::widget::text::Span<'static, markdown::Uri>>,
+    base_color: Color,
+    progress: f32,
+) {
+    let Some(index) = spans.iter().rposition(|span| !span.text.trim().is_empty()) else {
+        return;
+    };
+    let original = spans[index].clone();
+    let raw = original.text.as_ref();
+    let trimmed = raw.trim_end_matches(char::is_whitespace);
+    if trimmed.is_empty() {
+        return;
+    }
+    let word_start = trimmed
+        .char_indices()
+        .rev()
+        .find_map(|(index, character)| {
+            character
+                .is_whitespace()
+                .then_some(index + character.len_utf8())
+        })
+        .unwrap_or_default();
+    let word_end = trimmed.len();
+    let mut replacements = Vec::with_capacity(3);
+    if word_start > 0 {
+        let mut prefix = original.clone();
+        prefix.text = raw[..word_start].to_string().into();
+        replacements.push(prefix);
+    }
+    let eased = 1.0 - (1.0 - progress.clamp(0.0, 1.0)).powi(3);
+    let mut animated = original.clone();
+    animated.text = raw[word_start..word_end].to_string().into();
+    let mut animated_color = animated.color.unwrap_or(base_color);
+    animated_color.a *= 0.18 + eased * 0.82;
+    animated.color = Some(animated_color);
+    replacements.push(animated);
+    if word_end < raw.len() {
+        let mut suffix = original.clone();
+        suffix.text = raw[word_end..].to_string().into();
+        replacements.push(suffix);
+    }
+    spans.splice(index..=index, replacements);
+}
+
+fn with_alpha(mut color: Color, alpha: f32) -> Color {
+    color.a *= alpha.clamp(0.0, 1.0);
+    color
+}
+
 fn agent_markdown_settings(theme: &Theme) -> markdown::Settings {
     let mut inline_background = theme.extended_palette().background.strong.color;
     inline_background.a = 0.55;
@@ -675,6 +1010,57 @@ fn agent_markdown_settings(theme: &Theme) -> markdown::Settings {
     settings.code_size = 12.0.into();
     settings.spacing = 8.0.into();
     settings
+}
+
+fn agent_response_action_style(
+    theme: &Theme,
+    status: button::Status,
+    progress: f32,
+) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    let mut background = theme.palette().text;
+    background.a = if hovered { 0.07 * progress } else { 0.0 };
+    button::Style {
+        background: Some(background.into()),
+        text_color: with_alpha(theme.palette().text, progress),
+        border: Border {
+            radius: 5.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_follow_up_style(theme: &Theme, status: button::Status, progress: f32) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    let mut background = theme.palette().primary;
+    background.a = if hovered { 0.07 * progress } else { 0.0 };
+    let mut border = theme.extended_palette().background.strong.color;
+    border.a *= progress;
+    button::Style {
+        background: Some(background.into()),
+        text_color: with_alpha(theme.palette().text, progress),
+        border: Border {
+            radius: 5.0.into(),
+            width: 1.0,
+            color: border,
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_evidence_style(theme: &Theme) -> container_style::Style {
+    let mut background = theme.extended_palette().background.strong.color;
+    background.a = 0.32;
+    container_style::Style {
+        background: Some(background.into()),
+        border: Border {
+            radius: 7.0.into(),
+            width: 1.0,
+            color: theme.extended_palette().background.strong.color,
+        },
+        ..Default::default()
+    }
 }
 
 fn chip_style(theme: &Theme, color: Color) -> container_style::Style {
@@ -884,5 +1270,87 @@ mod tests {
         assert_eq!(compact_token_count(999), "999");
         assert_eq!(compact_token_count(1_250), "1.2K");
         assert_eq!(compact_token_count(2_000_000), "2.0M");
+    }
+
+    #[test]
+    fn follow_ups_are_derived_from_actual_tool_categories() {
+        let evidence = vec![
+            AgentEvidence {
+                name: "kerosene_journal",
+                detail: None,
+                finished: true,
+                is_error: false,
+            },
+            AgentEvidence {
+                name: "kerosene_risk",
+                detail: None,
+                finished: true,
+                is_error: false,
+            },
+        ];
+
+        assert_eq!(
+            agent_follow_ups(&evidence),
+            vec![
+                "Show the recurring pattern in my weakest trades",
+                "Stress this conclusion with a 5% adverse move",
+            ]
+        );
+    }
+
+    #[test]
+    fn evidence_is_scoped_to_the_response_turn() {
+        let entries = vec![
+            AgentChatEntry::Tool {
+                call_id: "old".to_string(),
+                name: "kerosene_data".to_string(),
+                detail: None,
+                finished: true,
+                is_error: false,
+            },
+            AgentChatEntry::Message {
+                role: AgentChatRole::User,
+                text: "Question".to_string(),
+                markdown: None,
+            },
+            AgentChatEntry::Tool {
+                call_id: "current".to_string(),
+                name: "kerosene_risk".to_string(),
+                detail: Some("Current portfolio".to_string()),
+                finished: true,
+                is_error: false,
+            },
+            AgentChatEntry::Message {
+                role: AgentChatRole::Assistant,
+                text: "Answer".to_string(),
+                markdown: Some(Box::new(markdown::Content::parse("Answer"))),
+            },
+        ];
+
+        let evidence = agent_turn_evidence(&entries, 3);
+
+        assert_eq!(evidence.len(), 1);
+        assert_eq!(evidence[0].name, "kerosene_risk");
+    }
+
+    #[test]
+    fn newest_stream_span_fades_without_changing_text() {
+        let mut spans: Vec<iced::widget::text::Span<'static, markdown::Uri>> =
+            vec![iced::widget::text::Span::new("Resolved newest ")];
+
+        animate_latest_span(&mut spans, Color::WHITE, 0.0);
+
+        assert_eq!(
+            spans
+                .iter()
+                .map(|span| span.text.as_ref())
+                .collect::<String>(),
+            "Resolved newest "
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|span| span.color.is_some_and(|color| color.a < 0.5))
+        );
     }
 }

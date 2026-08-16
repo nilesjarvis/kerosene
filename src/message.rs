@@ -726,7 +726,12 @@ pub(crate) enum Message {
     AgentSubmit,
     AgentSnapshotPrepared(u64, u64, Result<PathBuf, String>),
     AgentRuntimeEvent(AgentRuntimeEvent),
+    AgentStreamTick,
     AgentAbort,
+    AgentCopyResponse(usize),
+    AgentRegenerateResponse(usize),
+    AgentToggleEvidence(usize),
+    AgentFollowUpSelected(AgentPrompt),
     AgentNewChat,
     AgentSelectSession(u64),
     AgentToggleModelPicker,
@@ -1592,6 +1597,17 @@ mod tests {
             assert!(rendered.contains("<redacted>"));
             assert!(!rendered.contains("order-input-secret"));
         }
+    }
+
+    #[test]
+    fn assistant_follow_up_message_debug_redacts_prompt() {
+        let message =
+            Message::AgentFollowUpSelected("private portfolio follow-up".to_string().into());
+
+        let rendered = format!("{message:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains("private portfolio follow-up"));
     }
 
     #[test]

@@ -21,9 +21,13 @@ priority = "optional"
 depends = "$auto"
 assets = [
     ["target/release/kerosene", "usr/bin/", "755"],
+    ["target/package-assets/pi/pi", "usr/lib/kerosene/pi/pi", "755"],
+    ["target/package-assets/pi/package.json", "usr/lib/kerosene/pi/package.json", "644"],
+    ["target/package-assets/pi/theme/*.json", "usr/lib/kerosene/pi/theme/", "644"],
     ["assets/kerosene.desktop", "usr/share/applications/", "644"],
     ["assets/kerosene.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
     ["assets/kerosene.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["packaging/pi/LICENSE", "usr/share/licenses/kerosene/PI-LICENSE", "644"],
 ]
 
 [dependencies]

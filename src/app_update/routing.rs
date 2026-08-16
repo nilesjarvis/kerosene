@@ -41,7 +41,12 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AgentSubmit
         | Message::AgentSnapshotPrepared(_, _, _)
         | Message::AgentRuntimeEvent(_)
+        | Message::AgentStreamTick
         | Message::AgentAbort
+        | Message::AgentCopyResponse(_)
+        | Message::AgentRegenerateResponse(_)
+        | Message::AgentToggleEvidence(_)
+        | Message::AgentFollowUpSelected(_)
         | Message::AgentNewChat
         | Message::AgentSelectSession(_)
         | Message::AgentToggleModelPicker
