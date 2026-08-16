@@ -46,6 +46,7 @@ pub(crate) enum AgentRuntimeEvent {
         generation: u64,
         call_id: String,
         name: String,
+        detail: Option<String>,
     },
     ToolFinished {
         generation: u64,
@@ -529,19 +530,23 @@ fn parse_rpc_event(generation: u64, value: &Value) -> Option<AgentRuntimeEvent> 
                 total_cost_usd,
             })
         }
-        "tool_execution_start" => Some(AgentRuntimeEvent::ToolStarted {
-            generation,
-            call_id: value
-                .get("toolCallId")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-            name: value
+        "tool_execution_start" => {
+            let name = value
                 .get("toolName")
                 .and_then(Value::as_str)
                 .unwrap_or("tool")
-                .to_string(),
-        }),
+                .to_string();
+            Some(AgentRuntimeEvent::ToolStarted {
+                generation,
+                call_id: value
+                    .get("toolCallId")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                detail: tool_call_detail(&name, value.get("args")),
+                name,
+            })
+        }
         "tool_execution_end" => Some(AgentRuntimeEvent::ToolFinished {
             generation,
             call_id: value
@@ -624,6 +629,189 @@ fn parse_rpc_event(generation: u64, value: &Value) -> Option<AgentRuntimeEvent> 
             })
         }
         _ => None,
+    }
+}
+
+fn tool_call_detail(name: &str, args: Option<&Value>) -> Option<String> {
+    let args = args?.as_object()?;
+    let field = |key: &str| {
+        args.get(key)
+            .and_then(Value::as_str)
+            .map(|value| bounded_tool_value(value, 32))
+    };
+    let symbols = || summarized_symbols(args.get("symbols"));
+
+    let segments = match name {
+        "kerosene_data" => vec![field("section").map(|value| title_case(&value))?],
+        "kerosene_market_data" => vec![symbols()?, "Current mids and market metadata".to_string()],
+        "kerosene_activity" => {
+            let mut segments = Vec::new();
+            push_field(&mut segments, field("kind"), title_case);
+            push_field(&mut segments, field("mode"), title_case);
+            push_optional(&mut segments, field("symbol"));
+            if let Some(limit) = args.get("limit").and_then(Value::as_u64) {
+                segments.push(format!("Up to {limit} rows"));
+            }
+            segments
+        }
+        "kerosene_journal" => {
+            let mut segments = Vec::new();
+            push_field(&mut segments, field("operation"), journal_operation_label);
+            push_field(&mut segments, field("metric"), metric_label);
+            push_optional(&mut segments, field("symbol"));
+            push_field(&mut segments, field("status"), title_case);
+            if let Some(limit) = args.get("limit").and_then(Value::as_u64) {
+                segments.push(format!("Up to {limit} trades"));
+            }
+            segments
+        }
+        "kerosene_calculate" => {
+            let mut segments = Vec::new();
+            push_field(&mut segments, field("operation"), calculation_label);
+            push_optional(&mut segments, field("symbol"));
+            push_optional(
+                &mut segments,
+                field("interval").map(|value| format!("{value} candles")),
+            );
+            if let Some(shock) = args.get("shock_pct").and_then(Value::as_f64) {
+                segments.push(format!("{shock:+.1}% shock"));
+            }
+            segments
+        }
+        "kerosene_risk" => vec!["Clearinghouse, spot, portfolio, and income scopes".to_string()],
+        "kerosene_positioning" => {
+            let mut segments = Vec::new();
+            push_optional(&mut segments, symbols());
+            push_field(&mut segments, field("timeframe"), timeframe_label);
+            segments
+        }
+        "kerosene_ohlcv" => {
+            let mut segments = Vec::new();
+            push_optional(&mut segments, field("symbol"));
+            push_optional(
+                &mut segments,
+                field("interval").map(|value| format!("{value} candles")),
+            );
+            if let Some(limit) = args.get("limit").and_then(Value::as_u64) {
+                segments.push(format!("Up to {limit} rows"));
+            }
+            segments
+        }
+        "kerosene_sessions" => {
+            let mut segments = Vec::new();
+            push_optional(&mut segments, field("symbol"));
+            if let Some(days) = args.get("lookback_days").and_then(Value::as_u64) {
+                segments.push(format!("{days}-day lookback"));
+            }
+            segments
+        }
+        _ => Vec::new(),
+    };
+
+    (!segments.is_empty()).then(|| segments.join(" · "))
+}
+
+fn push_optional(segments: &mut Vec<String>, value: Option<String>) {
+    if let Some(value) = value.filter(|value| !value.is_empty()) {
+        segments.push(value);
+    }
+}
+
+fn push_field(
+    segments: &mut Vec<String>,
+    value: Option<String>,
+    label: impl FnOnce(&str) -> String,
+) {
+    if let Some(value) = value {
+        segments.push(label(&value));
+    }
+}
+
+fn summarized_symbols(value: Option<&Value>) -> Option<String> {
+    let symbols = value?.as_array()?;
+    let visible = symbols
+        .iter()
+        .filter_map(Value::as_str)
+        .take(3)
+        .map(|symbol| bounded_tool_value(symbol, 24))
+        .collect::<Vec<_>>();
+    if visible.is_empty() {
+        return None;
+    }
+
+    let hidden = symbols.len().saturating_sub(visible.len());
+    let mut summary = visible.join(", ");
+    if hidden > 0 {
+        summary.push_str(&format!(" +{hidden}"));
+    }
+    Some(summary)
+}
+
+fn bounded_tool_value(value: &str, max_chars: usize) -> String {
+    let value = value.trim();
+    let mut chars = value.chars();
+    let mut bounded = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        let _ = bounded.pop();
+        bounded.push('…');
+    }
+    bounded
+}
+
+fn title_case(value: &str) -> String {
+    value
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            chars
+                .next()
+                .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn journal_operation_label(value: &str) -> String {
+    match value {
+        "best" => "Best trades".to_string(),
+        "worst" => "Worst trades".to_string(),
+        "summary" => "Performance summary".to_string(),
+        "list" => "Recent trades".to_string(),
+        _ => title_case(value),
+    }
+}
+
+fn metric_label(value: &str) -> String {
+    match value {
+        "net_pnl" => "Net PnL".to_string(),
+        "gross_pnl" => "Gross PnL".to_string(),
+        "return_on_entry_pct" => "Return on entry".to_string(),
+        "net_pnl_per_volume_pct" => "Net PnL per volume".to_string(),
+        _ => title_case(value),
+    }
+}
+
+fn calculation_label(value: &str) -> String {
+    match value {
+        "exposure" => "Exposure".to_string(),
+        "liquidation_buffers" => "Liquidation buffers".to_string(),
+        "stress" => "Stress test".to_string(),
+        "fill_aggregation" => "Fill aggregation".to_string(),
+        "funding_aggregation" => "Funding aggregation".to_string(),
+        "portfolio_reconciliation" => "Portfolio reconciliation".to_string(),
+        "market_statistics" => "Market statistics".to_string(),
+        _ => title_case(value),
+    }
+}
+
+fn timeframe_label(value: &str) -> String {
+    match value {
+        "FIFTEEN_MINUTES" => "15-minute change".to_string(),
+        "ONE_HOUR" => "1-hour change".to_string(),
+        "FOUR_HOURS" => "4-hour change".to_string(),
+        _ => title_case(value),
     }
 }
 
@@ -749,6 +937,59 @@ mod tests {
                 ..
             }) if (cost - 0.002).abs() < f64::EPSILON
         ));
+    }
+
+    #[test]
+    fn parses_tool_call_with_human_readable_request_detail() {
+        let value = json!({
+            "type": "tool_execution_start",
+            "toolCallId": "call-1",
+            "toolName": "kerosene_ohlcv",
+            "args": {
+                "symbol": "BTC",
+                "interval": "1h",
+                "limit": 200,
+                "private_key": "must-not-be-rendered"
+            }
+        });
+
+        assert!(matches!(
+            parse_rpc_event(12, &value),
+            Some(AgentRuntimeEvent::ToolStarted {
+                generation: 12,
+                call_id,
+                name,
+                detail: Some(detail),
+            }) if call_id == "call-1"
+                && name == "kerosene_ohlcv"
+                && detail == "BTC · 1h candles · Up to 200 rows"
+                && !detail.contains("must-not-be-rendered")
+        ));
+    }
+
+    #[test]
+    fn tool_call_detail_compacts_long_symbol_lists() {
+        let args = json!({
+            "symbols": ["BTC", "ETH", "SOL", "HYPE", "DOGE"]
+        });
+
+        assert_eq!(
+            tool_call_detail("kerosene_market_data", Some(&args)).as_deref(),
+            Some("BTC, ETH, SOL +2 · Current mids and market metadata")
+        );
+    }
+
+    #[test]
+    fn tool_runtime_debug_omits_request_detail() {
+        let event = AgentRuntimeEvent::ToolStarted {
+            generation: 1,
+            call_id: "call-1".to_string(),
+            name: "kerosene_data".to_string(),
+            detail: Some("private account context".to_string()),
+        };
+        let debug = format!("{event:?}");
+        assert!(!debug.contains("private account context"));
+        assert!(debug.contains("kerosene_data"));
     }
 
     #[test]

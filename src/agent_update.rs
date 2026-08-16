@@ -263,15 +263,23 @@ impl TradingTerminal {
                 }
                 return self.snap_agent_chat_to_latest();
             }
-            AgentRuntimeEvent::ToolStarted { call_id, name, .. } => {
+            AgentRuntimeEvent::ToolStarted {
+                call_id,
+                name,
+                detail,
+                ..
+            } => {
                 self.agent.assistant_entry_index = None;
+                let running_label =
+                    crate::agent_state::agent_tool_presentation(&name).running_label;
                 self.agent.entries.push(AgentChatEntry::Tool {
                     call_id,
                     name,
+                    detail,
                     finished: false,
                     is_error: false,
                 });
-                self.agent.status_detail = Some("Reading Kerosene data…".to_string());
+                self.agent.status_detail = Some(format!("{running_label}…"));
             }
             AgentRuntimeEvent::ToolFinished {
                 call_id, is_error, ..

@@ -58,9 +58,72 @@ pub(crate) enum AgentChatEntry {
     Tool {
         call_id: String,
         name: String,
+        detail: Option<String>,
         finished: bool,
         is_error: bool,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AgentToolPresentation {
+    pub(crate) category: &'static str,
+    pub(crate) title: &'static str,
+    pub(crate) running_label: &'static str,
+}
+
+pub(crate) fn agent_tool_presentation(name: &str) -> AgentToolPresentation {
+    match name {
+        "kerosene_data" => AgentToolPresentation {
+            category: "Snapshot",
+            title: "Current Kerosene snapshot",
+            running_label: "Reading current Kerosene snapshot",
+        },
+        "kerosene_market_data" => AgentToolPresentation {
+            category: "Markets",
+            title: "Market lookup",
+            running_label: "Looking up current market data",
+        },
+        "kerosene_activity" => AgentToolPresentation {
+            category: "Activity",
+            title: "Account activity",
+            running_label: "Reviewing account activity",
+        },
+        "kerosene_journal" => AgentToolPresentation {
+            category: "Journal",
+            title: "Trading journal",
+            running_label: "Reviewing the trading journal",
+        },
+        "kerosene_calculate" => AgentToolPresentation {
+            category: "Analysis",
+            title: "Deterministic analysis",
+            running_label: "Running deterministic analysis",
+        },
+        "kerosene_risk" => AgentToolPresentation {
+            category: "Risk",
+            title: "Portfolio-margin risk",
+            running_label: "Reviewing portfolio-margin risk",
+        },
+        "kerosene_positioning" => AgentToolPresentation {
+            category: "Positioning",
+            title: "Aggregate positioning",
+            running_label: "Fetching aggregate positioning",
+        },
+        "kerosene_ohlcv" => AgentToolPresentation {
+            category: "Price data",
+            title: "Price history",
+            running_label: "Fetching price history",
+        },
+        "kerosene_sessions" => AgentToolPresentation {
+            category: "Sessions",
+            title: "Market-session statistics",
+            running_label: "Calculating market-session statistics",
+        },
+        _ => AgentToolPresentation {
+            category: "Data",
+            title: "Kerosene data access",
+            running_label: "Reading Kerosene data",
+        },
+    }
 }
 
 impl fmt::Debug for AgentChatEntry {

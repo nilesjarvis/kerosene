@@ -1,4 +1,4 @@
-use crate::agent_state::{AgentChatEntry, AgentChatRole, AgentStatus};
+use crate::agent_state::{AgentChatEntry, AgentChatRole, AgentStatus, agent_tool_presentation};
 use crate::app_fonts;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
@@ -376,39 +376,58 @@ fn agent_entry<'a>(entry: &'a AgentChatEntry, theme: &Theme) -> Element<'a, Mess
         }
         AgentChatEntry::Tool {
             name,
+            detail,
             finished,
             is_error,
             ..
         } => {
-            let (icon, label, color) = if *is_error {
-                ("×", "Data read failed", theme.palette().danger)
+            let presentation = agent_tool_presentation(name);
+            let (icon, status, color) = if *is_error {
+                ("×", "Failed", theme.palette().danger)
             } else if *finished {
-                ("✓", "Read current Kerosene data", theme.palette().success)
+                ("✓", "Complete", theme.palette().success)
             } else {
-                (
-                    "…",
-                    "Reading current Kerosene data",
-                    theme.palette().warning,
-                )
+                ("…", "Running", theme.palette().warning)
             };
-            container(
+            let status_chip = container(
                 row![
                     text(icon).size(12).color(color),
-                    column![
-                        text(label).size(11).color(theme.palette().text),
-                        text(name.as_str())
-                            .size(9)
-                            .color(theme.extended_palette().background.weak.text),
-                    ]
-                    .spacing(1),
+                    text(status).size(9).color(color),
                 ]
-                .spacing(8)
+                .spacing(5)
                 .align_y(Alignment::Center),
             )
-            .padding([7, 10])
-            .max_width(300.0)
-            .style(agent_tool_style)
-            .into()
+            .padding([3, 7])
+            .style(move |theme: &Theme| agent_tool_status_style(theme, color));
+
+            let mut content = column![
+                row![
+                    text(presentation.category.to_uppercase())
+                        .size(9)
+                        .color(theme.palette().primary),
+                    Space::new().width(Fill),
+                    status_chip,
+                ]
+                .align_y(Alignment::Center),
+                text(presentation.title)
+                    .size(12)
+                    .color(theme.palette().text),
+            ]
+            .spacing(4);
+            if let Some(detail) = detail {
+                content = content.push(
+                    text(detail.as_str())
+                        .size(10)
+                        .color(theme.extended_palette().background.weak.text),
+                );
+            }
+
+            container(content)
+                .padding([9, 11])
+                .width(Fill)
+                .max_width(420.0)
+                .style(move |theme: &Theme| agent_tool_style(theme, color))
+                .into()
         }
     }
 }
@@ -486,11 +505,29 @@ fn assistant_bubble_style(theme: &Theme) -> container_style::Style {
     }
 }
 
-fn agent_tool_style(theme: &Theme) -> container_style::Style {
+fn agent_tool_style(_theme: &Theme, status_color: Color) -> container_style::Style {
+    let mut background = status_color;
+    background.a = 0.045;
+    let mut border = status_color;
+    border.a = 0.28;
     container_style::Style {
-        background: Some(theme.extended_palette().background.weak.color.into()),
+        background: Some(background.into()),
         border: Border {
-            radius: 6.0.into(),
+            radius: 8.0.into(),
+            width: 1.0,
+            color: border,
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_tool_status_style(theme: &Theme, color: Color) -> container_style::Style {
+    let mut background = color;
+    background.a = 0.08;
+    container_style::Style {
+        background: Some(background.into()),
+        border: Border {
+            radius: 99.0.into(),
             width: 1.0,
             color: theme.extended_palette().background.strong.color,
         },
