@@ -225,7 +225,13 @@ impl TradingTerminal {
                 true
             } else {
                 self.accounts[self.active_account_index].wallet_address = addr.clone();
-                self.persist_active_profile_secrets()
+                // Connecting an unchanged saved wallet is read-only. Trading
+                // keys are committed explicitly through SaveCredentials.
+                // Rewriting the full credential bundle here is especially
+                // dangerous during boot: a transient keychain read failure
+                // would otherwise replace global-only credentials (such as an
+                // OpenRouter key) with incomplete in-memory state.
+                true
             }
         } else {
             true
@@ -1216,6 +1222,30 @@ mod tests {
         assert_eq!(terminal.hyperdash_api_key.as_str(), "saved-hyperdash-key");
         assert_eq!(terminal.hyperdash_key_input.as_str(), "draft-hyperdash-key");
         assert_eq!(terminal.hyperdash_key_generation, 4);
+    }
+
+    #[test]
+    fn boot_reconnect_does_not_rewrite_openrouter_only_credentials() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.accounts = vec![account("acct-a", TEST_ACCOUNT, "")];
+        terminal.active_account_index = 0;
+        terminal.last_persisted_active_account_secret_id = Some("acct-a".to_string());
+        terminal.wallet_address_input = TEST_ACCOUNT.to_string();
+        terminal.wallet_key_input = sensitive_string("");
+        terminal.openrouter_api_key = sensitive_string("openrouter-only");
+        terminal.openrouter_key_input = sensitive_string("openrouter-only");
+        terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+        terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+        terminal.secret_migration_save_blocked = true;
+        terminal.config_save_due_at = None;
+
+        let _task = terminal.connect_wallet();
+
+        assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
+        assert_eq!(terminal.openrouter_api_key.as_str(), "openrouter-only");
+        assert!(terminal.accounts[0].agent_key.trim().is_empty());
+        assert!(terminal.secret_migration_save_blocked);
+        assert!(terminal.config_save_due_at.is_none());
     }
 
     #[test]

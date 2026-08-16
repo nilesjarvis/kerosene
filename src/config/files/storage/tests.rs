@@ -515,15 +515,46 @@ fn corrupt_bundle_does_not_fall_back_to_legacy_keychain_or_overwrite() {
     assert_eq!(stores.get(), 0);
     assert_eq!(cleanups.get(), 0);
     assert_eq!(config.accounts[0].agent_key.as_str(), "");
-    assert!(!config.secret_migration_save_blocked);
+    assert!(config.secret_migration_save_blocked);
     assert!(
         warnings
             .borrow()
             .iter()
             .any(|warning| warning.contains("left unchanged")
+                && warning.contains("config saves are paused")
                 && warning.contains("api_key=<redacted>")
                 && !warning.contains("super-secret"))
     );
+}
+
+#[test]
+fn openrouter_only_keychain_bundle_hydrates_without_rewrite() {
+    let mut config = KeroseneConfig::default();
+    let mut bundle = SecretPayload::from_credentials(&[], "", "");
+    bundle.set_global_openrouter_api_key("openrouter-only");
+    let stores = Cell::new(0);
+    let cleanups = Cell::new(0);
+
+    load_os_keychain_secrets_with(
+        &mut config,
+        || Ok(Some(bundle.clone())),
+        |_| {
+            stores.set(stores.get() + 1);
+            Ok(())
+        },
+        cleanup_hooks(|_| {
+            cleanups.set(cleanups.get() + 1);
+            Ok(())
+        }),
+        |_| panic!("global-only bundle should not read profile credentials"),
+        no_legacy_global_secrets,
+        |_| {},
+    );
+
+    assert_eq!(config.openrouter_api_key.as_str(), "openrouter-only");
+    assert_eq!(stores.get(), 0);
+    assert_eq!(cleanups.get(), 1);
+    assert!(!config.secret_migration_save_blocked);
 }
 
 #[test]

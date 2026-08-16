@@ -543,6 +543,14 @@ fn merge_missing_keychain_payload_secrets(
     {
         payload.set_global_schwab_refresh_token(keychain_payload.global_schwab_refresh_token());
     }
+    if payload.global_openrouter_api_key().trim().is_empty()
+        && !keychain_payload
+            .global_openrouter_api_key()
+            .trim()
+            .is_empty()
+    {
+        payload.set_global_openrouter_api_key(keychain_payload.global_openrouter_api_key());
+    }
 }
 
 #[cfg(test)]
@@ -1192,11 +1200,12 @@ mod tests {
         let saved_snapshot = RefCell::new(None);
         let cleanup_called = Cell::new(false);
         let loaded_profiles = RefCell::new(Vec::new());
-        let keychain_payload = config::SecretPayload::from_credentials(
+        let mut keychain_payload = config::SecretPayload::from_credentials(
             &[account("acct-a", "agent-a")],
             "",
             "keychain-hyper",
         );
+        keychain_payload.set_global_openrouter_api_key("keychain-openrouter");
 
         terminal.apply_encrypted_config_storage_selection_with(
             |snapshot| {
@@ -1244,6 +1253,7 @@ mod tests {
         assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
         assert_eq!(payload.profile_agent_key("acct-b"), Some("agent-b"));
         assert_eq!(payload.global_hyperdash_api_key(), "keychain-hyper");
+        assert_eq!(payload.global_openrouter_api_key(), "keychain-openrouter");
     }
 
     #[test]
