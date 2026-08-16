@@ -54,6 +54,8 @@ impl TradingTerminal {
                 self.openrouter_model = value;
                 if model_changed {
                     self.invalidate_agent_runtime();
+                    self.agent.model_picker_open = false;
+                    self.agent.model_search.clear();
                 }
                 self.persist_config();
             }

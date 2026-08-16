@@ -23,6 +23,13 @@ Settings > Integrations. Closing the window terminates Pi, clears the transcript
 and deletes the sensitive snapshot. Sessions use Pi's `--no-session` mode and
 are never written to Pi's session store.
 
+The model name in the Assistant footer opens a searchable picker backed by
+OpenRouter's live model catalog. Only text-output models that advertise tool
+calling are listed. Rows show OpenRouter's current input/output token prices,
+context capacity, and whether conditional pricing applies. Selecting a model
+uses the existing persisted OpenRouter default and restarts Pi before the next
+turn.
+
 Opening the Assistant while an account is connected also makes it an active
 journal-data consumer. Kerosene immediately hydrates any local journal cache and
 starts the normal incremental journal sync even when the Trading Journal window

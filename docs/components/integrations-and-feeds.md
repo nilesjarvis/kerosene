@@ -172,7 +172,20 @@ against `GET /api/v1/key`, surfacing usage/limit status in the settings UI.
 - `chat_completion` — non-streaming `POST /api/v1/chat/completions` with
   `ChatCompletionRequest`/`ChatMessage` request builders
 - `fetch_key_status` — key validation and credit/limit reporting
+- `fetch_tool_models` — the bounded `GET /api/v1/models` catalog used by the
+  Assistant model picker, filtered to text-output models that advertise the
+  `tools` parameter
 - typed error-envelope parsing with status-code hints (401/402/429/...)
+
+The Assistant footer model name opens a searchable model picker. Catalog rows
+show the OpenRouter name/slug, context window, and current prompt/completion
+prices (plus reasoning-token or per-request charges when present) normalized
+from USD per token to USD per million tokens. Conditional
+pricing overrides are flagged as variable rates rather than presented as a
+single guaranteed price. The catalog is fetched on first open, can be refreshed
+manually, and is discarded whenever the OpenRouter key generation changes.
+Late catalog results are ignored using the same key-generation guard as key
+validation.
 
 Components should take the key via
 `TradingTerminal::openrouter_api_key_for_task()`, the model via
@@ -182,7 +195,9 @@ be checked against `openrouter_key_generation_is_current` so responses that
 arrive after a key change are dropped.
 
 The OpenRouter key is secret-bearing. The default model slug is plain,
-non-secret config (`openrouter_model`).
+non-secret config (`openrouter_model`). Selecting a model in the Assistant
+updates this default, persists the config, and invalidates the current Pi
+runtime so a later turn cannot accidentally continue on the previous model.
 
 The assistant's Pi RPC process, read-only snapshot contract, and packaging
 requirements are documented in [Kerosene Assistant And Pi](assistant-and-pi.md).

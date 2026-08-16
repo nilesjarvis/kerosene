@@ -27,7 +27,7 @@ use crate::market_state::{
     LiveWatchlistId, OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode,
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
-use crate::openrouter_api::OpenRouterKeyStatus;
+use crate::openrouter_api::{OpenRouterKeyStatus, OpenRouterModel};
 use crate::order_execution::{
     AdvancedOrderStartSnapshot, HudOrderRequest, OneShotPlacementContext,
     OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext, QuickOrderRecovery,
@@ -729,6 +729,10 @@ pub(crate) enum Message {
     AgentAbort,
     AgentNewChat,
     AgentSelectSession(u64),
+    AgentToggleModelPicker,
+    AgentModelSearchChanged(String),
+    AgentRefreshModels,
+    AgentModelCatalogLoaded(u64, Result<Vec<OpenRouterModel>, String>),
     AgentSessionsSaved(u64, AgentPersistenceResult),
     AgentOpenLink(AgentUri),
     AgentLinkOpened(Result<(), String>),

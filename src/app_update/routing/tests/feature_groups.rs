@@ -81,6 +81,16 @@ fn assistant_routes_stay_on_agent_module() {
     assert_route(Message::AgentAbort, UpdateRoute::Agent);
     assert_route(Message::AgentNewChat, UpdateRoute::Agent);
     assert_route(Message::AgentSelectSession(42), UpdateRoute::Agent);
+    assert_route(Message::AgentToggleModelPicker, UpdateRoute::Agent);
+    assert_route(
+        Message::AgentModelSearchChanged("claude".to_string()),
+        UpdateRoute::Agent,
+    );
+    assert_route(Message::AgentRefreshModels, UpdateRoute::Agent);
+    assert_route(
+        Message::AgentModelCatalogLoaded(7, Ok(Vec::new())),
+        UpdateRoute::Agent,
+    );
     assert_route(
         Message::AgentSessionsSaved(42, Ok(()).into()),
         UpdateRoute::Agent,

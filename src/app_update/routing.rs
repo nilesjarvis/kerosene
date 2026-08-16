@@ -44,6 +44,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AgentAbort
         | Message::AgentNewChat
         | Message::AgentSelectSession(_)
+        | Message::AgentToggleModelPicker
+        | Message::AgentModelSearchChanged(_)
+        | Message::AgentRefreshModels
+        | Message::AgentModelCatalogLoaded(_, _)
         | Message::AgentSessionsSaved(_, _)
         | Message::AgentOpenLink(_)
         | Message::AgentLinkOpened(_) => UpdateRoute::Agent,

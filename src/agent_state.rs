@@ -1,3 +1,4 @@
+use crate::openrouter_api::OpenRouterModel;
 use iced::{widget::markdown, window};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -293,6 +294,11 @@ pub(crate) struct AgentState {
     pub(crate) context_window: Option<u64>,
     pub(crate) total_tokens: Option<u64>,
     pub(crate) total_cost_usd: Option<f64>,
+    pub(crate) model_picker_open: bool,
+    pub(crate) model_search: String,
+    pub(crate) model_catalog: Vec<OpenRouterModel>,
+    pub(crate) model_catalog_loading: bool,
+    pub(crate) model_catalog_error: Option<String>,
     pub(crate) persistence_generation: u64,
     pub(crate) persistence_in_flight: bool,
     pub(crate) persistence_dirty: bool,
@@ -329,6 +335,11 @@ impl Default for AgentState {
             context_window: None,
             total_tokens: None,
             total_cost_usd: None,
+            model_picker_open: false,
+            model_search: String::new(),
+            model_catalog: Vec::new(),
+            model_catalog_loading: false,
+            model_catalog_error: None,
             persistence_generation: 0,
             persistence_in_flight: false,
             persistence_dirty: false,
@@ -338,6 +349,14 @@ impl Default for AgentState {
 }
 
 impl AgentState {
+    pub(crate) fn clear_model_catalog(&mut self) {
+        self.model_picker_open = false;
+        self.model_search.clear();
+        self.model_catalog.clear();
+        self.model_catalog_loading = false;
+        self.model_catalog_error = None;
+    }
+
     pub(crate) fn session_count(&self) -> usize {
         self.sessions.len().saturating_add(1)
     }

@@ -33,6 +33,14 @@ the used value is shown as unknown rather than retaining a stale measurement.
 Before the first runtime starts, the configured OpenRouter model is shown and
 context capacity remains unknown.
 
+The model label in the footer is interactive. It opens a searchable OpenRouter
+catalog limited to text models that advertise tool calling, because Assistant
+turns depend on the `kerosene_*` tools. Each choice shows current input/output
+pricing and context capacity. Choosing a different model updates the persisted
+OpenRouter default, shuts down the current Pi runtime, and marks any saved chat
+context for replay on the next turn. Model changes are disabled while a turn is
+in progress.
+
 ## Persistence Contract
 
 Sessions are stored separately from `config.json` as

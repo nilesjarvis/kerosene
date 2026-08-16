@@ -38,6 +38,43 @@ impl TradingTerminal {
             }
             Message::AgentNewChat => self.create_agent_session(),
             Message::AgentSelectSession(id) => self.select_agent_session(id),
+            Message::AgentToggleModelPicker => {
+                if self.agent.model_picker_open {
+                    self.agent.model_picker_open = false;
+                    self.agent.model_search.clear();
+                    Task::none()
+                } else {
+                    self.agent.model_picker_open = true;
+                    if self.agent.model_catalog.is_empty() && !self.agent.model_catalog_loading {
+                        self.load_agent_model_catalog()
+                    } else {
+                        Task::none()
+                    }
+                }
+            }
+            Message::AgentModelSearchChanged(search) => {
+                self.agent.model_search = search.chars().take(160).collect();
+                Task::none()
+            }
+            Message::AgentRefreshModels => self.load_agent_model_catalog(),
+            Message::AgentModelCatalogLoaded(generation, result) => {
+                if !self.openrouter_key_generation_is_current(generation) {
+                    return Task::none();
+                }
+                self.agent.model_catalog_loading = false;
+                match result {
+                    Ok(models) => {
+                        self.agent.model_catalog = models;
+                        self.agent.model_catalog_error = None;
+                    }
+                    Err(error) => {
+                        self.agent.model_catalog_error = Some(redact_sensitive_response_text(
+                            &format!("Could not load OpenRouter models: {error}"),
+                        ));
+                    }
+                }
+                Task::none()
+            }
             Message::AgentSessionsSaved(generation, result) => {
                 self.handle_agent_sessions_saved(generation, result.into_result())
             }
@@ -152,6 +189,24 @@ impl TradingTerminal {
             move |result| Message::AgentSnapshotPrepared(generation, request_id, result),
         );
         Task::batch([snapshot_task, self.persist_agent_sessions()])
+    }
+
+    fn load_agent_model_catalog(&mut self) -> Task<Message> {
+        if !self.openrouter_configured() {
+            self.agent.model_catalog_loading = false;
+            self.agent.model_catalog_error = Some(
+                "Add an OpenRouter API key in Settings → Integrations to load models.".to_string(),
+            );
+            return Task::none();
+        }
+
+        self.agent.model_catalog_loading = true;
+        self.agent.model_catalog_error = None;
+        let generation = self.openrouter_key_generation;
+        Task::perform(
+            crate::openrouter_api::fetch_tool_models(self.openrouter_api_key_for_task()),
+            move |result| Message::AgentModelCatalogLoaded(generation, result),
+        )
     }
 
     fn handle_agent_snapshot_prepared(
@@ -511,6 +566,8 @@ impl TradingTerminal {
         let request_id = self.agent.snapshot_request_id;
         self.shutdown_agent_runtime_files(generation, request_id);
         self.agent.reset_runtime();
+        self.agent.model_picker_open = false;
+        self.agent.model_search.clear();
         self.agent.window_id = None;
         if let Err(error) = agent_persistence::save_agent_store_now(&self.agent.persisted_store()) {
             self.agent.persistence_error = Some(redact_sensitive_response_text(&format!(
@@ -607,6 +664,50 @@ mod tests {
 
         assert_eq!(terminal.agent.status, AgentStatus::Error);
         assert!(terminal.agent.entries.is_empty());
+    }
+
+    #[test]
+    fn model_picker_reports_missing_key_without_starting_a_catalog_request() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.openrouter_api_key.clear();
+
+        let _ = terminal.update_agent(Message::AgentToggleModelPicker);
+
+        assert!(terminal.agent.model_picker_open);
+        assert!(!terminal.agent.model_catalog_loading);
+        assert!(
+            terminal
+                .agent
+                .model_catalog_error
+                .as_deref()
+                .is_some_and(|error| error.contains("OpenRouter API key"))
+        );
+    }
+
+    #[test]
+    fn model_catalog_results_are_scoped_to_the_openrouter_key_generation() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.openrouter_key_generation = 5;
+        terminal.agent.model_catalog_loading = true;
+        let model = crate::openrouter_api::OpenRouterModel {
+            id: "vendor/tool-model".to_string(),
+            name: "Vendor Tool Model".to_string(),
+            context_length: Some(128_000),
+            prompt_price_per_million_usd: Some(1.0),
+            completion_price_per_million_usd: Some(2.0),
+            reasoning_price_per_million_usd: None,
+            request_price_usd: None,
+            has_conditional_pricing: false,
+        };
+
+        let _ = terminal.update_agent(Message::AgentModelCatalogLoaded(4, Ok(vec![model.clone()])));
+        assert!(terminal.agent.model_catalog_loading);
+        assert!(terminal.agent.model_catalog.is_empty());
+
+        let _ = terminal.update_agent(Message::AgentModelCatalogLoaded(5, Ok(vec![model])));
+        assert!(!terminal.agent.model_catalog_loading);
+        assert_eq!(terminal.agent.model_catalog.len(), 1);
+        assert_eq!(terminal.agent.model_catalog[0].id, "vendor/tool-model");
     }
 
     #[test]

@@ -3,12 +3,15 @@ use crate::app_fonts;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
+use crate::openrouter_api::OpenRouterModel;
 
 use iced::widget::container as container_style;
 use iced::widget::{
     Column, Space, button, column, container, markdown, row, rule, scrollable, text, text_input,
 };
 use iced::{Alignment, Border, Color, Element, Fill, Length, Padding, Theme};
+
+const MAX_VISIBLE_MODEL_RESULTS: usize = 80;
 
 // ---------------------------------------------------------------------------
 // Kerosene Assistant View
@@ -115,15 +118,32 @@ impl TradingTerminal {
             context_and_usage.push_str(" · ");
             context_and_usage.push_str(&usage);
         }
+        let model_picker_caret = if self.agent.model_picker_open {
+            "▴"
+        } else {
+            "▾"
+        };
+        let model_button = button(
+            row![
+                text(format!("Model · {display_model}")).size(10),
+                text(model_picker_caret).size(9),
+            ]
+            .spacing(5)
+            .align_y(Alignment::Center),
+        )
+        .padding([3, 5])
+        .on_press_maybe(
+            self.openrouter_configured()
+                .then_some(Message::AgentToggleModelPicker),
+        )
+        .style(agent_model_footer_button_style);
         let footer = row![
             text("Read-only data access")
                 .size(10)
                 .color(theme.palette().success),
             Space::new().width(Fill),
             column![
-                text(format!("Model · {display_model}"))
-                    .size(10)
-                    .color(theme.palette().text),
+                model_button,
                 text(context_and_usage)
                     .size(10)
                     .color(theme.extended_palette().background.weak.text),
@@ -142,13 +162,15 @@ impl TradingTerminal {
                 .into()
         };
 
-        let composer = column![
-            status_detail,
-            configure,
-            row![input, action].spacing(8).align_y(Alignment::Center),
-            footer,
-        ]
-        .spacing(7);
+        let mut composer = Column::new()
+            .push(status_detail)
+            .push(configure)
+            .push(row![input, action].spacing(8).align_y(Alignment::Center))
+            .spacing(7);
+        if self.agent.model_picker_open {
+            composer = composer.push(self.view_agent_model_picker(&requested_model, &theme));
+        }
+        composer = composer.push(footer);
 
         let main_panel = container(
             column![
@@ -290,6 +312,196 @@ impl TradingTerminal {
         .center_y(Fill)
         .into()
     }
+
+    fn view_agent_model_picker<'a>(
+        &'a self,
+        selected_model: &str,
+        theme: &Theme,
+    ) -> Element<'a, Message> {
+        let query = self.agent.model_search.trim().to_lowercase();
+        let mut matches = self
+            .agent
+            .model_catalog
+            .iter()
+            .filter(|model| {
+                query.is_empty()
+                    || model.id.to_lowercase().contains(&query)
+                    || model.name.to_lowercase().contains(&query)
+            })
+            .collect::<Vec<_>>();
+        if query.is_empty()
+            && let Some(index) = matches.iter().position(|model| model.id == selected_model)
+        {
+            matches.swap(0, index);
+        }
+        let matched_count = matches.len();
+
+        let catalog_status = if self.agent.model_catalog_loading {
+            "Refreshing OpenRouter catalog…".to_string()
+        } else if self.agent.model_catalog.is_empty() {
+            "OpenRouter model catalog".to_string()
+        } else {
+            format!(
+                "{} tool-capable models",
+                self.agent.model_catalog.len().saturating_sub(1)
+            )
+        };
+        let refresh = button(text("Refresh").size(10))
+            .padding([5, 9])
+            .on_press_maybe(
+                (!self.agent.model_catalog_loading).then_some(Message::AgentRefreshModels),
+            );
+        let close = button(text("×").size(13))
+            .padding([4, 8])
+            .on_press(Message::AgentToggleModelPicker);
+
+        let header = row![
+            column![
+                text("Choose Assistant model")
+                    .size(12)
+                    .color(theme.palette().text),
+                text(format!("Current · {selected_model} · {catalog_status}"))
+                    .size(9)
+                    .color(theme.extended_palette().background.weak.text),
+            ]
+            .spacing(2)
+            .width(Fill),
+            refresh,
+            close,
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center);
+
+        let search = text_input("Search by model or provider…", &self.agent.model_search)
+            .id(iced::widget::Id::new("kerosene-agent-model-search"))
+            .style(helpers::text_input_style)
+            .on_input(Message::AgentModelSearchChanged)
+            .padding([7, 9])
+            .size(11)
+            .width(Fill);
+
+        let results: Element<'a, Message> = if self.agent.model_catalog.is_empty() {
+            let (message, color) = if let Some(error) = &self.agent.model_catalog_error {
+                (error.as_str(), theme.palette().danger)
+            } else {
+                (
+                    "Loading tool-capable models and current pricing from OpenRouter…",
+                    theme.extended_palette().background.weak.text,
+                )
+            };
+            container(text(message).size(10).color(color))
+                .center_x(Fill)
+                .padding(18)
+                .into()
+        } else {
+            let can_select = !self.agent.status.is_busy();
+            let mut rows = Column::new().spacing(4).width(Fill);
+            for model in matches.into_iter().take(MAX_VISIBLE_MODEL_RESULTS) {
+                rows = rows.push(agent_model_option(model, selected_model, can_select, theme));
+            }
+            if matched_count == 0 {
+                rows = rows.push(
+                    container(
+                        text("No tool-capable models match that search.")
+                            .size(10)
+                            .color(theme.extended_palette().background.weak.text),
+                    )
+                    .center_x(Fill)
+                    .padding(18),
+                );
+            }
+            scrollable(rows)
+                .height(Length::Fixed(190.0))
+                .width(Fill)
+                .into()
+        };
+
+        let result_status = if matched_count > MAX_VISIBLE_MODEL_RESULTS {
+            format!(
+                "Showing {} of {matched_count} matches · refine the search to see more",
+                MAX_VISIBLE_MODEL_RESULTS
+            )
+        } else if !self.agent.model_catalog.is_empty() {
+            format!("{matched_count} matches")
+        } else {
+            String::new()
+        };
+
+        let mut content = Column::new()
+            .push(header)
+            .push(search)
+            .push(results)
+            .spacing(7);
+        if let Some(error) = &self.agent.model_catalog_error
+            && !self.agent.model_catalog.is_empty()
+        {
+            content = content.push(text(error).size(9).color(theme.palette().danger));
+        }
+        content = content.push(
+            row![
+                text(result_status)
+                    .size(9)
+                    .color(theme.extended_palette().background.weak.text),
+                Space::new().width(Fill),
+                text("Current OpenRouter rates; conditional/provider pricing may vary")
+                    .size(9)
+                    .color(theme.extended_palette().background.weak.text),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+        );
+
+        container(content)
+            .padding([10, 11])
+            .width(Fill)
+            .style(agent_model_picker_style)
+            .into()
+    }
+}
+
+fn agent_model_option<'a>(
+    model: &'a OpenRouterModel,
+    selected_model: &str,
+    can_select: bool,
+    theme: &Theme,
+) -> Element<'a, Message> {
+    let selected = model.id == selected_model;
+    let selected_label = if selected { "SELECTED" } else { "" };
+    let content = column![
+        row![
+            text(model.name.as_str())
+                .size(11)
+                .color(theme.palette().text)
+                .width(Fill),
+            text(selected_label).size(8).color(theme.palette().primary),
+        ]
+        .align_y(Alignment::Center),
+        text(model.id.as_str())
+            .size(9)
+            .color(theme.extended_palette().background.weak.text),
+        row![
+            text(model.pricing_summary())
+                .size(9)
+                .color(theme.extended_palette().background.weak.text)
+                .width(Fill),
+            text(model.context_summary())
+                .size(9)
+                .color(theme.extended_palette().background.weak.text),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    ]
+    .spacing(2)
+    .width(Fill);
+
+    button(content)
+        .padding([7, 9])
+        .width(Fill)
+        .on_press_maybe(
+            (can_select && !selected).then(|| Message::OpenRouterModelChanged(model.id.clone())),
+        )
+        .style(move |theme, status| agent_model_option_style(theme, status, selected))
+        .into()
 }
 
 fn context_usage_summary(context_tokens: Option<u64>, context_window: Option<u64>) -> String {
@@ -571,6 +783,68 @@ fn agent_session_button_style(
             } else {
                 Color::TRANSPARENT
             },
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_model_footer_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let mut background = theme.palette().primary;
+    background.a = if matches!(status, button::Status::Hovered | button::Status::Pressed) {
+        0.1
+    } else {
+        0.0
+    };
+    button::Style {
+        background: Some(background.into()),
+        text_color: theme.palette().text,
+        border: Border {
+            radius: 5.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_model_picker_style(theme: &Theme) -> container_style::Style {
+    container_style::Style {
+        background: Some(theme.extended_palette().background.weak.color.into()),
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: theme.extended_palette().background.strong.color,
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_model_option_style(
+    theme: &Theme,
+    status: button::Status,
+    selected: bool,
+) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    let mut background = if selected {
+        theme.palette().primary
+    } else {
+        theme.palette().text
+    };
+    background.a = if selected {
+        0.12
+    } else if hovered {
+        0.055
+    } else {
+        0.0
+    };
+    let mut border_color = theme.palette().primary;
+    border_color.a = if selected { 0.55 } else { 0.0 };
+    button::Style {
+        background: Some(background.into()),
+        text_color: theme.palette().text,
+        border: Border {
+            radius: 6.0.into(),
+            width: 1.0,
+            color: border_color,
         },
         ..Default::default()
     }

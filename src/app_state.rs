@@ -229,6 +229,7 @@ impl TradingTerminal {
     pub(crate) fn bump_openrouter_key_generation(&mut self) {
         self.openrouter_key_generation = self.openrouter_key_generation.wrapping_add(1);
         self.openrouter_key_status = None;
+        self.agent.clear_model_catalog();
     }
 
     pub(crate) fn openrouter_key_generation_is_current(&self, generation: u64) -> bool {
