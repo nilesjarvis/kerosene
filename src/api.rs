@@ -38,6 +38,8 @@ pub(crate) use sec::{
     SecEarningsEvent, SecFilingSummary, SecFilingSummaryRequest, fetch_sec_earnings_events,
     fetch_sec_filing_summary, sec_filing_document_url,
 };
+#[cfg(test)]
+pub(crate) use sec::{SecEarningsMetric, SecStructuredEarnings};
 pub use user_fills::{UserFill, UserFillsPage, UserFillsRequest, fetch_user_fills};
 pub use watchlist::{
     WatchlistContext, WatchlistContextsResponse, fetch_screener_history, fetch_watchlist_contexts,

@@ -15,7 +15,7 @@ mod payload;
 use self::payload::{
     applied_secret_payload_for_legacy_cleanup, apply_secret_payload,
     apply_secret_payload_preserving_missing_plaintext, bind_legacy_unbound_profile_keys_to_wallets,
-    merge_missing_plaintext_secrets_into_payload,
+    merge_missing_plaintext_secrets_into_payload, recover_accounts_from_secret_payload,
 };
 
 // ---------------------------------------------------------------------------
@@ -27,14 +27,17 @@ struct KeychainCleanupHooks<ClearLegacyEntries, ClearPendingProfile> {
     clear_pending_profile: ClearPendingProfile,
 }
 
-pub(super) fn load_configured_secrets(config: &mut KeroseneConfig) {
+pub(super) fn load_configured_secrets(
+    config: &mut KeroseneConfig,
+    recover_keychain_accounts: bool,
+) {
     match config.credential_storage_mode {
         CredentialStorageMode::OsKeychain => {
             if config.pending_keychain_cleanup_all {
                 config.pending_keychain_cleanup_all = false;
                 config.secret_cleanup_state_dirty = true;
             }
-            load_os_keychain_secrets(config);
+            load_os_keychain_secrets(config, recover_keychain_accounts);
         }
         CredentialStorageMode::EncryptedConfig => {
             load_encrypted_config_secrets_with(
@@ -133,9 +136,10 @@ fn redact_keychain_cleanup_secret_id(message: String, secret_id: &str) -> String
     redacted
 }
 
-fn load_os_keychain_secrets(config: &mut KeroseneConfig) {
-    load_os_keychain_secrets_with(
+fn load_os_keychain_secrets(config: &mut KeroseneConfig, recover_keychain_accounts: bool) {
+    load_os_keychain_secrets_with_account_recovery(
         config,
+        recover_keychain_accounts,
         load_keychain_secret_payload,
         store_secret_payload,
         KeychainCleanupHooks {
@@ -148,8 +152,38 @@ fn load_os_keychain_secrets(config: &mut KeroseneConfig) {
     );
 }
 
+#[cfg(test)]
 fn load_os_keychain_secrets_with(
     config: &mut KeroseneConfig,
+    load_payload: impl FnMut() -> Result<Option<SecretPayload>, String>,
+    store_payload: impl FnMut(&SecretPayload) -> Result<(), String>,
+    cleanup_hooks: KeychainCleanupHooks<
+        impl FnMut(&SecretPayload) -> Result<(), String>,
+        impl FnMut(&str) -> Result<(), String>,
+    >,
+    load_profile: impl FnMut(&mut AccountProfile) -> Result<(), String>,
+    load_global: impl FnMut(
+        &mut zeroize::Zeroizing<String>,
+        &mut zeroize::Zeroizing<String>,
+    ) -> Result<(), String>,
+    push_warning: impl FnMut(String),
+) {
+    load_os_keychain_secrets_with_account_recovery(
+        config,
+        false,
+        load_payload,
+        store_payload,
+        cleanup_hooks,
+        load_profile,
+        load_global,
+        push_warning,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn load_os_keychain_secrets_with_account_recovery(
+    config: &mut KeroseneConfig,
+    recover_keychain_accounts: bool,
     mut load_payload: impl FnMut() -> Result<Option<SecretPayload>, String>,
     mut store_payload: impl FnMut(&SecretPayload) -> Result<(), String>,
     mut cleanup_hooks: KeychainCleanupHooks<
@@ -171,6 +205,15 @@ fn load_os_keychain_secrets_with(
 
     match load_payload() {
         Ok(Some(payload)) => {
+            if recover_keychain_accounts {
+                let recovered = recover_accounts_from_secret_payload(config, &payload);
+                if recovered > 0 {
+                    config.secret_cleanup_state_dirty = true;
+                    push_warning(format!(
+                        "Recovered {recovered} saved account profile(s) from the OS keychain because no readable config file was available"
+                    ));
+                }
+            }
             if let Err(error) = normalize_legacy_plaintext_secrets(config) {
                 config.secret_migration_save_blocked = true;
                 let error = redact_sensitive_response_text(&error);
@@ -245,8 +288,9 @@ fn load_os_keychain_secrets_with(
                 }
                 push_warning(warning);
             } else {
+                config.secret_migration_save_blocked = true;
                 push_warning(format!(
-                    "Credential bundle read failed: {error}; OS keychain credentials were left unchanged and config saves are paused. Re-enter credentials or switch to encrypted config in Settings > Storage if the problem persists"
+                    "Credential bundle read failed: {error}; OS keychain credentials were left unchanged and config saves are paused until credentials are saved to a working store. Re-enter credentials or switch to encrypted config in Settings > Storage if the problem persists"
                 ));
             }
             return;

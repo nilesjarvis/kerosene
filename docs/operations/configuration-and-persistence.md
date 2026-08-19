@@ -104,6 +104,14 @@ Config saves are debounced and run off the main update path:
 - final-save-before-exit behavior prevents losing recent changes.
 - file writes use temporary files and backup paths for resilience.
 
+If the primary config disappears during an upgrade or reinstall, startup loads
+the valid backup before falling back to defaults. If neither config copy is
+readable but an OS-keychain credential bundle remains, startup reconstructs the
+saved account identifiers and wallet bindings from that bundle, assigns generic
+names to the recovered profiles, and persists the recovered metadata.
+Encrypted-config credentials require a surviving primary or backup config
+because the encrypted blob is stored in those files.
+
 When changing any persisted preference or layout state, call `persist_config()`
 from the owning update module after state changes.
 

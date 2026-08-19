@@ -29,17 +29,17 @@ pub fn load_config() -> KeroseneConfig {
         return KeroseneConfig::default();
     };
 
-    let mut config = match load_config_from_path(&path) {
-        Ok(Some(config)) => config,
-        Ok(None) => KeroseneConfig::default(),
+    let (mut config, recover_keychain_accounts) = match load_config_from_path(&path) {
+        Ok(Some(config)) => (config, false),
+        Ok(None) => (KeroseneConfig::default(), true),
         Err(e) => {
             push_config_warning(format!("Config load failed; defaults were used: {e}"));
-            KeroseneConfig::default()
+            (KeroseneConfig::default(), true)
         }
     };
 
     normalization::normalize_loaded_config(&mut config);
-    storage::load_configured_secrets(&mut config);
+    storage::load_configured_secrets(&mut config, recover_keychain_accounts);
 
     config
 }

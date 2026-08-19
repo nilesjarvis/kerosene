@@ -71,12 +71,7 @@ impl TradingTerminal {
         };
 
         let content = column![
-            container(tabs).padding(iced::Padding {
-                top: 10.0,
-                right: 10.0,
-                bottom: 0.0,
-                left: 10.0
-            }),
+            tabs,
             container(body)
                 .padding(iced::Padding {
                     top: 0.0,
@@ -146,7 +141,10 @@ fn bottom_tab_button(
         .padding([4, 10])
         .style(move |theme: &Theme, status| {
             let background = match status {
-                button::Status::Hovered => theme.extended_palette().background.strong.color,
+                button::Status::Hovered | button::Status::Pressed => Color {
+                    a: 0.06,
+                    ..theme.extended_palette().background.weak.text
+                },
                 _ if active => theme.extended_palette().background.weak.color,
                 _ => Color::TRANSPARENT,
             };
@@ -207,14 +205,17 @@ fn bottom_journal_button() -> Element<'static, Message> {
     )
     .on_press(Message::AddTradingJournal)
     .padding([4, 12])
-    .style(move |t: &Theme, status| {
+    .style(move |theme: &Theme, status| {
         let background = match status {
-            button::Status::Hovered => t.extended_palette().background.strong.color,
+            button::Status::Hovered | button::Status::Pressed => Color {
+                a: 0.06,
+                ..theme.extended_palette().background.weak.text
+            },
             _ => Color::TRANSPARENT,
         };
         button::Style {
             background: Some(background.into()),
-            text_color: t.extended_palette().background.weak.text,
+            text_color: theme.extended_palette().background.weak.text,
             border: iced::Border {
                 radius: 0.0.into(),
                 width: 0.0,

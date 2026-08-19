@@ -1309,6 +1309,26 @@ fn append_earnings_summary_lines(
     }
 
     if let Some(summary) = &marker.filing_summary {
+        if let Some(earnings) = &summary.structured_earnings {
+            lines.push(TooltipLine {
+                content: format!(
+                    "XBRL {} | period {}",
+                    earnings.source_form, earnings.period_end
+                ),
+                color: accent,
+            });
+            for metric in &earnings.metrics {
+                let value = metric.yoy_change.as_deref().map_or_else(
+                    || metric.value.clone(),
+                    |change| format!("{} ({change})", metric.value),
+                );
+                lines.push(TooltipLine {
+                    content: format!("{:<11} {value}", metric.label),
+                    color: muted,
+                });
+            }
+        }
+
         if let Some(headline) = summary
             .headline
             .as_deref()

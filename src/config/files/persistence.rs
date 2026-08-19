@@ -459,7 +459,7 @@ pub(in crate::config) fn load_config_from_path(
 ) -> Result<Option<KeroseneConfig>, String> {
     match read_config_from_path(path) {
         Ok(Some(config)) => Ok(Some(config)),
-        Ok(None) => recover_missing_primary_from_interrupted_save(path),
+        Ok(None) => recover_missing_primary(path),
         Err(primary_error) => {
             let backup_path = backup_config_path(path);
             match read_config_from_path(&backup_path) {
@@ -476,13 +476,8 @@ pub(in crate::config) fn load_config_from_path(
     }
 }
 
-fn recover_missing_primary_from_interrupted_save(
-    path: &Path,
-) -> Result<Option<KeroseneConfig>, String> {
+fn recover_missing_primary(path: &Path) -> Result<Option<KeroseneConfig>, String> {
     let candidates = interrupted_save_rollback_candidates(path)?;
-    if candidates.is_empty() {
-        return Ok(None);
-    }
 
     let mut load_errors = Vec::new();
     for candidate in &candidates {
@@ -502,10 +497,12 @@ fn recover_missing_primary_from_interrupted_save(
     let backup_path = backup_config_path(path);
     match read_config_from_path(&backup_path) {
         Ok(Some(config)) => {
-            push_config_warning(
+            let message = if candidates.is_empty() {
+                "Loaded backup config because primary config was missing"
+            } else {
                 "Loaded backup config because primary config was missing after an interrupted save"
-                    .to_string(),
-            );
+            };
+            push_config_warning(message.to_string());
             Ok(Some(config))
         }
         Ok(None) if load_errors.is_empty() => Ok(None),

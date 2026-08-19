@@ -1,13 +1,14 @@
 use super::{
-    HUD_JET_TAPE_GAP, format_crosshair_relative_time, format_volume_compact, format_volume_readout,
-    hud_game_panels_visible, hud_jet_tape_side, hud_left_block_lines, hud_text_width,
+    HUD_JET_TAPE_GAP, append_earnings_summary_lines, format_crosshair_relative_time,
+    format_volume_compact, format_volume_readout, hud_game_panels_visible, hud_jet_tape_side,
+    hud_left_block_lines, hud_text_width,
 };
-use crate::api::Candle;
+use crate::api::{Candle, SecEarningsMetric, SecFilingSummary, SecStructuredEarnings};
 use crate::chart::crosshair_style::RacingHudMetrics;
 use crate::chart::state::{HudMarketSide, HudOrderKind};
 use crate::chart::{CandlestickChart, ChartState, EarningsMarker};
 use crate::config::{ChartCrosshairStyle, ChartHudReadoutConfig};
-use iced::Point;
+use iced::{Color, Point};
 
 fn candle_at(open_time: u64, close: f64) -> Candle {
     Candle::test_ohlcv(
@@ -166,6 +167,54 @@ fn earnings_marker_hover_overlay_is_active_only_for_visible_hovered_markers() {
     chart.set_earnings_marker_hover(Some(3_000));
     assert!(!chart.earnings_marker_hover_overlay_active(&state, 400.0));
     assert!(!chart.earnings_marker_hover_overlay_active(&state, 0.0));
+}
+
+#[test]
+fn earnings_hover_summary_includes_xbrl_metrics_and_text_highlights() {
+    let marker = EarningsMarker {
+        time_ms: 2_000,
+        cik: 320_193,
+        form: "8-K".to_string(),
+        filing_date: "2026-04-30".to_string(),
+        accession_number: "0000320193-26-000011".to_string(),
+        primary_document: "aapl-20260430.htm".to_string(),
+        quarter_label: Some("Q1 2026".to_string()),
+        filing_summary: Some(SecFilingSummary {
+            form: "8-K".to_string(),
+            filing_date: "2026-04-30".to_string(),
+            source_documents: vec!["EX-99.1 earnings.htm".to_string()],
+            structured_earnings: Some(SecStructuredEarnings {
+                source_form: "10-Q".to_string(),
+                source_accession_number: "0000320193-26-000013".to_string(),
+                period_end: "2026-03-28".to_string(),
+                metrics: vec![SecEarningsMetric {
+                    label: "Revenue".to_string(),
+                    value: "$111.2B".to_string(),
+                    yoy_change: Some("+16.6% YoY".to_string()),
+                }],
+            }),
+            headline: Some("Apple reports quarterly results".to_string()),
+            highlights: vec!["Services revenue reached a record".to_string()],
+        }),
+        filing_summary_status: None,
+        filing_summary_loading: false,
+    };
+    let mut lines = Vec::new();
+
+    append_earnings_summary_lines(&marker, &mut lines, Color::WHITE, Color::BLACK);
+
+    let contents = lines
+        .iter()
+        .map(|line| line.content.as_str())
+        .collect::<Vec<_>>();
+    assert!(contents.contains(&"XBRL 10-Q | period 2026-03-28"));
+    assert!(contents.contains(&"Revenue     $111.2B (+16.6% YoY)"));
+    assert!(contents.contains(&"Apple reports quarterly results"));
+    assert!(
+        contents
+            .iter()
+            .any(|line| line.contains("Services revenue reached a record"))
+    );
 }
 
 #[test]

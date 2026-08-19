@@ -99,6 +99,47 @@ pub(super) fn bind_legacy_unbound_profile_keys_to_wallets(
     payload.bind_unbound_profile_agent_keys_to_wallets(&config.accounts)
 }
 
+pub(super) fn recover_accounts_from_secret_payload(
+    config: &mut KeroseneConfig,
+    payload: &SecretPayload,
+) -> usize {
+    let mut recovered: Vec<crate::config::AccountProfile> = Vec::new();
+
+    for saved_profile in &payload.profiles {
+        let secret_id = saved_profile.secret_id.trim();
+        if secret_id.is_empty()
+            || saved_profile.agent_key.trim().is_empty()
+            || recovered
+                .iter()
+                .any(|profile| profile.secret_id == secret_id)
+        {
+            continue;
+        }
+
+        let ordinal = recovered.len() + 1;
+        recovered.push(crate::config::AccountProfile {
+            secret_id: secret_id.to_string(),
+            name: if ordinal == 1 {
+                "Main Trading".to_string()
+            } else {
+                format!("Recovered Account {ordinal}")
+            },
+            wallet_address: saved_profile.wallet_address.clone().unwrap_or_default(),
+            agent_key: String::new().into(),
+            hydromancer_api_key: String::new().into(),
+        });
+    }
+
+    if recovered.is_empty() {
+        return 0;
+    }
+
+    let recovered_count = recovered.len();
+    config.accounts = recovered;
+    config.active_account_index = 0;
+    recovered_count
+}
+
 pub(super) fn applied_secret_payload_for_legacy_cleanup(
     config: &KeroseneConfig,
     payload: &SecretPayload,
