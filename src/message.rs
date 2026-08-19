@@ -1,6 +1,8 @@
 use crate::account::{AccountData, AssetContext, WalletDetailsData, WalletTrackerSnapshot};
 use crate::account_analytics::{IncomeSnapshot, PortfolioHistory};
 use crate::account_state::{BottomTab, PositionsSortColumn};
+use crate::agent_runtime::AgentRuntimeEvent;
+use crate::agent_state::{AgentPersistenceResult, AgentPrompt, AgentUri};
 use crate::alfred_state::{AlfredCommandId, AlfredSelectionStep};
 use crate::annotations::{Annotation, AnnotationId, AnnotationStyle, DrawingTool};
 use crate::api::{self, Candle, OrderBook};
@@ -25,7 +27,7 @@ use crate::market_state::{
     LiveWatchlistId, OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode,
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
-use crate::openrouter_api::OpenRouterKeyStatus;
+use crate::openrouter_api::{OpenRouterKeyStatus, OpenRouterModel};
 use crate::order_execution::{
     AdvancedOrderStartSnapshot, HudOrderRequest, OneShotPlacementContext,
     OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext, QuickOrderRecovery,
@@ -322,6 +324,33 @@ pub(crate) struct RedactedWalletTrackerBatch(Vec<(String, Result<WalletTrackerSn
 impl RedactedWalletTrackerBatch {
     pub(crate) fn into_vec(self) -> Vec<(String, Result<WalletTrackerSnapshot, String>)> {
         self.0
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct RedactedPortfolioHistoryResult(Box<Result<PortfolioHistory, String>>);
+
+impl RedactedPortfolioHistoryResult {
+    pub(crate) fn into_result(self) -> Result<PortfolioHistory, String> {
+        *self.0
+    }
+}
+
+impl From<Result<PortfolioHistory, String>> for RedactedPortfolioHistoryResult {
+    fn from(value: Result<PortfolioHistory, String>) -> Self {
+        Self(Box::new(value))
+    }
+}
+
+impl fmt::Debug for RedactedPortfolioHistoryResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(history) => f
+                .debug_struct("PortfolioHistory")
+                .field("buckets", &history.buckets.len())
+                .finish(),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
     }
 }
 
@@ -719,6 +748,26 @@ pub(crate) enum Message {
     AddIncomePane,
     AddComparisonChart,
     AddPairRatioChart,
+    OpenAgentWindow,
+    AgentInputChanged(AgentPrompt),
+    AgentSubmit,
+    AgentSnapshotPrepared(u64, u64, Result<PathBuf, String>),
+    AgentRuntimeEvent(AgentRuntimeEvent),
+    AgentStreamTick,
+    AgentAbort,
+    AgentCopyResponse(usize),
+    AgentRegenerateResponse(usize),
+    AgentToggleEvidence(usize),
+    AgentFollowUpSelected(AgentPrompt),
+    AgentNewChat,
+    AgentSelectSession(u64),
+    AgentToggleModelPicker,
+    AgentModelSearchChanged(String),
+    AgentRefreshModels,
+    AgentModelCatalogLoaded(u64, Result<Vec<OpenRouterModel>, String>),
+    AgentSessionsSaved(u64, AgentPersistenceResult),
+    AgentOpenLink(AgentUri),
+    AgentLinkOpened(Result<(), String>),
     OpenSettingsWindow,
     OpenIntegrationsSettings,
     OpenScreenerWindow,
@@ -842,6 +891,15 @@ pub(crate) enum Message {
     AlfredSubmit,
     AlfredCommandSelected(AlfredCommandId),
     OpenWalletTrackerWindow,
+    OpenCombinedPortfolioWindow,
+    CombinedPortfolioAddressChanged(RedactedAddress),
+    CombinedPortfolioLabelChanged(RedactedAddress),
+    CombinedPortfolioAddWallet,
+    CombinedPortfolioRemoveWallet(RedactedAddress),
+    CombinedPortfolioRefresh,
+    CombinedPortfolioLoaded(RedactedAddress, u64, RedactedPortfolioHistoryResult),
+    CombinedPortfolioScopeChanged(PortfolioScope),
+    CombinedPortfolioWindowChanged(PortfolioWindow),
     OpenWalletClustersWindow,
     WalletClusterNameInputChanged(String),
     WalletClusterCreate,
@@ -1578,6 +1636,17 @@ mod tests {
     }
 
     #[test]
+    fn assistant_follow_up_message_debug_redacts_prompt() {
+        let message =
+            Message::AgentFollowUpSelected("private portfolio follow-up".to_string().into());
+
+        let rendered = format!("{message:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains("private portfolio follow-up"));
+    }
+
+    #[test]
     fn secret_bearing_message_debug_redacts_value() {
         let messages = [
             Message::EncryptedSecretPasswordChanged("sentinel-secret".into()),
@@ -1879,6 +1948,14 @@ mod tests {
                 ADDRESS.into(),
                 1,
                 Box::new(Err("portfolio failed".to_string())),
+            ),
+            Message::CombinedPortfolioAddressChanged(ADDRESS.into()),
+            Message::CombinedPortfolioLabelChanged(ADDRESS.into()),
+            Message::CombinedPortfolioRemoveWallet(ADDRESS.into()),
+            Message::CombinedPortfolioLoaded(
+                ADDRESS.into(),
+                1,
+                Err("combined portfolio failed".to_string()).into(),
             ),
             Message::IncomeLoaded(
                 ADDRESS.into(),

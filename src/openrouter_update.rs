@@ -23,6 +23,7 @@ impl TradingTerminal {
                 let openrouter_key_changed = previous_key.as_str() != next_key.as_str();
                 if openrouter_key_changed {
                     self.bump_openrouter_key_generation();
+                    self.invalidate_agent_runtime();
                 }
                 self.persist_config();
                 if self.openrouter_api_key.trim().is_empty() {
@@ -49,7 +50,13 @@ impl TradingTerminal {
                 });
             }
             Message::OpenRouterModelChanged(value) => {
+                let model_changed = self.openrouter_model != value;
                 self.openrouter_model = value;
+                if model_changed {
+                    self.invalidate_agent_runtime();
+                    self.agent.model_picker_open = false;
+                    self.agent.model_search.clear();
+                }
                 self.persist_config();
             }
             _ => {}

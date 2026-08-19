@@ -57,6 +57,9 @@ pub(crate) fn user_config_path(path: &Path) -> String {
     if file_name.starts_with("journal_cache_") {
         return format!("{}/journal_cache_<redacted>.json", user_config_dir());
     }
+    if file_name == "assistant_sessions.json" {
+        return format!("{}/assistant_sessions.json", user_config_dir());
+    }
 
     format!("{}/...", user_config_dir())
 }
@@ -100,6 +103,19 @@ pub fn journal_cache_path(address: &str) -> Option<PathBuf> {
         d.join("kerosene")
             .join(format!("journal_cache_{}.json", address))
     })
+}
+
+#[cfg(test)]
+pub fn assistant_sessions_path() -> Option<PathBuf> {
+    None
+}
+
+#[cfg(not(test))]
+pub fn assistant_sessions_path() -> Option<PathBuf> {
+    if in_memory_config_mode() {
+        return None;
+    }
+    dirs::config_dir().map(|directory| directory.join("kerosene").join("assistant_sessions.json"))
 }
 
 #[cfg(test)]

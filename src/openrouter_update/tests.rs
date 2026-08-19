@@ -160,6 +160,8 @@ fn openrouter_key_check_result_updates_status_for_current_generation() {
 fn openrouter_model_change_updates_state_and_schedules_config_save() {
     let (mut terminal, _) = TradingTerminal::boot();
     terminal.config_save_due_at = None;
+    terminal.agent.model_picker_open = true;
+    terminal.agent.model_search = "claude".to_string();
 
     let _task = terminal.update_openrouter(Message::OpenRouterModelChanged(
         "anthropic/claude-sonnet-4.5".to_string(),
@@ -171,6 +173,8 @@ fn openrouter_model_change_updates_state_and_schedules_config_save() {
         "anthropic/claude-sonnet-4.5"
     );
     assert!(terminal.config_save_due_at.is_some());
+    assert!(!terminal.agent.model_picker_open);
+    assert!(terminal.agent.model_search.is_empty());
 }
 
 #[test]

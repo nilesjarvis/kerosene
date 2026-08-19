@@ -146,6 +146,63 @@ pub fn default_wallet_tracker_height() -> f32 {
     680.0
 }
 
+/// Persisted wallet list and geometry for the watch-only combined portfolio window.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CombinedPortfolioConfig {
+    /// Wallet addresses and optional display labels included in the aggregate.
+    #[serde(default)]
+    pub wallets: Vec<TrackedWalletConfig>,
+    /// Whether the window should be reopened on startup.
+    #[serde(default)]
+    pub open: bool,
+    /// Last window width in logical pixels.
+    #[serde(default = "default_combined_portfolio_width")]
+    pub width: f32,
+    /// Last window height in logical pixels.
+    #[serde(default = "default_combined_portfolio_height")]
+    pub height: f32,
+    /// Last window X position.
+    #[serde(default)]
+    pub x: Option<f32>,
+    /// Last window Y position.
+    #[serde(default)]
+    pub y: Option<f32>,
+}
+
+impl Default for CombinedPortfolioConfig {
+    fn default() -> Self {
+        Self {
+            wallets: Vec::new(),
+            open: false,
+            width: default_combined_portfolio_width(),
+            height: default_combined_portfolio_height(),
+            x: None,
+            y: None,
+        }
+    }
+}
+
+impl fmt::Debug for CombinedPortfolioConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CombinedPortfolioConfig")
+            .field("wallets", &self.wallets)
+            .field("open", &self.open)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("x", &self.x)
+            .field("y", &self.y)
+            .finish()
+    }
+}
+
+pub fn default_combined_portfolio_width() -> f32 {
+    1180.0
+}
+
+pub fn default_combined_portfolio_height() -> f32 {
+    760.0
+}
+
 /// Persisted member of a tradable wallet cluster.
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct WalletClusterMemberConfig {
@@ -291,8 +348,8 @@ impl fmt::Debug for RedactedWalletClusterMembers {
 #[cfg(test)]
 mod tests {
     use super::{
-        AddressBookEntryConfig, TrackedWalletConfig, WALLET_LABELS_EXPORT_SCHEMA,
-        WalletClustersConfig, WalletLabelsExport, WalletTrackerConfig,
+        AddressBookEntryConfig, CombinedPortfolioConfig, TrackedWalletConfig,
+        WALLET_LABELS_EXPORT_SCHEMA, WalletClustersConfig, WalletLabelsExport, WalletTrackerConfig,
     };
 
     const ADDRESS_A: &str = "0x1111111111111111111111111111111111111111";
@@ -323,6 +380,24 @@ mod tests {
         assert!(rendered.contains("tracked_addresses: <2 redacted>"));
         assert!(rendered.contains("muted_addresses: <1 redacted>"));
         assert!(rendered.contains("Whale"));
+        assert!(rendered.contains("open: true"));
+    }
+
+    #[test]
+    fn combined_portfolio_config_debug_redacts_addresses() {
+        let cfg = CombinedPortfolioConfig {
+            wallets: vec![TrackedWalletConfig {
+                address: ADDRESS_A.to_string(),
+                label: "Primary".to_string(),
+            }],
+            open: true,
+            ..CombinedPortfolioConfig::default()
+        };
+
+        let rendered = format!("{cfg:?}");
+
+        assert!(!rendered.contains(ADDRESS_A));
+        assert!(rendered.contains("Primary"));
         assert!(rendered.contains("open: true"));
     }
 

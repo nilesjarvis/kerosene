@@ -174,6 +174,24 @@ Portfolio/income analytics are adjacent but separate:
 These analytics should not be used as the authoritative source for trading
 validation.
 
+## Assistant Access
+
+The Kerosene Assistant reads the active account's already reconstructed journal
+through the typed, read-only `kerosene_journal` tool. The tool can list,
+summarize, and rank trades while preserving journal sync/truncation metadata.
+Opening the Assistant counts as a journal-data consumer: it hydrates the local
+cache and starts an incremental sync even if the Trading Journal window is
+closed.
+Its default definition of a "best" trade is a closed, basis-complete record
+ranked by fee-adjusted realized PnL; gross PnL, return on entry, and PnL per
+volume are explicit alternative metrics.
+
+The Assistant export omits wallet addresses, fill/order/transaction IDs,
+internal trade IDs, and legacy note IDs. Reflection text and tags are bounded
+and passed through credential redaction before entering the temporary
+owner-only snapshot. Reflections remain user-authored context, not verified
+market facts.
+
 ## Tests To Check
 
 Use focused tests in:

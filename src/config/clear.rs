@@ -238,6 +238,15 @@ pub(super) fn clear_config_side_files_at(parent: &Path) -> ConfigFileCleanupSumm
         Ok(count) => summary.add_removed(count),
         Err(e) => summary.add_blocking_warning(format!("journal cache cleanup failed: {e}")),
     }
+    for candidate in ["assistant_sessions.json", "assistant_sessions.json.tmp"] {
+        match remove_file_if_exists(&parent.join(candidate)) {
+            Ok(true) => summary.add_removed(1),
+            Ok(false) => {}
+            Err(e) => {
+                summary.add_blocking_warning(format!("Assistant session cleanup failed: {e}"))
+            }
+        }
+    }
     match clear_config_asset_dirs(parent) {
         Ok(count) => summary.add_removed(count),
         Err(e) => summary.add_warning(format!("asset cleanup failed: {e}")),

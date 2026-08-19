@@ -58,6 +58,27 @@ impl TradingTerminal {
             boot_tasks.push(self.refresh_next_wallet_tracker_core());
         }
 
+        if self.combined_portfolio.open {
+            let settings = window::Settings {
+                size: Size::new(
+                    self.combined_portfolio.width,
+                    self.combined_portfolio.height,
+                ),
+                min_size: Some(Size::new(820.0, 560.0)),
+                position: self
+                    .combined_portfolio
+                    .x
+                    .zip(self.combined_portfolio.y)
+                    .map(|(x, y)| crate::window_chrome::restored_position(Point::new(x, y)))
+                    .unwrap_or(window::Position::Centered),
+                ..crate::window_chrome::settings(self.custom_window_chrome_active)
+            };
+            let (window_id, open_task) = window::open(settings);
+            self.combined_portfolio.window_id = Some(window_id);
+            boot_tasks.push(open_task.map(Message::WindowOpened));
+            boot_tasks.push(self.refresh_combined_portfolio());
+        }
+
         if self.wallet_clusters.open {
             let settings = wallet_cluster_window_settings(
                 &self.wallet_clusters,

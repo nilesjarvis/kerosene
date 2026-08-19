@@ -31,6 +31,7 @@ $IconPath = Join-Path $DistDir "kerosene.ico"
 $ZipPath = Join-Path $DistDir "Kerosene-$Version-windows-x64.zip"
 $MsiPath = Join-Path $DistDir "Kerosene-$Version-windows-x64.msi"
 $ChecksumPath = Join-Path $DistDir "SHA256SUMS.txt"
+$PiLicensePath = Join-Path $DistDir "PI-LICENSE.txt"
 
 function Write-Info([string]$Message) {
     Write-Host "[+] $Message"
@@ -164,6 +165,23 @@ function Write-Checksums([string[]]$Paths, [string]$OutputPath) {
     $Lines | Set-Content -Encoding ascii $OutputPath
 }
 
+function Assert-ZipContainsPi([string]$Path) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $Archive = [System.IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $Entries = @($Archive.Entries | ForEach-Object { $_.FullName.Replace("\", "/") })
+        if (!($Entries -contains "pi/pi.exe")) {
+            throw "The portable ZIP does not contain the pinned Pi runtime"
+        }
+        if (!($Entries -contains "PI-LICENSE.txt")) {
+            throw "The portable ZIP does not contain the Pi license"
+        }
+    }
+    finally {
+        $Archive.Dispose()
+    }
+}
+
 New-Item -ItemType Directory -Force $DistDir | Out-Null
 New-IcoFromPng (Join-Path $Root "assets\kerosene.png") $IconPath
 
@@ -185,11 +203,26 @@ if (!(Test-Path $ExePath)) {
 Assert-WindowsGuiExecutable $ExePath
 Invoke-SignFile $ExePath
 
+Write-Info "Staging pinned Pi runtime"
+$PiBundleSource = & (Join-Path $Root "scripts\fetch-pi.ps1") -Platform "windows-x64"
+$PiBundleDir = Join-Path $DistDir "pi"
+if (Test-Path $PiBundleDir) {
+    Remove-Item $PiBundleDir -Recurse -Force
+}
+Copy-Item $PiBundleSource $PiBundleDir -Recurse
+Copy-Item (Join-Path $Root "packaging\pi\LICENSE") $PiLicensePath -Force
+$PiExePath = Join-Path $PiBundleDir "pi.exe"
+if (!(Test-Path $PiExePath -PathType Leaf)) {
+    throw "The staged Pi runtime is missing pi.exe"
+}
+Invoke-SignFile $PiExePath
+
 if (Test-Path $ZipPath) {
     Remove-Item $ZipPath -Force
 }
 Write-Info "Creating portable zip"
-Compress-Archive -Path $ExePath -DestinationPath $ZipPath
+Compress-Archive -Path $ExePath, $PiBundleDir, $PiLicensePath -DestinationPath $ZipPath
+Assert-ZipContainsPi $ZipPath
 
 if (!$SkipInstaller) {
     $Wix = Get-Command wix.exe -ErrorAction SilentlyContinue
@@ -206,6 +239,8 @@ if (!$SkipInstaller) {
         -d "ProductVersion=$Version" `
         -d "SourceDir=$ReleaseDir" `
         -d "IconPath=$IconPath" `
+        -d "PiDir=$PiBundleDir" `
+        -d "PiLicensePath=$PiLicensePath" `
         -out $MsiPath
     Assert-NativeSuccess "WiX MSI build"
     if (!(Test-Path $MsiPath)) {

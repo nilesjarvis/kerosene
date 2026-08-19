@@ -7,8 +7,8 @@ mod storage;
 
 pub(crate) use normalization::normalize_imported_saved_layout;
 pub use paths::{
-    api_cache_dir, custom_font_path, custom_sound_path, font_storage_dir, journal_cache_path,
-    sound_storage_dir,
+    api_cache_dir, assistant_sessions_path, custom_font_path, custom_sound_path, font_storage_dir,
+    journal_cache_path, sound_storage_dir,
 };
 pub(super) use paths::{backup_config_path, config_path, config_sidecar_prefix};
 pub(crate) use paths::{in_memory_config_mode, set_in_memory_config_mode};

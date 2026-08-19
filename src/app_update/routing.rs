@@ -7,6 +7,7 @@ use crate::message::Message;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum UpdateRoute {
     Account,
+    Agent,
     Alfred,
     Annotations,
     Calendar,
@@ -14,6 +15,7 @@ pub(super) enum UpdateRoute {
     Chart,
     ChartScreenshot,
     Chrome,
+    CombinedPortfolio,
     Feed,
     Hyperdash,
     Journal,
@@ -35,6 +37,27 @@ pub(super) enum UpdateRoute {
 
 pub(super) fn message_route(message: &Message) -> UpdateRoute {
     match message {
+        Message::OpenAgentWindow
+        | Message::AgentInputChanged(_)
+        | Message::AgentSubmit
+        | Message::AgentSnapshotPrepared(_, _, _)
+        | Message::AgentRuntimeEvent(_)
+        | Message::AgentStreamTick
+        | Message::AgentAbort
+        | Message::AgentCopyResponse(_)
+        | Message::AgentRegenerateResponse(_)
+        | Message::AgentToggleEvidence(_)
+        | Message::AgentFollowUpSelected(_)
+        | Message::AgentNewChat
+        | Message::AgentSelectSession(_)
+        | Message::AgentToggleModelPicker
+        | Message::AgentModelSearchChanged(_)
+        | Message::AgentRefreshModels
+        | Message::AgentModelCatalogLoaded(_, _)
+        | Message::AgentSessionsSaved(_, _)
+        | Message::AgentOpenLink(_)
+        | Message::AgentLinkOpened(_) => UpdateRoute::Agent,
+
         Message::CreateCanvas | Message::OpenCanvas(_) => UpdateRoute::Canvas,
 
         Message::LayoutInputChanged(_)
@@ -450,6 +473,16 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WalletClusterClosePosition { .. }
         | Message::WalletClusterOrderResult { .. }
         | Message::WalletClusterOrderStatusLoaded { .. } => UpdateRoute::WalletCluster,
+
+        Message::OpenCombinedPortfolioWindow
+        | Message::CombinedPortfolioAddressChanged(_)
+        | Message::CombinedPortfolioLabelChanged(_)
+        | Message::CombinedPortfolioAddWallet
+        | Message::CombinedPortfolioRemoveWallet(_)
+        | Message::CombinedPortfolioRefresh
+        | Message::CombinedPortfolioLoaded(_, _, _)
+        | Message::CombinedPortfolioScopeChanged(_)
+        | Message::CombinedPortfolioWindowChanged(_) => UpdateRoute::CombinedPortfolio,
 
         Message::OpenWalletTrackerWindow
         | Message::OpenWalletDetailsWindow(_)

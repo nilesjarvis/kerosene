@@ -222,7 +222,7 @@ impl TradingTerminal {
                     self.openrouter_key_status
                         .as_ref()
                         .map(|(message, _)| message.as_str())
-                        .unwrap_or("Enables AI summaries for news and TradFi filings")
+                        .unwrap_or("Enables the Kerosene Assistant, news summaries, and TradFi filing summaries")
                 )
                 .size(11)
                 .color(
@@ -235,6 +235,12 @@ impl TradingTerminal {
                         })
                         .unwrap_or(current_theme.extended_palette().background.weak.text)
                 ),
+                button(text("Open Assistant").size(12))
+                    .padding([6, 12])
+                    .on_press_maybe(
+                        (!self.openrouter_api_key.trim().is_empty())
+                            .then_some(Message::OpenAgentWindow)
+                    ),
             ]
             .spacing(8),
             rule::horizontal(1),

@@ -1,8 +1,8 @@
 use super::{CredentialStorageMode, KeroseneConfig};
 use crate::config::wallets::{default_wallet_tracker_height, default_wallet_tracker_width};
 use crate::config::{
-    OrderPresetsConfig, WalletClustersConfig, WalletTrackerConfig, default_custom_themes,
-    default_display_font_config, default_theme,
+    CombinedPortfolioConfig, OrderPresetsConfig, WalletClustersConfig, WalletTrackerConfig,
+    default_custom_themes, default_display_font_config, default_theme,
 };
 use crate::pane_state::{
     DEFAULT_PANE_BORDER_THICKNESS, DEFAULT_PANE_CORNER_RADIUS, DEFAULT_WIDGET_PADDING,
@@ -397,6 +397,7 @@ impl Default for KeroseneConfig {
                 x: None,
                 y: None,
             },
+            combined_portfolio: CombinedPortfolioConfig::default(),
             wallet_clusters: WalletClustersConfig::default(),
             address_book: Vec::new(),
             active_theme: default_theme(),

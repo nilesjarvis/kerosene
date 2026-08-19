@@ -16,6 +16,7 @@ Related storage:
 
 - backup config: `config.json.bak`
 - journal cache: `journal_cache_<address>.json`
+- Assistant sessions: `assistant_sessions.json`
 - imported fonts: `fonts/`
 - imported sounds: `sounds/`
 - Telegram fast-feed session files in platform config storage
@@ -35,6 +36,7 @@ Related storage:
 | `src/config/live_watchlist.rs` | Live watchlist columns and sort config. |
 | `src/config_persistence/` | Debounced saves, snapshot creation, clear-config flow. |
 | `src/layout_persistence/` | Saved layout application and widget snapshot conversion. |
+| `src/agent_persistence.rs` | Bounded, owner-only Assistant session side-file load and atomic save. |
 
 ## KeroseneConfig
 
@@ -49,7 +51,7 @@ Related storage:
 - active symbol and order defaults
 - UI scale, pane chrome, fonts, themes, chart display preferences
 - accounts, active account index, hidden positions
-- wallet tracker, wallet clusters, and address book
+- wallet tracker, Combined Portfolio, wallet clusters, and address book
 - favourites, muted tickers, market universe, denomination
 - feed and notification preferences
 - Telegram/X channel/source lists
@@ -82,6 +84,8 @@ Important snapshot behavior:
   `x_refresh_token` are written as empty values.
 - Wallet cluster config stores cluster names, selected cluster/window state, and
   account profile secret-id references, not private agent keys.
+- Combined Portfolio stores only watch-only addresses, optional labels, open
+  state, and window geometry. Fetched portfolio histories remain runtime-only.
 - Read-data provider controls the persisted chart backfill source.
 - Widget configs come from layout/widget snapshot helpers, not direct runtime
   maps.
@@ -177,6 +181,18 @@ restrictive on Unix where supported.
 
 Do not put journal cache payloads inside `KeroseneConfig`; they can be large and
 wallet-specific.
+
+## Assistant Sessions
+
+Assistant chats are stored in a separate, schema-versioned
+`assistant_sessions.json` side-file. This keeps potentially large conversation
+history out of `KeroseneConfig` and lets Assistant saves follow their own
+lifecycle. Writes use a temporary file and replacement, owner-only permissions
+on Unix, an owner-only ACL on Windows, and a 32 MiB file limit. Clear All Config
+removes the durable file and its interrupted-save temp file.
+
+The side-file contains bounded drafts and user/assistant messages, but never the
+OpenRouter API key, tool activity cards, Pi process state, or raw tool payloads.
 
 ## Runtime-Only State
 

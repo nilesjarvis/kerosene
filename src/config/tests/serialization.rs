@@ -8,6 +8,7 @@ mod history;
 mod live_watchlist;
 mod panes;
 mod preferences;
+mod wallets;
 
 fn json_string<T: Serialize>(value: &T, context: &str) -> String {
     match serde_json::to_string(value) {

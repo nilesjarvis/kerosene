@@ -15,7 +15,11 @@
     <Property Id="ARPPRODUCTICON" Value="KeroseneIcon.ico" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="Kerosene" />
+      <Directory Id="INSTALLFOLDER" Name="Kerosene">
+        <Directory Id="PiDirectory" Name="pi">
+          <Directory Id="PiThemeDirectory" Name="theme" />
+        </Directory>
+      </Directory>
     </StandardDirectory>
 
     <StandardDirectory Id="ProgramMenuFolder">
@@ -25,6 +29,24 @@
     <DirectoryRef Id="INSTALLFOLDER">
       <Component Id="KeroseneExecutable" Guid="{86599D7C-5353-4BF6-B508-B684E54A82D4}">
         <File Id="KeroseneExe" Source="$(var.SourceDir)\kerosene.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="PiLicense" Guid="{391D2783-03C8-4897-ACDC-47ACFD4A3D21}">
+        <File Id="PiLicenseFile" Source="$(var.PiLicensePath)" Name="PI-LICENSE.txt" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="PiDirectory">
+      <Component Id="PiRuntime" Guid="{65D39E10-CE3E-4A6A-A1CA-602414206799}">
+        <File Id="PiExecutable" Source="$(var.PiDir)\pi.exe" KeyPath="yes" />
+        <File Id="PiPackageJson" Source="$(var.PiDir)\package.json" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="PiThemeDirectory">
+      <Component Id="PiThemes" Guid="{2D7B86D4-C7B3-4107-8A88-EA90DB8D72BC}">
+        <File Id="PiDarkTheme" Source="$(var.PiDir)\theme\dark.json" KeyPath="yes" />
+        <File Id="PiLightTheme" Source="$(var.PiDir)\theme\light.json" />
+        <File Id="PiThemeSchema" Source="$(var.PiDir)\theme\theme-schema.json" />
       </Component>
     </DirectoryRef>
 
@@ -50,6 +72,9 @@
 
     <Feature Id="MainFeature" Title="Kerosene" Level="1">
       <ComponentRef Id="KeroseneExecutable" />
+      <ComponentRef Id="PiRuntime" />
+      <ComponentRef Id="PiThemes" />
+      <ComponentRef Id="PiLicense" />
       <ComponentRef Id="ApplicationShortcut" />
     </Feature>
   </Package>

@@ -22,8 +22,8 @@ pub use clear::{ClearConfigSummary, clear_all_configs};
 pub(crate) use files::installed_config_save_error_for_test;
 pub(crate) use files::set_in_memory_config_mode;
 pub use files::{
-    api_cache_dir, custom_font_path, custom_sound_path, font_storage_dir, journal_cache_path,
-    load_config, save_config, sound_storage_dir,
+    api_cache_dir, assistant_sessions_path, custom_font_path, custom_sound_path, font_storage_dir,
+    journal_cache_path, load_config, save_config, sound_storage_dir,
 };
 pub(crate) use files::{config_save_installed_snapshot, user_config_dir, user_config_path};
 pub(crate) use files::{in_memory_config_mode, normalize_imported_saved_layout};
@@ -104,8 +104,9 @@ pub(crate) use secrets::{load_keychain_secret_payload, store_secret_payload};
 pub(crate) use themes::default_custom_themes;
 pub use themes::{CustomThemeConfig, default_theme};
 pub use wallets::{
-    AddressBookEntryConfig, TrackedWalletConfig, WALLET_LABELS_EXPORT_SCHEMA, WalletClusterConfig,
-    WalletClusterMemberConfig, WalletClustersConfig, WalletLabelsExport, WalletTrackerConfig,
+    AddressBookEntryConfig, CombinedPortfolioConfig, TrackedWalletConfig,
+    WALLET_LABELS_EXPORT_SCHEMA, WalletClusterConfig, WalletClusterMemberConfig,
+    WalletClustersConfig, WalletLabelsExport, WalletTrackerConfig,
     default_wallet_cluster_member_weight, default_wallet_clusters_height,
     default_wallet_clusters_width,
 };

@@ -13,6 +13,10 @@ impl TradingTerminal {
                     self.wallet_tracker.x = Some(point.x);
                     self.wallet_tracker.y = Some(point.y);
                     self.persist_config();
+                } else if Some(id) == self.combined_portfolio.window_id {
+                    self.combined_portfolio.x = Some(point.x);
+                    self.combined_portfolio.y = Some(point.y);
+                    self.persist_config();
                 } else if Some(id) == self.wallet_clusters.window_id {
                     self.wallet_clusters.x = Some(point.x);
                     self.wallet_clusters.y = Some(point.y);
@@ -43,7 +47,11 @@ impl TradingTerminal {
             }
             Message::WindowClosed(id) => {
                 if Some(id) == self.main_window_id {
+                    self.close_agent_session();
                     return self.flush_pending_config_save_and_exit();
+                }
+                if Some(id) == self.agent.window_id {
+                    self.close_agent_session();
                 }
                 if Some(id) == self.settings_window_id {
                     self.settings_window_id = None;
@@ -95,6 +103,11 @@ impl TradingTerminal {
                     self.wallet_tracker.open = false;
                     self.persist_config();
                 }
+                if Some(id) == self.combined_portfolio.window_id {
+                    self.combined_portfolio.window_id = None;
+                    self.combined_portfolio.open = false;
+                    self.persist_config();
+                }
                 if Some(id) == self.wallet_clusters.window_id {
                     self.wallet_clusters.window_id = None;
                     self.wallet_clusters.open = false;
@@ -117,6 +130,11 @@ impl TradingTerminal {
                 if Some(id) == self.wallet_tracker.window_id {
                     self.wallet_tracker.width = size.width;
                     self.wallet_tracker.height = size.height;
+                    self.persist_config();
+                }
+                if Some(id) == self.combined_portfolio.window_id {
+                    self.combined_portfolio.width = size.width;
+                    self.combined_portfolio.height = size.height;
                     self.persist_config();
                 }
                 if Some(id) == self.wallet_clusters.window_id {

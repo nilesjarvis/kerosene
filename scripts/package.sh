@@ -59,12 +59,38 @@ EOF
 # Build release binary if needed
 # -----------------------------------------------------------------------
 ensure_release_binary() {
-    if [ ! -f "$ROOT/target/release/kerosene" ]; then
-        info "Building release binary..."
-        cargo build --release --manifest-path "$ROOT/Cargo.toml"
-    else
-        info "Release binary already exists, skipping build."
-        info "Run 'cargo build --release' manually to rebuild."
+    info "Building release binary..."
+    cargo build --release --manifest-path "$ROOT/Cargo.toml"
+}
+
+stage_pi_bundle() {
+    info "Staging pinned Pi runtime..."
+    local source_bundle
+    local staged_bundle="$ROOT/target/package-assets/pi"
+    source_bundle="$(bash "$ROOT/scripts/fetch-pi.sh")"
+
+    rm -rf "$staged_bundle"
+    mkdir -p "$staged_bundle/theme"
+    install -m 755 "$source_bundle/pi" "$staged_bundle/pi"
+    install -m 644 "$source_bundle/package.json" "$staged_bundle/package.json"
+    install -m 644 "$source_bundle/theme/dark.json" "$staged_bundle/theme/dark.json"
+    install -m 644 "$source_bundle/theme/light.json" "$staged_bundle/theme/light.json"
+    install -m 644 "$source_bundle/theme/theme-schema.json" "$staged_bundle/theme/theme-schema.json"
+}
+
+assert_deb_contains_pi() {
+    local package="$1"
+    if ! dpkg-deb --contents "$package" | grep 'usr/lib/kerosene/pi/pi$' >/dev/null; then
+        error "The .deb package does not contain the pinned Pi runtime"
+        return 1
+    fi
+}
+
+assert_rpm_contains_pi() {
+    local package="$1"
+    if ! rpm -qlp "$package" | grep '^/usr/lib/kerosene/pi/pi$' >/dev/null; then
+        error "The .rpm package does not contain the pinned Pi runtime"
+        return 1
     fi
 }
 
@@ -80,12 +106,14 @@ build_deb() {
     fi
 
     ensure_release_binary
+    stage_pi_bundle
 
     info "Packaging .deb..."
     cargo deb --no-build --manifest-path "$ROOT/Cargo.toml"
 
     DEB=$(ls -t "$ROOT/target/debian/"*.deb 2>/dev/null | head -1)
     if [ -n "$DEB" ]; then
+        assert_deb_contains_pi "$DEB"
         info "Done: $DEB ($(du -h "$DEB" | cut -f1))"
     else
         error "Failed to find .deb output"
@@ -109,6 +137,7 @@ build_rpm() {
     fi
 
     ensure_release_binary
+    stage_pi_bundle
 
     RPM_TOPDIR="$ROOT/target/rpmbuild"
     RPM_OUTDIR="$ROOT/target/rpm"
@@ -144,17 +173,29 @@ Kerosene is a desktop trading terminal for Hyperliquid.
 %install
 rm -rf "%{buildroot}"
 install -Dm0755 "$ROOT/target/release/kerosene" "%{buildroot}/usr/bin/kerosene"
+install -Dm0755 "$ROOT/target/package-assets/pi/pi" "%{buildroot}/usr/lib/kerosene/pi/pi"
+install -Dm0644 "$ROOT/target/package-assets/pi/package.json" "%{buildroot}/usr/lib/kerosene/pi/package.json"
+install -Dm0644 "$ROOT/target/package-assets/pi/theme/dark.json" "%{buildroot}/usr/lib/kerosene/pi/theme/dark.json"
+install -Dm0644 "$ROOT/target/package-assets/pi/theme/light.json" "%{buildroot}/usr/lib/kerosene/pi/theme/light.json"
+install -Dm0644 "$ROOT/target/package-assets/pi/theme/theme-schema.json" "%{buildroot}/usr/lib/kerosene/pi/theme/theme-schema.json"
 install -Dm0644 "$ROOT/assets/kerosene.desktop" "%{buildroot}/usr/share/applications/kerosene.desktop"
 install -Dm0644 "$ROOT/assets/kerosene.png" "%{buildroot}/usr/share/icons/hicolor/256x256/apps/kerosene.png"
 install -Dm0644 "$ROOT/assets/kerosene.svg" "%{buildroot}/usr/share/icons/hicolor/scalable/apps/kerosene.svg"
 install -Dm0644 "$ROOT/LICENSE" "%{buildroot}/usr/share/licenses/kerosene/LICENSE"
+install -Dm0644 "$ROOT/packaging/pi/LICENSE" "%{buildroot}/usr/share/licenses/kerosene/PI-LICENSE"
 
 %files
 %license /usr/share/licenses/kerosene/LICENSE
 /usr/bin/kerosene
+/usr/lib/kerosene/pi/pi
+/usr/lib/kerosene/pi/package.json
+/usr/lib/kerosene/pi/theme/dark.json
+/usr/lib/kerosene/pi/theme/light.json
+/usr/lib/kerosene/pi/theme/theme-schema.json
 /usr/share/applications/kerosene.desktop
 /usr/share/icons/hicolor/256x256/apps/kerosene.png
 /usr/share/icons/hicolor/scalable/apps/kerosene.svg
+/usr/share/licenses/kerosene/PI-LICENSE
 EOF
 
     info "Packaging .rpm..."
@@ -170,6 +211,7 @@ EOF
     if [ -n "$RPM" ]; then
         cp "$RPM" "$RPM_OUTDIR/"
         RPM="$RPM_OUTDIR/$(basename "$RPM")"
+        assert_rpm_contains_pi "$RPM"
         info "Done: $RPM ($(du -h "$RPM" | cut -f1))"
     else
         error "Failed to find .rpm output"
@@ -199,6 +241,7 @@ build_appimage() {
     fi
 
     ensure_release_binary
+    stage_pi_bundle
 
     # Create AppDir
     APPDIR=$(mktemp -d)
@@ -207,8 +250,18 @@ build_appimage() {
     info "Assembling AppDir..."
     mkdir -p "$APPDIR/usr/bin"
     cp "$ROOT/target/release/kerosene" "$APPDIR/usr/bin/"
+    mkdir -p "$APPDIR/usr/lib/kerosene"
+    cp -R "$ROOT/target/package-assets/pi" "$APPDIR/usr/lib/kerosene/"
     cp "$ROOT/assets/kerosene.desktop"  "$APPDIR/"
     cp "$ROOT/assets/kerosene.png"      "$APPDIR/"
+
+    mkdir -p "$APPDIR/usr/share/licenses/kerosene"
+    cp "$ROOT/packaging/pi/LICENSE" "$APPDIR/usr/share/licenses/kerosene/PI-LICENSE"
+
+    if [ ! -x "$APPDIR/usr/lib/kerosene/pi/pi" ]; then
+        error "The AppImage staging tree does not contain the pinned Pi runtime"
+        return 1
+    fi
 
     # Icon in standard hicolor path (some desktop environments look here)
     mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"

@@ -267,13 +267,18 @@ fn load_os_keychain_secrets_with_account_recovery(
         }
         Ok(None) => {}
         Err(error) => {
+            // A failed bundle read means the in-memory secret fields are not
+            // authoritative. Keep persistence blocked even when there are no
+            // legacy plaintext secrets: an automatic wallet reconnect (or
+            // another unrelated credential update) must not replace the
+            // unreadable bundle with an incomplete snapshot.
+            config.secret_migration_save_blocked = true;
             let error = redact_sensitive_response_text(&error);
             let has_plaintext_secrets = has_legacy_plaintext_secrets(config);
             let normalization_error = normalize_legacy_plaintext_secrets(config)
                 .err()
                 .map(|error| redact_sensitive_response_text(&error));
             if has_plaintext_secrets {
-                config.secret_migration_save_blocked = true;
                 let mut warning = format!(
                     "Credential bundle read failed: {error}; OS keychain credentials were left unchanged and config saves are paused until credentials are saved to a working store"
                 );

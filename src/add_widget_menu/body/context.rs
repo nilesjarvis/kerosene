@@ -19,9 +19,11 @@ pub(super) struct AddWidgetMenuContext {
     pub(super) ticker_tape_open: bool,
     pub(super) journal_open: bool,
     pub(super) wallet_tracker_open: bool,
+    pub(super) combined_portfolio_open: bool,
     pub(super) wallet_clusters_open: bool,
     pub(super) screener_open: bool,
     pub(super) settings_open: bool,
+    pub(super) agent_open: bool,
     pub(super) include_main_actions: bool,
     pub(super) canvases: Vec<(CanvasId, String, bool)>,
 }
@@ -56,9 +58,11 @@ impl AddWidgetMenuContext {
             ticker_tape_open: terminal.ticker_tape_enabled,
             journal_open: terminal.journal.window_id.is_some(),
             wallet_tracker_open: terminal.wallet_tracker.window_id.is_some(),
+            combined_portfolio_open: terminal.combined_portfolio.window_id.is_some(),
             wallet_clusters_open: terminal.wallet_clusters.window_id.is_some(),
             screener_open: terminal.screener.window_id.is_some(),
             settings_open: terminal.settings_window_id.is_some(),
+            agent_open: terminal.agent.window_id.is_some(),
             include_main_actions,
             canvases: terminal
                 .canvases

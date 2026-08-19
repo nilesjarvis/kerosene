@@ -115,6 +115,15 @@ Outputs go under `target/`:
 The script installs missing Rust packaging tools where possible and uses
 `Cargo.toml` package metadata.
 
+Every release package includes a pinned standalone Pi runtime for the Kerosene
+Assistant. `scripts/fetch-pi.sh` and `scripts/fetch-pi.ps1` verify the official
+archive checksum, the reported version, and an offline RPC startup before the
+runtime is staged. Linux packages install it privately under
+`/usr/lib/kerosene/pi/`; macOS and Windows place it in application resources.
+Users do not need Node.js, npm, or a shell-visible `pi` command. When updating
+Pi, update `packaging/pi/version.txt` and every entry in
+`packaging/pi/SHA256SUMS` together, then rebuild all platform artifacts.
+
 Before building public release artifacts, confirm that
 `KEROSENE_TELEGRAM_API_HASH` is unset unless the bundled Telegram application
 credentials are explicitly approved for public distribution. If it is set, the
