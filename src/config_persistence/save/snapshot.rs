@@ -168,6 +168,7 @@ impl TradingTerminal {
             spaghetti_charts: self.spaghetti_chart_configs_snapshot(),
             detached_spaghetti_windows: self.detached_spaghetti_window_configs_snapshot(),
             wallet_tracker: self.wallet_tracker.to_config(&self.address_book),
+            combined_portfolio: self.combined_portfolio.to_config(),
             wallet_clusters: self.wallet_clusters.to_config(),
             address_book: self.address_book_config(),
             active_theme: layout_snapshot.active_theme,

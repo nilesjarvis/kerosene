@@ -16,6 +16,7 @@ impl TradingTerminal {
             UpdateRoute::PaneInteractions => self.update_pane_interactions(message),
             UpdateRoute::Panes => self.update_panes(message),
             UpdateRoute::Chrome => self.update_chrome(message),
+            UpdateRoute::CombinedPortfolio => self.update_combined_portfolio(message),
             UpdateRoute::Order => self.update_order(message),
             UpdateRoute::Market => self.update_market(message),
             UpdateRoute::Preferences => self.update_preferences(message),

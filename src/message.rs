@@ -327,6 +327,33 @@ impl RedactedWalletTrackerBatch {
     }
 }
 
+#[derive(Clone)]
+pub(crate) struct RedactedPortfolioHistoryResult(Box<Result<PortfolioHistory, String>>);
+
+impl RedactedPortfolioHistoryResult {
+    pub(crate) fn into_result(self) -> Result<PortfolioHistory, String> {
+        *self.0
+    }
+}
+
+impl From<Result<PortfolioHistory, String>> for RedactedPortfolioHistoryResult {
+    fn from(value: Result<PortfolioHistory, String>) -> Self {
+        Self(Box::new(value))
+    }
+}
+
+impl fmt::Debug for RedactedPortfolioHistoryResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(history) => f
+                .debug_struct("PortfolioHistory")
+                .field("buckets", &history.buckets.len())
+                .finish(),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 impl From<Vec<(String, Result<WalletTrackerSnapshot, String>)>> for RedactedWalletTrackerBatch {
     fn from(value: Vec<(String, Result<WalletTrackerSnapshot, String>)>) -> Self {
         Self(value)
@@ -864,6 +891,15 @@ pub(crate) enum Message {
     AlfredSubmit,
     AlfredCommandSelected(AlfredCommandId),
     OpenWalletTrackerWindow,
+    OpenCombinedPortfolioWindow,
+    CombinedPortfolioAddressChanged(RedactedAddress),
+    CombinedPortfolioLabelChanged(RedactedAddress),
+    CombinedPortfolioAddWallet,
+    CombinedPortfolioRemoveWallet(RedactedAddress),
+    CombinedPortfolioRefresh,
+    CombinedPortfolioLoaded(RedactedAddress, u64, RedactedPortfolioHistoryResult),
+    CombinedPortfolioScopeChanged(PortfolioScope),
+    CombinedPortfolioWindowChanged(PortfolioWindow),
     OpenWalletClustersWindow,
     WalletClusterNameInputChanged(String),
     WalletClusterCreate,
@@ -1912,6 +1948,14 @@ mod tests {
                 ADDRESS.into(),
                 1,
                 Box::new(Err("portfolio failed".to_string())),
+            ),
+            Message::CombinedPortfolioAddressChanged(ADDRESS.into()),
+            Message::CombinedPortfolioLabelChanged(ADDRESS.into()),
+            Message::CombinedPortfolioRemoveWallet(ADDRESS.into()),
+            Message::CombinedPortfolioLoaded(
+                ADDRESS.into(),
+                1,
+                Err("combined portfolio failed".to_string()).into(),
             ),
             Message::IncomeLoaded(
                 ADDRESS.into(),

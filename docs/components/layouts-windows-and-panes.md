@@ -220,6 +220,7 @@ Kerosene is an iced daemon app, so the runtime can render more than one window.
 - settings
 - screener
 - journal
+- combined portfolio
 - wallet tracker
 - wallet details
 - TWAP details
@@ -230,6 +231,11 @@ Kerosene is an iced daemon app, so the runtime can render more than one window.
 
 `window_title` mirrors this routing and creates context-specific titles such as
 `Kerosene TWAP #...` or `Kerosene Chart - HYPE 1h`.
+
+The Combined Portfolio window is a separate watch-only surface. It persists its
+own wallet list and geometry, fetches each wallet's portfolio history in
+parallel, and aligns the cumulative PnL series by timestamp before rendering an
+aggregate. It does not change the active trading account or access agent keys.
 
 `window_update.rs` owns size, move, close, and open-window state. When opening a
 new window, the update module should store the returned `window::Id` in the

@@ -39,6 +39,15 @@ impl TradingTerminal {
                 &["wallet", "tracker", "addresses", "window", "open"],
             ),
             AlfredCommand::new(
+                AlfredCommandId::OpenCombinedPortfolioWindow,
+                "Combined Portfolio",
+                "Combine PnL history across several wallets",
+                open_tag(self.combined_portfolio.window_id.is_some(), "Window"),
+                AlfredCommandKind::OpenWindow,
+                Some(Message::OpenCombinedPortfolioWindow),
+                &["combined", "portfolio", "wallets", "pnl", "window", "open"],
+            ),
+            AlfredCommand::new(
                 AlfredCommandId::OpenWalletClustersWindow,
                 "Wallet Clusters Window",
                 "Open wallet clusters window",

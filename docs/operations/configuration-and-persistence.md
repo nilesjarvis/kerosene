@@ -51,7 +51,7 @@ Related storage:
 - active symbol and order defaults
 - UI scale, pane chrome, fonts, themes, chart display preferences
 - accounts, active account index, hidden positions
-- wallet tracker, wallet clusters, and address book
+- wallet tracker, Combined Portfolio, wallet clusters, and address book
 - favourites, muted tickers, market universe, denomination
 - feed and notification preferences
 - Telegram/X channel/source lists
@@ -84,6 +84,8 @@ Important snapshot behavior:
   `x_refresh_token` are written as empty values.
 - Wallet cluster config stores cluster names, selected cluster/window state, and
   account profile secret-id references, not private agent keys.
+- Combined Portfolio stores only watch-only addresses, optional labels, open
+  state, and window geometry. Fetched portfolio histories remain runtime-only.
 - Read-data provider controls the persisted chart backfill source.
 - Widget configs come from layout/widget snapshot helpers, not direct runtime
   maps.

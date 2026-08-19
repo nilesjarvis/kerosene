@@ -9,7 +9,9 @@ use super::panes::{
 use super::screenshot::ChartScreenshotSettingsConfig;
 use super::secrets::EncryptedSecretsConfig;
 use super::themes::{CustomThemeConfig, default_custom_themes, default_theme};
-use super::wallets::{AddressBookEntryConfig, WalletClustersConfig, WalletTrackerConfig};
+use super::wallets::{
+    AddressBookEntryConfig, CombinedPortfolioConfig, WalletClustersConfig, WalletTrackerConfig,
+};
 use super::{CustomFontConfig, DisplayFontConfig};
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::journal::JournalNote;
@@ -410,6 +412,9 @@ pub struct KeroseneConfig {
     /// Wallet tracker window state.
     #[serde(default)]
     pub wallet_tracker: WalletTrackerConfig,
+    /// Watch-only combined portfolio wallet list and window state.
+    #[serde(default)]
+    pub combined_portfolio: CombinedPortfolioConfig,
     /// Tradable wallet clusters and cluster window state.
     #[serde(default)]
     pub wallet_clusters: WalletClustersConfig,

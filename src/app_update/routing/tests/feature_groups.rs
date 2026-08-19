@@ -139,6 +139,14 @@ fn journal_spaghetti_and_wallet_tracker_routes_stay_on_feature_modules() {
 
     assert_route(Message::OpenWalletTrackerWindow, UpdateRoute::WalletTracker);
     assert_route(
+        Message::OpenCombinedPortfolioWindow,
+        UpdateRoute::CombinedPortfolio,
+    );
+    assert_route(
+        Message::CombinedPortfolioWindowChanged(crate::portfolio_state::PortfolioWindow::AllTime),
+        UpdateRoute::CombinedPortfolio,
+    );
+    assert_route(
         Message::OpenWalletClustersWindow,
         UpdateRoute::WalletCluster,
     );

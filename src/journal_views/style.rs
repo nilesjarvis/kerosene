@@ -3,7 +3,7 @@ use iced::widget::{button, rule, text_input};
 use iced::{Border, Color, Theme};
 
 /// Hairline rule styling (used for section dividers and KPI/cell separators).
-pub(super) fn journal_rule_style(theme: &Theme) -> rule::Style {
+pub(crate) fn journal_rule_style(theme: &Theme) -> rule::Style {
     rule::Style {
         color: journal_hairline(theme),
         radius: 0.0.into(),
@@ -21,7 +21,7 @@ pub(super) fn journal_rule_style(theme: &Theme) -> rule::Style {
 // ---------------------------------------------------------------------------
 
 // Geometry (3px chips, 4px buttons, 5px primary buttons, 6px cards/panels).
-pub(super) const JOURNAL_CHIP_RADIUS: f32 = 3.0;
+pub(crate) const JOURNAL_CHIP_RADIUS: f32 = 3.0;
 pub(super) const JOURNAL_BUTTON_RADIUS: f32 = 4.0;
 pub(super) const JOURNAL_PRIMARY_RADIUS: f32 = 5.0;
 pub(super) const JOURNAL_CARD_RADIUS: f32 = 6.0;
@@ -29,7 +29,7 @@ pub(super) const JOURNAL_CARD_RADIUS: f32 = 6.0;
 // ---- Palette helpers ----
 
 /// Hairline rule / border tint (light at ~10% alpha).
-pub(super) fn journal_hairline(theme: &Theme) -> Color {
+pub(crate) fn journal_hairline(theme: &Theme) -> Color {
     Color {
         a: 0.10,
         ..theme.palette().text
@@ -45,7 +45,7 @@ pub(super) fn journal_accent_focus(theme: &Theme) -> Color {
 }
 
 /// Soft, lifted variant of the accent for active segment text.
-pub(super) fn journal_accent_soft(theme: &Theme) -> Color {
+pub(crate) fn journal_accent_soft(theme: &Theme) -> Color {
     lighten(theme.palette().primary, 0.34)
 }
 
@@ -65,12 +65,12 @@ pub(super) fn journal_surface_sunken(theme: &Theme) -> Color {
 }
 
 /// Muted label text.
-pub(super) fn journal_muted(theme: &Theme) -> Color {
+pub(crate) fn journal_muted(theme: &Theme) -> Color {
     theme.extended_palette().background.weak.text
 }
 
 /// Dimmer text for sub-lines.
-pub(super) fn journal_dim(theme: &Theme) -> Color {
+pub(crate) fn journal_dim(theme: &Theme) -> Color {
     Color {
         a: 0.68,
         ..journal_muted(theme)
@@ -98,7 +98,7 @@ fn darken(color: Color, t: f32) -> Color {
 }
 
 /// Shared flat panel chrome for summary blocks.
-pub(super) fn journal_panel_style(theme: &Theme) -> container_style::Style {
+pub(crate) fn journal_panel_style(theme: &Theme) -> container_style::Style {
     let mut border_color = theme.extended_palette().background.strong.text;
     border_color.a = 0.10;
 
@@ -116,7 +116,7 @@ pub(super) fn journal_panel_style(theme: &Theme) -> container_style::Style {
 pub(super) const JOURNAL_PANEL_RADIUS: f32 = 0.0;
 pub(super) const JOURNAL_PANEL_PADDING: [u16; 2] = [12, 12];
 
-pub(super) fn journal_text_input_style(
+pub(crate) fn journal_text_input_style(
     theme: &Theme,
     status: text_input::Status,
 ) -> text_input::Style {
@@ -128,7 +128,7 @@ pub(super) fn journal_text_input_style(
 // ---- Container surfaces ----
 
 /// Full-bleed window background for the journal root.
-pub(super) fn journal_window_style(theme: &Theme) -> container_style::Style {
+pub(crate) fn journal_window_style(theme: &Theme) -> container_style::Style {
     container_style::Style {
         background: Some(theme.palette().background.into()),
         ..Default::default()
@@ -136,7 +136,7 @@ pub(super) fn journal_window_style(theme: &Theme) -> container_style::Style {
 }
 
 /// Rounded, hairline-bordered card used for cockpit and detail panels.
-pub(super) fn journal_card_style(theme: &Theme) -> container_style::Style {
+pub(crate) fn journal_card_style(theme: &Theme) -> container_style::Style {
     container_style::Style {
         background: Some(journal_surface_panel(theme).into()),
         border: Border {
@@ -149,7 +149,7 @@ pub(super) fn journal_card_style(theme: &Theme) -> container_style::Style {
 }
 
 /// Status/side chip: tinted fill + tinted border, small radius.
-pub(super) fn journal_chip_style(tint: Color) -> impl Fn(&Theme) -> container_style::Style {
+pub(crate) fn journal_chip_style(tint: Color) -> impl Fn(&Theme) -> container_style::Style {
     move |_theme: &Theme| container_style::Style {
         background: Some(Color { a: 0.14, ..tint }.into()),
         text_color: Some(tint),
@@ -179,7 +179,7 @@ pub(super) fn journal_monogram_style(theme: &Theme) -> container_style::Style {
 // ---- Buttons ----
 
 /// Segmented toolbar/timeframe control: orange outline + faint fill when active.
-pub(super) fn journal_segment_style(
+pub(crate) fn journal_segment_style(
     active: bool,
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme: &Theme, status| {
@@ -230,7 +230,7 @@ pub(super) fn journal_segment_style(
 }
 
 /// Filled accent button (Save reflection): orange fill, ink-on-orange text.
-pub(super) fn journal_primary_button_style(theme: &Theme, status: button::Status) -> button::Style {
+pub(crate) fn journal_primary_button_style(theme: &Theme, status: button::Status) -> button::Style {
     let palette = theme.palette();
     let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
     let background = if hovered {
@@ -252,7 +252,7 @@ pub(super) fn journal_primary_button_style(theme: &Theme, status: button::Status
 }
 
 /// Quiet ghost button for the detail-pane "← Overview" control.
-pub(super) fn journal_ghost_button_style(theme: &Theme, status: button::Status) -> button::Style {
+pub(crate) fn journal_ghost_button_style(theme: &Theme, status: button::Status) -> button::Style {
     let palette = theme.palette();
     let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
     button::Style {

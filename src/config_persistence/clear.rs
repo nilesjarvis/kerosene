@@ -328,6 +328,7 @@ impl TradingTerminal {
             .copied()
             .collect::<Vec<_>>();
         let wallet_clusters_window_id = self.wallet_clusters.window_id;
+        let combined_portfolio_window_id = self.combined_portfolio.window_id;
         self.wallet_detail_windows.clear();
         self.wallet_clusters =
             crate::wallet_cluster_state::WalletClusterState::from_config(&defaults.wallet_clusters);
@@ -338,6 +339,9 @@ impl TradingTerminal {
         self.wallet_tracker.rows.clear();
         self.wallet_tracker.core_refresh_queue.clear();
         self.wallet_tracker.order_refresh_queue.clear();
+        self.combined_portfolio = crate::combined_portfolio::CombinedPortfolioState::from_config(
+            &defaults.combined_portfolio,
+        );
         self.address_book.clear();
         self.journal.active_account_key = self.active_journal_account_key();
         self.journal.account_states.clear();
@@ -468,6 +472,11 @@ impl TradingTerminal {
                 )
                 .chain(
                     wallet_clusters_window_id
+                        .into_iter()
+                        .map(iced::window::close),
+                )
+                .chain(
+                    combined_portfolio_window_id
                         .into_iter()
                         .map(iced::window::close),
                 ),

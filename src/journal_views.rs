@@ -3,7 +3,7 @@ mod chrome;
 mod cockpit;
 mod detail;
 mod status;
-mod style;
+pub(crate) mod style;
 mod summary;
 mod trade_card;
 mod trade_list;

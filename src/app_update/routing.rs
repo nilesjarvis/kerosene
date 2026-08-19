@@ -15,6 +15,7 @@ pub(super) enum UpdateRoute {
     Chart,
     ChartScreenshot,
     Chrome,
+    CombinedPortfolio,
     Feed,
     Hyperdash,
     Journal,
@@ -472,6 +473,16 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WalletClusterClosePosition { .. }
         | Message::WalletClusterOrderResult { .. }
         | Message::WalletClusterOrderStatusLoaded { .. } => UpdateRoute::WalletCluster,
+
+        Message::OpenCombinedPortfolioWindow
+        | Message::CombinedPortfolioAddressChanged(_)
+        | Message::CombinedPortfolioLabelChanged(_)
+        | Message::CombinedPortfolioAddWallet
+        | Message::CombinedPortfolioRemoveWallet(_)
+        | Message::CombinedPortfolioRefresh
+        | Message::CombinedPortfolioLoaded(_, _, _)
+        | Message::CombinedPortfolioScopeChanged(_)
+        | Message::CombinedPortfolioWindowChanged(_) => UpdateRoute::CombinedPortfolio,
 
         Message::OpenWalletTrackerWindow
         | Message::OpenWalletDetailsWindow(_)

@@ -4,6 +4,7 @@ use crate::app_state::TradingTerminal;
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::canvas_state::{CanvasState, WorkspaceId};
 use crate::chart_state::{ChartId, ChartInstance};
+use crate::combined_portfolio::CombinedPortfolioState;
 use crate::config::{self, KeroseneConfig};
 use crate::journal;
 use crate::market_state::{SymbolSearchMarketFilter, SymbolSearchSortMode};
@@ -426,6 +427,7 @@ impl TradingTerminal {
                 .zip(cfg.main_window_y)
                 .map(|(x, y)| iced::Point::new(x, y)),
             wallet_tracker: parts.wallet_tracker,
+            combined_portfolio: CombinedPortfolioState::from_config(&cfg.combined_portfolio),
             wallet_clusters: WalletClusterState::from_config(&cfg.wallet_clusters),
             wallet_detail_windows: HashMap::new(),
             address_book: parts.address_book,

@@ -10,6 +10,7 @@ use crate::canvas_state::{CanvasId, CanvasState, WorkspaceId};
 use crate::chart::ChartViewport;
 use crate::chart_screenshot::ChartScreenshotState;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId, DetachedChartWindowState};
+use crate::combined_portfolio::CombinedPortfolioState;
 use crate::hype_etf_state::HypeEtfState;
 use crate::hype_unstaking_state::HypeUnstakingQueueState;
 use crate::hyperdash_api::LiquidationHeatmap;
@@ -588,6 +589,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) main_window_size: Option<iced::Size>,
     pub(crate) main_window_pos: Option<iced::Point>,
     pub(crate) wallet_tracker: WalletTrackerState,
+    pub(crate) combined_portfolio: CombinedPortfolioState,
     pub(crate) wallet_clusters: WalletClusterState,
     pub(crate) wallet_detail_windows: HashMap<window::Id, WalletDetailsWindowState>,
     pub(crate) address_book: HashMap<String, AddressBookEntry>,

@@ -15,6 +15,7 @@ views.
 | Wallet tracker | `src/wallet_state/`, `src/wallet_update/`, `src/wallet_views/` | Watch-only tracked wallets, address book, detail windows, snapshot refreshes. |
 | Wallet clusters | `src/wallet_cluster_state.rs`, `src/wallet_cluster_update.rs`, `src/wallet_cluster_views.rs` | Saved groups of trading profiles, aggregate positions, and split order submission. |
 | Portfolio | `src/portfolio_state/`, `src/portfolio_update.rs` | Portfolio history, PnL charts, income state and refreshes. |
+| Combined portfolio | `src/combined_portfolio.rs`, `src/combined_portfolio_update.rs`, `src/combined_portfolio_views.rs` | Watch-only multi-wallet portfolio history, aggregate PnL, and its standalone window. |
 | Analytics and metrics | `src/account_analytics/`, `src/account_metrics.rs`, `src/pnl_card/` | Portfolio/income HTTP fetches, position metrics, exportable PnL cards. |
 | User streams | `src/ws/user_streams/`, `src/subscription_state/user_data.rs` | Mids, fills, orders, positions, balances, and account updates. |
 
@@ -218,6 +219,25 @@ balances and token-0 maintenance availability. If any material held balance
 cannot be priced, the headline value is unavailable instead of showing a
 plausible but incomplete number; row-level values and PnL likewise preserve an
 explicit unavailable state.
+
+## Combined Portfolio
+
+Combined Portfolio is an auxiliary watch-only window for viewing several
+wallets as one portfolio. Its wallet membership, labels, open state, and window
+geometry are persisted independently from Wallet Tracker. Opening or refreshing
+the window requests the public portfolio-history endpoint for every member in
+parallel.
+
+The combined chart normalizes each wallet's selected cumulative PnL series to
+its own period baseline, aligns the series on their union of timestamps, and
+carries each wallet's latest sample forward. The headline PnL is the sum of the
+individual period changes, while combined account value is the sum of the
+latest available account-value samples. Failed wallets stay visible as stale
+rows and do not hide successfully loaded results.
+
+This feature never reads or stores agent keys and never changes the active
+trading account. Per-wallet Details actions reuse the existing watch-only wallet
+detail window.
 
 ## Wallet Clusters
 

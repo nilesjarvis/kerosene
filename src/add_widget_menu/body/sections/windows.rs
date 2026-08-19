@@ -43,6 +43,17 @@ pub(in crate::add_widget_menu::body) fn add_window_section(
             theme,
         ))
         .push(menu_item(
+            "Combined Portfolio",
+            if context.combined_portfolio_open {
+                "Open"
+            } else {
+                "Window"
+            },
+            Some(Message::OpenCombinedPortfolioWindow),
+            true,
+            theme,
+        ))
+        .push(menu_item(
             "Wallet Clusters",
             if context.wallet_clusters_open {
                 "Open"

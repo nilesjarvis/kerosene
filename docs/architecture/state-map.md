@@ -206,6 +206,7 @@ Representative fields:
 - account loading/error/backoff/reconciliation status
 - hidden positions, positions sorting, PnL privacy, account picker state
 - wallet tracker and wallet detail windows
+- `combined_portfolio` wallet membership, request state, history, and window geometry
 - `wallet_clusters` runtime/window state and selected cluster member snapshots
 - portfolio and income state
 - account analytics snapshots
@@ -222,6 +223,9 @@ Primary modules:
 - `wallet_cluster_state.rs`
 - `wallet_cluster_update.rs`
 - `wallet_cluster_views.rs`
+- `combined_portfolio.rs`
+- `combined_portfolio_update.rs`
+- `combined_portfolio_views.rs`
 - `portfolio_state/`
 - `portfolio_update.rs`
 - `account_analytics/`
@@ -231,7 +235,8 @@ Primary modules:
 Persisted through:
 
 - account profile metadata and secret IDs
-- wallet address, labels, tracker entries, wallet cluster definitions, hidden positions
+- wallet address, labels, tracker entries, Combined Portfolio members, wallet
+  cluster definitions, hidden positions
 - portfolio/income alert toggles
 - PnL card preferences per window where applicable
 

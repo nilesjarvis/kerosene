@@ -53,6 +53,7 @@ Current route groups:
 | `Chart` | `chart_update.rs` | Chart symbol/timeframe/editing, candle/funding data, HUD, overlays, detached charts. |
 | `ChartScreenshot` | `chart_screenshot/update.rs` | Screenshot capture, bitmap output, screenshot window lifecycle. |
 | `Chrome` | `chrome_update.rs` | Toasts, status bar, sound toggles, top-level UI cleanup. |
+| `CombinedPortfolio` | `combined_portfolio_update.rs` | Watch-only multi-wallet history fetches, membership, filters, and window lifecycle. |
 | `Feed` | `feed_update.rs` | Hydromancer liquidation/tracked-trade feeds, Telegram, X. |
 | `Hyperdash` | `hyperdash_update.rs` | HyperDash key, liquidation overlays, heatmap, liquidation distribution. |
 | `Journal` | `journal_update.rs` | Fill loading, cache, notes, chart snapshots, journal window. |
