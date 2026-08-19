@@ -123,4 +123,13 @@ impl TradingTerminal {
             .filter(|symbol| self.hyperdash_coin_for_symbol(symbol).is_some())
             .unwrap_or_else(|| "HYPE".to_string())
     }
+
+    pub(crate) fn retained_positioning_symbol(&self, candidate: &str) -> String {
+        let candidate = candidate.trim();
+        if !candidate.is_empty() && !self.is_ticker_muted(candidate) {
+            candidate.to_string()
+        } else {
+            self.visible_positioning_symbol("")
+        }
+    }
 }

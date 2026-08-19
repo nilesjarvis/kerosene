@@ -640,7 +640,7 @@ impl TradingTerminal {
                 self.refresh_spaghetti_series_displays();
                 tasks.push(self.reconcile_session_data_symbols());
                 tasks.push(self.refresh_enabled_earnings_charts());
-                tasks.push(self.scrub_hidden_symbol_state());
+                tasks.push(self.reconcile_market_universe_state());
                 self.refresh_symbol_search_results();
                 self.refresh_live_watchlist_row_caches();
                 tasks.push(self.request_symbol_search_context_refresh(false));

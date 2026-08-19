@@ -19,7 +19,7 @@ impl TradingTerminal {
         self.next_positioning_info_id = 0;
 
         for config in &layout.positioning_infos {
-            let symbol = self.visible_positioning_symbol(&config.symbol);
+            let symbol = self.retained_positioning_symbol(&config.symbol);
             let mut instance = PositioningInfoInstance::new(config.id, symbol);
             instance.page = config.page;
             instance.side = config.side;

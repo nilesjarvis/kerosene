@@ -170,6 +170,11 @@ Risk preferences feed into symbol search, account views, market widgets, and
 order automation. Hidden/muted symbols should be filtered before subscriptions,
 rows, or trading automation are created.
 
+Market-universe selection is a reversible visibility filter. It must not remove
+favourites, fixed widget symbols, comparison series, or their saved-layout
+configuration; those items become visible and reload when the universe is
+widened again. Muting remains the destructive risk-control path for a ticker.
+
 ## Read Data Provider
 
 `ReadDataProvider` controls whether read paths use Hyperliquid or Hydromancer

@@ -24,7 +24,7 @@ impl TradingTerminal {
     pub(crate) fn favourite_symbols_config_values(&self) -> Vec<String> {
         self.favourite_symbols
             .iter()
-            .filter(|symbol| !self.symbol_key_is_hidden(symbol))
+            .filter(|symbol| !self.is_ticker_muted(symbol))
             .cloned()
             .collect()
     }
@@ -35,7 +35,7 @@ impl TradingTerminal {
 
     pub(crate) fn liquidation_distribution_symbol_config_value(&self) -> String {
         let symbol = self.liquidation_distribution.symbol.trim();
-        if symbol.is_empty() || self.symbol_key_is_hidden(symbol) {
+        if symbol.is_empty() || self.is_ticker_muted(symbol) {
             String::new()
         } else {
             symbol.to_string()

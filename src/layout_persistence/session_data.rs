@@ -18,7 +18,7 @@ impl TradingTerminal {
         self.next_session_data_id = 0;
 
         for config in &layout.session_data {
-            let symbol = self.visible_session_data_symbol(&config.symbol);
+            let symbol = self.retained_session_data_symbol(&config.symbol);
             self.session_data.insert(
                 config.id,
                 SessionDataInstance::new(config.id, symbol, config.lookback),

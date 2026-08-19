@@ -34,44 +34,29 @@ impl TradingTerminal {
     }
 
     pub(crate) fn scrub_muted_ticker_state(&mut self) -> Task<Message> {
-        self.scrub_hidden_symbol_state()
-    }
-
-    pub(crate) fn scrub_hidden_symbol_state(&mut self) -> Task<Message> {
         let exchange_symbols = self.exchange_symbols.clone();
         let muted_tickers = self.muted_tickers.clone();
-        let market_universe = self.market_universe.clone();
         let denomination_rate_key = self.display_denomination_rate_symbol_key();
-        let is_hidden = |symbol: &str| {
-            Self::symbol_key_is_hidden_with(
-                &exchange_symbols,
-                &muted_tickers,
-                &market_universe,
-                symbol,
-            )
+        let is_muted = |symbol: &str| {
+            Self::key_matches_muted_tickers(&exchange_symbols, &muted_tickers, symbol)
         };
         let is_hidden_cache = |symbol: &str| {
             denomination_rate_key.as_deref() != Some(symbol)
-                && Self::symbol_key_is_hidden_with(
-                    &exchange_symbols,
-                    &muted_tickers,
-                    &market_universe,
-                    symbol,
-                )
+                && Self::key_matches_muted_tickers(&exchange_symbols, &muted_tickers, symbol)
         };
 
-        self.favourite_symbols.retain(|symbol| !is_hidden(symbol));
+        self.favourite_symbols.retain(|symbol| !is_muted(symbol));
         for watchlist in self.live_watchlists.values_mut() {
-            watchlist.symbols.retain(|symbol| !is_hidden(symbol));
+            watchlist.symbols.retain(|symbol| !is_muted(symbol));
         }
         self.symbol_search_ctxs
-            .retain(|symbol, _| !is_hidden(symbol));
+            .retain(|symbol, _| !is_muted(symbol));
         self.live_watchlist_ctxs
-            .retain(|symbol, _| !is_hidden(symbol));
+            .retain(|symbol, _| !is_muted(symbol));
         self.live_watchlist_history
-            .retain(|symbol, _| !is_hidden(symbol));
+            .retain(|symbol, _| !is_muted(symbol));
         self.live_watchlist_history_loaded_at
-            .retain(|symbol, _| !is_hidden(symbol));
+            .retain(|symbol, _| !is_muted(symbol));
         self.all_mids.retain(|symbol, _| !is_hidden_cache(symbol));
         self.all_mids_updated_at_ms
             .retain(|symbol, _| !is_hidden_cache(symbol));
@@ -86,13 +71,13 @@ impl TradingTerminal {
                 state.data = Some(Self::filter_wallet_details_for_hidden_symbols_with(
                     &exchange_symbols,
                     &muted_tickers,
-                    &market_universe,
+                    &crate::config::MarketUniverseConfig::All,
                     data,
                 ));
             }
         }
 
-        self.tracked_trades.retain(|trade| !is_hidden(&trade.coin));
+        self.tracked_trades.retain(|trade| !is_muted(&trade.coin));
         self.tracked_trade_seen_keys.clear();
         self.tracked_trade_seen_order.clear();
         let remaining_trades: Vec<_> = self.tracked_trades.iter().cloned().collect();
@@ -100,10 +85,10 @@ impl TradingTerminal {
             let _ = self.remember_tracked_trade_event(trade);
         }
 
-        self.liquidations.retain(|liq| !is_hidden(&liq.coin));
+        self.liquidations.retain(|liq| !is_muted(&liq.coin));
         self.recompute_liquidation_buckets();
 
-        if self.close_menu_coin.as_deref().is_some_and(&is_hidden) {
+        if self.close_menu_coin.as_deref().is_some_and(&is_muted) {
             self.close_menu_coin = None;
         }
 
@@ -119,7 +104,7 @@ impl TradingTerminal {
                 OrderBookSymbolMode::Active => self.active_symbol.clone(),
                 OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
             };
-            if is_hidden(&symbol) {
+            if is_muted(&symbol) {
                 let was_fixed = matches!(order_book.mode, OrderBookSymbolMode::Fixed(_));
                 order_book.mode = OrderBookSymbolMode::Active;
                 order_book.set_book(OrderBook::empty());
@@ -139,7 +124,7 @@ impl TradingTerminal {
             .charts
             .iter()
             .filter_map(|(id, instance)| {
-                (!instance.symbol.is_empty() && is_hidden(&instance.symbol)).then_some(*id)
+                (!instance.symbol.is_empty() && is_muted(&instance.symbol)).then_some(*id)
             })
             .collect::<Vec<_>>();
         for chart_id in hidden_chart_ids {
@@ -154,7 +139,7 @@ impl TradingTerminal {
             if instance
                 .secondary_symbol
                 .as_ref()
-                .is_some_and(|symbol| is_hidden(symbol))
+                .is_some_and(|symbol| is_muted(symbol))
             {
                 instance.clear_secondary_symbol();
             }
@@ -163,14 +148,14 @@ impl TradingTerminal {
         for inst in self.spaghetti_charts.values_mut() {
             inst.canvas
                 .series
-                .retain(|series| !is_hidden(&series.symbol));
+                .retain(|series| !is_muted(&series.symbol));
             inst.editor_search_query.clear();
         }
 
         let mut session_data_refresh_ids = Vec::new();
         let fallback_session_symbol = self.visible_session_data_symbol("");
         for inst in self.session_data.values_mut() {
-            if !inst.symbol.is_empty() && is_hidden(&inst.symbol) {
+            if !inst.symbol.is_empty() && is_muted(&inst.symbol) {
                 inst.symbol = fallback_session_symbol.clone();
                 inst.search_query.clear();
                 inst.symbol_picker_open = false;
@@ -180,8 +165,8 @@ impl TradingTerminal {
         }
 
         self.refresh_live_watchlist_row_caches();
-        // A muted ticker or a narrowed market universe changes which Telegram
-        // mentions are orderable, so re-resolve stored posts (no-op when empty).
+        // A muted ticker changes which Telegram mentions are orderable, so
+        // re-resolve stored posts (no-op when empty).
         self.refresh_telegram_ticker_mentions();
 
         let mut tasks = session_data_refresh_ids
@@ -189,7 +174,60 @@ impl TradingTerminal {
             .map(|id| self.request_session_data_refresh(id, true))
             .collect::<Vec<_>>();
 
-        if !self.active_symbol.is_empty() && is_hidden(&self.active_symbol) {
+        if !self.active_symbol.is_empty() && is_muted(&self.active_symbol) {
+            if let Some(fallback) = self.fallback_unmuted_symbol_key() {
+                tasks.push(self.switch_active_symbol_internal(fallback));
+            } else {
+                self.apply_active_symbol_selection(String::new(), String::new());
+                self.order_status = Some(("No visible market symbols are available".into(), true));
+            }
+        }
+
+        Task::batch(tasks)
+    }
+
+    /// Reconcile runtime-only state after changing the selected market universe.
+    ///
+    /// A market-universe selection is a reversible filter, unlike muting a ticker.
+    /// Keep user configuration (favourites, fixed widget symbols, and comparison
+    /// series) intact so it becomes visible again when the filter is widened.
+    pub(crate) fn reconcile_market_universe_state(&mut self) -> Task<Message> {
+        if self.connected_order_account_snapshot().is_some() {
+            self.sync_all_chart_overlays();
+        }
+
+        if self
+            .close_menu_coin
+            .as_deref()
+            .is_some_and(|symbol| self.symbol_key_is_hidden(symbol))
+        {
+            self.close_menu_coin = None;
+        }
+
+        self.refresh_live_watchlist_row_caches();
+        self.refresh_telegram_ticker_mentions();
+
+        let mut tasks = vec![
+            self.order_book_fetch_tasks_for_all(),
+            self.request_positioning_info_refresh_all(true),
+            self.request_session_data_refresh_all(true),
+        ];
+
+        tasks.extend(
+            self.charts
+                .iter()
+                .filter(|(_, instance)| {
+                    !instance.symbol.is_empty() && !self.symbol_key_is_hidden(&instance.symbol)
+                })
+                .map(|(id, _)| Task::done(Message::ChartReload(*id))),
+        );
+        tasks.extend(
+            self.spaghetti_charts
+                .keys()
+                .map(|id| Task::done(Message::SpaghettiReload(*id))),
+        );
+
+        if !self.active_symbol.is_empty() && self.symbol_key_is_hidden(&self.active_symbol) {
             if let Some(fallback) = self.fallback_unmuted_symbol_key() {
                 tasks.push(self.switch_active_symbol_internal(fallback));
             } else {
@@ -296,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn scrub_hidden_symbol_state_refreshes_session_data_when_active_symbol_changes() {
+    fn scrub_muted_ticker_state_refreshes_session_data_when_active_symbol_changes() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.active_symbol = "HYPE".to_string();
         terminal.exchange_symbols = vec![perp_symbol("HYPE"), perp_symbol("BTC")];
@@ -316,7 +354,7 @@ mod tests {
             });
         }
 
-        let _task = terminal.scrub_hidden_symbol_state();
+        let _task = terminal.scrub_muted_ticker_state();
 
         let instance = terminal.session_data.get(&4).expect("session data");
         assert_eq!(instance.symbol, "BTC");
@@ -328,7 +366,7 @@ mod tests {
     }
 
     #[test]
-    fn scrub_hidden_symbol_state_clears_chart_identity_and_order_state() {
+    fn scrub_muted_ticker_state_clears_chart_identity_and_order_state() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.exchange_symbols = vec![perp_symbol("HYPE"), perp_symbol("BTC")];
         terminal.muted_tickers.insert("HYPE".to_string());
@@ -355,7 +393,7 @@ mod tests {
             .liquidation_pending_charts
             .insert("HYPE".to_string(), vec![7]);
 
-        let _task = terminal.scrub_hidden_symbol_state();
+        let _task = terminal.scrub_muted_ticker_state();
 
         let chart = terminal.charts.get(&7).expect("chart");
         assert_eq!(chart.symbol, "");
@@ -380,13 +418,13 @@ mod tests {
     }
 
     #[test]
-    fn scrub_hidden_symbol_state_keeps_hidden_account_positions() {
+    fn scrub_muted_ticker_state_keeps_hidden_account_positions() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.exchange_symbols = vec![perp_symbol("HYPE"), perp_symbol("BTC")];
         terminal.account_data = Some(account_data_with_position("HYPE"));
         terminal.muted_tickers.insert("HYPE".to_string());
 
-        let _task = terminal.scrub_hidden_symbol_state();
+        let _task = terminal.scrub_muted_ticker_state();
 
         let positions = &terminal
             .account_data

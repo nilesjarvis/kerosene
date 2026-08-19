@@ -271,13 +271,13 @@ impl TradingTerminal {
             else {
                 continue;
             };
-            let visible_symbol = self.visible_session_data_symbol(&current_symbol);
-            if visible_symbol == current_symbol {
+            let retained_symbol = self.retained_session_data_symbol(&current_symbol);
+            if retained_symbol == current_symbol {
                 continue;
             }
 
             if let Some(instance) = self.session_data.get_mut(&id) {
-                instance.symbol = visible_symbol;
+                instance.symbol = retained_symbol;
                 instance.search_query.clear();
                 instance.symbol_picker_open = false;
                 instance.clear_history();
@@ -320,6 +320,17 @@ impl TradingTerminal {
             .map(|symbol| symbol.key.clone())
             .or_else(|| self.fallback_unmuted_symbol_key())
             .unwrap_or_else(|| "HYPE".to_string())
+    }
+
+    pub(crate) fn retained_session_data_symbol(&self, candidate: &str) -> String {
+        let candidate = candidate.trim();
+        if let Some(candidate_key) = self.resolved_session_data_symbol_key(candidate)
+            && !self.is_ticker_muted(&candidate_key)
+        {
+            return candidate_key;
+        }
+
+        self.visible_session_data_symbol("")
     }
 
     pub(crate) fn session_data_symbol_is_supported(&self, symbol: &str) -> bool {

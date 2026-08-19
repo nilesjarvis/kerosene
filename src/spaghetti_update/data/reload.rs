@@ -41,6 +41,17 @@ impl TradingTerminal {
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
         let instance_epoch = self.spaghetti_instance_epoch;
+        let exchange_symbols = self.exchange_symbols.clone();
+        let muted_tickers = self.muted_tickers.clone();
+        let market_universe = self.market_universe.clone();
+        let is_hidden = |symbol: &str| {
+            Self::symbol_key_is_hidden_with(
+                &exchange_symbols,
+                &muted_tickers,
+                &market_universe,
+                symbol,
+            )
+        };
         let mut removed_cache_keys = Vec::new();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             Self::normalize_spaghetti_session_granularity(inst, Self::now_ms());
@@ -57,20 +68,22 @@ impl TradingTerminal {
                 series.candles.clear();
                 series.loaded = false;
 
-                tasks.push(Self::fetch_spaghetti_candles(
-                    id,
-                    instance_epoch,
-                    &series.symbol,
-                    inst.interval,
-                    inst.canvas.active_session,
-                    inst.session_granularity,
-                    ChartBackfillFetchContext::new(
-                        chart_backfill_source,
-                        read_data_provider_generation,
-                        hydromancer_generation,
-                        hydromancer_api_key.clone(),
-                    ),
-                ));
+                if !is_hidden(&series.symbol) {
+                    tasks.push(Self::fetch_spaghetti_candles(
+                        id,
+                        instance_epoch,
+                        &series.symbol,
+                        inst.interval,
+                        inst.canvas.active_session,
+                        inst.session_granularity,
+                        ChartBackfillFetchContext::new(
+                            chart_backfill_source,
+                            read_data_provider_generation,
+                            hydromancer_generation,
+                            hydromancer_api_key.clone(),
+                        ),
+                    ));
+                }
             }
             inst.canvas.cache.clear();
         }

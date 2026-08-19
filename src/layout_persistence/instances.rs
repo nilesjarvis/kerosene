@@ -82,7 +82,7 @@ impl TradingTerminal {
                     secondary_symbol.as_str() != requested_secondary.as_str();
                 let alias_collision = secondary_symbol == primary_symbol
                     && (primary_alias_canonicalized || secondary_alias_canonicalized);
-                if !alias_collision && !self.symbol_key_is_hidden(&secondary_symbol) {
+                if !alias_collision && !self.is_ticker_muted(&secondary_symbol) {
                     let display = self.display_name_for_symbol(&secondary_symbol);
                     instance.set_secondary_symbol_identity(secondary_symbol, display);
                 }
@@ -126,12 +126,13 @@ impl TradingTerminal {
                         &primary_symbol,
                     ));
                 }
-            } else if !primary_symbol.is_empty() {
+            } else if !primary_symbol.is_empty() && self.is_ticker_muted(&primary_symbol) {
                 Self::clear_chart_for_muted_symbol(&mut instance);
             }
             if let Some(symbol) = instance.secondary_symbol.clone()
                 && tf.uses_candle_backfill()
                 && symbol != "@0"
+                && !self.symbol_key_is_hidden(&symbol)
             {
                 let request = Self::build_candle_fetch_request(
                     id,
@@ -188,7 +189,7 @@ impl TradingTerminal {
             for sym_key in scfg
                 .symbols
                 .iter()
-                .filter(|sym_key| !self.symbol_key_is_hidden(sym_key))
+                .filter(|sym_key| !self.is_ticker_muted(sym_key))
             {
                 let canonical_key = self
                     .exchange_symbol_for_key(sym_key)
@@ -209,20 +210,22 @@ impl TradingTerminal {
                     color,
                     loaded: false,
                 });
-                boot_tasks.push(Self::fetch_spaghetti_candles(
-                    sid,
-                    self.spaghetti_instance_epoch,
-                    &canonical_key,
-                    tf,
-                    inst.canvas.active_session,
-                    inst.session_granularity,
-                    ChartBackfillFetchContext::new(
-                        self.chart_backfill_source,
-                        self.read_data_provider_generation,
-                        self.hydromancer_key_generation,
-                        self.hydromancer_api_key_for_task(),
-                    ),
-                ));
+                if !self.symbol_key_is_hidden(&canonical_key) {
+                    boot_tasks.push(Self::fetch_spaghetti_candles(
+                        sid,
+                        self.spaghetti_instance_epoch,
+                        &canonical_key,
+                        tf,
+                        inst.canvas.active_session,
+                        inst.session_granularity,
+                        ChartBackfillFetchContext::new(
+                            self.chart_backfill_source,
+                            self.read_data_provider_generation,
+                            self.hydromancer_key_generation,
+                            self.hydromancer_api_key_for_task(),
+                        ),
+                    ));
+                }
             }
 
             spaghetti_charts.insert(sid, inst);

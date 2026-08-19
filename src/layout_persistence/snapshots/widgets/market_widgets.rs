@@ -11,7 +11,7 @@ impl TradingTerminal {
                 mode: match &book.mode {
                     OrderBookSymbolMode::Active => config::OrderBookSymbolModeConfig::Active,
                     OrderBookSymbolMode::Fixed(symbol) => {
-                        if self.symbol_key_is_hidden(symbol) {
+                        if self.is_ticker_muted(symbol) {
                             config::OrderBookSymbolModeConfig::Active
                         } else {
                             config::OrderBookSymbolModeConfig::Fixed(symbol.clone())
@@ -46,7 +46,7 @@ impl TradingTerminal {
                 symbols: watchlist
                     .symbols
                     .iter()
-                    .filter(|symbol| !self.symbol_key_is_hidden(symbol))
+                    .filter(|symbol| !self.is_ticker_muted(symbol))
                     .cloned()
                     .collect(),
                 sort_column: watchlist.sort_column,
@@ -64,7 +64,7 @@ impl TradingTerminal {
             .map(|instance| config::PositioningInfoConfig {
                 id: instance.id,
                 page: instance.page,
-                symbol: if self.symbol_key_is_hidden(&instance.symbol) {
+                symbol: if self.is_ticker_muted(&instance.symbol) {
                     self.fallback_unmuted_symbol_key().unwrap_or_default()
                 } else {
                     instance.symbol.clone()
@@ -88,7 +88,7 @@ impl TradingTerminal {
             .into_iter()
             .map(|instance| config::SessionDataConfig {
                 id: instance.id,
-                symbol: if self.symbol_key_is_hidden(&instance.symbol) {
+                symbol: if self.is_ticker_muted(&instance.symbol) {
                     self.fallback_unmuted_symbol_key().unwrap_or_default()
                 } else {
                     instance.symbol.clone()

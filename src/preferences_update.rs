@@ -370,7 +370,7 @@ impl TradingTerminal {
                         false,
                     )
                 }));
-                let scrub_task = self.scrub_hidden_symbol_state();
+                let reconcile_task = self.reconcile_market_universe_state();
                 self.refresh_symbol_search_results();
                 self.refresh_live_watchlist_row_caches();
                 self.persist_config();
@@ -378,7 +378,7 @@ impl TradingTerminal {
                 return Task::batch([
                     stop_chase_task,
                     stop_twap_task,
-                    scrub_task,
+                    reconcile_task,
                     self.request_symbol_search_context_refresh(true),
                     self.request_live_watchlist_refresh(true),
                     self.request_screener_data_refresh(true),
@@ -482,7 +482,36 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::{ExchangeSymbol, MarketType};
+    use crate::chart_state::ChartInstance;
+    use crate::config::MarketUniverseConfig;
+    use crate::market_state::{LiveWatchlistInstance, OrderBookInstance, OrderBookSymbolMode};
+    use crate::positioning_state::PositioningInfoInstance;
+    use crate::session_data_state::{SessionDataInstance, SessionDataLookback};
+    use crate::spaghetti::Series;
+    use crate::spaghetti_state::SpaghettiChartInstance;
+    use crate::timeframe::Timeframe;
     use std::io::{Error, ErrorKind};
+
+    fn perp_symbol(key: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: key
+                .split_once(':')
+                .map_or(key, |(_, ticker)| ticker)
+                .to_string(),
+            category: "crypto".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: None,
+            sz_decimals: 2,
+            max_leverage: 50,
+            only_isolated: false,
+            market_type: MarketType::Perp,
+            outcome: None,
+        }
+    }
 
     #[test]
     fn missing_import_file_metadata_error_redacts_source_path() {
@@ -535,5 +564,119 @@ mod tests {
 
         assert!(!terminal.chart_hud_ui_sounds);
         assert!(terminal.config_save_due_at.is_some());
+    }
+
+    #[test]
+    fn market_universe_switch_preserves_favourites_and_comparison_configuration() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.market_universe = MarketUniverseConfig::All;
+        terminal.exchange_symbols = vec![
+            perp_symbol("HYPE"),
+            perp_symbol("BTC"),
+            perp_symbol("xyz:NVDA"),
+        ];
+        terminal.active_symbol = "HYPE".to_string();
+        terminal.favourite_symbols = vec!["HYPE".to_string(), "BTC".to_string()];
+
+        terminal.charts.clear();
+        let mut chart = ChartInstance::new(7, "HYPE".to_string(), Timeframe::H1);
+        chart.set_secondary_symbol_identity("BTC".to_string(), "BTC".to_string());
+        terminal.charts.insert(7, chart);
+
+        let mut comparison = SpaghettiChartInstance::new_empty(9);
+        comparison.canvas.series.push(Series {
+            symbol: "HYPE".to_string(),
+            display: "HYPE".to_string(),
+            candles: Vec::new(),
+            color: iced::Color::WHITE,
+            loaded: false,
+        });
+        terminal.spaghetti_charts.clear();
+        terminal.spaghetti_charts.insert(9, comparison);
+
+        terminal.live_watchlists.clear();
+        terminal.live_watchlists.insert(
+            11,
+            LiveWatchlistInstance {
+                id: 11,
+                symbols: vec!["HYPE".to_string(), "BTC".to_string()],
+                search_query: String::new(),
+                sort_column: Default::default(),
+                sort_direction: Default::default(),
+                visible_columns: crate::config::default_live_watchlist_columns(),
+                row_cache: Vec::new(),
+            },
+        );
+        terminal.order_books.clear();
+        terminal.order_books.insert(
+            12,
+            OrderBookInstance::new(12, OrderBookSymbolMode::Fixed("HYPE".to_string()), 0.01),
+        );
+        terminal.positioning_infos.clear();
+        terminal
+            .positioning_infos
+            .insert(13, PositioningInfoInstance::new(13, "HYPE".to_string()));
+        terminal.session_data.clear();
+        terminal.session_data.insert(
+            14,
+            SessionDataInstance::new(14, "HYPE".to_string(), SessionDataLookback::FourWeeks),
+        );
+
+        let _task = terminal.update_preferences(Message::MarketUniverseChanged(
+            MarketUniverseConfig::hip3_dex("xyz"),
+        ));
+
+        assert_eq!(terminal.favourite_symbols, ["HYPE", "BTC"]);
+        let chart = terminal.charts.get(&7).expect("comparison chart");
+        assert_eq!(chart.symbol, "HYPE");
+        assert_eq!(chart.secondary_symbol.as_deref(), Some("BTC"));
+        assert_eq!(
+            terminal.spaghetti_charts[&9].canvas.series[0].symbol,
+            "HYPE"
+        );
+        assert_eq!(terminal.live_watchlists[&11].symbols, ["HYPE", "BTC"]);
+        assert_eq!(
+            terminal.order_books[&12].mode,
+            OrderBookSymbolMode::Fixed("HYPE".to_string())
+        );
+        assert_eq!(terminal.positioning_infos[&13].symbol, "HYPE");
+        assert_eq!(terminal.session_data[&14].symbol, "HYPE");
+
+        // A config save while the narrower market is selected must not erase
+        // the temporarily filtered symbols either.
+        assert_eq!(terminal.favourite_symbols_config_values(), ["HYPE", "BTC"]);
+        let chart_config = terminal
+            .chart_configs_snapshot()
+            .into_iter()
+            .find(|config| config.id == 7)
+            .expect("chart config");
+        assert_eq!(chart_config.symbol, "HYPE");
+        assert_eq!(chart_config.secondary_symbol.as_deref(), Some("BTC"));
+        assert_eq!(
+            terminal.spaghetti_chart_configs_snapshot()[0].symbols,
+            ["HYPE"]
+        );
+        assert_eq!(
+            terminal.live_watchlist_configs_snapshot()[0].symbols,
+            ["HYPE", "BTC"]
+        );
+        assert!(matches!(
+            terminal.order_book_configs_snapshot()[0].mode,
+            crate::config::OrderBookSymbolModeConfig::Fixed(ref symbol) if symbol == "HYPE"
+        ));
+        assert_eq!(
+            terminal.positioning_info_configs_snapshot()[0].symbol,
+            "HYPE"
+        );
+        assert_eq!(terminal.session_data_configs_snapshot()[0].symbol, "HYPE");
+
+        let _task =
+            terminal.update_preferences(Message::MarketUniverseChanged(MarketUniverseConfig::All));
+        assert_eq!(terminal.favourite_symbols, ["HYPE", "BTC"]);
+        assert_eq!(terminal.charts[&7].secondary_symbol.as_deref(), Some("BTC"));
+        assert_eq!(
+            terminal.spaghetti_charts[&9].canvas.series[0].symbol,
+            "HYPE"
+        );
     }
 }

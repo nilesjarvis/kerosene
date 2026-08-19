@@ -33,6 +33,11 @@ impl TradingTerminal {
             OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
         };
         if !tracking_symbol.is_empty() && self.symbol_key_is_hidden(&tracking_symbol) {
+            let hidden_label = if self.is_ticker_muted(&tracking_symbol) {
+                "Muted ticker"
+            } else {
+                "Outside selected market"
+            };
             // Keep the real title row (and settings panel) so the user can
             // still rebind the widget to another symbol from here.
             let mut content =
@@ -42,7 +47,7 @@ impl TradingTerminal {
             }
             content = content.push(
                 container(
-                    text("Muted ticker")
+                    text(hidden_label)
                         .size(12)
                         .color(theme.extended_palette().background.weak.text),
                 )

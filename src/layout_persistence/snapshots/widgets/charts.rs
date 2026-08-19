@@ -28,7 +28,7 @@ impl TradingTerminal {
     fn chart_config_for_instance(&self, inst: &ChartInstance) -> config::ChartConfig {
         config::ChartConfig {
             id: inst.id,
-            symbol: if self.symbol_key_is_hidden(&inst.symbol) {
+            symbol: if self.is_ticker_muted(&inst.symbol) {
                 String::new()
             } else {
                 inst.symbol.clone()
@@ -36,7 +36,7 @@ impl TradingTerminal {
             secondary_symbol: inst
                 .secondary_symbol
                 .as_ref()
-                .filter(|symbol| !self.symbol_key_is_hidden(symbol))
+                .filter(|symbol| !self.is_ticker_muted(symbol))
                 .cloned(),
             timeframe: inst.interval.config_str().to_string(),
             annotations: inst

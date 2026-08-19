@@ -97,8 +97,13 @@ impl TradingTerminal {
         }
 
         if self.symbol_key_is_hidden(&instance.symbol) {
+            let hidden_label = if self.is_ticker_muted(&instance.symbol) {
+                "Muted ticker"
+            } else {
+                "Outside selected market"
+            };
             let content = column![
-                text("Muted ticker")
+                text(hidden_label)
                     .size(13)
                     .color(theme.extended_palette().background.weak.text),
                 button(text("Select Symbol").size(12))

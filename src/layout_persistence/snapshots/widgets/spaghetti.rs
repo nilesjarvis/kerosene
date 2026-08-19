@@ -36,7 +36,7 @@ impl TradingTerminal {
                 .canvas
                 .series
                 .iter()
-                .filter(|series| !self.symbol_key_is_hidden(&series.symbol))
+                .filter(|series| !self.is_ticker_muted(&series.symbol))
                 .map(|series| series.symbol.clone())
                 .collect(),
             timeframe: inst.interval.config_str().to_string(),

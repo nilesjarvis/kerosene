@@ -46,7 +46,7 @@ impl TradingTerminal {
         self.favourite_symbols = layout
             .favourite_symbols
             .iter()
-            .filter(|symbol| !self.symbol_key_is_hidden(symbol))
+            .filter(|symbol| !self.is_ticker_muted(symbol))
             .cloned()
             .collect();
         self.sound_enabled = layout.sound_enabled;
@@ -174,7 +174,7 @@ impl TradingTerminal {
 
         let symbol = symbol.trim();
         if symbol.is_empty()
-            || self.symbol_key_is_hidden(symbol)
+            || self.is_ticker_muted(symbol)
             || self.hyperdash_coin_for_symbol(symbol).is_none()
         {
             self.liquidation_distribution.symbol.clear();

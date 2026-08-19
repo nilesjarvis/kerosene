@@ -22,7 +22,7 @@ impl TradingTerminal {
             let mode = match &order_book_config.mode {
                 config::OrderBookSymbolModeConfig::Active => OrderBookSymbolMode::Active,
                 config::OrderBookSymbolModeConfig::Fixed(symbol) => {
-                    if self.symbol_key_is_hidden(symbol) {
+                    if self.is_ticker_muted(symbol) {
                         OrderBookSymbolMode::Active
                     } else {
                         let canonical = self

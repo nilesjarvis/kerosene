@@ -14,7 +14,7 @@ impl TradingTerminal {
             let symbol = if Self::key_matches_muted_tickers(&[], muted_tickers, &config.symbol) {
                 self.active_symbol.clone()
             } else {
-                self.visible_session_data_symbol(&config.symbol)
+                self.retained_session_data_symbol(&config.symbol)
             };
             self.session_data.insert(
                 config.id,

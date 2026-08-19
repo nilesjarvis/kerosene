@@ -22,7 +22,7 @@ impl TradingTerminal {
                             watchlist_config
                                 .symbols
                                 .into_iter()
-                                .filter(|symbol| !self.symbol_key_is_hidden(symbol))
+                                .filter(|symbol| !self.is_ticker_muted(symbol))
                                 .map(|symbol| {
                                     self.exchange_symbol_for_key(&symbol)
                                         .map(|metadata| metadata.key.clone())

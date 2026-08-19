@@ -19,7 +19,7 @@ impl TradingTerminal {
             .map(|inst| inst.interval)
             .unwrap_or(Timeframe::H1);
 
-        if symbol.is_empty() {
+        if symbol.is_empty() || self.symbol_key_is_hidden(&symbol) {
             return Task::none();
         }
 
