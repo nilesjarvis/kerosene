@@ -31,18 +31,7 @@ const CHART_HEIGHT: f32 = 230.0;
 
 impl TradingTerminal {
     pub(crate) fn view_combined_portfolio(&self) -> Element<'_, Message> {
-        let histories = self
-            .combined_portfolio
-            .wallets
-            .iter()
-            .filter_map(|wallet| wallet.history.as_ref())
-            .collect::<Vec<_>>();
-        let aggregate = aggregate_portfolios(
-            &histories,
-            self.combined_portfolio.scope,
-            self.combined_portfolio.window,
-            Self::now_ms(),
-        );
+        let aggregate = self.combined_portfolio_aggregate();
 
         let body = row![
             container(self.view_combined_portfolio_wallet_list())
@@ -87,6 +76,21 @@ impl TradingTerminal {
             .height(Fill)
             .style(journal_window_style)
             .into()
+    }
+
+    fn combined_portfolio_aggregate(&self) -> CombinedPortfolioAggregate {
+        let histories = self
+            .combined_portfolio
+            .wallets
+            .iter()
+            .filter_map(|wallet| wallet.history.as_ref())
+            .collect::<Vec<_>>();
+        aggregate_portfolios(
+            &histories,
+            self.combined_portfolio.scope,
+            self.combined_portfolio.window,
+            self.status_bar_now_ms,
+        )
     }
 
     fn view_combined_portfolio_title_bar(
@@ -379,7 +383,7 @@ impl TradingTerminal {
                 history,
                 self.combined_portfolio.scope,
                 self.combined_portfolio.window,
-                Self::now_ms(),
+                self.status_bar_now_ms,
             )
         });
         let value = wallet
@@ -728,6 +732,7 @@ mod tests {
     use super::*;
     use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
     use crate::combined_portfolio::CombinedPortfolioWallet;
+    use crate::portfolio_state::PortfolioWindow;
 
     #[test]
     fn combined_portfolio_view_builds_empty_loading_and_loaded_states() {
@@ -760,5 +765,50 @@ mod tests {
             )]),
         });
         let _ = terminal.view_combined_portfolio();
+    }
+
+    #[test]
+    fn combined_portfolio_cutoff_uses_the_update_driven_reference_time() {
+        const DAY_MS: u64 = 24 * 60 * 60 * 1000;
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.combined_portfolio.window = PortfolioWindow::Week;
+        terminal.status_bar_now_ms = 20 * DAY_MS;
+        terminal
+            .combined_portfolio
+            .wallets
+            .push(CombinedPortfolioWallet {
+                address: "0x1111111111111111111111111111111111111111".to_string(),
+                label: "Primary".to_string(),
+                loading: false,
+                request_id: 1,
+                history: Some(PortfolioHistory {
+                    buckets: std::collections::HashMap::from([(
+                        "allTime".to_string(),
+                        PortfolioBucket {
+                            pnl_history: vec![
+                                (10 * DAY_MS, 20.0),
+                                (14 * DAY_MS, 50.0),
+                                (18 * DAY_MS, 80.0),
+                                (20 * DAY_MS, 100.0),
+                            ],
+                            account_value_history: vec![(20 * DAY_MS, 1_100.0)],
+                            ..PortfolioBucket::default()
+                        },
+                    )]),
+                }),
+                error: None,
+                last_updated_ms: None,
+            });
+
+        assert_eq!(
+            terminal.combined_portfolio_aggregate().total_pnl,
+            Some(80.0)
+        );
+
+        terminal.status_bar_now_ms = 21 * DAY_MS;
+        assert_eq!(
+            terminal.combined_portfolio_aggregate().total_pnl,
+            Some(50.0)
+        );
     }
 }

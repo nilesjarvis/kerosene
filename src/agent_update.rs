@@ -1,7 +1,7 @@
 use crate::agent_persistence;
 use crate::agent_runtime::{self, AgentRuntimeConfig, AgentRuntimeEvent};
 use crate::agent_snapshot;
-use crate::agent_state::{AgentChatEntry, AgentChatRole, AgentPrompt, AgentStatus};
+use crate::agent_state::{AgentChatEntry, AgentChatRole, AgentPrompt, AgentState, AgentStatus};
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
@@ -133,6 +133,14 @@ impl TradingTerminal {
     }
 
     fn open_agent_window(&mut self) -> Task<Message> {
+        if self.config_clear_requested || self.config_cleared_this_session {
+            self.agent.status_detail = Some(
+                "Assistant sessions are unavailable until restart while config persistence is paused."
+                    .to_string(),
+            );
+            return Task::none();
+        }
+
         self.add_widget_menu_open = false;
         self.layout_menu_open = false;
         self.account_picker_open = false;
@@ -610,6 +618,10 @@ impl TradingTerminal {
     }
 
     fn persist_agent_sessions(&mut self) -> Task<Message> {
+        if self.config_clear_requested || self.config_cleared_this_session {
+            self.agent.persistence_dirty = false;
+            return Task::none();
+        }
         if self.agent.persistence_in_flight {
             self.agent.persistence_dirty = true;
             return Task::none();
@@ -636,6 +648,10 @@ impl TradingTerminal {
         self.agent.persistence_error = result.err().map(|error| {
             redact_sensitive_response_text(&format!("Could not save Assistant sessions: {error}"))
         });
+        if self.config_clear_requested && !self.config_cleared_this_session {
+            self.agent.persistence_dirty = false;
+            return self.start_config_clear_task();
+        }
         if self.agent.persistence_dirty {
             return self.persist_agent_sessions();
         }
@@ -676,6 +692,30 @@ impl TradingTerminal {
         self.agent.reset_runtime();
     }
 
+    pub(crate) fn prepare_agent_for_config_clear(&mut self) -> Task<Message> {
+        let runtime_generation = self.agent.runtime_generation;
+        let snapshot_request_id = self.agent.snapshot_request_id;
+        let next_runtime_generation = runtime_generation.wrapping_add(1);
+        let next_snapshot_request_id = snapshot_request_id.wrapping_add(1);
+        let persistence_generation = self.agent.persistence_generation;
+        let persistence_in_flight = self.agent.persistence_in_flight;
+        let window_id = self.agent.window_id;
+
+        self.shutdown_agent_runtime_files(runtime_generation, snapshot_request_id);
+
+        let mut cleared = AgentState {
+            runtime_generation: next_runtime_generation,
+            snapshot_request_id: next_snapshot_request_id,
+            persistence_generation,
+            persistence_in_flight,
+            ..AgentState::default()
+        };
+        cleared.persistence_dirty = false;
+        self.agent = cleared;
+
+        window_id.map_or_else(Task::none, window::close)
+    }
+
     pub(crate) fn close_agent_session(&mut self) {
         let generation = self.agent.runtime_generation;
         let request_id = self.agent.snapshot_request_id;
@@ -684,6 +724,10 @@ impl TradingTerminal {
         self.agent.model_picker_open = false;
         self.agent.model_search.clear();
         self.agent.window_id = None;
+        if self.config_clear_requested || self.config_cleared_this_session {
+            self.agent.persistence_dirty = false;
+            return;
+        }
         if let Err(error) = agent_persistence::save_agent_store_now(&self.agent.persisted_store()) {
             self.agent.persistence_error = Some(redact_sensitive_response_text(&format!(
                 "Could not save Assistant sessions: {error}"
@@ -954,6 +998,56 @@ mod tests {
         assert!(terminal.agent.window_id.is_none());
         assert_eq!(terminal.agent.entries.len(), 1);
         assert!(terminal.agent.needs_context_replay);
+    }
+
+    #[test]
+    fn config_clear_reset_discards_sessions_and_preserves_the_save_barrier() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.agent.window_id = Some(window::Id::unique());
+        terminal.agent.runtime_generation = 7;
+        terminal.agent.snapshot_request_id = 11;
+        terminal.agent.persistence_generation = 13;
+        terminal.agent.persistence_in_flight = true;
+        terminal.agent.persistence_dirty = true;
+        terminal.agent.entries.push(AgentChatEntry::Message {
+            role: AgentChatRole::User,
+            text: "private prompt".to_string(),
+            markdown: None,
+        });
+        assert!(terminal.agent.create_session(100));
+        terminal.agent.input = "private draft".to_string();
+        let previous_runtime_generation = terminal.agent.runtime_generation;
+
+        let _ = terminal.prepare_agent_for_config_clear();
+
+        assert!(terminal.agent.window_id.is_none());
+        assert!(terminal.agent.sessions.is_empty());
+        assert!(terminal.agent.entries.is_empty());
+        assert!(terminal.agent.input.is_empty());
+        assert_eq!(
+            terminal.agent.runtime_generation,
+            previous_runtime_generation.wrapping_add(1)
+        );
+        assert_eq!(terminal.agent.snapshot_request_id, 12);
+        assert_eq!(terminal.agent.persistence_generation, 13);
+        assert!(terminal.agent.persistence_in_flight);
+        assert!(!terminal.agent.persistence_dirty);
+    }
+
+    #[test]
+    fn config_clear_waits_for_assistant_save_without_queuing_another_save() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_clear_requested = true;
+        terminal.agent.persistence_generation = 5;
+        terminal.agent.persistence_in_flight = true;
+        terminal.agent.persistence_dirty = true;
+
+        let _ = terminal.prepare_agent_for_config_clear();
+        let _ = terminal.handle_agent_sessions_saved(5, Ok(()));
+
+        assert!(terminal.config_clear_requested);
+        assert!(!terminal.agent.persistence_in_flight);
+        assert!(!terminal.agent.persistence_dirty);
     }
 
     #[test]

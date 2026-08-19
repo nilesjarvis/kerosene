@@ -38,20 +38,23 @@ impl TradingTerminal {
         self.config_clear_requested = true;
         self.config_save_due_at = None;
         self.config_save_exit_requested = false;
+        let agent_reset_task = self.prepare_agent_for_config_clear();
 
-        if self.config_save_in_flight {
-            let message =
-                "Config clear will run after the current config save finishes".to_string();
+        if self.config_save_in_flight || self.agent.persistence_in_flight {
+            let message = "Config clear will run after current persistence finishes".to_string();
             self.secret_store_status = Some((message.clone(), false));
             self.push_toast(message, false);
-            return Task::none();
+            return agent_reset_task;
         }
 
-        self.start_config_clear_task()
+        Task::batch([agent_reset_task, self.start_config_clear_task()])
     }
 
     pub(crate) fn start_config_clear_task(&mut self) -> Task<Message> {
-        if self.config_cleared_this_session || self.config_save_in_flight {
+        if self.config_cleared_this_session
+            || self.config_save_in_flight
+            || self.agent.persistence_in_flight
+        {
             return Task::none();
         }
 
@@ -197,6 +200,7 @@ impl TradingTerminal {
         &mut self,
         summary: config::ClearConfigSummary,
     ) -> Task<Message> {
+        let agent_reset_task = self.prepare_agent_for_config_clear();
         let defaults = KeroseneConfig::default();
 
         self.config_clear_requested = false;
@@ -458,7 +462,7 @@ impl TradingTerminal {
         let backfill_task = self.reload_chart_backfills_for_source_change();
         let funding_task = self.refresh_enabled_funding_charts();
         Task::batch(
-            [backfill_task, funding_task]
+            [agent_reset_task, backfill_task, funding_task]
                 .into_iter()
                 .chain(
                     wallet_detail_window_ids
@@ -1157,12 +1161,22 @@ mod tests {
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_save_in_flight = true;
         terminal.config_save_due_at = Some(Instant::now());
+        terminal.agent.input = "private saved draft".to_string();
+        assert!(terminal.agent.create_session(100));
+        terminal.agent.input = "private active draft".to_string();
+        let agent_runtime_generation = terminal.agent.runtime_generation;
 
         let _task = terminal.request_config_clear();
 
         assert!(terminal.config_clear_requested);
         assert!(terminal.config_save_in_flight);
         assert!(terminal.config_save_due_at.is_none());
+        assert!(terminal.agent.sessions.is_empty());
+        assert!(terminal.agent.input.is_empty());
+        assert_eq!(
+            terminal.agent.runtime_generation,
+            agent_runtime_generation.wrapping_add(1)
+        );
 
         let _task = terminal.handle_config_save_result(Err("disk full".to_string()));
 
