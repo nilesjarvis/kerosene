@@ -1,6 +1,7 @@
 use crate::account::{AccountData, AssetContext, WalletDetailsData, WalletTrackerSnapshot};
 use crate::account_analytics::{IncomeSnapshot, PortfolioHistory};
 use crate::account_state::{BottomTab, PositionsSortColumn};
+use crate::agent_pnl_card::{AgentPnlCardLoadResult, AgentPnlCardPath};
 use crate::agent_runtime::AgentRuntimeEvent;
 use crate::agent_state::{AgentPersistenceResult, AgentPrompt, AgentUri};
 use crate::alfred_state::{AlfredCommandId, AlfredSelectionStep};
@@ -751,6 +752,11 @@ pub(crate) enum Message {
     OpenAgentWindow,
     AgentInputChanged(AgentPrompt),
     AgentSubmit,
+    AgentPnlCardBrowse,
+    AgentPnlCardDropped(window::Id, AgentPnlCardPath),
+    AgentPnlCardHoverChanged(window::Id, bool),
+    AgentPnlCardLoaded(u64, AgentPnlCardLoadResult),
+    AgentPnlCardRemove,
     AgentSnapshotPrepared(u64, u64, Result<PathBuf, String>),
     AgentRuntimeEvent(AgentRuntimeEvent),
     AgentStreamTick,

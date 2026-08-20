@@ -3,7 +3,7 @@ use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
 use super::super::image::{
-    PnlCardImage, copy_pnl_card_to_clipboard, render_pnl_card_image, save_pnl_card_png,
+    PnlCardRenderRequest, copy_pnl_card_to_clipboard, render_pnl_card_image, save_pnl_card_png,
 };
 use super::super::metrics::PnlCardMetrics;
 use super::super::{PnlCardTarget, PnlCardWindowState};
@@ -17,8 +17,8 @@ use std::path::PathBuf;
 
 impl TradingTerminal {
     pub(crate) fn copy_pnl_card_image(&mut self, window_id: window::Id) -> Task<Message> {
-        let image = match self.pnl_card_export_image(window_id) {
-            Ok(image) => image,
+        let request = match self.pnl_card_export_request(window_id) {
+            Ok(request) => request,
             Err(err) => {
                 self.push_toast(err, true);
                 return Task::none();
@@ -26,21 +26,30 @@ impl TradingTerminal {
         };
 
         Task::perform(
-            async move { copy_pnl_card_to_clipboard(image).map_err(|err| err.to_string()) },
+            async move {
+                let image = render_pnl_card_image(request).await?;
+                copy_pnl_card_to_clipboard(image)
+            },
             Message::PnlCardCopied,
         )
     }
 
     pub(crate) fn save_pnl_card_image(&mut self, window_id: window::Id) -> Task<Message> {
-        let image = match self.pnl_card_export_image(window_id) {
-            Ok(image) => image,
+        let request = match self.pnl_card_export_request(window_id) {
+            Ok(request) => request,
             Err(err) => {
                 self.push_toast(err, true);
                 return Task::none();
             }
         };
 
-        Task::perform(save_pnl_card_png(image), Message::PnlCardSaved)
+        Task::perform(
+            async move {
+                let image = render_pnl_card_image(request).await?;
+                save_pnl_card_png(image).await
+            },
+            Message::PnlCardSaved,
+        )
     }
 
     pub(crate) fn handle_pnl_card_copied(&mut self, result: Result<(), String>) -> Task<Message> {
@@ -104,7 +113,10 @@ impl TradingTerminal {
         )
     }
 
-    fn pnl_card_export_image(&self, window_id: window::Id) -> Result<PnlCardImage, String> {
+    fn pnl_card_export_request(
+        &self,
+        window_id: window::Id,
+    ) -> Result<PnlCardRenderRequest, String> {
         let state = self
             .pnl_card_windows
             .get(&window_id)
@@ -114,13 +126,13 @@ impl TradingTerminal {
 
         let theme = self.theme();
         let pnl_color = self.direction_color(&theme, metrics.upnl);
-        render_pnl_card_image(
-            &state,
+        Ok(PnlCardRenderRequest::new(
+            state,
             metrics,
             self.display_denomination_context(),
             pnl_color,
-            &theme,
-        )
+            theme,
+        ))
     }
 }
 

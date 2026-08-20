@@ -10,6 +10,7 @@ mod account_views;
 mod add_widget_menu;
 mod advanced_order_history;
 mod agent_persistence;
+mod agent_pnl_card;
 mod agent_runtime;
 mod agent_snapshot;
 mod agent_state;

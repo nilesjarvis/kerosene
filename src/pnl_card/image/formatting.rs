@@ -1,41 +1,8 @@
 use chrono::Local;
 
 // ---------------------------------------------------------------------------
-// Export Text Formatting
+// Export File Naming
 // ---------------------------------------------------------------------------
-
-pub(in crate::pnl_card) fn export_text(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| {
-            let upper = ch.to_ascii_uppercase();
-            if matches!(
-                upper,
-                'A'..='Z'
-                    | '0'..='9'
-                    | '/'
-                    | ':'
-                    | '-'
-                    | '_'
-                    | '.'
-                    | ','
-                    | '+'
-                    | '$'
-                    | '%'
-                    | '*'
-                    | ' '
-            ) {
-                upper
-            } else if ch.is_whitespace() {
-                ' '
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim()
-        .to_string()
-}
 
 pub(in crate::pnl_card) fn pnl_card_filename(ticker: &str) -> String {
     let safe_ticker = ticker

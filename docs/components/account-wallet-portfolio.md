@@ -293,7 +293,9 @@ Features include:
 - optional price privacy
 - optional position size display
 - copy/save image
-- contrast and text rendering helpers
+- theme-aware contrast and directional styling
+- one aspect-locked canvas renderer shared by the preview and exported PNG, so
+  layout and the selected monospace font stay identical
 
 PnL cards can include financial values, so privacy toggles and output handling
 should be treated carefully.

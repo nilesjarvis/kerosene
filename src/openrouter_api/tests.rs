@@ -166,6 +166,7 @@ fn model_catalog_keeps_tool_models_and_normalizes_openrouter_pricing() {
                     "request": "0.01",
                     "overrides": [{"min_prompt_tokens": 100000, "prompt": "0.000005"}]
                 },
+                "architecture": {"input_modalities": ["text", "image"]},
                 "supported_parameters": ["temperature", "tools"]
             },
             {
@@ -198,6 +199,9 @@ fn model_catalog_keeps_tool_models_and_normalizes_openrouter_pricing() {
     assert_eq!(models[1].reasoning_price_per_million_usd, Some(5.0));
     assert_eq!(models[1].request_price_usd, Some(0.01));
     assert!(models[1].has_conditional_pricing);
+    assert!(models[0].supports_image_input);
+    assert!(models[1].supports_image_input);
+    assert_eq!(models[1].provider_summary(), "OpenAI");
     assert_eq!(
         models[1].pricing_summary(),
         "$2.50/M input · $10.00/M output · $5.00/M reasoning · $0.010/request · variable rates"
@@ -230,6 +234,7 @@ fn model_catalog_ignores_duplicate_ids_and_invalid_prices() {
     assert_eq!(models[1].name, "Vendor Model");
     assert_eq!(models[1].prompt_price_per_million_usd, None);
     assert_eq!(models[1].completion_price_per_million_usd, None);
+    assert!(!models[1].supports_image_input);
     assert_eq!(models[1].pricing_summary(), "Pricing unavailable");
 }
 

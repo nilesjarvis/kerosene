@@ -30,7 +30,8 @@ impl TradingTerminal {
         }
 
         let settings = window::Settings {
-            size: Size::new(480.0, 640.0),
+            size: Size::new(640.0, 760.0),
+            min_size: Some(Size::new(480.0, 640.0)),
             ..crate::window_chrome::settings(self.custom_window_chrome_active)
         };
         let (window_id, task) = window::open(settings);

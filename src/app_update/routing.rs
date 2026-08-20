@@ -40,6 +40,11 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         Message::OpenAgentWindow
         | Message::AgentInputChanged(_)
         | Message::AgentSubmit
+        | Message::AgentPnlCardBrowse
+        | Message::AgentPnlCardDropped(_, _)
+        | Message::AgentPnlCardHoverChanged(_, _)
+        | Message::AgentPnlCardLoaded(_, _)
+        | Message::AgentPnlCardRemove
         | Message::AgentSnapshotPrepared(_, _, _)
         | Message::AgentRuntimeEvent(_)
         | Message::AgentStreamTick

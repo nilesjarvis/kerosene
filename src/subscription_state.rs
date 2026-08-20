@@ -31,6 +31,11 @@ impl TradingTerminal {
             window::Event::Resized(size) => Message::WindowResized(id, size),
             window::Event::Moved(point) => Message::WindowMoved(id, point),
             window::Event::Focused => Message::WindowFocused(id),
+            window::Event::FileHovered(_) => Message::AgentPnlCardHoverChanged(id, true),
+            window::Event::FileDropped(path) => {
+                Message::AgentPnlCardDropped(id, crate::agent_pnl_card::AgentPnlCardPath::new(path))
+            }
+            window::Event::FilesHoveredLeft => Message::AgentPnlCardHoverChanged(id, false),
             _ => Message::NoOp,
         }
     }
@@ -65,6 +70,23 @@ mod tests {
         assert!(matches!(
             TradingTerminal::window_event_message(id, window::Event::Focused),
             Message::WindowFocused(message_id) if message_id == id
+        ));
+    }
+
+    #[test]
+    fn dropped_files_are_forwarded_to_the_assistant_attachment_route() {
+        let id = window::Id::unique();
+
+        assert!(matches!(
+            TradingTerminal::window_event_message(
+                id,
+                window::Event::FileDropped(std::path::PathBuf::from("card.png")),
+            ),
+            Message::AgentPnlCardDropped(message_id, _) if message_id == id
+        ));
+        assert!(matches!(
+            TradingTerminal::window_event_message(id, window::Event::FilesHoveredLeft),
+            Message::AgentPnlCardHoverChanged(message_id, false) if message_id == id
         ));
     }
 }

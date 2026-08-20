@@ -42,7 +42,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 tokio = { version = "1", features = ["time"] }
 futures = "0.3"
 arboard = "3"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 # Optional Telegram MTProto fast feed. Session storage is kept outside config.json.
 grammers-client = { version = "0.9", default-features = false }
 grammers-session = "0.9"

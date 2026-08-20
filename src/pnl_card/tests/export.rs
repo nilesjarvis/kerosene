@@ -1,15 +1,6 @@
 use super::*;
 
 #[test]
-fn export_text_keeps_card_glyphs_and_sanitizes_unsupported_characters() {
-    assert_eq!(
-        export_text("BTC +50.14% / $1,076.19"),
-        "BTC +50.14% / $1,076.19"
-    );
-    assert_eq!(export_text("xyz:BTC→USD"), "XYZ:BTC-USD");
-}
-
-#[test]
 fn filename_sanitizes_asset_ticker() {
     let filename = pnl_card_filename("xyz:BTC/USD");
 
@@ -17,10 +8,11 @@ fn filename_sanitizes_asset_ticker() {
     assert!(filename.ends_with(".png"));
 }
 
-#[test]
-fn render_pnl_card_image_produces_expected_png_payload() {
+#[tokio::test]
+async fn render_pnl_card_image_produces_expected_png_payload() {
     let state = position_state("BTC");
-    let image = render_test_image(&state, sample_metrics(), Color::from_rgb8(0x50, 0xfa, 0x7b));
+    let image =
+        render_test_image(&state, sample_metrics(), Color::from_rgb8(0x50, 0xfa, 0x7b)).await;
 
     assert_eq!(image.width, 1200);
     assert_eq!(image.height, 675);
@@ -30,11 +22,17 @@ fn render_pnl_card_image_produces_expected_png_payload() {
     assert!(image.default_filename.ends_with(".png"));
 }
 
-#[test]
-fn positive_and_negative_exports_use_distinct_gradients() {
+#[tokio::test]
+async fn positive_and_negative_exports_use_distinct_gradients() {
     let state = position_state("BTC");
-    let positive = render_test_image(&state, sample_metrics(), Color::from_rgb8(0x50, 0xfa, 0x7b));
-    let negative = render_test_image(&state, sample_metrics(), Color::from_rgb8(0xff, 0x55, 0x55));
+    let positive =
+        render_test_image(&state, sample_metrics(), Color::from_rgb8(0x50, 0xfa, 0x7b)).await;
+    let negative =
+        render_test_image(&state, sample_metrics(), Color::from_rgb8(0xff, 0x55, 0x55)).await;
 
-    assert_ne!(&positive.rgba[0..64], &negative.rgba[0..64]);
+    let interior = ((100 * positive.width + 100) * 4) as usize;
+    assert_ne!(
+        &positive.rgba[interior..interior + 64],
+        &negative.rgba[interior..interior + 64]
+    );
 }

@@ -41,18 +41,19 @@ fn summary_state() -> PnlCardWindowState {
     PnlCardWindowState::new(PnlCardTarget::Summary, test_account())
 }
 
-fn render_test_image(
+async fn render_test_image(
     state: &PnlCardWindowState,
     metrics: PnlCardMetrics,
     pnl_color: Color,
 ) -> PnlCardImage {
-    match render_pnl_card_image(
-        state,
+    let request = PnlCardRenderRequest::new(
+        state.clone(),
         metrics,
         DisplayDenominationContext::default(),
         pnl_color,
-        &Theme::Dark,
-    ) {
+        Theme::Dark,
+    );
+    match render_pnl_card_image(request).await {
         Ok(image) => image,
         Err(e) => panic!("pnl card image should render: {e}"),
     }

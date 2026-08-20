@@ -259,6 +259,7 @@ pub(crate) struct OpenRouterModel {
     pub(crate) reasoning_price_per_million_usd: Option<f64>,
     pub(crate) request_price_usd: Option<f64>,
     pub(crate) has_conditional_pricing: bool,
+    pub(crate) supports_image_input: bool,
 }
 
 impl OpenRouterModel {
@@ -272,6 +273,7 @@ impl OpenRouterModel {
             reasoning_price_per_million_usd: None,
             request_price_usd: None,
             has_conditional_pricing: true,
+            supports_image_input: true,
         }
     }
 
@@ -321,6 +323,23 @@ impl OpenRouterModel {
             .map(|tokens| format!("{} context", compact_model_tokens(tokens)))
             .unwrap_or_else(|| "Dynamic context".to_string())
     }
+
+    pub(crate) fn provider_summary(&self) -> String {
+        let provider = self.id.split('/').next().unwrap_or_default();
+        match provider {
+            "openai" => "OpenAI",
+            "anthropic" => "Anthropic",
+            "google" => "Google",
+            "meta-llama" => "Meta",
+            "mistralai" => "Mistral AI",
+            "x-ai" => "xAI",
+            "deepseek" => "DeepSeek",
+            "openrouter" => "OpenRouter",
+            "" => "Unknown provider",
+            value => value,
+        }
+        .to_string()
+    }
 }
 
 #[derive(Deserialize)]
@@ -340,6 +359,14 @@ struct RawOpenRouterModel {
     pricing: Option<RawModelPricing>,
     #[serde(default)]
     supported_parameters: Vec<String>,
+    #[serde(default)]
+    architecture: Option<RawModelArchitecture>,
+}
+
+#[derive(Default, Deserialize)]
+struct RawModelArchitecture {
+    #[serde(default)]
+    input_modalities: Vec<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -416,6 +443,12 @@ fn parse_model_catalog_response(text: &str) -> Result<Vec<OpenRouterModel>, Stri
         }
 
         let pricing = raw_model.pricing.unwrap_or_default();
+        let supports_image_input = raw_model
+            .architecture
+            .unwrap_or_default()
+            .input_modalities
+            .iter()
+            .any(|modality| modality == "image");
         let name = bounded_model_name(raw_model.name.trim(), id);
         models.push(OpenRouterModel {
             id: id.to_string(),
@@ -428,6 +461,7 @@ fn parse_model_catalog_response(text: &str) -> Result<Vec<OpenRouterModel>, Stri
             ),
             request_price_usd: parsed_non_negative_price(pricing.request.as_deref()),
             has_conditional_pricing: !pricing.overrides.is_empty(),
+            supports_image_input,
         });
     }
 

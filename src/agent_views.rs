@@ -9,10 +9,10 @@ use crate::openrouter_api::OpenRouterModel;
 
 use iced::widget::container as container_style;
 use iced::widget::{
-    Column, Space, button, column, container, markdown, rich_text, row, rule, scrollable, text,
-    text_input,
+    Column, Space, button, column, container, image, markdown, rich_text, row, rule, scrollable,
+    text, text_input,
 };
-use iced::{Alignment, Border, Color, Element, Fill, Length, Padding, Theme};
+use iced::{Alignment, Border, Color, ContentFit, Element, Fill, Length, Padding, Theme};
 
 const MAX_VISIBLE_MODEL_RESULTS: usize = 80;
 
@@ -88,11 +88,21 @@ impl TradingTerminal {
             Space::new().height(Length::Fixed(0.0)).into()
         };
 
+        let has_pnl_card = self.agent.pnl_card_attachment.is_some();
+        let requested_model = self.openrouter_model_for_task();
+        let image_model_ready =
+            !has_pnl_card || self.agent.model_supports_images(&requested_model) == Some(true);
         let can_send = self.openrouter_configured()
             && !self.agent.status.is_busy()
-            && !self.agent.input.trim().is_empty();
+            && !self.agent.pnl_card_loading
+            && image_model_ready
+            && (!self.agent.input.trim().is_empty() || has_pnl_card);
         let input = text_input(
-            "Ask about your portfolio, positions, or markets…",
+            if has_pnl_card {
+                "Optional: add context about this P&L card…"
+            } else {
+                "Ask about your portfolio, positions, or markets…"
+            },
             &self.agent.input,
         )
         .id(iced::widget::Id::new("kerosene-agent-input"))
@@ -113,7 +123,6 @@ impl TradingTerminal {
                 .on_press_maybe(can_send.then_some(Message::AgentSubmit))
         };
 
-        let requested_model = self.openrouter_model_for_task();
         let (runtime_model, context_tokens, context_window) =
             self.agent.context_metrics_for_model(&requested_model);
         let display_model = runtime_model.unwrap_or(&requested_model);
@@ -166,9 +175,37 @@ impl TradingTerminal {
                 .into()
         };
 
+        let attach = button(
+            text(if has_pnl_card {
+                "Replace card"
+            } else {
+                "+ P&L card"
+            })
+            .size(11),
+        )
+        .padding([7, 10])
+        .on_press_maybe(
+            (!self.agent.status.is_busy() && !self.agent.pnl_card_loading)
+                .then_some(Message::AgentPnlCardBrowse),
+        );
+        let attachment_controls = row![
+            attach,
+            text(if self.hyperdash_api_key.trim().is_empty() {
+                "OCR works now · add HyperDash in Settings to search public positions"
+            } else {
+                "Drop PNG, JPEG, or WebP anywhere in this window"
+            })
+            .size(9)
+            .color(theme.extended_palette().background.weak.text),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
         let mut composer = Column::new()
             .push(status_detail)
             .push(configure)
+            .push(self.view_agent_pnl_card_attachment(&theme))
+            .push(attachment_controls)
             .push(row![input, action].spacing(8).align_y(Alignment::Center))
             .spacing(7);
         if self.agent.model_picker_open {
@@ -305,7 +342,37 @@ impl TradingTerminal {
                 .padding(14)
                 .width(Fill)
                 .style(agent_empty_card_style),
-                text("Financial account data in the snapshot is sent to the selected OpenRouter model when needed. Keys and wallet addresses are never included.")
+                container(
+                    row![
+                        column![
+                            text("Analyze a social P&L card")
+                                .size(13)
+                                .color(theme.palette().text),
+                            text(if self.agent.pnl_card_drop_hovered {
+                                "Release to attach this image"
+                            } else {
+                                "Drop an image here, extract the visible trade, then search public HyperDash and Hyperliquid position data."
+                            })
+                            .size(10)
+                            .color(theme.extended_palette().background.weak.text),
+                        ]
+                        .spacing(4)
+                        .width(Fill),
+                        button(text("Choose image").size(11))
+                            .padding([7, 10])
+                            .on_press(Message::AgentPnlCardBrowse),
+                    ]
+                    .spacing(12)
+                    .align_y(Alignment::Center),
+                )
+                .padding(14)
+                .width(Fill)
+                .style(if self.agent.pnl_card_drop_hovered {
+                    agent_pnl_card_hover_style
+                } else {
+                    agent_empty_card_style
+                }),
+                text("The image and sanitized account context are sent to the selected OpenRouter model. Keys are never included. Public wallet candidates are exposed only for an explicitly attached card turn.")
                     .size(10)
                     .color(theme.extended_palette().background.weak.text),
             ]
@@ -317,20 +384,92 @@ impl TradingTerminal {
         .into()
     }
 
+    fn view_agent_pnl_card_attachment(&self, theme: &Theme) -> Element<'_, Message> {
+        if self.agent.pnl_card_drop_hovered {
+            return container(
+                text("Release to attach this P&L card")
+                    .size(11)
+                    .color(theme.palette().primary),
+            )
+            .padding([10, 12])
+            .center_x(Fill)
+            .width(Fill)
+            .style(agent_pnl_card_hover_style)
+            .into();
+        }
+        if self.agent.pnl_card_loading {
+            return container(
+                text("Preparing P&L card…")
+                    .size(10)
+                    .color(theme.palette().warning),
+            )
+            .padding([7, 9])
+            .width(Fill)
+            .style(agent_empty_card_style)
+            .into();
+        }
+        if let Some(attachment) = &self.agent.pnl_card_attachment {
+            let preview = image(attachment.preview_handle.clone())
+                .width(Length::Fixed(96.0))
+                .height(Length::Fixed(64.0))
+                .content_fit(ContentFit::Contain);
+            return container(
+                row![
+                    preview,
+                    column![
+                        text(attachment.file_label.as_str())
+                            .size(11)
+                            .color(theme.palette().text),
+                        text(format!(
+                            "{} × {} · sent only with this turn",
+                            attachment.width, attachment.height
+                        ))
+                        .size(9)
+                        .color(theme.extended_palette().background.weak.text),
+                        text("Vision + tools model required")
+                            .size(9)
+                            .color(theme.palette().primary),
+                    ]
+                    .spacing(3)
+                    .width(Fill),
+                    button(text("Remove").size(10))
+                        .padding([5, 8])
+                        .on_press(Message::AgentPnlCardRemove),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center),
+            )
+            .padding([8, 10])
+            .width(Fill)
+            .style(agent_empty_card_style)
+            .into();
+        }
+        if let Some(error) = &self.agent.pnl_card_error {
+            return container(text(error).size(10).color(theme.palette().danger))
+                .padding([6, 8])
+                .width(Fill)
+                .into();
+        }
+        Space::new().height(Length::Fixed(0.0)).into()
+    }
+
     fn view_agent_model_picker<'a>(
         &'a self,
         selected_model: &str,
         theme: &Theme,
     ) -> Element<'a, Message> {
         let query = self.agent.model_search.trim().to_lowercase();
+        let vision_required = self.agent.pnl_card_attachment.is_some();
         let mut matches = self
             .agent
             .model_catalog
             .iter()
             .filter(|model| {
-                query.is_empty()
-                    || model.id.to_lowercase().contains(&query)
-                    || model.name.to_lowercase().contains(&query)
+                (!vision_required || model.supports_image_input)
+                    && (query.is_empty()
+                        || model.id.to_lowercase().contains(&query)
+                        || model.name.to_lowercase().contains(&query)
+                        || model.provider_summary().to_lowercase().contains(&query))
             })
             .collect::<Vec<_>>();
         if query.is_empty()
@@ -346,8 +485,13 @@ impl TradingTerminal {
             "OpenRouter model catalog".to_string()
         } else {
             format!(
-                "{} tool-capable models",
-                self.agent.model_catalog.len().saturating_sub(1)
+                "{} {}models",
+                matches.len(),
+                if vision_required {
+                    "vision + tools "
+                } else {
+                    "tool-capable "
+                }
             )
         };
         let refresh = button(text("Refresh").size(10))
@@ -361,9 +505,13 @@ impl TradingTerminal {
 
         let header = row![
             column![
-                text("Choose Assistant model")
-                    .size(12)
-                    .color(theme.palette().text),
+                text(if vision_required {
+                    "Choose a vision + tools model"
+                } else {
+                    "Choose Assistant model"
+                })
+                .size(12)
+                .color(theme.palette().text),
                 text(format!("Current · {selected_model} · {catalog_status}"))
                     .size(9)
                     .color(theme.extended_palette().background.weak.text),
@@ -406,9 +554,13 @@ impl TradingTerminal {
             if matched_count == 0 {
                 rows = rows.push(
                     container(
-                        text("No tool-capable models match that search.")
-                            .size(10)
-                            .color(theme.extended_palette().background.weak.text),
+                        text(if vision_required {
+                            "No vision + tools models match that search."
+                        } else {
+                            "No tool-capable models match that search."
+                        })
+                        .size(10)
+                        .color(theme.extended_palette().background.weak.text),
                     )
                     .center_x(Fill)
                     .padding(18),
@@ -484,16 +636,27 @@ fn agent_model_option<'a>(
             .size(9)
             .color(theme.extended_palette().background.weak.text),
         row![
-            text(model.pricing_summary())
-                .size(9)
-                .color(theme.extended_palette().background.weak.text)
-                .width(Fill),
+            text(format!(
+                "{} · {}",
+                model.provider_summary(),
+                if model.supports_image_input {
+                    "Vision"
+                } else {
+                    "Text"
+                }
+            ))
+            .size(9)
+            .color(theme.palette().primary)
+            .width(Fill),
             text(model.context_summary())
                 .size(9)
                 .color(theme.extended_palette().background.weak.text),
         ]
         .spacing(8)
         .align_y(Alignment::Center),
+        text(model.pricing_summary())
+            .size(9)
+            .color(theme.extended_palette().background.weak.text),
     ]
     .spacing(2)
     .width(Fill);
@@ -600,6 +763,7 @@ fn agent_entry<'a>(
                     entry_index,
                     evidence.len(),
                     agent.stream.evidence_open,
+                    !agent.featured_response_has_image,
                     progress,
                     theme,
                 ));
@@ -730,6 +894,7 @@ fn agent_response_actions<'a>(
     entry_index: usize,
     evidence_count: usize,
     evidence_open: bool,
+    can_regenerate: bool,
     progress: f32,
     theme: &Theme,
 ) -> Element<'a, Message> {
@@ -742,10 +907,20 @@ fn agent_response_actions<'a>(
         .padding([4, 7])
         .on_press_maybe(enabled.then_some(Message::AgentCopyResponse(entry_index)))
         .style(move |theme, status| agent_response_action_style(theme, status, progress));
-    let retry = button(text("Regenerate").size(10).color(color))
-        .padding([4, 7])
-        .on_press_maybe(enabled.then_some(Message::AgentRegenerateResponse(entry_index)))
-        .style(move |theme, status| agent_response_action_style(theme, status, progress));
+    let retry = button(
+        text(if can_regenerate {
+            "Regenerate"
+        } else {
+            "Reattach to regenerate"
+        })
+        .size(10)
+        .color(color),
+    )
+    .padding([4, 7])
+    .on_press_maybe(
+        (enabled && can_regenerate).then_some(Message::AgentRegenerateResponse(entry_index)),
+    )
+    .style(move |theme, status| agent_response_action_style(theme, status, progress));
 
     let mut actions = row![copy, retry].spacing(2).align_y(Alignment::Center);
     if evidence_count > 0 {
@@ -1243,6 +1418,18 @@ fn agent_empty_card_style(theme: &Theme) -> container_style::Style {
             radius: 8.0.into(),
             width: 1.0,
             color: theme.extended_palette().background.strong.color,
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_pnl_card_hover_style(theme: &Theme) -> container_style::Style {
+    container_style::Style {
+        background: Some(with_alpha(theme.palette().primary, 0.10).into()),
+        border: Border {
+            color: with_alpha(theme.palette().primary, 0.8),
+            width: 1.0,
+            radius: 7.0.into(),
         },
         ..Default::default()
     }

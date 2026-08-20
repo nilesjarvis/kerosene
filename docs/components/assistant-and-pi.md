@@ -11,6 +11,7 @@ cannot place orders or mutate application state.
 
 | File | Responsibility |
 | --- | --- |
+| `src/agent_pnl_card.rs` | Bounded image selection, validation, normalization, preview, and redacted transport types. |
 | `src/agent_state.rs` | Window, transcript, runtime status, streaming, tool cards, and redacted prompt wrapper. |
 | `src/agent_update.rs` | Window lifecycle, prompt submission, snapshot/runtime orchestration, and stale-generation guards. |
 | `src/agent_views.rs` | Native chat window, composer, status, usage, empty state, and tool activity UI. |
@@ -19,16 +20,40 @@ cannot place orders or mutate application state.
 | `assets/agent/kerosene.ts` | Embedded Pi extension, typed read-only tools, deterministic calculations, and fixed-provider data adapters. |
 
 The assistant opens from the Widgets menu or the OpenRouter section of
-Settings > Integrations. Closing the window terminates Pi, clears the transcript,
-and deletes the sensitive snapshot. Sessions use Pi's `--no-session` mode and
-are never written to Pi's session store.
+Settings > Integrations. Closing the window terminates Pi, discards unsent image
+attachments, and deletes the sensitive snapshot. Kerosene persists its bounded
+chat sessions separately, while Pi uses `--no-session` and never writes them to
+its own session store.
 
 The model name in the Assistant footer opens a searchable picker backed by
 OpenRouter's live model catalog. Only text-output models that advertise tool
 calling are listed. Rows show OpenRouter's current input/output token prices,
-context capacity, and whether conditional pricing applies. Selecting a model
+context capacity, provider, image-input support, and whether conditional pricing applies. Selecting a model
 uses the existing persisted OpenRouter default and restarts Pi before the next
 turn.
+
+## P&L Card Investigation
+
+The empty state and composer expose a P&L card action. Users can choose a PNG,
+JPEG, or WebP file, or drag one anywhere over the Assistant window on platforms
+where iced supports file-drop events. Kerosene decodes the image with strict
+file, dimension, and allocation limits, resizes it to at most 2000×2000, and
+normalizes it to an in-memory PNG. The preview and image bytes are transient and
+are never written to `assistant_sessions.json`.
+
+Attaching a card filters the existing OpenRouter picker to models that advertise
+both image input and tool calling. Pi receives the normalized image through its
+RPC `prompt.images` field. The model first extracts only visible trade fields;
+when a perp symbol and a position-specific number are available, it can call the
+attachment-gated `kerosene_pnl_card_match` tool.
+
+That tool performs a bounded HyperDash current-position search, scores candidates
+with explicit per-field tolerances, and validates up to ten leading candidates
+against Hyperliquid `clearinghouseState`. It returns at most five public wallet
+addresses with score evidence, coverage, timestamps, and validation state. An
+address is always presented as a public position candidate, never as proof of a
+person's identity or wallet ownership. Closed or old cards may have no match
+because the provider path covers current open positions.
 
 Assistant text uses an adaptive native reveal queue on top of Pi's real text
 deltas. Short backlogs resolve word by word with a fading leading edge and an
@@ -66,7 +91,8 @@ The OpenRouter key is passed only in the child environment as
 `OPENROUTER_API_KEY`; it is never placed in arguments, snapshot content, RPC
 messages, or debug output. If configured, the HyperDash key is passed as
 `KEROSENE_AGENT_HYPERDASH_API_KEY` and can only be consumed by the embedded
-extension's fixed aggregate-positioning queries. Pi has no shell, file-read, or
+extension's fixed aggregate-positioning and attachment-gated P&L matching
+queries. Pi has no shell, file-read, or
 generic network tool with which to inspect either environment value. Runtime
 errors additionally redact both keys. Changing an integration key or model
 terminates or invalidates the relevant active session/request generation.
@@ -80,6 +106,7 @@ The enabled tool allowlist is:
 - `kerosene_calculate`
 - `kerosene_risk`
 - `kerosene_positioning`
+- `kerosene_pnl_card_match`
 - `kerosene_ohlcv`
 - `kerosene_sessions`
 
@@ -163,6 +190,11 @@ The snapshot explicitly omits:
 - internal journal trade and legacy-note IDs
 - wallet-level HyperDash identities
 
+The snapshot itself always keeps those omissions. For a turn with an explicit
+P&L image attachment, a private request flag authorizes only
+`kerosene_pnl_card_match` to return a bounded set of public candidate addresses;
+the addresses are fetched on demand and are not added to the snapshot.
+
 Errors are represented as booleans instead of raw upstream messages because
 those messages can contain sensitive request context.
 
@@ -193,6 +225,11 @@ those messages can contain sensitive request context.
 - `kerosene_positioning` uses fixed HyperDash GraphQL operations and returns
   aggregate long/short and aggregate change statistics only. Individual wallet
   identities are not returned to the model.
+- `kerosene_pnl_card_match` is disabled unless the current snapshot records an
+  explicit P&L image attachment. It uses fixed HyperDash and Hyperliquid
+  operations, bounded candidate/validation counts, deterministic scoring, and
+  returns public position candidates with uncertainty and coverage rather than
+  personal attribution.
 - `kerosene_ohlcv` uses a fixed Hyperliquid endpoint, allowlisted intervals,
   validated Kerosene symbols, a 90-day maximum request window, and a 500-row
   output cap.
@@ -224,7 +261,8 @@ explicit error instead of being presented as a successful blank response.
 
 ## Current MVP Limits
 
-- Chat history is ephemeral and is cleared when the window closes.
+- Kerosene persists bounded chat text locally; image attachments and tool cards
+  remain transient.
 - Assistant output renders streamed Markdown with headings, emphasis, lists,
   quotes, tables, links, inline code, and highlighted fenced code blocks.
 - No shell, filesystem, order, signing, or mutation tools are exposed.
@@ -235,6 +273,9 @@ explicit error instead of being presented as a successful blank response.
   there is no generic URL or query input.
 - Snapshot refresh happens at prompt boundaries, not continuously during a
   single agent turn.
+- P&L matching covers current open positions. It does not search closed-position
+  history or social-account identity, and rounded or incomplete cards may remain
+  ambiguous.
 - Journal analysis reflects the active account's currently loaded journal and
   reports partial, incomplete, or truncated coverage rather than silently
   presenting it as full history.

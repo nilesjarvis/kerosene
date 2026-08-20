@@ -22,7 +22,15 @@ const MAX_JOURNAL_TAGS: usize = 32;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    #[cfg(test)]
     pub(crate) fn build_agent_snapshot(&self) -> Result<Vec<u8>, String> {
+        self.build_agent_snapshot_for_request(false)
+    }
+
+    pub(crate) fn build_agent_snapshot_for_request(
+        &self,
+        pnl_card_match_allowed: bool,
+    ) -> Result<Vec<u8>, String> {
         let generated_at_ms = Self::now_ms();
         let snapshot = json!({
             "schema_version": SNAPSHOT_SCHEMA_VERSION,
@@ -58,7 +66,10 @@ impl TradingTerminal {
             "journal": self.agent_journal_snapshot(generated_at_ms),
             "positioning": self.agent_positioning_snapshot(generated_at_ms),
             "sessions": self.agent_sessions_snapshot(generated_at_ms),
-            "_tool_data": self.agent_tool_data_snapshot(generated_at_ms),
+            "_tool_data": self.agent_tool_data_snapshot(
+                generated_at_ms,
+                pnl_card_match_allowed,
+            ),
         });
 
         serde_json::to_vec(&snapshot)
@@ -772,7 +783,11 @@ impl TradingTerminal {
         priority
     }
 
-    fn agent_tool_data_snapshot(&self, generated_at_ms: u64) -> Value {
+    fn agent_tool_data_snapshot(
+        &self,
+        generated_at_ms: u64,
+        pnl_card_match_allowed: bool,
+    ) -> Value {
         let market_rows = self.agent_market_rows();
         let account_activity = self.account_data.as_ref().map(|data| {
             let fills = data
@@ -812,6 +827,14 @@ impl TradingTerminal {
             "contract": {
                 "private": true,
                 "description": "Internal sanitized backing data for typed Kerosene tools; kerosene_data never returns this object.",
+            },
+            "assistant_request": {
+                "pnl_card_match_allowed": pnl_card_match_allowed,
+                "authorization_scope": if pnl_card_match_allowed {
+                    "one attached P&L card turn"
+                } else {
+                    "none"
+                },
             },
             "markets": {
                 "as_of_ms": self.all_mids_updated_at_ms.values().copied().max(),
@@ -1164,6 +1187,38 @@ fn staged_snapshot_path(workspace_dir: &Path, generation: u64, request_id: u64) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pnl_card_match_authorization_is_private_and_scoped_to_the_request() {
+        let (terminal, _) = TradingTerminal::boot();
+        let regular: Value = serde_json::from_slice(
+            &terminal
+                .build_agent_snapshot_for_request(false)
+                .expect("regular snapshot"),
+        )
+        .expect("regular snapshot json");
+        let attached: Value = serde_json::from_slice(
+            &terminal
+                .build_agent_snapshot_for_request(true)
+                .expect("attached snapshot"),
+        )
+        .expect("attached snapshot json");
+
+        assert_eq!(
+            regular["_tool_data"]["assistant_request"]["pnl_card_match_allowed"],
+            false
+        );
+        assert_eq!(
+            attached["_tool_data"]["assistant_request"]["pnl_card_match_allowed"],
+            true
+        );
+        assert!(attached.get("assistant_request").is_none());
+        assert!(
+            attached["data_policy"]["omitted"]
+                .as_array()
+                .is_some_and(|values| values.iter().any(|value| value == "wallet_addresses"))
+        );
+    }
 
     #[test]
     fn empty_snapshot_has_versioned_sanitized_contract() {

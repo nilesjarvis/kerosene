@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 const EXTENSION_SOURCE: &str = include_str!("../assets/agent/kerosene.ts");
 const RUNTIME_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const PI_RPC_ARGS: [&str; 3] = ["--mode", "rpc", "--no-session"];
-const PI_TOOL_ALLOWLIST: &str = "kerosene_data,kerosene_market_data,kerosene_activity,kerosene_journal,kerosene_calculate,kerosene_risk,kerosene_positioning,kerosene_ohlcv,kerosene_sessions";
+const PI_TOOL_ALLOWLIST: &str = "kerosene_data,kerosene_market_data,kerosene_activity,kerosene_journal,kerosene_calculate,kerosene_risk,kerosene_positioning,kerosene_pnl_card_match,kerosene_ohlcv,kerosene_sessions";
 
 // ---------------------------------------------------------------------------
 // Pi RPC Runtime
@@ -375,10 +375,26 @@ fn run_runtime(
     loop {
         match command_receiver.recv_timeout(RUNTIME_POLL_INTERVAL) {
             Ok(AgentRuntimeCommand::Prompt(prompt)) => {
-                let request = json!({
+                let images = prompt
+                    .images()
+                    .iter()
+                    .map(|image| {
+                        json!({
+                            "type": "image",
+                            "data": image.data.as_str(),
+                            "mimeType": image.mime_type,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                let mut request = json!({
                     "type": "prompt",
                     "message": prompt.as_str(),
                 });
+                if !images.is_empty()
+                    && let Some(request) = request.as_object_mut()
+                {
+                    request.insert("images".to_string(), Value::Array(images));
+                }
                 if write_rpc_command(&mut stdin, &request).is_err() {
                     break;
                 }
@@ -707,6 +723,12 @@ fn tool_call_detail(name: &str, args: Option<&Value>) -> Option<String> {
             push_field(&mut segments, field("timeframe"), timeframe_label);
             segments
         }
+        "kerosene_pnl_card_match" => {
+            let mut segments = Vec::new();
+            push_optional(&mut segments, field("symbol"));
+            push_optional(&mut segments, field("side").map(|value| title_case(&value)));
+            segments
+        }
         "kerosene_ohlcv" => {
             let mut segments = Vec::new();
             push_optional(&mut segments, field("symbol"));
@@ -911,8 +933,9 @@ mod tests {
     fn pi_rpc_arguments_match_current_cli_contract() {
         assert_eq!(PI_RPC_ARGS, ["--mode", "rpc", "--no-session"]);
         let tools = PI_TOOL_ALLOWLIST.split(',').collect::<Vec<_>>();
-        assert_eq!(tools.len(), 9);
+        assert_eq!(tools.len(), 10);
         assert!(tools.contains(&"kerosene_journal"));
+        assert!(tools.contains(&"kerosene_pnl_card_match"));
         assert!(tools.iter().all(|tool| tool.starts_with("kerosene_")));
         assert!(
             !tools

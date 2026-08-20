@@ -57,6 +57,17 @@ impl TradingTerminal {
                     self.agent.model_picker_open = false;
                     self.agent.model_search.clear();
                 }
+                if self.agent.pnl_card_attachment.is_some() {
+                    self.agent.status_detail = match self
+                        .agent
+                        .model_supports_images(&self.openrouter_model_for_task())
+                    {
+                        Some(true) => None,
+                        _ => Some(
+                            "Choose a vision + tools model for the attached P&L card.".to_string(),
+                        ),
+                    };
+                }
                 self.persist_config();
             }
             _ => {}

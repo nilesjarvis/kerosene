@@ -1,6 +1,5 @@
-use iced::gradient;
 use iced::widget::container as container_style;
-use iced::{Color, Degrees, Theme};
+use iced::{Color, Theme};
 
 mod contrast;
 
@@ -17,9 +16,12 @@ pub(super) struct PnlCardPalette {
     pub(super) start: Color,
     pub(super) mid: Color,
     pub(super) end: Color,
-    pub(super) border_start: Color,
-    pub(super) border_mid: Color,
-    pub(super) border_end: Color,
+    pub(super) accent: Color,
+    pub(super) border: Color,
+    pub(super) brand: Color,
+    pub(super) brand_ink: Color,
+    pub(super) panel: Color,
+    pub(super) panel_border: Color,
     pub(super) text: Color,
     pub(super) weak_text: Color,
 }
@@ -27,28 +29,42 @@ pub(super) struct PnlCardPalette {
 pub(super) fn pnl_card_palette(theme: &Theme, pnl_color: Color) -> PnlCardPalette {
     let palette = theme.palette();
     let extended = theme.extended_palette();
-    let raw_start = mix_color(pnl_color, palette.primary, 0.26);
+    let raw_start = mix_color(extended.background.strong.color, pnl_color, 0.18);
     let raw_mid = mix_color(
         extended.background.base.color,
-        mix_color(pnl_color, palette.primary, 0.34),
-        0.42,
+        mix_color(pnl_color, palette.primary, 0.38),
+        0.10,
     );
-    let raw_end = mix_color(extended.background.weak.color, palette.background, 0.52);
+    let raw_end = mix_color(extended.background.base.color, palette.background, 0.38);
     let ([start, mid, end], text) = readable_card_surfaces([raw_start, raw_mid, raw_end]);
-    let border_start = mix_color(palette.primary, Color::WHITE, 0.08);
-    let border_mid = mix_color(pnl_color, palette.primary, 0.20);
-    let border_end = mix_color(extended.background.strong.color, pnl_color, 0.24);
-    let weak_text = Color { a: 0.84, ..text };
+    let accent = mix_color(pnl_color, text, 0.08);
+    let brand = palette.primary;
+    let brand_ink = if relative_luminance(brand) > 0.42 {
+        Color::from_rgb(0.035, 0.04, 0.05)
+    } else {
+        Color::WHITE
+    };
+    let panel_tint = if relative_luminance(text) > 0.5 {
+        Color::BLACK
+    } else {
+        Color::WHITE
+    };
 
     PnlCardPalette {
         start,
         mid,
         end,
-        border_start,
-        border_mid,
-        border_end,
+        accent,
+        border: Color { a: 0.30, ..text },
+        brand,
+        brand_ink,
+        panel: Color {
+            a: 0.24,
+            ..panel_tint
+        },
+        panel_border: Color { a: 0.14, ..text },
         text,
-        weak_text,
+        weak_text: Color { a: 0.68, ..text },
     }
 }
 
@@ -62,88 +78,24 @@ pub(super) fn mix_color(left: Color, right: Color, t: f32) -> Color {
     }
 }
 
-pub(super) fn pnl_card_detail_band_style(
-    theme: &Theme,
-    pnl_color: Color,
-) -> container_style::Style {
+pub(super) fn pnl_card_frame_style(theme: &Theme, pnl_color: Color) -> container_style::Style {
     let palette = pnl_card_palette(theme, pnl_color);
     container_style::Style {
-        background: Some(detail_band_color(palette.text, 0.16).into()),
         border: iced::Border {
-            radius: 5.0.into(),
+            radius: 12.0.into(),
             width: 1.0,
             color: Color {
-                a: 0.18,
-                ..palette.text
+                a: 0.30,
+                ..palette.accent
             },
         },
-        ..Default::default()
-    }
-}
-
-fn detail_band_color(text_color: Color, alpha: f32) -> Color {
-    if relative_luminance(text_color) > 0.5 {
-        Color {
-            a: alpha,
-            ..Color::BLACK
-        }
-    } else {
-        Color {
-            a: alpha,
-            ..Color::WHITE
-        }
-    }
-}
-
-pub(super) fn detail_band_rgba(text_color: Color, alpha: u8) -> [u8; 4] {
-    if relative_luminance(text_color) > 0.5 {
-        [0, 0, 0, alpha]
-    } else {
-        [255, 255, 255, alpha]
-    }
-}
-
-pub(super) fn pnl_card_border_style(theme: &Theme, pnl_color: Color) -> container_style::Style {
-    let palette = pnl_card_palette(theme, pnl_color);
-
-    container_style::Style {
-        background: Some(
-            gradient::Linear::new(Degrees(135.0))
-                .add_stop(0.0, palette.border_start)
-                .add_stop(0.45, palette.border_mid)
-                .add_stop(1.0, palette.border_end)
-                .into(),
-        ),
-        border: iced::Border {
-            radius: 10.0.into(),
-            width: 1.0,
+        shadow: iced::Shadow {
             color: Color {
-                a: 0.42,
-                ..palette.border_mid
+                a: 0.24,
+                ..Color::BLACK
             },
-        },
-        ..Default::default()
-    }
-}
-
-pub(super) fn pnl_card_inner_style(theme: &Theme, pnl_color: Color) -> container_style::Style {
-    let palette = pnl_card_palette(theme, pnl_color);
-
-    container_style::Style {
-        background: Some(
-            gradient::Linear::new(Degrees(135.0))
-                .add_stop(0.0, palette.start)
-                .add_stop(0.56, palette.mid)
-                .add_stop(1.0, palette.end)
-                .into(),
-        ),
-        border: iced::Border {
-            radius: 7.0.into(),
-            width: 1.0,
-            color: Color {
-                a: 0.20,
-                ..palette.text
-            },
+            offset: iced::Vector::new(0.0, 8.0),
+            blur_radius: 20.0,
         },
         ..Default::default()
     }

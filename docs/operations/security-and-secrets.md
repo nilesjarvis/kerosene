@@ -56,6 +56,14 @@ not a secret credential: persistence types and save-result messages must redact
 content from `Debug`, the side-file must never contain the OpenRouter key or raw
 tool payloads, and Clear All Config must remove it.
 
+Assistant P&L card files are untrusted, potentially identifying input. Decode
+them with file, dimension, and allocation limits; normalize them in memory;
+redact their paths from `Debug`; and never persist their bytes or preview
+handles. Images are sent only to the selected vision-capable OpenRouter model.
+The specialized matching tool may reveal bounded public wallet candidates only
+when the current turn carries an explicit attachment authorization; it must not
+turn those candidates into claims about a person's identity or ownership.
+
 ## Storage Modes
 
 Credential storage supports:

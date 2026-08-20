@@ -9,10 +9,7 @@ mod label;
 mod update;
 mod view;
 
-pub(crate) use bitmap::{
-    PixelPoint, Rect, bitmap_text_width, color_to_rgba, draw_bitmap_text, encode_png_rgba,
-    fill_rect,
-};
+pub(crate) use bitmap::encode_png_rgba;
 #[cfg(test)]
 use capture::*;
 #[cfg(test)]

@@ -118,7 +118,8 @@ some visual exports use canvas or image-oriented rendering:
 - Auxiliary windows: `main_view/windows.rs`.
 - Chart pane: `chart_views.rs` and `chart/`.
 - Screenshot window and bitmap export: `chart_screenshot/`.
-- PnL card image generation: `pnl_card/image/`.
+- PnL card preview/export rendering: `pnl_card/rendering.rs` and
+  `pnl_card/image/`.
 
 Views should be pure functions of state. If a UI interaction needs I/O or state
 mutation, it should emit a `Message` and let an update module handle it.

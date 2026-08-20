@@ -3,6 +3,7 @@ mod display_text;
 mod image;
 mod metrics;
 mod model;
+mod rendering;
 mod style;
 mod update;
 mod view;

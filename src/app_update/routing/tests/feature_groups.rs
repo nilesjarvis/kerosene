@@ -78,6 +78,23 @@ fn assistant_routes_stay_on_agent_module() {
         UpdateRoute::Agent,
     );
     assert_route(Message::AgentSubmit, UpdateRoute::Agent);
+    assert_route(Message::AgentPnlCardBrowse, UpdateRoute::Agent);
+    assert_route(
+        Message::AgentPnlCardDropped(
+            window_id(),
+            crate::agent_pnl_card::AgentPnlCardPath::new("card.png".into()),
+        ),
+        UpdateRoute::Agent,
+    );
+    assert_route(
+        Message::AgentPnlCardHoverChanged(window_id(), true),
+        UpdateRoute::Agent,
+    );
+    assert_route(
+        Message::AgentPnlCardLoaded(1, Ok(None).into()),
+        UpdateRoute::Agent,
+    );
+    assert_route(Message::AgentPnlCardRemove, UpdateRoute::Agent);
     assert_route(Message::AgentAbort, UpdateRoute::Agent);
     assert_route(Message::AgentStreamTick, UpdateRoute::Agent);
     assert_route(Message::AgentCopyResponse(4), UpdateRoute::Agent);

@@ -1,4 +1,5 @@
-use crate::openrouter_api::OpenRouterModel;
+use crate::agent_pnl_card::{AgentPnlCardAttachment, AgentPromptImage};
+use crate::openrouter_api::{DEFAULT_OPENROUTER_MODEL, OpenRouterModel};
 use iced::{widget::markdown, window};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -108,6 +109,11 @@ pub(crate) fn agent_tool_presentation(name: &str) -> AgentToolPresentation {
             category: "Positioning",
             title: "Aggregate positioning",
             running_label: "Fetching aggregate positioning",
+        },
+        "kerosene_pnl_card_match" => AgentToolPresentation {
+            category: "P&L card",
+            title: "Public position candidates",
+            running_label: "Matching the card against public positions",
         },
         "kerosene_ohlcv" => AgentToolPresentation {
             category: "Price data",
@@ -319,6 +325,8 @@ pub(crate) struct AgentState {
     pub(crate) assistant_entry_index: Option<usize>,
     pub(crate) stream: AgentStreamPresentation,
     pub(crate) current_turn_has_text: bool,
+    pub(crate) current_turn_has_image: bool,
+    pub(crate) featured_response_has_image: bool,
     pub(crate) empty_response_retry_count: u8,
     pub(crate) suppress_empty_response_retry: bool,
     pub(crate) needs_context_replay: bool,
@@ -333,6 +341,11 @@ pub(crate) struct AgentState {
     pub(crate) model_catalog: Vec<OpenRouterModel>,
     pub(crate) model_catalog_loading: bool,
     pub(crate) model_catalog_error: Option<String>,
+    pub(crate) pnl_card_attachment: Option<AgentPnlCardAttachment>,
+    pub(crate) pnl_card_loading: bool,
+    pub(crate) pnl_card_drop_hovered: bool,
+    pub(crate) pnl_card_error: Option<String>,
+    pub(crate) pnl_card_load_generation: u64,
     pub(crate) persistence_generation: u64,
     pub(crate) persistence_in_flight: bool,
     pub(crate) persistence_dirty: bool,
@@ -361,6 +374,8 @@ impl Default for AgentState {
             assistant_entry_index: None,
             stream: AgentStreamPresentation::default(),
             current_turn_has_text: false,
+            current_turn_has_image: false,
+            featured_response_has_image: false,
             empty_response_retry_count: 0,
             suppress_empty_response_retry: false,
             needs_context_replay: false,
@@ -375,6 +390,11 @@ impl Default for AgentState {
             model_catalog: Vec::new(),
             model_catalog_loading: false,
             model_catalog_error: None,
+            pnl_card_attachment: None,
+            pnl_card_loading: false,
+            pnl_card_drop_hovered: false,
+            pnl_card_error: None,
+            pnl_card_load_generation: 0,
             persistence_generation: 0,
             persistence_in_flight: false,
             persistence_dirty: false,
@@ -390,6 +410,32 @@ impl AgentState {
         self.model_catalog.clear();
         self.model_catalog_loading = false;
         self.model_catalog_error = None;
+    }
+
+    pub(crate) fn model_supports_images(&self, model_id: &str) -> Option<bool> {
+        if model_id == DEFAULT_OPENROUTER_MODEL {
+            return Some(true);
+        }
+        self.model_catalog
+            .iter()
+            .find(|model| model.id == model_id)
+            .map(|model| model.supports_image_input)
+    }
+
+    pub(crate) fn begin_pnl_card_load(&mut self) -> u64 {
+        self.pnl_card_load_generation = self.pnl_card_load_generation.wrapping_add(1);
+        self.pnl_card_loading = true;
+        self.pnl_card_drop_hovered = false;
+        self.pnl_card_error = None;
+        self.pnl_card_load_generation
+    }
+
+    pub(crate) fn clear_pnl_card_attachment(&mut self) {
+        self.pnl_card_load_generation = self.pnl_card_load_generation.wrapping_add(1);
+        self.pnl_card_attachment = None;
+        self.pnl_card_loading = false;
+        self.pnl_card_drop_hovered = false;
+        self.pnl_card_error = None;
     }
 
     pub(crate) fn session_count(&self) -> usize {
@@ -550,6 +596,7 @@ impl AgentState {
         self.assistant_entry_index = None;
         self.reset_stream_activity();
         self.current_turn_has_text = false;
+        self.current_turn_has_image = false;
         self.empty_response_retry_count = 0;
         self.suppress_empty_response_retry = false;
         self.require_context_replay();
@@ -663,6 +710,7 @@ impl AgentState {
         self.status = AgentStatus::Preparing;
         self.status_detail = None;
         self.current_turn_has_text = false;
+        self.current_turn_has_image = false;
         self.empty_response_retry_count = 0;
         self.suppress_empty_response_retry = false;
         (self.runtime_generation, self.snapshot_request_id)
@@ -761,6 +809,8 @@ impl AgentState {
         self.assistant_entry_index = None;
         self.reset_stream_activity();
         self.stream.featured_entry_index = featured;
+        self.featured_response_has_image = self.current_turn_has_image && featured.is_some();
+        self.current_turn_has_image = false;
         self.stream.completion_progress = if featured.is_some() { 0.0 } else { 1.0 };
         self.stream.evidence_open = false;
         featured
@@ -770,7 +820,11 @@ impl AgentState {
         self.flush_assistant_stream();
         self.assistant_entry_index = None;
         self.reset_stream_activity();
-        self.refresh_featured_assistant();
+        self.stream.featured_entry_index = latest_assistant_after_last_user(&self.entries);
+        self.stream.evidence_open = false;
+        self.featured_response_has_image =
+            self.current_turn_has_image && self.stream.featured_entry_index.is_some();
+        self.current_turn_has_image = false;
         self.stream.completion_progress = 1.0;
     }
 
@@ -784,6 +838,7 @@ impl AgentState {
                 }
             )
         });
+        self.featured_response_has_image = false;
         self.stream.evidence_open = false;
     }
 
@@ -807,6 +862,7 @@ impl AgentState {
         self.assistant_entry_index = None;
         self.reset_stream_activity();
         self.refresh_featured_assistant();
+        self.featured_response_has_image = false;
         self.stream.completion_progress = 1.0;
     }
 
@@ -866,6 +922,7 @@ impl AgentState {
     }
 
     fn install_active_session(&mut self, session: AgentStoredSession) {
+        self.clear_pnl_card_attachment();
         self.active_session_id = session.id;
         self.active_session_title = session.title;
         self.active_session_created_at_ms = session.created_at_ms;
@@ -883,6 +940,7 @@ impl AgentState {
     }
 
     fn clear_active_session_content(&mut self) {
+        self.clear_pnl_card_attachment();
         self.input.clear();
         self.entries.clear();
         self.requested_model = None;
@@ -892,6 +950,7 @@ impl AgentState {
         self.total_tokens = None;
         self.total_cost_usd = None;
         self.stream.featured_entry_index = None;
+        self.featured_response_has_image = false;
         self.stream.evidence_open = false;
         self.reset_runtime();
     }
@@ -1169,22 +1228,37 @@ fn trailing_text(text: &str, max_chars: usize) -> String {
     chars.into_iter().collect()
 }
 
-#[derive(Clone, Default, PartialEq, Eq)]
-pub(crate) struct AgentPrompt(Zeroizing<String>);
+#[derive(Clone, Default)]
+pub(crate) struct AgentPrompt {
+    text: Zeroizing<String>,
+    images: Vec<AgentPromptImage>,
+}
 
 impl AgentPrompt {
     pub(crate) fn as_str(&self) -> &str {
-        self.0.as_str()
+        self.text.as_str()
     }
 
     pub(crate) fn into_string(self) -> String {
-        self.0.to_string()
+        self.text.to_string()
+    }
+
+    pub(crate) fn with_image(mut self, image: AgentPromptImage) -> Self {
+        self.images.push(image);
+        self
+    }
+
+    pub(crate) fn images(&self) -> &[AgentPromptImage] {
+        &self.images
     }
 }
 
 impl From<String> for AgentPrompt {
     fn from(value: String) -> Self {
-        Self(value.into())
+        Self {
+            text: value.into(),
+            images: Vec::new(),
+        }
     }
 }
 
