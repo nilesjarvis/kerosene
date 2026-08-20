@@ -73,6 +73,15 @@ Credential storage supports:
 
 OS keychain mode stores profile/global secrets outside plaintext config.
 
+Normal credential saves are scoped read-modify-write operations: the existing
+bundle must be read successfully, and only the profile or integration named by
+the user action is changed. A Hydromancer, HyperDash, X, Schwab, OpenRouter, or
+account-key save must never rebuild the whole bundle from runtime fields or
+interpret an unrelated empty field as a clear. Full-bundle replacement is
+reserved for explicit storage-mode migration and startup migration after all
+source credentials have been read. If the current bundle cannot be read, the
+update is rejected without writing.
+
 Windows Credential Manager limits the size of one generic credential record.
 Kerosene therefore stores the serialized payload as bounded, generation-based
 chunks and commits a small manifest last. Loading validates the manifest and

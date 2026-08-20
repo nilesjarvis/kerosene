@@ -112,6 +112,12 @@ names to the recovered profiles, and persists the recovered metadata.
 Encrypted-config credentials require a surviving primary or backup config
 because the encrypted blob is stored in those files.
 
+OS-keychain credential changes use a scoped read-modify-write transaction. Each
+account or integration flow updates only its own fields in the durable bundle;
+an unreadable bundle blocks the change instead of allowing an incomplete
+runtime snapshot to overwrite other saved credentials. Explicit clears remove
+only their named profile or integration fields.
+
 When changing any persisted preference or layout state, call `persist_config()`
 from the owning update module after state changes.
 

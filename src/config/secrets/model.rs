@@ -145,6 +145,16 @@ pub struct SecretPayload {
     pub global: GlobalSecretPayload,
 }
 
+impl Default for SecretPayload {
+    fn default() -> Self {
+        Self {
+            schema: SECRET_PAYLOAD_SCHEMA.to_string(),
+            profiles: Vec::new(),
+            global: GlobalSecretPayload::default(),
+        }
+    }
+}
+
 impl fmt::Debug for SecretPayload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SecretPayload")

@@ -118,6 +118,7 @@ impl TradingTerminal {
             hydromancer_api_key: String::new().into(),
         };
         let profile_name = profile.name.clone();
+        let profile_secret_id = profile.secret_id.clone();
 
         // Commit the profile, then persist secrets from the committed
         // snapshot; roll the push back if credential storage refuses so an
@@ -128,7 +129,8 @@ impl TradingTerminal {
         if !agent_key.is_empty() {
             let persisted_accounts = self.persisted_accounts_snapshot();
             let migration_blocked_before = self.secret_migration_save_blocked;
-            if !self.persist_profile_secrets_from_accounts(&persisted_accounts) {
+            if !self.persist_profile_secrets_from_accounts(&persisted_accounts, &profile_secret_id)
+            {
                 self.accounts.pop();
                 // The failed write only tried to add a key that was never
                 // committed anywhere else, so the last-saved config still

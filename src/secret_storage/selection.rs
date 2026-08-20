@@ -119,6 +119,17 @@ impl TradingTerminal {
             Option<&config::SecretPayload>,
         ) -> Result<(), String>,
     ) {
+        if self.secret_storage_mode == config::CredentialStorageMode::OsKeychain {
+            // Re-applying the active mode is not a credential mutation. In
+            // particular, it must not rebuild the bundle from runtime fields,
+            // because any field that is temporarily unavailable would become
+            // an accidental clear.
+            self.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+            self.secret_store_status =
+                Some(("Credentials already use the OS keychain".to_string(), false));
+            return;
+        }
+
         if self.secret_storage_mode == config::CredentialStorageMode::EncryptedConfig
             && !self.encrypted_secrets_unlocked
         {
@@ -927,40 +938,28 @@ mod tests {
     }
 
     #[test]
-    fn os_keychain_storage_save_failure_keeps_active_keychain_payload() {
+    fn reapplying_os_keychain_mode_never_rewrites_the_active_bundle() {
         let mut terminal = terminal_ready_to_switch_to_os_keychain();
         terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
         terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
         terminal.encrypted_secrets = None;
         terminal.encrypted_secrets_unlocked = false;
-        let cleanup_called = Cell::new(false);
 
         terminal.apply_os_keychain_storage_selection_with(
-            |_| Err("disk full signature=active-secret".to_string()),
-            |_, _, _, _, _, _| Ok(None),
-            || panic!("snapshot should not run while OS keychain is already active"),
-            |_| {
-                cleanup_called.set(true);
-                Ok(())
-            },
+            |_| panic!("same-mode selection must not save config"),
+            |_, _, _, _, _, _| panic!("same-mode selection must not rewrite credentials"),
+            || panic!("same-mode selection must not snapshot credentials"),
+            |_| panic!("same-mode selection must not roll back credentials"),
         );
 
-        assert!(!cleanup_called.get());
         assert_eq!(
             terminal.secret_storage_mode,
             config::CredentialStorageMode::OsKeychain
         );
-        let (status, is_error) = terminal
-            .secret_store_status
-            .as_ref()
-            .expect("failure status should be set");
-        assert!(*is_error);
-        assert!(status.contains("disk full"));
-        assert!(status.contains("signature=<redacted>"));
-        assert!(!status.contains("active-secret"));
-        assert!(status.contains("OS keychain credentials remain active"));
-        assert!(!status.contains("encrypted config credentials remain active"));
-        assert!(!status.contains("rollback cleanup failed"));
+        assert_eq!(
+            terminal.secret_store_status,
+            Some(("Credentials already use the OS keychain".to_string(), false))
+        );
     }
 
     #[test]

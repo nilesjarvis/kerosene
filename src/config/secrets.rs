@@ -13,7 +13,9 @@ pub use keychain::{
 pub use model::{EncryptedSecretsConfig, SecretPayload};
 pub use warnings::take_secret_warnings;
 
-pub(crate) use keychain::clear_profile_secrets_by_id;
+pub(crate) use keychain::{
+    KeychainSecretUpdate, clear_profile_secrets_by_id, update_keychain_secret_payload,
+};
 pub(crate) use warnings::push_secret_warning;
 
 pub(crate) use crypto::validate_encrypted_secrets_metadata;

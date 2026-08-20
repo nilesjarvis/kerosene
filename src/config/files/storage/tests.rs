@@ -558,6 +558,61 @@ fn openrouter_only_keychain_bundle_hydrates_without_rewrite() {
 }
 
 #[test]
+fn complete_keychain_bundle_rehydrates_every_credential_after_restart() {
+    let saved_profile = test_profile("account-a", "agent-key");
+    let mut config = KeroseneConfig {
+        accounts: vec![test_profile("account-a", "")],
+        ..KeroseneConfig::default()
+    };
+    let bundle = SecretPayload::from_credentials_with_integrations(
+        &[saved_profile],
+        "hydromancer-key",
+        "hyperdash-key",
+        "x-access-token",
+        "x-client-id",
+        "x-refresh-token",
+        "schwab-client-id",
+        "schwab-client-secret",
+        "schwab-access-token",
+        "schwab-refresh-token",
+        "openrouter-key",
+    );
+    let stores = Cell::new(0);
+
+    load_os_keychain_secrets_with(
+        &mut config,
+        || Ok(Some(bundle.clone())),
+        |_| {
+            stores.set(stores.get() + 1);
+            Ok(())
+        },
+        cleanup_hooks(|_| Ok(())),
+        |_| panic!("current bundle must not fall back to legacy profile entries"),
+        no_legacy_global_secrets,
+        |_| {},
+    );
+
+    assert_eq!(stores.get(), 0);
+    let (terminal, _task) = crate::app_state::TradingTerminal::boot_from_config(config);
+    assert_eq!(terminal.accounts[0].agent_key.as_str(), "agent-key");
+    assert_eq!(terminal.wallet_key_input.as_str(), "agent-key");
+    assert_eq!(terminal.hydromancer_api_key.as_str(), "hydromancer-key");
+    assert_eq!(terminal.hyperdash_api_key.as_str(), "hyperdash-key");
+    assert_eq!(terminal.openrouter_api_key.as_str(), "openrouter-key");
+    let (x_access_token, x_client_id, x_refresh_token) =
+        terminal.x_feed.oauth_credentials_for_secret();
+    assert_eq!(x_access_token.as_str(), "x-access-token");
+    assert_eq!(x_client_id.as_str(), "x-client-id");
+    assert_eq!(x_refresh_token.as_str(), "x-refresh-token");
+    let (schwab_client_id, schwab_client_secret, schwab_access_token, schwab_refresh_token) =
+        terminal.schwab.oauth_credentials_for_secret();
+    assert_eq!(schwab_client_id.as_str(), "schwab-client-id");
+    assert_eq!(schwab_client_secret.as_str(), "schwab-client-secret");
+    assert_eq!(schwab_access_token.as_str(), "schwab-access-token");
+    assert_eq!(schwab_refresh_token.as_str(), "schwab-refresh-token");
+}
+
+#[test]
 fn missing_config_recovers_accounts_from_keychain_bundle() {
     let wallet_a = "0xabc0000000000000000000000000000000000000";
     let wallet_b = "0xdef0000000000000000000000000000000000000";

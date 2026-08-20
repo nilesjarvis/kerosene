@@ -28,6 +28,31 @@ const KEYCHAIN_MAX_SHARDS: usize = 256;
 #[cfg(target_os = "windows")]
 static KEYCHAIN_SHARD_GENERATION: AtomicU64 = AtomicU64::new(0);
 
+/// A single, explicit credential mutation.
+///
+/// Normal credential-entry flows must use this instead of replacing the full
+/// bundle from runtime state. That keeps a temporarily unavailable or
+/// not-yet-hydrated credential from being interpreted as an explicit clear.
+#[derive(Clone, Copy)]
+pub(crate) enum KeychainSecretUpdate<'a> {
+    Profile(&'a AccountProfile),
+    RemoveProfile(&'a str),
+    Hydromancer(&'a str),
+    Hyperdash(&'a str),
+    XOAuth {
+        access_token: &'a str,
+        client_id: &'a str,
+        refresh_token: &'a str,
+    },
+    SchwabOAuth {
+        client_id: &'a str,
+        client_secret: &'a str,
+        access_token: &'a str,
+        refresh_token: &'a str,
+    },
+    OpenRouter(&'a str),
+}
+
 #[cfg(target_os = "windows")]
 #[derive(Debug, Serialize, Deserialize)]
 struct KeychainShardManifest {
@@ -159,6 +184,180 @@ pub fn store_secret_payload(payload: &SecretPayload) -> Result<(), String> {
 
     #[cfg(not(target_os = "windows"))]
     return keychain_set(GLOBAL_SECRET_ID, KEYCHAIN_PAYLOAD_FIELD, json.as_str());
+}
+
+pub(crate) fn update_keychain_secret_payload(
+    update: KeychainSecretUpdate<'_>,
+) -> Result<Option<String>, String> {
+    if in_memory_config_mode() {
+        return Ok(None);
+    }
+
+    update_keychain_secret_payload_with(
+        update,
+        KeychainUpdateHooks {
+            load_payload: load_keychain_secret_payload,
+            store_payload: store_secret_payload,
+            clear_payload: clear_keychain_secret_payload,
+            cleanup_legacy: || cleanup_legacy_keychain_update(update),
+        },
+    )
+}
+
+struct KeychainUpdateHooks<LoadPayload, StorePayload, ClearPayload, CleanupLegacy> {
+    load_payload: LoadPayload,
+    store_payload: StorePayload,
+    clear_payload: ClearPayload,
+    cleanup_legacy: CleanupLegacy,
+}
+
+fn update_keychain_secret_payload_with<LoadPayload, StorePayload, ClearPayload, CleanupLegacy>(
+    update: KeychainSecretUpdate<'_>,
+    mut hooks: KeychainUpdateHooks<LoadPayload, StorePayload, ClearPayload, CleanupLegacy>,
+) -> Result<Option<String>, String>
+where
+    LoadPayload: FnMut() -> Result<Option<SecretPayload>, String>,
+    StorePayload: FnMut(&SecretPayload) -> Result<(), String>,
+    ClearPayload: FnMut() -> Result<(), String>,
+    CleanupLegacy: FnMut() -> Result<(), String>,
+{
+    validate_keychain_secret_update(update)?;
+
+    // Reading first is a hard safety boundary. If the current bundle cannot
+    // be read, no partial runtime snapshot is allowed to replace it.
+    let previous_payload = (hooks.load_payload)()
+        .map_err(|error| format!("credential bundle snapshot failed: {error}"))?;
+    let mut updated_payload = previous_payload.clone().unwrap_or_default();
+    apply_keychain_secret_update(&mut updated_payload, update);
+
+    (hooks.store_payload)(&updated_payload)?;
+
+    if let Err(cleanup_error) = (hooks.cleanup_legacy)() {
+        let cleanup_error = redact_sensitive_response_text(&cleanup_error);
+        if keychain_update_explicitly_clears(update) {
+            let rollback_result = match previous_payload {
+                Some(payload) => (hooks.store_payload)(&payload),
+                None => (hooks.clear_payload)(),
+            };
+            let mut error = format!(
+                "required legacy credential cleanup failed; credential update was rolled back: {cleanup_error}"
+            );
+            if let Err(rollback_error) = rollback_result {
+                error.push_str("; credential bundle rollback failed: ");
+                error.push_str(&redact_sensitive_response_text(&rollback_error));
+            }
+            return Err(error);
+        }
+
+        return Ok(Some(cleanup_error));
+    }
+
+    Ok(None)
+}
+
+fn validate_keychain_secret_update(update: KeychainSecretUpdate<'_>) -> Result<(), String> {
+    match update {
+        KeychainSecretUpdate::Profile(profile) if profile.secret_id.trim().is_empty() => {
+            Err("account credential update is missing its storage identifier".to_string())
+        }
+        KeychainSecretUpdate::RemoveProfile(secret_id) if secret_id.trim().is_empty() => {
+            Err("account credential removal is missing its storage identifier".to_string())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn apply_keychain_secret_update(payload: &mut SecretPayload, update: KeychainSecretUpdate<'_>) {
+    match update {
+        KeychainSecretUpdate::Profile(profile) => {
+            payload.upsert_profile_agent_key_for_wallet(
+                &profile.secret_id,
+                Some(&profile.wallet_address),
+                &profile.agent_key,
+            );
+        }
+        KeychainSecretUpdate::RemoveProfile(secret_id) => {
+            payload.remove_profile(secret_id);
+        }
+        KeychainSecretUpdate::Hydromancer(value) => {
+            payload.set_global_hydromancer_api_key(value);
+        }
+        KeychainSecretUpdate::Hyperdash(value) => {
+            payload.set_global_hyperdash_api_key(value);
+        }
+        KeychainSecretUpdate::XOAuth {
+            access_token,
+            client_id,
+            refresh_token,
+        } => {
+            payload.set_global_x_access_token(access_token);
+            payload.set_global_x_oauth_client_id(client_id);
+            payload.set_global_x_refresh_token(refresh_token);
+        }
+        KeychainSecretUpdate::SchwabOAuth {
+            client_id,
+            client_secret,
+            access_token,
+            refresh_token,
+        } => {
+            payload.set_global_schwab_client_id(client_id);
+            payload.set_global_schwab_client_secret(client_secret);
+            payload.set_global_schwab_access_token(access_token);
+            payload.set_global_schwab_refresh_token(refresh_token);
+        }
+        KeychainSecretUpdate::OpenRouter(value) => {
+            payload.set_global_openrouter_api_key(value);
+        }
+    }
+}
+
+fn keychain_update_explicitly_clears(update: KeychainSecretUpdate<'_>) -> bool {
+    match update {
+        KeychainSecretUpdate::Profile(profile) => profile.agent_key.trim().is_empty(),
+        KeychainSecretUpdate::RemoveProfile(_) => true,
+        KeychainSecretUpdate::Hydromancer(value)
+        | KeychainSecretUpdate::Hyperdash(value)
+        | KeychainSecretUpdate::OpenRouter(value) => value.trim().is_empty(),
+        KeychainSecretUpdate::XOAuth {
+            access_token,
+            client_id,
+            refresh_token,
+        } => {
+            access_token.trim().is_empty()
+                && client_id.trim().is_empty()
+                && refresh_token.trim().is_empty()
+        }
+        KeychainSecretUpdate::SchwabOAuth {
+            client_id,
+            client_secret,
+            access_token,
+            refresh_token,
+        } => {
+            client_id.trim().is_empty()
+                && client_secret.trim().is_empty()
+                && access_token.trim().is_empty()
+                && refresh_token.trim().is_empty()
+        }
+    }
+}
+
+fn cleanup_legacy_keychain_update(update: KeychainSecretUpdate<'_>) -> Result<(), String> {
+    match update {
+        KeychainSecretUpdate::Profile(profile) if profile.agent_key.trim().is_empty() => {
+            clear_legacy_profile_secret_entries_by_id(&profile.secret_id)
+        }
+        KeychainSecretUpdate::Profile(profile) => keychain_set(&profile.secret_id, "agent_key", ""),
+        KeychainSecretUpdate::RemoveProfile(secret_id) => {
+            clear_legacy_profile_secret_entries_by_id(secret_id)
+        }
+        KeychainSecretUpdate::Hydromancer(_) => {
+            clear_legacy_global_secret_field("hydromancer_api_key")
+        }
+        KeychainSecretUpdate::Hyperdash(_) => clear_legacy_global_secret_field("hyperdash_api_key"),
+        KeychainSecretUpdate::XOAuth { .. }
+        | KeychainSecretUpdate::SchwabOAuth { .. }
+        | KeychainSecretUpdate::OpenRouter(_) => Ok(()),
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -824,7 +1023,7 @@ pub fn clear_all_keychain_secrets(profiles: &[AccountProfile]) -> Result<(), Str
             errors.push(profile_cleanup_error(&profile.secret_id, &e));
         }
     }
-    if let Err(e) = clear_secret_payload_entry() {
+    if let Err(e) = clear_keychain_secret_payload() {
         errors.push(format!("credential bundle delete failed: {e}"));
     }
     if let Err(e) = clear_legacy_global_secret_entries() {
@@ -851,6 +1050,189 @@ mod tests {
             agent_key: "agent-key".to_string().into(),
             hydromancer_api_key: String::new().into(),
         }
+    }
+
+    type TestKeychainUpdateHooks<'a> = KeychainUpdateHooks<
+        Box<dyn FnMut() -> Result<Option<SecretPayload>, String> + 'a>,
+        Box<dyn FnMut(&SecretPayload) -> Result<(), String> + 'a>,
+        Box<dyn FnMut() -> Result<(), String> + 'a>,
+        Box<dyn FnMut() -> Result<(), String> + 'a>,
+    >;
+
+    fn update_hooks<'a>(
+        payload: &'a RefCell<Option<SecretPayload>>,
+        cleanup_calls: &'a Cell<usize>,
+    ) -> TestKeychainUpdateHooks<'a> {
+        KeychainUpdateHooks {
+            load_payload: Box::new(|| Ok(payload.borrow().clone())),
+            store_payload: Box::new(|updated: &SecretPayload| {
+                payload.borrow_mut().replace(updated.clone());
+                Ok(())
+            }),
+            clear_payload: Box::new(|| {
+                payload.borrow_mut().take();
+                Ok(())
+            }),
+            cleanup_legacy: Box::new(|| {
+                cleanup_calls.set(cleanup_calls.get() + 1);
+                Ok(())
+            }),
+        }
+    }
+
+    #[test]
+    fn scoped_updates_from_every_entry_flow_survive_as_one_complete_bundle() {
+        let payload = RefCell::new(None);
+        let cleanup_calls = Cell::new(0);
+        let first_profile = test_profile("profile-a");
+        let mut second_profile = test_profile("profile-b");
+        second_profile.agent_key = "second-agent-key".to_string().into();
+
+        for update in [
+            KeychainSecretUpdate::Profile(&first_profile),
+            KeychainSecretUpdate::Profile(&second_profile),
+            KeychainSecretUpdate::Hydromancer("hydromancer-key"),
+            KeychainSecretUpdate::Hyperdash("hyperdash-key"),
+            KeychainSecretUpdate::XOAuth {
+                access_token: "x-access-token",
+                client_id: "x-client-id",
+                refresh_token: "x-refresh-token",
+            },
+            KeychainSecretUpdate::SchwabOAuth {
+                client_id: "schwab-client-id",
+                client_secret: "schwab-client-secret",
+                access_token: "schwab-access-token",
+                refresh_token: "schwab-refresh-token",
+            },
+            KeychainSecretUpdate::OpenRouter("openrouter-key"),
+        ] {
+            update_keychain_secret_payload_with(update, update_hooks(&payload, &cleanup_calls))
+                .expect("scoped update should succeed");
+        }
+
+        let payload = payload.into_inner().expect("stored credential bundle");
+        assert_eq!(payload.profile_agent_key("profile-a"), Some("agent-key"));
+        assert_eq!(
+            payload.profile_agent_key("profile-b"),
+            Some("second-agent-key")
+        );
+        assert_eq!(payload.global_hydromancer_api_key(), "hydromancer-key");
+        assert_eq!(payload.global_hyperdash_api_key(), "hyperdash-key");
+        assert_eq!(payload.global_x_access_token(), "x-access-token");
+        assert_eq!(payload.global_x_oauth_client_id(), "x-client-id");
+        assert_eq!(payload.global_x_refresh_token(), "x-refresh-token");
+        assert_eq!(payload.global_schwab_client_id(), "schwab-client-id");
+        assert_eq!(
+            payload.global_schwab_client_secret(),
+            "schwab-client-secret"
+        );
+        assert_eq!(payload.global_schwab_access_token(), "schwab-access-token");
+        assert_eq!(
+            payload.global_schwab_refresh_token(),
+            "schwab-refresh-token"
+        );
+        assert_eq!(payload.global_openrouter_api_key(), "openrouter-key");
+        assert_eq!(cleanup_calls.get(), 7);
+    }
+
+    #[test]
+    fn scoped_clear_removes_only_the_explicit_credential() {
+        let first_profile = test_profile("profile-a");
+        let second_profile = test_profile("profile-b");
+        let payload = RefCell::new(Some(SecretPayload::from_credentials_with_integrations(
+            &[first_profile, second_profile],
+            "hydromancer-key",
+            "hyperdash-key",
+            "x-access-token",
+            "x-client-id",
+            "x-refresh-token",
+            "schwab-client-id",
+            "schwab-client-secret",
+            "schwab-access-token",
+            "schwab-refresh-token",
+            "openrouter-key",
+        )));
+        let cleanup_calls = Cell::new(0);
+
+        update_keychain_secret_payload_with(
+            KeychainSecretUpdate::OpenRouter(""),
+            update_hooks(&payload, &cleanup_calls),
+        )
+        .expect("explicit clear should succeed");
+
+        let payload = payload.into_inner().expect("remaining credential bundle");
+        assert_eq!(payload.profile_agent_key("profile-a"), Some("agent-key"));
+        assert_eq!(payload.profile_agent_key("profile-b"), Some("agent-key"));
+        assert_eq!(payload.global_hydromancer_api_key(), "hydromancer-key");
+        assert_eq!(payload.global_hyperdash_api_key(), "hyperdash-key");
+        assert_eq!(payload.global_x_access_token(), "x-access-token");
+        assert_eq!(payload.global_schwab_client_id(), "schwab-client-id");
+        assert!(payload.global_openrouter_api_key().is_empty());
+    }
+
+    #[test]
+    fn scoped_update_never_writes_when_existing_bundle_cannot_be_read() {
+        let store_called = Cell::new(false);
+        let clear_called = Cell::new(false);
+        let cleanup_called = Cell::new(false);
+
+        let error = update_keychain_secret_payload_with(
+            KeychainSecretUpdate::Hydromancer("new-key"),
+            KeychainUpdateHooks {
+                load_payload: || Err("keychain unavailable".to_string()),
+                store_payload: |_payload: &SecretPayload| {
+                    store_called.set(true);
+                    Ok(())
+                },
+                clear_payload: || {
+                    clear_called.set(true);
+                    Ok(())
+                },
+                cleanup_legacy: || {
+                    cleanup_called.set(true);
+                    Ok(())
+                },
+            },
+        )
+        .expect_err("unreadable bundle must block the update");
+
+        assert!(error.contains("credential bundle snapshot failed"));
+        assert!(!store_called.get());
+        assert!(!clear_called.get());
+        assert!(!cleanup_called.get());
+    }
+
+    #[test]
+    fn explicit_clear_rolls_bundle_back_when_required_legacy_cleanup_fails() {
+        let previous = SecretPayload::from_credentials(&[], "old-hydromancer", "hyperdash-key");
+        let stored_payloads = RefCell::new(Vec::new());
+
+        let error = update_keychain_secret_payload_with(
+            KeychainSecretUpdate::Hydromancer(""),
+            KeychainUpdateHooks {
+                load_payload: || Ok(Some(previous.clone())),
+                store_payload: |payload: &SecretPayload| {
+                    stored_payloads.borrow_mut().push(payload.clone());
+                    Ok(())
+                },
+                clear_payload: || panic!("a previous bundle exists"),
+                cleanup_legacy: || Err("legacy key delete failed".to_string()),
+            },
+        )
+        .expect_err("failed deletion cleanup must fail and roll back");
+
+        assert!(error.contains("credential update was rolled back"));
+        let stored_payloads = stored_payloads.borrow();
+        assert_eq!(stored_payloads.len(), 2);
+        assert!(stored_payloads[0].global_hydromancer_api_key().is_empty());
+        assert_eq!(
+            stored_payloads[1].global_hydromancer_api_key(),
+            "old-hydromancer"
+        );
+        assert_eq!(
+            stored_payloads[1].global_hyperdash_api_key(),
+            "hyperdash-key"
+        );
     }
 
     #[test]

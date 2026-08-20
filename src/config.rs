@@ -97,8 +97,9 @@ pub use secrets::{
     store_keychain_secrets_with_profile_removals_with_integrations, take_secret_warnings,
 };
 pub(crate) use secrets::{
-    clear_profile_secrets_by_id, load_global_secrets as load_legacy_global_secrets,
-    load_profile_secrets as load_legacy_profile_secrets,
+    KeychainSecretUpdate, clear_profile_secrets_by_id,
+    load_global_secrets as load_legacy_global_secrets,
+    load_profile_secrets as load_legacy_profile_secrets, update_keychain_secret_payload,
 };
 pub(crate) use secrets::{load_keychain_secret_payload, store_secret_payload};
 pub(crate) use themes::default_custom_themes;
