@@ -214,24 +214,30 @@ impl TradingTerminal {
             } else {
                 "Connect wallet to view positions".to_string()
             };
-            return position_table_content(empty_account_table(header, msg, &theme));
+            return position_table_content(position_content_inset(empty_account_table(
+                header, msg, &theme,
+            )));
         }
 
         let rows = self.view_position_sections(&positions, can_close, &theme, columns, number_mode);
-        let mut content = column![header].spacing(4);
+        let mut content = column![position_content_inset(header)].spacing(4);
         if let Some(warning) = warning {
-            content = content.push(text(warning).size(11).color(theme.palette().warning));
+            content = content.push(position_content_inset(
+                text(warning).size(11).color(theme.palette().warning),
+            ));
         }
-        let mut content = content.push(rule::horizontal(1)).push(rows);
+        let mut content = content
+            .push(position_content_inset(rule::horizontal(1)))
+            .push(rows);
         for delta in &opening_deltas {
             let symbol_label = self.display_name_for_symbol(&delta.symbol);
             let size_label = self.display_size_for_symbol(&delta.symbol, delta.signed_size.abs());
-            content = content.push(opening_position_row(
+            content = content.push(position_content_inset(opening_position_row(
                 delta,
                 symbol_label,
                 size_label,
                 &theme,
-            ));
+            )));
         }
         column![
             position_table_content(account_table_scroll(content)),
@@ -300,10 +306,14 @@ impl TradingTerminal {
 
         if !spot_positions.is_empty() {
             if !perp_positions.is_empty() {
-                content = content.push(rule::horizontal(1));
+                content = content.push(position_content_inset(rule::horizontal(1)));
             }
             content = content
-                .push(position_section_header("Spot", spot_positions.len(), theme))
+                .push(position_content_inset(position_section_header(
+                    "Spot",
+                    spot_positions.len(),
+                    theme,
+                )))
                 .push(self.view_position_rows(
                     &spot_positions,
                     can_close,
@@ -315,14 +325,14 @@ impl TradingTerminal {
 
         if !outcome_positions.is_empty() {
             if !perp_positions.is_empty() || !spot_positions.is_empty() {
-                content = content.push(rule::horizontal(1));
+                content = content.push(position_content_inset(rule::horizontal(1)));
             }
             content = content
-                .push(position_section_header(
+                .push(position_content_inset(position_section_header(
                     "Outcomes",
                     outcome_positions.len(),
                     theme,
-                ))
+                )))
                 .push(self.view_position_rows(
                     &outcome_positions,
                     can_close,
@@ -338,9 +348,26 @@ impl TradingTerminal {
 
 fn position_table_content<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     container(content)
-        .padding([0.0, POSITION_CONTENT_HORIZONTAL_PADDING])
+        .padding(iced::Padding {
+            top: 0.0,
+            right: POSITION_CONTENT_HORIZONTAL_PADDING,
+            bottom: 0.0,
+            left: 0.0,
+        })
         .width(Fill)
         .height(Fill)
+        .into()
+}
+
+fn position_content_inset<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    container(content)
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: POSITION_CONTENT_HORIZONTAL_PADDING,
+        })
+        .width(Fill)
         .into()
 }
 

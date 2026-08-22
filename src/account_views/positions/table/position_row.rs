@@ -9,9 +9,9 @@ use crate::helpers::{format_price, hip3_dex};
 use crate::message::Message;
 
 use super::super::{
-    POSITION_ACTION_WIDTH, POSITION_ENTRY_WIDTH, POSITION_FUNDING_WIDTH, POSITION_LEVERAGE_WIDTH,
-    POSITION_LIQ_WIDTH, POSITION_MARK_WIDTH, POSITION_SIDE_WIDTH, PositionColumnVisibility,
-    PositionNumberMode,
+    POSITION_ACTION_WIDTH, POSITION_CONTENT_HORIZONTAL_PADDING, POSITION_ENTRY_WIDTH,
+    POSITION_FUNDING_WIDTH, POSITION_LEVERAGE_WIDTH, POSITION_LIQ_WIDTH, POSITION_MARK_WIDTH,
+    POSITION_SIDE_WIDTH, PositionColumnVisibility, PositionNumberMode,
 };
 use super::format_position_compact_number;
 use super::sort::PositionRowData;
@@ -222,7 +222,12 @@ impl TradingTerminal {
 
         container(row_content)
             .width(Fill)
-            .padding([6, 8])
+            .padding(iced::Padding {
+                top: 6.0,
+                right: 8.0,
+                bottom: 6.0,
+                left: POSITION_CONTENT_HORIZONTAL_PADDING + 8.0,
+            })
             .style(move |_theme: &Theme| {
                 use iced::gradient;
                 let mut base_color = side_color;
@@ -236,7 +241,7 @@ impl TradingTerminal {
                             .into(),
                     ),
                     border: iced::Border {
-                        radius: 4.0.into(),
+                        radius: 0.0.into(),
                         ..Default::default()
                     },
                     ..Default::default()
