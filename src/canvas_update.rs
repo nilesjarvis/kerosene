@@ -62,7 +62,10 @@ impl TradingTerminal {
             size: canvas.size(),
             min_size: Some(Size::new(360.0, 240.0)),
             position: canvas.position(),
-            ..crate::window_chrome::settings(self.custom_window_chrome_active)
+            ..crate::window_chrome::settings(
+                self.custom_window_chrome_active,
+                self.window_background_blur_enabled,
+            )
         };
         let (window_id, open_task) = window::open(settings);
         if let Some(canvas) = self.canvases.get_mut(&id) {

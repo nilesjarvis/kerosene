@@ -49,7 +49,8 @@ Related storage:
 - widget configs
 - detached chart windows
 - active symbol and order defaults
-- UI scale, pane chrome, fonts, themes, chart display preferences
+- UI scale, pane chrome, window transparency/background opacity and blur, fonts,
+  themes, chart display preferences
 - accounts, active account index, hidden positions
 - wallet tracker, Combined Portfolio, wallet clusters, and address book
 - favourites, muted tickers, market universe, denomination

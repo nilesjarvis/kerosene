@@ -168,8 +168,11 @@ impl TradingTerminal {
             return window::gain_focus(window_id);
         }
 
-        let settings =
-            wallet_cluster_window_settings(&self.wallet_clusters, self.custom_window_chrome_active);
+        let settings = wallet_cluster_window_settings(
+            &self.wallet_clusters,
+            self.custom_window_chrome_active,
+            self.window_background_blur_enabled,
+        );
         let (window_id, open_task) = window::open(settings);
         self.wallet_clusters.window_id = Some(window_id);
         self.wallet_clusters.open = true;

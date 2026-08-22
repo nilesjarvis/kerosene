@@ -302,6 +302,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
 
         Message::ThemeChanged(_)
         | Message::UiScaleChanged(_)
+        | Message::ToggleWindowTransparency(_)
+        | Message::ToggleWindowBackgroundBlur(_)
+        | Message::WindowBackgroundOpacityChanged(_)
         | Message::ToggleChartDottedBackground(_)
         | Message::ChartDottedBackgroundOpacityChanged(_)
         | Message::ToggleChartGradientBackground(_)

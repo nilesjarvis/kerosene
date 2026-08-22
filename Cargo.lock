@@ -2929,6 +2929,7 @@ dependencies = [
  "sha3",
  "tokio",
  "tokio-tungstenite",
+ "wayland-client",
  "windows-sys 0.61.2",
  "winresource",
  "zeroize",

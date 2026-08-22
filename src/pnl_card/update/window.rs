@@ -32,7 +32,10 @@ impl TradingTerminal {
         let settings = window::Settings {
             size: Size::new(640.0, 760.0),
             min_size: Some(Size::new(480.0, 640.0)),
-            ..crate::window_chrome::settings(self.custom_window_chrome_active)
+            ..crate::window_chrome::settings(
+                self.custom_window_chrome_active,
+                self.window_background_blur_enabled,
+            )
         };
         let (window_id, task) = window::open(settings);
         self.pnl_card_windows

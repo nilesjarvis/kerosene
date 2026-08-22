@@ -32,7 +32,10 @@ impl TradingTerminal {
         let settings = window::Settings {
             size: ADD_ACCOUNT_WINDOW_SIZE,
             min_size: Some(ADD_ACCOUNT_WINDOW_MIN_SIZE),
-            ..crate::window_chrome::settings(self.custom_window_chrome_active)
+            ..crate::window_chrome::settings(
+                self.custom_window_chrome_active,
+                self.window_background_blur_enabled,
+            )
         };
         let (id, task) = window::open(settings);
         self.add_account_window = Some(AddAccountWindowState::new(id));

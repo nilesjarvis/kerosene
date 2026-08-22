@@ -11,6 +11,7 @@ use crate::config::{
     default_chart_dotted_background_opacity, default_chart_edge_blur_strength,
     default_chart_fisheye_strength, default_chart_gradient_contrast, default_pane_border_thickness,
     default_pane_corner_radius, default_ui_scale, default_widget_padding,
+    default_window_background_opacity,
 };
 
 mod chrome;

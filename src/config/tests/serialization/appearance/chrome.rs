@@ -7,7 +7,8 @@ use super::{
     default_chart_dotted_background_opacity, default_chart_edge_blur_strength,
     default_chart_fisheye_strength, default_chart_gradient_contrast, default_config_value,
     default_pane_border_thickness, default_pane_corner_radius, default_ui_scale,
-    default_widget_padding, json_string, object_mut, value_from_json, value_from_str,
+    default_widget_padding, default_window_background_opacity, json_string, object_mut,
+    value_from_json, value_from_str,
 };
 use crate::config::{ReadDataProvider, take_config_warnings};
 
@@ -16,6 +17,9 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     let config = KeroseneConfig {
         app_onboarding_dismissed: true,
         ui_scale: 0.85,
+        window_transparency_enabled: true,
+        window_background_blur_enabled: true,
+        window_background_opacity: 0.64,
         chart_dotted_background: true,
         chart_dotted_background_opacity: 0.27,
         chart_gradient_background: true,
@@ -63,6 +67,9 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     let decoded: KeroseneConfig = value_from_str(&json, "config should deserialize");
     assert!(decoded.app_onboarding_dismissed);
     assert_eq!(decoded.ui_scale, 0.85);
+    assert!(decoded.window_transparency_enabled);
+    assert!(decoded.window_background_blur_enabled);
+    assert_eq!(decoded.window_background_opacity, 0.64);
     assert!(decoded.chart_dotted_background);
     assert_eq!(decoded.chart_dotted_background_opacity, 0.27);
     assert!(decoded.chart_gradient_background);
@@ -118,6 +125,9 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     let object = object_mut(&mut legacy, "config should serialize to object");
     object.remove("app_onboarding_dismissed");
     object.remove("ui_scale");
+    object.remove("window_transparency_enabled");
+    object.remove("window_background_blur_enabled");
+    object.remove("window_background_opacity");
     object.remove("chart_dotted_background");
     object.remove("chart_dotted_background_opacity");
     object.remove("chart_gradient_background");
@@ -149,6 +159,12 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert!(!KeroseneConfig::default().app_onboarding_dismissed);
     assert!(decoded_legacy.app_onboarding_dismissed);
     assert_eq!(decoded_legacy.ui_scale, default_ui_scale());
+    assert!(!decoded_legacy.window_transparency_enabled);
+    assert!(!decoded_legacy.window_background_blur_enabled);
+    assert_eq!(
+        decoded_legacy.window_background_opacity,
+        default_window_background_opacity()
+    );
     assert!(!decoded_legacy.chart_dotted_background);
     assert_eq!(
         decoded_legacy.chart_dotted_background_opacity,

@@ -21,7 +21,10 @@ impl TradingTerminal {
 
                 let settings = window::Settings {
                     size: Size::new(800.0, 600.0),
-                    ..crate::window_chrome::settings(self.custom_window_chrome_active)
+                    ..crate::window_chrome::settings(
+                        self.custom_window_chrome_active,
+                        self.window_background_blur_enabled,
+                    )
                 };
                 let (id, task) = window::open(settings);
                 self.settings_window_id = Some(id);

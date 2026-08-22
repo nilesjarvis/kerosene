@@ -71,6 +71,33 @@ Chart colors are derived from the active theme through
 `app_theme/chart_colors.rs` so bullish/bearish semantics stay consistent across
 charts and market widgets.
 
+### Window Transparency and Blur
+
+Appearance settings include an opt-in `Transparency` toggle and a background
+opacity slider. Transparency is off by default; when enabled, the default
+background opacity is 82% and the supported range is 35–95%. The active theme
+reduces alpha only for its background palette and background-surface variants,
+so text, bullish/bearish colors, warnings, and other semantic accents remain
+opaque and legible.
+
+All Kerosene windows are created with alpha-capable native surfaces because
+iced does not expose a runtime native-transparency toggle. The persisted
+preference still controls whether any transparency is rendered: disabled themes
+remain fully opaque, while enabling or adjusting the setting updates open and
+future app windows immediately. The app clear color and the main/Canvas outer
+shells avoid adding extra opaque layers behind translucent pane surfaces.
+
+On macOS and compatible Linux Wayland compositors, the transparency controls
+also expose an opt-in `Blur background` toggle. On Linux, Kerosene probes the
+Wayland registry for the `org_kde_kwin_blur_manager` protocol used by winit. If
+the active compositor does not advertise it (including GNOME/Mutter and X11),
+the control is disabled and marked unavailable instead of silently accepting a
+no-op setting. Newly opened auxiliary windows use the current choice; because
+iced sets native blur only when a window is created, already-open windows
+(including the main window) require an application restart after this toggle
+changes. Blur remains off by default and has no visible effect while
+transparency is disabled.
+
 ## Chart Visual Preferences
 
 Chart preferences include:
@@ -116,6 +143,7 @@ User-adjustable chrome includes:
 - default widget padding
 - focused widget padding
 - custom window chrome
+- window transparency, background opacity, and supported native background blur
 
 Changes that affect minimum usable layout dimensions should call
 `sync_main_window_min_size`.

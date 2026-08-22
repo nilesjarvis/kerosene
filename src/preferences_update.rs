@@ -5,6 +5,7 @@ use crate::config::{
     normalize_chart_edge_blur_strength, normalize_chart_fisheye_strength,
     normalize_chart_gradient_contrast, normalize_market_slippage_pct,
     normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_ui_scale,
+    normalize_window_background_opacity,
 };
 use crate::helpers::path_neutral_io_error_detail;
 use crate::market_state::SymbolSearchMarketFilter;
@@ -61,6 +62,33 @@ impl TradingTerminal {
                 self.ui_scale = normalize_ui_scale(value);
                 self.persist_config();
                 return self.sync_main_window_min_size();
+            }
+            Message::ToggleWindowTransparency(enabled)
+                if self.window_transparency_enabled != enabled =>
+            {
+                self.window_transparency_enabled = enabled;
+                self.apply_chart_theme_colors();
+                self.persist_config();
+            }
+            Message::ToggleWindowBackgroundBlur(enabled)
+                if self.window_background_blur_enabled != enabled =>
+            {
+                self.window_background_blur_enabled = enabled;
+                self.persist_config();
+                let status = if crate::window_chrome::background_blur_supported() {
+                    "Restart Kerosene to apply background blur to existing windows."
+                } else {
+                    crate::window_chrome::background_blur_unavailable_reason()
+                };
+                self.push_toast(status.to_string(), false);
+            }
+            Message::WindowBackgroundOpacityChanged(value) => {
+                let opacity = normalize_window_background_opacity(value);
+                if (self.window_background_opacity - opacity).abs() > f32::EPSILON {
+                    self.window_background_opacity = opacity;
+                    self.apply_chart_theme_colors();
+                    self.persist_config();
+                }
             }
             Message::ToggleChartDottedBackground(enabled)
                 if self.chart_dotted_background != enabled =>
@@ -541,6 +569,54 @@ mod tests {
         );
         assert!(!rendered.contains("/home/alice"));
         assert!(!rendered.contains("font-secret"));
+    }
+
+    #[test]
+    fn transparency_preferences_apply_immediately_and_normalize_opacity() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        assert!(!terminal.window_transparency_enabled);
+
+        let _task = terminal.update_preferences(Message::ToggleWindowTransparency(true));
+        assert!(terminal.window_transparency_enabled);
+        assert!(terminal.config_save_due_at.is_some());
+
+        terminal.config_save_due_at = None;
+        let _task = terminal.update_preferences(Message::WindowBackgroundOpacityChanged(0.1));
+        assert_eq!(
+            terminal.window_background_opacity,
+            crate::config::MIN_WINDOW_BACKGROUND_OPACITY
+        );
+        assert!(terminal.config_save_due_at.is_some());
+
+        terminal.config_save_due_at = None;
+        let _task = terminal.update_preferences(Message::WindowBackgroundOpacityChanged(f32::NAN));
+        assert_eq!(
+            terminal.window_background_opacity,
+            crate::config::DEFAULT_WINDOW_BACKGROUND_OPACITY
+        );
+        assert!(terminal.config_save_due_at.is_some());
+    }
+
+    #[test]
+    fn background_blur_preference_persists_and_reports_runtime_support() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        assert!(!terminal.window_background_blur_enabled);
+
+        let _task = terminal.update_preferences(Message::ToggleWindowBackgroundBlur(true));
+
+        assert!(terminal.window_background_blur_enabled);
+        assert!(terminal.config_save_due_at.is_some());
+        let expected_status = if crate::window_chrome::background_blur_supported() {
+            "Restart Kerosene to apply background blur to existing windows."
+        } else {
+            crate::window_chrome::background_blur_unavailable_reason()
+        };
+        assert!(
+            terminal
+                .toasts
+                .iter()
+                .any(|toast| toast.message == expected_status)
+        );
     }
 
     #[cfg(target_os = "linux")]

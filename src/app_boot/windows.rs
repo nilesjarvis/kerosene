@@ -22,7 +22,10 @@ impl TradingTerminal {
                 .main_window_pos
                 .map(crate::window_chrome::restored_position)
                 .unwrap_or_else(|| window::Position::Centered),
-            ..crate::window_chrome::settings(self.custom_window_chrome_active)
+            ..crate::window_chrome::settings(
+                self.custom_window_chrome_active,
+                self.window_background_blur_enabled,
+            )
         };
         let (main_id, main_open_task) = window::open(main_window_settings);
         self.main_window_id = Some(main_id);
@@ -49,7 +52,10 @@ impl TradingTerminal {
                     .zip(self.wallet_tracker.y)
                     .map(|(x, y)| crate::window_chrome::restored_position(Point::new(x, y)))
                     .unwrap_or_else(|| window::Position::Centered),
-                ..crate::window_chrome::settings(self.custom_window_chrome_active)
+                ..crate::window_chrome::settings(
+                    self.custom_window_chrome_active,
+                    self.window_background_blur_enabled,
+                )
             };
             let (wallet_id, wallet_open_task) = window::open(tracker_settings);
             self.wallet_tracker.window_id = Some(wallet_id);
@@ -71,7 +77,10 @@ impl TradingTerminal {
                     .zip(self.combined_portfolio.y)
                     .map(|(x, y)| crate::window_chrome::restored_position(Point::new(x, y)))
                     .unwrap_or(window::Position::Centered),
-                ..crate::window_chrome::settings(self.custom_window_chrome_active)
+                ..crate::window_chrome::settings(
+                    self.custom_window_chrome_active,
+                    self.window_background_blur_enabled,
+                )
             };
             let (window_id, open_task) = window::open(settings);
             self.combined_portfolio.window_id = Some(window_id);
@@ -83,6 +92,7 @@ impl TradingTerminal {
             let settings = wallet_cluster_window_settings(
                 &self.wallet_clusters,
                 self.custom_window_chrome_active,
+                self.window_background_blur_enabled,
             );
             let (wallet_clusters_id, wallet_clusters_open_task) = window::open(settings);
             self.wallet_clusters.window_id = Some(wallet_clusters_id);
@@ -104,7 +114,10 @@ impl TradingTerminal {
             let settings = window::Settings {
                 size: state.size(),
                 position: state.position(),
-                ..crate::window_chrome::settings(self.custom_window_chrome_active)
+                ..crate::window_chrome::settings(
+                    self.custom_window_chrome_active,
+                    self.window_background_blur_enabled,
+                )
             };
             let (window_id, open_task) = window::open(settings);
             if let Some(instance) = self.charts.get_mut(&state.chart_id) {
@@ -130,7 +143,10 @@ impl TradingTerminal {
             let settings = window::Settings {
                 size: state.size(),
                 position: state.position(),
-                ..crate::window_chrome::settings(self.custom_window_chrome_active)
+                ..crate::window_chrome::settings(
+                    self.custom_window_chrome_active,
+                    self.window_background_blur_enabled,
+                )
             };
             let (window_id, open_task) = window::open(settings);
             self.detached_spaghetti_windows.insert(window_id, state);

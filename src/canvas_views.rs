@@ -18,6 +18,7 @@ impl TradingTerminal {
         };
         let workspace = WorkspaceId::Canvas(id);
         let theme = self.theme();
+        let transparent_window = self.window_transparency_enabled;
         let menu_open = self.add_widget_menu_open && self.add_widget_workspace == workspace;
         let toolbar: Element<'_, Message> = container(
             row![
@@ -74,8 +75,9 @@ impl TradingTerminal {
         container(stack(layers))
             .width(Fill)
             .height(Fill)
-            .style(|theme: &Theme| container::Style {
-                background: Some(theme.extended_palette().background.base.color.into()),
+            .style(move |theme: &Theme| container::Style {
+                background: (!transparent_window)
+                    .then(|| theme.extended_palette().background.base.color.into()),
                 text_color: Some(theme.palette().text),
                 ..Default::default()
             })

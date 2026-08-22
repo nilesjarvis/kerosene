@@ -31,6 +31,7 @@ impl TradingTerminal {
                 .height(Fill)
                 .center(Fill)
                 .padding(16)
+                .style(chart_screenshot_window_style)
                 .into();
         }
 
@@ -57,6 +58,7 @@ impl TradingTerminal {
                 .height(Fill)
                 .center(Fill)
                 .padding(16)
+                .style(chart_screenshot_window_style)
                 .into();
         };
 
@@ -118,6 +120,15 @@ impl TradingTerminal {
             .width(Fill)
             .height(Fill)
             .padding(14)
+            .style(chart_screenshot_window_style)
             .into()
+    }
+}
+
+fn chart_screenshot_window_style(theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(theme.extended_palette().background.base.color.into()),
+        text_color: Some(theme.palette().text),
+        ..Default::default()
     }
 }

@@ -10,6 +10,7 @@ mod themes;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::settings_state::SettingsTab;
+use iced::Theme;
 use iced::widget::{container, row, rule};
 use iced::{Element, Fill};
 
@@ -44,6 +45,11 @@ impl TradingTerminal {
             .width(Fill)
             .height(Fill)
             .padding(20)
+            .style(|theme: &Theme| container::Style {
+                background: Some(theme.extended_palette().background.base.color.into()),
+                text_color: Some(theme.palette().text),
+                ..Default::default()
+            })
             .into()
     }
 }

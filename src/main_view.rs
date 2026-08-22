@@ -27,6 +27,7 @@ impl TradingTerminal {
         top_bar: Element<'a, Message>,
     ) -> Element<'a, Message> {
         let theme = self.theme();
+        let transparent_window = self.window_transparency_enabled;
 
         let mut main_column = column![top_bar]
             .spacing(self.pane_border_thickness)
@@ -67,8 +68,9 @@ impl TradingTerminal {
         )
         .width(Fill)
         .height(Fill)
-        .style(|theme: &Theme| container_style::Style {
-            background: Some(theme.extended_palette().background.base.color.into()),
+        .style(move |theme: &Theme| container_style::Style {
+            background: (!transparent_window)
+                .then(|| theme.extended_palette().background.base.color.into()),
             text_color: Some(theme.palette().text),
             ..Default::default()
         })

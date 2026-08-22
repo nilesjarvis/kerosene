@@ -52,7 +52,10 @@ impl TradingTerminal {
         let settings = iced::window::Settings {
             size: state.size(),
             position: state.position(),
-            ..crate::window_chrome::settings(self.custom_window_chrome_active)
+            ..crate::window_chrome::settings(
+                self.custom_window_chrome_active,
+                self.window_background_blur_enabled,
+            )
         };
         let (window_id, task) = iced::window::open(settings);
         let chart_backfill_source = self.chart_backfill_source;

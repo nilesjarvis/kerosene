@@ -5,16 +5,16 @@ use crate::config::{
     ChartHudReadoutElement, ChartSeriesStyle, DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH,
     DEFAULT_CHART_CROSSHAIR_SCALE, DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY,
     DEFAULT_CHART_EDGE_BLUR_STRENGTH, DEFAULT_CHART_FISHEYE_STRENGTH,
-    DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME, DEFAULT_UI_SCALE,
+    DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME, DEFAULT_UI_SCALE, DEFAULT_WINDOW_BACKGROUND_OPACITY,
     MAX_CHART_CHROMATIC_ABERRATION_STRENGTH, MAX_CHART_CROSSHAIR_SCALE,
     MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_CHART_EDGE_BLUR_STRENGTH, MAX_CHART_FISHEYE_STRENGTH,
     MAX_CHART_GRADIENT_CONTRAST, MAX_CHART_HUD_ORDER_SOUND_VOLUME, MAX_PANE_BORDER_THICKNESS,
-    MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE, MAX_WIDGET_PADDING,
+    MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE, MAX_WIDGET_PADDING, MAX_WINDOW_BACKGROUND_OPACITY,
     MIN_CHART_CHROMATIC_ABERRATION_STRENGTH, MIN_CHART_CROSSHAIR_SCALE,
     MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_EDGE_BLUR_STRENGTH, MIN_CHART_FISHEYE_STRENGTH,
     MIN_CHART_GRADIENT_CONTRAST, MIN_CHART_HUD_ORDER_SOUND_VOLUME, MIN_PANE_BORDER_THICKNESS,
-    MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE, MIN_WIDGET_PADDING, default_pane_border_thickness,
-    default_pane_corner_radius, default_widget_padding,
+    MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE, MIN_WIDGET_PADDING, MIN_WINDOW_BACKGROUND_OPACITY,
+    default_pane_border_thickness, default_pane_corner_radius, default_widget_padding,
 };
 use crate::helpers::pane_title;
 use crate::message::Message;
@@ -81,6 +81,42 @@ impl TradingTerminal {
             ));
         }
         let window_controls = window_controls.spacing(8);
+
+        let mut transparency_controls = column![toggle_status_row(
+            &theme,
+            "Transparency",
+            self.window_transparency_enabled,
+            Message::ToggleWindowTransparency,
+        )]
+        .spacing(8);
+        if self.window_transparency_enabled {
+            transparency_controls = transparency_controls.push(opacity_slider_row(
+                &theme,
+                self.window_background_opacity,
+                MIN_WINDOW_BACKGROUND_OPACITY..=MAX_WINDOW_BACKGROUND_OPACITY,
+                Message::WindowBackgroundOpacityChanged,
+            ));
+            if crate::window_chrome::background_blur_supported() {
+                transparency_controls = transparency_controls.push(toggle_status_row(
+                    &theme,
+                    "Blur background",
+                    self.window_background_blur_enabled,
+                    Message::ToggleWindowBackgroundBlur,
+                ));
+            } else {
+                transparency_controls = transparency_controls
+                    .push(unavailable_toggle_status_row(
+                        &theme,
+                        "Blur background",
+                        self.window_background_blur_enabled,
+                    ))
+                    .push(
+                        text(crate::window_chrome::background_blur_unavailable_reason())
+                            .size(11)
+                            .color(theme.extended_palette().background.weak.text),
+                    );
+            }
+        }
 
         let mut background_controls = column![
             toggle_status_row(
@@ -235,6 +271,7 @@ impl TradingTerminal {
                 },
             ),
             appearance_section(&theme, "Interface", interface_controls.into()),
+            appearance_section(&theme, "Window Background", transparency_controls.into()),
             appearance_section(&theme, "Window Chrome", window_controls.into()),
             appearance_section(&theme, "Chart Background", background_controls.into()),
             appearance_section(&theme, "Chart Style", chart_style_controls.into()),
@@ -473,6 +510,28 @@ fn toggle_status_row(
     .into()
 }
 
+fn unavailable_toggle_status_row(
+    theme: &Theme,
+    label: &'static str,
+    enabled: bool,
+) -> Element<'static, Message> {
+    row![
+        checkbox(enabled)
+            .label(label)
+            .size(12)
+            .spacing(8)
+            .text_size(12)
+            .font(crate::app_fonts::monospace_font()),
+        Space::new().width(Fill),
+        text("Unavailable")
+            .size(11)
+            .color(theme.extended_palette().background.weak.text),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .into()
+}
+
 fn default_settings_reference(theme: &Theme) -> Element<'static, Message> {
     column![
         row![
@@ -511,6 +570,13 @@ fn default_settings_reference(theme: &Theme) -> Element<'static, Message> {
         .align_y(Alignment::Center),
         row![
             Space::new().width(Fill),
+            default_chip(
+                theme,
+                format!(
+                    "opacity {:.0}% (off)",
+                    DEFAULT_WINDOW_BACKGROUND_OPACITY * 100.0
+                )
+            ),
             default_chip(
                 theme,
                 format!(

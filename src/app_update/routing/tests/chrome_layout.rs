@@ -11,6 +11,18 @@ fn chrome_layout_calendar_and_portfolio_routes_cover_shared_shell_messages() {
     assert_route(Message::ConfigSaved(Ok(())), UpdateRoute::Chrome);
     assert_route(Message::EnterApplication, UpdateRoute::Chrome);
     assert_route(
+        Message::ToggleWindowTransparency(true),
+        UpdateRoute::Preferences,
+    );
+    assert_route(
+        Message::ToggleWindowBackgroundBlur(true),
+        UpdateRoute::Preferences,
+    );
+    assert_route(
+        Message::WindowBackgroundOpacityChanged(0.7),
+        UpdateRoute::Preferences,
+    );
+    assert_route(
         Message::SetPortfolioPnlValueMode(PnlValueDisplayMode::Percent),
         UpdateRoute::PortfolioIncome,
     );

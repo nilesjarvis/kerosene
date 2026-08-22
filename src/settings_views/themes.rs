@@ -76,9 +76,23 @@ impl TradingTerminal {
         } else {
             "OS bar native"
         };
+        let transparency = if self.window_transparency_enabled {
+            format!("{:.0}% opacity", self.window_background_opacity * 100.0)
+        } else {
+            "opaque".to_string()
+        };
+        let window_blur = if crate::window_chrome::background_blur_supported() {
+            if self.window_background_blur_enabled {
+                ", window blur on"
+            } else {
+                ", window blur off"
+            }
+        } else {
+            ", window blur unavailable"
+        };
         let series_style = self.chart_series_style.label().to_lowercase();
         let chrome_summary = format!(
-            "{:.0}% scale, {:.0}px divider, {series_style}, {dots}, {gradient}, hollow {hollow}, {lens}, {fringe}, {blur}, {border}, {os_bar}",
+            "{:.0}% scale, {:.0}px divider, {transparency}{window_blur}, {series_style}, {dots}, {gradient}, hollow {hollow}, {lens}, {fringe}, {blur}, {border}, {os_bar}",
             self.ui_scale * 100.0,
             self.pane_border_thickness
         );

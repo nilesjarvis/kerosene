@@ -70,7 +70,10 @@ impl TradingTerminal {
                 .zip(self.combined_portfolio.y)
                 .map(|(x, y)| crate::window_chrome::restored_position(Point::new(x, y)))
                 .unwrap_or(window::Position::Centered),
-            ..crate::window_chrome::settings(self.custom_window_chrome_active)
+            ..crate::window_chrome::settings(
+                self.custom_window_chrome_active,
+                self.window_background_blur_enabled,
+            )
         };
         let (window_id, open_task) = window::open(settings);
         self.combined_portfolio.window_id = Some(window_id);

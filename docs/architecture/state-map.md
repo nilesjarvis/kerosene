@@ -59,6 +59,8 @@ Persisted through:
 Representative fields:
 
 - `active_theme`, `custom_themes`
+- `window_transparency_enabled`, `window_background_blur_enabled`,
+  `window_background_opacity`
 - chart visual preferences: dotted and gradient backgrounds, hollow candles,
   fisheye, chromatic aberration, edge blur, crosshair style/guides/scale
 - chart HUD preferences: sound, volume, readout elements, UI sounds

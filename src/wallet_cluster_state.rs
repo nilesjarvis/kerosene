@@ -488,6 +488,7 @@ pub(crate) fn format_weight_input(weight: f64) -> String {
 pub(crate) fn wallet_cluster_window_settings(
     state: &WalletClusterState,
     custom_chrome: bool,
+    background_blur: bool,
 ) -> window::Settings {
     window::Settings {
         size: iced::Size::new(
@@ -499,7 +500,7 @@ pub(crate) fn wallet_cluster_window_settings(
             .zip(state.y)
             .map(|(x, y)| crate::window_chrome::restored_position(iced::Point::new(x, y)))
             .unwrap_or_else(|| window::Position::Centered),
-        ..crate::window_chrome::settings(custom_chrome)
+        ..crate::window_chrome::settings(custom_chrome, background_blur)
     }
 }
 

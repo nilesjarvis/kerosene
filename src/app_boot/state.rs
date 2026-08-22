@@ -112,6 +112,11 @@ impl TradingTerminal {
             last_focused_workspace: WorkspaceId::Main,
             active_theme: cfg.active_theme.clone(),
             ui_scale: cfg.ui_scale,
+            window_transparency_enabled: cfg.window_transparency_enabled,
+            window_background_blur_enabled: cfg.window_background_blur_enabled,
+            window_background_opacity: config::normalize_window_background_opacity(
+                cfg.window_background_opacity,
+            ),
             chart_dotted_background: cfg.chart_dotted_background,
             chart_dotted_background_opacity: cfg.chart_dotted_background_opacity,
             chart_gradient_background: cfg.chart_gradient_background,

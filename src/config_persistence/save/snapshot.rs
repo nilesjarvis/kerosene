@@ -55,6 +55,11 @@ impl TradingTerminal {
             reduce_only: layout_snapshot.reduce_only,
             order_quantity_is_usd: self.order_quantity_is_usd,
             ui_scale: self.ui_scale,
+            window_transparency_enabled: self.window_transparency_enabled,
+            window_background_blur_enabled: self.window_background_blur_enabled,
+            window_background_opacity: config::normalize_window_background_opacity(
+                self.window_background_opacity,
+            ),
             chart_dotted_background: self.chart_dotted_background,
             chart_dotted_background_opacity: self.chart_dotted_background_opacity,
             chart_gradient_background: self.chart_gradient_background,

@@ -247,6 +247,28 @@ fn config_save_snapshot_persists_app_onboarding_dismissal() {
 }
 
 #[test]
+fn config_save_snapshot_persists_window_transparency_preferences() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.window_transparency_enabled = true;
+    terminal.window_background_blur_enabled = true;
+    terminal.window_background_opacity = 0.63;
+    let mut persisted = None;
+
+    terminal
+        .persist_config_immediately_with(|cfg| {
+            persisted = Some((
+                cfg.window_transparency_enabled,
+                cfg.window_background_blur_enabled,
+                cfg.window_background_opacity,
+            ));
+            Ok(())
+        })
+        .expect("config snapshot should save");
+
+    assert_eq!(persisted, Some((true, true, 0.63)));
+}
+
+#[test]
 fn config_save_snapshot_clears_account_secret_fields_without_mutating_runtime() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.accounts = vec![AccountProfile {

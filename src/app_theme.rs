@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 
-use iced::{Color, Theme};
+use iced::{Color, Theme, theme};
 
 mod bloomberg;
 mod bybit;
@@ -192,6 +192,97 @@ impl TradingTerminal {
     }
 
     pub fn theme(&self) -> Theme {
-        self.get_theme_by_name(&self.active_theme)
+        let theme = self.get_theme_by_name(&self.active_theme);
+        if self.window_transparency_enabled {
+            with_background_opacity(theme, self.window_background_opacity)
+        } else {
+            theme
+        }
+    }
+
+    pub(crate) fn application_style(state: &Self, theme: &Theme) -> theme::Style {
+        theme::Style {
+            background_color: if state.window_transparency_enabled {
+                Color::TRANSPARENT
+            } else {
+                theme.palette().background
+            },
+            text_color: theme.palette().text,
+        }
+    }
+}
+
+fn with_background_opacity(theme: Theme, opacity: f32) -> Theme {
+    let opacity = crate::config::normalize_window_background_opacity(opacity);
+    let mut palette = theme.palette();
+    let mut extended = *theme.extended_palette();
+    let name = format!("{theme} / transparent {opacity:.3}");
+
+    palette.background.a *= opacity;
+    for pair in [
+        &mut extended.background.base,
+        &mut extended.background.weakest,
+        &mut extended.background.weaker,
+        &mut extended.background.weak,
+        &mut extended.background.neutral,
+        &mut extended.background.strong,
+        &mut extended.background.stronger,
+        &mut extended.background.strongest,
+    ] {
+        pair.color.a *= opacity;
+    }
+
+    Theme::custom_with_fn(name, palette, move |_| extended)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transparent_theme_only_reduces_background_surface_alpha() {
+        let source = Theme::Dark;
+        let source_extended = *source.extended_palette();
+        let transparent = with_background_opacity(source.clone(), 0.6);
+        let extended = transparent.extended_palette();
+
+        assert_eq!(transparent.palette().background.a, 0.6);
+        assert_eq!(extended.background.base.color.a, 0.6);
+        assert_eq!(extended.background.strong.color.a, 0.6);
+        assert_eq!(transparent.palette().text, source.palette().text);
+        assert_eq!(extended.primary.base, source_extended.primary.base);
+        assert_eq!(extended.success.base, source_extended.success.base);
+    }
+
+    #[test]
+    fn transparent_application_clear_does_not_add_an_opaque_layer() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.window_transparency_enabled = true;
+        terminal.window_background_opacity = 0.7;
+        let theme = terminal.theme();
+
+        let style = TradingTerminal::application_style(&terminal, &theme);
+
+        assert_eq!(style.background_color, Color::TRANSPARENT);
+        assert_eq!(style.text_color, theme.palette().text);
+    }
+
+    #[test]
+    fn boot_normalizes_invalid_window_background_opacity() {
+        let config = crate::config::KeroseneConfig {
+            window_transparency_enabled: true,
+            window_background_blur_enabled: true,
+            window_background_opacity: f32::INFINITY,
+            ..crate::config::KeroseneConfig::default()
+        };
+
+        let (terminal, _) = TradingTerminal::boot_from_config(config);
+
+        assert!(terminal.window_transparency_enabled);
+        assert!(terminal.window_background_blur_enabled);
+        assert_eq!(
+            terminal.window_background_opacity,
+            crate::config::DEFAULT_WINDOW_BACKGROUND_OPACITY
+        );
     }
 }

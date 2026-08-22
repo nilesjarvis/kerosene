@@ -75,6 +75,9 @@ pub fn normalize_market_slippage_pct(value: f64) -> Option<f64> {
 pub const DEFAULT_UI_SCALE: f32 = 1.0;
 pub const MIN_UI_SCALE: f32 = 0.75;
 pub const MAX_UI_SCALE: f32 = 1.10;
+pub const DEFAULT_WINDOW_BACKGROUND_OPACITY: f32 = 0.82;
+pub const MIN_WINDOW_BACKGROUND_OPACITY: f32 = 0.35;
+pub const MAX_WINDOW_BACKGROUND_OPACITY: f32 = 0.95;
 pub const DEFAULT_ALFRED_POPUP_SCALE: f32 = 1.0;
 pub const MIN_ALFRED_POPUP_SCALE: f32 = 0.85;
 pub const MAX_ALFRED_POPUP_SCALE: f32 = 1.60;
@@ -116,6 +119,18 @@ pub fn normalize_ui_scale(value: f32) -> f32 {
         value.clamp(MIN_UI_SCALE, MAX_UI_SCALE)
     } else {
         default_ui_scale()
+    }
+}
+
+pub fn default_window_background_opacity() -> f32 {
+    DEFAULT_WINDOW_BACKGROUND_OPACITY
+}
+
+pub fn normalize_window_background_opacity(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(MIN_WINDOW_BACKGROUND_OPACITY, MAX_WINDOW_BACKGROUND_OPACITY)
+    } else {
+        default_window_background_opacity()
     }
 }
 
@@ -300,6 +315,9 @@ impl Default for KeroseneConfig {
             reduce_only: false,
             order_quantity_is_usd: false,
             ui_scale: default_ui_scale(),
+            window_transparency_enabled: false,
+            window_background_blur_enabled: false,
+            window_background_opacity: default_window_background_opacity(),
             chart_dotted_background: false,
             chart_dotted_background_opacity: default_chart_dotted_background_opacity(),
             chart_gradient_background: false,
