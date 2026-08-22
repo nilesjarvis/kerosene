@@ -1,7 +1,7 @@
 use crate::message::Message;
 
 use iced::widget::{column, container, rule, scrollable, text};
-use iced::{Element, Fill, Theme};
+use iced::{Color, Element, Fill, Theme};
 
 // ---------------------------------------------------------------------------
 // Shared Account Tables
@@ -36,5 +36,19 @@ pub(in crate::account_views) fn account_table_scroll<'a>(
         ))
         .width(Fill)
         .height(Fill)
+        .into()
+}
+
+pub(in crate::account_views) fn account_section_separator() -> Element<'static, Message> {
+    rule::horizontal(1)
+        .style(|theme: &Theme| rule::Style {
+            color: Color {
+                a: 0.12,
+                ..theme.extended_palette().background.weak.text
+            },
+            radius: 0.0.into(),
+            fill_mode: rule::FillMode::Full,
+            snap: true,
+        })
         .into()
 }

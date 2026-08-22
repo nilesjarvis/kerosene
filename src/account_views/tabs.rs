@@ -1,4 +1,5 @@
 use crate::account_state::BottomTab;
+use crate::account_views::table_helpers::account_section_separator;
 use crate::app_state::TradingTerminal;
 use crate::canvas_state::WorkspaceId;
 use crate::message::Message;
@@ -70,15 +71,25 @@ impl TradingTerminal {
             BottomTab::FundingHistory => self.view_funding_history(),
         };
 
+        let body_padding = if active_tab == BottomTab::Positions {
+            iced::Padding {
+                top: 0.0,
+                right: 0.0,
+                bottom: 0.0,
+                left: 0.0,
+            }
+        } else {
+            iced::Padding {
+                top: 0.0,
+                right: 10.0,
+                bottom: 10.0,
+                left: 10.0,
+            }
+        };
         let content = column![
             tabs,
             container(body)
-                .padding(iced::Padding {
-                    top: 0.0,
-                    right: 10.0,
-                    bottom: 10.0,
-                    left: 10.0
-                })
+                .padding(body_padding)
                 .width(Fill)
                 .height(Fill)
         ]
@@ -108,7 +119,7 @@ impl TradingTerminal {
 }
 
 fn bottom_tab_strip<'a>(content: Row<'a, Message>) -> Element<'a, Message> {
-    container(column![content, bottom_tab_bottom_separator()].spacing(0))
+    container(column![content, account_section_separator()].spacing(0))
         .width(Fill)
         .style(|theme: &Theme| {
             let background = Color {
@@ -240,20 +251,6 @@ fn bottom_tab_separator() -> Element<'static, Message> {
     .height(18)
     .width(1)
     .into()
-}
-
-fn bottom_tab_bottom_separator() -> Element<'static, Message> {
-    rule::horizontal(1)
-        .style(|theme: &Theme| rule::Style {
-            color: Color {
-                a: 0.12,
-                ..theme.extended_palette().background.weak.text
-            },
-            radius: 0.0.into(),
-            fill_mode: rule::FillMode::Full,
-            snap: true,
-        })
-        .into()
 }
 
 #[cfg(test)]

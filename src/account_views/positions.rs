@@ -14,6 +14,7 @@ use iced::widget::{Column, column, container, responsive, row, rule, text};
 use iced::{Color, Element, Fill, Theme};
 
 pub(super) const POSITION_ACTION_WIDTH: f32 = 152.0;
+pub(super) const POSITION_CONTENT_HORIZONTAL_PADDING: f32 = 10.0;
 
 // Columns whose content is bounded (a side label, a price, a leverage string)
 // use fixed widths so they stay compact and aligned. The variable-content
@@ -144,10 +145,14 @@ impl PositionNumberMode {
 
 impl TradingTerminal {
     pub(crate) fn view_positions(&self) -> Element<'_, Message> {
-        responsive(move |size| self.view_positions_for_width(size.width))
-            .width(Fill)
-            .height(Fill)
-            .into()
+        responsive(move |size| {
+            self.view_positions_for_width(
+                (size.width - 2.0 * POSITION_CONTENT_HORIZONTAL_PADDING).max(0.0),
+            )
+        })
+        .width(Fill)
+        .height(Fill)
+        .into()
     }
 
     fn view_positions_for_width(&self, available_width: f32) -> Element<'_, Message> {
@@ -209,7 +214,7 @@ impl TradingTerminal {
             } else {
                 "Connect wallet to view positions".to_string()
             };
-            return empty_account_table(header, msg, &theme);
+            return position_table_content(empty_account_table(header, msg, &theme));
         }
 
         let rows = self.view_position_sections(&positions, can_close, &theme, columns, number_mode);
@@ -229,7 +234,7 @@ impl TradingTerminal {
             ));
         }
         column![
-            account_table_scroll(content),
+            position_table_content(account_table_scroll(content)),
             self.view_position_summary_bar(&positions, &theme, number_mode),
         ]
         .spacing(0)
@@ -329,6 +334,14 @@ impl TradingTerminal {
 
         content
     }
+}
+
+fn position_table_content<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    container(content)
+        .padding([0.0, POSITION_CONTENT_HORIZONTAL_PADDING])
+        .width(Fill)
+        .height(Fill)
+        .into()
 }
 
 fn opening_position_row<'a>(

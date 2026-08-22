@@ -1,12 +1,13 @@
 use crate::account;
+use crate::account_views::table_helpers::account_section_separator;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::pnl_card::PnlCardTarget;
 
-use iced::widget::{button, container, row, text};
+use iced::widget::{button, column, container, row, text};
 use iced::{Alignment, Color, Element, Fill, Theme};
 
-use super::super::PositionNumberMode;
+use super::super::{POSITION_CONTENT_HORIZONTAL_PADDING, PositionNumberMode};
 
 mod account_value;
 mod formatting;
@@ -122,23 +123,21 @@ impl TradingTerminal {
         .spacing(4)
         .align_y(Alignment::Center);
 
-        container(summary)
-            .width(Fill)
-            .padding([4, 8])
-            .style(|theme: &Theme| {
-                let mut background = theme.extended_palette().background.weak.color;
-                background.a = 0.20;
-                iced::widget::container::Style {
-                    background: Some(background.into()),
-                    border: iced::Border {
-                        radius: 4.0.into(),
-                        width: 1.0,
-                        color: theme.extended_palette().background.strong.color,
-                    },
-                    ..Default::default()
-                }
-            })
-            .into()
+        let footer = container(summary).width(Fill).padding(iced::Padding {
+            top: 4.0,
+            right: POSITION_CONTENT_HORIZONTAL_PADDING + 8.0,
+            bottom: 4.0,
+            left: POSITION_CONTENT_HORIZONTAL_PADDING + 8.0,
+        });
+
+        let divider = container(account_section_separator()).padding(iced::Padding {
+            top: 4.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 0.0,
+        });
+
+        column![divider, footer].spacing(0).width(Fill).into()
     }
 }
 
