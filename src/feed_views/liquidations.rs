@@ -9,6 +9,8 @@ use crate::message::Message;
 use iced::widget::{column, container, responsive, scrollable};
 use iced::{Element, Fill};
 
+const LIQUIDATIONS_CONTENT_HORIZONTAL_PADDING: f32 = 12.0;
+
 impl TradingTerminal {
     pub(crate) fn view_liquidations(&self) -> Element<'_, Message> {
         let theme = self.theme();
@@ -22,11 +24,19 @@ impl TradingTerminal {
         }
 
         container(responsive(move |size| {
-            self.view_liquidations_sized(now_ms, size.width)
+            self.view_liquidations_sized(
+                now_ms,
+                (size.width - 2.0 * LIQUIDATIONS_CONTENT_HORIZONTAL_PADDING).max(0.0),
+            )
         }))
         .width(Fill)
         .height(Fill)
-        .padding(12)
+        .padding(iced::Padding {
+            top: 12.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 0.0,
+        })
         .into()
     }
 
@@ -40,7 +50,7 @@ impl TradingTerminal {
         ]
         .spacing(0);
 
-        let content = column![
+        let feed = column![
             self.view_liquidations_top_bar(now_ms),
             self.view_liquidations_header(row_layout),
             scrollable(scroll_content)
@@ -53,10 +63,17 @@ impl TradingTerminal {
                         .scroller_width(4)
                 ))
                 .height(Fill),
-            iced::widget::rule::horizontal(1),
-            self.view_liquidations_bottom_content(now_ms),
         ]
         .spacing(8);
+
+        let content = column![
+            container(feed)
+                .padding([0.0, LIQUIDATIONS_CONTENT_HORIZONTAL_PADDING])
+                .width(Fill)
+                .height(Fill),
+            self.view_liquidations_bottom_content(now_ms),
+        ]
+        .spacing(0);
 
         container(content).width(Fill).height(Fill).into()
     }

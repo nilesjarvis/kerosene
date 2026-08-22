@@ -1,6 +1,6 @@
 use crate::account;
-use crate::account_views::table_helpers::account_section_separator;
 use crate::app_state::TradingTerminal;
+use crate::helpers::section_separator;
 use crate::message::Message;
 use crate::pnl_card::PnlCardTarget;
 
@@ -130,7 +130,7 @@ impl TradingTerminal {
             left: POSITION_CONTENT_HORIZONTAL_PADDING + 8.0,
         });
 
-        let divider = container(account_section_separator()).padding(iced::Padding {
+        let divider = container(section_separator()).padding(iced::Padding {
             top: 4.0,
             right: 0.0,
             bottom: 0.0,

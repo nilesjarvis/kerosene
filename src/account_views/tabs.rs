@@ -1,7 +1,7 @@
 use crate::account_state::BottomTab;
-use crate::account_views::table_helpers::account_section_separator;
 use crate::app_state::TradingTerminal;
 use crate::canvas_state::WorkspaceId;
+use crate::helpers::section_separator;
 use crate::message::Message;
 use iced::widget::{Row, Space, button, column, container, row, rule, text};
 use iced::{Color, Element, Fill, Theme};
@@ -119,7 +119,7 @@ impl TradingTerminal {
 }
 
 fn bottom_tab_strip<'a>(content: Row<'a, Message>) -> Element<'a, Message> {
-    container(column![content, account_section_separator()].spacing(0))
+    container(column![content, section_separator()].spacing(0))
         .width(Fill)
         .style(|theme: &Theme| {
             let background = Color {

@@ -3,7 +3,7 @@ use crate::message::Message;
 
 use iced::widget::container as container_style;
 use iced::widget::{Space, column, container, row, text};
-use iced::{Element, Fill, Theme};
+use iced::{Element, Fill};
 
 impl TradingTerminal {
     pub(super) fn view_liquidations_summary(&self, now_ms: u64) -> Element<'_, Message> {
@@ -90,17 +90,6 @@ impl TradingTerminal {
             summary_row = summary_row.push(block);
         }
 
-        container(summary_row)
-            .width(Fill)
-            .padding(8)
-            .style(move |theme: &Theme| container_style::Style {
-                background: Some(theme.extended_palette().background.weak.color.into()),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            })
-            .into()
+        container(summary_row).width(Fill).into()
     }
 }
