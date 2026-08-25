@@ -6,6 +6,9 @@ use std::fmt;
 pub struct WatchlistContext {
     pub funding: Option<f64>,
     pub prev_day_px: Option<f64>,
+    /// Current mark price from the same exchange context snapshot.
+    #[serde(default)]
+    pub mark_px: Option<f64>,
     pub day_vlm: Option<f64>,
     /// Perpetual open interest converted to USD notional (`openInterest * markPx`).
     #[serde(default)]
@@ -17,6 +20,7 @@ impl fmt::Debug for WatchlistContext {
         f.debug_struct("WatchlistContext")
             .field("has_funding", &self.funding.is_some())
             .field("has_prev_day_px", &self.prev_day_px.is_some())
+            .field("has_mark_px", &self.mark_px.is_some())
             .field("has_day_vlm", &self.day_vlm.is_some())
             .field(
                 "has_open_interest_notional",
@@ -66,10 +70,11 @@ mod tests {
 
     #[test]
     fn watchlist_context_debug_redacts_market_payload() {
-        let secrets = ["0.000987", "2718.28", "314159.26", "27182818.28"];
+        let secrets = ["0.000987", "2718.28", "3000.50", "314159.26", "27182818.28"];
         let context = WatchlistContext {
             funding: Some(0.000987),
             prev_day_px: Some(2718.28),
+            mark_px: Some(3000.50),
             day_vlm: Some(314159.26),
             open_interest_notional: Some(27182818.28),
         };
@@ -78,6 +83,7 @@ mod tests {
 
         assert!(rendered.contains("has_funding: true"));
         assert!(rendered.contains("has_prev_day_px: true"));
+        assert!(rendered.contains("has_mark_px: true"));
         assert!(rendered.contains("has_day_vlm: true"));
         assert!(rendered.contains("has_open_interest_notional: true"));
         for secret in secrets {
@@ -111,5 +117,6 @@ mod tests {
         .expect("legacy watchlist context");
 
         assert_eq!(context.open_interest_notional, None);
+        assert_eq!(context.mark_px, None);
     }
 }

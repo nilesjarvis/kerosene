@@ -1256,6 +1256,7 @@ mod tests {
         let btc = WatchlistContext {
             funding: Some(0.001),
             prev_day_px: Some(100.0),
+            mark_px: Some(110.0),
             day_vlm: Some(1_000.0),
             open_interest_notional: None,
         };
@@ -1274,6 +1275,10 @@ mod tests {
             .expect("context load succeeds")
             .expect("context should be fresh");
         assert!(fresh.contains_key("BTC"));
+        assert_eq!(
+            fresh.get("BTC").and_then(|context| context.mark_px),
+            Some(110.0)
+        );
 
         let stale = load_fresh_watchlist_contexts_from_dir(
             &root,

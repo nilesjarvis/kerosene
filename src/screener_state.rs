@@ -616,6 +616,7 @@ mod tests {
             WatchlistContext {
                 funding: None,
                 prev_day_px: Some(100.0),
+                mark_px: None,
                 day_vlm: Some(1_000.0),
                 open_interest_notional: None,
             },

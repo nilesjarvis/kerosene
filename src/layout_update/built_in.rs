@@ -1,7 +1,7 @@
 use crate::api::{self, ExchangeSymbol, WatchlistContext};
 use crate::app_state::TradingTerminal;
 use crate::config::{self, AxisConfig, PaneKindConfig, PaneLayoutConfig};
-use crate::helpers::redact_sensitive_response_text;
+use crate::helpers::{positive_percent_change, redact_sensitive_response_text};
 use crate::message::Message;
 use iced::Task;
 use std::collections::{HashMap, HashSet};
@@ -16,21 +16,27 @@ const BUILT_IN_CHART_COUNT: usize = 8;
 pub(crate) enum BuiltInLayout {
     TopVolume24h,
     TopOpenInterest,
+    TopGainers24h,
 }
 
 impl BuiltInLayout {
-    pub(crate) const ALL: [Self; 2] = [Self::TopVolume24h, Self::TopOpenInterest];
+    pub(crate) const ALL: [Self; 3] = [
+        Self::TopVolume24h,
+        Self::TopOpenInterest,
+        Self::TopGainers24h,
+    ];
 
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::TopVolume24h => "Top 8 by 24h Volume",
             Self::TopOpenInterest => "Top 8 by Open Interest",
+            Self::TopGainers24h => "Top 8 by 24h Gain %",
         }
     }
 
     pub(crate) fn kind_label(self) -> &'static str {
         match self {
-            Self::TopVolume24h | Self::TopOpenInterest => "Dynamic",
+            Self::TopVolume24h | Self::TopOpenInterest | Self::TopGainers24h => "Dynamic",
         }
     }
 
@@ -38,12 +44,15 @@ impl BuiltInLayout {
         match self {
             Self::TopVolume24h => "Refreshing 24h volumes...",
             Self::TopOpenInterest => "Refreshing open interest...",
+            Self::TopGainers24h => "Refreshing 24h gains...",
         }
     }
 
     pub(crate) fn preview_layout(self) -> PaneLayoutConfig {
         match self {
-            Self::TopVolume24h | Self::TopOpenInterest => top_eight_grid_layout(),
+            Self::TopVolume24h | Self::TopOpenInterest | Self::TopGainers24h => {
+                top_eight_grid_layout()
+            }
         }
     }
 
@@ -51,7 +60,9 @@ impl BuiltInLayout {
         match self {
             // Outcome-market volume is calculated from candles on its own refresh
             // path; the exchange context endpoint used here covers perp and spot.
-            Self::TopVolume24h => symbol.market_type != api::MarketType::Outcome,
+            Self::TopVolume24h | Self::TopGainers24h => {
+                symbol.market_type != api::MarketType::Outcome
+            }
             Self::TopOpenInterest => symbol.market_type == api::MarketType::Perp,
         }
     }
@@ -60,13 +71,23 @@ impl BuiltInLayout {
         match self {
             Self::TopVolume24h => context.day_vlm,
             Self::TopOpenInterest => context.open_interest_notional,
+            Self::TopGainers24h => positive_percent_change(context.mark_px, context.prev_day_px),
         }
+    }
+
+    fn metric_is_rankable(self, metric: f64) -> bool {
+        metric.is_finite()
+            && match self {
+                Self::TopGainers24h => metric > 0.0,
+                Self::TopVolume24h | Self::TopOpenInterest => metric >= 0.0,
+            }
     }
 
     fn metric_label(self) -> &'static str {
         match self {
             Self::TopVolume24h => "24h-volume",
             Self::TopOpenInterest => "open-interest",
+            Self::TopGainers24h => "positive 24h-gain",
         }
     }
 }
@@ -285,7 +306,9 @@ fn top_ranked_symbols<'a>(
         .filter(|symbol| seen.insert(symbol.key.clone()))
         .filter_map(|symbol| {
             let metric = layout.metric_value(contexts.get(&symbol.key)?)?;
-            (metric.is_finite() && metric >= 0.0).then_some((metric, symbol))
+            layout
+                .metric_is_rankable(metric)
+                .then_some((metric, symbol))
         })
         .collect::<Vec<_>>();
     ranked.sort_by(|(a_metric, a_symbol), (b_metric, b_symbol)| {
@@ -362,8 +385,19 @@ mod tests {
         WatchlistContext {
             funding: None,
             prev_day_px: None,
+            mark_px: None,
             day_vlm: Some(volume),
             open_interest_notional: Some(open_interest_notional),
+        }
+    }
+
+    fn gainer_context(previous: f64, mark: f64) -> WatchlistContext {
+        WatchlistContext {
+            funding: None,
+            prev_day_px: Some(previous),
+            mark_px: Some(mark),
+            day_vlm: None,
+            open_interest_notional: None,
         }
     }
 
@@ -404,6 +438,37 @@ mod tests {
                 .collect::<Vec<_>>();
 
         assert_eq!(ranked, vec!["BTC", "HYPE", "ALT"]);
+    }
+
+    #[test]
+    fn top_gainers_ranking_uses_positive_percentage_change_for_perps_and_spot() {
+        let mut spot = symbol("SPOT");
+        spot.market_type = MarketType::Spot;
+        let mut outcome = symbol("OUTCOME");
+        outcome.market_type = MarketType::Outcome;
+        let symbols = [
+            symbol("GAIN_10"),
+            symbol("GAIN_50"),
+            symbol("FLAT"),
+            symbol("LOSS"),
+            spot,
+            outcome,
+        ];
+        let contexts = HashMap::from([
+            ("GAIN_10".to_string(), gainer_context(100.0, 110.0)),
+            ("GAIN_50".to_string(), gainer_context(1.0, 1.5)),
+            ("FLAT".to_string(), gainer_context(100.0, 100.0)),
+            ("LOSS".to_string(), gainer_context(100.0, 90.0)),
+            ("SPOT".to_string(), gainer_context(2.0, 2.4)),
+            ("OUTCOME".to_string(), gainer_context(1.0, 10.0)),
+        ]);
+
+        let ranked = top_ranked_symbols(BuiltInLayout::TopGainers24h, symbols.iter(), &contexts, 8)
+            .into_iter()
+            .map(|symbol| symbol.key.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(ranked, vec!["GAIN_50", "SPOT", "GAIN_10"]);
     }
 
     #[test]
@@ -467,6 +532,39 @@ mod tests {
             })
             .collect();
         let layout = BuiltInLayout::TopOpenInterest;
+        let request_id = terminal.built_in_layout_state.begin_request(layout);
+
+        let _task = terminal.apply_built_in_layout_contexts(
+            request_id,
+            layout,
+            Ok(api::WatchlistContextsResponse::complete(contexts)),
+        );
+
+        assert_eq!(terminal.built_in_layout_state.active(), Some(layout));
+        assert_eq!(terminal.charts.len(), BUILT_IN_CHART_COUNT);
+        for id in 0..BUILT_IN_CHART_COUNT as u64 {
+            assert_eq!(
+                terminal.charts.get(&id).map(|chart| chart.symbol.clone()),
+                Some(format!("COIN{}", BUILT_IN_CHART_COUNT - 1 - id as usize))
+            );
+        }
+    }
+
+    #[test]
+    fn current_gainers_response_replaces_the_workspace_with_ranked_charts() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.exchange_symbols = (0..BUILT_IN_CHART_COUNT)
+            .map(|index| symbol(&format!("COIN{index}")))
+            .collect();
+        let contexts = (0..BUILT_IN_CHART_COUNT)
+            .map(|index| {
+                (
+                    format!("COIN{index}"),
+                    gainer_context(100.0, 101.0 + index as f64),
+                )
+            })
+            .collect();
+        let layout = BuiltInLayout::TopGainers24h;
         let request_id = terminal.built_in_layout_state.begin_request(layout);
 
         let _task = terminal.apply_built_in_layout_contexts(

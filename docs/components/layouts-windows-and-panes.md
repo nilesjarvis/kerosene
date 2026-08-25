@@ -203,10 +203,13 @@ The built-in dynamic layouts refresh exchange market contexts when selected:
 - `Top 8 by Open Interest` ranks visible and user-selectable perpetual markets
   by USD-notional open interest (`openInterest * markPx`). Spot and outcome
   markets are excluded because they do not expose perpetual open interest.
+- `Top 8 by 24h Gain %` ranks visible and user-selectable perp/spot markets by
+  positive percentage change from `prevDayPx` to `markPx`. Markets without a
+  positive finite gain and outcome markets are excluded.
 
-Both replace the main workspace with a balanced four-column by two-row chart
-grid. Rank order is row-major: the four highest-ranked markets occupy the top
-row and ranks five through eight the bottom row. Incomplete market-family
+All three replace the main workspace with a balanced four-column by two-row
+chart grid. Rank order is row-major: the four highest-ranked markets occupy the
+top row and ranks five through eight the bottom row. Incomplete market-family
 responses and responses with fewer than eight ranked markets leave the current
 workspace unchanged.
 

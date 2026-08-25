@@ -9,6 +9,7 @@ pub(super) fn insert_empty_context(map: &mut HashMap<String, WatchlistContext>, 
         WatchlistContext {
             funding: None,
             prev_day_px: None,
+            mark_px: None,
             day_vlm: None,
             open_interest_notional: None,
         },
@@ -82,11 +83,13 @@ fn append_perp_contexts_impl(
                 }
                 return Err(format!("expected context object for {name}"));
             };
+            let mark_px = parse_positive_f64(ctx, "markPx");
             let context = WatchlistContext {
                 funding: parse_optional_f64(ctx, "funding"),
                 prev_day_px: parse_optional_f64(ctx, "prevDayPx"),
+                mark_px,
                 day_vlm: parse_optional_f64(ctx, "dayNtlVlm"),
-                open_interest_notional: parse_open_interest_notional(ctx),
+                open_interest_notional: parse_open_interest_notional(ctx, mark_px),
             };
             parsed.push((canonical_key, name.to_string(), context));
         }
@@ -184,10 +187,12 @@ fn append_spot_contexts_impl(
                 continue;
             };
             let prev_day_px = parse_optional_f64(ctx, "prevDayPx");
+            let mark_px = parse_positive_f64(ctx, "markPx");
             let day_vlm = parse_optional_f64(ctx, "dayNtlVlm");
             let context = WatchlistContext {
                 funding: None,
                 prev_day_px,
+                mark_px,
                 day_vlm,
                 open_interest_notional: None,
             };
@@ -223,9 +228,13 @@ fn parse_optional_f64(ctx: &Map<String, Value>, key: &str) -> Option<f64> {
     ctx.get(key).and_then(parse_finite_json_number)
 }
 
-fn parse_open_interest_notional(ctx: &Map<String, Value>) -> Option<f64> {
+fn parse_positive_f64(ctx: &Map<String, Value>, key: &str) -> Option<f64> {
+    parse_optional_f64(ctx, key).filter(|value| *value > 0.0)
+}
+
+fn parse_open_interest_notional(ctx: &Map<String, Value>, mark_price: Option<f64>) -> Option<f64> {
     let open_interest = parse_optional_f64(ctx, "openInterest").filter(|value| *value >= 0.0)?;
-    let mark_price = parse_optional_f64(ctx, "markPx").filter(|value| *value > 0.0)?;
+    let mark_price = mark_price?;
     let notional = open_interest * mark_price;
     notional.is_finite().then_some(notional)
 }

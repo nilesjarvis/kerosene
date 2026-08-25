@@ -76,6 +76,7 @@ fn context(prev_day_px: f64) -> WatchlistContext {
     WatchlistContext {
         funding: None,
         prev_day_px: Some(prev_day_px),
+        mark_px: None,
         day_vlm: None,
         open_interest_notional: None,
     }

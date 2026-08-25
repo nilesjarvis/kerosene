@@ -21,6 +21,7 @@ fn watchlist_context_parser_accepts_finite_string_and_number_fields() {
     let context = map.get("HYPE").expect("context");
     assert_eq!(context.funding, Some(0.001));
     assert_eq!(context.prev_day_px, Some(12.5));
+    assert_eq!(context.mark_px, Some(20.0));
     assert_eq!(context.day_vlm, Some(1234.5));
     assert_eq!(context.open_interest_notional, Some(850.0));
 }
@@ -45,6 +46,7 @@ fn watchlist_context_parser_rejects_nonfinite_and_grouped_strings() {
     let context = map.get("HYPE").expect("context");
     assert_eq!(context.funding, None);
     assert_eq!(context.prev_day_px, None);
+    assert_eq!(context.mark_px, Some(100.0));
     assert_eq!(context.day_vlm, None);
     assert_eq!(context.open_interest_notional, None);
 }
@@ -130,6 +132,7 @@ fn spot_context_parser_uses_context_coin_instead_of_universe_position() {
             {
                 "coin": "@142",
                 "prevDayPx": "58322.0",
+                "markPx": "64154.2",
                 "dayNtlVlm": "321.25"
             }
         ]
@@ -141,6 +144,7 @@ fn spot_context_parser_uses_context_coin_instead_of_universe_position() {
     assert_eq!(parsed, Ok(1));
     let context = map.get("@142").expect("context");
     assert_eq!(context.prev_day_px, Some(58322.0));
+    assert_eq!(context.mark_px, Some(64154.2));
     assert_eq!(context.day_vlm, Some(321.25));
     assert_eq!(context.open_interest_notional, None);
 }
