@@ -27,6 +27,8 @@ Representative fields:
   `preserved_unavailable_canvases`, and `next_canvas_id`
 - `last_focused_workspace` and the workspace targeted by the add-widget flow
 - `saved_layouts`, `active_layout_name`, `layout_input`
+- runtime-only `built_in_layout_state` for active/loading built-in layouts and
+  stale-request fencing
 - `app_onboarding_dismissed`, which gates the first-run welcome screen
 - `add_widget_menu_open`, `layout_menu_open`, `add_widget_placement`
 - `main_window_id`, window size/position fields, auxiliary window IDs

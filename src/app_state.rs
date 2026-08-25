@@ -260,6 +260,7 @@ impl TradingTerminal {
 pub(crate) struct TradingTerminal {
     pub(crate) saved_layouts: Vec<config::SavedLayout>,
     pub(crate) active_layout_name: Option<String>,
+    pub(crate) built_in_layout_state: crate::layout_update::BuiltInLayoutState,
     pub(crate) app_onboarding_dismissed: bool,
     pub(crate) layout_input: String,
     pub(crate) preserved_loaded_pane_layout: Option<config::PaneLayoutConfig>,

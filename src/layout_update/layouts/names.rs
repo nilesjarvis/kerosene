@@ -7,6 +7,7 @@ use crate::config;
 
 impl TradingTerminal {
     pub(super) fn update_saved_layout_snapshot(&mut self, name: String) {
+        self.built_in_layout_state.deactivate();
         let new_layout = self.saved_layout_snapshot(name.clone());
         if let Some(pos) = self
             .saved_layouts

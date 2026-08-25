@@ -57,7 +57,7 @@ Current route groups:
 | `Feed` | `feed_update.rs` | Hydromancer liquidation/tracked-trade feeds, Telegram, X. |
 | `Hyperdash` | `hyperdash_update.rs` | HyperDash key, liquidation overlays, heatmap, liquidation distribution. |
 | `Journal` | `journal_update.rs` | Fill loading, cache, notes, chart snapshots, journal window. |
-| `Layout` | `layout_update.rs` | Saved layouts, import/export, wallet label import/export. |
+| `Layout` | `layout_update.rs` | Saved and built-in layouts, dynamic layout data refreshes, import/export, wallet label import/export. |
 | `Market` | `market_update.rs` | Symbols, watchlists, ticker tape, order books, positioning info, session data, HYPE widgets. |
 | `Order` | `order_update.rs` | Order form, submit/cancel, quick/HUD orders, close/nuke, Chase, TWAP, move-order. |
 | `PaneInteractions` | `pane_interaction_update.rs` | Workspace-qualified pane grid resize/drag/click and minimum sizing. |

@@ -16,6 +16,7 @@ impl TradingTerminal {
                 self.layout_input = value;
             }
             Message::SaveLayout(name) if !name.trim().is_empty() => {
+                self.built_in_layout_state.deactivate();
                 let new_layout = self.saved_layout_snapshot(name.clone());
 
                 if let Some(pos) = self.saved_layouts.iter().position(|l| l.name == name) {
@@ -49,6 +50,7 @@ impl TradingTerminal {
             }
             Message::LoadLayout(layout) => {
                 self.close_chart_header_menus();
+                self.built_in_layout_state.deactivate();
                 self.active_layout_name = Some(layout.name.clone());
                 let task = self.apply_layout(layout);
                 self.persist_config();

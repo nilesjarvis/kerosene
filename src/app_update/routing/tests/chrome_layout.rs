@@ -29,6 +29,24 @@ fn chrome_layout_calendar_and_portfolio_routes_cover_shared_shell_messages() {
     assert_route(Message::RefreshPortfolio, UpdateRoute::PortfolioIncome);
     assert_route(Message::ToggleLayoutMenu, UpdateRoute::Panes);
     assert_route(Message::UpdateActiveLayout, UpdateRoute::Layout);
+    assert_route(
+        Message::LoadBuiltInLayout(crate::layout_update::BuiltInLayout::TopVolume24h),
+        UpdateRoute::Layout,
+    );
+    assert_route(
+        Message::LoadBuiltInLayout(crate::layout_update::BuiltInLayout::TopOpenInterest),
+        UpdateRoute::Layout,
+    );
+    assert_route(
+        Message::BuiltInLayoutContextsLoaded(
+            1,
+            crate::layout_update::BuiltInLayout::TopVolume24h,
+            Ok(crate::api::WatchlistContextsResponse::complete(
+                std::collections::HashMap::new(),
+            )),
+        ),
+        UpdateRoute::Layout,
+    );
     assert_route(Message::LayoutRenameToggled(0), UpdateRoute::Layout);
     assert_route(
         Message::LayoutRenameChanged("Main".to_string()),

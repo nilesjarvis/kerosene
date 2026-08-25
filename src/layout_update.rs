@@ -2,8 +2,11 @@ use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use iced::Task;
 
+mod built_in;
 mod layouts;
 mod wallet_labels;
+
+pub(crate) use built_in::{BuiltInLayout, BuiltInLayoutState};
 
 impl TradingTerminal {
     pub(crate) fn update_layout(&mut self, message: Message) -> Task<Message> {
@@ -20,6 +23,10 @@ impl TradingTerminal {
             | Message::ImportLayout
             | Message::LayoutExported(_)
             | Message::LayoutImported(_)) => return self.update_saved_layouts(message),
+            message @ (Message::LoadBuiltInLayout(_)
+            | Message::BuiltInLayoutContextsLoaded(_, _, _)) => {
+                return self.update_built_in_layouts(message);
+            }
             message @ (Message::ExportWalletLabels
             | Message::ImportWalletLabels
             | Message::WalletLabelsExported(_)

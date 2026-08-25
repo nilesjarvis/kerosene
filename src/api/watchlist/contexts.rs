@@ -31,8 +31,23 @@ impl ContextFamily {
 pub async fn fetch_watchlist_contexts(
     symbols: Vec<String>,
 ) -> Result<WatchlistContextsResponse, String> {
+    fetch_watchlist_contexts_with_cache(symbols, true).await
+}
+
+pub(crate) async fn fetch_watchlist_contexts_uncached(
+    symbols: Vec<String>,
+) -> Result<WatchlistContextsResponse, String> {
+    fetch_watchlist_contexts_with_cache(symbols, false).await
+}
+
+async fn fetch_watchlist_contexts_with_cache(
+    symbols: Vec<String>,
+    allow_cache: bool,
+) -> Result<WatchlistContextsResponse, String> {
     let now_ms = crate::app_time::now_ms();
-    if let Ok(Some(cached)) = crate::api_cache::load_fresh_watchlist_contexts(&symbols, now_ms) {
+    if allow_cache
+        && let Ok(Some(cached)) = crate::api_cache::load_fresh_watchlist_contexts(&symbols, now_ms)
+    {
         return Ok(WatchlistContextsResponse::complete(cached));
     }
 
@@ -191,6 +206,7 @@ mod tests {
             funding: None,
             prev_day_px: None,
             day_vlm: Some(day_vlm),
+            open_interest_notional: None,
         }
     }
 

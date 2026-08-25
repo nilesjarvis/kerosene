@@ -10,6 +10,7 @@ pub(super) fn insert_empty_context(map: &mut HashMap<String, WatchlistContext>, 
             funding: None,
             prev_day_px: None,
             day_vlm: None,
+            open_interest_notional: None,
         },
     );
 }
@@ -85,6 +86,7 @@ fn append_perp_contexts_impl(
                 funding: parse_optional_f64(ctx, "funding"),
                 prev_day_px: parse_optional_f64(ctx, "prevDayPx"),
                 day_vlm: parse_optional_f64(ctx, "dayNtlVlm"),
+                open_interest_notional: parse_open_interest_notional(ctx),
             };
             parsed.push((canonical_key, name.to_string(), context));
         }
@@ -187,6 +189,7 @@ fn append_spot_contexts_impl(
                 funding: None,
                 prev_day_px,
                 day_vlm,
+                open_interest_notional: None,
             };
             pair_count += 1;
             // API-named pairs (PURR/USDC) are keyed by their name in the
@@ -218,6 +221,13 @@ fn spot_context_matches_symbol(
 
 fn parse_optional_f64(ctx: &Map<String, Value>, key: &str) -> Option<f64> {
     ctx.get(key).and_then(parse_finite_json_number)
+}
+
+fn parse_open_interest_notional(ctx: &Map<String, Value>) -> Option<f64> {
+    let open_interest = parse_optional_f64(ctx, "openInterest").filter(|value| *value >= 0.0)?;
+    let mark_price = parse_optional_f64(ctx, "markPx").filter(|value| *value > 0.0)?;
+    let notional = open_interest * mark_price;
+    notional.is_finite().then_some(notional)
 }
 
 #[cfg(test)]

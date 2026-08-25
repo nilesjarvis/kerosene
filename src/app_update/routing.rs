@@ -68,6 +68,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         Message::LayoutInputChanged(_)
         | Message::SaveLayout(_)
         | Message::LoadLayout(_)
+        | Message::LoadBuiltInLayout(_)
+        | Message::BuiltInLayoutContextsLoaded(_, _, _)
         | Message::DeleteLayout(_)
         | Message::UpdateActiveLayout
         | Message::LayoutRenameToggled(_)

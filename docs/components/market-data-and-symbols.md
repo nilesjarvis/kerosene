@@ -188,8 +188,10 @@ Important modules:
 
 Watchlist context data uses `api::fetch_watchlist_contexts` for slower metadata
 such as price change, volume, open interest, mark/oracle price, or funding
-fields. Outcome 24h volumes are fetched separately through
-`api::fetch_outcome_volumes_24h`.
+fields. The cached per-market context stores perpetual open interest as USD
+notional (`openInterest * markPx`) for cross-market ranking; legacy cache rows
+default this derived field to unavailable. Outcome 24h volumes are fetched
+separately through `api::fetch_outcome_volumes_24h`.
 
 ## Live Watchlists
 

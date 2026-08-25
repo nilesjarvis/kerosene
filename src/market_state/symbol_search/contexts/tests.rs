@@ -12,6 +12,7 @@ fn context() -> WatchlistContext {
         funding: None,
         prev_day_px: None,
         day_vlm: Some(1.0),
+        open_interest_notional: None,
     }
 }
 

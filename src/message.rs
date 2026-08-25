@@ -607,6 +607,12 @@ pub(crate) enum Message {
     OpenCanvas(CanvasId),
     SaveLayout(String),
     LoadLayout(config::SavedLayout),
+    LoadBuiltInLayout(crate::layout_update::BuiltInLayout),
+    BuiltInLayoutContextsLoaded(
+        u64,
+        crate::layout_update::BuiltInLayout,
+        Result<api::WatchlistContextsResponse, String>,
+    ),
     DeleteLayout(String),
     UpdateActiveLayout,
     LayoutRenameToggled(usize),

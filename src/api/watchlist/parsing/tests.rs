@@ -8,7 +8,9 @@ fn watchlist_context_parser_accepts_finite_string_and_number_fields() {
         [{
             "funding": "0.001",
             "prevDayPx": 12.5,
-            "dayNtlVlm": "1234.5"
+            "dayNtlVlm": "1234.5",
+            "openInterest": "42.5",
+            "markPx": 20.0
         }]
     ]);
     let mut map = HashMap::new();
@@ -20,6 +22,7 @@ fn watchlist_context_parser_accepts_finite_string_and_number_fields() {
     assert_eq!(context.funding, Some(0.001));
     assert_eq!(context.prev_day_px, Some(12.5));
     assert_eq!(context.day_vlm, Some(1234.5));
+    assert_eq!(context.open_interest_notional, Some(850.0));
 }
 
 #[test]
@@ -29,7 +32,9 @@ fn watchlist_context_parser_rejects_nonfinite_and_grouped_strings() {
         [{
             "funding": "NaN",
             "prevDayPx": "inf",
-            "dayNtlVlm": "1,234"
+            "dayNtlVlm": "1,234",
+            "openInterest": "-1",
+            "markPx": "100"
         }]
     ]);
     let mut map = HashMap::new();
@@ -41,6 +46,37 @@ fn watchlist_context_parser_rejects_nonfinite_and_grouped_strings() {
     assert_eq!(context.funding, None);
     assert_eq!(context.prev_day_px, None);
     assert_eq!(context.day_vlm, None);
+    assert_eq!(context.open_interest_notional, None);
+}
+
+#[test]
+fn watchlist_context_parser_rejects_invalid_or_overflowing_open_interest_notional() {
+    let raw = serde_json::json!([
+        {
+            "universe": [
+                { "name": "MISSING_MARK" },
+                { "name": "ZERO_MARK" },
+                { "name": "OVERFLOW" }
+            ]
+        },
+        [
+            { "openInterest": "10" },
+            { "openInterest": "10", "markPx": "0" },
+            { "openInterest": 1e308, "markPx": 1e308 }
+        ]
+    ]);
+    let mut map = HashMap::new();
+
+    let parsed = append_perp_contexts(raw, None, &mut map);
+
+    assert_eq!(parsed, Ok(3));
+    for symbol in ["MISSING_MARK", "ZERO_MARK", "OVERFLOW"] {
+        assert_eq!(
+            map.get(symbol)
+                .and_then(|context| context.open_interest_notional),
+            None
+        );
+    }
 }
 
 #[test]
@@ -106,6 +142,7 @@ fn spot_context_parser_uses_context_coin_instead_of_universe_position() {
     let context = map.get("@142").expect("context");
     assert_eq!(context.prev_day_px, Some(58322.0));
     assert_eq!(context.day_vlm, Some(321.25));
+    assert_eq!(context.open_interest_notional, None);
 }
 
 #[test]

@@ -41,6 +41,7 @@ pub(crate) use sec::{
 #[cfg(test)]
 pub(crate) use sec::{SecEarningsMetric, SecStructuredEarnings};
 pub use user_fills::{UserFill, UserFillsPage, UserFillsRequest, fetch_user_fills};
+pub(crate) use watchlist::fetch_watchlist_contexts_uncached;
 pub use watchlist::{
     WatchlistContext, WatchlistContextsResponse, fetch_screener_history, fetch_watchlist_contexts,
     fetch_watchlist_history,

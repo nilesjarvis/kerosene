@@ -2,6 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::helpers;
 use crate::layout_preview::saved_layout_preview;
+use crate::layout_update::BuiltInLayout;
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{Column, button, container, row, rule, scrollable, text, text_input};
@@ -23,7 +24,12 @@ const RENAME_ICON: &str = "✎";
 
 impl TradingTerminal {
     pub(crate) fn layout_switcher_button_label(&self) -> String {
-        layout_switcher_button_label(self.active_layout_name.as_deref(), BUTTON_LABEL_CHARS)
+        let active_label = self
+            .built_in_layout_state
+            .active()
+            .map(BuiltInLayout::label)
+            .or(self.active_layout_name.as_deref());
+        layout_switcher_button_label(active_label, BUTTON_LABEL_CHARS)
     }
 
     pub(crate) fn view_layout_switcher_dropdown(&self) -> Element<'_, Message> {
@@ -32,16 +38,33 @@ impl TradingTerminal {
             .spacing(2)
             .width(Fill)
             .push(
+                text("Layouts")
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text),
+            )
+            .push(rule::horizontal(1))
+            .push(
+                text("Dynamic & preset layouts")
+                    .size(10)
+                    .color(theme.extended_palette().background.weak.text),
+            );
+
+        for layout in BuiltInLayout::ALL {
+            menu = menu.push(self.view_built_in_layout_row(layout, &theme));
+        }
+
+        menu = menu
+            .push(rule::horizontal(1))
+            .push(
                 row![
-                    text("Layouts")
-                        .size(11)
+                    text("Your layouts")
+                        .size(10)
                         .color(theme.extended_palette().background.weak.text)
                         .width(Fill),
                     layout_header_update_button(self.active_layout_name.is_some()),
                 ]
                 .align_y(iced::Alignment::Center),
             )
-            .push(rule::horizontal(1))
             .push(self.view_layout_switcher_add_row());
 
         if self.saved_layouts.is_empty() {
@@ -74,6 +97,68 @@ impl TradingTerminal {
                 ..Default::default()
             })
             .into()
+    }
+
+    fn view_built_in_layout_row(
+        &self,
+        layout: BuiltInLayout,
+        theme: &Theme,
+    ) -> Element<'static, Message> {
+        let is_active = self.built_in_layout_state.active() == Some(layout);
+        let is_loading = self.built_in_layout_state.is_loading(layout);
+        let marker = if is_active { ">" } else { "" };
+        let preview_layout = layout.preview_layout();
+        let preview = saved_layout_preview(Some(&preview_layout), theme, is_active);
+        let label = if is_loading {
+            layout.loading_label()
+        } else {
+            layout.label()
+        };
+        let contents = row![
+            text(marker)
+                .size(11)
+                .color(theme.palette().primary)
+                .width(Length::Fixed(12.0)),
+            preview,
+            text(label).size(12).color(theme.palette().text).width(Fill),
+            text(layout.kind_label())
+                .size(10)
+                .color(theme.extended_palette().background.weak.text),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center);
+
+        let button =
+            button(contents)
+                .padding([7, 8])
+                .width(Fill)
+                .style(move |theme: &Theme, status| {
+                    let bg = match status {
+                        button::Status::Hovered => theme.extended_palette().background.strong.color,
+                        _ if is_active => theme.extended_palette().background.weak.color,
+                        _ => Color::TRANSPARENT,
+                    };
+                    button::Style {
+                        background: Some(bg.into()),
+                        text_color: theme.palette().text,
+                        border: iced::Border {
+                            radius: 4.0.into(),
+                            width: if is_active { 1.0 } else { 0.0 },
+                            color: if is_active {
+                                theme.palette().primary
+                            } else {
+                                Color::TRANSPARENT
+                            },
+                        },
+                        ..Default::default()
+                    }
+                });
+
+        if is_loading {
+            button.into()
+        } else {
+            button.on_press(Message::LoadBuiltInLayout(layout)).into()
+        }
     }
 
     fn view_layout_switcher_add_row(&self) -> Element<'_, Message> {

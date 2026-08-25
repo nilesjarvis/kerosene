@@ -189,6 +189,33 @@ synthetic `last` layout so loading a workspace cannot convert detached windows
 into docked panes. Replacing layout-owned spaghetti instances also advances a
 runtime epoch that fences their outstanding REST and websocket events.
 
+## Built-In Layouts
+
+The layout dropdown keeps built-in dynamic/preset layouts in a separate section
+from user-named snapshots. Built-in selection is routed through
+`layout_update/built_in.rs`; these entries are not inserted into
+`saved_layouts`.
+
+The built-in dynamic layouts refresh exchange market contexts when selected:
+
+- `Top 8 by 24h Volume` ranks the current visible and user-selectable perp/spot
+  universe by `dayNtlVlm`.
+- `Top 8 by Open Interest` ranks visible and user-selectable perpetual markets
+  by USD-notional open interest (`openInterest * markPx`). Spot and outcome
+  markets are excluded because they do not expose perpetual open interest.
+
+Both replace the main workspace with a balanced four-column by two-row chart
+grid. Rank order is row-major: the four highest-ranked markets occupy the top
+row and ranks five through eight the bottom row. Incomplete market-family
+responses and responses with fewer than eight ranked markets leave the current
+workspace unchanged.
+
+`BuiltInLayoutState` tracks the active built-in entry, its in-flight refresh,
+and a request generation so stale market-context responses cannot replace a
+newer selection. This state is runtime-only. Selecting an entry again recomputes
+it from refreshed market data; saving it under a user name intentionally creates
+a static snapshot of the generated grid.
+
 ## Config Wire Types
 
 Runtime layout types are not serialized directly. Persisted wire types live in
