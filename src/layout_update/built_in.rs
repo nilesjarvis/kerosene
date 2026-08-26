@@ -4,6 +4,7 @@ use crate::config::{self, AxisConfig, PaneKindConfig, PaneLayoutConfig};
 use crate::helpers::{positive_percent_change, redact_sensitive_response_text};
 use crate::message::Message;
 use iced::Task;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 const BUILT_IN_CHART_COUNT: usize = 8;
@@ -60,10 +61,10 @@ impl BuiltInLayout {
         match self {
             // Outcome-market volume is calculated from candles on its own refresh
             // path; the exchange context endpoint used here covers perp and spot.
-            Self::TopVolume24h | Self::TopGainers24h => {
-                symbol.market_type != api::MarketType::Outcome
+            Self::TopVolume24h => symbol.market_type != api::MarketType::Outcome,
+            Self::TopGainers24h | Self::TopOpenInterest => {
+                symbol.market_type == api::MarketType::Perp
             }
-            Self::TopOpenInterest => symbol.market_type == api::MarketType::Perp,
         }
     }
 
@@ -299,18 +300,52 @@ fn top_ranked_symbols<'a>(
     limit: usize,
 ) -> Vec<&'a ExchangeSymbol> {
     let mut seen = HashSet::new();
-    let mut ranked = symbols
-        .into_iter()
-        .filter(|symbol| symbol.is_user_selectable_market())
-        .filter(|symbol| layout.supports_symbol(symbol))
-        .filter(|symbol| seen.insert(symbol.key.clone()))
-        .filter_map(|symbol| {
-            let metric = layout.metric_value(contexts.get(&symbol.key)?)?;
-            layout
-                .metric_is_rankable(metric)
-                .then_some((metric, symbol))
-        })
-        .collect::<Vec<_>>();
+    // Several dexes can list the same underlying asset (HIP-3); group those
+    // contracts by asset and keep the highest-24h-volume one per asset so the
+    // grid never shows the same coin twice. Non-perp markets rank individually.
+    let mut best_by_asset = HashMap::<String, (f64, f64, &'a ExchangeSymbol)>::new();
+    let mut ranked = Vec::new();
+
+    for symbol in symbols {
+        if !symbol.is_user_selectable_market()
+            || !layout.supports_symbol(symbol)
+            || !seen.insert(symbol.key.clone())
+        {
+            continue;
+        }
+        let Some(context) = contexts.get(&symbol.key) else {
+            continue;
+        };
+        let Some(metric) = layout.metric_value(context) else {
+            continue;
+        };
+        if !layout.metric_is_rankable(metric) {
+            continue;
+        }
+
+        let Some(asset) = symbol.underlying_asset() else {
+            ranked.push((metric, symbol));
+            continue;
+        };
+        let volume = context.day_vlm.unwrap_or(0.0);
+        match best_by_asset.entry(asset.to_string()) {
+            Entry::Occupied(mut entry) => {
+                let (best_volume, _, _) = *entry.get();
+                if volume > best_volume {
+                    entry.insert((volume, metric, symbol));
+                }
+            }
+            Entry::Vacant(entry) => {
+                entry.insert((volume, metric, symbol));
+            }
+        }
+    }
+    ranked.extend(
+        best_by_asset
+            .into_values()
+            .map(|(_, metric, symbol)| (metric, symbol)),
+    );
+
     ranked.sort_by(|(a_metric, a_symbol), (b_metric, b_symbol)| {
         b_metric
             .total_cmp(a_metric)
@@ -392,11 +427,15 @@ mod tests {
     }
 
     fn gainer_context(previous: f64, mark: f64) -> WatchlistContext {
+        gainer_context_with_volume(previous, mark, 0.0)
+    }
+
+    fn gainer_context_with_volume(previous: f64, mark: f64, day_vlm: f64) -> WatchlistContext {
         WatchlistContext {
             funding: None,
             prev_day_px: Some(previous),
             mark_px: Some(mark),
-            day_vlm: None,
+            day_vlm: Some(day_vlm),
             open_interest_notional: None,
         }
     }
@@ -441,7 +480,7 @@ mod tests {
     }
 
     #[test]
-    fn top_gainers_ranking_uses_positive_percentage_change_for_perps_and_spot() {
+    fn top_gainers_ranking_uses_positive_percentage_change_for_perps_only() {
         let mut spot = symbol("SPOT");
         spot.market_type = MarketType::Spot;
         let mut outcome = symbol("OUTCOME");
@@ -468,7 +507,70 @@ mod tests {
             .map(|symbol| symbol.key.as_str())
             .collect::<Vec<_>>();
 
-        assert_eq!(ranked, vec!["GAIN_50", "SPOT", "GAIN_10"]);
+        assert_eq!(ranked, vec!["GAIN_50", "GAIN_10"]);
+    }
+
+    fn hip3_symbol(base: &str, dex_prefix: Option<&str>) -> ExchangeSymbol {
+        let key = dex_prefix
+            .map(|dex| format!("{dex}:{base}"))
+            .unwrap_or_else(|| base.to_string());
+        let mut symbol = symbol(&key);
+        symbol.ticker = base.to_string();
+        symbol
+    }
+
+    #[test]
+    fn top_gainers_ranking_collapses_hip3_duplicate_contracts_to_highest_volume() {
+        let main = hip3_symbol("FARTCOIN", None);
+        let hip3 = hip3_symbol("FARTCOIN", Some("builder"));
+        let secondary = hip3_symbol("FARTCOIN", Some("other"));
+        let symbols = [main, symbol("ALPHA"), hip3, secondary];
+        let contexts = HashMap::from([
+            (
+                "FARTCOIN".to_string(),
+                gainer_context_with_volume(1.0, 1.2, 100.0),
+            ),
+            (
+                "builder:FARTCOIN".to_string(),
+                gainer_context_with_volume(1.0, 1.6, 1_000.0),
+            ),
+            (
+                "other:FARTCOIN".to_string(),
+                gainer_context_with_volume(1.0, 1.4, 50.0),
+            ),
+            (
+                "ALPHA".to_string(),
+                gainer_context_with_volume(1.0, 1.5, 500.0),
+            ),
+        ]);
+
+        let ranked = top_ranked_symbols(BuiltInLayout::TopGainers24h, symbols.iter(), &contexts, 8)
+            .into_iter()
+            .map(|symbol| symbol.key.as_str())
+            .collect::<Vec<_>>();
+
+        // The highest-volume "builder:FARTCOIN" (60% gain) represents the asset,
+        // and no other FARTCOIN contract appears.
+        assert_eq!(ranked, vec!["builder:FARTCOIN", "ALPHA"]);
+    }
+
+    #[test]
+    fn top_volume_ranking_keeps_only_the_highest_volume_contract_per_asset() {
+        let main = hip3_symbol("TOSHI", None);
+        let hip3 = hip3_symbol("TOSHI", Some("builder"));
+        let symbols = [main, hip3, symbol("OTHER")];
+        let contexts = HashMap::from([
+            ("TOSHI".to_string(), context(500.0, 1.0)),
+            ("builder:TOSHI".to_string(), context(2_000.0, 2.0)),
+            ("OTHER".to_string(), context(1_500.0, 3.0)),
+        ]);
+
+        let ranked = top_ranked_symbols(BuiltInLayout::TopVolume24h, symbols.iter(), &contexts, 8)
+            .into_iter()
+            .map(|symbol| symbol.key.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(ranked, vec!["builder:TOSHI", "OTHER"]);
     }
 
     #[test]

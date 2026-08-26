@@ -171,6 +171,18 @@ impl ExchangeSymbol {
             .as_ref()
             .is_some_and(|info| info.is_question_fallback)
     }
+
+    /// Groups multiple exchange contracts for the same underlying asset: HIP-3
+    /// builder dexes and the main dex can each list the same coin, so perpetual
+    /// contracts share their short ticker (`"builder:FARTCOIN"` and
+    /// `"FARTCOIN"` both group as `"FARTCOIN"`). Spot pairs and outcome
+    /// contracts use unique keys and return `None`.
+    pub fn underlying_asset(&self) -> Option<&str> {
+        match self.market_type {
+            MarketType::Perp => Some(&self.ticker),
+            MarketType::Spot | MarketType::Outcome => None,
+        }
+    }
 }
 
 /// Resolve a spot symbol from the legacy "@{index}" form of a pair the API
@@ -264,6 +276,34 @@ mod tests {
         assert!(!rendered.contains("BTC above threshold"));
         assert!(!rendered.contains("secret threshold"));
         assert!(!rendered.contains("75348.12"));
+    }
+
+    fn perp_symbol(key: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: key.rsplit(':').next().unwrap_or(key).to_string(),
+            category: "crypto".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: Some(0),
+            sz_decimals: 2,
+            max_leverage: 50,
+            only_isolated: false,
+            market_type: MarketType::Perp,
+            outcome: None,
+        }
+    }
+
+    #[test]
+    fn underlying_asset_groups_perp_contracts_by_short_ticker_only() {
+        let main_perp = perp_symbol("FARTCOIN");
+        let hip3_perp = perp_symbol("builder:FARTCOIN");
+        let spot = spot_symbol("@1", Some("FARTCOIN/USDC"), 10_001);
+
+        assert_eq!(main_perp.underlying_asset(), Some("FARTCOIN"));
+        assert_eq!(hip3_perp.underlying_asset(), Some("FARTCOIN"));
+        assert_eq!(spot.underlying_asset(), None);
     }
 
     fn spot_symbol(key: &str, display_name: Option<&str>, asset_index: u32) -> ExchangeSymbol {
