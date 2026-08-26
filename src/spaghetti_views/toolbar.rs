@@ -4,6 +4,16 @@ use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
 use iced::widget::{button, row, svg, text, tooltip};
 use iced::{Element, Length, Theme};
 
+const TOOLBAR_ITEM_HEIGHT: f32 = 18.0;
+
+const PLUS_ICON_SVG: &[u8] = br#"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="round">
+  <path d="M12 5v14"/>
+  <path d="M5 12h14"/>
+</svg>
+"#;
+
 const DETACH_ICON_SVG: &[u8] = br#"
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -33,6 +43,7 @@ impl TradingTerminal {
             )
             .on_press(Message::SpaghettiRemoveSymbol(sid, sym))
             .padding([1, 4])
+            .height(Length::Fixed(TOOLBAR_ITEM_HEIGHT))
             .style(|theme: &Theme, _status| button::Style {
                 background: Some(theme.extended_palette().background.weak.color.into()),
                 border: iced::Border {
@@ -44,9 +55,19 @@ impl TradingTerminal {
             toolbar = toolbar.push(remove_btn);
         }
 
-        let edit_btn = button(text("+").size(12).center())
+        let plus_icon: Element<'static, Message> =
+            svg(iced::widget::svg::Handle::from_memory(PLUS_ICON_SVG))
+                .width(Length::Fixed(12.0))
+                .height(Length::Fixed(12.0))
+                .style(|theme: &Theme, _status| iced::widget::svg::Style {
+                    color: Some(theme.palette().success),
+                })
+                .into();
+
+        let edit_btn = button(plus_icon)
             .on_press(Message::SpaghettiOpenEditor(id))
-            .padding([2, 6])
+            .padding([2, 5])
+            .height(Length::Fixed(TOOLBAR_ITEM_HEIGHT))
             .style(|theme: &Theme, status| {
                 let bg = match status {
                     button::Status::Hovered => theme.extended_palette().background.strong.color,
@@ -78,6 +99,7 @@ impl TradingTerminal {
             button(detach_icon)
                 .on_press(Message::OpenDetachedSpaghettiChart(id))
                 .padding([2, 5])
+                .height(Length::Fixed(TOOLBAR_ITEM_HEIGHT))
                 .style(|theme: &Theme, status| {
                     let bg = match status {
                         button::Status::Hovered => theme.extended_palette().background.strong.color,
