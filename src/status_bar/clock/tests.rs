@@ -1,4 +1,4 @@
-use super::{market_clock_text, market_is_active, status_clock_times};
+use super::{market_clock_text, market_is_active, market_session_summary, status_clock_times};
 use chrono::{TimeZone, Utc};
 
 #[test]
@@ -110,4 +110,24 @@ fn status_clock_times_uses_supplied_timestamp() {
 
     assert_eq!(utc, expected_utc);
     assert_eq!(local.timestamp_millis(), expected_utc.timestamp_millis());
+}
+
+#[test]
+fn market_summary_lists_only_open_sessions() {
+    let now = Utc
+        .with_ymd_and_hms(2026, 5, 18, 15, 0, 0)
+        .single()
+        .expect("valid UTC timestamp");
+
+    assert_eq!(market_session_summary(now), "London + New York open");
+}
+
+#[test]
+fn market_summary_uses_neutral_closed_state() {
+    let now = Utc
+        .with_ymd_and_hms(2026, 5, 17, 15, 0, 0)
+        .single()
+        .expect("valid UTC timestamp");
+
+    assert_eq!(market_session_summary(now), "Markets closed");
 }

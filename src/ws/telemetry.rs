@@ -1,7 +1,7 @@
 pub(crate) use crate::app_time::now_ms;
 
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 // ---------------------------------------------------------------------------
 // WebSocket Telemetry
@@ -9,7 +9,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct WsTelemetrySnapshot {
-    pub open_connections: u64,
     pub exchange_open_connections: u64,
     pub hydromancer_open_connections: u64,
     pub bytes_received: u64,
@@ -17,10 +16,17 @@ pub struct WsTelemetrySnapshot {
     pub exchange_last_rx_ms: u64,
     pub hydromancer_last_rx_ms: u64,
     pub ws_latency_ms: u64,
+    pub ws_latency_last_success_ms: u64,
     pub api_latency_ms: u64,
+    pub api_last_attempt_ms: u64,
     pub api_last_success_ms: u64,
+    pub api_last_attempt_succeeded: bool,
+    pub api_probe_in_flight: bool,
     pub hydromancer_api_latency_ms: u64,
+    pub hydromancer_api_last_attempt_ms: u64,
     pub hydromancer_api_last_success_ms: u64,
+    pub hydromancer_api_last_attempt_succeeded: bool,
+    pub hydromancer_api_probe_in_flight: bool,
 }
 
 #[derive(Debug, Default)]
@@ -33,10 +39,17 @@ struct WsTelemetry {
     hydromancer_last_rx_ms: AtomicU64,
     ws_ping_start_ms: AtomicU64,
     ws_latency_ms: AtomicU64,
+    ws_latency_last_success_ms: AtomicU64,
     api_latency_ms: AtomicU64,
+    api_last_attempt_ms: AtomicU64,
     api_last_success_ms: AtomicU64,
+    api_last_attempt_succeeded: AtomicBool,
+    api_probe_in_flight: AtomicBool,
     hydromancer_api_latency_ms: AtomicU64,
+    hydromancer_api_last_attempt_ms: AtomicU64,
     hydromancer_api_last_success_ms: AtomicU64,
+    hydromancer_api_last_attempt_succeeded: AtomicBool,
+    hydromancer_api_probe_in_flight: AtomicBool,
 }
 
 static WS_TELEMETRY: OnceLock<WsTelemetry> = OnceLock::new();
@@ -47,6 +60,14 @@ fn ws_telemetry() -> &'static WsTelemetry {
 
 pub(crate) fn telemetry_on_connect() {
     increment_counter(&ws_telemetry().exchange_open_connections, 1);
+    ws_telemetry()
+        .exchange_last_rx_ms
+        .store(0, Ordering::Relaxed);
+    ws_telemetry().ws_ping_start_ms.store(0, Ordering::Relaxed);
+    ws_telemetry().ws_latency_ms.store(0, Ordering::Relaxed);
+    ws_telemetry()
+        .ws_latency_last_success_ms
+        .store(0, Ordering::Relaxed);
 }
 
 pub(crate) fn telemetry_on_disconnect() {
@@ -55,6 +76,9 @@ pub(crate) fn telemetry_on_disconnect() {
 
 pub(crate) fn telemetry_on_hydromancer_connect() {
     increment_counter(&ws_telemetry().hydromancer_open_connections, 1);
+    ws_telemetry()
+        .hydromancer_last_rx_ms
+        .store(0, Ordering::Relaxed);
 }
 
 pub(crate) fn telemetry_on_hydromancer_disconnect() {
@@ -122,11 +146,25 @@ pub(super) fn telemetry_mark_ws_ping_start() {
 pub(super) fn telemetry_update_ws_latency_from_ping_start() {
     let start_ms = ws_telemetry().ws_ping_start_ms.load(Ordering::Relaxed);
     if start_ms > 0 {
-        let latency = now_ms().saturating_sub(start_ms);
+        let now_ms = now_ms();
+        let latency = now_ms.saturating_sub(start_ms);
         ws_telemetry()
             .ws_latency_ms
             .store(latency, Ordering::Relaxed);
+        ws_telemetry()
+            .ws_latency_last_success_ms
+            .store(now_ms, Ordering::Relaxed);
     }
+}
+
+#[cfg(not(test))]
+pub(super) fn telemetry_mark_api_attempt() {
+    ws_telemetry()
+        .api_last_attempt_ms
+        .store(now_ms(), Ordering::Relaxed);
+    ws_telemetry()
+        .api_probe_in_flight
+        .store(true, Ordering::Relaxed);
 }
 
 pub(super) fn telemetry_update_api_latency(latency: u64) {
@@ -137,6 +175,31 @@ pub(super) fn telemetry_update_api_latency(latency: u64) {
     ws_telemetry()
         .api_last_success_ms
         .store(now_ms, Ordering::Relaxed);
+    ws_telemetry()
+        .api_last_attempt_succeeded
+        .store(true, Ordering::Relaxed);
+    ws_telemetry()
+        .api_probe_in_flight
+        .store(false, Ordering::Relaxed);
+}
+
+#[cfg(not(test))]
+pub(super) fn telemetry_record_api_failure() {
+    ws_telemetry()
+        .api_last_attempt_succeeded
+        .store(false, Ordering::Relaxed);
+    ws_telemetry()
+        .api_probe_in_flight
+        .store(false, Ordering::Relaxed);
+}
+
+pub(super) fn telemetry_mark_hydromancer_api_attempt() {
+    ws_telemetry()
+        .hydromancer_api_last_attempt_ms
+        .store(now_ms(), Ordering::Relaxed);
+    ws_telemetry()
+        .hydromancer_api_probe_in_flight
+        .store(true, Ordering::Relaxed);
 }
 
 pub(super) fn telemetry_update_hydromancer_api_latency(latency: u64) {
@@ -147,6 +210,21 @@ pub(super) fn telemetry_update_hydromancer_api_latency(latency: u64) {
     ws_telemetry()
         .hydromancer_api_last_success_ms
         .store(now_ms, Ordering::Relaxed);
+    ws_telemetry()
+        .hydromancer_api_last_attempt_succeeded
+        .store(true, Ordering::Relaxed);
+    ws_telemetry()
+        .hydromancer_api_probe_in_flight
+        .store(false, Ordering::Relaxed);
+}
+
+pub(super) fn telemetry_record_hydromancer_api_failure() {
+    ws_telemetry()
+        .hydromancer_api_last_attempt_succeeded
+        .store(false, Ordering::Relaxed);
+    ws_telemetry()
+        .hydromancer_api_probe_in_flight
+        .store(false, Ordering::Relaxed);
 }
 
 pub fn telemetry_snapshot() -> WsTelemetrySnapshot {
@@ -156,7 +234,6 @@ pub fn telemetry_snapshot() -> WsTelemetrySnapshot {
     let exchange_last_rx_ms = t.exchange_last_rx_ms.load(Ordering::Relaxed);
     let hydromancer_last_rx_ms = t.hydromancer_last_rx_ms.load(Ordering::Relaxed);
     WsTelemetrySnapshot {
-        open_connections: exchange_open_connections.saturating_add(hydromancer_open_connections),
         exchange_open_connections,
         hydromancer_open_connections,
         bytes_received: t.bytes_received.load(Ordering::Relaxed),
@@ -164,10 +241,19 @@ pub fn telemetry_snapshot() -> WsTelemetrySnapshot {
         exchange_last_rx_ms,
         hydromancer_last_rx_ms,
         ws_latency_ms: t.ws_latency_ms.load(Ordering::Relaxed),
+        ws_latency_last_success_ms: t.ws_latency_last_success_ms.load(Ordering::Relaxed),
         api_latency_ms: t.api_latency_ms.load(Ordering::Relaxed),
+        api_last_attempt_ms: t.api_last_attempt_ms.load(Ordering::Relaxed),
         api_last_success_ms: t.api_last_success_ms.load(Ordering::Relaxed),
+        api_last_attempt_succeeded: t.api_last_attempt_succeeded.load(Ordering::Relaxed),
+        api_probe_in_flight: t.api_probe_in_flight.load(Ordering::Relaxed),
         hydromancer_api_latency_ms: t.hydromancer_api_latency_ms.load(Ordering::Relaxed),
+        hydromancer_api_last_attempt_ms: t.hydromancer_api_last_attempt_ms.load(Ordering::Relaxed),
         hydromancer_api_last_success_ms: t.hydromancer_api_last_success_ms.load(Ordering::Relaxed),
+        hydromancer_api_last_attempt_succeeded: t
+            .hydromancer_api_last_attempt_succeeded
+            .load(Ordering::Relaxed),
+        hydromancer_api_probe_in_flight: t.hydromancer_api_probe_in_flight.load(Ordering::Relaxed),
     }
 }
 

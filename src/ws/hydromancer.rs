@@ -6,7 +6,10 @@ mod recent;
 mod tracked_trades;
 
 use super::WsStream;
-use super::telemetry::{now_ms, telemetry_update_hydromancer_api_latency};
+use super::telemetry::{
+    now_ms, telemetry_mark_hydromancer_api_attempt, telemetry_record_hydromancer_api_failure,
+    telemetry_update_hydromancer_api_latency,
+};
 use crate::api::CLIENT;
 use crate::hydromancer_api::HYDROMANCER_API_URL;
 use crate::message::Message;
@@ -131,17 +134,20 @@ fn hydromancer_api_latency_probe_payload() -> serde_json::Value {
 async fn update_hydromancer_api_latency_once(api_key: Zeroizing<String>) {
     let start_time = now_ms();
     let payload = hydromancer_api_latency_probe_payload();
-    if let Ok(resp) = CLIENT
+    telemetry_mark_hydromancer_api_attempt();
+    match CLIENT
         .clone()
         .post(HYDROMANCER_API_URL)
         .bearer_auth(api_key.trim())
         .json(&payload)
         .send()
         .await
-        && resp.status().is_success()
     {
-        let latency = now_ms().saturating_sub(start_time);
-        telemetry_update_hydromancer_api_latency(latency);
+        Ok(resp) if resp.status().is_success() => {
+            let latency = now_ms().saturating_sub(start_time);
+            telemetry_update_hydromancer_api_latency(latency);
+        }
+        Ok(_) | Err(_) => telemetry_record_hydromancer_api_failure(),
     }
 }
 

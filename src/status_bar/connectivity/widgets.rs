@@ -20,14 +20,12 @@ pub(super) fn format_bytes_human(bytes: u64) -> String {
     }
 }
 
-pub(super) fn status_tooltip<'a>(
-    label: String,
-    body: &'static str,
+pub(in crate::status_bar) fn status_element_tooltip<'a>(
+    content: impl Into<Element<'a, Message>>,
+    body: String,
 ) -> tooltip::Tooltip<'a, Message> {
     tooltip(
-        text(label).size(10).style(|theme: &Theme| text::Style {
-            color: Some(theme.palette().primary),
-        }),
+        content,
         container(text(body).size(10).style(|theme: &Theme| text::Style {
             color: Some(theme.palette().primary),
         }))
@@ -52,7 +50,7 @@ pub(super) fn status_group_separator<'a>() -> Element<'a, Message> {
     .into()
 }
 
-pub(super) fn ws_status_badge<'a>(
+pub(super) fn status_badge<'a>(
     label: &'static str,
     color: Color,
     live: bool,

@@ -4,9 +4,9 @@ use crate::helpers;
 use crate::market_sessions::{MARKET_CLOCK_SESSIONS, MarketSession};
 use crate::message::Message;
 use chrono::{DateTime, Local, Timelike, Utc};
-use iced::widget::container as container_style;
-use iced::widget::{Row, Space, container, row, text};
-use iced::{Color, Element, Theme};
+use iced::widget::{Row, row, text};
+
+use super::connectivity::widgets::status_element_tooltip;
 
 mod session;
 
@@ -34,9 +34,12 @@ impl TradingTerminal {
             .spacing(8)
             .align_y(iced::Alignment::Center);
 
-        MARKET_CLOCK_SESSIONS.into_iter().fold(row, |row, session| {
-            push_clock_gap(row, separated).push(market_clock(session, now_utc, &theme))
-        })
+        push_clock_gap(row, separated).push(status_element_tooltip(
+            text(market_session_summary(now_utc))
+                .size(10)
+                .color(theme.palette().primary),
+            market_session_tooltip(now_utc),
+        ))
     }
 }
 
@@ -55,40 +58,37 @@ fn push_clock_gap(row: Row<'static, Message>, separated: bool) -> Row<'static, M
     }
 }
 
-fn market_clock(
-    session: MarketSession,
-    now_utc: DateTime<Utc>,
-    theme: &Theme,
-) -> Element<'static, Message> {
-    let is_active = session_is_active(now_utc, session);
-    let dot_color = if is_active {
-        theme.palette().success
-    } else {
-        theme.palette().danger
-    };
-    let clock_text = session_clock_text(now_utc, session).unwrap_or_else(|| session.label().into());
+fn market_session_summary(now_utc: DateTime<Utc>) -> String {
+    let active: Vec<_> = MARKET_CLOCK_SESSIONS
+        .into_iter()
+        .filter(|session| session_is_active(now_utc, *session))
+        .map(MarketSession::label)
+        .collect();
 
-    row![
-        market_activity_dot(dot_color),
-        text(clock_text).size(10).color(theme.palette().primary),
-    ]
-    .spacing(5)
-    .align_y(iced::Alignment::Center)
-    .into()
+    if active.is_empty() {
+        "Markets closed".to_string()
+    } else {
+        format!("{} open", active.join(" + "))
+    }
 }
 
-fn market_activity_dot(color: Color) -> Element<'static, Message> {
-    container(Space::new().width(7).height(7))
-        .style(move |_theme: &Theme| container_style::Style {
-            background: Some(color.into()),
-            border: iced::Border {
-                radius: 10.0.into(),
-                width: 1.0,
-                color: Color { a: 0.32, ..color },
-            },
-            ..Default::default()
+fn market_session_tooltip(now_utc: DateTime<Utc>) -> String {
+    let sessions = MARKET_CLOCK_SESSIONS
+        .into_iter()
+        .map(|session| {
+            let state = if session_is_active(now_utc, session) {
+                "OPEN"
+            } else {
+                "CLOSED"
+            };
+            let detail =
+                session_clock_text(now_utc, session).unwrap_or_else(|| session.label().to_string());
+            format!("{state}  {detail}")
         })
-        .into()
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!("Market sessions\n\n{sessions}")
 }
 
 #[cfg(test)]

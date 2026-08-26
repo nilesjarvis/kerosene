@@ -12,7 +12,7 @@ pub(crate) use l2_book::{
 pub use manager::WsCommand;
 pub(crate) use manager::{SubscriptionGuard, WsCommandSender, get_manager};
 pub(crate) use telemetry::now_ms;
-pub use telemetry::telemetry_snapshot;
+pub use telemetry::{WsTelemetrySnapshot, telemetry_snapshot};
 pub(crate) use telemetry::{
     telemetry_add_hydromancer_rx, telemetry_add_hydromancer_tx, telemetry_on_hydromancer_connect,
     telemetry_on_hydromancer_disconnect,

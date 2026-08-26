@@ -8,7 +8,9 @@ use self::timing::{
 use super::WS_URL;
 use super::connect::{ConnectAttempt, connect_with_timeout};
 #[cfg(not(test))]
-use super::telemetry::{now_ms, telemetry_update_api_latency};
+use super::telemetry::{
+    now_ms, telemetry_mark_api_attempt, telemetry_record_api_failure, telemetry_update_api_latency,
+};
 use super::telemetry::{
     telemetry_add_rx, telemetry_add_tx, telemetry_mark_ws_ping_start, telemetry_on_connect,
     telemetry_on_disconnect, telemetry_update_ws_latency_from_ping_start,
@@ -521,16 +523,19 @@ async fn update_api_latency_once() {
     let start_time = now_ms();
     let client = crate::api::CLIENT.clone();
     let req_payload = serde_json::json!({ "type": "ping" });
+    telemetry_mark_api_attempt();
 
-    if let Ok(resp) = client
+    match client
         .post(crate::api::API_URL)
         .json(&req_payload)
         .send()
         .await
-        && resp.status().is_success()
     {
-        let latency = now_ms().saturating_sub(start_time);
-        telemetry_update_api_latency(latency);
+        Ok(resp) if resp.status().is_success() => {
+            let latency = now_ms().saturating_sub(start_time);
+            telemetry_update_api_latency(latency);
+        }
+        Ok(_) | Err(_) => telemetry_record_api_failure(),
     }
 }
 
