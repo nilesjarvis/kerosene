@@ -6,6 +6,7 @@ use options::{
 use overlays::overlay_group;
 
 use crate::app_state::TradingTerminal;
+use crate::chart_indicator::ChartIndicatorId;
 use crate::chart_state::{ChartId, ChartInstance};
 use crate::message::Message;
 
@@ -24,7 +25,7 @@ mod overlays;
 #[derive(Debug, Clone, Copy)]
 struct IndicatorOption {
     label: &'static str,
-    key: &'static str,
+    key: ChartIndicatorId,
     checked: bool,
 }
 

@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::chart_indicator::ChartIndicatorId;
 
 use serde_json::{Value, json};
 use std::cmp::Ordering;
@@ -7,9 +8,10 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-const SNAPSHOT_SCHEMA_VERSION: u32 = 3;
+const SNAPSHOT_SCHEMA_VERSION: u32 = 4;
 const ASSISTANT_CURRENT_DATA_MAX_AGE_MS: u64 = 15_000;
 const MAX_MARKETS: usize = 250;
+const MAX_WORKSPACE_CHARTS: usize = 32;
 const MAX_ACCOUNT_ROWS: usize = 100;
 const MAX_RECENT_ROWS: usize = 50;
 const MAX_TOOL_ACTIVITY_ROWS: usize = 2_000;
@@ -49,6 +51,7 @@ impl TradingTerminal {
                 ],
                 "row_limits": {
                     "markets": MAX_MARKETS,
+                    "workspace_charts": MAX_WORKSPACE_CHARTS,
                     "account_rows": MAX_ACCOUNT_ROWS,
                     "recent_rows": MAX_RECENT_ROWS,
                     "tool_activity_rows": MAX_TOOL_ACTIVITY_ROWS,
@@ -60,6 +63,7 @@ impl TradingTerminal {
                 "time_contract": "generated_at_ms is when Kerosene serialized the snapshot. provenance.observed_at_ms/as_of_ms is when the underlying data was observed and remains null when unknown; snapshot generation time is never substituted for missing observation time"
             },
             "overview": self.agent_overview_snapshot(generated_at_ms),
+            "workspace": self.agent_workspace_snapshot(generated_at_ms),
             "account": self.agent_account_snapshot(generated_at_ms),
             "portfolio": self.agent_portfolio_snapshot(generated_at_ms),
             "markets": self.agent_markets_snapshot(generated_at_ms),
@@ -93,6 +97,94 @@ impl TradingTerminal {
             "hide_pnl_enabled_in_ui": self.hide_pnl,
             "market_count": self.all_mids.len(),
             "favourite_symbols": self.favourite_symbols,
+        })
+    }
+
+    fn agent_workspace_snapshot(&self, generated_at_ms: u64) -> Value {
+        let selected_chart_id = self
+            .primary_chart_id
+            .filter(|id| self.charts.contains_key(id));
+        let total_chart_count = self.charts.len();
+        let mut chart_instances = self.charts.values().collect::<Vec<_>>();
+        chart_instances
+            .sort_by_key(|instance| (selected_chart_id != Some(instance.id), instance.id));
+        let mut charts = chart_instances
+            .into_iter()
+            .take(MAX_WORKSPACE_CHARTS)
+            .map(|instance| {
+                let indicators = ChartIndicatorId::ASSISTANT_VISIBLE
+                    .iter()
+                    .map(|indicator| {
+                        (
+                            indicator.key().to_string(),
+                            Value::Bool(indicator.is_enabled(instance)),
+                        )
+                    })
+                    .collect::<serde_json::Map<_, _>>();
+                json!({
+                    "id": instance.id,
+                    "surface": if self.chart_is_docked(instance.id) { "docked" } else { "detached" },
+                    "symbol": instance.symbol,
+                    "display_symbol": instance.symbol_display,
+                    "timeframe": instance.interval.label(),
+                    "timeframe_config": instance.interval.config_str(),
+                    "selected": selected_chart_id == Some(instance.id),
+                    "indicators": indicators,
+                })
+            })
+            .collect::<Vec<_>>();
+        charts.sort_by_key(|chart| chart.get("id").and_then(Value::as_u64).unwrap_or_default());
+        let returned_chart_count = charts.len();
+
+        let indicator_catalog = ChartIndicatorId::ASSISTANT_VISIBLE
+            .iter()
+            .map(|indicator| {
+                let available = !indicator.requires_hydromancer()
+                    || !self.hydromancer_api_key.trim().is_empty();
+                json!({
+                    "id": indicator.key(),
+                    "label": indicator.label(),
+                    "group": indicator.group(),
+                    "aliases": indicator.aliases(),
+                    "available": available,
+                    "unavailable_reason": (!available).then_some(
+                        "Requires a Hydromancer API key in Settings > Integrations"
+                    ),
+                    "persisted": true,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        json!({
+            "provenance": section_provenance(
+                "kerosene_open_chart_state",
+                Some(generated_at_ms),
+                generated_at_ms,
+                Some(0),
+            ),
+            "selected_chart_id": selected_chart_id,
+            "charts": charts,
+            "indicator_catalog": indicator_catalog,
+            "action_policy": {
+                "set_chart_indicators_available": true,
+                "scope": "allowlisted reversible visual settings on already-open candlestick charts",
+                "excluded": [
+                    "orders",
+                    "signing",
+                    "presentation_labels",
+                    "quick_trade_controls",
+                    "arbitrary_indicator_code",
+                    "chart_creation",
+                    "symbol_changes",
+                    "timeframe_changes"
+                ]
+            },
+            "coverage": {
+                "returned_count": returned_chart_count,
+                "total_count": total_chart_count,
+                "truncated": returned_chart_count < total_chart_count,
+                "complete_for_current_state": returned_chart_count == total_chart_count,
+            }
         })
     }
 
@@ -1187,6 +1279,8 @@ fn staged_snapshot_path(workspace_dir: &Path, generation: u64, request_id: u64) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chart_state::ChartInstance;
+    use crate::timeframe::Timeframe;
 
     #[test]
     fn pnl_card_match_authorization_is_private_and_scoped_to_the_request() {
@@ -1250,6 +1344,71 @@ mod tests {
         assert!(!text.contains("hyperdash-secret"));
         assert_eq!(value["_tool_data"]["contract"]["private"], true);
         assert!(value["_tool_data"]["glossary"]["funding_usdc"].is_string());
+    }
+
+    #[test]
+    fn workspace_snapshot_exposes_selected_chart_and_safe_indicator_catalog() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        let mut chart = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        chart.macro_indicators.tf_ema_50 = true;
+        chart.chart.macro_indicators = chart.macro_indicators.clone();
+        terminal.charts.insert(7, chart);
+        terminal.primary_chart_id = Some(7);
+        terminal.hydromancer_api_key = String::new().into();
+
+        let bytes = terminal.build_agent_snapshot().expect("snapshot");
+        let value: Value = serde_json::from_slice(&bytes).expect("json");
+        let workspace = &value["workspace"];
+        let catalog = workspace["indicator_catalog"]
+            .as_array()
+            .expect("indicator catalog");
+
+        assert_eq!(workspace["selected_chart_id"], 7);
+        assert_eq!(workspace["charts"][0]["id"], 7);
+        assert_eq!(workspace["charts"][0]["selected"], true);
+        assert_eq!(workspace["charts"][0]["symbol"], "BTC");
+        assert_eq!(workspace["charts"][0]["timeframe"], "1H");
+        assert_eq!(workspace["charts"][0]["indicators"]["tf_ema_50"], true);
+        assert!(catalog.iter().any(|entry| entry["id"] == "tf_ema_50"));
+        assert!(catalog.iter().any(|entry| {
+            entry["id"] == "funding_rate"
+                && entry["available"] == false
+                && entry["unavailable_reason"].is_string()
+        }));
+        assert!(!catalog.iter().any(|entry| entry["id"] == "quick_trade"));
+        assert!(!catalog.iter().any(|entry| entry["id"] == "labels"));
+    }
+
+    #[test]
+    fn workspace_snapshot_is_bounded_and_keeps_the_selected_chart() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        for id in 1..=MAX_WORKSPACE_CHARTS as u64 + 3 {
+            terminal.charts.insert(
+                id,
+                ChartInstance::new(id, format!("ASSET{id}"), Timeframe::H1),
+            );
+        }
+        terminal.primary_chart_id = Some(MAX_WORKSPACE_CHARTS as u64 + 3);
+
+        let bytes = terminal.build_agent_snapshot().expect("snapshot");
+        let value: Value = serde_json::from_slice(&bytes).expect("json");
+        let workspace = &value["workspace"];
+        let charts = workspace["charts"].as_array().expect("charts");
+
+        assert_eq!(charts.len(), MAX_WORKSPACE_CHARTS);
+        assert!(charts.iter().any(|chart| chart["selected"] == true));
+        assert_eq!(
+            workspace["coverage"]["returned_count"],
+            MAX_WORKSPACE_CHARTS
+        );
+        assert_eq!(
+            workspace["coverage"]["total_count"],
+            MAX_WORKSPACE_CHARTS + 3
+        );
+        assert_eq!(workspace["coverage"]["truncated"], true);
+        assert_eq!(workspace["coverage"]["complete_for_current_state"], false);
     }
 
     #[test]

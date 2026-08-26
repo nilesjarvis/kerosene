@@ -43,10 +43,7 @@ pub(super) fn indicator_badge(
         .spacing(4)
         .align_y(Alignment::Center),
     )
-    .on_press(Message::ToggleMacroIndicator(
-        chart_id,
-        indicator.key.to_string(),
-    ))
+    .on_press(Message::ToggleMacroIndicator(chart_id, indicator.key))
     .padding([2, 6])
     .style(move |theme: &Theme, status| {
         let bg = match status {

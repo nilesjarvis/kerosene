@@ -21,7 +21,7 @@ fn active_indicator_registry_preserves_badge_order_and_keys() {
     let active = active_chart_indicators(&instance, &Theme::Dark);
     let labels_and_keys: Vec<_> = active
         .iter()
-        .map(|indicator| (indicator.label, indicator.key))
+        .map(|indicator| (indicator.label, indicator.key.key()))
         .collect();
 
     assert_eq!(
@@ -30,11 +30,11 @@ fn active_indicator_registry_preserves_badge_order_and_keys() {
             ("TF 50 SMA", "tf_sma_50"),
             ("50h SMA", "sma_50h"),
             ("200d SMA", "sma_200d"),
-            ("Funding", "show_funding_rate"),
-            ("Sessions", "show_session_indicator"),
-            ("Quick Trade", "show_quick_trade"),
-            ("Vol Profile", "show_volume_profile"),
-            ("High/Low", "show_high_low"),
+            ("Funding", "funding_rate"),
+            ("Sessions", "sessions"),
+            ("Quick Trade", "quick_trade"),
+            ("Vol Profile", "volume_profile"),
+            ("High/Low", "high_low"),
         ]
     );
 }

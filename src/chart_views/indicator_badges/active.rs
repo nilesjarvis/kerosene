@@ -1,3 +1,4 @@
+use crate::chart_indicator::ChartIndicatorId;
 use crate::chart_state::ChartInstance;
 
 use iced::{Color, Theme};
@@ -9,7 +10,7 @@ use iced::{Color, Theme};
 #[derive(Debug, Clone, Copy)]
 pub(in crate::chart_views::indicator_badges) struct ActiveIndicator {
     pub(in crate::chart_views::indicator_badges) label: &'static str,
-    pub(in crate::chart_views::indicator_badges) key: &'static str,
+    pub(in crate::chart_views::indicator_badges) key: ChartIndicatorId,
     pub(in crate::chart_views::indicator_badges) color: Color,
 }
 
@@ -59,7 +60,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.tf_sma_50,
         "TF 50 SMA",
-        "tf_sma_50",
+        ChartIndicatorId::TfSma50,
         IndicatorColorRole::Fast,
         theme,
     );
@@ -67,7 +68,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.tf_ema_50,
         "TF 50 EMA",
-        "tf_ema_50",
+        ChartIndicatorId::TfEma50,
         IndicatorColorRole::Fast,
         theme,
     );
@@ -75,7 +76,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.tf_sma_200,
         "TF 200 SMA",
-        "tf_sma_200",
+        ChartIndicatorId::TfSma200,
         IndicatorColorRole::Slow,
         theme,
     );
@@ -83,7 +84,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.tf_ema_200,
         "TF 200 EMA",
-        "tf_ema_200",
+        ChartIndicatorId::TfEma200,
         IndicatorColorRole::Slow,
         theme,
     );
@@ -91,7 +92,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.sma_50h,
         "50h SMA",
-        "sma_50h",
+        ChartIndicatorId::Sma50h,
         IndicatorColorRole::Fast,
         theme,
     );
@@ -99,7 +100,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.ema_50h,
         "50h EMA",
-        "ema_50h",
+        ChartIndicatorId::Ema50h,
         IndicatorColorRole::Fast,
         theme,
     );
@@ -107,7 +108,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.sma_200h,
         "200h SMA",
-        "sma_200h",
+        ChartIndicatorId::Sma200h,
         IndicatorColorRole::Slow,
         theme,
     );
@@ -115,7 +116,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.ema_200h,
         "200h EMA",
-        "ema_200h",
+        ChartIndicatorId::Ema200h,
         IndicatorColorRole::Slow,
         theme,
     );
@@ -123,7 +124,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.sma_50d,
         "50d SMA",
-        "sma_50d",
+        ChartIndicatorId::Sma50d,
         IndicatorColorRole::Fast,
         theme,
     );
@@ -131,7 +132,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.ema_50d,
         "50d EMA",
-        "ema_50d",
+        ChartIndicatorId::Ema50d,
         IndicatorColorRole::Fast,
         theme,
     );
@@ -139,7 +140,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.sma_200d,
         "200d SMA",
-        "sma_200d",
+        ChartIndicatorId::Sma200d,
         IndicatorColorRole::Slow,
         theme,
     );
@@ -147,7 +148,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.ema_200d,
         "200d EMA",
-        "ema_200d",
+        ChartIndicatorId::Ema200d,
         IndicatorColorRole::Slow,
         theme,
     );
@@ -155,7 +156,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.sma_20w,
         "20w SMA",
-        "sma_20w",
+        ChartIndicatorId::Sma20w,
         IndicatorColorRole::WeeklyFast,
         theme,
     );
@@ -163,7 +164,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.ema_20w,
         "20w EMA",
-        "ema_20w",
+        ChartIndicatorId::Ema20w,
         IndicatorColorRole::WeeklyFast,
         theme,
     );
@@ -171,7 +172,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.sma_50w,
         "50w SMA",
-        "sma_50w",
+        ChartIndicatorId::Sma50w,
         IndicatorColorRole::WeeklySlow,
         theme,
     );
@@ -179,7 +180,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.ema_50w,
         "50w EMA",
-        "ema_50w",
+        ChartIndicatorId::Ema50w,
         IndicatorColorRole::WeeklySlow,
         theme,
     );
@@ -187,7 +188,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.sma_12m,
         "12M SMA",
-        "sma_12m",
+        ChartIndicatorId::Sma12m,
         IndicatorColorRole::Monthly,
         theme,
     );
@@ -195,7 +196,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.ema_12m,
         "12M EMA",
-        "ema_12m",
+        ChartIndicatorId::Ema12m,
         IndicatorColorRole::Monthly,
         theme,
     );
@@ -203,7 +204,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.show_funding_rate,
         "Funding",
-        "show_funding_rate",
+        ChartIndicatorId::FundingRate,
         IndicatorColorRole::Funding,
         theme,
     );
@@ -211,7 +212,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.show_session_indicator,
         "Sessions",
-        "show_session_indicator",
+        ChartIndicatorId::Sessions,
         IndicatorColorRole::Sessions,
         theme,
     );
@@ -219,7 +220,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.show_quick_trade,
         "Quick Trade",
-        "show_quick_trade",
+        ChartIndicatorId::QuickTrade,
         IndicatorColorRole::QuickTrade,
         theme,
     );
@@ -227,7 +228,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.show_volume_profile,
         "Vol Profile",
-        "show_volume_profile",
+        ChartIndicatorId::VolumeProfile,
         IndicatorColorRole::VolumeProfile,
         theme,
     );
@@ -235,7 +236,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.show_high_low,
         "High/Low",
-        "show_high_low",
+        ChartIndicatorId::HighLow,
         IndicatorColorRole::HighLow,
         theme,
     );
@@ -243,7 +244,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.show_leledc_arrows,
         "Leledc Arrows",
-        "show_leledc_arrows",
+        ChartIndicatorId::LeledcArrows,
         IndicatorColorRole::LeledcArrows,
         theme,
     );
@@ -251,7 +252,7 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         &mut active,
         indicators.show_leledc_levels,
         "Leledc Levels",
-        "show_leledc_levels",
+        ChartIndicatorId::LeledcLevels,
         IndicatorColorRole::LeledcLevels,
         theme,
     );
@@ -263,7 +264,7 @@ fn push_indicator(
     active: &mut Vec<ActiveIndicator>,
     enabled: bool,
     label: &'static str,
-    key: &'static str,
+    key: ChartIndicatorId,
     color_role: IndicatorColorRole,
     theme: &Theme,
 ) {

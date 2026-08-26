@@ -99,6 +99,6 @@ fn indicator_checkbox(chart_id: ChartId, option: IndicatorOption) -> Element<'st
     menu_checkbox(
         option.label,
         option.checked,
-        Message::ToggleMacroIndicator(chart_id, option.key.to_string()),
+        Message::ToggleMacroIndicator(chart_id, option.key),
     )
 }

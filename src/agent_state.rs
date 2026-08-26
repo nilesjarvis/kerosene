@@ -99,6 +99,11 @@ pub(crate) fn agent_tool_presentation(name: &str) -> AgentToolPresentation {
             title: "Market lookup",
             running_label: "Looking up current market data",
         },
+        "kerosene_set_chart_indicators" => AgentToolPresentation {
+            category: "Workspace",
+            title: "Chart indicators",
+            running_label: "Updating chart indicators",
+        },
         "kerosene_activity" => AgentToolPresentation {
             category: "Activity",
             title: "Account activity",
@@ -357,6 +362,9 @@ pub(crate) struct AgentState {
     pub(crate) featured_response_has_image: bool,
     pub(crate) empty_response_retry_count: u8,
     pub(crate) suppress_empty_response_retry: bool,
+    /// True only while Pi is handling the currently authorized user turn.
+    /// Host workspace actions are rejected after abort, settlement, or reset.
+    pub(crate) workspace_actions_allowed: bool,
     pub(crate) needs_context_replay: bool,
     pub(crate) requested_model: Option<String>,
     pub(crate) runtime_model: Option<String>,
@@ -412,6 +420,7 @@ impl Default for AgentState {
             featured_response_has_image: false,
             empty_response_retry_count: 0,
             suppress_empty_response_retry: false,
+            workspace_actions_allowed: false,
             needs_context_replay: false,
             requested_model: None,
             runtime_model: None,
@@ -635,6 +644,7 @@ impl AgentState {
 
     pub(crate) fn reset_runtime(&mut self) {
         self.flush_assistant_stream();
+        self.finish_running_tools(true);
         self.status = AgentStatus::Stopped;
         self.status_detail = None;
         self.runtime_connected = false;
@@ -645,6 +655,7 @@ impl AgentState {
         self.current_turn_has_image = false;
         self.empty_response_retry_count = 0;
         self.suppress_empty_response_retry = false;
+        self.workspace_actions_allowed = false;
         self.require_context_replay();
         self.begin_new_runtime();
     }
@@ -749,6 +760,7 @@ impl AgentState {
 
     pub(crate) fn begin_snapshot(&mut self, prompt: AgentPrompt) -> (u64, u64) {
         self.flush_assistant_stream();
+        self.finish_running_tools(true);
         self.reset_stream_activity();
         self.snapshot_request_id = self.snapshot_request_id.wrapping_add(1);
         self.pending_prompt = Some(prompt);
@@ -758,6 +770,7 @@ impl AgentState {
         self.current_turn_has_image = false;
         self.empty_response_retry_count = 0;
         self.suppress_empty_response_retry = false;
+        self.workspace_actions_allowed = false;
         (self.runtime_generation, self.snapshot_request_id)
     }
 
@@ -1047,6 +1060,35 @@ impl AgentState {
             *finished = true;
             *entry_is_error = is_error;
         }
+    }
+
+    pub(crate) fn finish_running_tools(&mut self, is_error: bool) {
+        for entry in &mut self.entries {
+            if let AgentChatEntry::Tool {
+                finished,
+                is_error: entry_is_error,
+                ..
+            } = entry
+                && !*finished
+            {
+                *finished = true;
+                *entry_is_error = is_error;
+            }
+        }
+    }
+
+    pub(crate) fn has_running_tool_call(&self, call_id: &str, name: &str) -> bool {
+        self.entries.iter().any(|entry| {
+            matches!(
+                entry,
+                AgentChatEntry::Tool {
+                    call_id: entry_call_id,
+                    name: entry_name,
+                    finished: false,
+                    ..
+                } if entry_call_id == call_id && entry_name == name
+            )
+        })
     }
 
     fn take_active_session(&mut self) -> AgentStoredSession {

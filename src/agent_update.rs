@@ -57,6 +57,8 @@ impl TradingTerminal {
             Message::AgentStreamTick => self.advance_agent_stream_presentation(),
             Message::AgentAbort => {
                 self.agent.suppress_empty_response_retry = true;
+                self.agent.workspace_actions_allowed = false;
+                self.agent.finish_running_tools(true);
                 self.agent.finish_reasoning();
                 self.agent.flush_assistant_stream();
                 agent_runtime::abort(self.agent.runtime_generation);
@@ -655,6 +657,7 @@ impl TradingTerminal {
 
     fn send_pending_agent_prompt(&mut self) -> Task<Message> {
         let Some(prompt) = self.agent.pending_prompt.take() else {
+            self.agent.workspace_actions_allowed = false;
             self.agent.status = AgentStatus::Ready;
             self.agent.status_detail = None;
             return Task::none();
@@ -663,10 +666,12 @@ impl TradingTerminal {
         match agent_runtime::send_prompt(self.agent.runtime_generation, prompt) {
             Ok(()) => {
                 self.agent.mark_context_replayed();
+                self.agent.workspace_actions_allowed = true;
                 self.agent.status = AgentStatus::Thinking;
                 self.agent.status_detail = None;
             }
             Err(error) => {
+                self.agent.workspace_actions_allowed = false;
                 self.agent.runtime_connected = false;
                 self.agent.require_context_replay();
                 self.agent.status = AgentStatus::Error;
@@ -753,6 +758,34 @@ impl TradingTerminal {
                 self.agent.finish_tool(&call_id, is_error);
                 self.agent.status_detail = None;
             }
+            AgentRuntimeEvent::ExtensionUiRequest {
+                generation,
+                request_id,
+                method,
+                title,
+                payload,
+            } => {
+                if method == "input"
+                    && !request_id.is_empty()
+                    && title.as_deref() == Some(crate::agent_workspace::HOST_ACTION_RPC_TITLE)
+                    && let Some(payload) = payload
+                {
+                    let (response, task) = self.handle_agent_host_action(&payload);
+                    if let Err(error) = agent_runtime::respond_to_extension_ui(
+                        generation,
+                        request_id,
+                        Some(response),
+                    ) {
+                        self.agent.workspace_actions_allowed = false;
+                        self.agent.finish_running_tools(true);
+                        self.agent.status = AgentStatus::Error;
+                        self.agent.status_detail = Some(self.redact_agent_runtime_error(&error));
+                    }
+                    return task;
+                }
+
+                let _ = agent_runtime::respond_to_extension_ui(generation, request_id, None);
+            }
             AgentRuntimeEvent::ModelContext {
                 model,
                 context_window,
@@ -778,6 +811,7 @@ impl TradingTerminal {
                 ..
             } => {
                 self.agent.finish_reasoning();
+                self.agent.finish_running_tools(true);
                 if total_tokens.is_some() {
                     self.agent.total_tokens = total_tokens;
                 }
@@ -813,6 +847,7 @@ impl TradingTerminal {
                         if let Err(error) =
                             agent_runtime::send_prompt(self.agent.runtime_generation, retry)
                         {
+                            self.agent.workspace_actions_allowed = false;
                             self.agent.runtime_connected = false;
                             self.agent.require_context_replay();
                             self.agent.status = AgentStatus::Error;
@@ -821,6 +856,7 @@ impl TradingTerminal {
                         return Task::none();
                     }
                     EmptyResponseAction::Error => {
+                        self.agent.workspace_actions_allowed = false;
                         self.agent.feature_latest_assistant_immediately();
                         self.agent.status = AgentStatus::Error;
                         self.agent.status_detail = Some(
@@ -835,6 +871,7 @@ impl TradingTerminal {
                     EmptyResponseAction::Accept => {}
                 }
 
+                self.agent.workspace_actions_allowed = false;
                 self.agent.suppress_empty_response_retry = false;
                 self.agent.mark_assistant_transport_settled();
                 if self.agent.assistant_stream_ready_to_finalize() {
@@ -845,6 +882,8 @@ impl TradingTerminal {
                 return Task::none();
             }
             AgentRuntimeEvent::Error { message, .. } => {
+                self.agent.workspace_actions_allowed = false;
+                self.agent.finish_running_tools(true);
                 self.agent.finish_reasoning();
                 self.agent.pending_prompt = None;
                 self.agent.feature_latest_assistant_immediately();
@@ -855,6 +894,8 @@ impl TradingTerminal {
                 return self.persist_agent_sessions();
             }
             AgentRuntimeEvent::Exited { .. } => {
+                self.agent.workspace_actions_allowed = false;
+                self.agent.finish_running_tools(true);
                 self.agent.finish_reasoning();
                 self.agent.flush_assistant_stream();
                 self.agent.runtime_connected = false;
@@ -892,6 +933,7 @@ impl TradingTerminal {
     }
 
     fn finish_agent_turn_presentation(&mut self) -> Task<Message> {
+        self.agent.workspace_actions_allowed = false;
         self.agent.finish_assistant_presentation();
         self.agent.status = AgentStatus::Ready;
         self.agent.status_detail = None;

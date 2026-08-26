@@ -3,10 +3,13 @@
 The Kerosene Assistant is a native iced chat window backed by the open-source
 [Pi agent harness](https://github.com/earendil-works/pi) in RPC mode and either
 the user's configured OpenRouter account or an auto-detected local llama.cpp
-server. The
-MVP is intentionally read-only: the assistant can inspect a sanitized Kerosene
-snapshot, reason about it, and produce explanations or analysis code, but it
-cannot place orders or mutate application state.
+server. The Assistant is analysis-first: it can inspect a sanitized Kerosene
+snapshot, reason about it, and produce explanations or analysis code. Its only
+application mutation is an explicitly allowlisted, reversible action that
+enables or disables supported visual indicators on already-open candlestick
+charts. It cannot create charts, change their market or timeframe, expose
+trading controls, place or cancel orders, sign, or invoke arbitrary application
+messages.
 
 ## Component Map
 
@@ -17,9 +20,11 @@ cannot place orders or mutate application state.
 | `src/agent_update.rs` | Window lifecycle, prompt submission, snapshot/runtime orchestration, and stale-generation guards. |
 | `src/agent_views.rs` | Native chat window, composer, status, usage, empty state, and tool activity UI. |
 | `src/agent_snapshot.rs` | Versioned, bounded, sanitized read-only export of Kerosene state. |
-| `src/agent_runtime.rs` | Pi subprocess discovery, isolated environment, JSONL RPC transport, and event parsing. |
+| `src/agent_workspace.rs` | Strict host-action contract, active-turn authorization, all-or-nothing validation, idempotent chart mutations, and acknowledgements. |
+| `src/agent_runtime.rs` | Pi subprocess discovery, isolated environment, JSONL RPC transport, correlated extension UI responses, and event parsing. |
 | `src/llama_cpp.rs` | Loopback-only llama.cpp process/endpoint discovery, capability verification, and isolated Pi provider configuration. |
-| `assets/agent/kerosene.ts` | Embedded Pi extension, typed read-only tools, deterministic calculations, and fixed-provider data adapters. |
+| `src/chart_indicator.rs` | Shared typed registry for chart UI indicators and Assistant-visible indicator capabilities. |
+| `assets/agent/kerosene.ts` | Embedded Pi extension, typed snapshot/data tools, the bounded indicator action, deterministic calculations, and fixed-provider data adapters. |
 
 The assistant opens from the Widgets menu or the OpenRouter section of
 Settings > Integrations. Opening it starts a bounded local llama.cpp detection
@@ -118,7 +123,8 @@ Kerosene starts Pi with:
 - medium reasoning enabled for models that advertise reasoning support (Pi
   clamps non-reasoning models to off)
 - an isolated, empty Pi configuration directory and temporary project workspace
-- a strict allowlist containing only `kerosene_*` read-only tools
+- a strict allowlist containing only documented `kerosene_*` tools; one tool
+  can request the bounded visual-indicator host action
 - an isolated `PI_CODING_AGENT_DIR`
 - version checks and telemetry disabled
 
@@ -142,6 +148,7 @@ terminates or invalidates the relevant active session/request generation.
 The enabled tool allowlist is:
 
 - `kerosene_data`
+- `kerosene_set_chart_indicators`
 - `kerosene_market_data`
 - `kerosene_activity`
 - `kerosene_journal`
@@ -183,7 +190,7 @@ not require a user-installed Node.js runtime or a shell-visible `pi` command.
 
 ## Snapshot Contract
 
-Each prompt first writes a fresh `schema_version: 3` JSON snapshot to a
+Each prompt first writes a fresh `schema_version: 4` JSON snapshot to a
 per-process temporary directory. On Unix, the directory and file use owner-only
 permissions. The snapshot contains public sections and a private sanitized
 `_tool_data` backing index. `kerosene_data`, including its `all` mode, never
@@ -193,6 +200,7 @@ sending the entire market or activity history to the model.
 Sections are:
 
 - `overview`
+- `workspace`
 - `account`
 - `portfolio`
 - `markets`
@@ -200,6 +208,14 @@ Sections are:
 - `positioning`
 - `sessions`
 - `all`
+
+The workspace section contains a bounded list of open candlestick charts, their
+stable chart IDs, selected/surface state, symbol, timeframe, and current
+Assistant-visible indicator states. Its indicator catalog advertises exact
+stable IDs, aliases, dependency availability, and unavailable reasons. The
+Assistant must read this section immediately before a chart action; the Rust
+host revalidates the chart IDs, catalog membership, dependencies, active tool
+call, and non-aborted turn before mutating anything.
 
 The account section includes margin summary, positions, spot balances, open
 orders, recent fills, recent funding, and completeness metadata. Portfolio data
@@ -244,6 +260,16 @@ those messages can contain sensitive request context.
 
 - `kerosene_data` reads one public snapshot section. `all` is reserved for a
   genuine cross-component summary.
+- `kerosene_set_chart_indicators` idempotently sets explicit enabled states on
+  one or more already-open candlestick charts. The extension first validates
+  requested chart and indicator IDs against the current workspace snapshot,
+  then uses a reserved correlated Pi extension-UI request to ask the Rust host
+  to apply the complete batch. The host preflights the entire request before
+  mutation, excludes presentation labels and Quick Trade controls, rejects
+  missing dependencies, applies the batch once, schedules config persistence,
+  and returns per-chart `changed` or `already_set` outcomes. It cannot create a
+  chart, change symbols/timeframes, place an order, or dispatch a generic
+  Kerosene message.
 - `kerosene_market_data` resolves up to 20 raw/canonical/display symbols against
   the complete private market index.
 - `kerosene_activity` filters or deterministically aggregates sanitized fills
@@ -279,16 +305,25 @@ those messages can contain sensitive request context.
   session summaries from fixed Hyperliquid daily/30-minute candle requests,
   independent of whether a Session Data pane is open.
 
-Every typed tool response includes a normalized `quality` envelope with source,
-observation/retrieval/snapshot times, freshness state, coverage, assumptions,
-exclusions, and warnings. Statistical summaries expose sample counts and
-dispersion; journal summaries additionally report metric-specific missing-value
-coverage rather than treating missing PnL or fee values as zero.
+Every typed read/analysis tool response includes a normalized `quality` envelope
+with source, observation/retrieval/snapshot times, freshness state, coverage,
+assumptions, exclusions, and warnings. The workspace action instead returns an
+authoritative per-chart mutation and persistence acknowledgement. Statistical
+summaries expose sample counts and dispersion; journal summaries additionally
+report metric-specific missing-value coverage rather than treating missing PnL
+or fee values as zero.
 
 The system prompt directs the model to use deterministic tools for arithmetic,
 route best/worst-trade and reflection questions to `kerosene_journal`, avoid
 guessing symbol mappings, use plain Markdown rather than unsupported LaTeX
-delimiters, and stop after a decisive complete empty-state result. Journal
+delimiters, and stop after a decisive complete empty-state result. For indicator
+actions it requires a fresh workspace read, treats the selected chart as “this
+chart,” asks when multiple plausible targets remain, distinguishes advice from
+permission to mutate, accepts mutation authority only from the current user
+message rather than snapshot/provider/journal/image/tool/prior-turn content,
+uses the smallest supported set when choice is delegated, sends one complete
+idempotent batch, and reports only the host acknowledgement.
+Journal
 reflections are treated as user-authored context rather than verified market
 facts. The evidence protocol also requires the model to distinguish
 observations, deterministic calculations, user-authored context, and
@@ -307,7 +342,9 @@ explicit error instead of being presented as a successful blank response.
   traces, and tool cards remain transient.
 - Assistant output renders streamed Markdown with headings, emphasis, lists,
   quotes, tables, links, inline code, and highlighted fenced code blocks.
-- No shell, filesystem, order, signing, or mutation tools are exposed.
+- No shell, filesystem, order, signing, trading-control, or generic mutation
+  tools are exposed. Workspace mutation is limited to the typed reversible
+  chart-indicator action described above.
 - Deterministic analysis is limited to the allowlisted operations. General
   executable analysis still needs a separately sandboxed runtime before it is
   safe to enable.

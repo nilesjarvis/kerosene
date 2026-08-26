@@ -1,4 +1,5 @@
 use super::IndicatorOption;
+use crate::chart_indicator::ChartIndicatorId;
 use crate::config::MacroIndicatorsConfig;
 
 // ---------------------------------------------------------------------------
@@ -9,22 +10,22 @@ pub(super) fn timeframe_options(indicators: &MacroIndicatorsConfig) -> [Indicato
     [
         IndicatorOption {
             label: "50 SMA",
-            key: "tf_sma_50",
+            key: ChartIndicatorId::TfSma50,
             checked: indicators.tf_sma_50,
         },
         IndicatorOption {
             label: "50 EMA",
-            key: "tf_ema_50",
+            key: ChartIndicatorId::TfEma50,
             checked: indicators.tf_ema_50,
         },
         IndicatorOption {
             label: "200 SMA",
-            key: "tf_sma_200",
+            key: ChartIndicatorId::TfSma200,
             checked: indicators.tf_sma_200,
         },
         IndicatorOption {
             label: "200 EMA",
-            key: "tf_ema_200",
+            key: ChartIndicatorId::TfEma200,
             checked: indicators.tf_ema_200,
         },
     ]
@@ -34,22 +35,22 @@ pub(super) fn hourly_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOp
     [
         IndicatorOption {
             label: "50 SMA",
-            key: "sma_50h",
+            key: ChartIndicatorId::Sma50h,
             checked: indicators.sma_50h,
         },
         IndicatorOption {
             label: "50 EMA",
-            key: "ema_50h",
+            key: ChartIndicatorId::Ema50h,
             checked: indicators.ema_50h,
         },
         IndicatorOption {
             label: "200 SMA",
-            key: "sma_200h",
+            key: ChartIndicatorId::Sma200h,
             checked: indicators.sma_200h,
         },
         IndicatorOption {
             label: "200 EMA",
-            key: "ema_200h",
+            key: ChartIndicatorId::Ema200h,
             checked: indicators.ema_200h,
         },
     ]
@@ -59,22 +60,22 @@ pub(super) fn daily_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOpt
     [
         IndicatorOption {
             label: "50 SMA",
-            key: "sma_50d",
+            key: ChartIndicatorId::Sma50d,
             checked: indicators.sma_50d,
         },
         IndicatorOption {
             label: "50 EMA",
-            key: "ema_50d",
+            key: ChartIndicatorId::Ema50d,
             checked: indicators.ema_50d,
         },
         IndicatorOption {
             label: "200 SMA",
-            key: "sma_200d",
+            key: ChartIndicatorId::Sma200d,
             checked: indicators.sma_200d,
         },
         IndicatorOption {
             label: "200 EMA",
-            key: "ema_200d",
+            key: ChartIndicatorId::Ema200d,
             checked: indicators.ema_200d,
         },
     ]
@@ -84,22 +85,22 @@ pub(super) fn weekly_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOp
     [
         IndicatorOption {
             label: "20 SMA",
-            key: "sma_20w",
+            key: ChartIndicatorId::Sma20w,
             checked: indicators.sma_20w,
         },
         IndicatorOption {
             label: "20 EMA",
-            key: "ema_20w",
+            key: ChartIndicatorId::Ema20w,
             checked: indicators.ema_20w,
         },
         IndicatorOption {
             label: "50 SMA",
-            key: "sma_50w",
+            key: ChartIndicatorId::Sma50w,
             checked: indicators.sma_50w,
         },
         IndicatorOption {
             label: "50 EMA",
-            key: "ema_50w",
+            key: ChartIndicatorId::Ema50w,
             checked: indicators.ema_50w,
         },
     ]
@@ -109,12 +110,12 @@ pub(super) fn monthly_options(indicators: &MacroIndicatorsConfig) -> [IndicatorO
     [
         IndicatorOption {
             label: "12 SMA",
-            key: "sma_12m",
+            key: ChartIndicatorId::Sma12m,
             checked: indicators.sma_12m,
         },
         IndicatorOption {
             label: "12 EMA",
-            key: "ema_12m",
+            key: ChartIndicatorId::Ema12m,
             checked: indicators.ema_12m,
         },
     ]
@@ -124,17 +125,17 @@ pub(super) fn footer_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOp
     [
         IndicatorOption {
             label: "Funding",
-            key: "show_funding_rate",
+            key: ChartIndicatorId::FundingRate,
             checked: indicators.show_funding_rate,
         },
         IndicatorOption {
             label: "Sessions",
-            key: "show_session_indicator",
+            key: ChartIndicatorId::Sessions,
             checked: indicators.show_session_indicator,
         },
         IndicatorOption {
             label: "Labels",
-            key: "show_labels",
+            key: ChartIndicatorId::Labels,
             checked: indicators.show_labels,
         },
     ]
@@ -143,7 +144,7 @@ pub(super) fn footer_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOp
 pub(super) fn price_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 1] {
     [IndicatorOption {
         label: "High/Low",
-        key: "show_high_low",
+        key: ChartIndicatorId::HighLow,
         checked: indicators.show_high_low,
     }]
 }
@@ -151,7 +152,7 @@ pub(super) fn price_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOpt
 pub(super) fn quick_trade_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 1] {
     [IndicatorOption {
         label: "Quick Trade",
-        key: "show_quick_trade",
+        key: ChartIndicatorId::QuickTrade,
         checked: indicators.show_quick_trade,
     }]
 }
@@ -159,7 +160,7 @@ pub(super) fn quick_trade_options(indicators: &MacroIndicatorsConfig) -> [Indica
 pub(super) fn volume_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 1] {
     [IndicatorOption {
         label: "Profile",
-        key: "show_volume_profile",
+        key: ChartIndicatorId::VolumeProfile,
         checked: indicators.show_volume_profile,
     }]
 }
@@ -168,12 +169,12 @@ pub(super) fn leledc_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOp
     [
         IndicatorOption {
             label: "Arrows",
-            key: "show_leledc_arrows",
+            key: ChartIndicatorId::LeledcArrows,
             checked: indicators.show_leledc_arrows,
         },
         IndicatorOption {
             label: "Levels",
-            key: "show_leledc_levels",
+            key: ChartIndicatorId::LeledcLevels,
             checked: indicators.show_leledc_levels,
         },
     ]

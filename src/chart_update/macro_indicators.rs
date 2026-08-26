@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::chart_indicator::ChartIndicatorId;
 use crate::message::Message;
 use crate::timeframe::Timeframe;
 
@@ -24,81 +25,19 @@ impl TradingTerminal {
                 let mut fetch_funding = false;
                 let mut show_funding_key_prompt = false;
                 if let Some(inst) = self.charts.get_mut(&id) {
-                    match key.as_str() {
-                        "tf_sma_50" => {
-                            inst.macro_indicators.tf_sma_50 = !inst.macro_indicators.tf_sma_50
+                    let enabled = !key.is_enabled(inst);
+                    key.set_enabled(inst, enabled);
+                    if key == ChartIndicatorId::FundingRate {
+                        if enabled {
+                            fetch_funding = true;
+                            show_funding_key_prompt = hydromancer_key_missing;
+                        } else {
+                            Self::clear_funding_display(inst);
                         }
-                        "tf_ema_50" => {
-                            inst.macro_indicators.tf_ema_50 = !inst.macro_indicators.tf_ema_50
-                        }
-                        "tf_sma_200" => {
-                            inst.macro_indicators.tf_sma_200 = !inst.macro_indicators.tf_sma_200
-                        }
-                        "tf_ema_200" => {
-                            inst.macro_indicators.tf_ema_200 = !inst.macro_indicators.tf_ema_200
-                        }
-                        "sma_50h" => inst.macro_indicators.sma_50h = !inst.macro_indicators.sma_50h,
-                        "ema_50h" => inst.macro_indicators.ema_50h = !inst.macro_indicators.ema_50h,
-                        "sma_200h" => {
-                            inst.macro_indicators.sma_200h = !inst.macro_indicators.sma_200h
-                        }
-                        "ema_200h" => {
-                            inst.macro_indicators.ema_200h = !inst.macro_indicators.ema_200h
-                        }
-                        "sma_50d" => inst.macro_indicators.sma_50d = !inst.macro_indicators.sma_50d,
-                        "ema_50d" => inst.macro_indicators.ema_50d = !inst.macro_indicators.ema_50d,
-                        "sma_200d" => {
-                            inst.macro_indicators.sma_200d = !inst.macro_indicators.sma_200d
-                        }
-                        "ema_200d" => {
-                            inst.macro_indicators.ema_200d = !inst.macro_indicators.ema_200d
-                        }
-                        "sma_20w" => inst.macro_indicators.sma_20w = !inst.macro_indicators.sma_20w,
-                        "ema_20w" => inst.macro_indicators.ema_20w = !inst.macro_indicators.ema_20w,
-                        "sma_50w" => inst.macro_indicators.sma_50w = !inst.macro_indicators.sma_50w,
-                        "ema_50w" => inst.macro_indicators.ema_50w = !inst.macro_indicators.ema_50w,
-                        "sma_12m" => inst.macro_indicators.sma_12m = !inst.macro_indicators.sma_12m,
-                        "ema_12m" => inst.macro_indicators.ema_12m = !inst.macro_indicators.ema_12m,
-                        "show_funding_rate" => {
-                            inst.macro_indicators.show_funding_rate =
-                                !inst.macro_indicators.show_funding_rate;
-                            if inst.macro_indicators.show_funding_rate {
-                                fetch_funding = true;
-                                show_funding_key_prompt = hydromancer_key_missing;
-                            } else {
-                                Self::clear_funding_display(inst);
-                            }
-                        }
-                        "show_session_indicator" => {
-                            inst.macro_indicators.show_session_indicator =
-                                !inst.macro_indicators.show_session_indicator
-                        }
-                        "show_quick_trade" => {
-                            inst.macro_indicators.show_quick_trade =
-                                !inst.macro_indicators.show_quick_trade
-                        }
-                        "show_labels" => {
-                            inst.macro_indicators.show_labels = !inst.macro_indicators.show_labels
-                        }
-                        "show_volume_profile" => {
-                            inst.macro_indicators.show_volume_profile =
-                                !inst.macro_indicators.show_volume_profile
-                        }
-                        "show_high_low" => {
-                            inst.macro_indicators.show_high_low =
-                                !inst.macro_indicators.show_high_low
-                        }
-                        "show_leledc_arrows" => {
-                            inst.macro_indicators.show_leledc_arrows =
-                                !inst.macro_indicators.show_leledc_arrows
-                        }
-                        "show_leledc_levels" => {
-                            inst.macro_indicators.show_leledc_levels =
-                                !inst.macro_indicators.show_leledc_levels
-                        }
-                        _ => {}
                     }
-                    inst.chart.macro_indicators = inst.macro_indicators.clone();
+                    if key.is_macro() {
+                        inst.chart.macro_indicators = inst.macro_indicators.clone();
+                    }
                     inst.chart.candle_cache.clear();
                     self.persist_config();
                 }
@@ -164,7 +103,7 @@ mod tests {
 
         let _task = terminal.update_chart_macro_indicators(Message::ToggleMacroIndicator(
             7,
-            "show_session_indicator".to_string(),
+            ChartIndicatorId::Sessions,
         ));
 
         let instance = terminal.charts.get(&7).expect("chart instance");
@@ -188,7 +127,7 @@ mod tests {
 
         let _task = terminal.update_chart_macro_indicators(Message::ToggleMacroIndicator(
             7,
-            "show_high_low".to_string(),
+            ChartIndicatorId::HighLow,
         ));
 
         let instance = terminal.charts.get(&7).expect("chart instance");
@@ -212,11 +151,11 @@ mod tests {
 
         let _task = terminal.update_chart_macro_indicators(Message::ToggleMacroIndicator(
             7,
-            "show_leledc_arrows".to_string(),
+            ChartIndicatorId::LeledcArrows,
         ));
         let _task = terminal.update_chart_macro_indicators(Message::ToggleMacroIndicator(
             7,
-            "show_leledc_levels".to_string(),
+            ChartIndicatorId::LeledcLevels,
         ));
 
         let instance = terminal.charts.get(&7).expect("chart instance");

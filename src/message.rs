@@ -10,6 +10,7 @@ use crate::api::{self, Candle, OrderBook};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::canvas_state::{CanvasId, WorkspaceId};
 use crate::chart::ChartViewport;
+use crate::chart_indicator::ChartIndicatorId;
 use crate::chart_screenshot::ChartScreenshotState;
 use crate::chart_state::{
     CandleCacheTarget, CandleFetchRequest, ChartId, ChartSurfaceId, FundingFetchRequest,
@@ -746,7 +747,7 @@ pub(crate) enum Message {
     ToggleAddWidgetMenu(WorkspaceId),
     ToggleLayoutMenu,
     ToggleMacroMenu(ChartId),
-    ToggleMacroIndicator(ChartId, String),
+    ToggleMacroIndicator(ChartId, ChartIndicatorId),
     OpenQuickTradeEditor(ChartId),
     QuickTradeActionAdded,
     QuickTradeActionSideToggled(usize),

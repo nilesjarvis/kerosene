@@ -18,7 +18,7 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
     };
 
     let options = all_indicator_options(&indicators);
-    let keys: Vec<_> = options.iter().map(|option| option.key).collect();
+    let keys: Vec<_> = options.iter().map(|option| option.key.key()).collect();
     assert_eq!(
         keys,
         vec![
@@ -40,21 +40,21 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
             "ema_50w",
             "sma_12m",
             "ema_12m",
-            "show_funding_rate",
-            "show_session_indicator",
-            "show_labels",
-            "show_quick_trade",
-            "show_high_low",
-            "show_volume_profile",
-            "show_leledc_arrows",
-            "show_leledc_levels",
+            "funding_rate",
+            "sessions",
+            "labels",
+            "quick_trade",
+            "high_low",
+            "volume_profile",
+            "leledc_arrows",
+            "leledc_levels",
         ]
     );
 
     let checked: Vec<_> = options
         .iter()
         .filter(|option| option.checked)
-        .map(|option| option.key)
+        .map(|option| option.key.key())
         .collect();
     assert_eq!(
         checked,
@@ -62,12 +62,12 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
             "tf_sma_50",
             "sma_50h",
             "sma_200d",
-            "show_funding_rate",
-            "show_session_indicator",
-            "show_quick_trade",
-            "show_high_low",
-            "show_volume_profile",
-            "show_leledc_levels",
+            "funding_rate",
+            "sessions",
+            "quick_trade",
+            "high_low",
+            "volume_profile",
+            "leledc_levels",
         ]
     );
 }

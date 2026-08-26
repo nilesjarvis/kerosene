@@ -315,6 +315,15 @@ series. The candle-backed moving averages support active-timeframe, 1-hour,
 daily, weekly, and monthly source series. Their menu and active badges live in
 `chart_views/indicator_menu/` and `chart_views/indicator_badges/`.
 
+`chart_indicator.rs` is the shared stable-ID registry used by the chart UI and
+the Assistant workspace contract. Assistant actions set explicit enabled states
+instead of toggling strings, so retries are idempotent. The advertised catalog
+is restricted to reversible visual indicators on open candlestick charts;
+presentation labels and Quick Trade controls are intentionally excluded. The
+Rust host validates the complete batch and any integration dependency before it
+changes a chart, then synchronizes render state and schedules layout/config
+persistence through the normal chart path.
+
 ## Detached Charts
 
 Detached charts are opened from chart controls and rendered by

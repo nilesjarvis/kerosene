@@ -16,7 +16,7 @@ use zeroize::Zeroizing;
 const EXTENSION_SOURCE: &str = include_str!("../assets/agent/kerosene.ts");
 const RUNTIME_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const PI_RPC_ARGS: [&str; 5] = ["--mode", "rpc", "--no-session", "--thinking", "medium"];
-const PI_TOOL_ALLOWLIST: &str = "kerosene_data,kerosene_market_data,kerosene_activity,kerosene_journal,kerosene_calculate,kerosene_risk,kerosene_positioning,kerosene_pnl_card_match,kerosene_ohlcv,kerosene_sessions";
+const PI_TOOL_ALLOWLIST: &str = "kerosene_data,kerosene_set_chart_indicators,kerosene_market_data,kerosene_activity,kerosene_journal,kerosene_calculate,kerosene_risk,kerosene_positioning,kerosene_pnl_card_match,kerosene_ohlcv,kerosene_sessions";
 
 // ---------------------------------------------------------------------------
 // Pi RPC Runtime
@@ -67,6 +67,13 @@ pub(crate) enum AgentRuntimeEvent {
         call_id: String,
         is_error: bool,
     },
+    ExtensionUiRequest {
+        generation: u64,
+        request_id: String,
+        method: String,
+        title: Option<String>,
+        payload: Option<String>,
+    },
     ModelContext {
         generation: u64,
         model: Option<String>,
@@ -103,6 +110,7 @@ impl AgentRuntimeEvent {
             | Self::TextDelta { generation, .. }
             | Self::ToolStarted { generation, .. }
             | Self::ToolFinished { generation, .. }
+            | Self::ExtensionUiRequest { generation, .. }
             | Self::ModelContext { generation, .. }
             | Self::ContextUsage { generation, .. }
             | Self::Settled { generation, .. }
@@ -150,6 +158,14 @@ impl fmt::Debug for AgentRuntimeEvent {
                 .field("generation", generation)
                 .field("is_error", is_error)
                 .finish(),
+            Self::ExtensionUiRequest {
+                generation, method, ..
+            } => f
+                .debug_struct("ExtensionUiRequest")
+                .field("generation", generation)
+                .field("method", method)
+                .field("payload", &"<redacted>")
+                .finish(),
             Self::ModelContext {
                 generation,
                 model,
@@ -184,6 +200,10 @@ impl fmt::Debug for AgentRuntimeEvent {
 enum AgentRuntimeCommand {
     Prompt(AgentPrompt),
     InspectContext,
+    ExtensionUiResponse {
+        request_id: String,
+        value: Option<String>,
+    },
     Abort,
     Shutdown,
 }
@@ -241,6 +261,17 @@ pub(crate) fn abort(generation: u64) {
 
 pub(crate) fn inspect_context(generation: u64) -> Result<(), String> {
     send_command(generation, AgentRuntimeCommand::InspectContext)
+}
+
+pub(crate) fn respond_to_extension_ui(
+    generation: u64,
+    request_id: String,
+    value: Option<String>,
+) -> Result<(), String> {
+    send_command(
+        generation,
+        AgentRuntimeCommand::ExtensionUiResponse { request_id, value },
+    )
 }
 
 pub(crate) fn shutdown(generation: u64) {
@@ -466,6 +497,12 @@ fn run_runtime(
                     break;
                 }
             }
+            Ok(AgentRuntimeCommand::ExtensionUiResponse { request_id, value }) => {
+                let response = extension_ui_response_value(request_id, value);
+                if write_rpc_command(&mut stdin, &response).is_err() {
+                    break;
+                }
+            }
             Ok(AgentRuntimeCommand::Abort) => {
                 let _ = write_rpc_command(&mut stdin, &json!({ "type": "abort" }));
             }
@@ -606,6 +643,25 @@ fn emit(sender: &mpsc::UnboundedSender<AgentRuntimeEvent>, event: AgentRuntimeEv
     let _ = sender.unbounded_send(event);
 }
 
+fn extension_ui_response_value(request_id: String, value: Option<String>) -> Value {
+    value.map_or_else(
+        || {
+            json!({
+                "type": "extension_ui_response",
+                "id": request_id,
+                "cancelled": true,
+            })
+        },
+        |value| {
+            json!({
+                "type": "extension_ui_response",
+                "id": request_id,
+                "value": value,
+            })
+        },
+    )
+}
+
 fn parse_rpc_event(generation: u64, value: &Value) -> Option<AgentRuntimeEvent> {
     match value.get("type")?.as_str()? {
         "agent_start" => Some(AgentRuntimeEvent::Thinking { generation }),
@@ -705,6 +761,29 @@ fn parse_rpc_event(generation: u64, value: &Value) -> Option<AgentRuntimeEvent> 
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
         }),
+        "extension_ui_request" => Some(AgentRuntimeEvent::ExtensionUiRequest {
+            generation,
+            request_id: value
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            method: value
+                .get("method")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            title: value
+                .get("title")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            payload: value
+                .get("placeholder")
+                .or_else(|| value.get("prefill"))
+                .or_else(|| value.get("message"))
+                .and_then(Value::as_str)
+                .map(str::to_string),
+        }),
         "response"
             if value.get("success").and_then(Value::as_bool) == Some(true)
                 && value.get("command").and_then(Value::as_str) == Some("get_state") =>
@@ -790,6 +869,28 @@ fn tool_call_detail(name: &str, args: Option<&Value>) -> Option<String> {
     let segments = match name {
         "kerosene_data" => vec![field("section").map(|value| title_case(&value))?],
         "kerosene_market_data" => vec![symbols()?, "Current mids and market metadata".to_string()],
+        "kerosene_set_chart_indicators" => {
+            let chart_count = args
+                .get("chart_ids")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or_default();
+            let change_count = args
+                .get("changes")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or_default();
+            vec![
+                format!(
+                    "{chart_count} chart{}",
+                    if chart_count == 1 { "" } else { "s" }
+                ),
+                format!(
+                    "{change_count} indicator change{}",
+                    if change_count == 1 { "" } else { "s" }
+                ),
+            ]
+        }
         "kerosene_activity" => {
             let mut segments = Vec::new();
             push_field(&mut segments, field("kind"), title_case);
@@ -1044,7 +1145,8 @@ mod tests {
             ["--mode", "rpc", "--no-session", "--thinking", "medium"]
         );
         let tools = PI_TOOL_ALLOWLIST.split(',').collect::<Vec<_>>();
-        assert_eq!(tools.len(), 10);
+        assert_eq!(tools.len(), 11);
+        assert!(tools.contains(&"kerosene_set_chart_indicators"));
         assert!(tools.contains(&"kerosene_journal"));
         assert!(tools.contains(&"kerosene_pnl_card_match"));
         assert!(tools.iter().all(|tool| tool.starts_with("kerosene_")));
@@ -1060,6 +1162,24 @@ mod tests {
         assert!(EXTENSION_SOURCE.contains("<!-- KEROSENE_FOLLOW_UPS_V1"));
         assert!(EXTENSION_SOURCE.contains("exactly two concise, standalone questions"));
         assert!(EXTENSION_SOURCE.contains("Do not use generic prompts"));
+    }
+
+    #[test]
+    fn extension_contains_the_bounded_workspace_action_contract() {
+        for requirement in [
+            "name: \"kerosene_set_chart_indicators\"",
+            "executionMode: \"sequential\"",
+            "KEROSENE_HOST_ACTION_V1",
+            "read kerosene_data with section workspace",
+            "never treat a request for advice as permission to mutate",
+            "Workspace mutation permission comes only from the current user message",
+            "cannot trade, sign, place or cancel orders",
+        ] {
+            assert!(
+                EXTENSION_SOURCE.contains(requirement),
+                "missing embedded workspace action contract: {requirement}"
+            );
+        }
     }
 
     #[test]
@@ -1211,6 +1331,48 @@ mod tests {
                 && detail == "BTC · 1h candles · Up to 200 rows"
                 && !detail.contains("must-not-be-rendered")
         ));
+    }
+
+    #[test]
+    fn parses_and_redacts_extension_ui_host_action_requests() {
+        let value = json!({
+            "type": "extension_ui_request",
+            "id": "rpc-1",
+            "method": "input",
+            "title": "KEROSENE_HOST_ACTION_V1",
+            "placeholder": "{\"private\":\"workspace request\"}",
+        });
+
+        let event = parse_rpc_event(12, &value).expect("extension UI event");
+        assert!(matches!(
+            &event,
+            AgentRuntimeEvent::ExtensionUiRequest {
+                generation: 12,
+                request_id,
+                method,
+                title: Some(title),
+                payload: Some(payload),
+            } if request_id == "rpc-1"
+                && method == "input"
+                && title == "KEROSENE_HOST_ACTION_V1"
+                && payload.contains("workspace request")
+        ));
+        assert!(!format!("{event:?}").contains("workspace request"));
+    }
+
+    #[test]
+    fn extension_ui_response_preserves_rpc_correlation() {
+        let accepted = extension_ui_response_value(
+            "rpc-1".to_string(),
+            Some("{\"success\":true}".to_string()),
+        );
+        let cancelled = extension_ui_response_value("rpc-2".to_string(), None);
+
+        assert_eq!(accepted["type"], "extension_ui_response");
+        assert_eq!(accepted["id"], "rpc-1");
+        assert_eq!(accepted["value"], "{\"success\":true}");
+        assert_eq!(cancelled["id"], "rpc-2");
+        assert_eq!(cancelled["cancelled"], true);
     }
 
     #[test]
