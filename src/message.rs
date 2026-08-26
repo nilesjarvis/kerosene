@@ -36,7 +36,9 @@ use crate::order_execution::{
 };
 use crate::pane_management::{AddWidgetKind, AddWidgetPlacement};
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
-use crate::portfolio_state::{PnlValueDisplayMode, PortfolioScope, PortfolioWindow};
+use crate::portfolio_state::{
+    IncomePaneView, PnlValueDisplayMode, PortfolioScope, PortfolioWindow,
+};
 use crate::positioning_state::{
     PositioningInfoChangeTimeframe, PositioningInfoId, PositioningInfoPage, PositioningInfoSide,
     PositioningInfoSortField,
@@ -1069,6 +1071,7 @@ pub(crate) enum Message {
     PortfolioLoaded(RedactedAddress, u64, Box<Result<PortfolioHistory, String>>),
     RefreshIncome,
     IncomeLoaded(RedactedAddress, u64, Box<Result<IncomeSnapshot, String>>),
+    SetIncomePaneView(IncomePaneView),
     ToggleIncomeAlerts,
     ToggleLiquidationAlerts,
     ToggleTrackedTradeAlerts,

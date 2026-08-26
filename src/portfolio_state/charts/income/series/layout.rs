@@ -2,7 +2,7 @@ use iced::Point;
 
 use super::{
     BAR_HEIGHT_RATIO, BOTTOM_PAD, IncomeBarLayout, IncomeChartLayout, LEFT_PAD, MIN_SCALE,
-    RIGHT_PAD, TOP_PAD,
+    RIGHT_PAD, SINGLE_DIRECTION_BAR_HEIGHT_RATIO, TOP_PAD,
 };
 
 // ---------------------------------------------------------------------------
@@ -26,7 +26,13 @@ pub(in crate::portfolio_state::charts::income) fn prepare_income_chart_layout(
 
     let plot_width = (width - LEFT_PAD - RIGHT_PAD).max(1.0);
     let plot_height = (height - TOP_PAD - BOTTOM_PAD).max(1.0);
-    let zero_y = TOP_PAD + plot_height * 0.5;
+    let has_positive = bars.iter().any(|(_, value)| *value > 0.0);
+    let has_negative = bars.iter().any(|(_, value)| *value < 0.0);
+    let (zero_y, bar_height_ratio) = match (has_positive, has_negative) {
+        (true, false) => (TOP_PAD + plot_height, SINGLE_DIRECTION_BAR_HEIGHT_RATIO),
+        (false, true) => (TOP_PAD, SINGLE_DIRECTION_BAR_HEIGHT_RATIO),
+        _ => (TOP_PAD + plot_height * 0.5, BAR_HEIGHT_RATIO),
+    };
     let group_width = plot_width / bars.len() as f32;
     let bar_width = (group_width * 0.62).clamp(8.0, 44.0);
 
@@ -35,7 +41,7 @@ pub(in crate::portfolio_state::charts::income) fn prepare_income_chart_layout(
         .enumerate()
         .map(|(idx, (label, value))| {
             let center_x = LEFT_PAD + group_width * (idx as f32 + 0.5);
-            let scaled = ((*value / max_abs) as f32) * (plot_height * BAR_HEIGHT_RATIO);
+            let scaled = ((*value / max_abs) as f32) * (plot_height * bar_height_ratio);
             let (y, height) = if scaled >= 0.0 {
                 (zero_y - scaled, scaled.max(1.0))
             } else {

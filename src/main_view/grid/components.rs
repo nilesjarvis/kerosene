@@ -180,6 +180,75 @@ pub(super) fn pane_refresh_button() -> button::Button<'static, Message> {
     })
 }
 
+pub(super) fn income_refresh_button(loading: bool) -> button::Button<'static, Message> {
+    button(
+        text(if loading { "…" } else { "↻" })
+            .size(11)
+            .center()
+            .font(crate::app_fonts::monospace_font()),
+    )
+    .on_press(Message::RefreshIncome)
+    .padding([2, 5])
+    .style(|theme: &Theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered.then(|| theme.extended_palette().background.strong.color.into()),
+            text_color: if hovered {
+                theme.palette().primary
+            } else {
+                iced::Color {
+                    a: 0.62,
+                    ..theme.palette().text
+                }
+            },
+            border: iced::Border {
+                radius: 2.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    })
+}
+
+pub(super) fn income_alerts_button(enabled: bool) -> button::Button<'static, Message> {
+    button(
+        text(if enabled { "Alerts: ON" } else { "Alerts: OFF" })
+            .size(9)
+            .font(crate::app_fonts::monospace_font()),
+    )
+    .on_press(Message::ToggleIncomeAlerts)
+    .padding([2, 6])
+    .style(move |theme: &Theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let text_color = if enabled {
+            theme.palette().success
+        } else if hovered {
+            theme.palette().text
+        } else {
+            iced::Color {
+                a: 0.52,
+                ..theme.palette().text
+            }
+        };
+        button::Style {
+            background: Some(
+                if hovered {
+                    theme.extended_palette().background.strong.color
+                } else {
+                    theme.extended_palette().background.weak.color
+                }
+                .into(),
+            ),
+            text_color,
+            border: iced::Border {
+                radius: 2.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    })
+}
+
 pub(super) fn pane_close_button(
     workspace: WorkspaceId,
     pane: pane_grid::Pane,

@@ -523,6 +523,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::PortfolioLoaded(_, _, _)
         | Message::RefreshIncome
         | Message::IncomeLoaded(_, _, _)
+        | Message::SetIncomePaneView(_)
         | Message::SetPortfolioPnlValueMode(_)
         | Message::SetPortfolioScope(_)
         | Message::SetPortfolioWindow(_) => UpdateRoute::PortfolioIncome,

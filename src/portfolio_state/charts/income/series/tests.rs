@@ -39,6 +39,16 @@ fn layout_keeps_zero_bars_visible() {
 }
 
 #[test]
+fn positive_only_projection_uses_the_full_chart_height() {
+    let positive_bars = vec![("Jan".to_string(), 5.0), ("Feb".to_string(), 10.0)];
+    let layout = prepare_income_chart_layout(&positive_bars, 120.0, 80.0).unwrap();
+
+    assert_near(layout.zero_y, 56.0);
+    assert_near(layout.bars[1].y, 26.36);
+    assert_near(layout.bars[1].height, 29.64);
+}
+
+#[test]
 fn hover_selects_bar_by_group_and_rejects_outside_plot() {
     let layout = prepare_income_chart_layout(&bars(), 120.0, 80.0).unwrap();
 

@@ -1,7 +1,7 @@
 mod controls;
 mod daily;
 mod header;
-mod tokens;
+pub(crate) mod tokens;
 mod totals;
 
 use crate::app_state::TradingTerminal;

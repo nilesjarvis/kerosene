@@ -83,6 +83,24 @@ pub(crate) const PORTFOLIO_WINDOWS: &[PortfolioWindow] = &[
     PortfolioWindow::AllTime,
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum IncomePaneView {
+    #[default]
+    Overview,
+    Tokens,
+    Payments,
+}
+
+impl IncomePaneView {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Overview => "Overview",
+            Self::Tokens => "Tokens",
+            Self::Payments => "Payments",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct PortfolioState {
     pub(crate) loading: bool,
@@ -117,6 +135,7 @@ pub(crate) struct IncomeState {
     pub(crate) loading: bool,
     pub(crate) refresh_request_id: u64,
     pub(crate) refresh_followup_pending: bool,
+    pub(crate) view: IncomePaneView,
     pub(crate) data: Option<IncomeSnapshot>,
     pub(crate) last_error: Option<String>,
 }

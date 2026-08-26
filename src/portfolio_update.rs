@@ -43,6 +43,9 @@ impl TradingTerminal {
             {
                 self.portfolio.pnl_value_display_mode = mode;
             }
+            Message::SetIncomePaneView(view) if self.income.view != view => {
+                self.income.view = view;
+            }
             Message::RefreshPortfolio => {
                 if let Some(addr) = self.connected_address.clone() {
                     return self.start_portfolio_refresh_for_address(addr);

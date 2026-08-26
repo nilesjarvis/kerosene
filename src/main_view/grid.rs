@@ -7,7 +7,8 @@ use crate::helpers::pane_title;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 use components::{
-    pane_close_button, pane_drag_ghost_body, pane_refresh_button, widget_placement_overlay,
+    income_alerts_button, income_refresh_button, pane_close_button, pane_drag_ghost_body,
+    pane_refresh_button, widget_placement_overlay,
 };
 use iced::widget::{container, pane_grid, row, stack, text};
 use iced::{Element, Fill, Theme};
@@ -99,6 +100,12 @@ impl TradingTerminal {
                 ]
             } else if matches!(kind, PaneKind::Portfolio) {
                 row![pane_refresh_button(), close_btn]
+            } else if matches!(kind, PaneKind::Income) {
+                row![
+                    income_refresh_button(self.income.loading),
+                    income_alerts_button(self.income_alerts_enabled),
+                    close_btn
+                ]
             } else if matches!(kind, PaneKind::TelegramFeed) {
                 row![self.view_telegram_status_chip(), close_btn]
             } else if let PaneKind::XFeed(id) = kind {

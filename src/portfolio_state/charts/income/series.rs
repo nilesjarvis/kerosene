@@ -17,6 +17,7 @@ pub(super) const RIGHT_PAD: f32 = 12.0;
 pub(super) const TOP_PAD: f32 = 18.0;
 pub(super) const BOTTOM_PAD: f32 = 24.0;
 pub(super) const BAR_HEIGHT_RATIO: f32 = 0.42;
+pub(super) const SINGLE_DIRECTION_BAR_HEIGHT_RATIO: f32 = 0.78;
 pub(super) const MIN_SCALE: f64 = 1e-9;
 pub(super) const TOOLTIP_HEIGHT: f32 = 38.0;
 

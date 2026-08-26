@@ -281,6 +281,12 @@ Portfolio state lives in `portfolio_state/` and is updated by
 The state is read-only analytics; trading actions should not depend on it for
 order-critical validation.
 
+The Income pane uses three local views so its small PaneGrid footprint remains
+readable: Overview presents realized interest, account health, current carrying
+values, and the 12-month projection; Tokens shows annualized per-token
+contributions; Payments shows recent hourly interest. Refresh and alert controls
+remain available from the pane title bar in every view.
+
 ## PnL Cards
 
 `pnl_card/` creates exportable PnL card windows/images for a position or

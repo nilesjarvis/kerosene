@@ -2,6 +2,7 @@ mod content;
 mod projection;
 mod rows;
 mod status;
+mod tabs;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
