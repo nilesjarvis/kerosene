@@ -92,6 +92,13 @@ impl TradingTerminal {
                     self.chart_screenshot_pending_request_id = None;
                 }
                 self.pnl_card_windows.remove(&id);
+                if self
+                    .quick_trade_editor
+                    .as_ref()
+                    .is_some_and(|state| state.window_id == id)
+                {
+                    self.quick_trade_editor = None;
+                }
                 if self.remove_detached_chart_window_state(id) {
                     self.persist_config();
                 }

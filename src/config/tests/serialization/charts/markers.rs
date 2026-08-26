@@ -2,6 +2,7 @@ use super::{
     ChartConfig, KeroseneConfig, MacroIndicatorsConfig, json_string, json_value, object_mut,
     value_from_json, value_from_str,
 };
+use crate::config::{QuickTradeActionConfig, QuickTradeDenomination, QuickTradeSide};
 
 #[test]
 fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
@@ -10,6 +11,7 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
         show_volume_profile: true,
         show_high_low: true,
         show_session_indicator: true,
+        show_quick_trade: true,
         show_leledc_arrows: true,
         show_leledc_levels: true,
         ..MacroIndicatorsConfig::default()
@@ -29,6 +31,18 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
             funding_panel_height: 56,
             session_panel_height: 72,
             macro_indicators,
+            quick_trade_actions: vec![
+                QuickTradeActionConfig {
+                    side: QuickTradeSide::Buy,
+                    quantity: 10_000.0,
+                    denomination: QuickTradeDenomination::Usd,
+                },
+                QuickTradeActionConfig {
+                    side: QuickTradeSide::Sell,
+                    quantity: 1.0,
+                    denomination: QuickTradeDenomination::Coin,
+                },
+            ],
             open_interest_as_notional: true,
             asset_volume_as_notional: false,
             outcome_volume_as_notional: true,
@@ -52,8 +66,18 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
     assert!(decoded.charts[0].macro_indicators.show_volume_profile);
     assert!(decoded.charts[0].macro_indicators.show_high_low);
     assert!(decoded.charts[0].macro_indicators.show_session_indicator);
+    assert!(decoded.charts[0].macro_indicators.show_quick_trade);
     assert!(decoded.charts[0].macro_indicators.show_leledc_arrows);
     assert!(decoded.charts[0].macro_indicators.show_leledc_levels);
+    assert_eq!(decoded.charts[0].quick_trade_actions.len(), 2);
+    assert_eq!(
+        decoded.charts[0].quick_trade_actions[0],
+        QuickTradeActionConfig {
+            side: QuickTradeSide::Buy,
+            quantity: 10_000.0,
+            denomination: QuickTradeDenomination::Usd,
+        }
+    );
 
     let mut legacy_chart = json_value(&config.charts[0], "chart serializes");
     object_mut(&mut legacy_chart, "chart config is an object").remove("secondary_symbol");
@@ -122,6 +146,13 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
 
     assert!(!decoded_older_chart.outcome_volume_as_notional);
 
+    let mut older_chart = json_value(&config.charts[0], "chart serializes");
+    object_mut(&mut older_chart, "chart config is an object").remove("quick_trade_actions");
+    let decoded_older_chart: ChartConfig =
+        value_from_json(older_chart, "older chart config should deserialize");
+
+    assert!(decoded_older_chart.quick_trade_actions.is_empty());
+
     let mut legacy_macro = json_value(
         &config.charts[0].macro_indicators,
         "macro indicators serialize",
@@ -143,6 +174,17 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
         value_from_json(legacy_macro, "legacy macro indicators should deserialize");
 
     assert!(!decoded_macro.show_session_indicator);
+
+    let mut legacy_macro = json_value(
+        &config.charts[0].macro_indicators,
+        "macro indicators serialize",
+    );
+    object_mut(&mut legacy_macro, "macro indicators config is an object")
+        .remove("show_quick_trade");
+    let decoded_macro: MacroIndicatorsConfig =
+        value_from_json(legacy_macro, "legacy macro indicators should deserialize");
+
+    assert!(!decoded_macro.show_quick_trade);
 
     let mut legacy_macro = json_value(
         &config.charts[0].macro_indicators,

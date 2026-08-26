@@ -6,7 +6,8 @@ mod spaghetti;
 mod x_feed;
 
 pub use chart::{
-    ChartConfig, DetachedChartWindowConfig, MacroIndicatorsConfig,
+    ChartConfig, DetachedChartWindowConfig, MAX_QUICK_TRADE_ACTIONS, MacroIndicatorsConfig,
+    QuickTradeActionConfig, QuickTradeDenomination, QuickTradeSide,
     default_detached_chart_window_height, default_detached_chart_window_width,
 };
 pub use order_book::{OrderBookConfig, OrderBookDisplayModeConfig, OrderBookSymbolModeConfig};

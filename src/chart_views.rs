@@ -2,6 +2,7 @@ mod editor;
 mod header;
 mod indicator_badges;
 mod indicator_menu;
+mod quick_trade;
 mod skeleton;
 mod toolbar;
 
@@ -10,7 +11,7 @@ use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::chart_state::{CandleFetchMode, ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
-use iced::widget::{button, canvas, column, container, rule, stack, text, text::Wrapping};
+use iced::widget::{Space, button, canvas, column, container, rule, stack, text, text::Wrapping};
 use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
@@ -208,12 +209,23 @@ impl TradingTerminal {
                 .height(Fill)
                 .padding([0, 4]);
 
+            let quick_trade_panel: Element<'_, Message> =
+                if instance.macro_indicators.show_quick_trade {
+                    self.view_quick_trade_panel(chart_id, instance, surface_id)
+                } else {
+                    Space::new().height(0.0).into()
+                };
+            let chart_body = column![padded_chart_area, quick_trade_panel]
+                .spacing(0)
+                .width(Fill)
+                .height(Fill);
+
             let content = column![
                 padded_header,
                 chart_header_separator(),
                 toolbar,
                 chart_header_separator(),
-                padded_chart_area
+                chart_body
             ]
             .spacing(0)
             .width(Fill)

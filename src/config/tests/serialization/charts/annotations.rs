@@ -16,6 +16,7 @@ fn chart_with(annotations: Vec<AnnotationConfig>) -> ChartConfig {
         funding_panel_height: 56,
         session_panel_height: 72,
         macro_indicators: MacroIndicatorsConfig::default(),
+        quick_trade_actions: Vec::new(),
         open_interest_as_notional: false,
         asset_volume_as_notional: true,
         outcome_volume_as_notional: false,

@@ -148,6 +148,14 @@ pub(super) fn price_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOpt
     }]
 }
 
+pub(super) fn quick_trade_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 1] {
+    [IndicatorOption {
+        label: "Quick Trade",
+        key: "show_quick_trade",
+        checked: indicators.show_quick_trade,
+    }]
+}
+
 pub(super) fn volume_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 1] {
     [IndicatorOption {
         label: "Profile",
@@ -180,6 +188,7 @@ pub(super) fn all_indicator_options(indicators: &MacroIndicatorsConfig) -> Vec<I
     options.extend(weekly_options(indicators));
     options.extend(monthly_options(indicators));
     options.extend(footer_options(indicators));
+    options.extend(quick_trade_options(indicators));
     options.extend(price_options(indicators));
     options.extend(volume_options(indicators));
     options.extend(leledc_options(indicators));

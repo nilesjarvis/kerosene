@@ -488,6 +488,9 @@ impl TradingTerminal {
         if let Some(id) = self.chart_screenshot_window_id {
             ids.push(id);
         }
+        if let Some(state) = &self.quick_trade_editor {
+            ids.push(state.window_id);
+        }
         if let Some(id) = self.wallet_tracker.window_id {
             ids.push(id);
         }

@@ -27,6 +27,7 @@ pub(crate) enum OrderSurface {
     Ticket,
     Preset,
     QuickOrder,
+    QuickTrade,
     Hud,
     ClosePosition,
     Cluster,
@@ -509,6 +510,7 @@ impl OrderSurface {
             OrderOperation::Place => match self {
                 Self::Ticket | Self::Preset => true,
                 Self::QuickOrder
+                | Self::QuickTrade
                 | Self::Hud
                 | Self::ClosePosition
                 | Self::Cluster
@@ -525,6 +527,7 @@ impl OrderSurface {
             Self::Ticket => "Ticket",
             Self::Preset => "Preset",
             Self::QuickOrder => "Quick order",
+            Self::QuickTrade => "Quick Trade order",
             Self::Hud => "HUD order",
             Self::ClosePosition => "Position close",
             Self::Cluster => "Wallet cluster",
@@ -540,6 +543,7 @@ impl OrderSurface {
     fn outcome_action_label(self, operation: OrderOperation) -> &'static str {
         match (self, operation) {
             (Self::QuickOrder, OrderOperation::Place) => "trading",
+            (Self::QuickTrade, OrderOperation::Place) => "Quick Trade trading",
             (Self::Hud, OrderOperation::Place) => "HUD trading",
             (Self::ClosePosition, OrderOperation::Place) => "position closing",
             (Self::ClusterClose, OrderOperation::Place) => "cluster position closing",
@@ -553,7 +557,7 @@ impl OrderSurface {
         match self {
             Self::Ticket | Self::Preset | Self::Chase | Self::Twap => "Active",
             Self::Cluster => "Cluster",
-            Self::QuickOrder | Self::Hud => "Chart",
+            Self::QuickOrder | Self::QuickTrade | Self::Hud => "Chart",
             Self::ClosePosition | Self::ClusterClose | Self::Nuke => "Position",
             Self::Move | Self::Cancel => "Order",
         }
@@ -565,6 +569,7 @@ impl OrderSurface {
             Self::Ticket
                 | Self::Preset
                 | Self::QuickOrder
+                | Self::QuickTrade
                 | Self::Hud
                 | Self::ClosePosition
                 | Self::Nuke
@@ -576,6 +581,7 @@ impl OrderSurface {
     fn symbol_not_found_status_text(self, symbol_key: &str) -> String {
         match self {
             Self::QuickOrder
+            | Self::QuickTrade
             | Self::Hud
             | Self::ClosePosition
             | Self::Cluster
@@ -660,6 +666,7 @@ impl OrderSurface {
             Self::Ticket => "ticket",
             Self::Preset => "preset",
             Self::QuickOrder => "quick",
+            Self::QuickTrade => "quick_trade",
             Self::Hud => "hud",
             Self::ClosePosition => "close",
             Self::Cluster => "cluster",
@@ -1313,6 +1320,7 @@ mod tests {
     fn chart_position_and_strategy_surfaces_reject_outcome_placements() {
         for surface in [
             OrderSurface::QuickOrder,
+            OrderSurface::QuickTrade,
             OrderSurface::Hud,
             OrderSurface::ClosePosition,
             OrderSurface::Cluster,
@@ -1427,25 +1435,27 @@ mod tests {
             .all_mids_updated_at_ms
             .insert("BTC".to_string(), TradingTerminal::now_ms());
 
-        let buy = terminal
-            .prepare_place_order(market_usd_intent(
-                OrderSurface::QuickOrder,
-                MarketUsdSizeReference::Mid,
-                true,
-            ))
-            .expect("valid quick market buy");
-        let sell = terminal
-            .prepare_place_order(market_usd_intent(
-                OrderSurface::QuickOrder,
-                MarketUsdSizeReference::Mid,
-                false,
-            ))
-            .expect("valid quick market sell");
+        for surface in [OrderSurface::QuickOrder, OrderSurface::QuickTrade] {
+            let buy = terminal
+                .prepare_place_order(market_usd_intent(
+                    surface,
+                    MarketUsdSizeReference::Mid,
+                    true,
+                ))
+                .expect("valid quick market buy");
+            let sell = terminal
+                .prepare_place_order(market_usd_intent(
+                    surface,
+                    MarketUsdSizeReference::Mid,
+                    false,
+                ))
+                .expect("valid quick market sell");
 
-        assert_eq!(buy.price, "105");
-        assert_eq!(sell.price, "95");
-        assert_eq!(buy.size, "2.5");
-        assert_eq!(sell.size, "2.5");
+            assert_eq!(buy.price, "105");
+            assert_eq!(sell.price, "95");
+            assert_eq!(buy.size, "2.5");
+            assert_eq!(sell.size, "2.5");
+        }
     }
 
     #[test]

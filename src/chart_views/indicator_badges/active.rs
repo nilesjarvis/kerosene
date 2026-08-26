@@ -22,6 +22,7 @@ enum IndicatorColorRole {
     Monthly,
     Funding,
     Sessions,
+    QuickTrade,
     VolumeProfile,
     HighLow,
     LeledcArrows,
@@ -39,6 +40,7 @@ impl IndicatorColorRole {
             Self::WeeklySlow | Self::Funding => extended.secondary.strong.color,
             Self::Monthly | Self::LeledcArrows => extended.danger.base.color,
             Self::Sessions => extended.warning.base.color,
+            Self::QuickTrade => extended.success.base.color,
             Self::VolumeProfile => theme.palette().primary,
             Self::HighLow => extended.background.weak.text,
             Self::LeledcLevels => extended.success.base.color,
@@ -211,6 +213,14 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         "Sessions",
         "show_session_indicator",
         IndicatorColorRole::Sessions,
+        theme,
+    );
+    push_indicator(
+        &mut active,
+        indicators.show_quick_trade,
+        "Quick Trade",
+        "show_quick_trade",
+        IndicatorColorRole::QuickTrade,
         theme,
     );
     push_indicator(

@@ -2,9 +2,10 @@
 
 Kerosene's trading system turns UI intent into signed Hyperliquid exchange
 actions. It supports standard ticket orders, presets, chart quick orders, chart
-HUD orders, drag-to-move orders, close-position actions, NUKE, Chase, TWAP, and
-leverage updates. Wallet cluster orders reuse the same execution boundary to
-submit one order leg per saved profile in the selected cluster.
+Quick Trade actions, chart HUD orders, drag-to-move orders, close-position
+actions, NUKE, Chase, TWAP, and leverage updates. Wallet cluster orders reuse
+the same execution boundary to submit one order leg per saved profile in the
+selected cluster.
 
 This is one of the highest-risk parts of the app. Changes must preserve account
 identity, key handling, stale-account checks, market-type restrictions,
@@ -30,6 +31,7 @@ Orders can originate from several surfaces:
 - main order entry pane
 - order presets
 - chart right-click quick order
+- chart Quick Trade action strip
 - chart HUD order controls
 - chart order-line drag-to-move
 - chart/open-order cancel controls
@@ -99,6 +101,13 @@ This layer centralizes:
 
 Feature-specific surfaces should build intents and let this layer prepare the
 wire action.
+
+Quick Trade is a serialized one-click market surface. It revalidates the chart
+surface, symbol, action index, and action snapshot before preparing an order,
+uses the shared stale-account and pending-request gates, and creates the normal
+pending market indicator and CLOID-backed result context. Its actions are
+explicit entries and therefore use fixed `reduce_only = false` rather than the
+main ticket's current toggle.
 
 ## Spot Execution Safety
 

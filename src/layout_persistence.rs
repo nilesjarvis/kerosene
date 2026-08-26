@@ -23,6 +23,9 @@ impl TradingTerminal {
     pub(crate) fn apply_layout(&mut self, mut layout: config::SavedLayout) -> Task<Message> {
         config::normalize_imported_saved_layout(&mut layout);
         let mut boot_tasks = Vec::new();
+        if let Some(editor) = self.quick_trade_editor.take() {
+            boot_tasks.push(iced::window::close(editor.window_id));
+        }
 
         let order_kind = crate::signing::OrderKind::from_config_str(&layout.order_kind);
         let requested_symbol = if layout.active_symbol.is_empty() {

@@ -90,6 +90,9 @@ Important snapshot behavior:
 - Read-data provider controls the persisted chart backfill source.
 - Widget configs come from layout/widget snapshot helpers, not direct runtime
   maps.
+- Chart widget configs include the Quick Trade visibility toggle and validated
+  per-chart BUY/SELL action definitions; editor drafts and open editor window IDs
+  remain runtime-only.
 
 This design prevents transient websocket/task state and secret material from
 leaking into config.

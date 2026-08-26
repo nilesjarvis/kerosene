@@ -14,6 +14,7 @@ mod nuke;
 mod outcome;
 mod presets;
 mod quick_order;
+mod quick_trade;
 mod results;
 
 use quick_order::QuickOrderOpenRequest;
@@ -323,6 +324,20 @@ impl TradingTerminal {
                     pending_indicator_id,
                     context,
                     recovery,
+                    *result,
+                );
+            }
+            Message::SubmitQuickTradeOrder(request) => {
+                return self.handle_submit_quick_trade_order(request);
+            }
+            Message::QuickTradeOrderResult {
+                pending_indicator_id,
+                context,
+                result,
+            } => {
+                return self.handle_quick_trade_order_result(
+                    pending_indicator_id,
+                    context,
                     *result,
                 );
             }

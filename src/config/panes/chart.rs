@@ -3,6 +3,91 @@ use serde::{Deserialize, Serialize};
 
 use super::super::{default_symbol, default_timeframe, default_true};
 
+pub const MAX_QUICK_TRADE_ACTIONS: usize = 12;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum QuickTradeSide {
+    Buy,
+    Sell,
+}
+
+impl QuickTradeSide {
+    pub(crate) fn is_buy(self) -> bool {
+        matches!(self, Self::Buy)
+    }
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Buy => "BUY",
+            Self::Sell => "SELL",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum QuickTradeDenomination {
+    Usd,
+    Coin,
+}
+
+impl QuickTradeDenomination {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Usd => "USD",
+            Self::Coin => "COIN",
+        }
+    }
+}
+
+/// A one-click market action shown in a chart's Quick Trade panel.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct QuickTradeActionConfig {
+    pub side: QuickTradeSide,
+    pub quantity: f64,
+    pub denomination: QuickTradeDenomination,
+}
+
+impl QuickTradeActionConfig {
+    pub(crate) fn is_valid(&self) -> bool {
+        self.quantity.is_finite() && self.quantity > 0.0
+    }
+
+    pub(crate) fn quantity_label(&self) -> String {
+        match self.denomination {
+            QuickTradeDenomination::Usd => format!("${}", compact_action_quantity(self.quantity)),
+            QuickTradeDenomination::Coin => compact_action_quantity(self.quantity),
+        }
+    }
+
+    pub(crate) fn button_label(&self) -> String {
+        format!("{} {}", self.side.label(), self.quantity_label())
+    }
+}
+
+fn compact_action_quantity(quantity: f64) -> String {
+    let (value, suffix) = if quantity >= 1_000_000_000.0 {
+        (quantity / 1_000_000_000.0, "B")
+    } else if quantity >= 1_000_000.0 {
+        (quantity / 1_000_000.0, "M")
+    } else if quantity >= 1_000.0 {
+        (quantity / 1_000.0, "K")
+    } else {
+        (quantity, "")
+    };
+    let value = if value.fract().abs() <= f64::EPSILON {
+        format!("{value:.0}")
+    } else if suffix.is_empty() {
+        crate::helpers::trim_decimal_zeros(format!("{value:.8}"))
+    } else if value >= 10.0 {
+        format!("{value:.1}")
+    } else {
+        format!("{value:.2}")
+    };
+    format!("{value}{suffix}")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MacroIndicatorsConfig {
     #[serde(default)]
@@ -46,6 +131,8 @@ pub struct MacroIndicatorsConfig {
     #[serde(default)]
     pub show_session_indicator: bool,
     #[serde(default)]
+    pub show_quick_trade: bool,
+    #[serde(default)]
     pub show_volume_profile: bool,
     #[serde(default)]
     pub show_high_low: bool,
@@ -80,6 +167,7 @@ impl Default for MacroIndicatorsConfig {
             ema_12m: false,
             show_funding_rate: false,
             show_session_indicator: false,
+            show_quick_trade: false,
             show_volume_profile: false,
             show_high_low: false,
             show_leledc_arrows: false,
@@ -131,6 +219,9 @@ pub struct ChartConfig {
     /// Active macro timeframe moving averages
     #[serde(default)]
     pub macro_indicators: MacroIndicatorsConfig,
+    /// User-defined one-click market actions for this chart widget.
+    #[serde(default)]
+    pub quick_trade_actions: Vec<QuickTradeActionConfig>,
     /// Whether open interest is displayed as USD notional instead of coin amount.
     #[serde(default)]
     pub open_interest_as_notional: bool,
@@ -159,6 +250,7 @@ impl ChartConfig {
             funding_panel_height: default_funding_panel_height(),
             session_panel_height: default_session_panel_height(),
             macro_indicators: MacroIndicatorsConfig::default(),
+            quick_trade_actions: Vec::new(),
             open_interest_as_notional: false,
             asset_volume_as_notional: true,
             outcome_volume_as_notional: false,

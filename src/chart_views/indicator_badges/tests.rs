@@ -14,6 +14,7 @@ fn active_indicator_registry_preserves_badge_order_and_keys() {
     instance.macro_indicators.sma_200d = true;
     instance.macro_indicators.show_funding_rate = true;
     instance.macro_indicators.show_session_indicator = true;
+    instance.macro_indicators.show_quick_trade = true;
     instance.macro_indicators.show_volume_profile = true;
     instance.macro_indicators.show_high_low = true;
 
@@ -31,6 +32,7 @@ fn active_indicator_registry_preserves_badge_order_and_keys() {
             ("200d SMA", "sma_200d"),
             ("Funding", "show_funding_rate"),
             ("Sessions", "show_session_indicator"),
+            ("Quick Trade", "show_quick_trade"),
             ("Vol Profile", "show_volume_profile"),
             ("High/Low", "show_high_low"),
         ]

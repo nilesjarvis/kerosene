@@ -32,7 +32,8 @@ use crate::openrouter_api::{OpenRouterKeyStatus, OpenRouterModel};
 use crate::order_execution::{
     AdvancedOrderStartSnapshot, HudOrderRequest, OneShotPlacementContext,
     OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext, QuickOrderRecovery,
-    QuickOrderSubmissionSnapshot, TicketOrderSubmissionSnapshot, TwapOrderStartSnapshot,
+    QuickOrderSubmissionSnapshot, QuickTradeOrderRequest, TicketOrderSubmissionSnapshot,
+    TwapOrderStartSnapshot,
 };
 use crate::pane_management::{AddWidgetKind, AddWidgetPlacement};
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
@@ -746,6 +747,14 @@ pub(crate) enum Message {
     ToggleLayoutMenu,
     ToggleMacroMenu(ChartId),
     ToggleMacroIndicator(ChartId, String),
+    OpenQuickTradeEditor(ChartId),
+    QuickTradeActionAdded,
+    QuickTradeActionSideToggled(usize),
+    QuickTradeActionDenominationToggled(usize),
+    QuickTradeActionQuantityChanged(usize, RedactedOrderInput),
+    QuickTradeActionRemoved(usize),
+    SaveQuickTradeActions,
+    CloseQuickTradeEditor,
     ToggleChartEarningsMarkers(ChartId),
     ChartEarningsEventsLoaded(String, u64, Box<Result<Vec<api::SecEarningsEvent>, String>>),
     ChartEarningsFilingSummaryLoaded(String, u64, Box<Result<api::SecFilingSummary, String>>),
@@ -1438,6 +1447,12 @@ pub(crate) enum Message {
         recovery: Option<QuickOrderRecovery>,
         result: Box<Result<ExchangeResponse, String>>,
     },
+    SubmitQuickTradeOrder(QuickTradeOrderRequest),
+    QuickTradeOrderResult {
+        pending_indicator_id: Option<u64>,
+        context: OneShotPlacementContext,
+        result: Box<Result<ExchangeResponse, String>>,
+    },
     SubmitHudOrder(HudOrderRequest),
     HudOrderResult {
         pending_indicator_id: Option<u64>,
@@ -1651,6 +1666,7 @@ mod tests {
             Message::TwapMinPriceChanged("order-input-secret".into()),
             Message::TwapMaxPriceChanged("order-input-secret".into()),
             Message::QuickOrderQtyChanged(7, "order-input-secret".into()),
+            Message::QuickTradeActionQuantityChanged(2, "order-input-secret".into()),
         ];
 
         for message in messages {

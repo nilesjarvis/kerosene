@@ -238,6 +238,28 @@ normal client-side Chase lifecycle for the chart's symbol.
 Interaction messages should carry chart ID and surface ID so detached windows
 and inline panes do not fight over state.
 
+## Quick Trade Panel
+
+`Quick Trade` is a per-chart option in the indicator menu. When enabled it
+adds a compact section beneath the chart canvas, following the visual hierarchy
+of the funding/session sections without mixing order controls into canvas draw
+code. The strip contains user-defined BUY/SELL market actions, supports both
+USD-notional and coin-denominated quantities, and disables action buttons while
+another serialized trading request is pending.
+
+Actions are configured in a dedicated window opened from the strip. The editor
+validates positive finite quantities, caps each chart at 12 actions, and saves
+the definitions with that chart's layout config. A click in the chart strip is
+an immediate market-order intent: the request carries chart ID, surface ID,
+symbol, action index, and an action snapshot so symbol, surface, or configuration
+changes fail closed before signing.
+
+Quick Trade execution routes through `order_update/quick_trade.rs` and the
+shared prepared-order boundary. USD sizes use the fresh mid as their notional
+reference, submitted prices use the configured market slippage, actions do not
+inherit the main ticket's reduce-only toggle, and outcome markets remain
+unsupported from this chart control.
+
 ## Trading Overlays
 
 Charts show trading/account state through overlays:

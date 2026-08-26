@@ -1,7 +1,25 @@
 use super::{
     DetachedChartWindowConfig, OrderBookConfig, OrderBookDisplayModeConfig,
-    OrderBookSymbolModeConfig, PositioningInfoConfig,
+    OrderBookSymbolModeConfig, PositioningInfoConfig, QuickTradeActionConfig,
+    QuickTradeDenomination, QuickTradeSide,
 };
+
+#[test]
+fn quick_trade_action_labels_keep_denomination_clear_and_compact() {
+    let usd = QuickTradeActionConfig {
+        side: QuickTradeSide::Buy,
+        quantity: 10_000.0,
+        denomination: QuickTradeDenomination::Usd,
+    };
+    let coin = QuickTradeActionConfig {
+        side: QuickTradeSide::Sell,
+        quantity: 0.125,
+        denomination: QuickTradeDenomination::Coin,
+    };
+
+    assert_eq!(usd.button_label(), "BUY $10K");
+    assert_eq!(coin.button_label(), "SELL 0.125");
+}
 use crate::config::SortDirection;
 use crate::positioning_state::PositioningInfoPage;
 

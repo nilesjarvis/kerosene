@@ -73,6 +73,10 @@ impl TradingTerminal {
                             inst.macro_indicators.show_session_indicator =
                                 !inst.macro_indicators.show_session_indicator
                         }
+                        "show_quick_trade" => {
+                            inst.macro_indicators.show_quick_trade =
+                                !inst.macro_indicators.show_quick_trade
+                        }
                         "show_labels" => {
                             inst.macro_indicators.show_labels = !inst.macro_indicators.show_labels
                         }

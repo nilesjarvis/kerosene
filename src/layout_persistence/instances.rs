@@ -66,6 +66,13 @@ impl TradingTerminal {
                 .set_session_panel_height(chart_cfg.session_panel_height as f32);
             instance.macro_indicators = chart_cfg.macro_indicators.clone();
             instance.chart.macro_indicators = chart_cfg.macro_indicators.clone();
+            instance.quick_trade_actions = chart_cfg
+                .quick_trade_actions
+                .iter()
+                .filter(|action| action.is_valid())
+                .take(crate::config::MAX_QUICK_TRADE_ACTIONS)
+                .cloned()
+                .collect();
             instance.open_interest_as_notional = chart_cfg.open_interest_as_notional;
             instance.asset_volume_as_notional = chart_cfg.asset_volume_as_notional;
             instance.outcome_volume_as_notional = chart_cfg.outcome_volume_as_notional;

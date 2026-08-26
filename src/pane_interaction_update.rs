@@ -119,6 +119,7 @@ impl TradingTerminal {
                     self.set_workspace_focus(workspace, Some(sibling));
                     self.last_focused_workspace = workspace;
                     let mut detached_window_to_close = None;
+                    let mut quick_trade_window_to_close = None;
                     let closed_target =
                         crate::config::WidgetPaddingTargetConfig::from_pane_kind(&closed_kind);
                     let instance_still_open = self.workspace_pane_kinds().any(|(_, _, kind)| {
@@ -131,6 +132,16 @@ impl TradingTerminal {
 
                         match closed_kind {
                             PaneKind::Chart(id) => {
+                                if self
+                                    .quick_trade_editor
+                                    .as_ref()
+                                    .is_some_and(|editor| editor.chart_id == id)
+                                {
+                                    quick_trade_window_to_close = self
+                                        .quick_trade_editor
+                                        .take()
+                                        .map(|editor| editor.window_id);
+                                }
                                 self.clear_chart_surface_state(id, ChartSurfaceId::Docked(id));
                                 detached_window_to_close = self.detached_chart_window_for(id);
                                 if let Some(window_id) = detached_window_to_close {
@@ -181,6 +192,9 @@ impl TradingTerminal {
                         tasks.push(self.sync_main_window_min_size());
                     }
                     if let Some(window_id) = detached_window_to_close {
+                        tasks.push(iced::window::close(window_id));
+                    }
+                    if let Some(window_id) = quick_trade_window_to_close {
                         tasks.push(iced::window::close(window_id));
                     }
                     return Task::batch(tasks);

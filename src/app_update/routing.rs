@@ -219,6 +219,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::CloseQuickOrder(_)
         | Message::SubmitQuickOrder { .. }
         | Message::QuickOrderResult { .. }
+        | Message::SubmitQuickTradeOrder(_)
+        | Message::QuickTradeOrderResult { .. }
         | Message::SubmitHudOrder(_)
         | Message::HudOrderResult { .. }
         | Message::EscapePressed(_)
@@ -542,6 +544,14 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartSwitchTimeframe(_, _)
         | Message::ToggleMacroMenu(_)
         | Message::ToggleMacroIndicator(_, _)
+        | Message::OpenQuickTradeEditor(_)
+        | Message::QuickTradeActionAdded
+        | Message::QuickTradeActionSideToggled(_)
+        | Message::QuickTradeActionDenominationToggled(_)
+        | Message::QuickTradeActionQuantityChanged(_, _)
+        | Message::QuickTradeActionRemoved(_)
+        | Message::SaveQuickTradeActions
+        | Message::CloseQuickTradeEditor
         | Message::ToggleChartEarningsMarkers(_)
         | Message::ChartEarningsEventsLoaded(_, _, _)
         | Message::ChartEarningsFilingSummaryLoaded(_, _, _)

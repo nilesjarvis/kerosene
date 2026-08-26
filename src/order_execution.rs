@@ -6,6 +6,7 @@ mod hud;
 mod position_actions;
 pub(crate) mod pricing;
 mod quick_order;
+mod quick_trade;
 mod sizing;
 mod submit;
 mod symbols;
@@ -24,6 +25,7 @@ pub(crate) use hud::{
 };
 pub(crate) use position_actions::{NukePlan, reject_if_positions_incomplete_for_action};
 pub(crate) use quick_order::QuickOrderSubmissionSnapshot;
+pub(crate) use quick_trade::QuickTradeOrderRequest;
 pub(crate) use sizing::order_size_from_quantity_input;
 pub(crate) use submit::{TicketOrderPlaceIntent, TicketOrderSubmissionSnapshot};
 

@@ -253,6 +253,8 @@ pub(crate) struct ChartInstance {
     pub(crate) macro_candles_request_id: u64,
     /// Active macro indicators configuration.
     pub(crate) macro_indicators: config::MacroIndicatorsConfig,
+    /// Persisted one-click market actions shown in the Quick Trade panel.
+    pub(crate) quick_trade_actions: Vec<config::QuickTradeActionConfig>,
     /// Toggle state for the macro indicators dropdown menu.
     pub(crate) macro_menu_open: bool,
     /// Whether the header open-interest metric is shown as USD notional for this chart.

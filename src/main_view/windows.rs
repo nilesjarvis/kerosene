@@ -47,6 +47,12 @@ impl TradingTerminal {
             self.view_chart_screenshot_window()
         } else if self.pnl_card_windows.contains_key(&window_id) {
             self.view_pnl_card_window(window_id)
+        } else if self
+            .quick_trade_editor
+            .as_ref()
+            .is_some_and(|state| state.window_id == window_id)
+        {
+            self.view_quick_trade_editor_window()
         } else if let Some(state) = self.detached_chart_windows.get(&window_id) {
             self.view_detached_chart_window(state.chart_id, ChartSurfaceId::Detached(window_id))
         } else if let Some(state) = self.detached_spaghetti_windows.get(&window_id) {
@@ -117,6 +123,12 @@ impl TradingTerminal {
                     "Kerosene PnL Card - Summary".to_string()
                 }
             }
+        } else if self
+            .quick_trade_editor
+            .as_ref()
+            .is_some_and(|state| state.window_id == window_id)
+        {
+            "Kerosene Quick Trade Actions".to_string()
         } else if let Some(state) = self.detached_chart_windows.get(&window_id) {
             self.charts
                 .get(&state.chart_id)

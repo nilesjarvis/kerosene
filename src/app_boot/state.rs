@@ -413,6 +413,7 @@ impl TradingTerminal {
             screener: crate::screener_state::ScreenerState::default(),
             chart_screenshot_window_id: None,
             pnl_card_windows: HashMap::new(),
+            quick_trade_editor: None,
             detached_chart_windows: HashMap::new(),
             detached_spaghetti_windows: HashMap::new(),
             chart_screenshot: None,

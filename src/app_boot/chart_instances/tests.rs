@@ -1,5 +1,7 @@
 use super::*;
-use crate::config::MacroIndicatorsConfig;
+use crate::config::{
+    MacroIndicatorsConfig, QuickTradeActionConfig, QuickTradeDenomination, QuickTradeSide,
+};
 
 #[test]
 fn boot_chart_instances_restores_trade_marker_toggle() {
@@ -17,6 +19,18 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
         funding_panel_height: 56,
         session_panel_height: 72,
         macro_indicators: MacroIndicatorsConfig::default(),
+        quick_trade_actions: vec![
+            QuickTradeActionConfig {
+                side: QuickTradeSide::Buy,
+                quantity: 10_000.0,
+                denomination: QuickTradeDenomination::Usd,
+            },
+            QuickTradeActionConfig {
+                side: QuickTradeSide::Sell,
+                quantity: -1.0,
+                denomination: QuickTradeDenomination::Coin,
+            },
+        ],
         open_interest_as_notional: false,
         asset_volume_as_notional: false,
         outcome_volume_as_notional: false,
@@ -58,6 +72,14 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
             .get(&3)
             .expect("chart instance")
             .asset_volume_as_notional
+    );
+    assert_eq!(
+        charts
+            .get(&3)
+            .expect("chart instance")
+            .quick_trade_actions
+            .len(),
+        1
     );
 }
 

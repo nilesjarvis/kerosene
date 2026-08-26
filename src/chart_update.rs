@@ -11,6 +11,7 @@ mod detached;
 mod earnings;
 mod editor;
 mod macro_indicators;
+mod quick_trade;
 
 /// How often a chart whose `asset_ctx` is REST-sourced re-fetches it. Kept
 /// below `MARKET_ASSET_CONTEXT_MAX_AGE_MS` (15s) so the context is refreshed
@@ -75,6 +76,16 @@ impl TradingTerminal {
 
     pub(crate) fn update_chart(&mut self, message: Message) -> Task<Message> {
         match message {
+            message @ (Message::OpenQuickTradeEditor(_)
+            | Message::QuickTradeActionAdded
+            | Message::QuickTradeActionSideToggled(_)
+            | Message::QuickTradeActionDenominationToggled(_)
+            | Message::QuickTradeActionQuantityChanged(_, _)
+            | Message::QuickTradeActionRemoved(_)
+            | Message::SaveQuickTradeActions
+            | Message::CloseQuickTradeEditor) => {
+                return self.update_chart_quick_trade(message);
+            }
             message @ (Message::ToggleMacroMenu(_)
             | Message::ToggleMacroIndicator(_, _)
             | Message::MacroCandlesLoaded(_, _, _, _, _)) => {

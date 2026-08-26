@@ -9,7 +9,9 @@ use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::canvas_state::{CanvasId, CanvasState, WorkspaceId};
 use crate::chart::ChartViewport;
 use crate::chart_screenshot::ChartScreenshotState;
-use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId, DetachedChartWindowState};
+use crate::chart_state::{
+    ChartId, ChartInstance, ChartSurfaceId, DetachedChartWindowState, QuickTradeEditorState,
+};
 use crate::combined_portfolio::CombinedPortfolioState;
 use crate::hype_etf_state::HypeEtfState;
 use crate::hype_unstaking_state::HypeUnstakingQueueState;
@@ -627,6 +629,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) screener: ScreenerState,
     pub(crate) chart_screenshot_window_id: Option<window::Id>,
     pub(crate) pnl_card_windows: HashMap<window::Id, PnlCardWindowState>,
+    pub(crate) quick_trade_editor: Option<QuickTradeEditorState>,
     pub(crate) detached_chart_windows: HashMap<window::Id, DetachedChartWindowState>,
     pub(crate) detached_spaghetti_windows: HashMap<window::Id, DetachedSpaghettiWindowState>,
     pub(crate) chart_screenshot: Option<ChartScreenshotState>,
