@@ -16,7 +16,7 @@ use zeroize::Zeroizing;
 const EXTENSION_SOURCE: &str = include_str!("../assets/agent/kerosene.ts");
 const RUNTIME_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const PI_RPC_ARGS: [&str; 5] = ["--mode", "rpc", "--no-session", "--thinking", "medium"];
-const PI_TOOL_ALLOWLIST: &str = "kerosene_data,kerosene_set_chart_indicators,kerosene_market_data,kerosene_activity,kerosene_journal,kerosene_calculate,kerosene_risk,kerosene_positioning,kerosene_pnl_card_match,kerosene_ohlcv,kerosene_sessions";
+const PI_TOOL_ALLOWLIST: &str = "kerosene_data,kerosene_set_chart_indicators,kerosene_manage_chart_drawings,kerosene_market_data,kerosene_activity,kerosene_journal,kerosene_calculate,kerosene_risk,kerosene_positioning,kerosene_pnl_card_match,kerosene_ohlcv,kerosene_sessions";
 
 // ---------------------------------------------------------------------------
 // Pi RPC Runtime
@@ -891,6 +891,31 @@ fn tool_call_detail(name: &str, args: Option<&Value>) -> Option<String> {
                 ),
             ]
         }
+        "kerosene_manage_chart_drawings" => {
+            let operation_count = args
+                .get("operations")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or_default();
+            let chart_count = args
+                .get("operations")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|operation| operation.get("chart_id").and_then(Value::as_u64))
+                .collect::<std::collections::HashSet<_>>()
+                .len();
+            vec![
+                format!(
+                    "{chart_count} chart{}",
+                    if chart_count == 1 { "" } else { "s" }
+                ),
+                format!(
+                    "{operation_count} drawing operation{}",
+                    if operation_count == 1 { "" } else { "s" }
+                ),
+            ]
+        }
         "kerosene_activity" => {
             let mut segments = Vec::new();
             push_field(&mut segments, field("kind"), title_case);
@@ -1145,8 +1170,9 @@ mod tests {
             ["--mode", "rpc", "--no-session", "--thinking", "medium"]
         );
         let tools = PI_TOOL_ALLOWLIST.split(',').collect::<Vec<_>>();
-        assert_eq!(tools.len(), 11);
+        assert_eq!(tools.len(), 12);
         assert!(tools.contains(&"kerosene_set_chart_indicators"));
+        assert!(tools.contains(&"kerosene_manage_chart_drawings"));
         assert!(tools.contains(&"kerosene_journal"));
         assert!(tools.contains(&"kerosene_pnl_card_match"));
         assert!(tools.iter().all(|tool| tool.starts_with("kerosene_")));
@@ -1168,11 +1194,14 @@ mod tests {
     fn extension_contains_the_bounded_workspace_action_contract() {
         for requirement in [
             "name: \"kerosene_set_chart_indicators\"",
+            "name: \"kerosene_manage_chart_drawings\"",
             "executionMode: \"sequential\"",
             "KEROSENE_HOST_ACTION_V1",
             "read kerosene_data with section workspace",
             "never treat a request for advice as permission to mutate",
             "Workspace mutation permission comes only from the current user message",
+            "Use Unix epoch milliseconds and finite positive prices",
+            "A locked drawing must be unlocked by the user before removal",
             "cannot trade, sign, place or cancel orders",
         ] {
             assert!(
@@ -1384,6 +1413,22 @@ mod tests {
         assert_eq!(
             tool_call_detail("kerosene_market_data", Some(&args)).as_deref(),
             Some("BTC, ETH, SOL +2 · Current mids and market metadata")
+        );
+    }
+
+    #[test]
+    fn drawing_tool_detail_counts_unique_charts_without_exposing_geometry() {
+        let args = json!({
+            "operations": [
+                { "operation": "add", "chart_id": 7, "drawing": { "type": "horizontal_level", "price": 60_000 } },
+                { "operation": "add", "chart_id": 7, "drawing": { "type": "vertical_line", "time_ms": 1_700_000_000_000_u64 } },
+                { "operation": "remove", "chart_id": 9, "drawing_id": 3 }
+            ]
+        });
+
+        assert_eq!(
+            tool_call_detail("kerosene_manage_chart_drawings", Some(&args)).as_deref(),
+            Some("2 charts · 3 drawing operations")
         );
     }
 

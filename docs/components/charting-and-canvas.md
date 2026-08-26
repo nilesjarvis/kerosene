@@ -324,6 +324,16 @@ Rust host validates the complete batch and any integration dependency before it
 changes a chart, then synchronizes render state and schedules layout/config
 persistence through the normal chart path.
 
+The Assistant drawing bridge uses the existing annotation model rather than
+simulating clicks in the drawing toolbar. `agent_snapshot.rs` exposes bounded
+annotation geometry, style, selection, and coverage; `agent_workspace.rs`
+accepts atomic create/remove operations for every persisted shape supported by
+`DrawingTool`. New shapes receive normal per-chart annotation IDs, are mirrored
+into the canvas, and follow the existing config-persistence path. Exact
+geometry/style retries are idempotent. Removal requires an exact current ID and
+respects the annotation lock. Geometry/style edits remain user-driven through
+Select mode, which keeps the first mutation surface small and deterministic.
+
 ## Detached Charts
 
 Detached charts are opened from chart controls and rendered by

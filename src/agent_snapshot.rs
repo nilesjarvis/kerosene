@@ -1,3 +1,5 @@
+use crate::agent_workspace::{ASSISTANT_DRAWING_CATALOG, annotation_kind_key};
+use crate::annotations::{Annotation, AnnotationKind, LineStyle};
 use crate::app_state::TradingTerminal;
 use crate::chart_indicator::ChartIndicatorId;
 
@@ -8,10 +10,12 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-const SNAPSHOT_SCHEMA_VERSION: u32 = 4;
+const SNAPSHOT_SCHEMA_VERSION: u32 = 5;
 const ASSISTANT_CURRENT_DATA_MAX_AGE_MS: u64 = 15_000;
 const MAX_MARKETS: usize = 250;
 const MAX_WORKSPACE_CHARTS: usize = 32;
+const MAX_WORKSPACE_DRAWINGS: usize = 128;
+const MAX_WORKSPACE_DRAWING_LABEL_CHARS: usize = 160;
 const MAX_ACCOUNT_ROWS: usize = 100;
 const MAX_RECENT_ROWS: usize = 50;
 const MAX_TOOL_ACTIVITY_ROWS: usize = 2_000;
@@ -52,6 +56,7 @@ impl TradingTerminal {
                 "row_limits": {
                     "markets": MAX_MARKETS,
                     "workspace_charts": MAX_WORKSPACE_CHARTS,
+                    "workspace_drawings": MAX_WORKSPACE_DRAWINGS,
                     "account_rows": MAX_ACCOUNT_ROWS,
                     "recent_rows": MAX_RECENT_ROWS,
                     "tool_activity_rows": MAX_TOOL_ACTIVITY_ROWS,
@@ -105,6 +110,13 @@ impl TradingTerminal {
             .primary_chart_id
             .filter(|id| self.charts.contains_key(id));
         let total_chart_count = self.charts.len();
+        let total_drawing_count = self
+            .charts
+            .values()
+            .map(|instance| instance.annotations.len())
+            .sum::<usize>();
+        let mut drawing_budget = MAX_WORKSPACE_DRAWINGS;
+        let mut returned_drawing_count = 0;
         let mut chart_instances = self.charts.values().collect::<Vec<_>>();
         chart_instances
             .sort_by_key(|instance| (selected_chart_id != Some(instance.id), instance.id));
@@ -121,6 +133,33 @@ impl TradingTerminal {
                         )
                     })
                     .collect::<serde_json::Map<_, _>>();
+                let total_chart_drawings = instance.annotations.len();
+                let mut drawing_refs = instance.annotations.iter().collect::<Vec<_>>();
+                drawing_refs.sort_by_key(|annotation| {
+                    (
+                        instance.selected_annotation != Some(annotation.id),
+                        annotation.id,
+                    )
+                });
+                let drawings = drawing_refs
+                    .into_iter()
+                    .take(drawing_budget)
+                    .map(|annotation| {
+                        agent_drawing_snapshot(
+                            annotation,
+                            instance.selected_annotation == Some(annotation.id),
+                            annotation
+                                .style
+                                .label
+                                .as_deref()
+                                .map(|label| self.sanitized_agent_drawing_label(label))
+                                .unwrap_or((None, false)),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let returned_chart_drawings = drawings.len();
+                drawing_budget = drawing_budget.saturating_sub(returned_chart_drawings);
+                returned_drawing_count += returned_chart_drawings;
                 json!({
                     "id": instance.id,
                     "surface": if self.chart_is_docked(instance.id) { "docked" } else { "detached" },
@@ -130,6 +169,14 @@ impl TradingTerminal {
                     "timeframe_config": instance.interval.config_str(),
                     "selected": selected_chart_id == Some(instance.id),
                     "indicators": indicators,
+                    "selected_drawing_id": instance.selected_annotation,
+                    "drawings": drawings,
+                    "drawing_coverage": {
+                        "returned_count": returned_chart_drawings,
+                        "total_count": total_chart_drawings,
+                        "truncated": returned_chart_drawings < total_chart_drawings,
+                        "complete_for_current_state": returned_chart_drawings == total_chart_drawings,
+                    },
                 })
             })
             .collect::<Vec<_>>();
@@ -154,6 +201,16 @@ impl TradingTerminal {
                 })
             })
             .collect::<Vec<_>>();
+        let drawing_catalog = ASSISTANT_DRAWING_CATALOG
+            .iter()
+            .map(|(id, label, anchor_count)| {
+                json!({
+                    "id": id,
+                    "label": label,
+                    "anchor_count": anchor_count,
+                })
+            })
+            .collect::<Vec<_>>();
 
         json!({
             "provenance": section_provenance(
@@ -165,18 +222,29 @@ impl TradingTerminal {
             "selected_chart_id": selected_chart_id,
             "charts": charts,
             "indicator_catalog": indicator_catalog,
+            "drawing_catalog": {
+                "types": drawing_catalog,
+                "colors": ["blue", "yellow", "teal", "red", "purple", "white"],
+                "widths": [1.0, 1.5, 2.5, 4.0],
+                "line_styles": ["solid", "dashed", "dotted"],
+                "maximum_label_characters": 80,
+                "coordinate_contract": "time_ms is Unix epoch milliseconds; prices must be finite and greater than zero",
+            },
             "action_policy": {
                 "set_chart_indicators_available": true,
-                "scope": "allowlisted reversible visual settings on already-open candlestick charts",
+                "manage_chart_drawings_available": true,
+                "scope": "allowlisted reversible visual settings and persisted annotations on already-open candlestick charts",
                 "excluded": [
                     "orders",
                     "signing",
-                    "presentation_labels",
+                    "indicator_presentation_labels",
                     "quick_trade_controls",
                     "arbitrary_indicator_code",
                     "chart_creation",
                     "symbol_changes",
-                    "timeframe_changes"
+                    "timeframe_changes",
+                    "drawing_geometry_edits",
+                    "drawing_style_edits"
                 ]
             },
             "coverage": {
@@ -184,6 +252,12 @@ impl TradingTerminal {
                 "total_count": total_chart_count,
                 "truncated": returned_chart_count < total_chart_count,
                 "complete_for_current_state": returned_chart_count == total_chart_count,
+            },
+            "drawing_coverage": {
+                "returned_count": returned_drawing_count,
+                "total_count": total_drawing_count,
+                "truncated": returned_drawing_count < total_drawing_count,
+                "complete_for_current_state": returned_drawing_count == total_drawing_count,
             }
         })
     }
@@ -656,6 +730,7 @@ impl TradingTerminal {
     fn sanitized_journal_text(&self, text: &str) -> String {
         let mut sanitized = crate::helpers::redact_sensitive_response_text(text);
         for key in [
+            self.hydromancer_api_key.trim(),
             self.openrouter_api_key.trim(),
             self.hyperdash_api_key.trim(),
         ] {
@@ -664,6 +739,13 @@ impl TradingTerminal {
             }
         }
         crate::helpers::text_excerpt(&sanitized, MAX_JOURNAL_REFLECTION_CHARS)
+    }
+
+    fn sanitized_agent_drawing_label(&self, label: &str) -> (Option<String>, bool) {
+        let sanitized = self.sanitized_journal_text(label);
+        let redacted = sanitized != label;
+        let (label, bounded_or_sanitized) = bounded_agent_drawing_label(&sanitized);
+        (label, redacted || bounded_or_sanitized)
     }
 
     fn agent_positioning_snapshot(&self, generated_at_ms: u64) -> Value {
@@ -1133,6 +1215,88 @@ fn journal_market_type(symbol: &str) -> &'static str {
     }
 }
 
+fn agent_drawing_snapshot(
+    annotation: &Annotation,
+    selected: bool,
+    label: (Option<String>, bool),
+) -> Value {
+    let geometry = match &annotation.kind {
+        AnnotationKind::HorizontalLevel { price } => json!({ "price": price }),
+        AnnotationKind::VerticalLine { time } => json!({ "time_ms": time }),
+        AnnotationKind::TrendLine { start, end }
+        | AnnotationKind::Ray { start, end }
+        | AnnotationKind::ExtendedLine { start, end }
+        | AnnotationKind::Measure { start, end } => json!({
+            "start": agent_drawing_anchor(*start),
+            "end": agent_drawing_anchor(*end),
+        }),
+        AnnotationKind::Rectangle { a, b } => json!({
+            "a": agent_drawing_anchor(*a),
+            "b": agent_drawing_anchor(*b),
+        }),
+        AnnotationKind::Fib { points, .. } => json!({
+            "points": points
+                .iter()
+                .copied()
+                .map(agent_drawing_anchor)
+                .collect::<Vec<_>>(),
+        }),
+    };
+    let (label, label_truncated_or_sanitized) = label;
+
+    json!({
+        "id": annotation.id,
+        "type": annotation_kind_key(&annotation.kind),
+        "geometry": geometry,
+        "style": {
+            "color_rgba": [
+                annotation.style.color.r,
+                annotation.style.color.g,
+                annotation.style.color.b,
+                annotation.style.color.a,
+            ],
+            "width": annotation.style.width,
+            "line_style": match annotation.style.line_style {
+                LineStyle::Solid => "solid",
+                LineStyle::Dashed => "dashed",
+                LineStyle::Dotted => "dotted",
+            },
+            "label": label,
+            "label_truncated_or_sanitized": label_truncated_or_sanitized,
+            "locked": annotation.style.locked,
+            "visible": annotation.style.visible,
+        },
+        "selected": selected,
+    })
+}
+
+fn agent_drawing_anchor((time_ms, price): (u64, f64)) -> Value {
+    json!({ "time_ms": time_ms, "price": price })
+}
+
+fn bounded_agent_drawing_label(label: &str) -> (Option<String>, bool) {
+    let mut changed = false;
+    let mut bounded = String::new();
+    for (count, character) in label.chars().enumerate() {
+        if count >= MAX_WORKSPACE_DRAWING_LABEL_CHARS {
+            changed = true;
+            break;
+        }
+        if character.is_control() {
+            bounded.push(' ');
+            changed = true;
+        } else {
+            bounded.push(character);
+        }
+    }
+    let bounded = bounded.trim().to_string();
+    if bounded.is_empty() {
+        (None, changed)
+    } else {
+        (Some(bounded), changed)
+    }
+}
+
 fn section_provenance(
     source: &str,
     observed_at_ms: Option<u64>,
@@ -1279,6 +1443,7 @@ fn staged_snapshot_path(workspace_dir: &Path, generation: u64, request_id: u64) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::annotations::{AnnotationStyle, FibKind};
     use crate::chart_state::ChartInstance;
     use crate::timeframe::Timeframe;
 
@@ -1353,16 +1518,34 @@ mod tests {
         let mut chart = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
         chart.macro_indicators.tf_ema_50 = true;
         chart.chart.macro_indicators = chart.macro_indicators.clone();
+        chart.annotations.push(Annotation {
+            id: 42,
+            kind: AnnotationKind::Fib {
+                kind: FibKind::Retracement,
+                points: vec![(1_700_000_000_000, 50_000.0), (1_700_003_600_000, 60_000.0)],
+            },
+            style: AnnotationStyle {
+                label: Some("Primary swing drawing-secret".to_string()),
+                locked: true,
+                ..AnnotationStyle::default()
+            },
+        });
+        chart.selected_annotation = Some(42);
         terminal.charts.insert(7, chart);
         terminal.primary_chart_id = Some(7);
         terminal.hydromancer_api_key = String::new().into();
+        terminal.openrouter_api_key = "drawing-secret".into();
 
         let bytes = terminal.build_agent_snapshot().expect("snapshot");
         let value: Value = serde_json::from_slice(&bytes).expect("json");
+        assert!(!String::from_utf8_lossy(&bytes).contains("drawing-secret"));
         let workspace = &value["workspace"];
         let catalog = workspace["indicator_catalog"]
             .as_array()
             .expect("indicator catalog");
+        let drawing_types = workspace["drawing_catalog"]["types"]
+            .as_array()
+            .expect("drawing catalog");
 
         assert_eq!(workspace["selected_chart_id"], 7);
         assert_eq!(workspace["charts"][0]["id"], 7);
@@ -1378,6 +1561,81 @@ mod tests {
         }));
         assert!(!catalog.iter().any(|entry| entry["id"] == "quick_trade"));
         assert!(!catalog.iter().any(|entry| entry["id"] == "labels"));
+        assert_eq!(drawing_types.len(), 9);
+        assert!(
+            drawing_types
+                .iter()
+                .any(|entry| entry["id"] == "fib_extension" && entry["anchor_count"] == 3)
+        );
+        assert_eq!(workspace["charts"][0]["selected_drawing_id"], 42);
+        assert_eq!(workspace["charts"][0]["drawings"][0]["id"], 42);
+        assert_eq!(
+            workspace["charts"][0]["drawings"][0]["type"],
+            "fib_retracement"
+        );
+        assert_eq!(
+            workspace["charts"][0]["drawings"][0]["geometry"]["points"][1]["price"],
+            60_000.0
+        );
+        assert_eq!(
+            workspace["charts"][0]["drawings"][0]["style"]["label"],
+            "Primary swing <redacted>"
+        );
+        assert_eq!(
+            workspace["charts"][0]["drawings"][0]["style"]["label_truncated_or_sanitized"],
+            true
+        );
+        assert_eq!(
+            workspace["charts"][0]["drawings"][0]["style"]["locked"],
+            true
+        );
+        assert_eq!(
+            workspace["drawing_coverage"]["complete_for_current_state"],
+            true
+        );
+    }
+
+    #[test]
+    fn workspace_drawing_snapshot_is_bounded_and_prioritizes_selection() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        let mut chart = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        for id in 0..=MAX_WORKSPACE_DRAWINGS as u64 {
+            chart.annotations.push(Annotation {
+                id,
+                kind: AnnotationKind::HorizontalLevel {
+                    price: 50_000.0 + id as f64,
+                },
+                style: AnnotationStyle::default(),
+            });
+        }
+        chart.selected_annotation = Some(MAX_WORKSPACE_DRAWINGS as u64);
+        terminal.charts.insert(7, chart);
+        terminal.primary_chart_id = Some(7);
+
+        let bytes = terminal.build_agent_snapshot().expect("snapshot");
+        let value: Value = serde_json::from_slice(&bytes).expect("json");
+        let workspace = &value["workspace"];
+        let drawings = workspace["charts"][0]["drawings"]
+            .as_array()
+            .expect("drawings");
+
+        assert_eq!(drawings.len(), MAX_WORKSPACE_DRAWINGS);
+        assert_eq!(drawings[0]["id"], MAX_WORKSPACE_DRAWINGS as u64);
+        assert_eq!(drawings[0]["selected"], true);
+        assert_eq!(
+            workspace["charts"][0]["drawing_coverage"]["truncated"],
+            true
+        );
+        assert_eq!(
+            workspace["drawing_coverage"]["returned_count"],
+            MAX_WORKSPACE_DRAWINGS
+        );
+        assert_eq!(
+            workspace["drawing_coverage"]["total_count"],
+            MAX_WORKSPACE_DRAWINGS + 1
+        );
+        assert_eq!(workspace["drawing_coverage"]["truncated"], true);
     }
 
     #[test]

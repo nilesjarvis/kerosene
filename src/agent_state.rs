@@ -104,6 +104,11 @@ pub(crate) fn agent_tool_presentation(name: &str) -> AgentToolPresentation {
             title: "Chart indicators",
             running_label: "Updating chart indicators",
         },
+        "kerosene_manage_chart_drawings" => AgentToolPresentation {
+            category: "Workspace",
+            title: "Chart drawings",
+            running_label: "Updating chart drawings",
+        },
         "kerosene_activity" => AgentToolPresentation {
             category: "Activity",
             title: "Account activity",
