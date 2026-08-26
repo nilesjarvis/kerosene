@@ -75,3 +75,35 @@ fn income_snapshot_skips_invalid_numeric_rows_and_reports_counts() {
     assert_eq!(snapshot.invalid_token_rows, 1);
     assert_eq!(snapshot.invalid_interest_rows, 2);
 }
+
+#[test]
+fn income_snapshot_hourly_rows_join_supply_rate_by_symbol_or_index() {
+    let user_state = BorrowLendUserState {
+        token_to_state: vec![(0, token_state("10", "4"))],
+        health: "healthy".to_string(),
+        health_factor: None,
+    };
+    let reserve_by_token = HashMap::from([(0, reserve("2", "0.10", "0.20"))]);
+    let token_name_by_id = HashMap::from([(0, "USDC".to_string())]);
+    let interest_entries = vec![
+        interest(1_000, "0", "5", "1"),
+        interest(2_000, "USDC", "2", "0"),
+        interest(3_000, "UNKNOWN", "3", "0"),
+    ];
+
+    let snapshot = build_income_snapshot(
+        user_state,
+        &interest_entries,
+        &reserve_by_token,
+        &token_name_by_id,
+    );
+
+    let by_time: HashMap<u64, f64> = snapshot
+        .recent_hourly_payments
+        .iter()
+        .map(|payment| (payment.time, payment.supply_rate))
+        .collect();
+    assert_eq!(by_time.get(&1_000), Some(&0.1));
+    assert_eq!(by_time.get(&2_000), Some(&0.1));
+    assert_eq!(by_time.get(&3_000), Some(&0.0));
+}

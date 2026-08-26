@@ -7,7 +7,7 @@ use crate::account_analytics::{
     IncomeHourlyPayment, IncomeSnapshot, PortfolioBucket, PortfolioHistory,
 };
 use crate::config::ReadDataProvider;
-use crate::portfolio_state::PnlValueDisplayMode;
+use crate::portfolio_state::{IncomePaneView, PnlValueDisplayMode};
 use std::collections::HashMap;
 
 #[test]
@@ -29,6 +29,25 @@ fn portfolio_pnl_value_mode_updates_even_when_pnl_is_hidden() {
     assert_eq!(
         terminal.portfolio.pnl_value_display_mode,
         PnlValueDisplayMode::Usd
+    );
+}
+
+#[test]
+fn income_pane_view_updates_without_refreshing_data() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.income.data = Some(income_snapshot(1, 10.0));
+
+    let _ = terminal.update_portfolio_income(Message::SetIncomePaneView(IncomePaneView::Payments));
+
+    assert_eq!(terminal.income.view, IncomePaneView::Payments);
+    assert_eq!(
+        terminal
+            .income
+            .data
+            .as_ref()
+            .expect("income data should remain loaded")
+            .earned_total,
+        10.0
     );
 }
 
@@ -399,6 +418,7 @@ fn income_snapshot(time: u64, earned_total: f64) -> IncomeSnapshot {
             token_label: "USDC".to_string(),
             supply: earned_total,
             borrow: 0.0,
+            supply_rate: 0.0,
             net: earned_total,
         }],
         invalid_token_rows: 0,

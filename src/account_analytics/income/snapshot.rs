@@ -85,7 +85,8 @@ pub(super) fn build_income_snapshot(
 
     let dedup_by_day = income_per_day_dedup_with_stats(interest_entries);
     let earned_total: f64 = dedup_by_day.values.values().sum();
-    let recent_hourly = recent_hourly_payments(interest_entries, token_name_by_id);
+    let recent_hourly =
+        recent_hourly_payments(interest_entries, reserve_by_token, token_name_by_id);
 
     let now_ms = now_ms();
     let day_ms: u64 = 24 * 60 * 60 * 1000;
@@ -119,8 +120,13 @@ pub(super) fn build_income_snapshot(
 
 fn recent_hourly_payments(
     interest_entries: &[BorrowLendInterestEntry],
+    reserve_by_token: &HashMap<u32, BorrowLendReserveState>,
     token_name_by_id: &HashMap<u32, String>,
 ) -> Vec<IncomeHourlyPayment> {
+    let name_to_id: HashMap<&str, u32> = token_name_by_id
+        .iter()
+        .map(|(id, name)| (name.as_str(), *id))
+        .collect();
     let mut recent_hourly: Vec<IncomeHourlyPayment> = interest_entries
         .iter()
         .filter(|e| e.n_samples.is_none())
@@ -137,11 +143,20 @@ fn recent_hourly_payments(
                 .ok()
                 .and_then(|idx| token_name_by_id.get(&idx).cloned())
                 .unwrap_or_else(|| e.token.clone());
+            let supply_rate = e
+                .token
+                .parse::<u32>()
+                .ok()
+                .or_else(|| name_to_id.get(e.token.as_str()).copied())
+                .and_then(|idx| reserve_by_token.get(&idx))
+                .and_then(|reserve| parse_f64_str(&reserve.supply_yearly_rate))
+                .unwrap_or(0.0);
             Some(IncomeHourlyPayment {
                 time: e.time,
                 token_label,
                 supply,
                 borrow,
+                supply_rate,
                 net,
             })
         })

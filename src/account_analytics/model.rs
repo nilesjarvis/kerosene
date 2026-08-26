@@ -82,6 +82,8 @@ pub struct IncomeHourlyPayment {
     pub token_label: String,
     pub supply: f64,
     pub borrow: f64,
+    /// Current supply yearly rate for the token, joined from reserve state.
+    pub supply_rate: f64,
     pub net: f64,
 }
 

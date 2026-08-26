@@ -314,6 +314,7 @@ impl TradingTerminal {
             self.bump_openrouter_key_generation();
         }
         self.openrouter_model = defaults.openrouter_model.clone();
+        self.assistant_provider = defaults.assistant_provider;
         self.liquidations.clear();
         self.liquidation_summary_buckets.clear();
         self.liquidation_chart_buckets.clear();
@@ -334,6 +335,10 @@ impl TradingTerminal {
             .collect::<Vec<_>>();
         let wallet_clusters_window_id = self.wallet_clusters.window_id;
         let combined_portfolio_window_id = self.combined_portfolio.window_id;
+        let quick_trade_editor_window_id = self
+            .quick_trade_editor
+            .take()
+            .map(|editor| editor.window_id);
         self.wallet_detail_windows.clear();
         self.wallet_clusters =
             crate::wallet_cluster_state::WalletClusterState::from_config(&defaults.wallet_clusters);
@@ -484,6 +489,11 @@ impl TradingTerminal {
                     combined_portfolio_window_id
                         .into_iter()
                         .map(iced::window::close),
+                )
+                .chain(
+                    quick_trade_editor_window_id
+                        .into_iter()
+                        .map(iced::window::close),
                 ),
         )
     }
@@ -610,6 +620,7 @@ mod tests {
                 token_label: "USDC".to_string(),
                 supply: 1.0,
                 borrow: 0.0,
+                supply_rate: 0.0,
                 net: 1.0,
             }],
             invalid_token_rows: 0,
@@ -1285,6 +1296,7 @@ mod tests {
         terminal.openrouter_key_input = sensitive_string("openrouter-key");
         terminal.openrouter_key_status = Some(("Key valid".to_string(), false));
         terminal.openrouter_model = "anthropic/claude-sonnet-4.5".to_string();
+        terminal.assistant_provider = crate::config::AssistantProvider::LlamaCpp;
         terminal.accounts = vec![AccountProfile {
             secret_id: "acct-a".to_string(),
             name: "Keep Me".to_string(),
@@ -1314,6 +1326,10 @@ mod tests {
         assert!(terminal.openrouter_key_input.is_empty());
         assert!(terminal.openrouter_key_status.is_none());
         assert!(terminal.openrouter_model.is_empty());
+        assert_eq!(
+            terminal.assistant_provider,
+            crate::config::AssistantProvider::OpenRouter
+        );
         assert_eq!(terminal.accounts.len(), 1);
         assert_eq!(terminal.accounts[0].name, "Main Trading");
         assert!(terminal.accounts[0].agent_key.is_empty());
