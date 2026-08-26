@@ -14,6 +14,10 @@ const MAX_SESSION_TITLE_CHARS: usize = 48;
 const MAX_RUNTIME_MODEL_CHARS: usize = 200;
 const MAX_REPLAY_CONTEXT_CHARS: usize = 48_000;
 const MAX_REASONING_BYTES: usize = 100_000;
+const MAX_FOLLOW_UPS: usize = 2;
+const MAX_FOLLOW_UP_CHARS: usize = 180;
+const FOLLOW_UP_SECTION_START: &str = "<!-- KEROSENE_FOLLOW_UPS_V1";
+const FOLLOW_UP_SECTION_END: &str = "KEROSENE_FOLLOW_UPS_V1 -->";
 
 // ---------------------------------------------------------------------------
 // Kerosene Assistant State
@@ -58,6 +62,7 @@ pub(crate) enum AgentChatEntry {
         role: AgentChatRole,
         text: String,
         markdown: Option<Box<markdown::Content>>,
+        follow_ups: Vec<String>,
     },
     Tool {
         call_id: String,
@@ -766,6 +771,7 @@ impl AgentState {
                 role: AgentChatRole::Assistant,
                 text: String::new(),
                 markdown: Some(Box::new(markdown::Content::new())),
+                follow_ups: Vec::new(),
             });
             let index = self.entries.len().saturating_sub(1);
             self.assistant_entry_index = Some(index);
@@ -836,6 +842,44 @@ impl AgentState {
         self.stream.reveal_frame = STREAM_REVEAL_FRAME_INTERVAL;
     }
 
+    pub(crate) fn finalize_assistant_response_metadata(&mut self) -> bool {
+        let pending_len = self.stream.pending.len();
+        let Some(entry_index) = self
+            .assistant_entry_index
+            .or_else(|| latest_assistant_after_last_user(&self.entries))
+        else {
+            self.current_turn_has_text = false;
+            return false;
+        };
+        let Some(AgentChatEntry::Message {
+            role: AgentChatRole::Assistant,
+            text,
+            markdown,
+            follow_ups,
+        }) = self.entries.get_mut(entry_index)
+        else {
+            self.current_turn_has_text = false;
+            return false;
+        };
+
+        let visible_len = text.len().saturating_sub(pending_len);
+        let (visible_answer, parsed_follow_ups) = split_assistant_follow_ups(text);
+        if visible_answer != *text {
+            *text = visible_answer;
+            if visible_len <= text.len() && text.is_char_boundary(visible_len) {
+                self.stream.pending = text[visible_len..].to_string();
+            } else {
+                self.stream.pending.clear();
+                *markdown = Some(Box::new(markdown::Content::parse(text)));
+            }
+        }
+        if let Some(parsed_follow_ups) = parsed_follow_ups {
+            *follow_ups = parsed_follow_ups;
+        }
+        self.current_turn_has_text = !text.trim().is_empty();
+        self.current_turn_has_text
+    }
+
     pub(crate) fn assistant_stream_ready_to_finalize(&self) -> bool {
         self.stream.transport_settled && self.stream.pending.is_empty()
     }
@@ -901,6 +945,7 @@ impl AgentState {
     }
 
     pub(crate) fn finish_assistant_presentation(&mut self) -> Option<usize> {
+        self.finalize_assistant_response_metadata();
         self.flush_assistant_stream();
         let featured = self
             .assistant_entry_index
@@ -915,6 +960,7 @@ impl AgentState {
     }
 
     pub(crate) fn feature_latest_assistant_immediately(&mut self) {
+        self.finalize_assistant_response_metadata();
         self.flush_assistant_stream();
         self.assistant_entry_index = None;
         self.reset_stream_activity();
@@ -1264,6 +1310,7 @@ fn stored_session_from_persisted(session: PersistedAgentSession) -> AgentStoredS
                 role,
                 text,
                 markdown,
+                follow_ups: Vec::new(),
             })
         })
         .collect();
@@ -1316,6 +1363,52 @@ fn replay_transcript(entries: &[AgentChatEntry]) -> String {
     }
     parts.reverse();
     parts.join("\n\n")
+}
+
+fn split_assistant_follow_ups(response: &str) -> (String, Option<Vec<String>>) {
+    let Some(section_start) = response.rfind(FOLLOW_UP_SECTION_START) else {
+        return (response.to_string(), None);
+    };
+    if section_start > 0
+        && !response[..section_start]
+            .chars()
+            .next_back()
+            .is_some_and(char::is_whitespace)
+    {
+        return (response.to_string(), None);
+    }
+
+    let visible_answer = response[..section_start].trim_end().to_string();
+    let metadata = &response[section_start + FOLLOW_UP_SECTION_START.len()..];
+    let Some(section_end) = metadata.find(FOLLOW_UP_SECTION_END) else {
+        return (visible_answer, Some(Vec::new()));
+    };
+    if !metadata[section_end + FOLLOW_UP_SECTION_END.len()..]
+        .trim()
+        .is_empty()
+    {
+        return (response.to_string(), None);
+    }
+
+    let payload = metadata[..section_end].trim();
+    let parsed = serde_json::from_str::<Vec<String>>(payload).unwrap_or_default();
+    let mut follow_ups = Vec::with_capacity(MAX_FOLLOW_UPS);
+    for candidate in parsed {
+        let normalized = candidate.split_whitespace().collect::<Vec<_>>().join(" ");
+        let bounded = bounded_text(&normalized, MAX_FOLLOW_UP_CHARS);
+        if bounded.is_empty()
+            || follow_ups
+                .iter()
+                .any(|existing: &String| existing.eq_ignore_ascii_case(&bounded))
+        {
+            continue;
+        }
+        follow_ups.push(bounded);
+        if follow_ups.len() == MAX_FOLLOW_UPS {
+            break;
+        }
+    }
+    (visible_answer, Some(follow_ups))
 }
 
 fn bounded_text(text: &str, max_chars: usize) -> String {
@@ -1416,6 +1509,78 @@ mod tests {
     }
 
     #[test]
+    fn response_metadata_becomes_personalized_follow_ups_not_visible_answer_text() {
+        let mut state = AgentState::default();
+        state.append_assistant_delta(
+            "BTC concentration is the main risk.\n\n<!-- KEROSENE_FOLLOW_UPS_V1\n[\"How would a 5% BTC drop affect my current margin buffer?\",\"Which BTC position contributes most to the concentration?\"]\nKEROSENE_FOLLOW_UPS_V1 -->",
+        );
+
+        assert!(state.finalize_assistant_response_metadata());
+
+        let [
+            AgentChatEntry::Message {
+                text,
+                markdown: Some(_),
+                follow_ups,
+                ..
+            },
+        ] = state.entries.as_slice()
+        else {
+            panic!("expected one finalized assistant response");
+        };
+        assert_eq!(text, "BTC concentration is the main risk.");
+        assert_eq!(
+            follow_ups,
+            &[
+                "How would a 5% BTC drop affect my current margin buffer?".to_string(),
+                "Which BTC position contributes most to the concentration?".to_string(),
+            ]
+        );
+        assert!(!text.contains("KEROSENE_FOLLOW_UPS"));
+        assert_eq!(state.persisted_store().sessions[0].entries[0].text, *text);
+
+        assert!(state.finish_assistant_presentation().is_some());
+        assert!(matches!(
+            state.entries.as_slice(),
+            [AgentChatEntry::Message { follow_ups, .. }] if follow_ups.len() == 2
+        ));
+    }
+
+    #[test]
+    fn malformed_or_absent_metadata_never_falls_back_to_generic_follow_ups() {
+        let (plain, plain_follow_ups) = split_assistant_follow_ups("Visible answer");
+        assert_eq!(plain, "Visible answer");
+        assert!(plain_follow_ups.is_none());
+
+        let (visible, malformed_follow_ups) =
+            split_assistant_follow_ups("Visible answer\n<!-- KEROSENE_FOLLOW_UPS_V1\nnot-json");
+        assert_eq!(visible, "Visible answer");
+        assert!(malformed_follow_ups.is_some_and(|follow_ups| follow_ups.is_empty()));
+    }
+
+    #[test]
+    fn follow_up_metadata_is_normalized_deduplicated_and_bounded() {
+        let long_question = format!("{}?", "x".repeat(MAX_FOLLOW_UP_CHARS + 40));
+        let response = format!(
+            "Answer\n\n{FOLLOW_UP_SECTION_START}\n{}\n{FOLLOW_UP_SECTION_END}",
+            serde_json::json!([
+                "  Compare BTC   with ETH?  ",
+                "compare btc with eth?",
+                long_question,
+                "This third unique question must be dropped?",
+            ])
+        );
+
+        let (visible, follow_ups) = split_assistant_follow_ups(&response);
+        let follow_ups = follow_ups.expect("metadata marker should be recognized");
+
+        assert_eq!(visible, "Answer");
+        assert_eq!(follow_ups.len(), MAX_FOLLOW_UPS);
+        assert_eq!(follow_ups[0], "Compare BTC with ETH?");
+        assert_eq!(follow_ups[1].chars().count(), MAX_FOLLOW_UP_CHARS);
+    }
+
+    #[test]
     fn streamed_reasoning_tracks_duration_and_stays_transient() {
         let mut state = AgentState {
             status: AgentStatus::Thinking,
@@ -1471,6 +1636,7 @@ mod tests {
             role: AgentChatRole::User,
             text: "private portfolio question".to_string(),
             markdown: None,
+            follow_ups: Vec::new(),
         };
         let debug = format!("{entry:?}");
         assert!(!debug.contains("private portfolio question"));
@@ -1589,6 +1755,7 @@ mod tests {
             role: AgentChatRole::User,
             text: "Review my BTC risk".to_string(),
             markdown: None,
+            follow_ups: Vec::new(),
         });
 
         assert!(state.create_session(20));
@@ -1600,6 +1767,7 @@ mod tests {
             role: AgentChatRole::User,
             text: "Show my best trades".to_string(),
             markdown: None,
+            follow_ups: Vec::new(),
         });
 
         assert!(state.switch_session(first_id));
@@ -1620,11 +1788,13 @@ mod tests {
             role: AgentChatRole::User,
             text: "private question".to_string(),
             markdown: None,
+            follow_ups: Vec::new(),
         });
         state.entries.push(AgentChatEntry::Message {
             role: AgentChatRole::Assistant,
             text: "## Saved answer".to_string(),
             markdown: Some(Box::new(markdown::Content::parse("## Saved answer"))),
+            follow_ups: Vec::new(),
         });
         state.prepare_context_for_model("openrouter/auto");
         state.update_runtime_model_context(Some("openrouter/auto".to_string()), Some(2_000_000));
@@ -1657,11 +1827,13 @@ mod tests {
             role: AgentChatRole::User,
             text: "Earlier private question".to_string(),
             markdown: None,
+            follow_ups: Vec::new(),
         });
         state.entries.push(AgentChatEntry::Message {
             role: AgentChatRole::Assistant,
             text: "Earlier private answer".to_string(),
             markdown: Some(Box::new(markdown::Content::parse("Earlier private answer"))),
+            follow_ups: Vec::new(),
         });
         state.needs_context_replay = true;
 
@@ -1685,6 +1857,7 @@ mod tests {
                 role: AgentChatRole::User,
                 text: "private message".to_string(),
                 markdown: None,
+                follow_ups: Vec::new(),
             }],
             requested_model: Some("openrouter/auto".to_string()),
             runtime_model: Some("openrouter/auto".to_string()),

@@ -1056,6 +1056,13 @@ mod tests {
     }
 
     #[test]
+    fn extension_requires_the_personalized_follow_up_contract() {
+        assert!(EXTENSION_SOURCE.contains("<!-- KEROSENE_FOLLOW_UPS_V1"));
+        assert!(EXTENSION_SOURCE.contains("exactly two concise, standalone questions"));
+        assert!(EXTENSION_SOURCE.contains("Do not use generic prompts"));
+    }
+
+    #[test]
     fn packaged_pi_candidates_cover_supported_install_layouts() {
         let linux = packaged_pi_candidates(Path::new("/usr/bin"), "pi");
         let bundled_linux = PathBuf::from("/usr/lib/kerosene/pi/pi");

@@ -53,12 +53,12 @@ store is limited to 32 MiB and 50 sessions; drafts, message counts, individual
 messages, and replay context are also bounded.
 
 Only user and assistant messages are durable. P&L card previews, image bytes,
-and tool activity cards are transient UI state. The active
-response's evidence drawer and follow-up suggestions are transient for the same
-reason. Image-based turns require the card to be attached again before they can
-be regenerated. Assistant Markdown is parsed again when a stored session is loaded; the
-most recent restored assistant response still receives Copy and Regenerate
-actions.
+tool activity cards, and model-authored follow-up prompts are transient UI
+state. Kerosene strips the hidden follow-up metadata from the assistant message
+before persistence and replay. Image-based turns require the card to be attached
+again before they can be regenerated. Assistant Markdown is parsed again when a
+stored session is loaded; the most recent restored assistant response still
+receives Copy and Regenerate actions.
 
 Chat content may include account information and trading intent. Persistence
 types and completion messages therefore use redacted `Debug` implementations,

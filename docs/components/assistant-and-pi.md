@@ -90,11 +90,16 @@ verb, bounded request detail, and only exceptional state (`Running` or
 individual tool cards and the duplicate post-response data-call drawer are not
 rendered.
 
-Completed responses expose Copy and Regenerate actions and two deterministic
-follow-up suggestions based on the tool categories used. Follow-up selection
-fills the composer for review instead of sending immediately. These
-presentation controls and tool traces are transient; persisted session content
-remains limited to user and assistant messages.
+Completed responses expose Copy and Regenerate actions and up to two
+model-authored follow-up questions. The system prompt requires an exact hidden
+`KEROSENE_FOLLOW_UPS_V1` JSON metadata block at the end of every response. The
+questions must be specific to the user's request and the answer's concrete
+findings or uncertainties; generic category-based fallbacks are not generated.
+Kerosene bounds and validates the questions, removes the metadata block before
+rendering, copying, replaying, or persisting the answer, and fills the composer
+for review instead of sending a selected follow-up immediately. These
+presentation controls, follow-ups, and tool traces are transient; persisted
+session content remains limited to user and assistant messages.
 
 Opening the Assistant while an account is connected also makes it an active
 journal-data consumer. Kerosene immediately hydrates any local journal cache and

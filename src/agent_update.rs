@@ -355,6 +355,7 @@ impl TradingTerminal {
             role: AgentChatRole::User,
             text: visible_prompt,
             markdown: None,
+            follow_ups: Vec::new(),
         });
         self.agent.assistant_entry_index = None;
         if !self.agent.runtime_connected {
@@ -784,8 +785,8 @@ impl TradingTerminal {
                     self.agent.total_cost_usd = total_cost_usd;
                 }
 
-                let has_visible_text = has_visible_text.unwrap_or(self.agent.current_turn_has_text)
-                    || self.agent.current_turn_has_text;
+                let runtime_reported_visible_text = has_visible_text.unwrap_or(false);
+                let has_visible_text = self.agent.finalize_assistant_response_metadata();
                 match empty_response_action(
                     has_visible_text,
                     self.agent.suppress_empty_response_retry,
@@ -797,8 +798,14 @@ impl TradingTerminal {
                         self.agent.current_turn_has_text = false;
                         self.agent.assistant_entry_index = None;
                         self.agent.status = AgentStatus::Thinking;
-                        self.agent.status_detail =
-                            Some("Pi returned no visible text; retrying once…".to_string());
+                        self.agent.status_detail = Some(
+                            if runtime_reported_visible_text {
+                                "Pi returned response metadata without an answer; retrying once…"
+                            } else {
+                                "Pi returned no visible text; retrying once…"
+                            }
+                            .to_string(),
+                        );
                         let retry = AgentPrompt::from(
                             "Your previous turn returned no visible answer text. Provide a concise, complete answer to the user's immediately preceding request now. Reuse any tool results already gathered, call only a missing narrow tool if essential, and finish with visible Markdown text."
                                 .to_string(),
@@ -1299,6 +1306,8 @@ mod tests {
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.agent.runtime_generation = 4;
         terminal.agent.status = AgentStatus::Thinking;
+        terminal.agent.append_assistant_delta("Visible answer");
+        terminal.agent.flush_assistant_stream();
 
         let _ = terminal.update_agent(Message::AgentRuntimeEvent(AgentRuntimeEvent::Settled {
             generation: 4,
@@ -1436,6 +1445,7 @@ mod tests {
             role: AgentChatRole::User,
             text: "private first session".to_string(),
             markdown: None,
+            follow_ups: Vec::new(),
         });
 
         let _ = terminal.update_agent(Message::AgentNewChat);
@@ -1470,6 +1480,7 @@ mod tests {
             markdown: Some(Box::new(iced::widget::markdown::Content::parse(
                 "saved answer",
             ))),
+            follow_ups: Vec::new(),
         });
 
         terminal.close_agent_session();
@@ -1492,6 +1503,7 @@ mod tests {
             role: AgentChatRole::User,
             text: "private prompt".to_string(),
             markdown: None,
+            follow_ups: Vec::new(),
         });
         assert!(terminal.agent.create_session(100));
         terminal.agent.input = "private draft".to_string();

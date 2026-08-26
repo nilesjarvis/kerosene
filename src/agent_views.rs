@@ -1065,6 +1065,7 @@ fn agent_entry<'a>(
             role,
             text: body,
             markdown: markdown_content,
+            follow_ups,
         } => {
             let label = match role {
                 AgentChatRole::User => "You",
@@ -1101,7 +1102,6 @@ fn agent_entry<'a>(
             let featured = *role == AgentChatRole::Assistant
                 && agent.stream.featured_entry_index == Some(entry_index);
             if featured {
-                let evidence = agent_turn_evidence(&agent.entries, entry_index);
                 let progress = agent.stream.completion_progress;
                 content = content.push(agent_response_actions(
                     entry_index,
@@ -1109,7 +1109,9 @@ fn agent_entry<'a>(
                     progress,
                     theme,
                 ));
-                content = content.push(agent_follow_up_view(&evidence, progress, theme));
+                if !follow_ups.is_empty() {
+                    content = content.push(agent_follow_up_view(follow_ups, progress, theme));
+                }
             }
 
             let bubble = container(content).padding([10, 12]).style(match role {
@@ -1371,46 +1373,6 @@ fn agent_tool_trace_action(name: &str) -> &'static str {
     }
 }
 
-fn agent_turn_evidence<'a>(
-    entries: &'a [AgentChatEntry],
-    entry_index: usize,
-) -> Vec<AgentEvidence<'a>> {
-    let Some(before_entry) = entries.get(..entry_index) else {
-        return Vec::new();
-    };
-    let turn_start = before_entry
-        .iter()
-        .rposition(|entry| {
-            matches!(
-                entry,
-                AgentChatEntry::Message {
-                    role: AgentChatRole::User,
-                    ..
-                }
-            )
-        })
-        .map_or(0, |index| index + 1);
-
-    entries[turn_start..entry_index]
-        .iter()
-        .filter_map(|entry| match entry {
-            AgentChatEntry::Tool {
-                name,
-                detail,
-                finished,
-                is_error,
-                ..
-            } => Some(AgentEvidence {
-                name,
-                detail: detail.as_deref(),
-                finished: *finished,
-                is_error: *is_error,
-            }),
-            AgentChatEntry::Message { .. } | AgentChatEntry::Reasoning { .. } => None,
-        })
-        .collect()
-}
-
 fn agent_response_actions<'a>(
     entry_index: usize,
     can_regenerate: bool,
@@ -1448,11 +1410,10 @@ fn agent_response_actions<'a>(
 }
 
 fn agent_follow_up_view<'a>(
-    evidence: &[AgentEvidence<'a>],
+    follow_ups: &'a [String],
     progress: f32,
     theme: &Theme,
 ) -> Element<'a, Message> {
-    let follow_ups = agent_follow_ups(evidence);
     let enabled = progress >= 0.72;
     let muted = with_alpha(
         theme.extended_palette().background.weak.text,
@@ -1462,53 +1423,28 @@ fn agent_follow_up_view<'a>(
         .push(text("Follow-ups").size(10).color(muted))
         .spacing(2)
         .width(Fill);
-    for (index, follow_up) in follow_ups.into_iter().enumerate() {
+    for (index, follow_up) in follow_ups.iter().enumerate() {
         let stagger = ((progress - index as f32 * 0.18) / 0.82).clamp(0.0, 1.0);
         let color = with_alpha(theme.palette().text, 0.12 + stagger * 0.88);
-        rows =
-            rows.push(
-                button(
-                    row![
-                        text("↳").size(10).color(muted),
-                        text(follow_up).size(11).color(color),
-                    ]
-                    .spacing(7)
-                    .align_y(Alignment::Center),
-                )
-                .padding([5, 6])
-                .width(Fill)
-                .on_press_maybe(enabled.then(|| {
-                    Message::AgentFollowUpSelected(AgentPrompt::from(follow_up.to_string()))
-                }))
-                .style(move |theme, status| agent_follow_up_style(theme, status, stagger)),
-            );
+        rows = rows.push(
+            button(
+                row![
+                    text("↳").size(10).color(muted),
+                    text(follow_up).size(11).color(color),
+                ]
+                .spacing(7)
+                .align_y(Alignment::Center),
+            )
+            .padding([5, 6])
+            .width(Fill)
+            .on_press_maybe(
+                enabled
+                    .then(|| Message::AgentFollowUpSelected(AgentPrompt::from(follow_up.clone()))),
+            )
+            .style(move |theme, status| agent_follow_up_style(theme, status, stagger)),
+        );
     }
     rows.into()
-}
-
-fn agent_follow_ups(evidence: &[AgentEvidence<'_>]) -> Vec<&'static str> {
-    let mut follow_ups = Vec::with_capacity(2);
-    let used = |name: &str| evidence.iter().any(|item| item.name == name);
-    if used("kerosene_journal") {
-        follow_ups.push("Show the recurring pattern in my weakest trades");
-    }
-    if used("kerosene_risk") || used("kerosene_calculate") {
-        follow_ups.push("Stress this conclusion with a 5% adverse move");
-    }
-    if follow_ups.len() < 2 && (used("kerosene_ohlcv") || used("kerosene_sessions")) {
-        follow_ups.push("Compare this with the previous market session");
-    }
-    if follow_ups.len() < 2 && used("kerosene_market_data") {
-        follow_ups.push("Compare this with the active market");
-    }
-    if follow_ups.len() < 2 {
-        follow_ups.push("What evidence matters most here?");
-    }
-    if follow_ups.len() < 2 {
-        follow_ups.push("Turn this into a concise risk checklist");
-    }
-    follow_ups.truncate(2);
-    follow_ups
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2048,6 +1984,7 @@ mod tests {
                 role: AgentChatRole::User,
                 text: "Inspect my risk".to_string(),
                 markdown: None,
+                follow_ups: Vec::new(),
             },
             AgentChatEntry::Tool {
                 call_id: "positions".to_string(),
@@ -2075,11 +2012,13 @@ mod tests {
                 role: AgentChatRole::Assistant,
                 text: "Answer".to_string(),
                 markdown: None,
+                follow_ups: Vec::new(),
             },
             AgentChatEntry::Message {
                 role: AgentChatRole::User,
                 text: "Next question".to_string(),
                 markdown: None,
+                follow_ups: Vec::new(),
             },
         ];
 
@@ -2099,69 +2038,6 @@ mod tests {
         assert_eq!(agent_tool_trace_action("kerosene_calculate"), "Calculate");
         assert_eq!(agent_tool_trace_action("kerosene_risk"), "Analyze");
         assert_eq!(agent_tool_trace_action("unknown_tool"), "Run");
-    }
-
-    #[test]
-    fn follow_ups_are_derived_from_actual_tool_categories() {
-        let evidence = vec![
-            AgentEvidence {
-                name: "kerosene_journal",
-                detail: None,
-                finished: true,
-                is_error: false,
-            },
-            AgentEvidence {
-                name: "kerosene_risk",
-                detail: None,
-                finished: true,
-                is_error: false,
-            },
-        ];
-
-        assert_eq!(
-            agent_follow_ups(&evidence),
-            vec![
-                "Show the recurring pattern in my weakest trades",
-                "Stress this conclusion with a 5% adverse move",
-            ]
-        );
-    }
-
-    #[test]
-    fn evidence_is_scoped_to_the_response_turn() {
-        let entries = vec![
-            AgentChatEntry::Tool {
-                call_id: "old".to_string(),
-                name: "kerosene_data".to_string(),
-                detail: None,
-                finished: true,
-                is_error: false,
-                expanded: true,
-            },
-            AgentChatEntry::Message {
-                role: AgentChatRole::User,
-                text: "Question".to_string(),
-                markdown: None,
-            },
-            AgentChatEntry::Tool {
-                call_id: "current".to_string(),
-                name: "kerosene_risk".to_string(),
-                detail: Some("Current portfolio".to_string()),
-                finished: true,
-                is_error: false,
-                expanded: true,
-            },
-            AgentChatEntry::Message {
-                role: AgentChatRole::Assistant,
-                text: "Answer".to_string(),
-                markdown: Some(Box::new(markdown::Content::parse("Answer"))),
-            },
-        ];
-
-        let evidence = agent_turn_evidence(&entries, 3);
-
-        assert_eq!(evidence.len(), 1);
-        assert_eq!(evidence[0].name, "kerosene_risk");
     }
 
     #[test]
