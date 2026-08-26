@@ -200,6 +200,10 @@ removes the durable file and its interrupted-save temp file.
 
 The side-file contains bounded drafts and user/assistant messages, but never the
 OpenRouter API key, tool activity cards, Pi process state, or raw tool payloads.
+The main config persists `assistant_provider` (`open_router` or `llama_cpp`),
+defaulting legacy configs to OpenRouter. Detected llama.cpp URLs and model
+catalogs are transient and re-verified when the Assistant opens; they are not
+persisted.
 
 ## Runtime-Only State
 

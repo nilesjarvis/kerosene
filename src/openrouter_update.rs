@@ -23,7 +23,9 @@ impl TradingTerminal {
                 let openrouter_key_changed = previous_key.as_str() != next_key.as_str();
                 if openrouter_key_changed {
                     self.bump_openrouter_key_generation();
-                    self.invalidate_agent_runtime();
+                    if self.assistant_provider == crate::config::AssistantProvider::OpenRouter {
+                        self.invalidate_agent_runtime();
+                    }
                 }
                 self.persist_config();
                 if self.openrouter_api_key.trim().is_empty() {
@@ -52,12 +54,16 @@ impl TradingTerminal {
             Message::OpenRouterModelChanged(value) => {
                 let model_changed = self.openrouter_model != value;
                 self.openrouter_model = value;
-                if model_changed {
+                if model_changed
+                    && self.assistant_provider == crate::config::AssistantProvider::OpenRouter
+                {
                     self.invalidate_agent_runtime();
                     self.agent.model_picker_open = false;
                     self.agent.model_search.clear();
                 }
-                if self.agent.pnl_card_attachment.is_some() {
+                if self.agent.pnl_card_attachment.is_some()
+                    && self.assistant_provider == crate::config::AssistantProvider::OpenRouter
+                {
                     self.agent.status_detail = match self
                         .agent
                         .model_supports_images(&self.openrouter_model_for_task())

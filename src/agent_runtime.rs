@@ -1,4 +1,6 @@
 use crate::agent_state::AgentPrompt;
+use crate::config::AssistantProvider;
+use crate::llama_cpp::{LlamaCppServer, pi_models_config};
 
 use futures::channel::mpsc;
 use serde_json::{Value, json};
@@ -13,7 +15,7 @@ use zeroize::Zeroizing;
 
 const EXTENSION_SOURCE: &str = include_str!("../assets/agent/kerosene.ts");
 const RUNTIME_POLL_INTERVAL: Duration = Duration::from_millis(100);
-const PI_RPC_ARGS: [&str; 3] = ["--mode", "rpc", "--no-session"];
+const PI_RPC_ARGS: [&str; 5] = ["--mode", "rpc", "--no-session", "--thinking", "medium"];
 const PI_TOOL_ALLOWLIST: &str = "kerosene_data,kerosene_market_data,kerosene_activity,kerosene_journal,kerosene_calculate,kerosene_risk,kerosene_positioning,kerosene_pnl_card_match,kerosene_ohlcv,kerosene_sessions";
 
 // ---------------------------------------------------------------------------
@@ -22,10 +24,12 @@ const PI_TOOL_ALLOWLIST: &str = "kerosene_data,kerosene_market_data,kerosene_act
 
 pub(crate) struct AgentRuntimeConfig {
     pub(crate) generation: u64,
+    pub(crate) provider: AssistantProvider,
     pub(crate) model: String,
     pub(crate) api_key: Zeroizing<String>,
     pub(crate) hyperdash_api_key: Zeroizing<String>,
     pub(crate) workspace_dir: PathBuf,
+    pub(crate) local_server: Option<LlamaCppServer>,
 }
 
 #[derive(Clone)]
@@ -34,6 +38,16 @@ pub(crate) enum AgentRuntimeEvent {
         generation: u64,
     },
     Thinking {
+        generation: u64,
+    },
+    ReasoningStarted {
+        generation: u64,
+    },
+    ReasoningDelta {
+        generation: u64,
+        delta: String,
+    },
+    ReasoningFinished {
         generation: u64,
     },
     TextDelta {
@@ -83,6 +97,9 @@ impl AgentRuntimeEvent {
         match self {
             Self::Ready { generation }
             | Self::Thinking { generation }
+            | Self::ReasoningStarted { generation }
+            | Self::ReasoningDelta { generation, .. }
+            | Self::ReasoningFinished { generation }
             | Self::TextDelta { generation, .. }
             | Self::ToolStarted { generation, .. }
             | Self::ToolFinished { generation, .. }
@@ -100,6 +117,18 @@ impl fmt::Debug for AgentRuntimeEvent {
         match self {
             Self::Ready { generation } => f.debug_tuple("Ready").field(generation).finish(),
             Self::Thinking { generation } => f.debug_tuple("Thinking").field(generation).finish(),
+            Self::ReasoningStarted { generation } => {
+                f.debug_tuple("ReasoningStarted").field(generation).finish()
+            }
+            Self::ReasoningDelta { generation, .. } => f
+                .debug_struct("ReasoningDelta")
+                .field("generation", generation)
+                .field("delta", &"<redacted>")
+                .finish(),
+            Self::ReasoningFinished { generation } => f
+                .debug_tuple("ReasoningFinished")
+                .field(generation)
+                .finish(),
             Self::TextDelta { generation, .. } => f
                 .debug_struct("TextDelta")
                 .field("generation", generation)
@@ -270,11 +299,38 @@ fn run_runtime(
         return;
     }
 
+    if config.provider == AssistantProvider::LlamaCpp {
+        let Some(server) = config.local_server.as_ref() else {
+            emit(
+                &event_sender,
+                AgentRuntimeEvent::Error {
+                    generation,
+                    message: "The selected local llama.cpp server is no longer available"
+                        .to_string(),
+                },
+            );
+            return;
+        };
+        if let Err(error) = write_local_models_config(&pi_config_dir, server) {
+            emit(
+                &event_sender,
+                AgentRuntimeEvent::Error {
+                    generation,
+                    message: error,
+                },
+            );
+            return;
+        }
+    }
+
     let mut command = Command::new(pi_binary());
     command
         .args(PI_RPC_ARGS)
         .arg("--provider")
-        .arg("openrouter")
+        .arg(match config.provider {
+            AssistantProvider::OpenRouter => "openrouter",
+            AssistantProvider::LlamaCpp => "llamacpp",
+        })
         .arg("--model")
         .arg(config.model.trim())
         .arg("--tools")
@@ -282,7 +338,7 @@ fn run_runtime(
         .arg("--extension")
         .arg(&extension_path)
         .current_dir(&config.workspace_dir)
-        .env("OPENROUTER_API_KEY", config.api_key.as_str())
+        .env_remove("OPENROUTER_API_KEY")
         .env("KEROSENE_AGENT_SNAPSHOT", &snapshot_path)
         .env("PI_CODING_AGENT_DIR", &pi_config_dir)
         .env("PI_SKIP_VERSION_CHECK", "1")
@@ -290,6 +346,9 @@ fn run_runtime(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if config.provider == AssistantProvider::OpenRouter {
+        command.env("OPENROUTER_API_KEY", config.api_key.as_str());
+    }
     if !config.hyperdash_api_key.trim().is_empty() {
         command.env(
             "KEROSENE_AGENT_HYPERDASH_API_KEY",
@@ -468,6 +527,24 @@ fn prepare_runtime_files(workspace_dir: &PathBuf, extension_path: &PathBuf) -> R
         .map_err(|error| format!("Could not prepare the Kerosene Pi extension: {error}"))
 }
 
+fn write_local_models_config(pi_config_dir: &Path, server: &LlamaCppServer) -> Result<(), String> {
+    let path = pi_config_dir.join("models.json");
+    let bytes = serde_json::to_vec_pretty(&pi_models_config(server))
+        .map_err(|error| format!("Could not serialize the local model configuration: {error}"))?;
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).write(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(path)
+        .map_err(|error| format!("Could not prepare the local model configuration: {error}"))?;
+    file.write_all(&bytes)
+        .map_err(|error| format!("Could not write the local model configuration: {error}"))
+}
+
 fn pi_binary() -> OsString {
     if let Some(binary) = std::env::var_os("KEROSENE_PI_BINARY")
         && !binary.is_empty()
@@ -549,6 +626,37 @@ fn parse_rpc_event(generation: u64, value: &Value) -> Option<AgentRuntimeEvent> 
                 total_cost_usd,
                 has_visible_text: Some(agent_end_has_visible_text(value)),
             })
+        }
+        "message_update"
+            if value
+                .pointer("/assistantMessageEvent/type")
+                .and_then(Value::as_str)
+                == Some("thinking_start") =>
+        {
+            Some(AgentRuntimeEvent::ReasoningStarted { generation })
+        }
+        "message_update"
+            if value
+                .pointer("/assistantMessageEvent/type")
+                .and_then(Value::as_str)
+                == Some("thinking_delta") =>
+        {
+            Some(AgentRuntimeEvent::ReasoningDelta {
+                generation,
+                delta: value
+                    .pointer("/assistantMessageEvent/delta")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            })
+        }
+        "message_update"
+            if value
+                .pointer("/assistantMessageEvent/type")
+                .and_then(Value::as_str)
+                == Some("thinking_end") =>
+        {
+            Some(AgentRuntimeEvent::ReasoningFinished { generation })
         }
         "message_update"
             if value
@@ -931,7 +1039,10 @@ mod tests {
 
     #[test]
     fn pi_rpc_arguments_match_current_cli_contract() {
-        assert_eq!(PI_RPC_ARGS, ["--mode", "rpc", "--no-session"]);
+        assert_eq!(
+            PI_RPC_ARGS,
+            ["--mode", "rpc", "--no-session", "--thinking", "medium"]
+        );
         let tools = PI_TOOL_ALLOWLIST.split(',').collect::<Vec<_>>();
         assert_eq!(tools.len(), 10);
         assert!(tools.contains(&"kerosene_journal"));
@@ -1002,6 +1113,47 @@ mod tests {
                 total_tokens: Some(42),
                 total_cost_usd: Some(cost),
             }) if delta == "secret reply" && (cost - 0.001).abs() < f64::EPSILON
+        ));
+    }
+
+    #[test]
+    fn parses_reasoning_lifecycle_without_exposing_it_in_debug() {
+        let started = json!({
+            "type": "message_update",
+            "assistantMessageEvent": { "type": "thinking_start", "contentIndex": 0 }
+        });
+        let delta = json!({
+            "type": "message_update",
+            "assistantMessageEvent": {
+                "type": "thinking_delta",
+                "contentIndex": 0,
+                "delta": "private portfolio reasoning"
+            }
+        });
+        let finished = json!({
+            "type": "message_update",
+            "assistantMessageEvent": { "type": "thinking_end", "contentIndex": 0 }
+        });
+
+        assert!(matches!(
+            parse_rpc_event(7, &started),
+            Some(AgentRuntimeEvent::ReasoningStarted { generation: 7 })
+        ));
+        let Some(event) = parse_rpc_event(7, &delta) else {
+            panic!("expected reasoning delta");
+        };
+        let AgentRuntimeEvent::ReasoningDelta {
+            generation: 7,
+            delta: reasoning,
+        } = &event
+        else {
+            panic!("expected reasoning delta");
+        };
+        assert_eq!(reasoning, "private portfolio reasoning");
+        assert!(!format!("{event:?}").contains("private portfolio reasoning"));
+        assert!(matches!(
+            parse_rpc_event(7, &finished),
+            Some(AgentRuntimeEvent::ReasoningFinished { generation: 7 })
         ));
     }
 

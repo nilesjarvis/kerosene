@@ -73,6 +73,23 @@ pub use toast::ToastPosition;
 // Config Schema
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssistantProvider {
+    #[default]
+    OpenRouter,
+    LlamaCpp,
+}
+
+impl AssistantProvider {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::OpenRouter => "OpenRouter",
+            Self::LlamaCpp => "Local llama.cpp",
+        }
+    }
+}
+
 /// Persisted application config. Saved as JSON to the platform config directory.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct KeroseneConfig {
@@ -350,6 +367,9 @@ pub struct KeroseneConfig {
     /// Default OpenRouter model slug for AI features; empty uses the auto router.
     #[serde(default)]
     pub openrouter_model: String,
+    /// Model provider used by the read-only Kerosene Assistant.
+    #[serde(default)]
+    pub assistant_provider: AssistantProvider,
     /// Sound notifications enabled.
     #[serde(default)]
     pub sound_enabled: bool,

@@ -388,6 +388,7 @@ impl TradingTerminal {
             ),
             openrouter_key_status: None,
             openrouter_model: cfg.openrouter_model.trim().to_string(),
+            assistant_provider: cfg.assistant_provider,
             agent: crate::agent_persistence::load_agent_state(),
             toasts: Vec::new(),
             next_toast_id: 0,

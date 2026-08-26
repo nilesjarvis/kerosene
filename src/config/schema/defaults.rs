@@ -381,6 +381,7 @@ impl Default for KeroseneConfig {
             schwab_refresh_token: String::new().into(),
             openrouter_api_key: String::new().into(),
             openrouter_model: String::new(),
+            assistant_provider: Default::default(),
             sound_enabled: false,
             desktop_notifications: false,
             toast_position: Default::default(),

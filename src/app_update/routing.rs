@@ -51,10 +51,14 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AgentAbort
         | Message::AgentCopyResponse(_)
         | Message::AgentRegenerateResponse(_)
-        | Message::AgentToggleEvidence(_)
+        | Message::AgentToggleToolTrace(_)
+        | Message::AgentToggleReasoning(_)
         | Message::AgentFollowUpSelected(_)
         | Message::AgentNewChat
         | Message::AgentSelectSession(_)
+        | Message::AgentToggleSidebar
+        | Message::AgentProviderChanged(_)
+        | Message::AgentLocalServerDetected(_, _)
         | Message::AgentToggleModelPicker
         | Message::AgentModelSearchChanged(_)
         | Message::AgentRefreshModels

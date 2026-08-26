@@ -1,4 +1,5 @@
 use crate::agent_pnl_card::{AgentPnlCardAttachment, AgentPromptImage};
+use crate::llama_cpp::LlamaCppServer;
 use crate::openrouter_api::{DEFAULT_OPENROUTER_MODEL, OpenRouterModel};
 use iced::{widget::markdown, window};
 use serde::{Deserialize, Serialize};
@@ -12,6 +13,7 @@ const MAX_PERSISTED_DRAFT_CHARS: usize = 20_000;
 const MAX_SESSION_TITLE_CHARS: usize = 48;
 const MAX_RUNTIME_MODEL_CHARS: usize = 200;
 const MAX_REPLAY_CONTEXT_CHARS: usize = 48_000;
+const MAX_REASONING_BYTES: usize = 100_000;
 
 // ---------------------------------------------------------------------------
 // Kerosene Assistant State
@@ -63,6 +65,13 @@ pub(crate) enum AgentChatEntry {
         detail: Option<String>,
         finished: bool,
         is_error: bool,
+        expanded: bool,
+    },
+    Reasoning {
+        text: String,
+        elapsed_ticks: u64,
+        finished: bool,
+        expanded: bool,
     },
 }
 
@@ -151,6 +160,18 @@ impl fmt::Debug for AgentChatEntry {
                 .field("name", name)
                 .field("finished", finished)
                 .field("is_error", is_error)
+                .finish(),
+            Self::Reasoning {
+                elapsed_ticks,
+                finished,
+                expanded,
+                ..
+            } => f
+                .debug_struct("Reasoning")
+                .field("text", &"<redacted>")
+                .field("elapsed_ticks", elapsed_ticks)
+                .field("finished", finished)
+                .field("expanded", expanded)
                 .finish(),
         }
     }
@@ -277,6 +298,7 @@ const STREAM_REVEAL_FRAME_INTERVAL: u8 = 3;
 const STREAM_WORD_FADE_STEP: f32 = 0.14;
 const STREAM_COMPLETION_FADE_STEP: f32 = 0.08;
 const STREAM_CURSOR_PHASE_STEP: f32 = 0.025;
+pub(crate) const AGENT_PRESENTATION_TICK_MS: u64 = 16;
 
 pub(crate) struct AgentStreamPresentation {
     pending: String,
@@ -284,10 +306,10 @@ pub(crate) struct AgentStreamPresentation {
     reveal_frame: u8,
     pub(crate) word_progress: f32,
     pub(crate) cursor_visible: bool,
-    cursor_phase: f32,
+    pub(crate) cursor_phase: f32,
+    pub(crate) activity_ticks: u64,
     pub(crate) featured_entry_index: Option<usize>,
     pub(crate) completion_progress: f32,
-    pub(crate) evidence_open: bool,
 }
 
 impl Default for AgentStreamPresentation {
@@ -299,9 +321,9 @@ impl Default for AgentStreamPresentation {
             word_progress: 1.0,
             cursor_visible: true,
             cursor_phase: 0.0,
+            activity_ticks: 0,
             featured_entry_index: None,
             completion_progress: 1.0,
-            evidence_open: false,
         }
     }
 }
@@ -323,6 +345,7 @@ pub(crate) struct AgentState {
     pub(crate) snapshot_request_id: u64,
     pub(crate) pending_prompt: Option<AgentPrompt>,
     pub(crate) assistant_entry_index: Option<usize>,
+    pub(crate) reasoning_entry_index: Option<usize>,
     pub(crate) stream: AgentStreamPresentation,
     pub(crate) current_turn_has_text: bool,
     pub(crate) current_turn_has_image: bool,
@@ -336,11 +359,16 @@ pub(crate) struct AgentState {
     pub(crate) context_window: Option<u64>,
     pub(crate) total_tokens: Option<u64>,
     pub(crate) total_cost_usd: Option<f64>,
+    pub(crate) sidebar_collapsed: bool,
     pub(crate) model_picker_open: bool,
     pub(crate) model_search: String,
     pub(crate) model_catalog: Vec<OpenRouterModel>,
     pub(crate) model_catalog_loading: bool,
     pub(crate) model_catalog_error: Option<String>,
+    pub(crate) local_detection_generation: u64,
+    pub(crate) local_detection_loading: bool,
+    pub(crate) local_server: Option<LlamaCppServer>,
+    pub(crate) local_detection_error: Option<String>,
     pub(crate) pnl_card_attachment: Option<AgentPnlCardAttachment>,
     pub(crate) pnl_card_loading: bool,
     pub(crate) pnl_card_drop_hovered: bool,
@@ -372,6 +400,7 @@ impl Default for AgentState {
             snapshot_request_id: 0,
             pending_prompt: None,
             assistant_entry_index: None,
+            reasoning_entry_index: None,
             stream: AgentStreamPresentation::default(),
             current_turn_has_text: false,
             current_turn_has_image: false,
@@ -385,11 +414,16 @@ impl Default for AgentState {
             context_window: None,
             total_tokens: None,
             total_cost_usd: None,
+            sidebar_collapsed: false,
             model_picker_open: false,
             model_search: String::new(),
             model_catalog: Vec::new(),
             model_catalog_loading: false,
             model_catalog_error: None,
+            local_detection_generation: 0,
+            local_detection_loading: false,
+            local_server: None,
+            local_detection_error: None,
             pnl_card_attachment: None,
             pnl_card_loading: false,
             pnl_card_drop_hovered: false,
@@ -420,6 +454,13 @@ impl AgentState {
             .iter()
             .find(|model| model.id == model_id)
             .map(|model| model.supports_image_input)
+    }
+
+    pub(crate) fn begin_local_detection(&mut self) -> u64 {
+        self.local_detection_generation = self.local_detection_generation.wrapping_add(1);
+        self.local_detection_loading = true;
+        self.local_detection_error = None;
+        self.local_detection_generation
     }
 
     pub(crate) fn begin_pnl_card_load(&mut self) -> u64 {
@@ -704,7 +745,6 @@ impl AgentState {
     pub(crate) fn begin_snapshot(&mut self, prompt: AgentPrompt) -> (u64, u64) {
         self.flush_assistant_stream();
         self.reset_stream_activity();
-        self.stream.evidence_open = false;
         self.snapshot_request_id = self.snapshot_request_id.wrapping_add(1);
         self.pending_prompt = Some(prompt);
         self.status = AgentStatus::Preparing;
@@ -717,6 +757,7 @@ impl AgentState {
     }
 
     pub(crate) fn append_assistant_delta(&mut self, delta: &str) {
+        self.finish_reasoning();
         if !delta.trim().is_empty() {
             self.current_turn_has_text = true;
         }
@@ -745,6 +786,51 @@ impl AgentState {
         self.stream.cursor_visible = true;
     }
 
+    pub(crate) fn begin_reasoning(&mut self) {
+        if self.reasoning_entry_index.is_some() {
+            return;
+        }
+        self.entries.push(AgentChatEntry::Reasoning {
+            text: String::new(),
+            elapsed_ticks: 0,
+            finished: false,
+            expanded: true,
+        });
+        self.reasoning_entry_index = Some(self.entries.len().saturating_sub(1));
+    }
+
+    pub(crate) fn append_reasoning_delta(&mut self, delta: &str) {
+        self.begin_reasoning();
+        let Some(AgentChatEntry::Reasoning { text, .. }) = self
+            .reasoning_entry_index
+            .and_then(|index| self.entries.get_mut(index))
+        else {
+            return;
+        };
+        let remaining = MAX_REASONING_BYTES.saturating_sub(text.len());
+        let mut prefix_len = remaining.min(delta.len());
+        while !delta.is_char_boundary(prefix_len) {
+            prefix_len = prefix_len.saturating_sub(1);
+        }
+        text.push_str(&delta[..prefix_len]);
+    }
+
+    pub(crate) fn finish_reasoning(&mut self) {
+        let Some(index) = self.reasoning_entry_index.take() else {
+            return;
+        };
+        if let Some(AgentChatEntry::Reasoning { finished, .. }) = self.entries.get_mut(index) {
+            *finished = true;
+        }
+    }
+
+    pub(crate) fn toggle_reasoning(&mut self, entry_index: usize) {
+        if let Some(AgentChatEntry::Reasoning { expanded, .. }) = self.entries.get_mut(entry_index)
+        {
+            *expanded = !*expanded;
+        }
+    }
+
     pub(crate) fn mark_assistant_transport_settled(&mut self) {
         self.stream.transport_settled = true;
         self.stream.reveal_frame = STREAM_REVEAL_FRAME_INTERVAL;
@@ -758,6 +844,19 @@ impl AgentState {
         self.stream.word_progress = (self.stream.word_progress + STREAM_WORD_FADE_STEP).min(1.0);
         self.stream.cursor_phase = (self.stream.cursor_phase + STREAM_CURSOR_PHASE_STEP).fract();
         self.stream.cursor_visible = self.stream.cursor_phase < 0.58;
+        if self.status.is_busy() {
+            self.stream.activity_ticks = self.stream.activity_ticks.saturating_add(1);
+        }
+        if let Some(AgentChatEntry::Reasoning {
+            elapsed_ticks,
+            finished: false,
+            ..
+        }) = self
+            .reasoning_entry_index
+            .and_then(|index| self.entries.get_mut(index))
+        {
+            *elapsed_ticks = elapsed_ticks.saturating_add(1);
+        }
         if self.stream.featured_entry_index.is_some() {
             self.stream.completion_progress =
                 (self.stream.completion_progress + STREAM_COMPLETION_FADE_STEP).min(1.0);
@@ -812,7 +911,6 @@ impl AgentState {
         self.featured_response_has_image = self.current_turn_has_image && featured.is_some();
         self.current_turn_has_image = false;
         self.stream.completion_progress = if featured.is_some() { 0.0 } else { 1.0 };
-        self.stream.evidence_open = false;
         featured
     }
 
@@ -821,7 +919,6 @@ impl AgentState {
         self.assistant_entry_index = None;
         self.reset_stream_activity();
         self.stream.featured_entry_index = latest_assistant_after_last_user(&self.entries);
-        self.stream.evidence_open = false;
         self.featured_response_has_image =
             self.current_turn_has_image && self.stream.featured_entry_index.is_some();
         self.current_turn_has_image = false;
@@ -839,7 +936,6 @@ impl AgentState {
             )
         });
         self.featured_response_has_image = false;
-        self.stream.evidence_open = false;
     }
 
     pub(crate) fn stream_needs_tick(&self) -> bool {
@@ -847,13 +943,14 @@ impl AgentState {
             && (!self.stream.transport_settled
                 || !self.stream.pending.is_empty()
                 || self.stream.word_progress < 1.0);
-        active_stream
+        self.status.is_busy()
+            || active_stream
             || (self.stream.featured_entry_index.is_some() && self.stream.completion_progress < 1.0)
     }
 
-    pub(crate) fn toggle_evidence(&mut self, entry_index: usize) {
-        if self.stream.featured_entry_index == Some(entry_index) {
-            self.stream.evidence_open = !self.stream.evidence_open;
+    pub(crate) fn toggle_tool_trace(&mut self, entry_index: usize) {
+        if let Some(AgentChatEntry::Tool { expanded, .. }) = self.entries.get_mut(entry_index) {
+            *expanded = !*expanded;
         }
     }
 
@@ -883,12 +980,14 @@ impl AgentState {
     }
 
     fn reset_stream_activity(&mut self) {
+        self.finish_reasoning();
         self.stream.pending.clear();
         self.stream.transport_settled = false;
         self.stream.reveal_frame = STREAM_REVEAL_FRAME_INTERVAL;
         self.stream.word_progress = 1.0;
         self.stream.cursor_visible = true;
         self.stream.cursor_phase = 0.0;
+        self.stream.activity_ticks = 0;
     }
 
     pub(crate) fn finish_tool(&mut self, call_id: &str, is_error: bool) {
@@ -951,7 +1050,6 @@ impl AgentState {
         self.total_cost_usd = None;
         self.stream.featured_entry_index = None;
         self.featured_response_has_image = false;
-        self.stream.evidence_open = false;
         self.reset_runtime();
     }
 
@@ -1116,7 +1214,9 @@ fn persisted_session(
                     text: bounded_text(text, MAX_PERSISTED_MESSAGE_CHARS),
                 })
             }
-            AgentChatEntry::Message { .. } | AgentChatEntry::Tool { .. } => None,
+            AgentChatEntry::Message { .. }
+            | AgentChatEntry::Tool { .. }
+            | AgentChatEntry::Reasoning { .. } => None,
         })
         .rev()
         .take(MAX_PERSISTED_ENTRIES_PER_SESSION)
@@ -1316,6 +1416,56 @@ mod tests {
     }
 
     #[test]
+    fn streamed_reasoning_tracks_duration_and_stays_transient() {
+        let mut state = AgentState {
+            status: AgentStatus::Thinking,
+            ..AgentState::default()
+        };
+        state.begin_reasoning();
+        state.append_reasoning_delta("private portfolio reasoning");
+        let _ = state.advance_assistant_stream();
+        let _ = state.advance_assistant_stream();
+        state.finish_reasoning();
+        state.append_assistant_delta("Visible answer");
+
+        let [reasoning, AgentChatEntry::Message { .. }] = state.entries.as_slice() else {
+            panic!("expected a reasoning trace followed by the answer");
+        };
+        assert!(matches!(
+            reasoning,
+            AgentChatEntry::Reasoning {
+                text,
+                elapsed_ticks: 2,
+                finished: true,
+                expanded: true,
+            } if text == "private portfolio reasoning"
+        ));
+        let debug = format!("{reasoning:?}");
+        assert!(!debug.contains("private portfolio reasoning"));
+        assert!(debug.contains("<redacted>"));
+
+        let persisted = state.persisted_store();
+        assert_eq!(persisted.sessions[0].entries.len(), 1);
+        assert_eq!(persisted.sessions[0].entries[0].text, "Visible answer");
+    }
+
+    #[test]
+    fn reasoning_disclosure_can_be_collapsed() {
+        let mut state = AgentState::default();
+        state.begin_reasoning();
+        state.append_reasoning_delta("Trace");
+        state.toggle_reasoning(0);
+
+        assert!(matches!(
+            state.entries.as_slice(),
+            [AgentChatEntry::Reasoning {
+                expanded: false,
+                ..
+            }]
+        ));
+    }
+
+    #[test]
     fn chat_entry_debug_redacts_message_text() {
         let entry = AgentChatEntry::Message {
             role: AgentChatRole::User,
@@ -1395,6 +1545,21 @@ mod tests {
         assert!(ready);
         assert!(state.finish_assistant_presentation().is_some());
         assert!(state.assistant_entry_index.is_none());
+    }
+
+    #[test]
+    fn busy_assistant_keeps_the_activity_animation_ticking() {
+        let mut state = AgentState {
+            status: AgentStatus::Preparing,
+            ..AgentState::default()
+        };
+
+        assert!(state.stream_needs_tick());
+        let _ = state.advance_assistant_stream();
+        assert_eq!(state.stream.activity_ticks, 1);
+
+        state.begin_snapshot(AgentPrompt::from("next turn".to_string()));
+        assert_eq!(state.stream.activity_ticks, 0);
     }
 
     #[test]

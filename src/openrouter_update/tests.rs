@@ -178,6 +178,25 @@ fn openrouter_model_change_updates_state_and_schedules_config_save() {
 }
 
 #[test]
+fn openrouter_model_change_does_not_interrupt_selected_local_provider() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    terminal.assistant_provider = config::AssistantProvider::LlamaCpp;
+    terminal.agent.runtime_generation = 9;
+    terminal.agent.runtime_connected = true;
+    terminal.agent.model_picker_open = true;
+    terminal.agent.model_search = "local".to_string();
+
+    let _task = terminal.update_openrouter(Message::OpenRouterModelChanged(
+        "anthropic/claude-sonnet-4.5".to_string(),
+    ));
+
+    assert_eq!(terminal.agent.runtime_generation, 9);
+    assert!(terminal.agent.runtime_connected);
+    assert!(terminal.agent.model_picker_open);
+    assert_eq!(terminal.agent.model_search, "local");
+}
+
+#[test]
 fn openrouter_model_for_task_falls_back_to_auto_router() {
     let (mut terminal, _) = TradingTerminal::boot();
     terminal.openrouter_model = "  ".to_string();

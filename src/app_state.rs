@@ -227,6 +227,54 @@ impl TradingTerminal {
         }
     }
 
+    pub(crate) fn assistant_model_for_task(&self) -> Option<String> {
+        match self.assistant_provider {
+            config::AssistantProvider::OpenRouter => Some(self.openrouter_model_for_task()),
+            config::AssistantProvider::LlamaCpp => self
+                .agent
+                .local_server
+                .as_ref()
+                .filter(|server| server.supports_tools)
+                .and_then(|server| server.primary_model())
+                .map(|model| model.id.clone()),
+        }
+    }
+
+    pub(crate) fn assistant_configured(&self) -> bool {
+        match self.assistant_provider {
+            config::AssistantProvider::OpenRouter => self.openrouter_configured(),
+            config::AssistantProvider::LlamaCpp => self
+                .agent
+                .local_server
+                .as_ref()
+                .is_some_and(|server| server.supports_tools && server.primary_model().is_some()),
+        }
+    }
+
+    pub(crate) fn assistant_model_supports_images(&self, model_id: &str) -> Option<bool> {
+        match self.assistant_provider {
+            config::AssistantProvider::OpenRouter => self.agent.model_supports_images(model_id),
+            config::AssistantProvider::LlamaCpp => self
+                .agent
+                .local_server
+                .as_ref()
+                .filter(|server| {
+                    server
+                        .primary_model()
+                        .is_some_and(|model| model.id == model_id)
+                })
+                .map(|server| server.supports_vision),
+        }
+    }
+
+    pub(crate) fn assistant_context_model_key(&self, model_id: &str) -> String {
+        let provider = match self.assistant_provider {
+            config::AssistantProvider::OpenRouter => "openrouter",
+            config::AssistantProvider::LlamaCpp => "llamacpp",
+        };
+        format!("{provider}:{model_id}")
+    }
+
     pub(crate) fn bump_openrouter_key_generation(&mut self) {
         self.openrouter_key_generation = self.openrouter_key_generation.wrapping_add(1);
         self.openrouter_key_status = None;
@@ -552,6 +600,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) openrouter_key_input: SensitiveString,
     pub(crate) openrouter_key_status: Option<(String, bool)>,
     pub(crate) openrouter_model: String,
+    pub(crate) assistant_provider: config::AssistantProvider,
     pub(crate) agent: AgentState,
     // Toast notification queue
     pub(crate) toasts: Vec<Toast>,

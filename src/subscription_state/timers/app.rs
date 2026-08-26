@@ -1,3 +1,4 @@
+use crate::agent_state::AGENT_PRESENTATION_TICK_MS;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
@@ -50,7 +51,7 @@ impl TradingTerminal {
 
         if self.agent.stream_needs_tick() {
             subs.push(
-                iced::time::every(std::time::Duration::from_millis(16))
+                iced::time::every(std::time::Duration::from_millis(AGENT_PRESENTATION_TICK_MS))
                     .map(|_| Message::AgentStreamTick),
             );
         }

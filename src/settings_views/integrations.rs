@@ -237,10 +237,7 @@ impl TradingTerminal {
                 ),
                 button(text("Open Assistant").size(12))
                     .padding([6, 12])
-                    .on_press_maybe(
-                        (!self.openrouter_api_key.trim().is_empty())
-                            .then_some(Message::OpenAgentWindow)
-                    ),
+                    .on_press(Message::OpenAgentWindow),
             ]
             .spacing(8),
             rule::horizontal(1),

@@ -2,8 +2,8 @@ use super::super::config_warning_guard;
 use super::{default_config_value, json_string, object_mut, value_from_json, value_from_str};
 use crate::config::secrets;
 use crate::config::{
-    AccountProfile, CredentialStorageMode, EncryptedSecretsConfig, KeroseneConfig,
-    take_config_warnings,
+    AccountProfile, AssistantProvider, CredentialStorageMode, EncryptedSecretsConfig,
+    KeroseneConfig, take_config_warnings,
 };
 
 #[test]
@@ -100,6 +100,27 @@ fn openrouter_model_round_trips_and_defaults_empty_for_legacy_configs() {
         "legacy config without openrouter model should deserialize",
     );
     assert!(legacy.openrouter_model.is_empty());
+}
+
+#[test]
+fn assistant_provider_round_trips_and_defaults_to_openrouter_for_legacy_configs() {
+    let config = KeroseneConfig {
+        assistant_provider: AssistantProvider::LlamaCpp,
+        ..KeroseneConfig::default()
+    };
+    let json = json_string(&config, "config should serialize");
+    assert!(json.contains("\"assistant_provider\":\"llama_cpp\""));
+
+    let restored: KeroseneConfig = value_from_str(&json, "config should deserialize");
+    assert_eq!(restored.assistant_provider, AssistantProvider::LlamaCpp);
+
+    let mut value = default_config_value();
+    object_mut(&mut value, "config should serialize to object").remove("assistant_provider");
+    let legacy: KeroseneConfig = value_from_json(
+        value,
+        "legacy config without assistant provider should deserialize",
+    );
+    assert_eq!(legacy.assistant_provider, AssistantProvider::OpenRouter);
 }
 
 #[test]

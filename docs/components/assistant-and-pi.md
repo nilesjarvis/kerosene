@@ -1,8 +1,9 @@
 # Kerosene Assistant And Pi
 
 The Kerosene Assistant is a native iced chat window backed by the open-source
-[Pi agent harness](https://github.com/earendil-works/pi) in RPC mode and the
-user's configured OpenRouter account. The
+[Pi agent harness](https://github.com/earendil-works/pi) in RPC mode and either
+the user's configured OpenRouter account or an auto-detected local llama.cpp
+server. The
 MVP is intentionally read-only: the assistant can inspect a sanitized Kerosene
 snapshot, reason about it, and produce explanations or analysis code, but it
 cannot place orders or mutate application state.
@@ -12,25 +13,35 @@ cannot place orders or mutate application state.
 | File | Responsibility |
 | --- | --- |
 | `src/agent_pnl_card.rs` | Bounded image selection, validation, normalization, preview, and redacted transport types. |
-| `src/agent_state.rs` | Window, transcript, runtime status, streaming, tool cards, and redacted prompt wrapper. |
+| `src/agent_state.rs` | Window, transcript, runtime status, answer/reasoning streaming, tool cards, and redacted prompt wrapper. |
 | `src/agent_update.rs` | Window lifecycle, prompt submission, snapshot/runtime orchestration, and stale-generation guards. |
 | `src/agent_views.rs` | Native chat window, composer, status, usage, empty state, and tool activity UI. |
 | `src/agent_snapshot.rs` | Versioned, bounded, sanitized read-only export of Kerosene state. |
 | `src/agent_runtime.rs` | Pi subprocess discovery, isolated environment, JSONL RPC transport, and event parsing. |
+| `src/llama_cpp.rs` | Loopback-only llama.cpp process/endpoint discovery, capability verification, and isolated Pi provider configuration. |
 | `assets/agent/kerosene.ts` | Embedded Pi extension, typed read-only tools, deterministic calculations, and fixed-provider data adapters. |
 
 The assistant opens from the Widgets menu or the OpenRouter section of
-Settings > Integrations. Closing the window terminates Pi, discards unsent image
+Settings > Integrations. Opening it starts a bounded local llama.cpp detection
+task. Closing the window terminates Pi, discards unsent image
 attachments, and deletes the sensitive snapshot. Kerosene persists its bounded
 chat sessions separately, while Pi uses `--no-session` and never writes them to
 its own session store.
 
-The model name in the Assistant footer opens a searchable picker backed by
-OpenRouter's live model catalog. Only text-output models that advertise tool
-calling are listed. Rows show OpenRouter's current input/output token prices,
-context capacity, provider, image-input support, and whether conditional pricing applies. Selecting a model
-uses the existing persisted OpenRouter default and restarts Pi before the next
-turn.
+The provider/model name in the Assistant prompt bar opens the provider selector.
+OpenRouter retains its searchable live catalog, limited to text-output models
+that advertise tool calling. A compatible detected llama.cpp server appears as
+a separate local provider with endpoint, model, context, tool, and vision
+capabilities. Provider choice is persisted; changing provider or model restarts
+Pi before the next turn.
+
+Local discovery checks `KEROSENE_LLAMA_CPP_URL`, running `llama-server` process
+arguments, and the conventional ports 8080 and 8081. Only plain-HTTP loopback
+URLs are accepted. Kerosene verifies llama.cpp's `/props` response and
+`/v1/models` catalog without sending a generation request. A local server is
+selectable only when its chat template advertises tool calling, because the
+Assistant depends on the `kerosene_*` tools. Non-default process ports are
+supported.
 
 ## P&L Card Investigation
 
@@ -41,8 +52,8 @@ file, dimension, and allocation limits, resizes it to at most 2000×2000, and
 normalizes it to an in-memory PNG. The preview and image bytes are transient and
 are never written to `assistant_sessions.json`.
 
-Attaching a card filters the existing OpenRouter picker to models that advertise
-both image input and tool calling. Pi receives the normalized image through its
+Attaching a card requires the selected provider to advertise image input as
+well as tool calling. Pi receives the normalized image through its
 RPC `prompt.images` field. The model first extracts only visible trade fields;
 when a perp symbol and a position-specific number are available, it can call the
 attachment-gated `kerosene_pnl_card_match` tool.
@@ -62,12 +73,28 @@ does not fall materially behind the model. A settled response flushes the final
 backlog before the turn becomes ready. Tool boundaries and abort/error paths
 also flush pending text so a delta can never be rendered into the wrong message.
 
-Completed responses expose Copy and Regenerate actions, a collapsible summary
-of the actual `kerosene_*` data calls made during that turn, and two deterministic
+Reasoning-capable models run with Pi's medium thinking level. Kerosene consumes
+Pi's real `thinking_start`, `thinking_delta`, and `thinking_end` RPC events; it
+does not derive or fabricate reasoning from the visible answer. Each reasoning
+block appears as an expanded `Thought for …` disclosure with a compact sparkle
+header, elapsed time, muted text, and a vertical trace rail. The user can
+collapse or reopen it. Reasoning event payloads use redacted `Debug` output,
+are bounded in memory, and remain transient: they are not copied, replayed into
+future model context, or written to `assistant_sessions.json`.
+
+Tool calls use the same trace language. The first call in a user turn renders a
+single expanded `Running … tools` disclosure that absorbs later calls from the
+same turn and settles to `Ran … tools`. Its compact rows show a plain action
+verb, bounded request detail, and only exceptional state (`Running` or
+`Failed`) beside a vertical rail. The disclosure can be collapsed at any time;
+individual tool cards and the duplicate post-response data-call drawer are not
+rendered.
+
+Completed responses expose Copy and Regenerate actions and two deterministic
 follow-up suggestions based on the tool categories used. Follow-up selection
-fills the composer for review instead of sending immediately. These presentation
-controls and tool summaries are transient; persisted session content remains
-limited to user and assistant messages.
+fills the composer for review instead of sending immediately. These
+presentation controls and tool traces are transient; persisted session content
+remains limited to user and assistant messages.
 
 Opening the Assistant while an account is connected also makes it an active
 journal-data consumer. Kerosene immediately hydrates any local journal cache and
@@ -80,14 +107,24 @@ in progress, with partial coverage reported explicitly.
 Kerosene starts Pi with:
 
 - RPC mode over stdin/stdout JSONL
-- the `openrouter` provider and configured model
+- either the `openrouter` provider and configured model or an isolated
+  `llamacpp` provider and the verified local model
 - session persistence disabled
+- medium reasoning enabled for models that advertise reasoning support (Pi
+  clamps non-reasoning models to off)
 - an isolated, empty Pi configuration directory and temporary project workspace
 - a strict allowlist containing only `kerosene_*` read-only tools
 - an isolated `PI_CODING_AGENT_DIR`
 - version checks and telemetry disabled
 
-The OpenRouter key is passed only in the child environment as
+For llama.cpp, Kerosene writes a zero-cost custom provider to the isolated Pi
+`models.json`, points it at the verified loopback `/v1` URL, and does not put the
+OpenRouter key in the child environment. The file is not written to the user's
+normal Pi configuration. Model prompts therefore stay on the user's machine;
+the allowlisted Kerosene tools may still call their documented market-data
+sources.
+
+The OpenRouter key is passed only for OpenRouter sessions in the child environment as
 `OPENROUTER_API_KEY`; it is never placed in arguments, snapshot content, RPC
 messages, or debug output. If configured, the HyperDash key is passed as
 `KEROSENE_AGENT_HYPERDASH_API_KEY` and can only be consumed by the embedded
@@ -261,8 +298,8 @@ explicit error instead of being presented as a successful blank response.
 
 ## Current MVP Limits
 
-- Kerosene persists bounded chat text locally; image attachments and tool cards
-  remain transient.
+- Kerosene persists bounded chat text locally; image attachments, reasoning
+  traces, and tool cards remain transient.
 - Assistant output renders streamed Markdown with headings, emphasis, lists,
   quotes, tables, links, inline code, and highlighted fenced code blocks.
 - No shell, filesystem, order, signing, or mutation tools are exposed.

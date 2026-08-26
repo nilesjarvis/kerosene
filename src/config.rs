@@ -62,9 +62,9 @@ pub use schema::default_ui_scale;
 #[cfg(test)]
 pub use schema::default_window_background_opacity;
 pub use schema::{
-    AccountProfile, ChartBackfillSource, ChartCrosshairStyle, ChartHollowCandleMode,
-    ChartHudOrderSound, ChartHudReadoutConfig, ChartHudReadoutElement, ChartSeriesStyle,
-    CredentialStorageMode, DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH,
+    AccountProfile, AssistantProvider, ChartBackfillSource, ChartCrosshairStyle,
+    ChartHollowCandleMode, ChartHudOrderSound, ChartHudReadoutConfig, ChartHudReadoutElement,
+    ChartSeriesStyle, CredentialStorageMode, DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH,
     DEFAULT_CHART_CROSSHAIR_SCALE, DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY,
     DEFAULT_CHART_EDGE_BLUR_STRENGTH, DEFAULT_CHART_FISHEYE_STRENGTH,
     DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME, DEFAULT_MARKET_SLIPPAGE_PCT, DEFAULT_UI_SCALE,

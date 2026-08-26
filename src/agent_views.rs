@@ -1,16 +1,18 @@
 use crate::agent_state::{
-    AgentChatEntry, AgentChatRole, AgentPrompt, AgentState, AgentStatus, agent_tool_presentation,
+    AGENT_PRESENTATION_TICK_MS, AgentChatEntry, AgentChatRole, AgentPrompt, AgentState,
+    AgentStatus, agent_tool_presentation,
 };
 use crate::app_fonts;
 use crate::app_state::TradingTerminal;
+use crate::config::AssistantProvider;
 use crate::helpers;
 use crate::message::Message;
 use crate::openrouter_api::OpenRouterModel;
 
 use iced::widget::container as container_style;
 use iced::widget::{
-    Column, Space, button, column, container, image, markdown, rich_text, row, rule, scrollable,
-    text, text_input,
+    Column, Row, Space, button, column, container, image, markdown, rich_text, row, rule,
+    scrollable, text, text_input,
 };
 use iced::{Alignment, Border, Color, ContentFit, Element, Fill, Length, Padding, Theme};
 
@@ -48,9 +50,12 @@ impl TradingTerminal {
                 text(self.agent.active_session_title.as_str())
                     .size(17)
                     .color(theme.palette().text),
-                text("Kerosene Assistant · Pi · OpenRouter")
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text),
+                text(format!(
+                    "Kerosene Assistant · Pi · {}",
+                    self.assistant_provider.label()
+                ))
+                .size(11)
+                .color(theme.extended_palette().background.weak.text),
             ]
             .spacing(2)
             .width(Fill),
@@ -64,6 +69,11 @@ impl TradingTerminal {
         } else {
             let mut messages = Column::new().spacing(12).width(Fill);
             for (index, entry) in self.agent.entries.iter().enumerate() {
+                if matches!(entry, AgentChatEntry::Tool { .. })
+                    && !agent_tool_trace_starts_at(&self.agent.entries, index)
+                {
+                    continue;
+                }
                 messages = messages.push(agent_entry(&self.agent, index, entry, &theme));
             }
             messages.into()
@@ -89,42 +99,47 @@ impl TradingTerminal {
         };
 
         let has_pnl_card = self.agent.pnl_card_attachment.is_some();
-        let requested_model = self.openrouter_model_for_task();
+        let requested_model = self
+            .assistant_model_for_task()
+            .unwrap_or_else(|| "No model detected".to_string());
         let image_model_ready =
-            !has_pnl_card || self.agent.model_supports_images(&requested_model) == Some(true);
-        let can_send = self.openrouter_configured()
+            !has_pnl_card || self.assistant_model_supports_images(&requested_model) == Some(true);
+        let can_send = self.assistant_configured()
             && !self.agent.status.is_busy()
             && !self.agent.pnl_card_loading
             && image_model_ready
             && (!self.agent.input.trim().is_empty() || has_pnl_card);
         let input = text_input(
             if has_pnl_card {
-                "Optional: add context about this P&L card…"
+                "Add context…"
             } else {
-                "Ask about your portfolio, positions, or markets…"
+                "Write a message…"
             },
             &self.agent.input,
         )
         .id(iced::widget::Id::new("kerosene-agent-input"))
-        .style(helpers::text_input_style)
+        .style(agent_composer_input_style)
         .on_input(|value| Message::AgentInputChanged(value.into()))
         .on_submit_maybe(can_send.then_some(Message::AgentSubmit))
-        .padding([10, 12])
+        .padding([9, 6])
         .size(13)
         .width(Fill);
 
         let action = if self.agent.status == AgentStatus::Thinking {
-            button(text("Stop").size(12))
-                .padding([10, 16])
+            button(text("■").size(10))
+                .padding([7, 10])
                 .on_press(Message::AgentAbort)
+                .style(agent_prompt_action_button_style)
         } else {
-            button(text("Send").size(12))
-                .padding([10, 16])
+            button(text("↑").size(17))
+                .padding([4, 9])
                 .on_press_maybe(can_send.then_some(Message::AgentSubmit))
+                .style(agent_prompt_action_button_style)
         };
 
+        let context_model_key = self.assistant_context_model_key(&requested_model);
         let (runtime_model, context_tokens, context_window) =
-            self.agent.context_metrics_for_model(&requested_model);
+            self.agent.context_metrics_for_model(&context_model_key);
         let display_model = runtime_model.unwrap_or(&requested_model);
         let mut context_and_usage = context_usage_summary(context_tokens, context_window);
         if let Some(usage) = api_usage_summary(self.agent.total_tokens, self.agent.total_cost_usd) {
@@ -136,82 +151,92 @@ impl TradingTerminal {
         } else {
             "▾"
         };
+        let model_name = self
+            .agent
+            .model_catalog
+            .iter()
+            .find(|model| model.id == display_model)
+            .map_or(display_model, |model| model.name.as_str());
+        let model_label = helpers::ellipsized_text(model_name, 22);
         let model_button = button(
             row![
-                text(format!("Model · {display_model}")).size(10),
-                text(model_picker_caret).size(9),
-            ]
-            .spacing(5)
-            .align_y(Alignment::Center),
-        )
-        .padding([3, 5])
-        .on_press_maybe(
-            self.openrouter_configured()
-                .then_some(Message::AgentToggleModelPicker),
-        )
-        .style(agent_model_footer_button_style);
-        let footer = row![
-            text("Read-only data access")
-                .size(10)
-                .color(theme.palette().success),
-            Space::new().width(Fill),
-            column![
-                model_button,
-                text(context_and_usage)
-                    .size(10)
+                text(model_label).size(11),
+                text(model_picker_caret)
+                    .size(8)
                     .color(theme.extended_palette().background.weak.text),
             ]
-            .spacing(2)
-            .align_x(Alignment::End),
+            .spacing(4)
+            .align_y(Alignment::Center),
+        )
+        .padding([6, 8])
+        .on_press_maybe((!self.agent.status.is_busy()).then_some(Message::AgentToggleModelPicker))
+        .style(agent_prompt_model_button_style);
+        let footer = row![
+            text("Read-only data access")
+                .size(9)
+                .color(theme.palette().success),
+            Space::new().width(Fill),
+            text(context_and_usage)
+                .size(9)
+                .color(theme.extended_palette().background.weak.text),
         ]
         .align_y(Alignment::Center);
 
-        let configure: Element<'_, Message> = if self.openrouter_configured() {
-            Space::new().height(Length::Fixed(0.0)).into()
-        } else {
-            button(text("Configure OpenRouter").size(11))
-                .padding([7, 10])
-                .on_press(Message::OpenIntegrationsSettings)
-                .into()
+        let configure: Element<'_, Message> = match self.assistant_provider {
+            AssistantProvider::OpenRouter if !self.openrouter_configured() => {
+                button(text("Configure OpenRouter").size(11))
+                    .padding([7, 10])
+                    .on_press(Message::OpenIntegrationsSettings)
+                    .into()
+            }
+            AssistantProvider::LlamaCpp if !self.assistant_configured() => button(
+                text(if self.agent.local_detection_loading {
+                    "Detecting local llama.cpp…"
+                } else {
+                    "Refresh local detection"
+                })
+                .size(11),
+            )
+            .padding([7, 10])
+            .on_press_maybe(
+                (!self.agent.local_detection_loading).then_some(Message::AgentRefreshModels),
+            )
+            .into(),
+            _ => Space::new().height(Length::Fixed(0.0)).into(),
         };
 
-        let attach = button(
-            text(if has_pnl_card {
-                "Replace card"
-            } else {
-                "+ P&L card"
-            })
-            .size(11),
+        let attach = button(text("+").size(18))
+            .padding([5, 9])
+            .on_press_maybe(
+                (!self.agent.status.is_busy() && !self.agent.pnl_card_loading)
+                    .then_some(Message::AgentPnlCardBrowse),
+            )
+            .style(agent_composer_add_button_style);
+        let composer_bar = container(
+            row![attach, input, model_button, action]
+                .spacing(4)
+                .align_y(Alignment::Center),
         )
-        .padding([7, 10])
-        .on_press_maybe(
-            (!self.agent.status.is_busy() && !self.agent.pnl_card_loading)
-                .then_some(Message::AgentPnlCardBrowse),
-        );
-        let attachment_controls = row![
-            attach,
-            text(if self.hyperdash_api_key.trim().is_empty() {
-                "OCR works now · add HyperDash in Settings to search public positions"
-            } else {
-                "Drop PNG, JPEG, or WebP anywhere in this window"
-            })
-            .size(9)
-            .color(theme.extended_palette().background.weak.text),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center);
+        .padding(6)
+        .width(Fill)
+        .style(agent_composer_style);
+
+        let loading_activity: Element<'_, Message> = if self.agent.status.is_busy() {
+            agent_loading_activity(&self.agent, &theme)
+        } else {
+            Space::new().height(Length::Fixed(0.0)).into()
+        };
 
         let mut composer = Column::new()
             .push(status_detail)
             .push(configure)
             .push(self.view_agent_pnl_card_attachment(&theme))
-            .push(attachment_controls)
-            .push(row![input, action].spacing(8).align_y(Alignment::Center))
+            .push(loading_activity)
             .spacing(7);
         if self.agent.model_picker_open {
             composer = composer.push(self.view_agent_model_picker(&requested_model, &theme));
         }
-        composer = composer.push(footer);
+        composer = composer.push(composer_bar).push(footer);
 
         let main_panel = container(
             column![
@@ -247,34 +272,95 @@ impl TradingTerminal {
     fn view_agent_session_sidebar(&self) -> Element<'_, Message> {
         let theme = self.theme();
         let can_change_session = !self.agent.status.is_busy();
+        let (persistence_label, persistence_color) =
+            if let Some(error) = &self.agent.persistence_error {
+                (helpers::ellipsized_text(error, 28), theme.palette().danger)
+            } else if self.agent.persistence_in_flight || self.agent.persistence_dirty {
+                (
+                    "Saving locally…".to_string(),
+                    theme.extended_palette().background.weak.text,
+                )
+            } else {
+                ("Saved locally".to_string(), theme.palette().success)
+            };
+
+        if self.agent.sidebar_collapsed {
+            let expand_icon = container(text("›").size(20)).center(Length::Fixed(32.0));
+            let expand = button(expand_icon)
+                .padding(0)
+                .width(Length::Fixed(32.0))
+                .height(Length::Fixed(32.0))
+                .on_press(Message::AgentToggleSidebar)
+                .style(agent_sidebar_control_button_style);
+            let new_session_icon = container(text("+").size(18)).center(Length::Fixed(32.0));
+            let new_session = button(new_session_icon)
+                .padding(0)
+                .width(Length::Fixed(32.0))
+                .height(Length::Fixed(32.0))
+                .on_press_maybe(can_change_session.then_some(Message::AgentNewChat))
+                .style(agent_sidebar_control_button_style);
+
+            return container(
+                column![
+                    new_session,
+                    Space::new().height(Fill),
+                    text("●").size(7).color(persistence_color),
+                    expand,
+                ]
+                .spacing(6)
+                .align_x(Alignment::Center)
+                .height(Fill),
+            )
+            .width(Length::Fixed(52.0))
+            .height(Fill)
+            .padding([12, 8])
+            .style(agent_session_sidebar_style)
+            .into();
+        }
+
+        let collapse = button(text("‹").size(20))
+            .padding([4, 9])
+            .on_press(Message::AgentToggleSidebar)
+            .style(agent_sidebar_control_button_style);
         let new_session = button(
-            row![text("+").size(15), text("New session").size(12)]
-                .spacing(7)
+            row![text("+").size(17), text("New chat").size(13)]
+                .spacing(9)
                 .align_y(Alignment::Center),
         )
-        .padding([8, 10])
+        .padding([7, 8])
         .width(Fill)
-        .on_press_maybe(can_change_session.then_some(Message::AgentNewChat));
+        .on_press_maybe(can_change_session.then_some(Message::AgentNewChat))
+        .style(agent_sidebar_control_button_style);
 
-        let mut sessions = Column::new().spacing(4).width(Fill);
+        let mut sessions = Column::new().spacing(1).width(Fill);
         for item in self.agent.session_items() {
-            let count = match item.message_count {
-                0 => "No messages".to_string(),
-                1 => "1 message".to_string(),
-                count => format!("{count} messages"),
+            let count = if item.message_count == 0 {
+                String::new()
+            } else {
+                item.message_count.to_string()
             };
-            let content = column![
-                text(item.title).size(12).color(theme.palette().text),
+            let active = item.active;
+            let title_color = if active {
+                theme.palette().text
+            } else {
+                with_alpha(theme.palette().text, 0.78)
+            };
+            let content = row![
+                text(helpers::ellipsized_text(item.title, 25))
+                    .size(12)
+                    .color(title_color)
+                    .width(Fill),
                 text(count)
                     .size(9)
+                    .font(app_fonts::monospace_font())
                     .color(theme.extended_palette().background.weak.text),
             ]
-            .spacing(3)
+            .spacing(6)
+            .align_y(Alignment::Center)
             .width(Fill);
-            let active = item.active;
             sessions = sessions.push(
                 button(content)
-                    .padding([9, 10])
+                    .padding([7, 8])
                     .width(Fill)
                     .on_press_maybe(
                         (can_change_session && !active)
@@ -284,44 +370,41 @@ impl TradingTerminal {
             );
         }
 
-        let persistence_status: Element<'_, Message> =
-            if let Some(error) = &self.agent.persistence_error {
-                text(error).size(9).color(theme.palette().danger).into()
-            } else if self.agent.persistence_in_flight || self.agent.persistence_dirty {
-                text("Saving locally…")
-                    .size(9)
-                    .color(theme.extended_palette().background.weak.text)
-                    .into()
-            } else {
-                text("Saved locally")
-                    .size(9)
-                    .color(theme.palette().success)
-                    .into()
-            };
+        let sidebar_footer = row![
+            text("●").size(7).color(persistence_color),
+            text(persistence_label).size(9).color(persistence_color),
+            Space::new().width(Fill),
+            collapse,
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center);
 
         container(
             column![
-                text("SESSIONS")
-                    .size(10)
-                    .font(app_fonts::monospace_font())
-                    .color(theme.extended_palette().background.weak.text),
                 new_session,
-                rule::horizontal(1),
                 scrollable(sessions).height(Fill),
-                persistence_status,
+                sidebar_footer,
             ]
-            .spacing(10)
+            .spacing(7)
             .height(Fill),
         )
-        .width(Length::Fixed(220.0))
+        .width(Length::Fixed(224.0))
         .height(Fill)
-        .padding([14, 12])
+        .padding([12, 8])
         .style(agent_session_sidebar_style)
         .into()
     }
 
     fn view_agent_empty_state(&self) -> Element<'_, Message> {
         let theme = self.theme();
+        let attachment_privacy = match self.assistant_provider {
+            AssistantProvider::OpenRouter => {
+                "The image and sanitized account context are sent to the selected OpenRouter model. Keys are never included. Public wallet candidates are exposed only for an explicitly attached card turn."
+            }
+            AssistantProvider::LlamaCpp => {
+                "The image and sanitized account context are sent to the detected llama.cpp server on this machine. Keys are never included. Public wallet candidates are exposed only for an explicitly attached card turn."
+            }
+        };
         container(
             column![
                 text("Ask Kerosene anything")
@@ -372,7 +455,7 @@ impl TradingTerminal {
                 } else {
                     agent_empty_card_style
                 }),
-                text("The image and sanitized account context are sent to the selected OpenRouter model. Keys are never included. Public wallet candidates are exposed only for an explicitly attached card turn.")
+                text(attachment_privacy)
                     .size(10)
                     .color(theme.extended_palette().background.weak.text),
             ]
@@ -458,6 +541,11 @@ impl TradingTerminal {
         selected_model: &str,
         theme: &Theme,
     ) -> Element<'a, Message> {
+        if self.assistant_provider == AssistantProvider::LlamaCpp {
+            return self.view_agent_local_provider_picker(theme);
+        }
+
+        let provider_selector = self.view_agent_provider_selector(theme);
         let query = self.agent.model_search.trim().to_lowercase();
         let vision_required = self.agent.pnl_card_attachment.is_some();
         let mut matches = self
@@ -584,6 +672,8 @@ impl TradingTerminal {
         };
 
         let mut content = Column::new()
+            .push(provider_selector)
+            .push(rule::horizontal(1))
             .push(header)
             .push(search)
             .push(results)
@@ -612,6 +702,181 @@ impl TradingTerminal {
             .width(Fill)
             .style(agent_model_picker_style)
             .into()
+    }
+
+    fn view_agent_provider_selector(&self, theme: &Theme) -> Element<'_, Message> {
+        let openrouter_selected = self.assistant_provider == AssistantProvider::OpenRouter;
+        let local_selected = self.assistant_provider == AssistantProvider::LlamaCpp;
+        let local_ready = self
+            .agent
+            .local_server
+            .as_ref()
+            .is_some_and(|server| server.supports_tools && server.primary_model().is_some());
+        let local_label = if self.agent.local_detection_loading {
+            "Local llama.cpp · detecting…".to_string()
+        } else if let Some(server) = self.agent.local_server.as_ref() {
+            if local_ready {
+                format!("Local llama.cpp · {}", server.endpoint_label())
+            } else {
+                "Local llama.cpp · tools unavailable".to_string()
+            }
+        } else {
+            "Local llama.cpp · not detected".to_string()
+        };
+        let can_change = !self.agent.status.is_busy();
+
+        column![
+            text("Assistant provider")
+                .size(10)
+                .color(theme.extended_palette().background.weak.text),
+            row![
+                button(text("OpenRouter").size(10))
+                    .padding([6, 10])
+                    .on_press_maybe(
+                        (can_change && !openrouter_selected).then_some(
+                            Message::AgentProviderChanged(AssistantProvider::OpenRouter)
+                        )
+                    )
+                    .style(move |theme, status| {
+                        agent_model_option_style(theme, status, openrouter_selected)
+                    }),
+                button(text(local_label).size(10))
+                    .padding([6, 10])
+                    .on_press_maybe(
+                        (can_change && local_ready && !local_selected)
+                            .then_some(Message::AgentProviderChanged(AssistantProvider::LlamaCpp))
+                    )
+                    .style(move |theme, status| {
+                        agent_model_option_style(theme, status, local_selected)
+                    }),
+            ]
+            .spacing(6),
+        ]
+        .spacing(4)
+        .into()
+    }
+
+    fn view_agent_local_provider_picker(&self, theme: &Theme) -> Element<'_, Message> {
+        let provider_selector = self.view_agent_provider_selector(theme);
+        let refresh = button(text("Refresh detection").size(10))
+            .padding([5, 9])
+            .on_press_maybe(
+                (!self.agent.local_detection_loading).then_some(Message::AgentRefreshModels),
+            );
+        let close = button(text("×").size(13))
+            .padding([4, 8])
+            .on_press(Message::AgentToggleModelPicker);
+        let header = row![
+            column![
+                text("Local llama.cpp provider")
+                    .size(12)
+                    .color(theme.palette().text),
+                text("Auto-detected and verified over a loopback OpenAI-compatible API")
+                    .size(9)
+                    .color(theme.extended_palette().background.weak.text),
+            ]
+            .spacing(2)
+            .width(Fill),
+            refresh,
+            close,
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center);
+
+        let body: Element<'_, Message> = if self.agent.local_detection_loading {
+            container(
+                text(
+                    "Looking for running llama-server processes and verifying their model catalog…",
+                )
+                .size(10)
+                .color(theme.extended_palette().background.weak.text),
+            )
+            .center_x(Fill)
+            .padding(18)
+            .into()
+        } else if let Some(server) = self.agent.local_server.as_ref() {
+            let model = server
+                .primary_model()
+                .map(|model| model.id.as_str())
+                .unwrap_or("No model advertised");
+            let context = server
+                .primary_model()
+                .and_then(|model| model.context_window)
+                .map(compact_token_count)
+                .unwrap_or_else(|| "Unknown context".to_string());
+            let compatibility = format!(
+                "{} · {} · {} context",
+                if server.supports_tools {
+                    "Tools"
+                } else {
+                    "No tool calling"
+                },
+                if server.supports_vision {
+                    "Vision"
+                } else {
+                    "Text"
+                },
+                context
+            );
+            container(
+                column![
+                    row![
+                        text(model).size(11).color(theme.palette().text).width(Fill),
+                        text(if server.supports_tools {
+                            "SELECTED"
+                        } else {
+                            "INCOMPATIBLE"
+                        })
+                        .size(8)
+                        .color(if server.supports_tools {
+                            theme.palette().primary
+                        } else {
+                            theme.palette().danger
+                        }),
+                    ]
+                    .align_y(Alignment::Center),
+                    text(format!("Loopback · {}", server.endpoint_label()))
+                        .size(9)
+                        .color(theme.palette().primary),
+                    text(compatibility)
+                        .size(9)
+                        .color(theme.extended_palette().background.weak.text),
+                    text("Local inference · no model API charge")
+                        .size(9)
+                        .color(theme.extended_palette().background.weak.text),
+                ]
+                .spacing(3),
+            )
+            .padding([9, 10])
+            .width(Fill)
+            .style(agent_empty_card_style)
+            .into()
+        } else {
+            let message = self.agent.local_detection_error.as_deref().unwrap_or(
+                "No llama.cpp server detected. Start llama-server on this machine, then refresh detection.",
+            );
+            container(text(message).size(10).color(theme.palette().danger))
+                .center_x(Fill)
+                .padding(18)
+                .into()
+        };
+
+        container(
+            column![
+                provider_selector,
+                rule::horizontal(1),
+                header,
+                body,
+                text("Only a verified loopback endpoint is accepted; model prompts do not leave this machine.")
+                    .size(9)
+                    .color(theme.extended_palette().background.weak.text),
+            ]
+            .spacing(7),
+        )
+        .padding([10, 11])
+        .width(Fill)
+        .style(agent_model_picker_style)
+        .into()
     }
 }
 
@@ -669,6 +934,85 @@ fn agent_model_option<'a>(
         )
         .style(move |theme, status| agent_model_option_style(theme, status, selected))
         .into()
+}
+
+fn agent_loading_activity(agent: &AgentState, theme: &Theme) -> Element<'static, Message> {
+    let phase = agent.stream.cursor_phase;
+    let mut grid = Column::new().spacing(2);
+    for row_index in 0_i32..3 {
+        let mut cells = Row::new().spacing(2);
+        for column_index in 0_i32..3 {
+            let delay_steps = column_index + (row_index - 1).abs();
+            let delay = delay_steps as f32 * 90.0 / 650.0;
+            let color = with_alpha(theme.palette().primary, loading_pixel_alpha(phase, delay));
+            cells = cells.push(
+                container(Space::new())
+                    .width(Length::Fixed(4.0))
+                    .height(Length::Fixed(4.0))
+                    .style(move |_theme: &Theme| container_style::Style {
+                        background: Some(color.into()),
+                        border: Border {
+                            radius: 1.0.into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }),
+            );
+        }
+        grid = grid.push(cells);
+    }
+
+    let shimmer = 0.5 - 0.5 * (phase * std::f32::consts::TAU).cos();
+    let label_color = with_alpha(theme.palette().text, 0.62 + shimmer * 0.32);
+    let elapsed = format_activity_elapsed(
+        agent
+            .stream
+            .activity_ticks
+            .saturating_mul(AGENT_PRESENTATION_TICK_MS),
+    );
+
+    container(
+        row![
+            grid,
+            text(agent.status.label()).size(11).color(label_color),
+            text(elapsed)
+                .size(10)
+                .font(app_fonts::monospace_font())
+                .color(theme.extended_palette().background.weak.text),
+        ]
+        .spacing(9)
+        .align_y(Alignment::Center),
+    )
+    .padding([2, 5])
+    .into()
+}
+
+fn loading_pixel_alpha(phase: f32, delay: f32) -> f32 {
+    let local = (phase - delay).rem_euclid(1.0);
+    if local < 0.18 {
+        0.15 + 0.85 * smoothstep(local / 0.18)
+    } else if local < 0.42 {
+        1.0
+    } else if local < 0.62 {
+        1.0 - 0.85 * smoothstep((local - 0.42) / 0.20)
+    } else {
+        0.15
+    }
+}
+
+fn smoothstep(value: f32) -> f32 {
+    let value = value.clamp(0.0, 1.0);
+    value * value * (3.0 - 2.0 * value)
+}
+
+fn format_activity_elapsed(elapsed_ms: u64) -> String {
+    let elapsed_seconds = elapsed_ms as f64 / 1_000.0;
+    if elapsed_seconds < 60.0 {
+        format!("{elapsed_seconds:.1}s")
+    } else {
+        let minutes = (elapsed_seconds / 60.0).floor() as u64;
+        format!("{minutes}m {:.1}s", elapsed_seconds % 60.0)
+    }
 }
 
 fn context_usage_summary(context_tokens: Option<u64>, context_window: Option<u64>) -> String {
@@ -761,15 +1105,10 @@ fn agent_entry<'a>(
                 let progress = agent.stream.completion_progress;
                 content = content.push(agent_response_actions(
                     entry_index,
-                    evidence.len(),
-                    agent.stream.evidence_open,
                     !agent.featured_response_has_image,
                     progress,
                     theme,
                 ));
-                if agent.stream.evidence_open && !evidence.is_empty() {
-                    content = content.push(agent_evidence_drawer(&evidence, theme));
-                }
                 content = content.push(agent_follow_up_view(&evidence, progress, theme));
             }
 
@@ -785,62 +1124,89 @@ fn agent_entry<'a>(
                 AgentChatRole::Assistant => bubble.width(Fill).max_width(660.0).into(),
             }
         }
-        AgentChatEntry::Tool {
-            name,
-            detail,
-            finished,
-            is_error,
-            ..
-        } => {
-            let presentation = agent_tool_presentation(name);
-            let (icon, status, color) = if *is_error {
-                ("×", "Failed", theme.palette().danger)
-            } else if *finished {
-                ("✓", "Complete", theme.palette().success)
-            } else {
-                ("…", "Running", theme.palette().warning)
-            };
-            let status_chip = container(
-                row![
-                    text(icon).size(12).color(color),
-                    text(status).size(9).color(color),
-                ]
-                .spacing(5)
-                .align_y(Alignment::Center),
-            )
-            .padding([3, 7])
-            .style(move |theme: &Theme| agent_tool_status_style(theme, color));
-
-            let mut content = column![
-                row![
-                    text(presentation.category.to_uppercase())
-                        .size(9)
-                        .color(theme.palette().primary),
-                    Space::new().width(Fill),
-                    status_chip,
-                ]
-                .align_y(Alignment::Center),
-                text(presentation.title)
-                    .size(12)
-                    .color(theme.palette().text),
-            ]
-            .spacing(4);
-            if let Some(detail) = detail {
-                content = content.push(
-                    text(detail.as_str())
-                        .size(10)
-                        .color(theme.extended_palette().background.weak.text),
-                );
-            }
-
-            container(content)
-                .padding([9, 11])
-                .width(Fill)
-                .max_width(420.0)
-                .style(move |theme: &Theme| agent_tool_style(theme, color))
-                .into()
+        AgentChatEntry::Tool { expanded, .. } => {
+            let tools = agent_tool_trace_items(&agent.entries, entry_index);
+            agent_tool_trace(entry_index, &tools, *expanded, theme)
         }
+        AgentChatEntry::Reasoning {
+            text,
+            elapsed_ticks,
+            finished,
+            expanded,
+        } => agent_reasoning_trace(
+            entry_index,
+            text,
+            *elapsed_ticks,
+            *finished,
+            *expanded,
+            theme,
+        ),
     }
+}
+
+fn agent_reasoning_trace<'a>(
+    entry_index: usize,
+    reasoning: &'a str,
+    elapsed_ticks: u64,
+    finished: bool,
+    expanded: bool,
+    theme: &Theme,
+) -> Element<'a, Message> {
+    let muted = theme.extended_palette().background.weak.text;
+    let caret = if expanded { "⌃" } else { "⌄" };
+    let header = button(
+        row![
+            text("✦").size(12).color(theme.palette().primary),
+            text(reasoning_duration_label(elapsed_ticks, finished))
+                .size(11)
+                .color(muted),
+            text(caret).size(11).color(muted),
+        ]
+        .spacing(7)
+        .align_y(Alignment::Center),
+    )
+    .padding([4, 2])
+    .on_press(Message::AgentToggleReasoning(entry_index))
+    .style(agent_reasoning_button_style);
+
+    let mut trace = Column::new().push(header).spacing(2).width(Fill);
+    if expanded && !reasoning.is_empty() {
+        let rail = container(Space::new().width(1).height(Fill))
+            .width(1)
+            .height(Fill)
+            .style(agent_reasoning_rail_style);
+        let body = text(reasoning).size(12).color(muted).width(Fill);
+        trace = trace
+            .push(row![Space::new().width(9), rail, container(body).padding([3, 0]),].spacing(8));
+    }
+
+    container(trace)
+        .padding([0, 12])
+        .width(Fill)
+        .max_width(660.0)
+        .into()
+}
+
+fn reasoning_duration_label(elapsed_ticks: u64, finished: bool) -> String {
+    let elapsed_ms = elapsed_ticks.saturating_mul(AGENT_PRESENTATION_TICK_MS);
+    if !finished {
+        return if elapsed_ms < 1_000 {
+            "Thinking…".to_string()
+        } else {
+            format_reasoning_duration("Thinking for", elapsed_ms)
+        };
+    }
+    if elapsed_ms < 1_000 {
+        "Thought for less than a second".to_string()
+    } else {
+        format_reasoning_duration("Thought for", elapsed_ms)
+    }
+}
+
+fn format_reasoning_duration(prefix: &str, elapsed_ms: u64) -> String {
+    let seconds = elapsed_ms.saturating_add(500) / 1_000;
+    let unit = if seconds == 1 { "second" } else { "seconds" };
+    format!("{prefix} {seconds} {unit}")
 }
 
 struct AgentEvidence<'a> {
@@ -848,6 +1214,161 @@ struct AgentEvidence<'a> {
     detail: Option<&'a str>,
     finished: bool,
     is_error: bool,
+}
+
+fn agent_tool_trace_starts_at(entries: &[AgentChatEntry], entry_index: usize) -> bool {
+    let Some(AgentChatEntry::Tool { .. }) = entries.get(entry_index) else {
+        return false;
+    };
+    let turn_start = entries[..entry_index]
+        .iter()
+        .rposition(|entry| {
+            matches!(
+                entry,
+                AgentChatEntry::Message {
+                    role: AgentChatRole::User,
+                    ..
+                }
+            )
+        })
+        .map_or(0, |index| index + 1);
+    !entries[turn_start..entry_index]
+        .iter()
+        .any(|entry| matches!(entry, AgentChatEntry::Tool { .. }))
+}
+
+fn agent_tool_trace_items(
+    entries: &[AgentChatEntry],
+    entry_index: usize,
+) -> Vec<AgentEvidence<'_>> {
+    let turn_end = entries[entry_index..]
+        .iter()
+        .position(|entry| {
+            matches!(
+                entry,
+                AgentChatEntry::Message {
+                    role: AgentChatRole::User,
+                    ..
+                }
+            )
+        })
+        .map_or(entries.len(), |offset| entry_index + offset);
+    entries[entry_index..turn_end]
+        .iter()
+        .filter_map(|entry| match entry {
+            AgentChatEntry::Tool {
+                name,
+                detail,
+                finished,
+                is_error,
+                ..
+            } => Some(AgentEvidence {
+                name,
+                detail: detail.as_deref(),
+                finished: *finished,
+                is_error: *is_error,
+            }),
+            AgentChatEntry::Message { .. } | AgentChatEntry::Reasoning { .. } => None,
+        })
+        .collect()
+}
+
+fn agent_tool_trace<'a>(
+    entry_index: usize,
+    tools: &[AgentEvidence<'a>],
+    expanded: bool,
+    theme: &Theme,
+) -> Element<'a, Message> {
+    let muted = theme.extended_palette().background.weak.text;
+    let running = tools.iter().filter(|tool| !tool.finished).count();
+    let failed = tools.iter().filter(|tool| tool.is_error).count();
+    let count = tools.len();
+    let noun = if count == 1 { "tool" } else { "tools" };
+    let label = if running > 0 {
+        format!("Running {count} {noun}")
+    } else {
+        format!("Ran {count} {noun}")
+    };
+    let caret = if expanded { "⌃" } else { "⌄" };
+    let mut header_content = row![
+        text("✦").size(12).color(theme.palette().primary),
+        text(label).size(11).color(muted),
+    ]
+    .spacing(7)
+    .align_y(Alignment::Center);
+    if failed > 0 {
+        header_content = header_content.push(
+            text(format!("{failed} failed"))
+                .size(10)
+                .color(theme.palette().danger),
+        );
+    }
+    header_content = header_content.push(text(caret).size(11).color(muted));
+    let header = button(header_content)
+        .padding([4, 2])
+        .on_press(Message::AgentToggleToolTrace(entry_index))
+        .style(agent_reasoning_button_style);
+
+    let mut trace = Column::new().push(header).spacing(2).width(Fill);
+    if expanded && !tools.is_empty() {
+        let rail = container(Space::new().width(1).height(Fill))
+            .width(1)
+            .height(Fill)
+            .style(agent_reasoning_rail_style);
+        let mut rows = Column::new().spacing(2).width(Fill);
+        for tool in tools {
+            let presentation = agent_tool_presentation(tool.name);
+            let detail = tool.detail.unwrap_or(presentation.title);
+            let mut row_content = row![
+                text(agent_tool_trace_action(tool.name))
+                    .size(12)
+                    .color(theme.palette().text),
+                text(detail)
+                    .size(11)
+                    .font(app_fonts::monospace_font())
+                    .color(muted)
+                    .width(Fill),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center);
+            let state_color = if tool.is_error {
+                Some(("Failed", theme.palette().danger))
+            } else if !tool.finished {
+                Some(("Running", theme.palette().warning))
+            } else {
+                None
+            };
+            if let Some((state, color)) = state_color {
+                row_content = row_content.push(text(state).size(10).color(color));
+            }
+            let row_color = state_color.map(|(_state, color)| color);
+            rows = rows.push(
+                container(row_content)
+                    .padding([5, 6])
+                    .width(Fill)
+                    .style(move |theme: &Theme| agent_tool_trace_row_style(theme, row_color)),
+            );
+        }
+        trace = trace
+            .push(row![Space::new().width(9), rail, container(rows).padding([3, 0]),].spacing(8));
+    }
+
+    container(trace)
+        .padding([0, 12])
+        .width(Fill)
+        .max_width(660.0)
+        .into()
+}
+
+fn agent_tool_trace_action(name: &str) -> &'static str {
+    match name {
+        "kerosene_data" | "kerosene_activity" | "kerosene_journal" => "Read",
+        "kerosene_market_data" | "kerosene_positioning" | "kerosene_ohlcv" => "Fetch",
+        "kerosene_calculate" | "kerosene_sessions" => "Calculate",
+        "kerosene_risk" => "Analyze",
+        "kerosene_pnl_card_match" => "Match",
+        _ => "Run",
+    }
 }
 
 fn agent_turn_evidence<'a>(
@@ -885,15 +1406,13 @@ fn agent_turn_evidence<'a>(
                 finished: *finished,
                 is_error: *is_error,
             }),
-            AgentChatEntry::Message { .. } => None,
+            AgentChatEntry::Message { .. } | AgentChatEntry::Reasoning { .. } => None,
         })
         .collect()
 }
 
 fn agent_response_actions<'a>(
     entry_index: usize,
-    evidence_count: usize,
-    evidence_open: bool,
     can_regenerate: bool,
     progress: f32,
     theme: &Theme,
@@ -922,62 +1441,9 @@ fn agent_response_actions<'a>(
     )
     .style(move |theme, status| agent_response_action_style(theme, status, progress));
 
-    let mut actions = row![copy, retry].spacing(2).align_y(Alignment::Center);
-    if evidence_count > 0 {
-        let caret = if evidence_open { "▴" } else { "▾" };
-        let evidence = button(
-            text(format!("{evidence_count} data calls {caret}"))
-                .size(10)
-                .color(color),
-        )
-        .padding([4, 7])
-        .on_press_maybe(enabled.then_some(Message::AgentToggleEvidence(entry_index)))
-        .style(move |theme, status| agent_response_action_style(theme, status, progress));
-        actions = actions.push(evidence);
-    }
-    actions.into()
-}
-
-fn agent_evidence_drawer<'a>(
-    evidence: &[AgentEvidence<'a>],
-    theme: &Theme,
-) -> Element<'a, Message> {
-    let mut rows = Column::new().spacing(2).width(Fill);
-    for item in evidence {
-        let presentation = agent_tool_presentation(item.name);
-        let (status, status_color) = if item.is_error {
-            ("Failed", theme.palette().danger)
-        } else if item.finished {
-            ("Complete", theme.palette().success)
-        } else {
-            ("Running", theme.palette().warning)
-        };
-        let header = row![
-            text(presentation.category)
-                .size(9)
-                .color(theme.palette().primary),
-            text(presentation.title)
-                .size(10)
-                .color(theme.palette().text),
-            Space::new().width(Fill),
-            text(status).size(9).color(status_color),
-        ]
-        .spacing(7)
-        .align_y(Alignment::Center);
-        let mut content = Column::new().push(header).spacing(2).width(Fill);
-        if let Some(detail) = item.detail {
-            content = content.push(
-                text(detail)
-                    .size(9)
-                    .color(theme.extended_palette().background.weak.text),
-            );
-        }
-        rows = rows.push(container(content).padding([5, 7]));
-    }
-    container(rows)
-        .padding(4)
-        .width(Fill)
-        .style(agent_evidence_style)
+    row![copy, retry]
+        .spacing(2)
+        .align_y(Alignment::Center)
         .into()
 }
 
@@ -1224,20 +1690,6 @@ fn agent_follow_up_style(theme: &Theme, status: button::Status, progress: f32) -
     }
 }
 
-fn agent_evidence_style(theme: &Theme) -> container_style::Style {
-    let mut background = theme.extended_palette().background.strong.color;
-    background.a = 0.32;
-    container_style::Style {
-        background: Some(background.into()),
-        border: Border {
-            radius: 7.0.into(),
-            width: 1.0,
-            color: theme.extended_palette().background.strong.color,
-        },
-        ..Default::default()
-    }
-}
-
 fn chip_style(theme: &Theme, color: Color) -> container_style::Style {
     let mut background = color;
     background.a = 0.08;
@@ -1278,31 +1730,43 @@ fn assistant_bubble_style(theme: &Theme) -> container_style::Style {
     }
 }
 
-fn agent_tool_style(_theme: &Theme, status_color: Color) -> container_style::Style {
-    let mut background = status_color;
-    background.a = 0.045;
-    let mut border = status_color;
-    border.a = 0.28;
-    container_style::Style {
+fn agent_reasoning_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let mut background = theme.palette().text;
+    background.a = if matches!(status, button::Status::Hovered | button::Status::Pressed) {
+        0.045
+    } else {
+        0.0
+    };
+    button::Style {
         background: Some(background.into()),
+        text_color: theme.extended_palette().background.weak.text,
         border: Border {
-            radius: 8.0.into(),
-            width: 1.0,
-            color: border,
+            radius: 6.0.into(),
+            ..Default::default()
         },
         ..Default::default()
     }
 }
 
-fn agent_tool_status_style(theme: &Theme, color: Color) -> container_style::Style {
-    let mut background = color;
-    background.a = 0.08;
+fn agent_reasoning_rail_style(theme: &Theme) -> container_style::Style {
     container_style::Style {
-        background: Some(background.into()),
+        background: Some(theme.extended_palette().background.strong.color.into()),
+        ..Default::default()
+    }
+}
+
+fn agent_tool_trace_row_style(
+    _theme: &Theme,
+    state_color: Option<Color>,
+) -> container_style::Style {
+    container_style::Style {
+        background: state_color.map(|mut color| {
+            color.a = 0.045;
+            color.into()
+        }),
         border: Border {
-            radius: 99.0.into(),
-            width: 1.0,
-            color: theme.extended_palette().background.strong.color,
+            radius: 6.0.into(),
+            ..Default::default()
         },
         ..Default::default()
     }
@@ -1310,7 +1774,29 @@ fn agent_tool_status_style(theme: &Theme, color: Color) -> container_style::Styl
 
 fn agent_session_sidebar_style(theme: &Theme) -> container_style::Style {
     container_style::Style {
-        background: Some(theme.extended_palette().background.weak.color.into()),
+        background: Some(theme.extended_palette().background.base.color.into()),
+        ..Default::default()
+    }
+}
+
+fn agent_sidebar_control_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let mut background = theme.palette().text;
+    background.a = if matches!(status, button::Status::Hovered | button::Status::Pressed) {
+        0.06
+    } else {
+        0.0
+    };
+    button::Style {
+        background: Some(background.into()),
+        text_color: if matches!(status, button::Status::Disabled) {
+            theme.extended_palette().background.weak.text
+        } else {
+            with_alpha(theme.palette().text, 0.82)
+        },
+        border: Border {
+            radius: 8.0.into(),
+            ..Default::default()
+        },
         ..Default::default()
     }
 }
@@ -1321,15 +1807,11 @@ fn agent_session_button_style(
     active: bool,
 ) -> button::Style {
     let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-    let mut background = if active {
-        theme.palette().primary
-    } else {
-        theme.palette().text
-    };
+    let mut background = theme.palette().text;
     background.a = if active {
-        0.13
+        0.075
     } else if hovered {
-        0.06
+        0.05
     } else {
         0.0
     };
@@ -1337,22 +1819,17 @@ fn agent_session_button_style(
         background: Some(background.into()),
         text_color: theme.palette().text,
         border: Border {
-            radius: 6.0.into(),
-            width: if active { 1.0 } else { 0.0 },
-            color: if active {
-                theme.palette().primary
-            } else {
-                Color::TRANSPARENT
-            },
+            radius: 8.0.into(),
+            ..Default::default()
         },
         ..Default::default()
     }
 }
 
-fn agent_model_footer_button_style(theme: &Theme, status: button::Status) -> button::Style {
+fn agent_prompt_model_button_style(theme: &Theme, status: button::Status) -> button::Style {
     let mut background = theme.palette().primary;
     background.a = if matches!(status, button::Status::Hovered | button::Status::Pressed) {
-        0.1
+        0.09
     } else {
         0.0
     };
@@ -1360,7 +1837,85 @@ fn agent_model_footer_button_style(theme: &Theme, status: button::Status) -> but
         background: Some(background.into()),
         text_color: theme.palette().text,
         border: Border {
-            radius: 5.0.into(),
+            radius: 8.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_composer_input_style(theme: &Theme, status: text_input::Status) -> text_input::Style {
+    let mut style = helpers::text_input_style(theme, status);
+    style.background = Color::TRANSPARENT.into();
+    style.border = Border::default();
+    style
+}
+
+fn agent_composer_style(theme: &Theme) -> container_style::Style {
+    let mut shadow_color = Color::BLACK;
+    shadow_color.a = 0.16;
+    container_style::Style {
+        background: Some(theme.extended_palette().background.weak.color.into()),
+        border: Border {
+            radius: 14.0.into(),
+            width: 1.0,
+            color: theme.extended_palette().background.strong.color,
+        },
+        shadow: iced::Shadow {
+            color: shadow_color,
+            offset: iced::Vector::new(0.0, 4.0),
+            blur_radius: 14.0,
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_composer_add_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    let disabled = matches!(status, button::Status::Disabled);
+    let mut background = theme.palette().text;
+    background.a = if disabled {
+        0.0
+    } else if hovered {
+        0.08
+    } else {
+        0.0
+    };
+    button::Style {
+        background: Some(background.into()),
+        text_color: if disabled {
+            theme.extended_palette().background.weak.text
+        } else {
+            theme.palette().text
+        },
+        border: Border {
+            radius: 7.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn agent_prompt_action_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let disabled = matches!(status, button::Status::Disabled);
+    let pressed = matches!(status, button::Status::Pressed);
+    let mut background = if disabled {
+        theme.extended_palette().background.strong.color
+    } else {
+        theme.palette().primary
+    };
+    if pressed {
+        background.a *= 0.82;
+    }
+    button::Style {
+        background: Some(background.into()),
+        text_color: if disabled {
+            theme.extended_palette().background.weak.text
+        } else {
+            theme.extended_palette().primary.base.text
+        },
+        border: Border {
+            radius: 8.0.into(),
             ..Default::default()
         },
         ..Default::default()
@@ -1368,12 +1923,19 @@ fn agent_model_footer_button_style(theme: &Theme, status: button::Status) -> but
 }
 
 fn agent_model_picker_style(theme: &Theme) -> container_style::Style {
+    let mut shadow_color = Color::BLACK;
+    shadow_color.a = 0.20;
     container_style::Style {
         background: Some(theme.extended_palette().background.weak.color.into()),
         border: Border {
-            radius: 8.0.into(),
+            radius: 12.0.into(),
             width: 1.0,
             color: theme.extended_palette().background.strong.color,
+        },
+        shadow: iced::Shadow {
+            color: shadow_color,
+            offset: iced::Vector::new(0.0, 6.0),
+            blur_radius: 18.0,
         },
         ..Default::default()
     }
@@ -1460,6 +2022,86 @@ mod tests {
     }
 
     #[test]
+    fn loading_activity_formats_short_and_long_elapsed_times() {
+        assert_eq!(format_activity_elapsed(3_456), "3.5s");
+        assert_eq!(format_activity_elapsed(62_340), "1m 2.3s");
+    }
+
+    #[test]
+    fn loading_drive_wave_keeps_pixels_dim_between_fronts() {
+        assert_eq!(loading_pixel_alpha(0.8, 0.0), 0.15);
+        assert!(loading_pixel_alpha(0.3, 0.0) > 0.95);
+        assert!((0.15..=1.0).contains(&loading_pixel_alpha(0.12, 0.3)));
+    }
+
+    #[test]
+    fn reasoning_duration_matches_thinking_disclosure_copy() {
+        assert_eq!(reasoning_duration_label(0, false), "Thinking…");
+        assert_eq!(reasoning_duration_label(63, true), "Thought for 1 second");
+        assert_eq!(reasoning_duration_label(250, true), "Thought for 4 seconds");
+    }
+
+    #[test]
+    fn tool_trace_groups_calls_across_reasoning_within_one_turn() {
+        let entries = vec![
+            AgentChatEntry::Message {
+                role: AgentChatRole::User,
+                text: "Inspect my risk".to_string(),
+                markdown: None,
+            },
+            AgentChatEntry::Tool {
+                call_id: "positions".to_string(),
+                name: "kerosene_data".to_string(),
+                detail: Some("Open positions".to_string()),
+                finished: true,
+                is_error: false,
+                expanded: true,
+            },
+            AgentChatEntry::Reasoning {
+                text: "Checking concentration".to_string(),
+                elapsed_ticks: 1,
+                finished: true,
+                expanded: true,
+            },
+            AgentChatEntry::Tool {
+                call_id: "risk".to_string(),
+                name: "kerosene_risk".to_string(),
+                detail: Some("5% adverse move".to_string()),
+                finished: false,
+                is_error: false,
+                expanded: true,
+            },
+            AgentChatEntry::Message {
+                role: AgentChatRole::Assistant,
+                text: "Answer".to_string(),
+                markdown: None,
+            },
+            AgentChatEntry::Message {
+                role: AgentChatRole::User,
+                text: "Next question".to_string(),
+                markdown: None,
+            },
+        ];
+
+        assert!(agent_tool_trace_starts_at(&entries, 1));
+        assert!(!agent_tool_trace_starts_at(&entries, 3));
+        let tools = agent_tool_trace_items(&entries, 1);
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0].name, "kerosene_data");
+        assert_eq!(tools[1].name, "kerosene_risk");
+        assert!(!tools[1].finished);
+    }
+
+    #[test]
+    fn tool_trace_uses_short_coding_style_action_labels() {
+        assert_eq!(agent_tool_trace_action("kerosene_data"), "Read");
+        assert_eq!(agent_tool_trace_action("kerosene_market_data"), "Fetch");
+        assert_eq!(agent_tool_trace_action("kerosene_calculate"), "Calculate");
+        assert_eq!(agent_tool_trace_action("kerosene_risk"), "Analyze");
+        assert_eq!(agent_tool_trace_action("unknown_tool"), "Run");
+    }
+
+    #[test]
     fn follow_ups_are_derived_from_actual_tool_categories() {
         let evidence = vec![
             AgentEvidence {
@@ -1494,6 +2136,7 @@ mod tests {
                 detail: None,
                 finished: true,
                 is_error: false,
+                expanded: true,
             },
             AgentChatEntry::Message {
                 role: AgentChatRole::User,
@@ -1506,6 +2149,7 @@ mod tests {
                 detail: Some("Current portfolio".to_string()),
                 finished: true,
                 is_error: false,
+                expanded: true,
             },
             AgentChatEntry::Message {
                 role: AgentChatRole::Assistant,

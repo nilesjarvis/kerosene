@@ -2,10 +2,11 @@
 
 The Kerosene Assistant supports multiple local chat sessions. The session
 selector is the left column of the Assistant window; it lets the user create a
-session and switch between saved sessions. A session keeps its draft, user and
-assistant messages, title, usage totals, resolved model, and latest context
-measurement. In-progress turns cannot be switched so one Pi runtime cannot
-write into another session.
+session and switch between saved sessions. The navigation can collapse to a
+compact icon rail without changing or persisting session data. A session keeps
+its draft, user and assistant messages, title, usage totals, resolved model,
+and latest context measurement. In-progress turns cannot be switched so one Pi
+runtime cannot write into another session.
 
 ## State And Runtime Boundaries
 
@@ -14,8 +15,8 @@ write into another session.
   saved conversation.
 - `src/agent_update.rs` coordinates create/switch actions, stops the previous Pi
   process, requests Pi context metrics, and schedules session saves.
-- `src/agent_views.rs` renders the session sidebar, persistence status, and the
-  active session's model/context footer.
+- `src/agent_views.rs` renders the collapsible session navigation, persistence
+  status, prompt-bar model selector, and active session context footer.
 - `src/agent_persistence.rs` loads and atomically saves the side-file.
 
 Pi continues to run with `--no-session`. After an app restart, runtime exit, or
@@ -30,15 +31,16 @@ and session statistics. The footer shows the resolved model and context as
 its own context-token estimate, not cumulative API billing tokens. If Pi cannot
 provide a trustworthy token estimate, including immediately after compaction,
 the used value is shown as unknown rather than retaining a stale measurement.
-Before the first runtime starts, the configured OpenRouter model is shown and
-context capacity remains unknown.
+Before the first runtime starts, the configured OpenRouter model or detected
+local llama.cpp model is shown. A detected local model can provide its declared
+context capacity immediately.
 
-The model label in the footer is interactive. It opens a searchable OpenRouter
-catalog limited to text models that advertise tool calling, because Assistant
-turns depend on the `kerosene_*` tools. Each choice shows current input/output
-pricing and context capacity. Choosing a different model updates the persisted
-OpenRouter default, shuts down the current Pi runtime, and marks any saved chat
-context for replay on the next turn. Model changes are disabled while a turn is
+The provider/model label in the prompt bar is interactive. It allows switching
+between OpenRouter and a compatible auto-detected local llama.cpp server. The
+OpenRouter view remains searchable and shows current pricing and context. The
+local view shows the verified loopback endpoint and advertised capabilities.
+Changing provider or model shuts down the current Pi runtime and marks any saved
+chat context for replay on the next turn. Changes are disabled while a turn is
 in progress.
 
 ## Persistence Contract

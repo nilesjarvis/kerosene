@@ -66,6 +66,7 @@ mod layout_persistence;
 mod layout_preview;
 mod layout_update;
 mod liquidations_distribution_state;
+mod llama_cpp;
 mod loading_views;
 mod main_view;
 mod market_sessions;

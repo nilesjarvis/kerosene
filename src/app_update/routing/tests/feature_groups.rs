@@ -99,13 +99,23 @@ fn assistant_routes_stay_on_agent_module() {
     assert_route(Message::AgentStreamTick, UpdateRoute::Agent);
     assert_route(Message::AgentCopyResponse(4), UpdateRoute::Agent);
     assert_route(Message::AgentRegenerateResponse(4), UpdateRoute::Agent);
-    assert_route(Message::AgentToggleEvidence(4), UpdateRoute::Agent);
+    assert_route(Message::AgentToggleToolTrace(4), UpdateRoute::Agent);
+    assert_route(Message::AgentToggleReasoning(4), UpdateRoute::Agent);
     assert_route(
         Message::AgentFollowUpSelected("Compare the sessions".to_string().into()),
         UpdateRoute::Agent,
     );
     assert_route(Message::AgentNewChat, UpdateRoute::Agent);
     assert_route(Message::AgentSelectSession(42), UpdateRoute::Agent);
+    assert_route(Message::AgentToggleSidebar, UpdateRoute::Agent);
+    assert_route(
+        Message::AgentProviderChanged(crate::config::AssistantProvider::LlamaCpp),
+        UpdateRoute::Agent,
+    );
+    assert_route(
+        Message::AgentLocalServerDetected(3, Ok(None)),
+        UpdateRoute::Agent,
+    );
     assert_route(Message::AgentToggleModelPicker, UpdateRoute::Agent);
     assert_route(
         Message::AgentModelSearchChanged("claude".to_string()),
