@@ -30,9 +30,9 @@ pub use symbols::{
     category_color, compare_symbol_keys_for_same_ticker, hip3_dex, symbol_icon, symbol_svg_logo,
 };
 pub use ui::{
-    buy_button, ease_out_cubic, label_value, label_value_colored, optional_value_color,
-    order_type_button, pane_title, section_separator, sell_button, signed_number_color,
-    text_color_for_bg, text_input_style, vertical_spacer,
+    buy_button, ease_out_cubic, growth_mode_chip, label_value, label_value_colored,
+    optional_value_color, order_type_button, pane_title, section_separator, sell_button,
+    signed_number_color, text_color_for_bg, text_input_style, vertical_spacer,
 };
 #[cfg(target_os = "windows")]
 pub(crate) use windows_security::restrict_path_to_owner;

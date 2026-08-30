@@ -88,6 +88,7 @@ fn validated_metadata_maps_indexed_spot_mid_to_balance_token() {
         sz_decimals: 5,
         max_leverage: 1,
         only_isolated: false,
+        growth_mode: false,
         market_type: MarketType::Spot,
         outcome: None,
     };

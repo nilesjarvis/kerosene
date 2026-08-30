@@ -21,6 +21,7 @@ fn symbol(key: &str, ticker: &str, market_type: MarketType) -> ExchangeSymbol {
         sz_decimals: 2,
         max_leverage: 1,
         only_isolated: false,
+        growth_mode: false,
         market_type,
         outcome: None,
     }
@@ -45,6 +46,7 @@ fn outcome_symbol(key: &str, is_question_fallback: bool) -> ExchangeSymbol {
         sz_decimals: 0,
         max_leverage: 1,
         only_isolated: true,
+        growth_mode: false,
         market_type: MarketType::Outcome,
         outcome: Some(OutcomeSymbolInfo {
             outcome_id: 66,

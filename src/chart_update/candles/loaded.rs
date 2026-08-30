@@ -550,6 +550,7 @@ mod tests {
             sz_decimals: 2,
             max_leverage: 1,
             only_isolated: false,
+            growth_mode: false,
             market_type: crate::api::MarketType::Spot,
             outcome: None,
         }

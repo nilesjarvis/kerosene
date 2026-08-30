@@ -37,6 +37,7 @@ fn exchange_symbol(
         sz_decimals,
         max_leverage: 50,
         only_isolated: false,
+        growth_mode: false,
         market_type,
         outcome: None,
     }

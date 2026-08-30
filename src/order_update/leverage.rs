@@ -324,6 +324,7 @@ mod tests {
             sz_decimals: 5,
             max_leverage,
             only_isolated,
+            growth_mode: false,
             market_type: MarketType::Perp,
             outcome: None,
         }

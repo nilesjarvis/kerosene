@@ -51,6 +51,7 @@ fn spot_chase_reconciliation_rechecks_market_identity_at_modify_dispatch() {
         sz_decimals: 2,
         max_leverage: 1,
         only_isolated: false,
+        growth_mode: false,
         market_type: MarketType::Spot,
         outcome: None,
     };

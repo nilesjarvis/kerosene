@@ -121,6 +121,7 @@ fn exchange_symbol(key: &str) -> ExchangeSymbol {
         sz_decimals: 4,
         max_leverage: 50,
         only_isolated: false,
+        growth_mode: false,
         market_type: MarketType::Perp,
         outcome: None,
     }

@@ -663,6 +663,7 @@ mod tests {
             sz_decimals: 2,
             max_leverage: 1,
             only_isolated: false,
+            growth_mode: false,
             market_type,
             outcome: None,
         }

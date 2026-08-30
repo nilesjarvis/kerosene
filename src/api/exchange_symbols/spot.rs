@@ -188,6 +188,7 @@ pub(super) fn append_spot_symbols(
             sz_decimals,
             max_leverage: 1,
             only_isolated: false,
+            growth_mode: false,
             market_type: MarketType::Spot,
             outcome: None,
         });

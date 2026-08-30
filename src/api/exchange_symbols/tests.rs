@@ -23,6 +23,7 @@ fn test_outcome_symbol() -> ExchangeSymbol {
         sz_decimals: 0,
         max_leverage: 1,
         only_isolated: true,
+        growth_mode: false,
         market_type: MarketType::Outcome,
         outcome: Some(OutcomeSymbolInfo {
             outcome_id: 66,
@@ -67,6 +68,7 @@ fn test_spot_symbol(quote_token: Option<u32>) -> ExchangeSymbol {
         sz_decimals: 2,
         max_leverage: 1,
         only_isolated: false,
+        growth_mode: false,
         market_type: MarketType::Spot,
         outcome: None,
     }
@@ -87,6 +89,7 @@ fn exchange_symbols_payload_debug_summarizes_symbol_list() {
                 sz_decimals: 5,
                 max_leverage: 50,
                 only_isolated: false,
+                growth_mode: false,
                 market_type: MarketType::Perp,
                 outcome: None,
             },

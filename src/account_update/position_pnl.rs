@@ -209,6 +209,7 @@ mod tests {
             sz_decimals: 0,
             max_leverage: 0,
             only_isolated: false,
+            growth_mode: false,
             market_type,
             outcome: None,
         }

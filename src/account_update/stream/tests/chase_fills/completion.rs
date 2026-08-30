@@ -171,6 +171,7 @@ fn spot_chase_completion_summary_and_archive_use_pair_name() {
         sz_decimals: 2,
         max_leverage: 1,
         only_isolated: false,
+        growth_mode: false,
         market_type: crate::api::MarketType::Spot,
         outcome: None,
     }];

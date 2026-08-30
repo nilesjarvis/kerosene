@@ -196,6 +196,7 @@ fn outcome_symbol(key: &str) -> crate::api::ExchangeSymbol {
         sz_decimals: 0,
         max_leverage: 1,
         only_isolated: true,
+        growth_mode: false,
         market_type: crate::api::MarketType::Outcome,
         outcome: Some(crate::api::OutcomeSymbolInfo {
             outcome_id: 95,
@@ -240,6 +241,7 @@ fn spot_symbol(key: &str, ticker: &str) -> crate::api::ExchangeSymbol {
         sz_decimals: 5,
         max_leverage: 1,
         only_isolated: false,
+        growth_mode: false,
         market_type: crate::api::MarketType::Spot,
         outcome: None,
     }

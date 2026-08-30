@@ -14,6 +14,7 @@ fn symbol(key: &str, category: &str) -> ExchangeSymbol {
         sz_decimals: 0,
         max_leverage: 0,
         only_isolated: false,
+        growth_mode: false,
         market_type: MarketType::Perp,
         outcome: None,
     }

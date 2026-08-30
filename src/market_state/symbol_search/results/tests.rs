@@ -13,6 +13,7 @@ fn symbol(key: &str, ticker: &str, market_type: MarketType) -> ExchangeSymbol {
         sz_decimals: 0,
         max_leverage: 0,
         only_isolated: false,
+        growth_mode: false,
         market_type,
         outcome: None,
     }

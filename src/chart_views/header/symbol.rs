@@ -148,6 +148,15 @@ impl TradingTerminal {
             );
         }
 
+        if self
+            .exchange_symbol_for_key(&instance.symbol)
+            .is_some_and(|symbol| symbol.growth_mode)
+        {
+            title = title
+                .push(Space::new().width(5.0))
+                .push(helpers::growth_mode_chip());
+        }
+
         title.align_y(iced::Alignment::Center).into()
     }
 }

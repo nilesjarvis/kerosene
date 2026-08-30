@@ -8,7 +8,7 @@ mod separators;
 pub use buttons::{buy_button, order_type_button, sell_button};
 pub use colors::{optional_value_color, signed_number_color, text_color_for_bg};
 pub use inputs::text_input_style;
-pub use labels::{label_value, label_value_colored, vertical_spacer};
+pub use labels::{growth_mode_chip, label_value, label_value_colored, vertical_spacer};
 pub use panes::pane_title;
 pub use separators::section_separator;
 

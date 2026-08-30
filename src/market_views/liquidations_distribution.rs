@@ -282,6 +282,9 @@ impl TradingTerminal {
                     .color(theme.extended_palette().background.weak.text),
             );
         }
+        if symbol.growth_mode {
+            content = content.push(helpers::growth_mode_chip());
+        }
 
         button(content)
             .on_press(Message::LiquidationsDistributionSymbolSelected(sym_key))

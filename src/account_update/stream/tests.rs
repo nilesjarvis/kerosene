@@ -342,6 +342,7 @@ fn live_spot_fill_invalidates_balances_until_spot_state_reconciles() {
         sz_decimals: 2,
         max_leverage: 1,
         only_isolated: false,
+        growth_mode: false,
         market_type: MarketType::Spot,
         outcome: None,
     }];

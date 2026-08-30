@@ -103,6 +103,7 @@ pub(super) fn append_perp_symbols(
                 key: name,
                 ticker,
                 category,
+                growth_mode: is_growth_mode_enabled(asset),
                 display_name,
                 keywords,
                 asset_index: offset + asset_idx as u32,
@@ -145,6 +146,17 @@ fn margin_mode_disallows_cross(asset: &Value) -> bool {
             )
         })
         .unwrap_or(false)
+}
+
+/// HIP-3 deployer growth-mode flag. `allPerpMetas` encodes it as the string
+/// "enabled" when active and omits it otherwise; the per-dex `meta` endpoint
+/// uses a plain boolean. Accept either shape defensively.
+fn is_growth_mode_enabled(asset: &Value) -> bool {
+    match asset.get("growthMode") {
+        Some(Value::Bool(enabled)) => *enabled,
+        Some(Value::String(state)) => state.eq_ignore_ascii_case("enabled"),
+        _ => false,
+    }
 }
 
 fn annotation_map_from(annotations_raw: &Value) -> HashMap<String, Value> {
@@ -245,5 +257,34 @@ mod tests {
             "perpDexs metadata has 1 entries but allPerpMetas has 2; cannot build asset indices"
         );
         assert!(symbols.is_empty());
+    }
+
+    #[test]
+    fn hip3_growth_mode_defaults_false_when_flag_absent() {
+        let mut symbols = Vec::new();
+
+        append_perp_symbols(
+            &mut symbols,
+            &serde_json::json!([{
+                "collateralToken": 0,
+                "universe": [
+                    { "name": "xyz:NVDA", "szDecimals": 2, "maxLeverage": 5, "growthMode": "enabled" },
+                    { "name": "xyz:HCLI", "szDecimals": 2, "maxLeverage": 5 },
+                    { "name": "xyz:PLTR", "szDecimals": 2, "maxLeverage": 5, "growthMode": "disabled" }
+                ]
+            }]),
+            &serde_json::json!([]),
+            &serde_json::json!([{ "name": "" }]),
+        )
+        .expect("valid perp metadata");
+
+        let growth_mode_by_key: Vec<(bool, &str)> = symbols
+            .iter()
+            .map(|symbol| (symbol.growth_mode, symbol.key.as_str()))
+            .collect();
+        assert_eq!(
+            growth_mode_by_key,
+            vec![(true, "xyz:NVDA"), (false, "xyz:HCLI"), (false, "xyz:PLTR")]
+        );
     }
 }

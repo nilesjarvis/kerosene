@@ -171,7 +171,7 @@ pub(crate) fn load_fresh_exchange_symbols(
     let Some(cached) = load_json::<ExchangeSymbolsPayload>(
         &cache_root()?,
         "market_metadata",
-        &["exchange_symbols".to_string()],
+        &["exchange_symbols_v2".to_string()],
     )?
     else {
         return Ok(None);
@@ -195,7 +195,7 @@ pub(crate) fn save_exchange_symbols(payload: &ExchangeSymbolsPayload) -> Result<
     let (path, bytes) = envelope_bytes(
         &cache_root()?,
         "market_metadata",
-        &["exchange_symbols".to_string()],
+        &["exchange_symbols_v2".to_string()],
         now_ms(),
         None,
         payload,

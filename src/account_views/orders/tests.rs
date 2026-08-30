@@ -76,6 +76,7 @@ fn open_order_symbol_label_maps_spot_keys_to_pair_names() {
         sz_decimals: 2,
         max_leverage: 1,
         only_isolated: false,
+        growth_mode: false,
         market_type: crate::api::MarketType::Spot,
         outcome: None,
     });

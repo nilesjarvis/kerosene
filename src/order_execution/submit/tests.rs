@@ -59,6 +59,7 @@ fn outcome_symbol(key: &str, asset_index: u32, is_question_fallback: bool) -> Ex
         sz_decimals: 0,
         max_leverage: 1,
         only_isolated: true,
+        growth_mode: false,
         market_type: MarketType::Outcome,
         outcome: Some(outcome_info(is_question_fallback)),
     }
@@ -277,6 +278,7 @@ fn perp_symbol(key: &str) -> ExchangeSymbol {
         sz_decimals: 4,
         max_leverage: 50,
         only_isolated: false,
+        growth_mode: false,
         market_type: MarketType::Perp,
         outcome: None,
     }

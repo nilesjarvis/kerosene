@@ -43,6 +43,9 @@ impl TradingTerminal {
                     .color(theme.palette().text)
                     .width(Fill),
             );
+            if m.growth_mode {
+                coin_content = coin_content.push(helpers::growth_mode_chip());
+            }
 
             let btn = button(
                 coin_content

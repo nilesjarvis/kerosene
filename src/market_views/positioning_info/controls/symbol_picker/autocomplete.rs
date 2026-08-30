@@ -75,6 +75,9 @@ impl TradingTerminal {
                     .color(theme.extended_palette().background.weak.text),
             );
         }
+        if symbol.growth_mode {
+            coin_content = coin_content.push(helpers::growth_mode_chip());
+        }
         coin_content = coin_content.push(
             text("Select")
                 .size(10)

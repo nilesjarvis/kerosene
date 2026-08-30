@@ -22,8 +22,14 @@ impl TradingTerminal {
         let denomination = self.display_denomination_context();
 
         let mut row_content = row![
-            cells::live_watchlist_symbol_cell(&data.sym_key, data.display.clone(), theme)
-                .width(Fill)
+            cells::live_watchlist_symbol_cell(
+                &data.sym_key,
+                data.display.clone(),
+                self.exchange_symbol_for_key(&data.sym_key)
+                    .is_some_and(|symbol| symbol.growth_mode),
+                theme,
+            )
+            .width(Fill)
         ];
         for column in display_columns {
             let (value, color) =

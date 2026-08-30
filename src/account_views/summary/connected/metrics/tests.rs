@@ -67,6 +67,7 @@ fn connected_total_values_spot_only_token_at_its_spot_pair_mid() {
         sz_decimals: 2,
         max_leverage: 1,
         only_isolated: false,
+        growth_mode: false,
         market_type: MarketType::Spot,
         outcome: None,
     }];

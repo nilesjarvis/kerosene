@@ -765,6 +765,7 @@ mod tests {
             sz_decimals: 0,
             max_leverage: 1,
             only_isolated: false,
+            growth_mode: false,
             market_type: MarketType::Perp,
             outcome: None,
         }
@@ -782,6 +783,7 @@ mod tests {
             sz_decimals: 2,
             max_leverage: 1,
             only_isolated: false,
+            growth_mode: false,
             market_type: MarketType::Spot,
             outcome: None,
         }
@@ -799,6 +801,7 @@ mod tests {
             sz_decimals: 0,
             max_leverage: 1,
             only_isolated: false,
+            growth_mode: false,
             market_type: MarketType::Spot,
             outcome: None,
         }
@@ -816,6 +819,7 @@ mod tests {
             sz_decimals: 0,
             max_leverage: 1,
             only_isolated: true,
+            growth_mode: false,
             market_type: MarketType::Outcome,
             outcome: Some(OutcomeSymbolInfo {
                 outcome_id: 95,

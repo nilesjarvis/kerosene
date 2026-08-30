@@ -118,6 +118,9 @@ pub struct ExchangeSymbol {
     pub max_leverage: u32,
     /// Whether cross margin is completely disallowed on this asset.
     pub only_isolated: bool,
+    /// Whether the HIP-3 deployer has this market in growth mode (reduced fees).
+    #[serde(default)]
+    pub growth_mode: bool,
     /// Whether this is a perpetual, spot, or outcome market.
     pub market_type: MarketType,
     /// Outcome-specific metadata for prediction market contracts.
@@ -137,6 +140,7 @@ impl fmt::Debug for ExchangeSymbol {
             .field("sz_decimals", &self.sz_decimals)
             .field("max_leverage", &self.max_leverage)
             .field("only_isolated", &self.only_isolated)
+            .field("growth_mode", &self.growth_mode)
             .field("market_type", &self.market_type)
             .field("has_outcome", &self.outcome.is_some())
             .finish()
@@ -263,6 +267,7 @@ mod tests {
             sz_decimals: 0,
             max_leverage: 1,
             only_isolated: true,
+            growth_mode: false,
             market_type: MarketType::Outcome,
             outcome: Some(outcome_info()),
         };
@@ -290,6 +295,7 @@ mod tests {
             sz_decimals: 2,
             max_leverage: 50,
             only_isolated: false,
+            growth_mode: false,
             market_type: MarketType::Perp,
             outcome: None,
         }
@@ -318,6 +324,7 @@ mod tests {
             sz_decimals: 2,
             max_leverage: 1,
             only_isolated: false,
+            growth_mode: false,
             market_type: MarketType::Spot,
             outcome: None,
         }

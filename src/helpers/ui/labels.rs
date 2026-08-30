@@ -1,6 +1,6 @@
 use crate::message::Message;
 use iced::widget::{container, row, rule, text};
-use iced::{Color, Element, Theme};
+use iced::{Border, Color, Element, Theme};
 
 // ---------------------------------------------------------------------------
 // Label Widgets
@@ -49,4 +49,31 @@ fn label_value_with_color(
 
 pub fn vertical_spacer() -> Element<'static, Message> {
     container(rule::vertical(1)).height(16).into()
+}
+
+/// Small "GROWTH" chip marking HIP-3 markets whose deployer has them in
+/// growth mode (reduced fees). Green = success palette, matching gain washes.
+pub fn growth_mode_chip() -> Element<'static, Message> {
+    container(
+        text("GROWTH")
+            .size(10)
+            .font(crate::app_fonts::monospace_font()),
+    )
+    .padding([1, 5])
+    .style(|theme: &Theme| container::Style {
+        background: Some(
+            Color {
+                a: 0.14,
+                ..theme.palette().success
+            }
+            .into(),
+        ),
+        text_color: Some(theme.palette().success),
+        border: Border {
+            radius: 3.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .into()
 }
