@@ -3,7 +3,8 @@ use crate::message::Message;
 use crate::notification_state::Toast;
 
 use iced::widget::container as container_style;
-use iced::widget::{Column, button, container, row, text};
+use iced::widget::svg::Handle as SvgHandle;
+use iced::widget::{Column, button, container, row, svg, text, tooltip};
 use iced::{Alignment, Color, Element, Length, Padding, Theme};
 
 // ---------------------------------------------------------------------------
@@ -16,6 +17,14 @@ const TOAST_WIDTH: f32 = 320.0;
 const SLIDE_DISTANCE: f32 = 26.0;
 /// Maximum simultaneously visible toasts.
 const VISIBLE_TOASTS: usize = 5;
+
+const COPY_ICON_SVG: &[u8] = br#"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+</svg>
+"#;
 
 fn with_alpha(color: Color, alpha: f32) -> Color {
     Color {
@@ -105,6 +114,10 @@ fn visible_toasts(toasts: &[Toast]) -> Vec<&Toast> {
     visible
 }
 
+fn copy_toast_message(toast: &Toast) -> Message {
+    Message::CopyToClipboard(toast.message.clone().into())
+}
+
 fn toast_card<'a>(
     theme: &Theme,
     toast: &'a Toast,
@@ -160,6 +173,29 @@ fn toast_card<'a>(
 
     let tid = toast.id;
     let dismiss_color = with_alpha(extended.background.weak.text, visibility);
+    let copy_icon = svg(SvgHandle::from_memory(COPY_ICON_SVG))
+        .width(Length::Fixed(12.0))
+        .height(Length::Fixed(12.0))
+        .style(move |_theme: &Theme, status| {
+            let color = match status {
+                svg::Status::Hovered => with_alpha(palette.text, visibility),
+                _ => dismiss_color,
+            };
+            svg::Style { color: Some(color) }
+        });
+    let copy = tooltip(
+        button(copy_icon)
+            .on_press(copy_toast_message(toast))
+            .padding([1, 5])
+            .style(|_theme: &Theme, _status| button::Style {
+                background: None,
+                ..Default::default()
+            }),
+        text("Copy message")
+            .size(10)
+            .font(crate::app_fonts::monospace_font()),
+        tooltip::Position::Top,
+    );
     let dismiss = button(text("×").size(14))
         .on_press(Message::DismissToast(tid))
         .padding([0, 6])
@@ -181,6 +217,7 @@ fn toast_card<'a>(
             .size(12)
             .color(with_alpha(message_color, visibility))
             .width(Length::Fill),
+        copy,
         dismiss,
     ]
     .spacing(10)
@@ -278,5 +315,19 @@ mod tests {
             visible.iter().map(|toast| toast.id).collect::<Vec<_>>(),
             vec![2, 0, 3, 1]
         );
+    }
+
+    #[test]
+    fn copy_toast_message_preserves_the_full_message() {
+        let toast = Toast {
+            message: "Order failed: invalid price 123.45".to_string(),
+            ..toast(7, true)
+        };
+
+        let Message::CopyToClipboard(text) = copy_toast_message(&toast) else {
+            panic!("toast copy action should write to the clipboard");
+        };
+
+        assert_eq!(text.into_string(), toast.message);
     }
 }
