@@ -2,7 +2,9 @@ use crate::api::{self, ExchangeSymbol, WatchlistContext};
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartInstance;
 use crate::config::{self, AxisConfig, PaneKindConfig, PaneLayoutConfig};
-use crate::helpers::{positive_percent_change, redact_sensitive_response_text};
+use crate::helpers::{
+    parse_finite_number, positive_percent_change, redact_sensitive_response_text,
+};
 use crate::message::Message;
 use crate::timeframe::Timeframe;
 use iced::Task;
@@ -11,6 +13,8 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 const BUILT_IN_CHART_COUNT: usize = 8;
+const BUILT_IN_CONTEXT_REUSE_MAX_AGE_MS: u64 = 15_000;
+const BUILT_IN_CONTEXT_FALLBACK_MAX_AGE_MS: u64 = 5 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Built-In Layout State
@@ -80,9 +84,17 @@ impl BuiltInLayout {
     }
 
     fn metric_is_rankable(self, metric: f64) -> bool {
-        metric.is_finite()
+        self.metric_is_usable(metric)
             && match self {
                 Self::TopGainers24h => metric > 0.0,
+                Self::TopVolume24h | Self::TopOpenInterest => true,
+            }
+    }
+
+    fn metric_is_usable(self, metric: f64) -> bool {
+        metric.is_finite()
+            && match self {
+                Self::TopGainers24h => true,
                 Self::TopVolume24h | Self::TopOpenInterest => metric >= 0.0,
             }
     }
@@ -102,6 +114,13 @@ pub(crate) struct BuiltInLayoutState {
     loading: Option<BuiltInLayout>,
     loading_destination: Option<BuiltInLayoutDestination>,
     request_id: u64,
+    recent_contexts: HashMap<String, TimedBuiltInLayoutContext>,
+}
+
+#[derive(Debug, Clone)]
+struct TimedBuiltInLayoutContext {
+    context: WatchlistContext,
+    updated_at_ms: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,6 +161,19 @@ impl BuiltInLayoutState {
     fn finish_request(&mut self) -> Option<BuiltInLayoutDestination> {
         self.loading = None;
         self.loading_destination.take()
+    }
+
+    fn remember_contexts(&mut self, contexts: &HashMap<String, WatchlistContext>, now_ms: u64) {
+        self.recent_contexts
+            .extend(contexts.iter().map(|(symbol, context)| {
+                (
+                    symbol.clone(),
+                    TimedBuiltInLayoutContext {
+                        context: context.clone(),
+                        updated_at_ms: now_ms,
+                    },
+                )
+            }));
     }
 
     pub(crate) fn deactivate(&mut self) {
@@ -192,8 +224,32 @@ impl TradingTerminal {
         let request_id = self
             .built_in_layout_state
             .begin_request(layout, destination);
+        let known_contexts = if destination == BuiltInLayoutDestination::NewCanvas {
+            self.recent_built_in_layout_contexts(BUILT_IN_CONTEXT_REUSE_MAX_AGE_MS)
+        } else {
+            HashMap::new()
+        };
+        let request_symbols =
+            built_in_context_symbols_requiring_refresh(layout, symbols, &known_contexts);
+        if request_symbols.is_empty() {
+            return Task::done(Message::BuiltInLayoutContextsLoaded(
+                request_id,
+                layout,
+                Ok(api::WatchlistContextsResponse::complete(known_contexts)),
+            ));
+        }
+
         Task::perform(
-            api::fetch_watchlist_contexts_uncached(symbols),
+            async move {
+                match destination {
+                    BuiltInLayoutDestination::Main => {
+                        api::fetch_watchlist_contexts_uncached(request_symbols).await
+                    }
+                    BuiltInLayoutDestination::NewCanvas => {
+                        api::fetch_watchlist_contexts(request_symbols).await
+                    }
+                }
+            },
             move |result| Message::BuiltInLayoutContextsLoaded(request_id, layout, result),
         )
     }
@@ -214,9 +270,29 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        let response = match result {
-            Ok(response) if response.partial_errors.is_empty() => response,
-            Ok(response) => {
+        if let Ok(response) = &result {
+            self.built_in_layout_state
+                .remember_contexts(&response.contexts, Self::now_ms());
+        }
+
+        let (contexts, degraded) = match (destination, result) {
+            (BuiltInLayoutDestination::NewCanvas, Ok(response)) => {
+                let degraded = !response.partial_errors.is_empty();
+                let mut contexts =
+                    self.recent_built_in_layout_contexts(BUILT_IN_CONTEXT_FALLBACK_MAX_AGE_MS);
+                contexts.extend(response.contexts);
+                (contexts, degraded)
+            }
+            (BuiltInLayoutDestination::NewCanvas, Err(_)) => (
+                self.recent_built_in_layout_contexts(BUILT_IN_CONTEXT_FALLBACK_MAX_AGE_MS),
+                true,
+            ),
+            (BuiltInLayoutDestination::Main, Ok(response))
+                if response.partial_errors.is_empty() =>
+            {
+                (response.contexts, false)
+            }
+            (BuiltInLayoutDestination::Main, Ok(response)) => {
                 let detail = response.partial_errors.join("; ");
                 self.push_toast(
                     format!(
@@ -228,7 +304,7 @@ impl TradingTerminal {
                 );
                 return Task::none();
             }
-            Err(error) => {
+            (BuiltInLayoutDestination::Main, Err(error)) => {
                 self.push_toast(
                     format!(
                         "Could not load {}: {}",
@@ -246,12 +322,16 @@ impl TradingTerminal {
             .iter()
             .filter(|symbol| !self.exchange_symbol_is_hidden(symbol))
             .collect::<Vec<_>>();
-        let top_symbols =
-            top_ranked_symbols(layout, candidates, &response.contexts, BUILT_IN_CHART_COUNT);
+        let top_symbols = top_ranked_symbols(layout, candidates, &contexts, BUILT_IN_CHART_COUNT);
         if top_symbols.len() < BUILT_IN_CHART_COUNT {
+            let suffix = if degraded {
+                " after the market-data refresh failed"
+            } else {
+                ""
+            };
             self.push_toast(
                 format!(
-                    "{} needs {} data for at least {BUILT_IN_CHART_COUNT} visible markets",
+                    "{} needs {} data for at least {BUILT_IN_CHART_COUNT} visible markets{suffix}",
                     layout.label(),
                     layout.metric_label(),
                 ),
@@ -276,8 +356,118 @@ impl TradingTerminal {
                 self.open_built_in_layout_canvas(layout, &symbol_keys)
             }
         };
+        if degraded {
+            self.push_toast(
+                format!(
+                    "Opened {} with available market data; some sources could not be refreshed",
+                    layout.label()
+                ),
+                true,
+            );
+        }
         self.persist_config();
         task
+    }
+
+    fn recent_built_in_layout_contexts(
+        &self,
+        max_age_ms: u64,
+    ) -> HashMap<String, WatchlistContext> {
+        let now_ms = Self::now_ms();
+        let sources = [
+            (
+                self.symbol_search_contexts_last_fetch_ms,
+                &self.symbol_search_ctxs,
+            ),
+            (
+                self.live_watchlist_contexts_last_fetch_ms,
+                &self.live_watchlist_ctxs,
+            ),
+            (
+                self.ticker_tape_contexts_last_fetch_ms,
+                &self.ticker_tape_ctxs,
+            ),
+        ];
+
+        let mut timed_contexts = HashMap::new();
+        for (fetched_at, source) in sources {
+            let Some(fetched_at) = fetched_at else {
+                continue;
+            };
+            for (symbol, context) in source {
+                insert_recent_context(
+                    &mut timed_contexts,
+                    symbol,
+                    context,
+                    fetched_at,
+                    now_ms,
+                    max_age_ms,
+                );
+            }
+        }
+
+        for (symbol, timed_context) in &self.built_in_layout_state.recent_contexts {
+            insert_recent_context(
+                &mut timed_contexts,
+                symbol,
+                &timed_context.context,
+                timed_context.updated_at_ms,
+                now_ms,
+                max_age_ms,
+            );
+        }
+
+        for instance in self.charts.values() {
+            let Some(asset_context) = instance.asset_ctx.as_ref() else {
+                continue;
+            };
+            let Some(updated_at_ms) = instance.asset_ctx_updated_at_ms else {
+                continue;
+            };
+
+            let mark_px = asset_context
+                .mark_px
+                .as_deref()
+                .and_then(parse_finite_number)
+                .filter(|value| *value > 0.0);
+            let open_interest_notional = asset_context
+                .open_interest
+                .as_deref()
+                .and_then(parse_finite_number)
+                .filter(|value| *value >= 0.0)
+                .zip(mark_px)
+                .map(|(open_interest, mark_px)| open_interest * mark_px)
+                .filter(|value| value.is_finite() && *value >= 0.0);
+            let context = WatchlistContext {
+                funding: asset_context
+                    .funding
+                    .as_deref()
+                    .and_then(parse_finite_number),
+                prev_day_px: asset_context
+                    .prev_day_px
+                    .as_deref()
+                    .and_then(parse_finite_number),
+                mark_px,
+                day_vlm: asset_context
+                    .day_ntl_vlm
+                    .as_deref()
+                    .and_then(parse_finite_number)
+                    .filter(|value| *value >= 0.0),
+                open_interest_notional,
+            };
+            insert_recent_context(
+                &mut timed_contexts,
+                &instance.symbol,
+                &context,
+                updated_at_ms,
+                now_ms,
+                max_age_ms,
+            );
+        }
+        timed_contexts
+            .into_iter()
+            .map(|(symbol, (_, context))| (symbol, context))
+            .collect()
     }
 
     fn open_built_in_layout_canvas(
@@ -393,6 +583,46 @@ impl TradingTerminal {
 // ---------------------------------------------------------------------------
 // Dynamic Ranking And Grid
 // ---------------------------------------------------------------------------
+
+fn built_in_context_symbols_requiring_refresh(
+    layout: BuiltInLayout,
+    symbols: Vec<String>,
+    known_contexts: &HashMap<String, WatchlistContext>,
+) -> Vec<String> {
+    symbols
+        .into_iter()
+        .filter(|symbol| {
+            !known_contexts.get(symbol).is_some_and(|context| {
+                layout
+                    .metric_value(context)
+                    .is_some_and(|metric| layout.metric_is_usable(metric))
+            })
+        })
+        .collect()
+}
+
+fn insert_recent_context(
+    contexts: &mut HashMap<String, (u64, WatchlistContext)>,
+    symbol: &str,
+    context: &WatchlistContext,
+    updated_at_ms: u64,
+    now_ms: u64,
+    max_age_ms: u64,
+) {
+    if symbol.is_empty() || now_ms.saturating_sub(updated_at_ms) > max_age_ms {
+        return;
+    }
+
+    match contexts.entry(symbol.to_string()) {
+        Entry::Occupied(mut entry) if updated_at_ms >= entry.get().0 => {
+            entry.insert((updated_at_ms, context.clone()));
+        }
+        Entry::Vacant(entry) => {
+            entry.insert((updated_at_ms, context.clone()));
+        }
+        Entry::Occupied(_) => {}
+    }
+}
 
 fn top_ranked_symbols<'a>(
     layout: BuiltInLayout,
@@ -564,6 +794,40 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(ranked, vec!["C", "A", "B"]);
+    }
+
+    #[test]
+    fn detached_refresh_skips_fresh_rankable_contexts() {
+        let symbols = vec![
+            "FRESH".to_string(),
+            "INVALID".to_string(),
+            "MISSING".to_string(),
+        ];
+        let contexts = HashMap::from([
+            ("FRESH".to_string(), context(42.0, 1.0)),
+            ("INVALID".to_string(), context(f64::NAN, 2.0)),
+        ]);
+
+        let refresh = built_in_context_symbols_requiring_refresh(
+            BuiltInLayout::TopVolume24h,
+            symbols,
+            &contexts,
+        );
+
+        assert_eq!(refresh, vec!["INVALID", "MISSING"]);
+    }
+
+    #[test]
+    fn detached_gainers_refresh_reuses_fresh_non_gainers() {
+        let contexts = HashMap::from([("LOSS".to_string(), gainer_context(100.0, 75.0))]);
+
+        let refresh = built_in_context_symbols_requiring_refresh(
+            BuiltInLayout::TopGainers24h,
+            vec!["LOSS".to_string()],
+            &contexts,
+        );
+
+        assert!(refresh.is_empty());
     }
 
     #[test]
@@ -877,6 +1141,116 @@ mod tests {
                 .map(|index| format!("COIN{index}"))
                 .collect()
         );
+    }
+
+    #[test]
+    fn detached_partial_response_opens_when_eight_rankable_markets_remain() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.exchange_symbols = (0..BUILT_IN_CHART_COUNT)
+            .map(|index| symbol(&format!("COIN{index}")))
+            .collect();
+        let contexts = (0..BUILT_IN_CHART_COUNT)
+            .map(|index| {
+                (
+                    format!("COIN{index}"),
+                    context((BUILT_IN_CHART_COUNT - index) as f64, index as f64),
+                )
+            })
+            .collect();
+        let layout = BuiltInLayout::TopVolume24h;
+        let request_id = terminal
+            .built_in_layout_state
+            .begin_request(layout, BuiltInLayoutDestination::NewCanvas);
+
+        let _task = terminal.apply_built_in_layout_contexts(
+            request_id,
+            layout,
+            Ok(api::WatchlistContextsResponse {
+                contexts,
+                partial_errors: vec!["HIP-3 dex test: HTTP 429".to_string()],
+            }),
+        );
+
+        assert_eq!(terminal.canvases.len(), 1);
+        assert_eq!(
+            terminal
+                .canvases
+                .values()
+                .next()
+                .map(|canvas| canvas.panes.iter().count()),
+            Some(BUILT_IN_CHART_COUNT)
+        );
+    }
+
+    #[test]
+    fn detached_rate_limit_uses_recent_contexts_instead_of_aborting() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.exchange_symbols = (0..BUILT_IN_CHART_COUNT)
+            .map(|index| symbol(&format!("COIN{index}")))
+            .collect();
+        terminal.symbol_search_ctxs = (0..BUILT_IN_CHART_COUNT)
+            .map(|index| {
+                (
+                    format!("COIN{index}"),
+                    context((BUILT_IN_CHART_COUNT - index) as f64, index as f64),
+                )
+            })
+            .collect();
+        terminal.symbol_search_contexts_last_fetch_ms = Some(TradingTerminal::now_ms());
+        let layout = BuiltInLayout::TopVolume24h;
+        let request_id = terminal
+            .built_in_layout_state
+            .begin_request(layout, BuiltInLayoutDestination::NewCanvas);
+
+        let _task = terminal.apply_built_in_layout_contexts(
+            request_id,
+            layout,
+            Err("HTTP 429 Too Many Requests".to_string()),
+        );
+
+        assert_eq!(terminal.canvases.len(), 1);
+        assert_eq!(
+            terminal
+                .canvases
+                .values()
+                .next()
+                .map(|canvas| canvas.panes.iter().count()),
+            Some(BUILT_IN_CHART_COUNT)
+        );
+    }
+
+    #[test]
+    fn main_layout_still_rejects_partial_market_family_refreshes() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.exchange_symbols = (0..BUILT_IN_CHART_COUNT)
+            .map(|index| symbol(&format!("COIN{index}")))
+            .collect();
+        let contexts = (0..BUILT_IN_CHART_COUNT)
+            .map(|index| {
+                (
+                    format!("COIN{index}"),
+                    context((BUILT_IN_CHART_COUNT - index) as f64, index as f64),
+                )
+            })
+            .collect();
+        let original_main_pane_count = terminal.panes.iter().count();
+        let layout = BuiltInLayout::TopVolume24h;
+        let request_id = terminal
+            .built_in_layout_state
+            .begin_request(layout, BuiltInLayoutDestination::Main);
+
+        let _task = terminal.apply_built_in_layout_contexts(
+            request_id,
+            layout,
+            Ok(api::WatchlistContextsResponse {
+                contexts,
+                partial_errors: vec!["HIP-3 dex test: HTTP 429".to_string()],
+            }),
+        );
+
+        assert_eq!(terminal.panes.iter().count(), original_main_pane_count);
+        assert_eq!(terminal.built_in_layout_state.active(), None);
+        assert!(terminal.canvases.is_empty());
     }
 
     #[test]

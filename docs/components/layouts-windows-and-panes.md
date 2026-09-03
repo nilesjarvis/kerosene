@@ -200,7 +200,10 @@ allocates fresh chart IDs, and opens the generated pane tree as a new Canvas
 without changing the main pane tree, active layout name, active symbol, or
 primary chart. This action is intentionally limited to built-in dynamic/preset
 entries; saved-layout rows retain their existing load, rename, and delete
-actions.
+actions. Detach uses the shared short-lived market-context cache and can merge
+recent in-memory watchlist/chart contexts when individual market families are
+rate limited. It opens when at least eight rankable markets remain, while the
+normal main-workspace action retains the stricter complete-refresh requirement.
 
 The built-in dynamic layouts refresh exchange market contexts when selected:
 
