@@ -5,7 +5,10 @@ use crate::layout_preview::saved_layout_preview;
 use crate::layout_update::BuiltInLayout;
 use crate::message::Message;
 use iced::widget::container as container_style;
-use iced::widget::{Column, button, container, row, rule, scrollable, text, text_input};
+use iced::widget::svg::Handle as SvgHandle;
+use iced::widget::{
+    Column, button, container, row, rule, scrollable, svg, text, text_input, tooltip,
+};
 use iced::{Color, Element, Fill, Length, Theme};
 
 use self::actions::{layout_action_button, layout_add_button, layout_header_update_button};
@@ -17,6 +20,14 @@ mod actions;
 mod labels;
 
 const RENAME_ICON: &str = "✎";
+const DETACH_ICON_SVG: &[u8] = br#"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M15 3h6v6"/>
+  <path d="M10 14 21 3"/>
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+</svg>
+"#;
 
 // ---------------------------------------------------------------------------
 // Account Summary Layout Switcher
@@ -128,7 +139,7 @@ impl TradingTerminal {
         .spacing(6)
         .align_y(iced::Alignment::Center);
 
-        let button =
+        let load_button =
             button(contents)
                 .padding([7, 8])
                 .width(Fill)
@@ -153,12 +164,62 @@ impl TradingTerminal {
                         ..Default::default()
                     }
                 });
-
-        if is_loading {
-            button.into()
+        let load_button: Element<'static, Message> = if is_loading {
+            load_button.into()
         } else {
-            button.on_press(Message::LoadBuiltInLayout(layout)).into()
-        }
+            load_button
+                .on_press(Message::LoadBuiltInLayout(layout))
+                .into()
+        };
+
+        let detach_icon: Element<'static, Message> = svg(SvgHandle::from_memory(DETACH_ICON_SVG))
+            .width(Length::Fixed(12.0))
+            .height(Length::Fixed(12.0))
+            .style(|theme: &Theme, _status| svg::Style {
+                color: Some(theme.palette().text),
+            })
+            .into();
+        let detach_button = button(detach_icon)
+            .padding([7, 8])
+            .width(Length::Fixed(30.0))
+            .style(|theme: &Theme, status| {
+                let bg = match status {
+                    button::Status::Hovered => theme.extended_palette().background.strong.color,
+                    _ => Color::TRANSPARENT,
+                };
+                button::Style {
+                    background: Some(bg.into()),
+                    text_color: theme.palette().text,
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            });
+        let detach_button = if is_loading {
+            detach_button
+        } else {
+            detach_button.on_press(Message::OpenBuiltInLayoutInCanvas(layout))
+        };
+
+        container(
+            row![
+                container(load_button).width(Fill),
+                tooltip(
+                    detach_button,
+                    text("Open layout in a new Canvas")
+                        .size(10)
+                        .font(crate::app_fonts::monospace_font()),
+                    tooltip::Position::Bottom,
+                ),
+            ]
+            .spacing(4)
+            .align_y(iced::Alignment::Center),
+        )
+        .padding([2, 0])
+        .width(Fill)
+        .into()
     }
 
     fn view_layout_switcher_add_row(&self) -> Element<'_, Message> {

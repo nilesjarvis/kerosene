@@ -42,6 +42,10 @@ fn chrome_layout_calendar_and_portfolio_routes_cover_shared_shell_messages() {
         UpdateRoute::Layout,
     );
     assert_route(
+        Message::OpenBuiltInLayoutInCanvas(crate::layout_update::BuiltInLayout::TopVolume24h),
+        UpdateRoute::Layout,
+    );
+    assert_route(
         Message::BuiltInLayoutContextsLoaded(
             1,
             crate::layout_update::BuiltInLayout::TopVolume24h,

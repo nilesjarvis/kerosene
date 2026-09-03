@@ -16,23 +16,33 @@ impl TradingTerminal {
     }
 
     fn create_canvas(&mut self) -> Task<Message> {
-        let id = self.next_canvas_id;
-        self.next_canvas_id = self.next_canvas_id.saturating_add(1);
-
         let chart_id = self.alloc_chart_id();
         let mut chart = ChartInstance::new_empty(chart_id);
         self.apply_chart_appearance_settings(&mut chart.chart);
         self.charts.insert(chart_id, chart);
 
         let (panes, pane) = pane_grid::State::new(PaneKind::Chart(chart_id));
+        let label = format!("Canvas {}", self.next_canvas_id.saturating_add(1));
+        self.primary_chart_id = Some(chart_id);
+        self.create_canvas_workspace(label, panes, Some(pane))
+    }
+
+    pub(crate) fn create_canvas_workspace(
+        &mut self,
+        label: String,
+        panes: pane_grid::State<PaneKind>,
+        focus: Option<pane_grid::Pane>,
+    ) -> Task<Message> {
+        let id = self.next_canvas_id;
+        self.next_canvas_id = self.next_canvas_id.saturating_add(1);
         self.canvases.insert(
             id,
             CanvasState {
                 id,
-                label: format!("Canvas {}", id.saturating_add(1)),
+                label,
                 window_id: None,
                 panes,
-                focus: Some(pane),
+                focus,
                 dragging_pane: None,
                 width: crate::config::DEFAULT_CANVAS_WIDTH,
                 height: crate::config::DEFAULT_CANVAS_HEIGHT,
@@ -41,7 +51,6 @@ impl TradingTerminal {
                 preserved_loaded_pane_layout: None,
             },
         );
-        self.primary_chart_id = Some(chart_id);
         self.last_focused_workspace = WorkspaceId::Canvas(id);
         self.add_widget_workspace = WorkspaceId::Canvas(id);
         self.persist_config();

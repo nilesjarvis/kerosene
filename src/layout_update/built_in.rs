@@ -1,9 +1,12 @@
 use crate::api::{self, ExchangeSymbol, WatchlistContext};
 use crate::app_state::TradingTerminal;
+use crate::chart_state::ChartInstance;
 use crate::config::{self, AxisConfig, PaneKindConfig, PaneLayoutConfig};
 use crate::helpers::{positive_percent_change, redact_sensitive_response_text};
 use crate::message::Message;
+use crate::timeframe::Timeframe;
 use iced::Task;
+use iced::widget::pane_grid;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
@@ -97,7 +100,14 @@ impl BuiltInLayout {
 pub(crate) struct BuiltInLayoutState {
     active: Option<BuiltInLayout>,
     loading: Option<BuiltInLayout>,
+    loading_destination: Option<BuiltInLayoutDestination>,
     request_id: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BuiltInLayoutDestination {
+    Main,
+    NewCanvas,
 }
 
 impl BuiltInLayoutState {
@@ -109,9 +119,14 @@ impl BuiltInLayoutState {
         self.loading == Some(layout)
     }
 
-    fn begin_request(&mut self, layout: BuiltInLayout) -> u64 {
+    fn begin_request(
+        &mut self,
+        layout: BuiltInLayout,
+        destination: BuiltInLayoutDestination,
+    ) -> u64 {
         self.request_id = self.request_id.wrapping_add(1);
         self.loading = Some(layout);
+        self.loading_destination = Some(destination);
         self.request_id
     }
 
@@ -124,14 +139,16 @@ impl BuiltInLayoutState {
         self.loading = None;
     }
 
-    fn finish_request(&mut self) {
+    fn finish_request(&mut self) -> Option<BuiltInLayoutDestination> {
         self.loading = None;
+        self.loading_destination.take()
     }
 
     pub(crate) fn deactivate(&mut self) {
         self.request_id = self.request_id.wrapping_add(1);
         self.active = None;
         self.loading = None;
+        self.loading_destination = None;
     }
 }
 
@@ -142,7 +159,12 @@ impl BuiltInLayoutState {
 impl TradingTerminal {
     pub(super) fn update_built_in_layouts(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::LoadBuiltInLayout(layout) => self.request_built_in_layout(layout),
+            Message::LoadBuiltInLayout(layout) => {
+                self.request_built_in_layout(layout, BuiltInLayoutDestination::Main)
+            }
+            Message::OpenBuiltInLayoutInCanvas(layout) => {
+                self.request_built_in_layout(layout, BuiltInLayoutDestination::NewCanvas)
+            }
             Message::BuiltInLayoutContextsLoaded(request_id, layout, result) => {
                 self.apply_built_in_layout_contexts(request_id, layout, result)
             }
@@ -150,7 +172,11 @@ impl TradingTerminal {
         }
     }
 
-    fn request_built_in_layout(&mut self, layout: BuiltInLayout) -> Task<Message> {
+    fn request_built_in_layout(
+        &mut self,
+        layout: BuiltInLayout,
+        destination: BuiltInLayoutDestination,
+    ) -> Task<Message> {
         let symbols = self.built_in_layout_symbols(layout);
         if symbols.len() < BUILT_IN_CHART_COUNT {
             self.push_toast(
@@ -163,7 +189,9 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let request_id = self.built_in_layout_state.begin_request(layout);
+        let request_id = self
+            .built_in_layout_state
+            .begin_request(layout, destination);
         Task::perform(
             api::fetch_watchlist_contexts_uncached(symbols),
             move |result| Message::BuiltInLayoutContextsLoaded(request_id, layout, result),
@@ -182,7 +210,9 @@ impl TradingTerminal {
         {
             return Task::none();
         }
-        self.built_in_layout_state.finish_request();
+        let Some(destination) = self.built_in_layout_state.finish_request() else {
+            return Task::none();
+        };
 
         let response = match result {
             Ok(response) if response.partial_errors.is_empty() => response,
@@ -234,13 +264,84 @@ impl TradingTerminal {
             .into_iter()
             .map(|symbol| symbol.key.clone())
             .collect::<Vec<_>>();
-        let generated = self.built_in_layout_snapshot(layout, &symbol_keys);
         self.close_chart_header_menus();
-        self.active_layout_name = None;
-        self.built_in_layout_state.activate(layout);
-        let task = self.apply_layout(generated);
+        let task = match destination {
+            BuiltInLayoutDestination::Main => {
+                let generated = self.built_in_layout_snapshot(layout, &symbol_keys);
+                self.active_layout_name = None;
+                self.built_in_layout_state.activate(layout);
+                self.apply_layout(generated)
+            }
+            BuiltInLayoutDestination::NewCanvas => {
+                self.open_built_in_layout_canvas(layout, &symbol_keys)
+            }
+        };
         self.persist_config();
         task
+    }
+
+    fn open_built_in_layout_canvas(
+        &mut self,
+        layout: BuiltInLayout,
+        symbol_keys: &[String],
+    ) -> Task<Message> {
+        let timeframe = Timeframe::from_config_str(&self.active_timeframe_config_value());
+        let mut chart_ids = [0; BUILT_IN_CHART_COUNT];
+        for chart_id in &mut chart_ids {
+            *chart_id = self.alloc_chart_id();
+        }
+
+        let Some(configuration) =
+            Self::pane_layout_to_configuration(&top_eight_grid_layout_with_chart_ids(chart_ids))
+        else {
+            self.push_toast(
+                format!("Could not open {} in a Canvas", layout.label()),
+                true,
+            );
+            return Task::none();
+        };
+
+        let mut tasks = Vec::new();
+        for (chart_id, symbol) in chart_ids.into_iter().zip(symbol_keys.iter()) {
+            let mut instance = ChartInstance::new(chart_id, symbol.clone(), timeframe);
+            let display = self.display_name_for_symbol(symbol);
+            instance.set_symbol_identity(symbol.clone(), display);
+            instance.chart.whole_unit_volume = self.is_outcome_coin(symbol);
+            self.apply_chart_appearance_settings(&mut instance.chart);
+            self.charts.insert(chart_id, instance);
+
+            self.sync_chart_position_for(chart_id);
+            self.sync_chart_orders_for(chart_id);
+            self.sync_chart_trade_markers_for(chart_id);
+            tasks.push(self.queue_candle_fetch_for(chart_id, symbol, timeframe, None));
+            tasks.extend(self.queue_macro_candles_tasks(chart_id, symbol));
+        }
+        self.sync_chart_market_reference_prices();
+
+        let panes = pane_grid::State::with_configuration(configuration);
+        let focus = panes.iter().next().map(|(pane, _)| *pane);
+        let canvas_label = self.available_built_in_canvas_label(layout.label());
+        tasks.push(self.create_canvas_workspace(canvas_label, panes, focus));
+        Task::batch(tasks)
+    }
+
+    fn available_built_in_canvas_label(&self, base: &str) -> String {
+        if !self.canvases.values().any(|canvas| canvas.label == base) {
+            return base.to_string();
+        }
+
+        let mut suffix = 2;
+        loop {
+            let candidate = format!("{base} ({suffix})");
+            if !self
+                .canvases
+                .values()
+                .any(|canvas| canvas.label == candidate)
+            {
+                return candidate;
+            }
+            suffix += 1;
+        }
     }
 
     fn built_in_layout_symbols(&self, layout: BuiltInLayout) -> Vec<String> {
@@ -359,11 +460,17 @@ fn top_ranked_symbols<'a>(
 }
 
 fn top_eight_grid_layout() -> PaneLayoutConfig {
+    top_eight_grid_layout_with_chart_ids([0, 1, 2, 3, 4, 5, 6, 7])
+}
+
+fn top_eight_grid_layout_with_chart_ids(
+    chart_ids: [u64; BUILT_IN_CHART_COUNT],
+) -> PaneLayoutConfig {
     let columns = [
-        chart_column(0, 4),
-        chart_column(1, 5),
-        chart_column(2, 6),
-        chart_column(3, 7),
+        chart_column(chart_ids[0], chart_ids[4]),
+        chart_column(chart_ids[1], chart_ids[5]),
+        chart_column(chart_ids[2], chart_ids[6]),
+        chart_column(chart_ids[3], chart_ids[7]),
     ];
     split(
         AxisConfig::Vertical,
@@ -600,7 +707,9 @@ mod tests {
             })
             .collect();
         let layout = BuiltInLayout::TopVolume24h;
-        let request_id = terminal.built_in_layout_state.begin_request(layout);
+        let request_id = terminal
+            .built_in_layout_state
+            .begin_request(layout, BuiltInLayoutDestination::Main);
 
         let _task = terminal.apply_built_in_layout_contexts(
             request_id,
@@ -635,7 +744,9 @@ mod tests {
             })
             .collect();
         let layout = BuiltInLayout::TopOpenInterest;
-        let request_id = terminal.built_in_layout_state.begin_request(layout);
+        let request_id = terminal
+            .built_in_layout_state
+            .begin_request(layout, BuiltInLayoutDestination::Main);
 
         let _task = terminal.apply_built_in_layout_contexts(
             request_id,
@@ -668,7 +779,9 @@ mod tests {
             })
             .collect();
         let layout = BuiltInLayout::TopGainers24h;
-        let request_id = terminal.built_in_layout_state.begin_request(layout);
+        let request_id = terminal
+            .built_in_layout_state
+            .begin_request(layout, BuiltInLayoutDestination::Main);
 
         let _task = terminal.apply_built_in_layout_contexts(
             request_id,
@@ -687,11 +800,95 @@ mod tests {
     }
 
     #[test]
+    fn detached_response_opens_ranked_grid_in_canvas_without_replacing_main_workspace() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.exchange_symbols = (0..BUILT_IN_CHART_COUNT)
+            .map(|index| symbol(&format!("COIN{index}")))
+            .collect();
+        let contexts = (0..BUILT_IN_CHART_COUNT)
+            .map(|index| {
+                (
+                    format!("COIN{index}"),
+                    context((BUILT_IN_CHART_COUNT - index) as f64, index as f64),
+                )
+            })
+            .collect();
+        terminal.active_layout_name = Some("Main setup".to_string());
+        let original_primary_chart_id = terminal.primary_chart_id;
+        let original_active_symbol = terminal.active_symbol.clone();
+        let original_main_panes = terminal
+            .panes
+            .iter()
+            .map(|(_, kind)| format!("{kind:?}"))
+            .collect::<Vec<_>>();
+        let original_charts = terminal
+            .charts
+            .iter()
+            .map(|(id, chart)| (*id, chart.symbol.clone()))
+            .collect::<HashMap<_, _>>();
+        let layout = BuiltInLayout::TopVolume24h;
+        let request_id = terminal
+            .built_in_layout_state
+            .begin_request(layout, BuiltInLayoutDestination::NewCanvas);
+
+        let _task = terminal.apply_built_in_layout_contexts(
+            request_id,
+            layout,
+            Ok(api::WatchlistContextsResponse::complete(contexts)),
+        );
+
+        assert_eq!(terminal.active_layout_name.as_deref(), Some("Main setup"));
+        assert_eq!(terminal.built_in_layout_state.active(), None);
+        assert_eq!(terminal.primary_chart_id, original_primary_chart_id);
+        assert_eq!(terminal.active_symbol, original_active_symbol);
+        assert_eq!(
+            terminal
+                .panes
+                .iter()
+                .map(|(_, kind)| format!("{kind:?}"))
+                .collect::<Vec<_>>(),
+            original_main_panes
+        );
+        for (id, symbol) in original_charts {
+            assert_eq!(
+                terminal.charts.get(&id).map(|chart| &chart.symbol),
+                Some(&symbol)
+            );
+        }
+
+        assert_eq!(terminal.canvases.len(), 1);
+        let canvas = terminal.canvases.values().next().expect("detached Canvas");
+        assert_eq!(canvas.label, layout.label());
+        assert!(canvas.window_id.is_some());
+        let canvas_symbols = canvas
+            .panes
+            .iter()
+            .filter_map(|(_, kind)| match kind {
+                crate::pane_state::PaneKind::Chart(id) => {
+                    terminal.charts.get(id).map(|chart| chart.symbol.clone())
+                }
+                _ => None,
+            })
+            .collect::<HashSet<_>>();
+        assert_eq!(canvas_symbols.len(), BUILT_IN_CHART_COUNT);
+        assert_eq!(
+            canvas_symbols,
+            (0..BUILT_IN_CHART_COUNT)
+                .map(|index| format!("COIN{index}"))
+                .collect()
+        );
+    }
+
+    #[test]
     fn stale_volume_response_cannot_replace_a_newer_request() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         let layout = BuiltInLayout::TopVolume24h;
-        let stale_request_id = terminal.built_in_layout_state.begin_request(layout);
-        let current_request_id = terminal.built_in_layout_state.begin_request(layout);
+        let stale_request_id = terminal
+            .built_in_layout_state
+            .begin_request(layout, BuiltInLayoutDestination::Main);
+        let current_request_id = terminal
+            .built_in_layout_state
+            .begin_request(layout, BuiltInLayoutDestination::Main);
         let original_chart_symbols = terminal
             .charts
             .iter()

@@ -24,6 +24,7 @@ impl TradingTerminal {
             | Message::LayoutExported(_)
             | Message::LayoutImported(_)) => return self.update_saved_layouts(message),
             message @ (Message::LoadBuiltInLayout(_)
+            | Message::OpenBuiltInLayoutInCanvas(_)
             | Message::BuiltInLayoutContextsLoaded(_, _, _)) => {
                 return self.update_built_in_layouts(message);
             }

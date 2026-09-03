@@ -194,7 +194,13 @@ runtime epoch that fences their outstanding REST and websocket events.
 The layout dropdown keeps built-in dynamic/preset layouts in a separate section
 from user-named snapshots. Built-in selection is routed through
 `layout_update/built_in.rs`; these entries are not inserted into
-`saved_layouts`.
+`saved_layouts`. Each built-in row also has a detach action. The normal row
+action replaces the main workspace, while detach refreshes the same ranked data,
+allocates fresh chart IDs, and opens the generated pane tree as a new Canvas
+without changing the main pane tree, active layout name, active symbol, or
+primary chart. This action is intentionally limited to built-in dynamic/preset
+entries; saved-layout rows retain their existing load, rename, and delete
+actions.
 
 The built-in dynamic layouts refresh exchange market contexts when selected:
 
@@ -280,6 +286,9 @@ setups. Creating one allocates a stable `CanvasId`, a new chart instance, and a
 window. Canvas widgets use the same global feature maps as main-window widgets,
 but every multi-instance widget receives its own globally unique instance ID.
 Trading account, active symbol/order context, theme, and settings remain global.
+Detaching a built-in layout uses this same lifecycle and creates a named Canvas
+containing the generated multi-chart grid, so it can be moved to another monitor
+and later reopened from the Widgets dropdown.
 
 The Canvas toolbar intentionally stays small: it contains the pane-widget
 dropdown and an automatic label at the right. Main-shell actions such as ticker
