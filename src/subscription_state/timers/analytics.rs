@@ -10,6 +10,12 @@ use iced::Subscription;
 
 impl TradingTerminal {
     pub(super) fn push_analytics_timer_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
+        if self.connected_address.is_some() && self.transfer_history_is_visible() {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(30))
+                    .map(|_| Message::RefreshTransferHistory),
+            );
+        }
         let has_income_pane = self.pane_is_open(|kind| matches!(kind, PaneKind::Income));
         let income_poll_enabled = has_income_pane
             && self.connected_address.is_some()
@@ -61,6 +67,30 @@ mod tests {
 
         terminal.push_analytics_timer_subscriptions(&mut subscriptions);
 
+        assert_eq!(subscriptions.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod transfer_tests {
+    use super::*;
+    use crate::account_state::BottomTab;
+
+    #[test]
+    fn canvas_transfer_tab_polls_only_when_connected_and_selected() {
+        let (mut terminal, _) =
+            TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default());
+        let mut subscriptions = Vec::new();
+        terminal.insert_test_canvas_pane(
+            7,
+            PaneKind::BottomTabs {
+                active_tab: BottomTab::DepositsWithdrawals,
+            },
+        );
+        terminal.push_analytics_timer_subscriptions(&mut subscriptions);
+        assert!(subscriptions.is_empty());
+        terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".into());
+        terminal.push_analytics_timer_subscriptions(&mut subscriptions);
         assert_eq!(subscriptions.len(), 1);
     }
 }

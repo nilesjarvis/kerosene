@@ -48,6 +48,7 @@ impl TradingTerminal {
         self.account_refresh_backoff_until_ms = None;
         self.account_refresh_retry_due_ms = None;
         self.clear_portfolio_income_account_state();
+        self.transfer_history.clear();
         self.clear_account_scoped_chart_state();
         if self.journal.window_id.is_some() {
             self.journal.clear_active_account_data();

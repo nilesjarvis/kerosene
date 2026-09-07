@@ -3,6 +3,7 @@ mod connection;
 mod position_pnl;
 mod profile;
 mod stream;
+mod transfers;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -65,6 +66,12 @@ impl TradingTerminal {
             Message::RetryTwapReconciliationAccountData(address) => {
                 self.retry_twap_reconciliation_account_data(address.into_string())
             }
+            Message::RefreshTransferHistory => self.refresh_transfer_history(),
+            Message::TransferHistoryLoaded(address, generation, provider, result) => {
+                self.apply_transfer_history(address.into_string(), generation, provider, *result)
+            }
+            Message::TransferHistoryPage(next) => self.change_transfer_history_page(next),
+            Message::ToggleTransferDetails(index) => self.toggle_transfer_details(index),
             Message::RefreshAccountData => self.refresh_account_data(),
             Message::AccountRefreshBackoffElapsed(due_ms) => {
                 self.handle_account_refresh_backoff_elapsed(due_ms)

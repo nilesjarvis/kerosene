@@ -522,6 +522,7 @@ pub(crate) struct TradingTerminal {
     // (long_notional, short_notional)
     pub(crate) liquidation_chart_buckets: BTreeMap<u64, (f64, f64)>,
     pub(crate) connected_address: Option<String>,
+    pub(crate) transfer_history: crate::account_state::transfers::TransferHistoryState,
     pub(crate) account_data: Option<AccountData>,
     pub(crate) account_data_address: Option<String>,
     pub(crate) account_data_revision: u64,

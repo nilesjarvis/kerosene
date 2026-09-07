@@ -3,6 +3,7 @@ mod http;
 mod position_metrics;
 mod spot;
 mod spot_cost_basis;
+pub(crate) mod transfers;
 mod types;
 mod wallets;
 

@@ -655,6 +655,15 @@ pub(crate) enum Message {
     PaneDragged(WorkspaceId, pane_grid::DragEvent),
     PaneClicked(WorkspaceId, pane_grid::Pane),
     SwitchBottomTab(WorkspaceId, pane_grid::Pane, BottomTab),
+    RefreshTransferHistory,
+    TransferHistoryLoaded(
+        RedactedAddress,
+        u64,
+        crate::account::transfers::TransferProvider,
+        Box<Result<crate::account::transfers::TransferSnapshot, String>>,
+    ),
+    TransferHistoryPage(bool),
+    ToggleTransferDetails(usize),
     OrderPriceChanged(RedactedOrderInput),
     SetMidPrice,
     OrderBookPriceSelected {

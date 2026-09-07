@@ -658,6 +658,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::DisconnectWallet
         | Message::AccountDataLoaded(_, _, _)
         | Message::RetryTwapReconciliationAccountData(_)
+        | Message::RefreshTransferHistory
+        | Message::TransferHistoryLoaded(_, _, _, _)
+        | Message::TransferHistoryPage(_)
+        | Message::ToggleTransferDetails(_)
         | Message::RefreshAccountData
         | Message::AccountRefreshBackoffElapsed(_)
         | Message::AllMidsBootstrapLoaded(_, _)

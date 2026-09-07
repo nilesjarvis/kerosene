@@ -19,6 +19,9 @@ impl TradingTerminal {
                 self.set_workspace_focus(workspace, Some(pane));
                 self.last_focused_workspace = workspace;
                 self.persist_config();
+                if tab == crate::account_state::BottomTab::DepositsWithdrawals {
+                    return self.refresh_transfer_history();
+                }
             }
             Message::CloseAllMenus => {
                 self.close_chart_header_menus();

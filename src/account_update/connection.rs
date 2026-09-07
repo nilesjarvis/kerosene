@@ -79,6 +79,7 @@ impl TradingTerminal {
                 self.account_refresh_backoff_until_ms = None;
                 self.account_refresh_retry_due_ms = None;
                 self.clear_portfolio_income_account_state();
+                self.transfer_history.clear();
                 self.clear_account_scoped_chart_state();
                 if self.journal.window_id.is_some() {
                     self.journal.clear_active_account_data();
@@ -280,6 +281,7 @@ impl TradingTerminal {
         self.account_refresh_backoff_until_ms = None;
         self.account_refresh_retry_due_ms = None;
         self.clear_portfolio_income_account_state();
+        self.transfer_history.clear();
         if changing_account_context {
             self.clear_account_scoped_chart_state();
         } else {
@@ -314,6 +316,7 @@ impl TradingTerminal {
         );
         let mut tasks = vec![account_task];
         tasks.push(stop_chase_task);
+        tasks.push(self.refresh_transfer_history());
         tasks.push(self.start_portfolio_refresh_for_address(addr));
         tasks.extend(self.mids_bootstrap_tasks());
         tasks.push(self.load_journal_for_active_account(false));
@@ -376,6 +379,7 @@ impl TradingTerminal {
         self.wallet_address_input.clear();
         self.clear_account_scoped_chart_state();
         self.clear_portfolio_income_account_state();
+        self.transfer_history.clear();
         if self.journal.window_id.is_some() {
             self.journal.clear_active_account_data();
             self.journal.error = Some("Connect an account before loading the journal.".to_string());

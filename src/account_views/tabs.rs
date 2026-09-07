@@ -54,6 +54,13 @@ impl TradingTerminal {
                 active_tab == BottomTab::FundingHistory,
                 Message::SwitchBottomTab(workspace, pane, BottomTab::FundingHistory),
             ))
+            .push(bottom_tab_separator())
+            .push(bottom_tab_button(
+                "Deposits/Withdrawals",
+                None,
+                active_tab == BottomTab::DepositsWithdrawals,
+                Message::SwitchBottomTab(workspace, pane, BottomTab::DepositsWithdrawals),
+            ))
             .push(Space::new().width(Fill))
             .push(bottom_tab_separator())
             .push(bottom_journal_button())
@@ -69,6 +76,7 @@ impl TradingTerminal {
             BottomTab::Balances => self.view_balances(),
             BottomTab::TradeHistory => self.view_trade_history(),
             BottomTab::FundingHistory => self.view_funding_history(),
+            BottomTab::DepositsWithdrawals => self.view_transfer_history(),
         };
 
         let body_padding = if active_tab == BottomTab::Positions {
@@ -119,19 +127,31 @@ impl TradingTerminal {
 }
 
 fn bottom_tab_strip<'a>(content: Row<'a, Message>) -> Element<'a, Message> {
-    container(column![content, section_separator()].spacing(0))
-        .width(Fill)
-        .style(|theme: &Theme| {
-            let background = Color {
-                a: 0.04,
-                ..theme.extended_palette().background.weak.color
-            };
-            container::Style {
-                background: Some(background.into()),
-                ..Default::default()
-            }
-        })
-        .into()
+    container(
+        column![
+            iced::widget::scrollable(content).direction(
+                iced::widget::scrollable::Direction::Horizontal(
+                    iced::widget::scrollable::Scrollbar::new()
+                        .width(3)
+                        .scroller_width(3)
+                )
+            ),
+            section_separator()
+        ]
+        .spacing(0),
+    )
+    .width(Fill)
+    .style(|theme: &Theme| {
+        let background = Color {
+            a: 0.04,
+            ..theme.extended_palette().background.weak.color
+        };
+        container::Style {
+            background: Some(background.into()),
+            ..Default::default()
+        }
+    })
+    .into()
 }
 
 fn bottom_tab_button(
