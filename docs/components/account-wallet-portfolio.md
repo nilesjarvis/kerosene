@@ -42,6 +42,34 @@ The account picker can:
 - delete saved accounts
 - save credentials for the active profile
 
+### Existing Subaccounts
+
+The Add Account window discovers existing Hyperliquid subaccounts through the
+public `subAccounts` info request, using the configured Hyperliquid read proxies
+when enabled. Enter the parent address, choose **Discover
+Subaccounts**, select the child, and supply an agent key approved by the parent
+if trading is needed. Each child is saved as its own account profile. Creation
+and transfers are outside this workflow.
+
+`wallet_address` remains the effective account address used for positions,
+balances, fills, WebSocket subscriptions, portfolio history, and reconciliation.
+The optional `master_address` records the parent for a subaccount; legacy and
+ordinary account profiles default to `None`. Changing a saved subaccount's
+address requires adding or selecting a different profile, so its parent/key
+binding cannot be reused accidentally.
+
+`account_state/subaccounts.rs` validates discovery results and redacts message
+payloads. The messages `AddAccountDiscoverSubaccounts`,
+`AddAccountSubaccountsLoaded`, and `AddAccountTargetSelected` route through the
+account update module. Results carry window ID, request generation, and parent
+address; stale responses are discarded after edits or window replacement.
+Invalidating a selected child requires an explicit new selection before save.
+
+Trading uses a parent-approved API/agent wallet, with the selected child's
+address signed into `vaultAddress`. Parent and child addresses are also bound
+to the stored credential, including backup/config-loss recovery. HyperDash and
+Hydromancer keys remain global data-provider credentials.
+
 ## Connect Flow
 
 ```text

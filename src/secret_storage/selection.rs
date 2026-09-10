@@ -40,6 +40,7 @@ impl TradingTerminal {
                 continue;
             }
             accounts.push(config::AccountProfile {
+                master_address: None,
                 secret_id: secret_id.to_string(),
                 name: String::new(),
                 wallet_address: String::new(),
@@ -383,21 +384,18 @@ impl TradingTerminal {
 
         for account in &mut accounts {
             let secret_id = account.secret_id.trim().to_string();
-            let wallet_address = account.wallet_address.clone();
             if secret_id.is_empty() {
                 continue;
             }
 
-            let missing_agent_key = payload
-                .profile_agent_key_for_wallet(&secret_id, &wallet_address)
-                .is_none();
+            let missing_agent_key = payload.profile_agent_key_for_account(account).is_none();
             if missing_agent_key
                 && keychain_payload.as_ref().is_some_and(|payload| {
-                    payload.profile_agent_key_binding_mismatches(&secret_id, &wallet_address)
+                    payload.profile_agent_key_binding_mismatches_account(account)
                 })
             {
                 return Err(
-                    "An OS keychain account key is bound to a different wallet address; re-enter and save that account key before switching storage"
+                    "An OS keychain account key is bound to a different wallet address or subaccount parent; re-enter and save that account key before switching storage"
                         .to_string(),
                 );
             }
@@ -405,11 +403,7 @@ impl TradingTerminal {
             load_profile_secrets(account)
                 .map_err(|_| "OS keychain profile credentials could not be read".to_string())?;
             if missing_agent_key && !account.agent_key.trim().is_empty() {
-                payload.upsert_profile_agent_key_for_wallet(
-                    &secret_id,
-                    Some(&wallet_address),
-                    &account.agent_key,
-                );
+                payload.upsert_profile_agent_key_for_account(account);
             }
             merge_legacy_profile_hydromancer_key(&mut payload, account)?;
         }
@@ -464,20 +458,15 @@ fn merge_missing_keychain_payload_secrets(
 ) {
     for account in accounts {
         let secret_id = account.secret_id.trim();
-        if secret_id.is_empty()
-            || payload
-                .profile_agent_key_for_wallet(secret_id, &account.wallet_address)
-                .is_some()
-        {
+        if secret_id.is_empty() || payload.profile_agent_key_for_account(account).is_some() {
             continue;
         }
 
-        if let Some(agent_key) =
-            keychain_payload.profile_agent_key_for_wallet(secret_id, &account.wallet_address)
-        {
-            payload.upsert_profile_agent_key_for_wallet(
+        if let Some(agent_key) = keychain_payload.profile_agent_key_for_account(account) {
+            payload.upsert_profile_agent_key_with_binding(
                 secret_id,
                 Some(&account.wallet_address),
+                account.master_address.as_deref(),
                 agent_key,
             );
         }
@@ -539,6 +528,7 @@ mod tests {
 
     fn account(secret_id: &str, agent_key: &str) -> config::AccountProfile {
         config::AccountProfile {
+            master_address: None,
             secret_id: secret_id.to_string(),
             name: secret_id.to_string(),
             wallet_address: "0x0000000000000000000000000000000000000001".to_string(),

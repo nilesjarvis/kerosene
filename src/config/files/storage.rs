@@ -107,6 +107,7 @@ fn keychain_cleanup_profiles_for_config(config: &KeroseneConfig) -> Vec<AccountP
             continue;
         }
         profiles.push(AccountProfile {
+            master_address: None,
             secret_id: secret_id.to_string(),
             name: String::new(),
             wallet_address: String::new(),
@@ -451,15 +452,12 @@ fn merge_active_legacy_profile_key_into_payload(
 
     let secret_id = profile.secret_id.trim().to_string();
     if secret_id.is_empty()
-        || payload
-            .profile_agent_key_for_wallet(&secret_id, &profile.wallet_address)
-            .is_some()
-        || payload.profile_agent_key_binding_mismatches(&secret_id, &profile.wallet_address)
+        || payload.profile_agent_key_for_account(profile).is_some()
+        || payload.profile_agent_key_binding_mismatches_account(profile)
     {
         return Ok(false);
     }
 
-    let wallet_address = profile.wallet_address.clone();
     let mut legacy_profile = profile.clone();
     load_profile(&mut legacy_profile)?;
     if legacy_profile.agent_key.trim().is_empty() {
@@ -467,8 +465,7 @@ fn merge_active_legacy_profile_key_into_payload(
     }
 
     let agent_key = legacy_profile.agent_key.clone();
-    let changed =
-        payload.upsert_profile_agent_key_for_wallet(&secret_id, Some(&wallet_address), &agent_key);
+    let changed = payload.upsert_profile_agent_key_for_account(&legacy_profile);
     if changed && let Some(profile) = config.accounts.get_mut(active_index) {
         profile.agent_key.zeroize();
         profile.agent_key = agent_key;

@@ -8,7 +8,7 @@ use zeroize::Zeroize;
 
 fn push_wallet_binding_mismatch_warning() {
     crate::config::push_secret_warning(
-        "Saved agent key for an account was not loaded because it is bound to a different wallet address. Re-enter and save credentials to trade from this account."
+        "Saved agent key for an account was not loaded because it is bound to a different wallet address or subaccount parent. Re-enter and save credentials to trade from this account."
             .to_string(),
     );
 }
@@ -21,15 +21,11 @@ pub(super) fn merge_missing_plaintext_secrets_into_payload(
 
     for profile in &config.accounts {
         if payload
-            .profile_agent_key_for_wallet(&profile.secret_id, &profile.wallet_address)
+            .profile_agent_key_for_account(profile)
             .is_none_or(|agent_key| agent_key.trim().is_empty())
             && !profile.agent_key.trim().is_empty()
         {
-            changed |= payload.upsert_profile_agent_key_for_wallet(
-                &profile.secret_id,
-                Some(&profile.wallet_address),
-                &profile.agent_key,
-            );
+            changed |= payload.upsert_profile_agent_key_for_account(profile);
         }
 
         if payload.global_hydromancer_api_key().trim().is_empty()
@@ -89,6 +85,7 @@ pub(super) fn recover_accounts_from_secret_payload(
         let secret_id = saved_profile.secret_id.trim();
         if secret_id.is_empty()
             || saved_profile.agent_key.trim().is_empty()
+            || !saved_profile.has_valid_account_binding()
             || recovered
                 .iter()
                 .any(|profile| profile.secret_id == secret_id)
@@ -98,6 +95,7 @@ pub(super) fn recover_accounts_from_secret_payload(
 
         let ordinal = recovered.len() + 1;
         recovered.push(crate::config::AccountProfile {
+            master_address: saved_profile.master_address.clone(),
             secret_id: secret_id.to_string(),
             name: if ordinal == 1 {
                 "Main Trading".to_string()
@@ -128,9 +126,7 @@ pub(super) fn applied_secret_payload_for_legacy_cleanup(
     cleanup_payload.profiles.retain(|payload_profile| {
         config.accounts.iter().any(|account| {
             account.secret_id == payload_profile.secret_id
-                && payload
-                    .profile_agent_key_for_wallet(&account.secret_id, &account.wallet_address)
-                    .is_some()
+                && payload.profile_agent_key_for_account(account).is_some()
         })
     });
     cleanup_payload
@@ -144,13 +140,9 @@ pub(super) fn apply_secret_payload(config: &mut KeroseneConfig, payload: &Secret
         }
 
         profile.agent_key.zeroize();
-        if let Some(agent_key) =
-            payload.profile_agent_key_for_wallet(&profile.secret_id, &profile.wallet_address)
-        {
+        if let Some(agent_key) = payload.profile_agent_key_for_account(profile) {
             profile.agent_key = agent_key.to_string().into();
-        } else if payload
-            .profile_agent_key_binding_mismatches(&profile.secret_id, &profile.wallet_address)
-        {
+        } else if payload.profile_agent_key_binding_mismatches_account(profile) {
             push_wallet_binding_mismatch_warning();
         }
         profile.hydromancer_api_key.zeroize();
@@ -180,14 +172,10 @@ pub(super) fn apply_secret_payload_preserving_missing_plaintext(
             profile.secret_id = new_secret_id();
         }
 
-        if let Some(agent_key) =
-            payload.profile_agent_key_for_wallet(&profile.secret_id, &profile.wallet_address)
-        {
+        if let Some(agent_key) = payload.profile_agent_key_for_account(profile) {
             profile.agent_key.zeroize();
             profile.agent_key = agent_key.to_string().into();
-        } else if payload
-            .profile_agent_key_binding_mismatches(&profile.secret_id, &profile.wallet_address)
-        {
+        } else if payload.profile_agent_key_binding_mismatches_account(profile) {
             push_wallet_binding_mismatch_warning();
         }
         if !payload.global_hydromancer_api_key().trim().is_empty() {

@@ -71,6 +71,7 @@ fn terminal_for_outcome_order(symbol: ExchangeSymbol) -> TradingTerminal {
     terminal.connected_address = Some(account.to_string());
     terminal.wallet_address_input = account.to_string();
     terminal.accounts = vec![AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: account.to_string(),
@@ -344,6 +345,7 @@ fn terminal_for_percentage_order(account_data: AccountData) -> TradingTerminal {
     terminal.connected_address = Some(account.to_string());
     terminal.wallet_address_input = account.to_string();
     terminal.accounts = vec![AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: account.to_string(),
@@ -423,6 +425,7 @@ fn ioc_limit_orders_project_like_market_orders() {
     terminal.connected_address = Some(account.to_string());
     terminal.wallet_address_input = account.to_string();
     terminal.accounts = vec![AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: account.to_string(),

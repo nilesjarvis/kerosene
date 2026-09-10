@@ -643,6 +643,12 @@ pub(crate) enum Message {
     OpenAddAccountWindow,
     AddAccountNameChanged(String),
     AddAccountAddressChanged(RedactedAddress),
+    AddAccountDiscoverSubaccounts,
+    AddAccountSubaccountsLoaded(
+        crate::account_state::SubaccountDiscoveryRequest,
+        crate::account_state::SubaccountDiscoveryResult,
+    ),
+    AddAccountTargetSelected(crate::account_state::AddAccountTarget),
     AddAccountKeyChanged(SecretInput),
     AddAccountSwitchToggled(bool),
     AddAccountSubmit,

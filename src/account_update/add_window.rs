@@ -1,4 +1,7 @@
-use crate::account_state::AddAccountWindowState;
+use crate::account_state::{
+    AddAccountTarget, AddAccountWindowState, SubaccountDiscoveryRequest, SubaccountDiscoveryResult,
+    fetch_subaccounts,
+};
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::helpers::redact_sensitive_response_text;
@@ -14,7 +17,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 const ADD_ACCOUNT_WINDOW_SIZE: Size = Size {
     width: 470.0,
-    height: 560.0,
+    height: 670.0,
 };
 const ADD_ACCOUNT_WINDOW_MIN_SIZE: Size = Size {
     width: 420.0,
@@ -51,8 +54,79 @@ impl TradingTerminal {
 
     pub(super) fn update_add_account_address(&mut self, value: String) -> Task<Message> {
         if let Some(state) = self.add_account_window.as_mut() {
+            if Self::normalize_wallet_address(&state.address_input)
+                != Self::normalize_wallet_address(&value)
+            {
+                state.invalidate_subaccounts();
+            }
             state.address_input = value;
             state.error = None;
+        }
+        Task::none()
+    }
+
+    pub(super) fn discover_add_account_subaccounts(&mut self) -> Task<Message> {
+        let Some(state) = self.add_account_window.as_mut() else {
+            return Task::none();
+        };
+        state.invalidate_subaccounts();
+        state.error = None;
+        let Some(master_address) = Self::normalize_wallet_address(&state.address_input) else {
+            state.discovery_error = Some("Enter a valid master account address first.".to_string());
+            return Task::none();
+        };
+        state.discovery_generation = state.discovery_generation.wrapping_add(1);
+        let request = SubaccountDiscoveryRequest {
+            window_id: state.window_id,
+            generation: state.discovery_generation,
+            master_address: master_address.into(),
+        };
+        state.discovery_request = Some(request.clone());
+        Task::perform(
+            async move {
+                let result = fetch_subaccounts(&request.master_address).await;
+                (request, result)
+            },
+            |(request, result)| Message::AddAccountSubaccountsLoaded(request, result),
+        )
+    }
+
+    pub(super) fn apply_add_account_subaccounts(
+        &mut self,
+        request: SubaccountDiscoveryRequest,
+        result: SubaccountDiscoveryResult,
+    ) -> Task<Message> {
+        let Some(state) = self.add_account_window.as_mut() else {
+            return Task::none();
+        };
+        if state.window_id != request.window_id
+            || state.discovery_request.as_ref() != Some(&request)
+            || Self::normalize_wallet_address(&state.address_input).as_deref()
+                != Some(request.master_address.as_str())
+        {
+            return Task::none();
+        }
+        state.discovery_request = None;
+        match result.0 {
+            Ok(subaccounts) => {
+                state.subaccounts = subaccounts;
+                state.discovered_master = Some(request.master_address.into_string());
+                state.discovery_error = None;
+            }
+            Err(error) => state.discovery_error = Some(redact_sensitive_response_text(&error)),
+        }
+        Task::none()
+    }
+
+    pub(super) fn select_add_account_target(&mut self, target: AddAccountTarget) -> Task<Message> {
+        if let Some(state) = self.add_account_window.as_mut() {
+            state.target = Some(target);
+            if let Err(error) = state.selected_addresses() {
+                state.target = None;
+                state.error = Some(error);
+            } else {
+                state.error = None;
+            }
         }
         Task::none()
     }
@@ -81,24 +155,25 @@ impl TradingTerminal {
     }
 
     pub(super) fn submit_add_account(&mut self) -> Task<Message> {
-        let (window_id, switch_on_add, name_input, address_input, agent_key) = {
+        let (window_id, switch_on_add, name, addresses, agent_key) = {
             let Some(state) = self.add_account_window.as_ref() else {
                 return Task::none();
             };
             (
                 state.window_id,
                 state.switch_on_add,
-                state.name_input.clone(),
-                state.address_input.clone(),
+                state.profile_name(self.persisted_accounts_snapshot().len() + 1),
+                state.selected_addresses(),
                 Zeroizing::new(state.key_input.trim().to_string()),
             )
         };
 
-        let Some(address) = Self::normalize_wallet_address(&address_input) else {
-            self.set_add_account_error(
-                "Enter a valid master account address (0x followed by 40 hex characters).",
-            );
-            return Task::none();
+        let (address, master_address) = match addresses {
+            Ok(addresses) => addresses,
+            Err(error) => {
+                self.set_add_account_error(error);
+                return Task::none();
+            }
         };
 
         if !agent_key.is_empty()
@@ -108,14 +183,10 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let name = name_input.trim().to_string();
         let profile = config::AccountProfile {
+            master_address,
             secret_id: config::new_secret_id(),
-            name: if name.is_empty() {
-                format!("Account {}", self.persisted_accounts_snapshot().len() + 1)
-            } else {
-                name
-            },
+            name,
             wallet_address: address,
             agent_key: agent_key.clone(),
             hydromancer_api_key: String::new().into(),
@@ -207,10 +278,12 @@ mod tests {
 
     const ADDRESS_A: &str = "0xabc0000000000000000000000000000000000000";
     const ADDRESS_B: &str = "0xdef0000000000000000000000000000000000000";
+    const ADDRESS_C: &str = "0x1230000000000000000000000000000000000000";
     const VALID_KEY: &str = "0x0000000000000000000000000000000000000000000000000000000000000001";
 
     fn account(secret_id: &str, wallet_address: &str, agent_key: &str) -> AccountProfile {
         AccountProfile {
+            master_address: None,
             secret_id: secret_id.to_string(),
             name: secret_id.to_string(),
             wallet_address: wallet_address.to_string(),
@@ -249,6 +322,190 @@ mod tests {
             .add_account_window
             .as_mut()
             .expect("add-account window should be open")
+    }
+
+    fn discovered_child() -> crate::account_state::DiscoveredSubaccount {
+        crate::account_state::DiscoveredSubaccount {
+            name: "Strategy".to_string(),
+            address: ADDRESS_B.into(),
+            master_address: ADDRESS_A.into(),
+        }
+    }
+
+    fn start_discovery(terminal: &mut TradingTerminal) -> SubaccountDiscoveryRequest {
+        let _task = terminal.discover_add_account_subaccounts();
+        window_state(terminal)
+            .discovery_request
+            .clone()
+            .expect("discovery request should be pending")
+    }
+
+    fn select_child(terminal: &mut TradingTerminal) {
+        let _task = terminal.update_add_account_address(ADDRESS_A.to_string());
+        let request = start_discovery(terminal);
+        let _task = terminal.apply_add_account_subaccounts(
+            request,
+            SubaccountDiscoveryResult(Ok(vec![discovered_child()])),
+        );
+        let _task =
+            terminal.select_add_account_target(AddAccountTarget::Subaccount(discovered_child()));
+    }
+
+    #[test]
+    fn discovery_rejects_invalid_master_and_never_saves_an_account() {
+        let mut terminal = terminal_with_encrypted_storage(Vec::new());
+        open_window(&mut terminal);
+        let _task = terminal.discover_add_account_subaccounts();
+        assert!(window_state(&mut terminal).discovery_request.is_none());
+        assert!(window_state(&mut terminal).discovery_error.is_some());
+        assert!(terminal.accounts.is_empty());
+    }
+
+    #[test]
+    fn discovery_rejects_repeated_request_parent_edit_and_reopened_window_responses() {
+        let mut terminal = terminal_with_encrypted_storage(Vec::new());
+        open_window(&mut terminal);
+        window_state(&mut terminal).address_input = ADDRESS_A.to_string();
+        let old_request = start_discovery(&mut terminal);
+        let current_request = start_discovery(&mut terminal);
+        let _task = terminal.apply_add_account_subaccounts(
+            old_request,
+            SubaccountDiscoveryResult(Err("old failure".to_string())),
+        );
+        assert_eq!(
+            window_state(&mut terminal).discovery_request,
+            Some(current_request.clone())
+        );
+        assert!(window_state(&mut terminal).discovery_error.is_none());
+
+        let _task = terminal.update_add_account_address(ADDRESS_C.to_string());
+        let _task = terminal.apply_add_account_subaccounts(
+            current_request,
+            SubaccountDiscoveryResult(Ok(vec![discovered_child()])),
+        );
+        assert!(window_state(&mut terminal).subaccounts.is_empty());
+        assert!(window_state(&mut terminal).discovered_master.is_none());
+
+        window_state(&mut terminal).address_input = ADDRESS_A.to_string();
+        let closed_request = start_discovery(&mut terminal);
+        let _task = terminal.cancel_add_account_window();
+        open_window(&mut terminal);
+        window_state(&mut terminal).address_input = ADDRESS_A.to_string();
+        let reopened_request = start_discovery(&mut terminal);
+        let _task = terminal.apply_add_account_subaccounts(
+            closed_request,
+            SubaccountDiscoveryResult(Ok(vec![discovered_child()])),
+        );
+        assert_eq!(
+            window_state(&mut terminal).discovery_request,
+            Some(reopened_request)
+        );
+        assert!(window_state(&mut terminal).subaccounts.is_empty());
+    }
+
+    #[test]
+    fn parent_edit_invalidates_child_and_submission_does_not_fall_back_to_master() {
+        let mut terminal = terminal_with_encrypted_storage(Vec::new());
+        open_window(&mut terminal);
+        select_child(&mut terminal);
+
+        let _task = terminal.update_add_account_address(ADDRESS_C.to_string());
+        let _task = terminal.submit_add_account();
+        assert!(terminal.accounts.is_empty());
+        assert!(window_state(&mut terminal).target.is_none());
+        assert!(window_state(&mut terminal).error.is_some());
+
+        let _task = terminal.select_add_account_target(AddAccountTarget::Master);
+        let _task = terminal.submit_add_account();
+        assert_eq!(terminal.accounts[0].wallet_address, ADDRESS_C);
+        assert_eq!(terminal.accounts[0].master_address, None);
+    }
+
+    #[test]
+    fn rediscovery_failure_clears_child_and_requires_explicit_selection() {
+        let mut terminal = terminal_with_encrypted_storage(Vec::new());
+        open_window(&mut terminal);
+        select_child(&mut terminal);
+        let request = start_discovery(&mut terminal);
+        assert!(window_state(&mut terminal).target.is_none());
+        let _task = terminal.apply_add_account_subaccounts(
+            request,
+            SubaccountDiscoveryResult(Err("Discovery failed".to_string())),
+        );
+        let _task = terminal.submit_add_account();
+        assert!(terminal.accounts.is_empty());
+        assert!(window_state(&mut terminal).subaccounts.is_empty());
+        assert_eq!(
+            window_state(&mut terminal).discovery_error.as_deref(),
+            Some("Discovery failed")
+        );
+        assert!(window_state(&mut terminal).target.is_none());
+    }
+
+    #[test]
+    fn unknown_child_selection_is_rejected_without_changing_to_master() {
+        let mut terminal = terminal_with_encrypted_storage(Vec::new());
+        open_window(&mut terminal);
+        window_state(&mut terminal).address_input = ADDRESS_A.to_string();
+        let _task =
+            terminal.select_add_account_target(AddAccountTarget::Subaccount(discovered_child()));
+        assert!(window_state(&mut terminal).target.is_none());
+        let _task = terminal.submit_add_account();
+        assert!(terminal.accounts.is_empty());
+    }
+
+    #[test]
+    fn selected_subaccount_with_parent_key_saves_child_as_effective_account() {
+        let mut terminal = terminal_with_encrypted_storage(Vec::new());
+        open_window(&mut terminal);
+        select_child(&mut terminal);
+        window_state(&mut terminal).key_input = sensitive_string(VALID_KEY);
+        let _task = terminal.submit_add_account();
+        assert!(terminal.add_account_window.is_none());
+        assert_eq!(terminal.accounts[0].wallet_address, ADDRESS_B);
+        assert_eq!(terminal.accounts[0].name, "Strategy");
+        assert_eq!(
+            terminal.accounts[0].master_address.as_deref(),
+            Some(ADDRESS_A)
+        );
+        assert_eq!(terminal.wallet_address_input, ADDRESS_B);
+        assert_eq!(terminal.wallet_key_input.as_str(), VALID_KEY);
+        let payload = config::decrypt_secrets(
+            terminal
+                .encrypted_secrets
+                .as_ref()
+                .expect("saved encrypted secrets"),
+            &terminal.encrypted_secret_password,
+        )
+        .expect("saved secrets should decrypt");
+        assert_eq!(
+            payload.profile_agent_key_for_account(&terminal.accounts[0]),
+            Some(VALID_KEY)
+        );
+    }
+
+    #[test]
+    fn child_secret_save_failure_rolls_back_profile_and_preserves_selection() {
+        let mut terminal = terminal_with_encrypted_storage(Vec::new());
+        open_window(&mut terminal);
+        select_child(&mut terminal);
+        window_state(&mut terminal).key_input = sensitive_string(VALID_KEY);
+        terminal.encrypted_secrets_unlocked = false;
+        let encrypted_before = terminal.encrypted_secrets.clone();
+        let _task = terminal.submit_add_account();
+        assert!(terminal.accounts.is_empty());
+        assert_eq!(terminal.encrypted_secrets, encrypted_before);
+        assert!(!terminal.secret_migration_save_blocked);
+        assert!(matches!(
+            window_state(&mut terminal).target,
+            Some(AddAccountTarget::Subaccount(_))
+        ));
+        assert!(
+            window_state(&mut terminal)
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("not added"))
+        );
     }
 
     fn chase_order(account_address: &str) -> ChaseOrder {

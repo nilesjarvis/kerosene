@@ -5,6 +5,7 @@ use crate::app_state::TradingTerminal;
 use crate::app_time::now_ms;
 use crate::helpers::{finite_value, parse_positive_number, positive_finite_value};
 use crate::message::Message;
+use crate::signing::CapturedAgentKey;
 use crate::signing::{
     ExchangeOrderKind, ExchangeResponse, PlaceOrderRequest, cancel_order, cancel_order_by_cloid,
     float_to_wire, modify_order, place_order_with_cloid, round_price,
@@ -13,7 +14,6 @@ use iced::Task;
 use sha3::{Digest, Keccak256};
 use std::fmt::{self, Write as _};
 use std::sync::atomic::{AtomicU64, Ordering};
-use zeroize::Zeroizing;
 
 static LAST_ONE_SHOT_CLOID_NONCE_MS: AtomicU64 = AtomicU64::new(0);
 
@@ -439,7 +439,7 @@ pub(crate) fn validate_surface_market_type(
 }
 
 pub(crate) fn place_order_task<F>(
-    key: Zeroizing<String>,
+    key: CapturedAgentKey,
     request: PlaceOrderRequest,
     map: F,
 ) -> Task<Message>
@@ -450,7 +450,7 @@ where
 }
 
 pub(crate) fn cancel_order_task<F>(
-    key: Zeroizing<String>,
+    key: CapturedAgentKey,
     asset: u32,
     oid: u64,
     map: F,
@@ -462,7 +462,7 @@ where
 }
 
 pub(crate) fn cancel_order_by_cloid_task<F>(
-    key: Zeroizing<String>,
+    key: CapturedAgentKey,
     asset: u32,
     cloid: String,
     map: F,
@@ -474,7 +474,7 @@ where
 }
 
 pub(crate) fn modify_order_task<F>(
-    key: Zeroizing<String>,
+    key: CapturedAgentKey,
     order: PreparedModifyOrder,
     map: F,
 ) -> Task<Message>

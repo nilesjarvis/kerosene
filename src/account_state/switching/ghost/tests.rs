@@ -10,6 +10,7 @@ const OTHER_WALLET: &str = "0x2222222222222222222222222222222222222222";
 
 fn account(secret_id: &str, name: &str, wallet_address: &str, agent_key: &str) -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: secret_id.to_string(),
         name: name.to_string(),
         wallet_address: wallet_address.to_string(),

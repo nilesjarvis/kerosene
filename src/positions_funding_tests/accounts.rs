@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 fn account_profile(secret_id: &str, name: &str, wallet_address: &str) -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: secret_id.to_string(),
         name: name.to_string(),
         wallet_address: wallet_address.to_string(),

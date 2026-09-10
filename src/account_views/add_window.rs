@@ -1,3 +1,4 @@
+use crate::account_state::AddAccountTarget;
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::helpers::{self, text_color_for_bg};
@@ -5,7 +6,9 @@ use crate::message::Message;
 use crate::signing;
 
 use iced::widget::container as container_style;
-use iced::widget::{Space, button, checkbox, column, container, row, rule, text, text_input};
+use iced::widget::{
+    Space, button, checkbox, column, container, pick_list, row, rule, scrollable, text, text_input,
+};
 use iced::{Alignment, Color, Element, Fill, Theme};
 
 // ---------------------------------------------------------------------------
@@ -23,7 +26,7 @@ enum FeedbackTone {
 fn address_feedback(address_input: &str, existing_addresses: &[String]) -> (String, FeedbackTone) {
     if address_input.trim().is_empty() {
         return (
-            "The master account whose positions and orders this profile follows.".to_string(),
+            "Enter the master address to add it or discover its subaccounts.".to_string(),
             FeedbackTone::Hint,
         );
     }
@@ -126,10 +129,11 @@ impl TradingTerminal {
         let has_key = !state.key_input.trim().is_empty();
         let submit_enabled = address_tone != FeedbackTone::Error
             && !state.address_input.trim().is_empty()
+            && state.selected_addresses().is_ok()
             && key_tone != FeedbackTone::Error
             && !(has_key && notice.blocks_key_save);
 
-        let default_name = format!("Account {}", self.persisted_accounts_snapshot().len() + 1);
+        let default_name = state.default_profile_name(self.persisted_accounts_snapshot().len() + 1);
         let name_input = text_input(&default_name, &state.name_input)
             .style(helpers::text_input_style)
             .on_input(Message::AddAccountNameChanged)
@@ -151,6 +155,63 @@ impl TradingTerminal {
             .size(12)
             .padding([6, 8])
             .width(Fill);
+
+        let discovery_pending = state.discovery_request.is_some();
+        let discover_button = button(
+            text(if discovery_pending {
+                "Discovering…"
+            } else {
+                "Discover Subaccounts"
+            })
+            .size(11)
+            .center(),
+        )
+        .on_press_maybe(
+            (!discovery_pending && Self::normalize_wallet_address(&state.address_input).is_some())
+                .then_some(Message::AddAccountDiscoverSubaccounts),
+        )
+        .padding([6, 10])
+        .style(secondary_button_style);
+        let mut targets = vec![AddAccountTarget::Master];
+        targets.extend(
+            state
+                .subaccounts
+                .iter()
+                .cloned()
+                .map(AddAccountTarget::Subaccount),
+        );
+        let target_picker = pick_list(
+            targets,
+            state.target.clone(),
+            Message::AddAccountTargetSelected,
+        )
+        .placeholder("Select account")
+        .text_size(12)
+        .padding([6, 8])
+        .width(Fill);
+        let mut account_selection = column![
+            discover_button,
+            self.view_add_account_field("Account to add", target_picker.into()),
+        ]
+        .spacing(8)
+        .width(Fill);
+        if let Some(error) = &state.discovery_error {
+            account_selection =
+                account_selection.push(feedback_line(error.clone(), FeedbackTone::Error, &theme));
+        } else if state.discovered_master.is_some() && state.subaccounts.is_empty() {
+            account_selection = account_selection.push(feedback_line(
+                "No subaccounts found for this master account.".to_string(),
+                FeedbackTone::Hint,
+                &theme,
+            ));
+        }
+        if matches!(state.target, Some(AddAccountTarget::Subaccount(_))) {
+            account_selection = account_selection.push(feedback_line(
+                "Use an API wallet key approved by the master account.".to_string(),
+                FeedbackTone::Hint,
+                &theme,
+            ));
+        }
 
         let mut storage_row = row![
             text(notice.message.clone())
@@ -202,6 +263,7 @@ impl TradingTerminal {
             self.view_add_account_field("Profile name (optional)", name_input.into()),
             self.view_add_account_field("Master account address", address_input.into()),
             feedback_line(address_message, address_tone, &theme),
+            account_selection,
             rule::horizontal(1),
             self.view_add_account_field("Agent private key (optional)", key_input.into()),
             feedback_line(key_message, key_tone, &theme),
@@ -227,7 +289,7 @@ impl TradingTerminal {
                 .align_y(Alignment::Center),
         );
 
-        container(content)
+        container(scrollable(content).width(Fill).height(Fill))
             .width(Fill)
             .height(Fill)
             .padding(18)

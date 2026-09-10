@@ -3,6 +3,7 @@ use std::cell::{Cell, RefCell};
 
 fn test_profile(name: &str, agent_key: &str) -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: name.to_string(),
         name: name.to_string(),
         wallet_address: String::new(),
@@ -13,6 +14,7 @@ fn test_profile(name: &str, agent_key: &str) -> AccountProfile {
 
 fn test_profile_with_wallet(name: &str, wallet_address: &str, agent_key: &str) -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: name.to_string(),
         name: name.to_string(),
         wallet_address: wallet_address.to_string(),
@@ -423,6 +425,7 @@ fn legacy_profile_read_failure_warning_redacts_account_name() {
     let mut config = KeroseneConfig {
         active_account_index: 0,
         accounts: vec![AccountProfile {
+            master_address: None,
             secret_id: "one".to_string(),
             name: sensitive_name.to_string(),
             wallet_address: String::new(),
@@ -454,6 +457,7 @@ fn legacy_profile_read_failure_warning_redacts_account_name() {
 fn legacy_keychain_startup_preserves_plaintext_integration_keys_without_reads() {
     let mut config = KeroseneConfig {
         accounts: vec![AccountProfile {
+            master_address: None,
             secret_id: "one".to_string(),
             name: "one".to_string(),
             wallet_address: String::new(),
@@ -653,6 +657,7 @@ fn corrupt_bundle_with_plaintext_secrets_blocks_config_save() {
     let mut config = KeroseneConfig {
         active_account_index: 0,
         accounts: vec![AccountProfile {
+            master_address: None,
             secret_id: "one".to_string(),
             name: "one".to_string(),
             wallet_address: String::new(),
@@ -1449,6 +1454,7 @@ fn encrypted_config_lock_clears_all_plaintext_secret_fields() {
         credential_storage_mode: CredentialStorageMode::EncryptedConfig,
         encrypted_secrets: Some(encrypted_secret_fixture()),
         accounts: vec![AccountProfile {
+            master_address: None,
             secret_id: "one".to_string(),
             name: "one".to_string(),
             wallet_address: String::new(),
@@ -1484,6 +1490,7 @@ fn encrypted_config_with_invalid_blob_locks_plaintext_and_blocks_save() {
         credential_storage_mode: CredentialStorageMode::EncryptedConfig,
         encrypted_secrets: Some(invalid_encrypted),
         accounts: vec![AccountProfile {
+            master_address: None,
             secret_id: String::new(),
             name: "one".to_string(),
             wallet_address: String::new(),
@@ -1528,6 +1535,7 @@ fn encrypted_config_without_blob_locks_plaintext_and_blocks_save() {
         credential_storage_mode: CredentialStorageMode::EncryptedConfig,
         encrypted_secrets: None,
         accounts: vec![AccountProfile {
+            master_address: None,
             secret_id: String::new(),
             name: "one".to_string(),
             wallet_address: String::new(),

@@ -128,6 +128,7 @@ pub(super) fn terminal_with_move_order(
     terminal.connected_address = Some(account.to_string());
     terminal.wallet_address_input = account.to_string();
     terminal.accounts = vec![AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: account.to_string(),

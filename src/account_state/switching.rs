@@ -92,7 +92,9 @@ impl TradingTerminal {
         let Some(profile) = self.accounts.get(index) else {
             return;
         };
-        if !profile.agent_key.trim().is_empty() {
+        // Only ordinary legacy profiles can migrate unbound per-profile keys.
+        // Subaccounts must load credentials through the parent-bound bundle.
+        if profile.master_address.is_some() || !profile.agent_key.trim().is_empty() {
             return;
         }
 

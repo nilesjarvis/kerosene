@@ -161,6 +161,7 @@ mod tests {
         let mut terminal = TradingTerminal::boot().0;
         terminal.connected_address = Some(CONNECTED.to_string());
         terminal.accounts = vec![AccountProfile {
+            master_address: None,
             secret_id: "member-profile".to_string(),
             name: "Member".to_string(),
             wallet_address: OTHER.to_ascii_uppercase(),
@@ -203,6 +204,7 @@ mod tests {
         let mut terminal = TradingTerminal::boot().0;
         terminal.connected_address = Some(CONNECTED.to_string());
         terminal.accounts = vec![AccountProfile {
+            master_address: None,
             secret_id: "member-profile".to_string(),
             name: "Member".to_string(),
             wallet_address: OTHER.to_string(),

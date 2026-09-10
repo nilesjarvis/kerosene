@@ -2,6 +2,7 @@ use super::*;
 
 fn profile(secret_id: &str, agent_key: &str) -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: secret_id.to_string(),
         name: secret_id.to_string(),
         wallet_address: String::new(),
@@ -12,6 +13,7 @@ fn profile(secret_id: &str, agent_key: &str) -> AccountProfile {
 
 fn profile_with_wallet(secret_id: &str, wallet_address: &str, agent_key: &str) -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: secret_id.to_string(),
         name: secret_id.to_string(),
         wallet_address: wallet_address.to_string(),
@@ -39,7 +41,76 @@ fn profile_secret_payload_defaults_missing_wallet_binding() {
 
     assert_eq!(profile.secret_id, "acct-a");
     assert_eq!(profile.wallet_address, None);
+    assert_eq!(profile.master_address, None);
     assert_eq!(profile.agent_key.as_str(), "agent-a");
+}
+
+#[test]
+fn subaccount_secret_payload_requires_matching_parent_and_effective_address() {
+    let mut account =
+        profile_with_wallet("sub", "0xabc0000000000000000000000000000000000000", "agent");
+    account.master_address = Some("0xDEF0000000000000000000000000000000000000".to_string());
+    let payload = SecretPayload::from_credentials(&[account.clone()], "", "");
+    assert_eq!(
+        payload.profiles[0].master_address.as_deref(),
+        Some("0xdef0000000000000000000000000000000000000")
+    );
+    assert_eq!(
+        payload.profile_agent_key_for_account(&account),
+        Some("agent")
+    );
+    let encoded = serde_json::to_string(&payload).expect("secret payload JSON");
+    let decoded: SecretPayload = serde_json::from_str(&encoded).expect("secret payload");
+    assert_eq!(
+        decoded.profile_agent_key_for_account(&account),
+        Some("agent")
+    );
+    let debug = format!("{decoded:?}");
+    assert!(!debug.contains("0xdef0000000000000000000000000000000000000"));
+    assert!(!debug.contains(&account.wallet_address));
+
+    account.master_address = None;
+    assert_eq!(decoded.profile_agent_key_for_account(&account), None);
+    assert!(decoded.profile_agent_key_binding_mismatches_account(&account));
+    account.master_address = Some("0x9990000000000000000000000000000000000000".to_string());
+    assert_eq!(decoded.profile_agent_key_for_account(&account), None);
+    account.master_address = Some("0xdef0000000000000000000000000000000000000".to_string());
+    account.wallet_address = "0x9990000000000000000000000000000000000000".to_string();
+    assert_eq!(decoded.profile_agent_key_for_account(&account), None);
+}
+
+#[test]
+fn malformed_subaccount_secret_metadata_never_loads_as_main_account() {
+    for master in ["", "invalid", "0xabc0000000000000000000000000000000000000"] {
+        let mut account =
+            profile_with_wallet("sub", "0xabc0000000000000000000000000000000000000", "agent");
+        account.master_address = Some(master.to_string());
+        let mut payload = SecretPayload::from_credentials(&[account.clone()], "", "");
+        assert!(payload.profiles[0].master_address.is_some());
+        assert!(!payload.profiles[0].has_valid_account_binding());
+        assert_eq!(payload.profile_agent_key_for_account(&account), None);
+        account.master_address = None;
+        assert_eq!(payload.profile_agent_key_for_account(&account), None);
+        assert!(!payload.bind_unbound_profile_agent_keys_to_wallets(&[account]));
+    }
+}
+
+#[test]
+fn subaccount_upsert_persists_parent_and_legacy_keys_do_not_bind_to_subaccounts() {
+    let mut account =
+        profile_with_wallet("sub", "0xabc0000000000000000000000000000000000000", "agent");
+    account.master_address = Some("0xdef0000000000000000000000000000000000000".to_string());
+    let mut payload = SecretPayload::default();
+    assert!(payload.upsert_profile_agent_key("sub", "legacy-agent"));
+    assert_eq!(payload.profile_agent_key_for_account(&account), None);
+    assert!(!payload.bind_unbound_profile_agent_keys_to_wallets(&[account.clone()]));
+    assert!(payload.upsert_profile_agent_key_for_account(&account));
+    assert_eq!(payload.profiles[0].master_address, account.master_address);
+    assert_eq!(
+        payload.profile_agent_key_for_account(&account),
+        Some("agent")
+    );
+    assert!(!payload.upsert_profile_agent_key_for_account(&account));
 }
 
 #[test]

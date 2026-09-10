@@ -646,6 +646,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::OpenAddAccountWindow
         | Message::AddAccountNameChanged(_)
         | Message::AddAccountAddressChanged(_)
+        | Message::AddAccountDiscoverSubaccounts
+        | Message::AddAccountSubaccountsLoaded(_, _)
+        | Message::AddAccountTargetSelected(_)
         | Message::AddAccountKeyChanged(_)
         | Message::AddAccountSwitchToggled(_)
         | Message::AddAccountSubmit

@@ -229,6 +229,7 @@ fn secret_rollback_immediate_save_bypasses_secret_migration_block_without_cleari
     terminal.secret_migration_save_blocked = true;
     terminal.secret_store_status = Some(("Keychain update failed".to_string(), true));
     terminal.accounts = vec![crate::config::AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: "0xabc0000000000000000000000000000000000000".to_string(),
@@ -320,6 +321,7 @@ fn config_save_snapshot_persists_window_transparency_preferences() {
 fn config_save_snapshot_clears_account_secret_fields_without_mutating_runtime() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.accounts = vec![AccountProfile {
+        master_address: Some("0xdef0000000000000000000000000000000000000".to_string()),
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: "0xabc0000000000000000000000000000000000000".to_string(),
@@ -342,6 +344,10 @@ fn config_save_snapshot_clears_account_secret_fields_without_mutating_runtime() 
         saved_accounts[0].wallet_address,
         "0xabc0000000000000000000000000000000000000"
     );
+    assert_eq!(
+        saved_accounts[0].master_address,
+        terminal.accounts[0].master_address
+    );
     assert!(saved_accounts[0].agent_key.is_empty());
     assert!(saved_accounts[0].hydromancer_api_key.is_empty());
 
@@ -356,6 +362,7 @@ fn config_save_snapshot_clears_account_secret_fields_without_mutating_runtime() 
 fn persisted_accounts_snapshot_still_feeds_credential_payloads() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.accounts = vec![AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: "0xabc0000000000000000000000000000000000000".to_string(),

@@ -1,7 +1,7 @@
 use crate::signing::{ChaseOrder, ExchangeResponse};
 
+use crate::signing::CapturedAgentKey;
 use std::fmt;
-use zeroize::Zeroizing;
 
 // ---------------------------------------------------------------------------
 // Stopped Chase Cancel Planning
@@ -10,7 +10,7 @@ use zeroize::Zeroizing;
 #[derive(Clone, PartialEq, Eq)]
 pub(super) struct StoppedChaseCancelRequest {
     pub(super) chase_id: u64,
-    pub(super) agent_key: Zeroizing<String>,
+    pub(super) agent_key: CapturedAgentKey,
     pub(super) asset: u32,
     pub(super) oid: u64,
 }

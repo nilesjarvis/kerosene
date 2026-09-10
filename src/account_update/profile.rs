@@ -124,6 +124,18 @@ impl TradingTerminal {
             .and_then(|profile| Self::normalize_wallet_address(&profile.wallet_address));
         let next_normalized = Self::normalize_wallet_address(&value);
         let address_binding_changed = previous_normalized != next_normalized;
+        if address_binding_changed
+            && self
+                .accounts
+                .get(self.active_account_index)
+                .is_some_and(|profile| profile.master_address.is_some())
+        {
+            self.push_toast(
+                "Add or select a subaccount profile to change its trading address".to_string(),
+                true,
+            );
+            return Task::none();
+        }
         let is_ghost = self.active_account_is_ghost();
         if !is_ghost
             && address_binding_changed
@@ -374,6 +386,7 @@ mod tests {
 
     fn account(secret_id: &str, wallet_address: &str, agent_key: &str) -> AccountProfile {
         AccountProfile {
+            master_address: None,
             secret_id: secret_id.to_string(),
             name: secret_id.to_string(),
             wallet_address: wallet_address.to_string(),
@@ -652,6 +665,22 @@ mod tests {
             terminal.accounts[0].wallet_address,
             "0xABC0000000000000000000000000000000000000"
         );
+    }
+
+    #[test]
+    fn subaccount_address_cannot_be_rebound_through_wallet_input() {
+        let mut terminal = terminal_with_active_account(ADDRESS_A, "parent-agent-key");
+        terminal.accounts[0].master_address = Some(ADDRESS_B.to_string());
+        let original_profile = terminal.accounts[0].clone();
+        let original_secrets = terminal.encrypted_secrets.clone();
+
+        let _task = terminal.update_wallet_address_input(ADDRESS_B.to_string());
+
+        assert_eq!(terminal.accounts[0], original_profile);
+        assert_eq!(terminal.wallet_address_input, ADDRESS_A);
+        assert_eq!(terminal.wallet_key_input.as_str(), "parent-agent-key");
+        assert_eq!(terminal.encrypted_secrets, original_secrets);
+        assert!(terminal.toasts.last().is_some_and(|toast| toast.is_error));
     }
 
     #[test]
