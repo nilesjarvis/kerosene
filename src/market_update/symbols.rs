@@ -658,7 +658,6 @@ impl TradingTerminal {
                 self.refresh_spaghetti_series_displays();
                 tasks.push(self.reconcile_session_data_symbols());
                 tasks.push(self.refresh_enabled_earnings_charts());
-                tasks.push(self.reconcile_market_universe_state());
                 self.refresh_symbol_search_results();
                 self.refresh_live_watchlist_row_caches();
                 tasks.push(self.request_symbol_search_context_refresh(false));
@@ -666,6 +665,10 @@ impl TradingTerminal {
                 tasks.push(self.request_outcome_volume_refresh());
                 tasks.push(self.request_screener_data_refresh(true));
                 if market_universe_changed {
+                    // Metadata refreshes also discover listings and update
+                    // labels. Reload all widgets only when the selected market
+                    // universe changes; symbol migrations are handled above.
+                    tasks.push(self.reconcile_market_universe_state());
                     tasks.push(self.refresh_account_data());
                 }
 
@@ -1411,6 +1414,98 @@ mod tests {
 
         assert!(terminal.symbol_search_ctxs.is_empty());
         assert_eq!(terminal.symbol_search_contexts_last_fetch_ms, None);
+    }
+
+    #[test]
+    fn symbols_refresh_preserves_open_widgets_when_market_universe_is_unchanged() {
+        let mut changed_btc = perp_symbol("BTC");
+        changed_btc.max_leverage = 20;
+        for (before, after) in [
+            (Vec::new(), vec![perp_symbol("BTC")]),
+            (vec![perp_symbol("BTC")], vec![changed_btc]),
+            (
+                vec![perp_symbol("BTC")],
+                vec![perp_symbol("BTC"), outcome_symbol("#950")],
+            ),
+            (
+                vec![perp_symbol("BTC"), outcome_symbol("#950")],
+                vec![perp_symbol("BTC")],
+            ),
+        ] {
+            let mut baseline = symbols_refresh_terminal(false);
+            baseline.exchange_symbols = before.clone();
+            let baseline_task = baseline.apply_symbols_loaded(Ok(payload(after.clone())));
+
+            let mut terminal = symbols_refresh_terminal(true);
+            terminal.exchange_symbols = before;
+            let task = terminal.apply_symbols_loaded(Ok(payload(after.clone())));
+
+            assert_eq!(terminal.exchange_symbols, after);
+            assert_eq!(terminal.market_universe, MarketUniverseConfig::All);
+            // ChartReload and SpaghettiReload are deferred messages: checking
+            // candles alone would miss the reset that happens on the next update.
+            assert_eq!(task.units(), baseline_task.units());
+            assert_eq!(terminal.charts[&7].chart.candles[0].close, 100.0);
+            assert!(terminal.charts[&7].candle_fetch_request.is_none());
+            let series = &terminal.spaghetti_charts[&8].canvas.series[0];
+            assert!(series.loaded);
+            assert_eq!(series.candles[0].close, 100.0);
+            assert!(!terminal.order_books[&9].book_loading);
+            assert!(terminal.order_books[&9].pending_book_request_id().is_none());
+        }
+    }
+
+    #[test]
+    fn symbols_refresh_still_reloads_widgets_when_selected_market_universe_disappears() {
+        let mut baseline = symbols_refresh_terminal(false);
+        baseline.market_universe = MarketUniverseConfig::hip3_dex("xyz");
+        baseline.exchange_symbols = vec![perp_symbol("xyz:BTC")];
+        let baseline_task = baseline.apply_symbols_loaded(Ok(payload(vec![perp_symbol("BTC")])));
+
+        let mut terminal = symbols_refresh_terminal(true);
+        terminal.market_universe = MarketUniverseConfig::hip3_dex("xyz");
+        terminal.exchange_symbols = vec![perp_symbol("xyz:BTC")];
+        let task = terminal.apply_symbols_loaded(Ok(payload(vec![perp_symbol("BTC")])));
+
+        assert_eq!(terminal.market_universe, MarketUniverseConfig::All);
+        // The widened filter restores the chart, comparison chart, and book.
+        assert_eq!(task.units(), baseline_task.units() + 3);
+        assert!(terminal.order_books[&9].book_loading);
+        assert!(terminal.order_books[&9].pending_book_request_id().is_some());
+    }
+
+    fn symbols_refresh_terminal(with_widgets: bool) -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+        terminal.spaghetti_charts.clear();
+        terminal.order_books.clear();
+        terminal.positioning_infos.clear();
+        terminal.session_data.clear();
+        terminal.market_universe = MarketUniverseConfig::All;
+        terminal.active_symbol = "BTC".to_string();
+        terminal.active_symbol_display = "BTC".to_string();
+
+        if with_widgets {
+            let candles = vec![Candle::test_flat(3_600_000, 100.0)];
+            let mut chart = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+            chart.chart.set_candles(candles.clone());
+            terminal.charts.insert(7, chart);
+
+            let mut comparison = SpaghettiChartInstance::new_empty(8);
+            comparison.canvas.series.push(Series {
+                symbol: "BTC".to_string(),
+                display: "BTC".to_string(),
+                candles,
+                color: iced::Color::WHITE,
+                loaded: true,
+            });
+            terminal.spaghetti_charts.insert(8, comparison);
+
+            let mut book = OrderBookInstance::new(9, OrderBookSymbolMode::Active, 1.0);
+            book.book_loading = false;
+            terminal.order_books.insert(9, book);
+        }
+        terminal
     }
 
     #[test]

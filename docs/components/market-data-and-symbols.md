@@ -50,6 +50,12 @@ Symbol search is implemented in `market_state/symbol_search/` and
 filters, hides muted tickers, resolves aliases, and feeds chart/order-book/order
 entry selection.
 
+The symbol universe refreshes every 120 seconds to discover new and expired
+markets. Metadata and label changes preserve open chart history and order-book
+state. A full widget reload is only scheduled if the selected market universe
+changes (for example, an unavailable HIP-3 dex falls back to all markets).
+Canonical symbol migrations still refetch the affected widgets individually.
+
 ## Spot Metadata And Identity Safety
 
 Perpetual, spot, and outcome metadata families are fetched independently, so a
