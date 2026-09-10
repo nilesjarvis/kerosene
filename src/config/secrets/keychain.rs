@@ -265,11 +265,7 @@ fn validate_keychain_secret_update(update: KeychainSecretUpdate<'_>) -> Result<(
 fn apply_keychain_secret_update(payload: &mut SecretPayload, update: KeychainSecretUpdate<'_>) {
     match update {
         KeychainSecretUpdate::Profile(profile) => {
-            payload.upsert_profile_agent_key_for_wallet(
-                &profile.secret_id,
-                Some(&profile.wallet_address),
-                &profile.agent_key,
-            );
+            payload.upsert_profile_agent_key_for_account(profile);
         }
         KeychainSecretUpdate::RemoveProfile(secret_id) => {
             payload.remove_profile(secret_id);
@@ -651,6 +647,11 @@ fn removed_profile_legacy_cleanup_required(secret_id: &str, payload: &SecretPayl
 }
 
 pub fn load_profile_secrets(profile: &mut AccountProfile) -> Result<(), String> {
+    // Legacy entries have no parent binding. Even an invalid parent marker
+    // must not make a subaccount eligible for an unbound credential.
+    if profile.master_address.is_some() {
+        return Ok(());
+    }
     if profile.secret_id.is_empty() {
         profile.secret_id = new_secret_id();
     }
@@ -727,6 +728,7 @@ pub fn clear_profile_secrets(profile: &AccountProfile) -> Result<(), String> {
 
 pub(crate) fn clear_profile_secrets_by_id(secret_id: &str) -> Result<(), String> {
     let profile = AccountProfile {
+        master_address: None,
         secret_id: secret_id.to_string(),
         name: String::new(),
         wallet_address: String::new(),
@@ -1009,6 +1011,7 @@ mod tests {
 
     fn test_profile(secret_id: &str) -> AccountProfile {
         AccountProfile {
+            master_address: None,
             secret_id: secret_id.to_string(),
             name: secret_id.to_string(),
             wallet_address: "0xabc0000000000000000000000000000000000000".to_string(),
@@ -1109,6 +1112,30 @@ mod tests {
         let payload = stored.into_inner().expect("stored payload");
         assert!(!payload.is_empty());
         assert_eq!(payload.global.hyperliquid_proxy_urls, urls);
+    }
+
+    #[test]
+    fn scoped_profile_update_preserves_subaccount_parent_binding() {
+        let payload = RefCell::new(None);
+        let cleanup_calls = Cell::new(0);
+        let mut profile = test_profile("subaccount");
+        profile.master_address = Some("0xdef0000000000000000000000000000000000000".to_string());
+
+        update_keychain_secret_payload_with(
+            KeychainSecretUpdate::Profile(&profile),
+            update_hooks(&payload, &cleanup_calls),
+        )
+        .expect("subaccount credential save");
+
+        let stored = payload.borrow();
+        let stored = stored.as_ref().expect("saved payload");
+        assert_eq!(stored.profiles[0].master_address, profile.master_address);
+        assert_eq!(
+            stored.profile_agent_key_for_account(&profile),
+            Some("agent-key")
+        );
+        profile.master_address = None;
+        assert_eq!(stored.profile_agent_key_for_account(&profile), None);
     }
 
     #[test]

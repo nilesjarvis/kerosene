@@ -55,6 +55,7 @@ fn config_ignores_unknown_credentials_without_rewriting_them() {
 #[test]
 fn serialized_config_keeps_raw_credentials_out_of_json() {
     let profiles = vec![AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Main".to_string(),
         wallet_address: String::new(),
@@ -176,6 +177,7 @@ fn serialized_pending_keychain_cleanup_intents_do_not_include_raw_credentials() 
         pending_keychain_profile_deletions: vec!["acct-a".to_string()],
         pending_keychain_cleanup_all: true,
         accounts: vec![AccountProfile {
+            master_address: None,
             secret_id: "acct-a".to_string(),
             name: "Main".to_string(),
             wallet_address: String::new(),

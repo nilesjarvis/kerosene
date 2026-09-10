@@ -50,6 +50,24 @@ impl TradingTerminal {
         // so the connecting-skeleton bridge is no longer needed; every path
         // below settles `connected_address` to its real value.
         self.account_connect_pending = false;
+        if let Some(profile) = self.accounts.get(self.active_account_index)
+            && profile.master_address.is_some()
+        {
+            if self.wallet_address_input.trim().is_empty() {
+                // Disconnect clears the input, but reconnecting this saved
+                // profile must keep its effective child address.
+                self.wallet_address_input = profile.wallet_address.clone();
+            } else if Self::normalize_wallet_address(&profile.wallet_address)
+                != Self::normalize_wallet_address(&self.wallet_address_input)
+            {
+                self.wallet_address_input = profile.wallet_address.clone();
+                self.push_toast(
+                    "Add or select a subaccount profile to change its trading address".to_string(),
+                    true,
+                );
+                return Task::none();
+            }
+        }
         let Some(addr) = Self::normalize_wallet_address(&self.wallet_address_input) else {
             if !self.wallet_address_input.trim().is_empty() {
                 if self.account_change_blocked_by_pending_trading_request("changing wallets") {
@@ -417,6 +435,7 @@ mod tests {
 
     fn account(secret_id: &str, wallet_address: &str, agent_key: &str) -> AccountProfile {
         AccountProfile {
+            master_address: None,
             secret_id: secret_id.to_string(),
             name: secret_id.to_string(),
             wallet_address: wallet_address.to_string(),
@@ -873,6 +892,64 @@ mod tests {
     }
 
     #[test]
+    fn subaccount_reconnect_after_disconnect_restores_child_in_one_connect() {
+        let mut terminal = TradingTerminal::boot().0;
+        let mut profile = account("subaccount", TEST_ACCOUNT, "parent-agent-key");
+        profile.master_address = Some(OTHER_ACCOUNT.to_string());
+        terminal.accounts = vec![profile.clone()];
+        terminal.active_account_index = 0;
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.wallet_address_input = TEST_ACCOUNT.to_string();
+        terminal.wallet_key_input = sensitive_string("parent-agent-key");
+        terminal.toasts.clear();
+
+        let _disconnect_task = terminal.disconnect_wallet();
+        assert!(terminal.wallet_address_input.is_empty());
+        assert!(terminal.connected_address.is_none());
+
+        let _connect_task = terminal.connect_wallet_with_hooks(
+            |_| panic!("reconnecting must not rewrite account metadata"),
+            |_, _, _| panic!("reconnecting must not remove the saved trading key"),
+        );
+
+        assert_eq!(terminal.wallet_address_input, TEST_ACCOUNT);
+        assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
+        assert_eq!(terminal.accounts[0], profile);
+        assert!(terminal.account_loading);
+        assert!(terminal.toasts.is_empty());
+        let key = TradingTerminal::capture_profile_signing_key(&terminal.accounts[0])
+            .expect("original subaccount signing context");
+        assert_eq!(key.vault_address(), Some(TEST_ACCOUNT));
+        assert_eq!(key.as_str(), "parent-agent-key");
+    }
+
+    #[test]
+    fn subaccount_connect_rejects_explicit_parent_without_rebinding() {
+        for connected_address in [None, Some(TEST_ACCOUNT.to_string())] {
+            let mut terminal = TradingTerminal::boot().0;
+            let mut profile = account("subaccount", TEST_ACCOUNT, "parent-agent-key");
+            profile.master_address = Some(OTHER_ACCOUNT.to_string());
+            terminal.accounts = vec![profile.clone()];
+            terminal.active_account_index = 0;
+            terminal.connected_address = connected_address.clone();
+            terminal.wallet_address_input = OTHER_ACCOUNT.to_string();
+            terminal.wallet_key_input = sensitive_string("parent-agent-key");
+
+            let _task = terminal.connect_wallet_with_hooks(
+                |_| panic!("rejected parent input must not save account metadata"),
+                |_, _, _| panic!("rejected parent input must not remove the saved key"),
+            );
+
+            assert_eq!(terminal.accounts[0], profile);
+            assert_eq!(terminal.connected_address, connected_address);
+            assert_eq!(terminal.wallet_address_input, TEST_ACCOUNT);
+            assert_eq!(terminal.wallet_key_input.as_str(), "parent-agent-key");
+            assert!(!terminal.account_loading);
+            assert!(terminal.toasts.last().is_some_and(|toast| toast.is_error));
+        }
+    }
+
+    #[test]
     fn connect_wallet_blocks_same_account_reconnect_while_leverage_update_is_pending() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
@@ -1291,7 +1368,7 @@ mod tests {
             MoveOrderKey::new("BTC", 42),
             PendingMoveOrderContext::new(
                 TEST_ACCOUNT.to_string(),
-                Zeroizing::new("move-agent".to_string()),
+                Zeroizing::new("move-agent".to_string()).into(),
             )
             .expect("move context"),
         );

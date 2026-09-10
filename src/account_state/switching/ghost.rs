@@ -53,6 +53,7 @@ impl TradingTerminal {
         }
 
         let profile = AccountProfile {
+            master_address: None,
             secret_id: config::new_secret_id(),
             name: self.ghost_account_name(&address),
             wallet_address: address,

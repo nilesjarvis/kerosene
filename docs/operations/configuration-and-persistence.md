@@ -63,6 +63,13 @@ Related storage:
 
 It should not store raw active secret values.
 
+Account profiles optionally persist `master_address` for existing subaccounts.
+Their `wallet_address` is the child address; missing/null parent metadata keeps
+legacy main-account behavior. Profile snapshots preserve this field, and secure
+credential bindings record both addresses so a key cannot reload into a
+different parent/child context. Config-loss recovery restores valid parent
+metadata and skips malformed subaccount bindings.
+
 ## Snapshot Model
 
 `config_persistence/save/snapshot.rs` converts `TradingTerminal` to

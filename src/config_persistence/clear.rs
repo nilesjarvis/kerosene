@@ -233,6 +233,7 @@ impl TradingTerminal {
         self.widget_placement_hover = None;
 
         let main_profile = AccountProfile {
+            master_address: None,
             secret_id: config::new_secret_id(),
             name: "Main Trading".to_string(),
             wallet_address: String::new(),
@@ -1220,6 +1221,7 @@ mod tests {
         terminal.config_clear_requested = true;
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();
         terminal.accounts = vec![AccountProfile {
+            master_address: None,
             secret_id: "acct-a".to_string(),
             name: "Keep Me".to_string(),
             wallet_address: TEST_ACCOUNT.to_string(),
@@ -1314,6 +1316,7 @@ mod tests {
         terminal.openrouter_model = "anthropic/claude-sonnet-4.5".to_string();
         terminal.assistant_provider = crate::config::AssistantProvider::LlamaCpp;
         terminal.accounts = vec![AccountProfile {
+            master_address: None,
             secret_id: "acct-a".to_string(),
             name: "Keep Me".to_string(),
             wallet_address: TEST_ACCOUNT.to_string(),
@@ -1373,6 +1376,7 @@ mod tests {
             .pending_keychain_profile_deletions
             .push("acct-deleted".to_string());
         terminal.accounts = vec![AccountProfile {
+            master_address: None,
             secret_id: "acct-a".to_string(),
             name: "Reset Me".to_string(),
             wallet_address: TEST_ACCOUNT.to_string(),
@@ -1419,6 +1423,7 @@ mod tests {
             .pending_keychain_profile_deletions
             .push("acct-deleted".to_string());
         terminal.accounts = vec![AccountProfile {
+            master_address: None,
             secret_id: "acct-a".to_string(),
             name: "Reset Me".to_string(),
             wallet_address: TEST_ACCOUNT.to_string(),
@@ -1462,6 +1467,7 @@ mod tests {
         terminal.config_clear_requested = true;
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();
         terminal.accounts = vec![AccountProfile {
+            master_address: None,
             secret_id: "acct-a".to_string(),
             name: "Reset Me".to_string(),
             wallet_address: TEST_ACCOUNT.to_string(),

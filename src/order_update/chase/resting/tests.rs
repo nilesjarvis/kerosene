@@ -14,6 +14,7 @@ const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
 
 fn account() -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: TEST_ACCOUNT.to_string(),

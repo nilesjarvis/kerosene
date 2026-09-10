@@ -1,5 +1,5 @@
 use super::super::actions::HyperliquidL1Action;
-use super::super::model::ExchangeOrderKind;
+use super::super::model::{CapturedAgentKey, ExchangeOrderKind};
 use super::{
     EXCHANGE_EXPIRES_AFTER_MS, PlaceOrderRequest, allocate_exchange_nonce_from,
     build_signed_exchange_payload_with_nonce, exchange_payload_action,
@@ -8,6 +8,8 @@ use super::{
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use zeroize::Zeroizing;
+
+mod subaccounts;
 
 const TEST_PRIVATE_KEY: &str = "0000000000000000000000000000000000000000000000000000000000000001";
 
@@ -41,9 +43,12 @@ fn signed_exchange_payload_contains_signed_request_fields_without_private_key() 
     let action = HyperliquidL1Action::cancel(110_003, 42);
 
     let payload = build_signed_exchange_payload_with_nonce(
-        Zeroizing::new(TEST_PRIVATE_KEY.to_string()),
+        CapturedAgentKey::for_account(
+            Zeroizing::new(TEST_PRIVATE_KEY.to_string()),
+            Some(vault_address),
+        )
+        .expect("valid account context"),
         &action,
-        Some(vault_address),
         nonce,
     )
     .expect("payload should sign");
@@ -89,9 +94,8 @@ fn signed_exchange_payload_error_does_not_echo_private_key() {
     let action = HyperliquidL1Action::cancel(110_003, 42);
 
     let error = build_signed_exchange_payload_with_nonce(
-        Zeroizing::new(invalid_key.clone()),
+        CapturedAgentKey::new(Zeroizing::new(invalid_key.clone())).expect("non-empty key"),
         &action,
-        None,
         1_700_000_000_000,
     )
     .expect_err("invalid private key should fail before posting");

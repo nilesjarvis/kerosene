@@ -1,8 +1,52 @@
 use super::*;
 use crate::config::AccountProfile;
 
+#[test]
+fn config_loss_recovery_preserves_subaccount_parent_and_secret_binding() {
+    let mut account =
+        test_profile_with_wallet("sub", "0xabc0000000000000000000000000000000000000", "agent");
+    account.master_address = Some("0xdef0000000000000000000000000000000000000".to_string());
+    let payload = SecretPayload::from_credentials(&[account.clone()], "", "");
+    let mut config = KeroseneConfig::default();
+    assert_eq!(
+        recover_accounts_from_secret_payload(&mut config, &payload),
+        1
+    );
+    assert_eq!(config.accounts[0].master_address, account.master_address);
+    assert_eq!(config.accounts[0].wallet_address, account.wallet_address);
+    assert!(config.accounts[0].agent_key.is_empty());
+    apply_secret_payload(&mut config, &payload);
+    assert_eq!(config.accounts[0].agent_key.as_str(), "agent");
+
+    config.accounts[0].master_address = None;
+    apply_secret_payload(&mut config, &payload);
+    assert!(config.accounts[0].agent_key.is_empty());
+}
+
+#[test]
+fn config_loss_recovery_skips_invalid_subaccount_metadata() {
+    let mut account =
+        test_profile_with_wallet("sub", "0xabc0000000000000000000000000000000000000", "agent");
+    for master in ["", "invalid", account.wallet_address.as_str()] {
+        account.master_address = Some(master.to_string());
+        let payload = SecretPayload::from_credentials(&[account.clone()], "", "");
+        assert_eq!(
+            recover_accounts_from_secret_payload(&mut KeroseneConfig::default(), &payload),
+            0
+        );
+    }
+    account.master_address = Some("0xdef0000000000000000000000000000000000000".to_string());
+    account.wallet_address.clear();
+    let payload = SecretPayload::from_credentials(&[account], "", "");
+    assert_eq!(
+        recover_accounts_from_secret_payload(&mut KeroseneConfig::default(), &payload),
+        0
+    );
+}
+
 fn test_profile(secret_id: &str, agent_key: &str, hydromancer_key: &str) -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: secret_id.to_string(),
         name: secret_id.to_string(),
         wallet_address: String::new(),
@@ -17,6 +61,7 @@ fn test_profile_with_wallet(
     agent_key: &str,
 ) -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: secret_id.to_string(),
         name: secret_id.to_string(),
         wallet_address: wallet_address.to_string(),

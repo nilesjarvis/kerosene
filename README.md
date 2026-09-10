@@ -148,6 +148,17 @@ The terminal opens with a default chart view. To trade:
 3. Select a symbol from search or click a position symbol.
 4. Use the order-entry pane to place orders.
 
+To trade on an existing subaccount, open **Add Account**, enter the parent
+account address, click **Discover Subaccounts**, and select the subaccount.
+Enter an agent private key approved by the parent account, then save the
+profile. Leave the key empty for watch-only access. Saved subaccounts appear
+in the account picker and can be used with standard orders, Chase, TWAP, and
+wallet clusters. Subaccount creation and funding transfers are managed outside
+Kerosene.
+
+HyperDash and Hydromancer data keys are configured once in
+**Settings > Integrations** and reused across account profiles.
+
 ## Security and Secrets
 
 - Agent private keys are used locally to sign Hyperliquid actions.

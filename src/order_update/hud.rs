@@ -10,8 +10,8 @@ use crate::order_update::results::classify_execution_result;
 use crate::signing::{ExchangeOrderKind, ExchangeResponse};
 use crate::sound;
 
+use crate::signing::CapturedAgentKey;
 use iced::{Point, Size, Task};
-use zeroize::Zeroizing;
 
 // ---------------------------------------------------------------------------
 // HUD Chart Order Submission
@@ -181,7 +181,7 @@ impl TradingTerminal {
 
     fn submit_prepared_hud_order(
         &mut self,
-        key: Zeroizing<String>,
+        key: CapturedAgentKey,
         account_address: String,
         request: HudOrderRequest,
         prepared: PreparedExchangeOrder,
@@ -372,6 +372,7 @@ mod tests {
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();
         terminal.accounts = vec![AccountProfile {
+            master_address: None,
             secret_id: "acct-a".to_string(),
             name: "Account A".to_string(),
             wallet_address: TEST_ACCOUNT.to_string(),

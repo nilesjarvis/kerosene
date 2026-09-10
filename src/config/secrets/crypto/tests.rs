@@ -4,6 +4,7 @@ use super::*;
 
 fn test_profile() -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Main".to_string(),
         wallet_address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
@@ -22,7 +23,9 @@ fn test_kdf_config() -> SecretKdfConfig {
 
 #[test]
 fn encrypted_secrets_round_trip_with_password() {
-    let profiles = vec![test_profile()];
+    let mut subaccount = test_profile();
+    subaccount.master_address = Some("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string());
+    let profiles = vec![subaccount];
     let payload = SecretPayload::from_credentials(&profiles, "hydro-secret", "hyper-secret");
 
     let encrypted = encrypt_secrets_with_kdf(&payload, "correct horse", test_kdf_config())

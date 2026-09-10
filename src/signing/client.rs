@@ -1,13 +1,12 @@
 use super::actions::HyperliquidL1Action;
 use super::crypto::sign_l1_action;
-use super::model::{ExchangeOrderKind, ExchangeResponse};
+use super::model::{CapturedAgentKey, ExchangeOrderKind, ExchangeResponse};
 use crate::app_time::now_ms;
 use crate::helpers::sensitive_response_snippet;
 
 use serde_json::Value;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
-use zeroize::Zeroizing;
 
 const EXCHANGE_URL: &str = "https://api.hyperliquid.xyz/exchange";
 const EXCHANGE_EXPIRES_AFTER_MS: u64 = 30_000;
@@ -63,40 +62,37 @@ fn exchange_nonce_ms() -> u64 {
 /// variant on `HyperliquidL1Action` plus a thin wrapper here — no copy of
 /// the msgpack-sign-post boilerplate.
 async fn sign_and_post(
-    private_key: Zeroizing<String>,
+    agent_key: CapturedAgentKey,
     action: &HyperliquidL1Action,
-    vault_address: Option<&str>,
 ) -> Result<ExchangeResponse, String> {
-    let payload = build_signed_exchange_payload(private_key, action, vault_address)?;
+    let payload = build_signed_exchange_payload(agent_key, action)?;
     post_exchange(&payload).await
 }
 
 fn build_signed_exchange_payload(
-    private_key: Zeroizing<String>,
+    agent_key: CapturedAgentKey,
     action: &HyperliquidL1Action,
-    vault_address: Option<&str>,
 ) -> Result<Value, String> {
     let nonce = exchange_nonce_ms();
-    build_signed_exchange_payload_with_nonce(private_key, action, vault_address, nonce)
+    build_signed_exchange_payload_with_nonce(agent_key, action, nonce)
 }
 
 fn build_signed_exchange_payload_with_nonce(
-    private_key: Zeroizing<String>,
+    agent_key: CapturedAgentKey,
     action: &HyperliquidL1Action,
-    vault_address: Option<&str>,
     nonce: u64,
 ) -> Result<Value, String> {
     let msgpack_bytes =
         rmp_serde::to_vec_named(action).map_err(|e| format!("Msgpack error: {e}"))?;
     let expires_after = nonce.saturating_add(EXCHANGE_EXPIRES_AFTER_MS);
+    let vault_address = agent_key.vault_address();
     let signature = sign_l1_action(
-        private_key.as_str(),
+        agent_key.private_key(),
         &msgpack_bytes,
         vault_address,
         nonce,
         Some(expires_after),
     )?;
-    drop(private_key);
     let action_json =
         serde_json::to_value(action).map_err(|e| format!("JSON serialize error: {e}"))?;
     Ok(serde_json::json!({
@@ -161,7 +157,7 @@ fn parse_exchange_response(raw: &str) -> Result<ExchangeResponse, String> {
 
 /// Place an order with a Hyperliquid client order id.
 pub async fn place_order_with_cloid(
-    private_key: Zeroizing<String>,
+    agent_key: CapturedAgentKey,
     request: PlaceOrderRequest,
 ) -> Result<ExchangeResponse, String> {
     let action = HyperliquidL1Action::order_with_cloid(
@@ -173,32 +169,32 @@ pub async fn place_order_with_cloid(
         request.reduce_only,
         request.cloid,
     );
-    sign_and_post(private_key, &action, None).await
+    sign_and_post(agent_key, &action).await
 }
 
 /// Cancel an order on the exchange.
 pub async fn cancel_order(
-    private_key: Zeroizing<String>,
+    agent_key: CapturedAgentKey,
     asset: u32,
     oid: u64,
 ) -> Result<ExchangeResponse, String> {
     let action = HyperliquidL1Action::cancel(asset, oid);
-    sign_and_post(private_key, &action, None).await
+    sign_and_post(agent_key, &action).await
 }
 
 /// Cancel an order by Hyperliquid client order id.
 pub async fn cancel_order_by_cloid(
-    private_key: Zeroizing<String>,
+    agent_key: CapturedAgentKey,
     asset: u32,
     cloid: String,
 ) -> Result<ExchangeResponse, String> {
     let action = HyperliquidL1Action::cancel_by_cloid(asset, cloid);
-    sign_and_post(private_key, &action, None).await
+    sign_and_post(agent_key, &action).await
 }
 
 /// Modify a resting limit order on the exchange.
 pub async fn modify_order(
-    private_key: Zeroizing<String>,
+    agent_key: CapturedAgentKey,
     oid: u64,
     asset: u32,
     is_buy: bool,
@@ -207,18 +203,18 @@ pub async fn modify_order(
     reduce_only: bool,
 ) -> Result<ExchangeResponse, String> {
     let action = HyperliquidL1Action::modify(oid, asset, is_buy, price, size, reduce_only);
-    sign_and_post(private_key, &action, None).await
+    sign_and_post(agent_key, &action).await
 }
 
 /// Update cross or isolated leverage for a perpetual asset.
 pub async fn update_leverage(
-    private_key: Zeroizing<String>,
+    agent_key: CapturedAgentKey,
     asset: u32,
     is_cross: bool,
     leverage: u32,
 ) -> Result<ExchangeResponse, String> {
     let action = HyperliquidL1Action::update_leverage(asset, is_cross, leverage);
-    sign_and_post(private_key, &action, None).await
+    sign_and_post(agent_key, &action).await
 }
 
 #[cfg(test)]

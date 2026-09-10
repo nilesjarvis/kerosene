@@ -176,13 +176,9 @@ impl TradingTerminal {
         let mut skipped_bound_profile_keys = 0;
         for profile in &mut self.accounts {
             profile.agent_key.zeroize();
-            if let Some(agent_key) =
-                payload.profile_agent_key_for_wallet(&profile.secret_id, &profile.wallet_address)
-            {
+            if let Some(agent_key) = payload.profile_agent_key_for_account(profile) {
                 profile.agent_key = agent_key.to_string().into();
-            } else if payload
-                .profile_agent_key_binding_mismatches(&profile.secret_id, &profile.wallet_address)
-            {
+            } else if payload.profile_agent_key_binding_mismatches_account(profile) {
                 skipped_bound_profile_keys += 1;
             }
         }
@@ -372,7 +368,7 @@ impl TradingTerminal {
                 } else if skipped_bound_profile_keys > 0 {
                     Some((
                         format!(
-                            "Encrypted credentials unlocked; {skipped_bound_profile_keys} saved agent key(s) were skipped because their wallet binding does not match. Re-enter and save credentials for those accounts to trade."
+                            "Encrypted credentials unlocked; {skipped_bound_profile_keys} saved agent key(s) were skipped because their wallet or subaccount parent binding does not match. Re-enter and save credentials for those accounts to trade."
                         ),
                         true,
                     ))
@@ -517,6 +513,7 @@ mod tests {
 
     fn account(secret_id: &str, wallet_address: &str) -> AccountProfile {
         AccountProfile {
+            master_address: None,
             secret_id: secret_id.to_string(),
             name: secret_id.to_string(),
             wallet_address: wallet_address.to_string(),
@@ -752,6 +749,7 @@ mod tests {
         terminal.active_account_index = 0;
         let payload = SecretPayload::from_credentials(
             &[AccountProfile {
+                master_address: None,
                 secret_id: "acct-a".to_string(),
                 name: "acct-a".to_string(),
                 wallet_address: "0xabc0000000000000000000000000000000000000".to_string(),
@@ -966,6 +964,7 @@ mod tests {
         let password = "password";
         let payload = SecretPayload::from_credentials(
             &[AccountProfile {
+                master_address: None,
                 secret_id: "acct-a".to_string(),
                 name: "acct-a".to_string(),
                 wallet_address: current_wallet.to_string(),
@@ -1026,6 +1025,7 @@ mod tests {
         let password = "password";
         let payload = SecretPayload::from_credentials(
             &[AccountProfile {
+                master_address: None,
                 secret_id: "acct-a".to_string(),
                 name: "acct-a".to_string(),
                 wallet_address: current_wallet.to_string(),
@@ -1063,6 +1063,7 @@ mod tests {
         let password = "password";
         let payload = SecretPayload::from_credentials(
             &[AccountProfile {
+                master_address: None,
                 secret_id: "acct-a".to_string(),
                 name: "acct-a".to_string(),
                 wallet_address: current_wallet.to_string(),

@@ -120,6 +120,18 @@ Saved account profiles persist secret IDs and wallet metadata, not raw agent
 keys. Secret payloads map secret IDs to agent keys and global integration
 tokens inside the selected secret storage backend.
 
+Subaccount credentials bind the profile secret ID, effective child address,
+and parent address. Missing, mismatched, or malformed parent metadata cannot
+load a key saved for a subaccount into a main-account profile. Recovery keeps
+the parent binding; legacy unbound credentials are not migrated into child
+profiles. `CapturedAgentKey` owns the zeroizing key and redacted exchange target
+together so asynchronous operations cannot lose their subaccount identity.
+
+Hyperliquid API wallets are approved by the parent and may sign for its
+subaccounts. A separate API wallet per process/session avoids shared nonce
+collisions; Kerosene allocates unique nonces across its local signing requests.
+See [Hyperliquid API wallets](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/nonces-and-api-wallets).
+
 ## Ghost Wallets
 
 Ghost wallets are in-memory only. They should not cause agent keys or ghost

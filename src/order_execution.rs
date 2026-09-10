@@ -39,7 +39,6 @@ use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::config;
 use crate::signing::{CapturedAgentKey, ChaseOrder};
 use std::fmt;
-use zeroize::Zeroizing;
 
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct SpotAutomationSymbolIdentity {
@@ -357,15 +356,6 @@ impl TradingTerminal {
         true
     }
 
-    pub(crate) fn active_committed_agent_key(&self) -> Zeroizing<String> {
-        Zeroizing::new(
-            self.accounts
-                .get(self.active_account_index)
-                .map(|profile| profile.agent_key.trim().to_string())
-                .unwrap_or_default(),
-        )
-    }
-
     pub(crate) fn has_active_committed_agent_key(&self) -> bool {
         self.active_committed_agent_key_is_present()
     }
@@ -377,25 +367,41 @@ impl TradingTerminal {
     }
 
     pub(crate) fn checked_order_signing_account(&mut self) -> Option<String> {
+        self.captured_order_signing_context()
+            .map(|(_, account_address)| account_address)
+    }
+
+    /// Capture the effective trading target with the committed key. Reads and
+    /// reconciliation continue to use wallet_address for both account kinds.
+    pub(crate) fn capture_profile_signing_key(
+        profile: &config::AccountProfile,
+    ) -> Result<CapturedAgentKey, String> {
+        let address = Self::normalize_wallet_address(&profile.wallet_address)
+            .ok_or_else(|| "Trading profile has an invalid account address".to_string())?;
+        let vault_address = if let Some(master_address) = &profile.master_address {
+            let master = Self::normalize_wallet_address(master_address)
+                .ok_or_else(|| "Subaccount profile has an invalid parent address".to_string())?;
+            if master == address {
+                return Err("Subaccount address must differ from its parent address".to_string());
+            }
+            Some(address.as_str())
+        } else {
+            None
+        };
+        CapturedAgentKey::for_account(profile.agent_key.clone(), vault_address)
+    }
+
+    pub(crate) fn order_signing_context(&mut self) -> Option<(CapturedAgentKey, String)> {
+        self.captured_order_signing_context()
+    }
+
+    pub(crate) fn captured_order_signing_context(&mut self) -> Option<(CapturedAgentKey, String)> {
         if !self.active_committed_agent_key_is_present() {
             self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
             return None;
         }
-        let Some(account_address) = self.connected_order_account_address() else {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
-            return None;
-        };
-        if self.reject_mismatched_trading_context(&account_address) {
-            return None;
-        }
-
-        Some(account_address)
-    }
-
-    pub(crate) fn order_signing_context(&mut self) -> Option<(Zeroizing<String>, String)> {
-        let key = self.active_committed_agent_key();
-        if key.is_empty() {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
+        if self.active_account_is_ghost() {
+            self.order_status = Some(("Watch-only accounts cannot sign orders".into(), true));
             return None;
         }
         let Some(account_address) = self.connected_order_account_address() else {
@@ -406,24 +412,14 @@ impl TradingTerminal {
             return None;
         }
 
-        Some((key, account_address))
-    }
-
-    pub(crate) fn captured_order_signing_context(&mut self) -> Option<(CapturedAgentKey, String)> {
-        let key = CapturedAgentKey::new(self.active_committed_agent_key());
-        let Some(account_address) = self.connected_order_account_address() else {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
-            return None;
-        };
-        let Some(key) = key else {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
-            return None;
-        };
-        if self.reject_mismatched_trading_context(&account_address) {
-            return None;
+        let profile = self.accounts.get(self.active_account_index)?;
+        match Self::capture_profile_signing_key(profile) {
+            Ok(key) => Some((key, account_address)),
+            Err(error) => {
+                self.order_status = Some((error, true));
+                None
+            }
         }
-
-        Some((key, account_address))
     }
 
     pub(crate) fn has_pending_trading_request(&self) -> bool {
@@ -572,6 +568,7 @@ mod tests {
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();
         terminal.accounts = vec![AccountProfile {
+            master_address: None,
             secret_id: "acct-a".to_string(),
             name: "Account A".to_string(),
             wallet_address: TEST_ACCOUNT.to_string(),
@@ -838,7 +835,7 @@ mod tests {
             MoveOrderKey::new("BTC", 42),
             PendingMoveOrderContext::new(
                 account.to_string(),
-                sensitive_string("move-agent").into_zeroizing(),
+                sensitive_string("move-agent").into_zeroizing().into(),
             )
             .expect("move context"),
         );
@@ -920,6 +917,68 @@ mod tests {
 
         assert_eq!(account_address, TEST_ACCOUNT);
     }
+
+    #[test]
+    fn subaccount_signing_context_captures_child_target_and_committed_parent_key() {
+        let mut terminal = TradingTerminal::boot().0;
+        connect_test_account(&mut terminal);
+        terminal.accounts[0].master_address = Some(OTHER_ACCOUNT.to_string());
+        terminal.set_committed_agent_key_for_test("parent-agent-key");
+        terminal.wallet_key_input = sensitive_string("unsaved-draft-key");
+
+        let (key, address) = terminal
+            .order_signing_context()
+            .expect("subaccount context");
+        assert_eq!(address, TEST_ACCOUNT);
+        assert_eq!(key.vault_address(), Some(TEST_ACCOUNT));
+        assert_eq!(key.as_str(), "parent-agent-key");
+
+        // In-flight work owns its target, even after the active profile changes.
+        terminal.accounts[0].master_address = None;
+        terminal.accounts[0].wallet_address = OTHER_ACCOUNT.to_string();
+        terminal.wallet_address_input = OTHER_ACCOUNT.to_string();
+        terminal.connected_address = Some(OTHER_ACCOUNT.to_string());
+        terminal.set_committed_agent_key_for_test("other-key");
+        assert_eq!(key.clone_for_task().vault_address(), Some(TEST_ACCOUNT));
+        assert_eq!(key.clone_for_task().as_str(), "parent-agent-key");
+        let (master_key, _) = terminal.order_signing_context().expect("master context");
+        assert_eq!(master_key.vault_address(), None);
+    }
+
+    #[test]
+    fn subaccount_signing_rejects_invalid_or_self_parent_binding() {
+        let mut terminal = TradingTerminal::boot().0;
+        connect_test_account(&mut terminal);
+        terminal.set_committed_agent_key_for_test("agent-key");
+        for parent in ["", "malformed-parent", TEST_ACCOUNT] {
+            terminal.accounts[0].master_address = Some(parent.to_string());
+            assert!(terminal.order_signing_context().is_none());
+            assert!(terminal.checked_order_signing_account().is_none());
+            assert!(
+                terminal
+                    .order_status
+                    .as_ref()
+                    .is_some_and(|(_, error)| *error)
+            );
+        }
+    }
+
+    #[test]
+    fn subaccount_signing_and_snapshots_reject_parent_account_context() {
+        let mut terminal = TradingTerminal::boot().0;
+        connect_test_account(&mut terminal);
+        terminal.accounts[0].master_address = Some(OTHER_ACCOUNT.to_string());
+        terminal.set_committed_agent_key_for_test("parent-agent-key");
+        terminal.connected_address = Some(OTHER_ACCOUNT.to_string());
+        assert!(terminal.order_signing_context().is_none());
+
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.account_data = Some(empty_account_data());
+        terminal.account_data_address = Some(OTHER_ACCOUNT.to_string());
+        assert!(terminal.connected_order_account_snapshot().is_none());
+        terminal.account_data_address = Some(TEST_ACCOUNT.to_string());
+        assert!(terminal.connected_order_account_snapshot().is_some());
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -969,11 +1028,11 @@ impl PendingMoveOrderContext {
     /// cannot silently switch to a different account/key before placement.
     pub(crate) fn new(
         account_address: impl Into<String>,
-        agent_key: Zeroizing<String>,
+        agent_key: CapturedAgentKey,
     ) -> Result<Self, MoveOrderContextError> {
-        let Some(agent_key) = CapturedAgentKey::new(agent_key) else {
+        if agent_key.is_empty() {
             return Err(MoveOrderContextError::MissingAgentKey);
-        };
+        }
 
         Ok(Self {
             account_address: account_address.into(),
@@ -984,7 +1043,7 @@ impl PendingMoveOrderContext {
     pub(crate) fn replacement_agent_key(
         &self,
         current_account: Option<&str>,
-    ) -> Result<Zeroizing<String>, MoveOrderContextError> {
+    ) -> Result<CapturedAgentKey, MoveOrderContextError> {
         match current_account {
             Some(current) => {
                 let current = current.trim();

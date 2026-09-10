@@ -44,6 +44,21 @@ Orders can originate from several surfaces:
 All surfaces should route through the same execution boundary rather than
 duplicating signing or order construction logic.
 
+### Subaccount Trading Identity
+
+`capture_profile_signing_key` captures the committed agent key and effective
+subaccount target together in `CapturedAgentKey`. A profile with
+`master_address: Some(parent)` must have valid, distinct parent and child
+addresses. It signs the child's `wallet_address` as `vaultAddress`; ordinary
+profiles retain a null target. Invalid metadata blocks trading.
+
+Place, cancel, cancel-by-CLOID, modify, and leverage actions include the captured
+target in both the action hash and JSON payload. Task clones, Chase/TWAP
+lifecycles, late-result cancellation, move-order replacements, and cluster legs
+retain that target. Reads, optimistic indicators, and result reconciliation use
+the same effective child address. The existing pending-request and automation
+guards continue to govern account switching.
+
 ## Standard Ticket Flow
 
 ```text

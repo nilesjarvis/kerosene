@@ -8,6 +8,7 @@ impl TradingTerminal {
             .iter()
             .filter(|profile| !self.ghost_account_secret_ids.contains(&profile.secret_id))
             .map(|profile| config::AccountProfile {
+                master_address: profile.master_address.clone(),
                 secret_id: profile.secret_id.clone(),
                 name: profile.name.clone(),
                 wallet_address: profile.wallet_address.clone(),

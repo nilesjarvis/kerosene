@@ -70,6 +70,7 @@ fn fallback_outcome_symbol(key: &str) -> ExchangeSymbol {
 
 fn account_profile() -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: TEST_ACCOUNT.to_string(),
