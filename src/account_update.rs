@@ -75,8 +75,12 @@ impl TradingTerminal {
             Message::TransferHistoryLoaded(address, generation, provider, result) => {
                 self.apply_transfer_history(address.into_string(), generation, provider, *result)
             }
-            Message::TransferHistoryPage(next) => self.change_transfer_history_page(next),
-            Message::ToggleTransferDetails(index) => self.toggle_transfer_details(index),
+            Message::TransferHistoryPage(kind, next) => {
+                self.change_transfer_history_page(kind, next)
+            }
+            Message::ToggleTransferDetails(kind, index) => {
+                self.toggle_transfer_details(kind, index)
+            }
             Message::RefreshAccountData => self.refresh_account_data(),
             Message::AccountRefreshBackoffElapsed(due_ms) => {
                 self.handle_account_refresh_backoff_elapsed(due_ms)

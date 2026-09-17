@@ -107,8 +107,19 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
 #[test]
 fn transfer_history_messages_route_to_account() {
     assert_route(Message::RefreshTransferHistory, UpdateRoute::Account);
-    assert_route(Message::TransferHistoryPage(true), UpdateRoute::Account);
-    assert_route(Message::ToggleTransferDetails(0), UpdateRoute::Account);
+    for kind in [
+        crate::account::transfers::TransferHistoryKind::DepositsWithdrawals,
+        crate::account::transfers::TransferHistoryKind::Transfers,
+    ] {
+        assert_route(
+            Message::TransferHistoryPage(kind, true),
+            UpdateRoute::Account,
+        );
+        assert_route(
+            Message::ToggleTransferDetails(kind, 0),
+            UpdateRoute::Account,
+        );
+    }
     assert_route(
         Message::TransferHistoryLoaded(
             "0xabc0000000000000000000000000000000000000".into(),

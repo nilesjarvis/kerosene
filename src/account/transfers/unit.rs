@@ -77,9 +77,10 @@ fn parse_operations(raw: &str, account: &str) -> Result<TransferSnapshot, String
             (source, "hyperliquid") if source != "hyperliquid" => TransferDirection::Deposit,
             _ => continue,
         };
-        let account_side = match direction {
-            TransferDirection::Deposit => &op.destination_address,
-            TransferDirection::Withdrawal => &op.source_address,
+        let account_side = if direction == TransferDirection::Deposit {
+            &op.destination_address
+        } else {
+            &op.source_address
         };
         // Discovered deposits can omit the destination until an operation is
         // created. The address-scoped API still associates them with this user.
@@ -129,6 +130,7 @@ fn parse_operations(raw: &str, account: &str) -> Result<TransferSnapshot, String
             status,
             failed,
             fee: nonempty(op.destination_fee_amount).map(|raw| display_amount(&raw, decimals)),
+            fee_asset: None,
             sweep_fee: nonempty(op.sweep_fee_amount).map(|raw| display_amount(&raw, decimals)),
             source_confirmations: op.source_tx_confirmations,
             destination_confirmations: op.destination_tx_confirmations,

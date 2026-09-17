@@ -1,4 +1,6 @@
-use crate::account::transfers::{TransferEntry, TransferProvider, TransferSnapshot};
+use crate::account::transfers::{
+    TransferEntry, TransferHistoryKind, TransferProvider, TransferSnapshot,
+};
 use std::collections::HashMap;
 
 pub(crate) const TRANSFER_PAGE_SIZE: usize = 50;
@@ -10,6 +12,11 @@ pub(crate) struct TransferHistoryState {
     pub(crate) native: TransferSourceState,
     pub(crate) unit: TransferSourceState,
     pub(crate) entries: Vec<TransferEntry>,
+    views: [TransferHistoryViewState; 2],
+}
+
+#[derive(Default)]
+pub(crate) struct TransferHistoryViewState {
     pub(crate) page: usize,
     pub(crate) expanded: Option<String>,
 }
@@ -24,6 +31,47 @@ pub(crate) struct TransferSourceState {
 }
 
 impl TransferHistoryState {
+    pub(crate) fn view(&self, kind: TransferHistoryKind) -> &TransferHistoryViewState {
+        &self.views[kind as usize]
+    }
+
+    pub(crate) fn view_mut(&mut self, kind: TransferHistoryKind) -> &mut TransferHistoryViewState {
+        &mut self.views[kind as usize]
+    }
+
+    pub(crate) fn entries(
+        &self,
+        kind: TransferHistoryKind,
+    ) -> impl Iterator<Item = (usize, &TransferEntry)> {
+        self.entries
+            .iter()
+            .enumerate()
+            .filter(move |(_, entry)| kind.includes(entry))
+    }
+
+    pub(crate) fn change_page(&mut self, kind: TransferHistoryKind, next: bool) {
+        let last = self.entries(kind).count().saturating_sub(1) / TRANSFER_PAGE_SIZE;
+        let view = self.view_mut(kind);
+        view.page = if next {
+            view.page.saturating_add(1).min(last)
+        } else {
+            view.page.saturating_sub(1)
+        };
+        view.expanded = None;
+    }
+
+    pub(crate) fn toggle_details(&mut self, kind: TransferHistoryKind, index: usize) {
+        if let Some(entry) = self.entries.get(index).filter(|entry| kind.includes(entry)) {
+            let id = entry.id.clone();
+            let view = self.view_mut(kind);
+            view.expanded = if view.expanded.as_ref() == Some(&id) {
+                None
+            } else {
+                Some(id)
+            };
+        }
+    }
+
     pub(crate) fn clear(&mut self) {
         *self = Self {
             generation: self.generation.wrapping_add(1),
@@ -89,9 +137,14 @@ impl TransferHistoryState {
                 self.entries = entries.into_values().collect();
                 self.entries
                     .sort_by(|a, b| b.time.cmp(&a.time).then_with(|| a.id.cmp(&b.id)));
-                self.page = self
-                    .page
-                    .min(self.entries.len().saturating_sub(1) / TRANSFER_PAGE_SIZE);
+                for kind in [
+                    TransferHistoryKind::DepositsWithdrawals,
+                    TransferHistoryKind::Transfers,
+                ] {
+                    let last = self.entries(kind).count().saturating_sub(1) / TRANSFER_PAGE_SIZE;
+                    let view = self.view_mut(kind);
+                    view.page = view.page.min(last);
+                }
             }
             Err(error) => source.error = Some(error),
         }

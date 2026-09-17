@@ -19,7 +19,11 @@ impl TradingTerminal {
                 self.set_workspace_focus(workspace, Some(pane));
                 self.last_focused_workspace = workspace;
                 self.persist_config();
-                if tab == crate::account_state::BottomTab::DepositsWithdrawals {
+                if matches!(
+                    tab,
+                    crate::account_state::BottomTab::DepositsWithdrawals
+                        | crate::account_state::BottomTab::Transfers
+                ) {
                     return self.refresh_transfer_history();
                 }
             }

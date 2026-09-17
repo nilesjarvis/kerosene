@@ -4,7 +4,7 @@ mod unit;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use hyperliquid::fetch_bridge_history;
+pub(crate) use hyperliquid::fetch_ledger_history;
 pub(crate) use unit::fetch_unit_history;
 
 use std::fmt;
@@ -18,7 +18,7 @@ pub(crate) enum TransferProvider {
 impl TransferProvider {
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::Hyperliquid => "Hyperliquid bridge",
+            Self::Hyperliquid => "Hyperliquid",
             Self::Unit => "Unit (TradeXYZ)",
         }
     }
@@ -28,6 +28,9 @@ impl TransferProvider {
 pub(crate) enum TransferDirection {
     Deposit,
     Withdrawal,
+    Sent,
+    Received,
+    Internal,
 }
 
 impl TransferDirection {
@@ -35,7 +38,26 @@ impl TransferDirection {
         match self {
             Self::Deposit => "Deposit",
             Self::Withdrawal => "Withdrawal",
+            Self::Sent => "Sent",
+            Self::Received => "Received",
+            Self::Internal => "Internal",
         }
+    }
+
+    pub(crate) fn is_bridge(self) -> bool {
+        matches!(self, Self::Deposit | Self::Withdrawal)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TransferHistoryKind {
+    DepositsWithdrawals,
+    Transfers,
+}
+
+impl TransferHistoryKind {
+    pub(crate) fn includes(self, entry: &TransferEntry) -> bool {
+        entry.direction.is_bridge() == (self == Self::DepositsWithdrawals)
     }
 }
 
@@ -60,6 +82,7 @@ pub(crate) struct TransferEntry {
     pub(crate) status: String,
     pub(crate) failed: bool,
     pub(crate) fee: Option<String>,
+    pub(crate) fee_asset: Option<String>,
     pub(crate) sweep_fee: Option<String>,
     pub(crate) source_confirmations: Option<u64>,
     pub(crate) destination_confirmations: Option<u64>,

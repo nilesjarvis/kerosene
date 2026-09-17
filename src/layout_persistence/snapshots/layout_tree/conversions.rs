@@ -14,6 +14,7 @@ fn bottom_tab_to_config(tab: BottomTab) -> BottomTabConfig {
         BottomTab::TradeHistory => BottomTabConfig::TradeHistory,
         BottomTab::FundingHistory => BottomTabConfig::FundingHistory,
         BottomTab::DepositsWithdrawals => BottomTabConfig::DepositsWithdrawals,
+        BottomTab::Transfers => BottomTabConfig::Transfers,
     }
 }
 
@@ -25,6 +26,7 @@ fn bottom_tab_from_config(tab: BottomTabConfig) -> BottomTab {
         BottomTabConfig::TradeHistory => BottomTab::TradeHistory,
         BottomTabConfig::FundingHistory => BottomTab::FundingHistory,
         BottomTabConfig::DepositsWithdrawals => BottomTab::DepositsWithdrawals,
+        BottomTabConfig::Transfers => BottomTab::Transfers,
     }
 }
 
@@ -97,6 +99,26 @@ pub(super) fn pane_kind_from_config(kind: &PaneKindConfig) -> Option<PaneKind> {
 #[cfg(test)]
 mod transfer_tests {
     use super::*;
+
+    #[test]
+    fn transfers_tab_round_trips_through_layout_config() {
+        let pane = PaneKind::BottomTabs {
+            active_tab: BottomTab::Transfers,
+        };
+        let config = pane_kind_to_config(&pane);
+        assert_eq!(
+            config,
+            PaneKindConfig::BottomTabs {
+                active_tab: BottomTabConfig::Transfers
+            }
+        );
+        assert!(matches!(
+            pane_kind_from_config(&config),
+            Some(PaneKind::BottomTabs {
+                active_tab: BottomTab::Transfers
+            })
+        ));
+    }
 
     #[test]
     fn deposits_withdrawals_tab_round_trips_through_layout_config() {

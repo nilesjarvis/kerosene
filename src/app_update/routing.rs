@@ -663,8 +663,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::RetryTwapReconciliationAccountData(_)
         | Message::RefreshTransferHistory
         | Message::TransferHistoryLoaded(_, _, _, _)
-        | Message::TransferHistoryPage(_)
-        | Message::ToggleTransferDetails(_)
+        | Message::TransferHistoryPage(_, _)
+        | Message::ToggleTransferDetails(_, _)
         | Message::RefreshAccountData
         | Message::AccountRefreshBackoffElapsed(_)
         | Message::AllMidsBootstrapLoaded(_, _)

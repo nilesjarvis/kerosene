@@ -78,19 +78,23 @@ mod transfer_tests {
 
     #[test]
     fn canvas_transfer_tab_polls_only_when_connected_and_selected() {
-        let (mut terminal, _) =
-            TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default());
-        let mut subscriptions = Vec::new();
-        terminal.insert_test_canvas_pane(
-            7,
-            PaneKind::BottomTabs {
-                active_tab: BottomTab::DepositsWithdrawals,
-            },
-        );
-        terminal.push_analytics_timer_subscriptions(&mut subscriptions);
-        assert!(subscriptions.is_empty());
-        terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".into());
-        terminal.push_analytics_timer_subscriptions(&mut subscriptions);
-        assert_eq!(subscriptions.len(), 1);
+        for active_tab in [
+            BottomTab::DepositsWithdrawals,
+            BottomTab::Transfers,
+            BottomTab::Positions,
+        ] {
+            let (mut terminal, _) =
+                TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default());
+            let mut subscriptions = Vec::new();
+            terminal.insert_test_canvas_pane(7, PaneKind::BottomTabs { active_tab });
+            terminal.push_analytics_timer_subscriptions(&mut subscriptions);
+            assert!(subscriptions.is_empty());
+            terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".into());
+            terminal.push_analytics_timer_subscriptions(&mut subscriptions);
+            assert_eq!(
+                subscriptions.len(),
+                usize::from(active_tab != BottomTab::Positions)
+            );
+        }
     }
 }

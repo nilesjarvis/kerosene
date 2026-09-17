@@ -197,6 +197,12 @@ fn known_pane_variants_keep_existing_wire_shape() {
             },
             serde_json::json!({ "BottomTabs": { "active_tab": "DepositsWithdrawals" } }),
         ),
+        (
+            PaneKindConfig::BottomTabs {
+                active_tab: BottomTabConfig::Transfers,
+            },
+            serde_json::json!({ "BottomTabs": { "active_tab": "Transfers" } }),
+        ),
         (PaneKindConfig::OrderEntry, serde_json::json!("OrderEntry")),
         (
             PaneKindConfig::AdvancedOrders,

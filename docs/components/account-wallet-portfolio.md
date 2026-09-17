@@ -188,6 +188,7 @@ Account views cover:
 - trade history
 - funding history
 - deposits and withdrawals (native USDC bridge and Unit spot assets)
+- spot token and USDC transfers
 - portfolio tab content
 - income view
 
@@ -220,11 +221,34 @@ runtime data and advance a generation so late replies cannot restore it.
 These reads always use their native APIs, independently of the selected market
 data provider. Hyperliquid requests honor the existing REST proxy transport.
 
-Only the `BottomTabConfig::DepositsWithdrawals` selection is persisted. Existing
-tab names and the fallback for unknown names remain compatible. Transfer data
-and external wallet addresses are neither persisted nor included in Debug logs.
+Only the tab selections (`BottomTabConfig::DepositsWithdrawals` and `Transfers`)
+are persisted. Existing tab names and the fallback for unknown names remain
+compatible. Transfer data and external wallet addresses are neither persisted
+nor included in Debug logs.
 
-#### API contracts and limitations
+### Transfers
+
+The **Transfers** tab shows Hyperliquid spot token and USDC transfers, including
+sent/received transfers, subaccount USDC transfers, and internal spot/perps USDC
+movements. It uses the same account-scoped ledger reader, refresh controls, and
+30-second polling as Deposits/Withdrawals. The tabs filter the shared history
+before pagination and keep separate page and expanded-row state.
+
+Rows show UTC time, direction, asset, exact decimal amount, sender/recipient
+(or the internal account route), and status. Expanded rows expose the full
+wallet addresses and ledger transaction with copy controls. Transfer fees use
+the reported fee asset when present; older spot records do not infer that asset
+from the transferred token. Unit errors are only shown in Deposits/Withdrawals.
+
+The [Hyperliquid ledger schema](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions)
+(checked 2026-09-17) defines `spotTransfer`, `internalTransfer`,
+`subAccountTransfer`, and `accountClassTransfer`. Direction is relative to the
+connected account, with case-insensitive address comparisons. Bridge records
+remain in Deposits/Withdrawals; vault flows, rewards, and genesis allocations
+are not token transfers. Unit's Hyperliquid-side spot movement may appear in
+Transfers while its bridge operation appears in Deposits/Withdrawals.
+
+### API contracts and limitations
 
 Verified against primary sources on 2026-09-07:
 
@@ -257,8 +281,8 @@ Verified against primary sources on 2026-09-07:
   uses `POST https://api.hyperliquid.xyz/info` with
   `{"type":"userNonFundingLedgerUpdates","user":"<account>","startTime":0,"endTime":<milliseconds>}`.
   Only `deposit` and `withdraw` deltas become native Arbitrum USDC bridge rows.
-  Internal, vault, spot, and account-class transfers are excluded, avoiding
-  double counting Unit's Hyperliquid-side spot transfers.
+  Internal, spot, and account-class transfers appear separately in Transfers;
+  vault flows are excluded from both tabs.
 - Native history follows the documented inclusive timestamp pagination for
   **all** ledger categories, deduplicating the overlapping boundary. Each fetch
   is bounded to 100 pages / 60 seconds; partial reads carry a warning and a

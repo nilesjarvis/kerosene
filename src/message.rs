@@ -668,8 +668,8 @@ pub(crate) enum Message {
         crate::account::transfers::TransferProvider,
         Box<Result<crate::account::transfers::TransferSnapshot, String>>,
     ),
-    TransferHistoryPage(bool),
-    ToggleTransferDetails(usize),
+    TransferHistoryPage(crate::account::transfers::TransferHistoryKind, bool),
+    ToggleTransferDetails(crate::account::transfers::TransferHistoryKind, usize),
     OrderPriceChanged(RedactedOrderInput),
     SetMidPrice,
     OrderBookPriceSelected {

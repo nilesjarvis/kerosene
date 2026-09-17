@@ -4,6 +4,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
+mod token_transfers;
+
 #[derive(Deserialize)]
 struct LedgerEntry {
     time: u64,
@@ -11,7 +13,7 @@ struct LedgerEntry {
     delta: Value,
 }
 
-pub(crate) async fn fetch_bridge_history(
+pub(crate) async fn fetch_ledger_history(
     address: String,
     start: u64,
     end: u64,
@@ -24,8 +26,8 @@ pub(crate) async fn fetch_bridge_history(
     let mut cursor = start;
     let mut seen = HashSet::new();
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(60);
-    // All ledger categories count toward pagination, even though this tab only
-    // displays bridge deposits/withdrawals. Overlap the boundary and deduplicate.
+    // Both history tabs share this cursor. All ledger categories count toward
+    // pagination. Overlap the boundary and deduplicate.
     for _ in 0..100 {
         let page = tokio::time::timeout_at(deadline, async {
             let response = client
@@ -33,10 +35,10 @@ pub(crate) async fn fetch_bridge_history(
                 .json(&ledger_request(&address, cursor, end))
                 .send_info()
                 .await
-                .map_err(|_| "Hyperliquid bridge history request failed".to_string())?;
+                .map_err(|_| "Hyperliquid ledger history request failed".to_string())?;
             if !response.status().is_success() {
                 return Err(format!(
-                    "Hyperliquid bridge history returned HTTP {}",
+                    "Hyperliquid ledger history returned HTTP {}",
                     response.status()
                 ));
             }
@@ -46,7 +48,7 @@ pub(crate) async fn fetch_bridge_history(
                 .map_err(|_| "Hyperliquid returned an invalid ledger response".to_string())
         })
         .await
-        .unwrap_or_else(|_| Err("Hyperliquid bridge history request timed out".to_string()));
+        .unwrap_or_else(|_| Err("Hyperliquid ledger history request timed out".to_string()));
         let page = match page {
             Ok(page) => page,
             Err(error) if snapshot.entries.is_empty() => return Err(error),
@@ -62,7 +64,7 @@ pub(crate) async fn fetch_bridge_history(
             if entry.time < cursor || entry.time > end {
                 continue;
             }
-            if let Some(transfer) = bridge_entry(entry, &address)?
+            if let Some(transfer) = ledger_entry(entry, &address)?
                 && seen.insert(transfer.id.clone())
             {
                 snapshot.entries.push(transfer);
@@ -137,10 +139,19 @@ fn bridge_entry(entry: LedgerEntry, account: &str) -> Result<Option<TransferEntr
         status: if deposit { "Credited" } else { "Debited" }.to_string(),
         failed: false,
         fee: ledger_number(&entry.delta["fee"]),
+        fee_asset: Some("USDC".to_string()),
         sweep_fee: None,
         source_confirmations: None,
         destination_confirmations: None,
     }))
+}
+
+fn ledger_entry(entry: LedgerEntry, account: &str) -> Result<Option<TransferEntry>, String> {
+    if matches!(entry.delta["type"].as_str(), Some("deposit" | "withdraw")) {
+        bridge_entry(entry, account)
+    } else {
+        token_transfers::transfer_entry(entry, account)
+    }
 }
 
 fn ledger_number(value: &Value) -> Option<String> {

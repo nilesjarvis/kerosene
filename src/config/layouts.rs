@@ -63,6 +63,7 @@ pub enum BottomTabConfig {
     TradeHistory,
     FundingHistory,
     DepositsWithdrawals,
+    Transfers,
 }
 
 impl BottomTabConfig {
@@ -74,6 +75,7 @@ impl BottomTabConfig {
             "TradeHistory" => Some(Self::TradeHistory),
             "FundingHistory" => Some(Self::FundingHistory),
             "DepositsWithdrawals" => Some(Self::DepositsWithdrawals),
+            "Transfers" => Some(Self::Transfers),
             _ => None,
         }
     }
@@ -86,6 +88,7 @@ impl BottomTabConfig {
             Self::TradeHistory => "TradeHistory",
             Self::FundingHistory => "FundingHistory",
             Self::DepositsWithdrawals => "DepositsWithdrawals",
+            Self::Transfers => "Transfers",
         }
     }
 }

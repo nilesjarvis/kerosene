@@ -19,6 +19,7 @@ fn entry(provider: TransferProvider, id: &str, time: u64) -> TransferEntry {
         status: "Discovered".into(),
         failed: false,
         fee: None,
+        fee_asset: None,
         sweep_fee: None,
         source_confirmations: None,
         destination_confirmations: None,
@@ -158,4 +159,94 @@ fn native_boundaries_merge_and_unit_snapshots_replace_pending_operations() {
     assert!(state.entries.is_empty());
     assert!(state.address.is_none());
     assert!(!state.loading());
+}
+
+#[test]
+fn history_tabs_filter_before_pagination_and_keep_independent_details() {
+    let bridges = TransferHistoryKind::DepositsWithdrawals;
+    let transfers = TransferHistoryKind::Transfers;
+    let mut state = TransferHistoryState::default();
+    let generation = state.begin("account").expect("start");
+    let entries = (0..122)
+        .map(|i| {
+            let mut row = entry(TransferProvider::Hyperliquid, &format!("hl:{i}"), i);
+            if i % 2 == 0 {
+                row.direction = crate::account::transfers::TransferDirection::Received;
+            }
+            row
+        })
+        .collect();
+    state.apply(
+        "account",
+        generation,
+        TransferProvider::Hyperliquid,
+        Ok(TransferSnapshot {
+            entries,
+            ..Default::default()
+        }),
+    );
+    assert_eq!(state.entries(bridges).count(), 61);
+    assert_eq!(state.entries(transfers).count(), 61);
+    let (index, row) = state.entries(transfers).next().expect("transfer");
+    let id = row.id.clone();
+    state.toggle_details(transfers, index);
+    assert_eq!(state.view(transfers).expanded.as_deref(), Some(id.as_str()));
+    state.toggle_details(bridges, index);
+    assert!(state.view(bridges).expanded.is_none());
+    state.change_page(bridges, true);
+    state.change_page(bridges, true);
+    assert_eq!(state.view(bridges).page, 1);
+    assert_eq!(state.view(transfers).page, 0);
+    assert_eq!(state.view(transfers).expanded.as_deref(), Some(id.as_str()));
+    state.toggle_details(transfers, index);
+    assert!(state.view(transfers).expanded.is_none());
+    state.change_page(transfers, true);
+    assert_eq!(
+        state.entries(transfers).skip(TRANSFER_PAGE_SIZE).count(),
+        11
+    );
+    assert_eq!(state.view(transfers).page, 1);
+    state.change_page(transfers, false);
+    state.change_page(transfers, false);
+    assert_eq!(state.view(transfers).page, 0);
+    state.clear();
+    for kind in [bridges, transfers] {
+        assert_eq!(state.view(kind).page, 0);
+        assert!(state.view(kind).expanded.is_none());
+        assert_eq!(state.entries(kind).count(), 0);
+    }
+}
+
+#[test]
+fn provider_refresh_clamps_each_tab_to_its_filtered_length() {
+    let mut state = TransferHistoryState::default();
+    let generation = state.begin("account").expect("start");
+    let mut transfer = entry(TransferProvider::Hyperliquid, "hl:transfer", 200);
+    transfer.direction = crate::account::transfers::TransferDirection::Sent;
+    state.apply(
+        "account",
+        generation,
+        TransferProvider::Hyperliquid,
+        Ok(TransferSnapshot {
+            entries: vec![transfer],
+            ..Default::default()
+        }),
+    );
+    state.view_mut(TransferHistoryKind::Transfers).page = 2;
+    state
+        .view_mut(TransferHistoryKind::DepositsWithdrawals)
+        .page = 2;
+    state.apply(
+        "account",
+        generation,
+        TransferProvider::Unit,
+        Ok(TransferSnapshot {
+            entries: (0..51)
+                .map(|i| entry(TransferProvider::Unit, &format!("unit:{i}"), i))
+                .collect(),
+            ..Default::default()
+        }),
+    );
+    assert_eq!(state.view(TransferHistoryKind::Transfers).page, 0);
+    assert_eq!(state.view(TransferHistoryKind::DepositsWithdrawals).page, 1);
 }

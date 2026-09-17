@@ -43,6 +43,7 @@ pub(crate) enum BottomTab {
     TradeHistory,
     FundingHistory,
     DepositsWithdrawals,
+    Transfers,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

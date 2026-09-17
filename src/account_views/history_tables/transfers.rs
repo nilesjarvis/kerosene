@@ -1,4 +1,6 @@
-use crate::account::transfers::{TransferDirection, TransferEntry, TransferProvider};
+use crate::account::transfers::{
+    TransferDirection, TransferEntry, TransferHistoryKind, TransferProvider,
+};
 use crate::account_state::transfers::{TRANSFER_PAGE_SIZE, TransferSourceState};
 use crate::account_views::{
     history::format_history_time_millis, table_helpers::account_table_scroll,
@@ -9,24 +11,30 @@ use iced::widget::{Column, button, column, container, row, rule, text};
 use iced::{Element, Fill, Length, Theme};
 
 impl TradingTerminal {
-    pub(crate) fn view_transfer_history(&self) -> Element<'_, Message> {
+    pub(crate) fn view_transfer_history(&self, kind: TransferHistoryKind) -> Element<'_, Message> {
+        let bridges = kind == TransferHistoryKind::DepositsWithdrawals;
         if self.connected_address.is_none() {
-            return text("Connect wallet to view deposits and withdrawals")
-                .size(12)
-                .into();
+            return text(if bridges {
+                "Connect wallet to view deposits and withdrawals"
+            } else {
+                "Connect wallet to view transfers"
+            })
+            .size(12)
+            .into();
         }
         let history = &self.transfer_history;
         let theme = self.theme();
         let muted = theme.extended_palette().background.weak.text;
         let current = history.address.as_deref() == self.connected_address.as_deref();
-        let entries = if current {
-            history.entries.as_slice()
+        let entries: Vec<_> = if current {
+            history.entries(kind).collect()
         } else {
-            &[]
+            Vec::new()
         };
-        let page = if current { history.page } else { 0 };
+        let view = history.view(kind);
+        let page = if current { view.page } else { 0 };
         let pages = entries.len().max(1).div_ceil(TRANSFER_PAGE_SIZE);
-        let loading = current && history.loading();
+        let loading = current && (history.native.loading || (bridges && history.unit.loading));
         let controls = row![
             text(if loading {
                 "Refreshing…".to_string()
@@ -37,12 +45,13 @@ impl TradingTerminal {
             .color(muted)
             .width(Fill),
             button(text("Refresh").size(11))
-                .on_press_maybe((!loading).then_some(Message::RefreshTransferHistory)),
+                .on_press_maybe((!history.loading()).then_some(Message::RefreshTransferHistory)),
             button(text("Previous").size(11))
-                .on_press_maybe((page > 0).then_some(Message::TransferHistoryPage(false))),
+                .on_press_maybe((page > 0).then_some(Message::TransferHistoryPage(kind, false))),
             text(format!("{} / {pages}", page + 1)).size(11),
-            button(text("Next").size(11))
-                .on_press_maybe((page + 1 < pages).then_some(Message::TransferHistoryPage(true))),
+            button(text("Next").size(11)).on_press_maybe(
+                (page + 1 < pages).then_some(Message::TransferHistoryPage(kind, true))
+            ),
         ]
         .spacing(6)
         .align_y(iced::Alignment::Center);
@@ -57,7 +66,7 @@ impl TradingTerminal {
             header_cell("Type", 2),
             header_cell("Asset", 1),
             header_cell("Amount sent", 2),
-            header_cell("Route", 3),
+            header_cell(if bridges { "Route" } else { "From → To" }, 3),
             header_cell("Status", 2),
         ]
         .spacing(6)
@@ -68,6 +77,9 @@ impl TradingTerminal {
                 (TransferProvider::Hyperliquid, &history.native),
                 (TransferProvider::Unit, &history.unit),
             ] {
+                if !bridges && provider == TransferProvider::Unit {
+                    continue;
+                }
                 if let Some(warning) = source_warning(provider, source) {
                     content = content.push(text(warning).size(11).color(theme.palette().warning));
                 }
@@ -76,28 +88,36 @@ impl TradingTerminal {
         content = content.push(header).push(rule::horizontal(1));
         if entries.is_empty() {
             let label = if !current || loading {
-                "Loading deposits and withdrawals…"
+                if bridges {
+                    "Loading deposits and withdrawals…"
+                } else {
+                    "Loading transfers…"
+                }
             } else if history.native.loaded
-                && history.unit.loaded
                 && history.native.error.is_none()
-                && history.unit.error.is_none()
                 && history.native.warning.is_none()
-                && history.unit.warning.is_none()
+                && (!bridges
+                    || (history.unit.loaded
+                        && history.unit.error.is_none()
+                        && history.unit.warning.is_none()))
             {
-                "No deposits or withdrawals"
+                if bridges {
+                    "No deposits or withdrawals"
+                } else {
+                    "No transfers"
+                }
             } else {
                 "History is incomplete. Refresh to retry."
             };
             content = content.push(text(label).size(12).color(muted));
         }
         for (index, entry) in entries
-            .iter()
-            .enumerate()
+            .into_iter()
             .skip(page * TRANSFER_PAGE_SIZE)
             .take(TRANSFER_PAGE_SIZE)
         {
-            let expanded = history.expanded.as_ref() == Some(&entry.id);
-            content = content.push(view_transfer_row(entry, index, expanded, &theme));
+            let expanded = view.expanded.as_ref() == Some(&entry.id);
+            content = content.push(view_transfer_row(entry, kind, index, expanded, &theme));
         }
         account_table_scroll(content)
     }
@@ -124,13 +144,15 @@ fn source_warning(provider: TransferProvider, source: &TransferSourceState) -> O
 
 fn view_transfer_row<'a>(
     entry: &'a TransferEntry,
+    kind: TransferHistoryKind,
     index: usize,
     expanded: bool,
     theme: &Theme,
 ) -> Element<'a, Message> {
     let direction_color = match entry.direction {
-        TransferDirection::Deposit => theme.palette().success,
-        TransferDirection::Withdrawal => theme.palette().danger,
+        TransferDirection::Deposit | TransferDirection::Received => theme.palette().success,
+        TransferDirection::Withdrawal | TransferDirection::Sent => theme.palette().danger,
+        TransferDirection::Internal => theme.palette().text,
     };
     let cell = |value: String, portion| text(value).size(12).width(Length::FillPortion(portion));
     let status_color = if entry.failed {
@@ -151,10 +173,7 @@ fn view_transfer_row<'a>(
         .color(direction_color),
         cell(entry.asset.clone(), 1),
         cell(entry.amount.clone(), 2),
-        cell(
-            format!("{} → {}", entry.source_chain, entry.destination_chain),
-            3
-        ),
+        cell(transfer_route(entry), 3),
         cell(entry.status.clone(), 2).color(status_color),
     ]
     .spacing(6);
@@ -163,7 +182,7 @@ fn view_transfer_row<'a>(
             .width(Fill)
             .padding([6, 6])
             .style(button::text)
-            .on_press(Message::ToggleTransferDetails(index))
+            .on_press(Message::ToggleTransferDetails(kind, index))
     ];
     if expanded {
         let mut details = Column::new()
@@ -191,9 +210,14 @@ fn view_transfer_row<'a>(
             ));
         }
         if entry.provider == TransferProvider::Hyperliquid {
-            details = details
-                .push(detail_value("Ledger transaction", "Hyperliquid", entry.ledger_tx.as_deref()))
-                .push(text("External wallet and Arbitrum transaction are not provided by the Hyperliquid ledger.").size(11));
+            details = details.push(detail_value(
+                "Ledger transaction",
+                "Hyperliquid",
+                entry.ledger_tx.as_deref(),
+            ));
+            if entry.direction.is_bridge() {
+                details = details.push(text("External wallet and Arbitrum transaction are not provided by the Hyperliquid ledger.").size(11));
+            }
             if entry.direction == TransferDirection::Withdrawal {
                 details = details.push(text("Debited records the Hyperliquid withdrawal; Arbitrum delivery is unverified.").size(11));
             }
@@ -216,10 +240,19 @@ fn view_transfer_row<'a>(
                     "{}: {fee} {}",
                     if entry.provider == TransferProvider::Unit {
                         "Destination fee (source asset units)"
+                    } else if !entry.direction.is_bridge() {
+                        "Transfer fee"
                     } else {
                         "Withdrawal fee"
                     },
-                    entry.asset
+                    entry
+                        .fee_asset
+                        .as_deref()
+                        .unwrap_or(if entry.direction.is_bridge() {
+                            &entry.asset
+                        } else {
+                            "(asset not provided)"
+                        })
                 ))
                 .size(11),
             );
@@ -238,6 +271,25 @@ fn view_transfer_row<'a>(
         content = content.push(container(details).padding([6, 12]).width(Fill));
     }
     content.push(rule::horizontal(1)).into()
+}
+
+fn transfer_route(entry: &TransferEntry) -> String {
+    if entry.direction.is_bridge() || entry.direction == TransferDirection::Internal {
+        format!("{} → {}", entry.source_chain, entry.destination_chain)
+    } else {
+        let address_label = |address: Option<&str>| match address {
+            Some(address) if address.is_ascii() && address.len() > 14 => {
+                format!("{}…{}", &address[..6], &address[address.len() - 4..])
+            }
+            Some(address) => address.to_string(),
+            None => "Not provided".to_string(),
+        };
+        format!(
+            "{} → {}",
+            address_label(entry.source_address.as_deref()),
+            address_label(entry.destination_address.as_deref())
+        )
+    }
 }
 
 fn detail_value<'a>(label: &str, chain: &str, value: Option<&'a str>) -> Element<'a, Message> {

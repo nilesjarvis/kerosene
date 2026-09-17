@@ -1,7 +1,8 @@
 use crate::account::transfers::{
-    TransferProvider, TransferSnapshot, fetch_bridge_history, fetch_unit_history,
+    TransferHistoryKind, TransferProvider, TransferSnapshot, fetch_ledger_history,
+    fetch_unit_history,
 };
-use crate::account_state::{BottomTab, transfers::TRANSFER_PAGE_SIZE};
+use crate::account_state::BottomTab;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
@@ -13,7 +14,7 @@ impl TradingTerminal {
             matches!(
                 kind,
                 PaneKind::BottomTabs {
-                    active_tab: BottomTab::DepositsWithdrawals
+                    active_tab: BottomTab::DepositsWithdrawals | BottomTab::Transfers
                 }
             )
         })
@@ -34,7 +35,7 @@ impl TradingTerminal {
         let native_address = address.clone();
         Task::batch([
             Task::perform(
-                fetch_bridge_history(address.clone(), start, end),
+                fetch_ledger_history(address.clone(), start, end),
                 move |result| {
                     Message::TransferHistoryLoaded(
                         native_address.clone().into(),
@@ -69,26 +70,21 @@ impl TradingTerminal {
         Task::none()
     }
 
-    pub(super) fn change_transfer_history_page(&mut self, next: bool) -> Task<Message> {
-        let last = self.transfer_history.entries.len().saturating_sub(1) / TRANSFER_PAGE_SIZE;
-        self.transfer_history.page = if next {
-            self.transfer_history.page.saturating_add(1).min(last)
-        } else {
-            self.transfer_history.page.saturating_sub(1)
-        };
-        self.transfer_history.expanded = None;
+    pub(super) fn change_transfer_history_page(
+        &mut self,
+        kind: TransferHistoryKind,
+        next: bool,
+    ) -> Task<Message> {
+        self.transfer_history.change_page(kind, next);
         Task::none()
     }
 
-    pub(super) fn toggle_transfer_details(&mut self, index: usize) -> Task<Message> {
-        if let Some(entry) = self.transfer_history.entries.get(index) {
-            self.transfer_history.expanded =
-                if self.transfer_history.expanded.as_ref() == Some(&entry.id) {
-                    None
-                } else {
-                    Some(entry.id.clone())
-                };
-        }
+    pub(super) fn toggle_transfer_details(
+        &mut self,
+        kind: TransferHistoryKind,
+        index: usize,
+    ) -> Task<Message> {
+        self.transfer_history.toggle_details(kind, index);
         Task::none()
     }
 }

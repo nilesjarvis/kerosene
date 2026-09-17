@@ -1,3 +1,4 @@
+use crate::account::transfers::TransferHistoryKind;
 use crate::account_state::BottomTab;
 use crate::app_state::TradingTerminal;
 use crate::canvas_state::WorkspaceId;
@@ -61,6 +62,13 @@ impl TradingTerminal {
                 active_tab == BottomTab::DepositsWithdrawals,
                 Message::SwitchBottomTab(workspace, pane, BottomTab::DepositsWithdrawals),
             ))
+            .push(bottom_tab_separator())
+            .push(bottom_tab_button(
+                "Transfers",
+                None,
+                active_tab == BottomTab::Transfers,
+                Message::SwitchBottomTab(workspace, pane, BottomTab::Transfers),
+            ))
             .push(Space::new().width(Fill))
             .push(bottom_tab_separator())
             .push(bottom_journal_button())
@@ -76,7 +84,10 @@ impl TradingTerminal {
             BottomTab::Balances => self.view_balances(),
             BottomTab::TradeHistory => self.view_trade_history(),
             BottomTab::FundingHistory => self.view_funding_history(),
-            BottomTab::DepositsWithdrawals => self.view_transfer_history(),
+            BottomTab::DepositsWithdrawals => {
+                self.view_transfer_history(TransferHistoryKind::DepositsWithdrawals)
+            }
+            BottomTab::Transfers => self.view_transfer_history(TransferHistoryKind::Transfers),
         };
 
         let body_padding = if active_tab == BottomTab::Positions {
