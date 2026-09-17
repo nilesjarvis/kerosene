@@ -19,7 +19,8 @@ use cells::{position_symbol_button, position_upnl_cell};
 #[cfg(test)]
 use formatting::format_position_signed_amount;
 use formatting::{
-    format_position_entry_price, format_spot_position_entry_price, trim_decimal_zeros,
+    format_position_entry_price, format_spot_position_entry_price, group_position_number,
+    trim_decimal_zeros,
 };
 use iced::widget::text::Wrapping;
 use iced::widget::{container, row, text};
@@ -274,20 +275,22 @@ impl TradingTerminal {
         size_label
     }
 
-    fn display_position_size(
+    pub(in crate::account_views::positions) fn display_position_size(
         &self,
         coin: &str,
         size: f64,
         number_mode: PositionNumberMode,
     ) -> String {
-        if !number_mode.is_compact() {
-            return self.display_size_for_symbol(coin, size);
+        if number_mode.is_compact() && size >= 10_000.0 {
+            return format_position_compact_number(size);
         }
 
-        if size >= 10_000.0 {
-            format_position_compact_number(size)
+        let size_label = self.display_size_for_symbol(coin, size);
+        let grouped_size = group_position_number(&size_label).unwrap_or(size_label);
+        if number_mode.is_compact() {
+            trim_decimal_zeros(grouped_size)
         } else {
-            trim_decimal_zeros(self.display_size_for_symbol(coin, size))
+            grouped_size
         }
     }
 

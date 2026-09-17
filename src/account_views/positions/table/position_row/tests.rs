@@ -117,6 +117,51 @@ fn compact_position_size_trims_unneeded_zeroes() {
 }
 
 #[test]
+fn position_sizes_group_thousands_without_changing_precision() {
+    let mut terminal = crate::app_state::TradingTerminal::boot().0;
+    terminal.exchange_symbols.push(spot_symbol("@107", "HYPE"));
+    terminal.exchange_symbols.push(outcome_symbol("#950"));
+
+    for coin in ["ETH", "@107", "#950"] {
+        assert_eq!(
+            terminal.display_position_size(coin, 100_000.0, PositionNumberMode::Full),
+            "100,000"
+        );
+        assert_eq!(
+            terminal.display_position_size(coin, 1_234_567.0, PositionNumberMode::Full),
+            "1,234,567"
+        );
+    }
+    for coin in ["ETH", "@107"] {
+        assert_eq!(
+            terminal.display_position_size(coin, 12_345.6789, PositionNumberMode::Full),
+            "12,345.6789"
+        );
+        assert_eq!(
+            terminal.display_position_size(coin, 1_234.5, PositionNumberMode::Full),
+            "1,234.5000"
+        );
+        assert_eq!(
+            terminal.display_position_size(coin, 1_234.5, PositionNumberMode::Compact),
+            "1,234.5"
+        );
+        assert_eq!(
+            terminal.display_position_size(coin, 100_000.0, PositionNumberMode::Compact),
+            "100k"
+        );
+    }
+    assert_eq!(
+        terminal.projected_position_size_label(
+            "ETH",
+            25_000.0,
+            -125_000.0,
+            PositionNumberMode::Full
+        ),
+        "100,000 (Short)"
+    );
+}
+
+#[test]
 fn spot_position_size_keeps_small_position_precision() {
     let mut terminal = crate::app_state::TradingTerminal::boot().0;
     terminal.exchange_symbols.push(spot_symbol("@107", "HYPE"));
