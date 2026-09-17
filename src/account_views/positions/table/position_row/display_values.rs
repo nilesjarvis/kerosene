@@ -73,3 +73,30 @@ fn unavailable_or_invalid(unavailable: bool) -> String {
         "Invalid".to_string()
     }
 }
+
+pub(super) fn position_spent_fees_display(fees: Option<f64>, hide_pnl: bool) -> String {
+    if hide_pnl {
+        "$***".to_string()
+    } else {
+        fees.map(|fees| DisplayDenominationContext::default().format_value(fees, 2))
+            .unwrap_or_else(|| "—".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::position_spent_fees_display;
+
+    #[test]
+    fn spent_fees_show_dollar_costs_rebates_missing_history_and_privacy_mask() {
+        assert_eq!(
+            position_spent_fees_display(Some(1234.56), false),
+            "$1,234.56"
+        );
+        assert_eq!(position_spent_fees_display(Some(-1.25), false), "-$1.25");
+        assert_eq!(position_spent_fees_display(Some(0.0), false), "$0.00");
+        assert_eq!(position_spent_fees_display(None, false), "—");
+        assert_eq!(position_spent_fees_display(Some(1234.56), true), "$***");
+        assert_eq!(position_spent_fees_display(None, true), "$***");
+    }
+}

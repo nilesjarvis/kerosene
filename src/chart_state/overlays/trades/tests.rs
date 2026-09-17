@@ -15,6 +15,7 @@ fn fill(coin: &str, time: u64, px: &str, sz: &str, side: &str) -> UserFill {
         closed_pnl: "0".to_string(),
         fee: "0".to_string(),
         fee_token: None,
+        start_position: None,
     }
 }
 

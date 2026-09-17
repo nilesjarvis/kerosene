@@ -57,6 +57,7 @@ pub(crate) enum PositionsSortColumn {
     Value,
     UnrealizedPnl,
     Funding,
+    SpentFees,
     TotalPnl,
     Leverage,
 }
@@ -72,6 +73,7 @@ impl PositionsSortColumn {
             | Self::Value
             | Self::UnrealizedPnl
             | Self::Funding
+            | Self::SpentFees
             | Self::TotalPnl
             | Self::Leverage => config::SortDirection::Descending,
         }

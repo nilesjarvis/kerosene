@@ -526,3 +526,29 @@ Use focused tests in these areas:
 
 For account-data changes, include tests for stale data, merge behavior,
 spot/HIP-3 handling, and websocket repair where relevant.
+
+## Position Execution Fees
+
+The Positions tab includes a sortable **Spent Fees** column beside uPnL. It
+shows net execution fees in USD for the current position's lifetime: opening
+fills, increases and partial closes, less maker rebates. A reversal attributes
+only the opening fraction of that fill's fee to the new position. Funding and
+the existing Total PnL calculation remain separate. The column follows the
+responsive table layout and the Hide PnL privacy toggle.
+
+`account/position_fees.rs` walks the account's deduplicated recent fills backward
+using their optional `startPosition` metadata, resolving execution order within
+a timestamp through position continuity. It requires a chain back to flat or a
+reversal that reconciles to the live size. Missing opening history, gaps,
+unrecognized fee tokens, invalid values, stale account ownership, incomplete
+snapshots or a temporary fill/position mismatch show `—` with a tooltip. A
+transferred balance is not assigned fees from an unrelated position. Spot base
+token fees are converted at each fill's execution price and deducted from the
+inventory used for reconciliation.
+
+The account feed retains up to 2,000 fills; websocket snapshots merge into that
+history so a short snapshot cannot evict REST-loaded opening fills. No new
+history fetch or persistent account field is introduced. The optional fill
+metadata defaults to absent for older/provider payloads and remains redacted in
+Debug output. Hyperliquid's reported `fee` already includes any builder fee;
+see the [official fill response documentation](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#retrieve-a-users-fills).

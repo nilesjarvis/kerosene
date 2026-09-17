@@ -7,7 +7,8 @@ use crate::message::Message;
 
 use super::{
     POSITION_ACTION_WIDTH, POSITION_ENTRY_WIDTH, POSITION_FUNDING_WIDTH, POSITION_LEVERAGE_WIDTH,
-    POSITION_LIQ_WIDTH, POSITION_MARK_WIDTH, POSITION_SIDE_WIDTH, PositionColumnVisibility,
+    POSITION_LIQ_WIDTH, POSITION_MARK_WIDTH, POSITION_SIDE_WIDTH, POSITION_SPENT_FEES_WIDTH,
+    PositionColumnVisibility,
 };
 use iced::widget::text::Wrapping;
 use iced::widget::{button, container, row, text, tooltip};
@@ -165,6 +166,13 @@ impl TradingTerminal {
                 PositionsSortColumn::UnrealizedPnl,
                 iced::Length::Fill,
             ));
+        if columns.spent_fees {
+            header_row = header_row.push(sort_btn(
+                "Spent Fees",
+                PositionsSortColumn::SpentFees,
+                iced::Length::Fixed(POSITION_SPENT_FEES_WIDTH),
+            ));
+        }
         if columns.funding {
             header_row = header_row.push(sort_btn(
                 "Funding",

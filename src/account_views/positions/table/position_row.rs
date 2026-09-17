@@ -11,11 +11,12 @@ use crate::message::Message;
 use super::super::{
     POSITION_ACTION_WIDTH, POSITION_CONTENT_HORIZONTAL_PADDING, POSITION_ENTRY_WIDTH,
     POSITION_FUNDING_WIDTH, POSITION_LEVERAGE_WIDTH, POSITION_LIQ_WIDTH, POSITION_MARK_WIDTH,
-    POSITION_SIDE_WIDTH, PositionColumnVisibility, PositionNumberMode,
+    POSITION_SIDE_WIDTH, POSITION_SPENT_FEES_WIDTH, PositionColumnVisibility, PositionNumberMode,
 };
 use super::format_position_compact_number;
 use super::sort::PositionRowData;
 use cells::{position_symbol_button, position_upnl_cell};
+use display_values::position_spent_fees_display;
 #[cfg(test)]
 use formatting::format_position_signed_amount;
 use formatting::{
@@ -23,7 +24,7 @@ use formatting::{
     trim_decimal_zeros,
 };
 use iced::widget::text::Wrapping;
-use iced::widget::{container, row, text};
+use iced::widget::{container, row, text, tooltip};
 use iced::{Element, Fill, Theme, color};
 
 impl TradingTerminal {
@@ -186,6 +187,21 @@ impl TradingTerminal {
                     .wrapping(Wrapping::None),
             )
             .push(container(upnl_cell).width(Fill));
+        if columns.spent_fees {
+            let fee_text = text(position_spent_fees_display(data.spent_fees, self.hide_pnl))
+                .size(12)
+                .font(crate::app_fonts::monospace_font())
+                .wrapping(Wrapping::None);
+            let explanation = if data.spent_fees.is_some() {
+                "Execution fees in USD since this position opened, including partial closes and net of rebates."
+            } else {
+                "Fees unavailable: loaded fills must cover the current position from its opening and match its live size."
+            };
+            row_content = row_content.push(
+                container(tooltip(fee_text, explanation, tooltip::Position::Top))
+                    .width(POSITION_SPENT_FEES_WIDTH),
+            );
+        }
         if columns.funding {
             row_content = row_content.push(
                 text(pnl_displays.funding)

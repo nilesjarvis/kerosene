@@ -280,6 +280,7 @@ fn spot_fill(coin: &str, px: &str, sz: &str, fee: &str, fee_token: &str, time: u
         closed_pnl: "0".to_string(),
         fee: fee.to_string(),
         fee_token: Some(fee_token.to_string()),
+        start_position: None,
     }
 }
 

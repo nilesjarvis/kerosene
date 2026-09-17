@@ -60,7 +60,7 @@ fn live_fill_updates_cap_history_at_rest_depth() {
 }
 
 #[test]
-fn fill_snapshot_replaces_existing_history_without_dropping_hidden_symbols() {
+fn fill_snapshot_preserves_existing_history_and_hidden_symbols() {
     let mut existing = vec![fill(10)];
     let mut hidden_fill = fill(1);
     hidden_fill.coin = "ETH".to_string();
@@ -71,7 +71,7 @@ fn fill_snapshot_replaces_existing_history_without_dropping_hidden_symbols() {
 
     assert!(toasts.is_empty());
     let times: Vec<u64> = existing.iter().map(|fill| fill.time).collect();
-    assert_eq!(times, vec![2, 1]);
+    assert_eq!(times, vec![2, 1, 10]);
     assert_eq!(existing[1].coin, "ETH");
 }
 
@@ -217,5 +217,21 @@ fn chase_fill_summary_ignores_unmatched_or_unparseable_fills() {
             42,
         ),
         Some("Chase filled (oid 42)".to_string())
+    );
+}
+
+#[test]
+fn fill_snapshot_preserves_opening_fills_and_deduplicates_overlap() {
+    let mut existing: Vec<_> = (1..=300).rev().map(fill).collect();
+    existing.last_mut().expect("opening fill").start_position = Some("0".to_string());
+    let recent = (290..=300).rev().map(fill).collect();
+    let toasts = apply_fills_update(&mut existing, recent, true, |_| false);
+    assert!(toasts.is_empty());
+    assert_eq!(existing.len(), 300);
+    assert_eq!(
+        existing
+            .last()
+            .and_then(|fill| fill.start_position.as_deref()),
+        Some("0")
     );
 }

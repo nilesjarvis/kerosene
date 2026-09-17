@@ -30,6 +30,7 @@ pub(super) const POSITION_SIDE_WIDTH: f32 = 65.0;
 pub(super) const POSITION_ENTRY_WIDTH: f32 = 90.0;
 pub(super) const POSITION_LIQ_WIDTH: f32 = 90.0;
 pub(super) const POSITION_MARK_WIDTH: f32 = 90.0;
+pub(super) const POSITION_SPENT_FEES_WIDTH: f32 = 100.0;
 pub(super) const POSITION_FUNDING_WIDTH: f32 = 90.0;
 pub(super) const POSITION_LEVERAGE_WIDTH: f32 = 100.0;
 
@@ -67,33 +68,37 @@ const HIDE_LIQUIDATION_BELOW: f32 = POSITION_SIDE_WIDTH
     + 8.0 * ROW_SPACING // 9 children
     + ROW_HORIZONTAL_PADDING
     + 4.0 * MIN_FILL_WIDTH;
+const HIDE_SPENT_FEES_BELOW: f32 = HIDE_LIQUIDATION_BELOW + POSITION_SPENT_FEES_WIDTH + ROW_SPACING;
 const HIDE_FUNDING_BELOW: f32 = POSITION_SIDE_WIDTH
     + POSITION_ENTRY_WIDTH
     + POSITION_LIQ_WIDTH
     + POSITION_MARK_WIDTH
+    + POSITION_SPENT_FEES_WIDTH
     + POSITION_FUNDING_WIDTH
     + POSITION_ACTION_WIDTH
-    + 9.0 * ROW_SPACING // 10 children
+    + 10.0 * ROW_SPACING // 11 children
     + ROW_HORIZONTAL_PADDING
     + 4.0 * MIN_FILL_WIDTH;
 const HIDE_LEVERAGE_BELOW: f32 = POSITION_SIDE_WIDTH
     + POSITION_ENTRY_WIDTH
     + POSITION_LIQ_WIDTH
     + POSITION_MARK_WIDTH
+    + POSITION_SPENT_FEES_WIDTH
     + POSITION_FUNDING_WIDTH
     + POSITION_LEVERAGE_WIDTH
     + POSITION_ACTION_WIDTH
-    + 10.0 * ROW_SPACING // 11 children
+    + 11.0 * ROW_SPACING // 12 children
     + ROW_HORIZONTAL_PADDING
     + 4.0 * MIN_FILL_WIDTH;
 const HIDE_TOTAL_PNL_BELOW: f32 = POSITION_SIDE_WIDTH
     + POSITION_ENTRY_WIDTH
     + POSITION_LIQ_WIDTH
     + POSITION_MARK_WIDTH
+    + POSITION_SPENT_FEES_WIDTH
     + POSITION_FUNDING_WIDTH
     + POSITION_LEVERAGE_WIDTH
     + POSITION_ACTION_WIDTH
-    + 11.0 * ROW_SPACING // 12 children
+    + 12.0 * ROW_SPACING // 13 children
     + ROW_HORIZONTAL_PADDING
     + 5.0 * MIN_FILL_WIDTH; // Total PnL is itself a Fill column
 const HIDE_ENTRY_BELOW: f32 = 560.0;
@@ -105,6 +110,7 @@ pub(super) struct PositionColumnVisibility {
     pub(super) entry: bool,
     pub(super) liquidation: bool,
     pub(super) mark: bool,
+    pub(super) spent_fees: bool,
     pub(super) funding: bool,
     pub(super) total_pnl: bool,
     pub(super) leverage: bool,
@@ -116,6 +122,7 @@ impl PositionColumnVisibility {
             entry: width >= HIDE_ENTRY_BELOW,
             liquidation: width >= HIDE_LIQUIDATION_BELOW,
             mark: width >= HIDE_MARK_BELOW,
+            spent_fees: width >= HIDE_SPENT_FEES_BELOW,
             funding: width >= HIDE_FUNDING_BELOW,
             total_pnl: width >= HIDE_TOTAL_PNL_BELOW,
             leverage: width >= HIDE_LEVERAGE_BELOW,

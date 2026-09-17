@@ -70,6 +70,7 @@ fn user_fill_debug_redacts_trade_payload() {
         closed_pnl: "fill-pnl-secret".to_string(),
         fee: "fill-fee-secret".to_string(),
         fee_token: Some("fill-fee-token-secret".to_string()),
+        start_position: Some("fill-start-position-secret".to_string()),
     };
 
     let rendered = format!("{fill:?}");
@@ -86,6 +87,7 @@ fn user_fill_debug_redacts_trade_payload() {
         "SECRETFILLCOIN",
         "fill-price-secret",
         "fill-size-secret",
+        "fill-start-position-secret",
         "fill-hash-secret",
         "777777",
         "424242",
@@ -121,4 +123,16 @@ fn user_fill_dedup_key_ignores_optional_fee_token_metadata() {
     second.fee_token = None;
 
     assert_eq!(first.dedup_key(), second.dedup_key());
+}
+
+#[test]
+fn user_fill_preserves_optional_start_position_without_changing_identity() {
+    let raw = user_fill_value_with_oid(Some(42));
+    let missing = user_fill_or_panic(raw.clone());
+    assert_eq!(missing.start_position, None);
+    let mut with_start = raw;
+    with_start["startPosition"] = serde_json::json!("-2.5");
+    let parsed = user_fill_or_panic(with_start);
+    assert_eq!(parsed.start_position.as_deref(), Some("-2.5"));
+    assert_eq!(parsed.dedup_key(), missing.dedup_key());
 }

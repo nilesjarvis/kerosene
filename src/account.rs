@@ -1,5 +1,6 @@
 mod data;
 mod http;
+mod position_fees;
 mod position_metrics;
 mod spot;
 mod spot_cost_basis;
@@ -13,6 +14,7 @@ pub(crate) use data::{
     fetch_hydromancer_user_fills, hydromancer_portfolio_chunk_size,
 };
 pub use data::{fetch_account_data_scoped_with_provider, fetch_all_mids};
+pub(crate) use position_fees::derive_position_spent_fees;
 pub(crate) use position_metrics::{
     position_notional_from_mark_or_wire, position_upnl_from_mark_or_wire,
 };

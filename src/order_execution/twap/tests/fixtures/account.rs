@@ -54,5 +54,6 @@ pub(in crate::order_execution::twap::tests) fn user_fill(
         closed_pnl: "0".to_string(),
         fee: "0.01".to_string(),
         fee_token: None,
+        start_position: None,
     }
 }

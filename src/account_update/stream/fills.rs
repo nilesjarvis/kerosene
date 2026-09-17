@@ -1,4 +1,4 @@
-use crate::account::{UserFill, dedupe_user_fills_preserving_order};
+use crate::account::UserFill;
 use crate::helpers::positive_finite_value;
 use crate::signing::ChaseOrder;
 
@@ -49,7 +49,9 @@ where
     F: Fn(&str) -> bool,
 {
     if is_snapshot {
-        *existing = dedupe_user_fills_preserving_order(fills);
+        // Websocket snapshots are shorter than REST history. Keep opening
+        // fills needed for current-position fees and spot cost basis.
+        prepend_recent_fills(existing, fills, MERGED_FILLS_MAX_LEN);
         Vec::new()
     } else {
         let mut seen: HashSet<String> = existing.iter().map(UserFill::dedup_key).collect();

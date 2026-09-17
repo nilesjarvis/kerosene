@@ -277,6 +277,9 @@ pub struct UserFill {
     pub px: String,
     pub sz: String,
     pub side: String, // "A" or "B"
+    /// Position immediately before this fill; absent on older/provider payloads.
+    #[serde(default)]
+    pub start_position: Option<String>,
     pub time: u64,
     #[serde(default)]
     pub hash: Option<String>,
@@ -306,6 +309,7 @@ impl fmt::Debug for UserFill {
             .field("closed_pnl", &"<redacted>")
             .field("fee", &"<redacted>")
             .field("has_fee_token", &self.fee_token.is_some())
+            .field("has_start_position", &self.start_position.is_some())
             .finish()
     }
 }
