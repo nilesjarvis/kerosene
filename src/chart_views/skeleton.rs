@@ -6,7 +6,7 @@ use crate::message::Message;
 
 use iced::widget::canvas;
 use iced::widget::container as container_style;
-use iced::widget::{container, stack, text};
+use iced::widget::container;
 use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Size, Theme};
 
 mod drawing;
@@ -44,17 +44,8 @@ pub(super) fn chart_skeleton_overlay(
     .width(Fill)
     .height(Fill)
     .into();
-    let loading_label: Element<'static, Message> = container(
-        text("Loading and verifying candle history…")
-            .size(12)
-            .font(crate::app_fonts::monospace_font()),
-    )
-    .width(Fill)
-    .height(Fill)
-    .center(Fill)
-    .into();
 
-    container(stack![skeleton, loading_label])
+    container(skeleton)
         .width(Fill)
         .height(Fill)
         .style(|theme: &Theme| container_style::Style {
