@@ -80,16 +80,14 @@ impl TradingTerminal {
 
         // HUD limit clicks may overlap each other (rapid click-trading), so
         // they only gate on non-HUD trading requests plus an in-flight cap.
-        // Market clicks move position immediately at whatever the book gives,
-        // so they keep the fully-serialized path: one at a time, and only on
-        // fresh account data.
+        // Market clicks stay serialized until the previous request resolves,
+        // including any ambiguous-result status check. Both modes use an
+        // explicit coin quantity, not account-derived sizing, so a background
+        // account refresh need not block them. Shared preflight still checks
+        // price freshness and account completeness; the exchange enforces
+        // available margin/balances and reduce-only constraints.
         if is_market_order {
             if self.reject_if_pending_trading_request("placing a HUD order") {
-                self.toast_order_status();
-                return Task::none();
-            }
-            if self.reject_if_account_reconciliation_required("placing a HUD order", "account data")
-            {
                 self.toast_order_status();
                 return Task::none();
             }
@@ -355,6 +353,8 @@ impl TradingTerminal {
 
 #[cfg(test)]
 mod tests {
+    mod market;
+
     use super::*;
     use crate::api::{ExchangeSymbol, MarketType, OrderBook};
     use crate::app_state::sensitive_string;
@@ -739,9 +739,12 @@ mod tests {
     }
 
     #[test]
-    fn hud_market_submission_rejects_while_account_reconciliation_is_pending() {
+    fn hud_market_submission_allowed_while_account_reconciliation_is_pending() {
         let mut terminal = terminal_with_hud_chart(true);
-        terminal.account_reconciliation_required = true;
+        make_btc_tradeable(&mut terminal);
+        let _refresh = terminal.refresh_account_data();
+        assert!(terminal.account_loading);
+        assert!(terminal.account_reconciliation_required);
         let mut request = hud_request(ChartSurfaceId::Docked(1));
         request.order_type = HudOrderType::Market;
 
@@ -749,13 +752,14 @@ mod tests {
 
         assert_eq!(
             order_status_of(&terminal),
-            Some((
-                "Account refresh pending; wait for fresh account data before placing a HUD order",
-                true
-            ))
+            Some(("Placing HUD market LONG 1 BTC...", false))
         );
-        assert!(terminal.pending_order_action.is_none());
-        assert!(terminal.pending_order_indicators.is_empty());
+        assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
+        assert_eq!(terminal.pending_order_indicators.len(), 1);
+        assert!(error_toast_messages(&terminal).is_empty());
+        // Account-dependent actions must still wait for this refresh.
+        assert!(terminal.account_loading);
+        assert!(terminal.account_reconciliation_required);
     }
 
     #[test]

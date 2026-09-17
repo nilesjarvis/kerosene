@@ -261,6 +261,15 @@ and `H` selects Chase. Market and Chase use the `Y`/`X` side selector; Limit
 infers its side from the clicked price. An armed Chase click routes through the
 normal client-side Chase lifecycle for the chart's symbol.
 
+HUD Limit and Market clicks use the entered coin quantity and do not wait for
+background account reconciliation, including post-trade refreshes or refresh
+rate-limit backoff. Market clicks still serialize pending trading requests and
+unresolved order-status checks; Limit clicks retain their bounded concurrent
+placement path. Signing-account identity, fresh prices, shared order preflight,
+and exchange-enforced margin/balance and reduce-only checks still apply. Account
+refreshes continue for display and account-dependent actions such as close/NUKE
+and percentage sizing.
+
 Interaction messages should carry chart ID and surface ID so detached windows
 and inline panes do not fight over state.
 
