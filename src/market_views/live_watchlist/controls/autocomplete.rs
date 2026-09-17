@@ -3,21 +3,23 @@ use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::market_state::LiveWatchlistId;
 use crate::message::Message;
-use iced::widget::{Column, Space, button, row, text};
-use iced::{Fill, Theme};
+use iced::widget::{Column, Space, button, container, row, scrollable, text};
+use iced::{Element, Fill, Length, Theme};
+
+const AUTOCOMPLETE_MAX_HEIGHT: f32 = 120.0;
 
 impl TradingTerminal {
     pub(in crate::market_views::live_watchlist) fn view_live_watchlist_autocomplete<'a>(
         &'a self,
         id: LiveWatchlistId,
         search_query: &str,
-    ) -> Column<'a, Message> {
+    ) -> Element<'a, Message> {
         let theme = self.theme();
         let query = search_query.to_lowercase();
         let mut autocomplete = Column::new();
 
         if query.is_empty() {
-            return autocomplete;
+            return autocomplete.into();
         }
 
         let mut matches: Vec<&ExchangeSymbol> = self
@@ -28,7 +30,6 @@ impl TradingTerminal {
             .filter(|s| live_watchlist_autocomplete_matches(s, &query))
             .collect();
         matches.sort_by(|a, b| a.ticker.cmp(&b.ticker));
-        matches.truncate(5);
 
         for m in matches {
             let sym_key = m.key.clone();
@@ -72,7 +73,10 @@ impl TradingTerminal {
             autocomplete = autocomplete.push(btn);
         }
 
-        autocomplete
+        container(scrollable(autocomplete).height(Length::Shrink))
+            .width(Fill)
+            .max_height(AUTOCOMPLETE_MAX_HEIGHT)
+            .into()
     }
 }
 
