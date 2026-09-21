@@ -50,6 +50,10 @@ impl TradingTerminal {
                     self.close_agent_session();
                     return self.flush_pending_config_save_and_exit();
                 }
+                if Some(id) == self.console.window_id {
+                    self.console.window_id = None;
+                    self.console.snapshot = Default::default();
+                }
                 if Some(id) == self.agent.window_id {
                     self.close_agent_session();
                 }

@@ -3,6 +3,7 @@ use super::crypto::sign_l1_action;
 use super::model::{CapturedAgentKey, ExchangeOrderKind, ExchangeResponse};
 use crate::app_time::now_ms;
 use crate::helpers::sensitive_response_snippet;
+use crate::network_activity::HttpRequestExt as _;
 
 use serde_json::Value;
 use std::fmt;
@@ -109,7 +110,7 @@ async fn post_exchange(payload: &Value) -> Result<ExchangeResponse, String> {
     let raw = client
         .post(EXCHANGE_URL)
         .json(payload)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("Exchange request failed: {e}"))?
         .text()

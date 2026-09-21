@@ -50,6 +50,7 @@ separate. The docs below describe where each concern belongs.
 | [Account, Wallet, And Portfolio](components/account-wallet-portfolio.md) | Account profiles, REST/user-stream data, positions, balances, wallet tracker, portfolio and income views. |
 | [Journal And Analytics](components/journal-and-analytics.md) | Fill cache, trade aggregation, notes, chart snapshots, account analytics, PnL card. |
 | [Integrations And Feeds](components/integrations-and-feeds.md) | Hydromancer, HyperDash, Telegram, X, calendar, screener, feed rendering, notifications. |
+| [Console](components/console.md) | Read-only API/WebSocket activity window, request rates, provider filters, bounded metadata capture and privacy. |
 | [Settings, Preferences, And Themes](components/settings-preferences-and-theme.md) | Settings window, theme system, fonts, hotkeys, sounds, risk preferences, UI scaling. |
 | [Alfred Command Surface](components/alfred-command-surface.md) | Command palette architecture and links to the detailed Alfred feature guide. |
 | [Kerosene Assistant And Pi](components/assistant-and-pi.md) | Native chat window, Pi RPC lifecycle, OpenRouter/local llama.cpp providers, sanitized snapshot tools, bounded chart-indicator and drawing actions, and security boundaries. |

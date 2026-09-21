@@ -68,6 +68,22 @@ impl TradingTerminal {
                 &["screener", "ticker", "prices", "funding", "window", "open"],
             ),
             AlfredCommand::new(
+                AlfredCommandId::OpenConsoleWindow,
+                "Console",
+                "Inspect API requests and WebSocket activity",
+                open_tag(self.console.window_id.is_some(), "Window"),
+                AlfredCommandKind::OpenWindow,
+                Some(Message::OpenConsoleWindow),
+                &[
+                    "console",
+                    "network",
+                    "api",
+                    "websocket",
+                    "traffic",
+                    "window",
+                ],
+            ),
+            AlfredCommand::new(
                 AlfredCommandId::OpenAgentWindow,
                 "Assistant",
                 "Chat with Kerosene through Pi and OpenRouter",

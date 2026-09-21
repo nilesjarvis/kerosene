@@ -1,4 +1,5 @@
 use super::RemoteWalletSnapshot;
+use crate::network_activity::HttpRequestExt as _;
 use crate::wallet_state::AddressBookEntry;
 use crate::wallet_state::address_book::normalize_wallet_address_value;
 use reqwest::{Client, Url};
@@ -103,7 +104,7 @@ async fn fetch_pages(client: &Client, base_url: &str) -> Result<RemoteWalletSnap
                     "id,address,label,tags,expand.entity.name,expand.entity.tags".into(),
                 ),
             ])
-            .send()
+            .send_observed()
             .await
             // reqwest errors can contain URLs; response bodies may contain private data.
             .map_err(|_| "Could not reach remote wallet database".to_string())?;

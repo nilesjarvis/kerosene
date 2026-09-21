@@ -5,6 +5,7 @@ use crate::helpers::{
     fallback_initials, format_seen_latency_label, positive_percent_change,
     redact_sensitive_response_text, text_excerpt,
 };
+use crate::network_activity::HttpRequestExt as _;
 use crate::symbol_mentions::{SymbolAliasSource, SymbolMention, SymbolMentionResolver};
 use chrono::{DateTime, Utc};
 use iced::widget::image::Handle as ImageHandle;
@@ -1037,7 +1038,7 @@ pub(crate) async fn fetch_telegram_channel_posts(
         .get(&url)
         .header(USER_AGENT, TELEGRAM_USER_AGENT)
         .timeout(TELEGRAM_FEED_REQUEST_TIMEOUT)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("@{channel} request failed: {e}"))?;
     let status = response.status();
@@ -1085,7 +1086,7 @@ pub(crate) async fn fetch_telegram_avatar_bytes(
         .get(&avatar_url)
         .header(USER_AGENT, TELEGRAM_USER_AGENT)
         .timeout(TELEGRAM_FEED_REQUEST_TIMEOUT)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("@{channel} avatar request failed: {e}"))?;
     let status = response.status();
@@ -1126,7 +1127,7 @@ pub(crate) async fn fetch_telegram_media_bytes(
         .get(&media_url)
         .header(USER_AGENT, TELEGRAM_USER_AGENT)
         .timeout(TELEGRAM_FEED_REQUEST_TIMEOUT)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("@{channel}/{message_id} media request failed: {e}"))?;
     let status = response.status();

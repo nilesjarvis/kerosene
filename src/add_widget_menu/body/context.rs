@@ -24,6 +24,7 @@ pub(super) struct AddWidgetMenuContext {
     pub(super) screener_open: bool,
     pub(super) settings_open: bool,
     pub(super) agent_open: bool,
+    pub(super) console_open: bool,
     pub(super) include_main_actions: bool,
     pub(super) canvases: Vec<(CanvasId, String, bool)>,
 }
@@ -63,6 +64,7 @@ impl AddWidgetMenuContext {
             screener_open: terminal.screener.window_id.is_some(),
             settings_open: terminal.settings_window_id.is_some(),
             agent_open: terminal.agent.window_id.is_some(),
+            console_open: terminal.console.window_id.is_some(),
             include_main_actions,
             canvases: terminal
                 .canvases

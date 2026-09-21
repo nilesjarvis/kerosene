@@ -2,6 +2,7 @@ use super::{
     TransferDirection, TransferEntry, TransferProvider, TransferSnapshot, chain_label,
     decimal_units, nonempty,
 };
+use crate::network_activity::HttpRequestExt as _;
 use chrono::DateTime;
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -51,7 +52,7 @@ pub(crate) async fn fetch_unit_history(address: String) -> Result<TransferSnapsh
     // The URL contains the account address. Do not interpolate reqwest errors.
     let response = client
         .get(format!("{UNIT_API}/operations/{address}"))
-        .send()
+        .send_observed()
         .await
         .map_err(|_| "Unit history request failed".to_string())?;
     if !response.status().is_success() {

@@ -11,6 +11,12 @@ mod user_data;
 impl TradingTerminal {
     pub(crate) fn subscription(&self) -> Subscription<Message> {
         let mut subs = Vec::new();
+        if self.console.window_id.is_some() && !self.console.paused {
+            subs.push(
+                iced::time::every(std::time::Duration::from_millis(250))
+                    .map(|_| Message::ConsoleTick),
+            );
+        }
         self.push_market_subscriptions(&mut subs);
         self.push_user_data_subscriptions(&mut subs);
         self.push_hydromancer_subscriptions(&mut subs);

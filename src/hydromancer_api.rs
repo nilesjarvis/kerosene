@@ -1,3 +1,4 @@
+use crate::network_activity::HttpRequestExt as _;
 use crate::{api::CLIENT, helpers::sensitive_response_snippet};
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
@@ -128,7 +129,7 @@ async fn fetch_funding_history_page(
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .bearer_auth(api_key.trim())
         .json(&body)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("Hydromancer funding request failed: {e}"))?;
 

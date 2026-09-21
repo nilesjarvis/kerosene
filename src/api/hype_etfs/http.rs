@@ -1,5 +1,6 @@
 use super::super::CLIENT;
 use crate::helpers::response_excerpt;
+use crate::network_activity::HttpRequestExt as _;
 
 use flate2::read::GzDecoder;
 use serde::Deserialize;
@@ -16,7 +17,7 @@ where
     let response = CLIENT
         .clone()
         .get(url)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("{label} request failed: {e}"))?;
 

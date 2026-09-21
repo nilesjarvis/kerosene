@@ -1,4 +1,5 @@
 use crate::helpers::sensitive_response_snippet;
+use crate::network_activity::HttpRequestExt as _;
 use reqwest::Client;
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
@@ -190,7 +191,7 @@ pub(crate) async fn chat_completion(
         .header(OPENROUTER_APP_TITLE_HEADER, OPENROUTER_APP_TITLE)
         .bearer_auth(api_key.trim())
         .json(&request)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("OpenRouter chat completion request failed: {e}"))?;
 
@@ -403,7 +404,7 @@ pub(crate) async fn fetch_tool_models(
             ("limit", "1000"),
         ])
         .timeout(std::time::Duration::from_secs(20))
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("OpenRouter model catalog request failed: {e}"))?;
 
@@ -564,7 +565,7 @@ pub(crate) async fn fetch_key_status(
         .get(format!("{OPENROUTER_API_URL}/key"))
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .bearer_auth(api_key.trim())
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("OpenRouter key check request failed: {e}"))?;
 

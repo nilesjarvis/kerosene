@@ -1,6 +1,7 @@
 use super::CLIENT;
 use crate::helpers::response_excerpt;
 use crate::hype_unstaking_state::{HypeUnstakingEvent, HypeUnstakingQueueData};
+use crate::network_activity::HttpRequestExt as _;
 
 use serde::Deserialize;
 
@@ -14,7 +15,7 @@ pub(crate) async fn fetch_hype_unstaking_queue() -> Result<HypeUnstakingQueueDat
     let response = CLIENT
         .clone()
         .get(HYPURRSCAN_UNSTAKING_QUEUE_URL)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("HYPE unstaking queue request failed: {e}"))?;
 

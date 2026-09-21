@@ -17,6 +17,7 @@ use super::telemetry::{
 };
 #[cfg(not(test))]
 use crate::api::proxy::HyperliquidRequestExt;
+use crate::network_activity::{ActivityKind, Provider, record_ws_frame, record_ws_lifecycle};
 use futures::{Sink, SinkExt as _};
 use serde_json::Value;
 use std::fmt;
@@ -291,6 +292,7 @@ async fn ws_manager_task_with_options(
             return;
         }
 
+        record_ws_lifecycle(Provider::Hyperliquid, ActivityKind::WsConnecting);
         let mut connect_fut = Box::pin(connect_with_timeout(
             tokio_tungstenite::connect_async(&ws_url),
             connect_timeout,
@@ -323,6 +325,7 @@ async fn ws_manager_task_with_options(
         let ws_stream = match connect_result {
             ConnectAttempt::Finished(Ok((ws, _))) => ws,
             ConnectAttempt::Finished(Err(_)) | ConnectAttempt::TimedOut => {
+                record_ws_lifecycle(Provider::Hyperliquid, ActivityKind::WsFailed);
                 if !sleep_with_disconnected_ws_commands(
                     Duration::from_secs(reconnect_delay_secs),
                     &mut active_subs,
@@ -338,6 +341,7 @@ async fn ws_manager_task_with_options(
             }
         };
         telemetry_on_connect();
+        record_ws_lifecycle(Provider::Hyperliquid, ActivityKind::WsConnected);
         let connected_at = Instant::now();
 
         let (mut write, mut read) = ws_stream.split();
@@ -407,6 +411,7 @@ async fn ws_manager_task_with_options(
                 }
                 Ok(Either::Right((msg_opt, _))) => match msg_opt {
                     Some(Ok(WsMsg::Text(text))) => {
+                        record_ws_frame(Provider::Hyperliquid, &WsMsg::Text(text.clone()), true);
                         last_rx_at = Instant::now();
                         telemetry_add_rx(text.len() as u64);
                         match parse_ws_text_frame(&text) {
@@ -419,7 +424,8 @@ async fn ws_manager_task_with_options(
                             WsTextFrame::Ignored => {}
                         }
                     }
-                    Some(Ok(_)) => {
+                    Some(Ok(message)) => {
+                        record_ws_frame(Provider::Hyperliquid, &message, true);
                         last_rx_at = Instant::now();
                     }
                     Some(Err(_)) | None => {
@@ -431,6 +437,7 @@ async fn ws_manager_task_with_options(
 
         coalescer.flush_all();
         telemetry_on_disconnect();
+        record_ws_lifecycle(Provider::Hyperliquid, ActivityKind::WsDisconnected);
         let (delay_secs, next_delay_secs) =
             policy.after_disconnect(reconnect_delay_secs, connected_at.elapsed());
         if !sleep_with_disconnected_ws_commands(
@@ -546,7 +553,9 @@ where
     W: Sink<WsMsg> + Unpin,
 {
     telemetry_add_tx(text.len() as u64);
-    let mut send = std::pin::pin!(write.send(WsMsg::Text(text.into())));
+    let message = WsMsg::Text(text.into());
+    record_ws_frame(Provider::Hyperliquid, &message, false);
+    let mut send = std::pin::pin!(write.send(message));
     let first_poll = futures::future::poll_fn(|cx| {
         std::task::Poll::Ready(std::future::Future::poll(send.as_mut(), cx))
     })

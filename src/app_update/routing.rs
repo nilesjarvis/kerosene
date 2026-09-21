@@ -16,6 +16,7 @@ pub(super) enum UpdateRoute {
     ChartScreenshot,
     Chrome,
     CombinedPortfolio,
+    Console,
     Feed,
     Hyperdash,
     Journal,
@@ -37,6 +38,15 @@ pub(super) enum UpdateRoute {
 
 pub(super) fn message_route(message: &Message) -> UpdateRoute {
     match message {
+        Message::OpenConsoleWindow
+        | Message::ConsoleTick
+        | Message::ConsoleTogglePause
+        | Message::ConsoleProviderChanged(_)
+        | Message::ConsoleFilterChanged(_)
+        | Message::ConsolePageChanged(_)
+        | Message::ConsoleScrolled(_)
+        | Message::ConsoleClear => UpdateRoute::Console,
+
         Message::OpenAgentWindow
         | Message::AgentInputChanged(_)
         | Message::AgentSubmit

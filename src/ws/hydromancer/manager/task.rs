@@ -19,6 +19,7 @@ use super::{
     HYDROMANCER_MAX_CONNECT_RETRY_SECS, HYDROMANCER_READ_TIMEOUT_SECS, HydromancerCommand,
     HydromancerReconnectGate, HydromancerRoutedMessage, hydromancer_read_remaining,
 };
+use crate::network_activity::{ActivityKind, Provider, record_ws_lifecycle};
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
 use zeroize::Zeroizing;
@@ -96,6 +97,7 @@ async fn hydromancer_manager_task_with_options(
             continue;
         }
 
+        record_ws_lifecycle(Provider::Hydromancer, ActivityKind::WsConnecting);
         session.begin_connection();
         let _ = broadcast_hydromancer_control(&msg_tx, "connecting", session.connecting_data());
 
@@ -143,6 +145,7 @@ async fn hydromancer_manager_task_with_options(
         let ws_stream = match connect_result {
             ConnectAttempt::Finished(Ok((ws, _))) => ws,
             ConnectAttempt::Finished(Err(e)) => {
+                record_ws_lifecycle(Provider::Hydromancer, ActivityKind::WsFailed);
                 let _ = broadcast_hydromancer_reconnecting(
                     &msg_tx,
                     redact_hydromancer_error(e, &api_key),
@@ -163,6 +166,7 @@ async fn hydromancer_manager_task_with_options(
                 continue 'manager;
             }
             ConnectAttempt::TimedOut => {
+                record_ws_lifecycle(Provider::Hydromancer, ActivityKind::WsFailed);
                 let _ = broadcast_hydromancer_reconnecting(
                     &msg_tx,
                     format!("connect timeout after {HYDROMANCER_CONNECT_TIMEOUT_SECS}s"),
@@ -186,6 +190,7 @@ async fn hydromancer_manager_task_with_options(
 
         retry_delay = 1;
         telemetry_on_hydromancer_connect();
+        record_ws_lifecycle(Provider::Hydromancer, ActivityKind::WsConnected);
         let (mut write, mut read) = ws_stream.split();
         let mut disconnected = false;
         let mut last_rx_at = Instant::now();
@@ -275,4 +280,5 @@ async fn hydromancer_manager_task_with_options(
 fn finish_connected_hydromancer_session(coalescer: &mut HydromancerCoalescedSender) {
     coalescer.flush_all();
     telemetry_on_hydromancer_disconnect();
+    record_ws_lifecycle(Provider::Hydromancer, ActivityKind::WsDisconnected);
 }

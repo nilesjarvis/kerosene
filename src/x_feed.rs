@@ -1,6 +1,7 @@
 use crate::api::{CLIENT, KEROSENE_USER_AGENT};
 use crate::app_state::{SensitiveString, sensitive_string};
 use crate::helpers::{fallback_initials, redact_sensitive_response_text};
+use crate::network_activity::HttpRequestExt as _;
 use chrono::{DateTime, Utc};
 use iced::widget::image::Handle as ImageHandle;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
@@ -922,7 +923,7 @@ pub(crate) async fn fetch_x_feed_page(
     }
 
     let response = request
-        .send()
+        .send_observed()
         .await
         .map_err(|e| XFeedRequestError::new(format!("X feed request failed: {e}"), None))?;
     let status = response.status();
@@ -949,7 +950,7 @@ pub(crate) async fn fetch_x_profile_image_bytes(image_url: String) -> Result<Vec
         .get(&image_url)
         .timeout(X_FEED_REQUEST_TIMEOUT)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("X profile image request failed: {e}"))?;
     let status = response.status();
@@ -986,7 +987,7 @@ pub(crate) async fn refresh_x_access_token(
             ("client_id", oauth_client_id.as_str()),
             ("refresh_token", refresh_token.as_str()),
         ])
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("X token refresh failed: {e}"))?;
     let status = response.status();
@@ -1021,7 +1022,7 @@ async fn fetch_x_me(access_token: Zeroizing<String>) -> Result<XAuthenticatedUse
         .timeout(X_FEED_REQUEST_TIMEOUT)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .query(&[("user.fields", "username,name,profile_image_url")])
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("X auth check failed: {e}"))?;
     let status = response.status();
@@ -1055,7 +1056,7 @@ async fn fetch_x_list_page(
         .timeout(X_FEED_REQUEST_TIMEOUT)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .query(&[("max_results", "100"), ("list.fields", "name,private")])
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("X list lookup failed: {e}"))?;
     let status = response.status();

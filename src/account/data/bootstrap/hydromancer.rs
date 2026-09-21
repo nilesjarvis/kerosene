@@ -14,6 +14,7 @@ use crate::app_time::now_ms;
 use crate::config::ReadDataProvider;
 use crate::helpers::sensitive_response_excerpt;
 use crate::hydromancer_api::HYDROMANCER_API_URL;
+use crate::network_activity::HttpRequestExt as _;
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -395,7 +396,7 @@ async fn send_hydromancer_info(
         .post(HYDROMANCER_API_URL)
         .bearer_auth(api_key.trim())
         .json(&payload)
-        .send()
+        .send_observed()
         .await
 }
 

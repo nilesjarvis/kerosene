@@ -606,6 +606,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) openrouter_model: String,
     pub(crate) assistant_provider: config::AssistantProvider,
     pub(crate) agent: AgentState,
+    pub(crate) console: crate::console_state::ConsoleState,
     // Toast notification queue
     pub(crate) toasts: Vec<Toast>,
     pub(crate) next_toast_id: u64,

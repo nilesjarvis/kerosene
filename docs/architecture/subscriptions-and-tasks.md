@@ -100,6 +100,11 @@ visible panes are missing. This prevents unnecessary external connections.
 
 ## Timer And Input Subscriptions
 
+The [Console](../components/console.md) adds a 250 ms `ConsoleTick` subscription
+only while its window is open and live. It snapshots bounded network telemetry
+through the Console update route; closing or pausing the window stops UI ticks
+without changing network subscriptions or background capture.
+
 `src/subscription_state/timers.rs` delegates to:
 
 - app/UI timers

@@ -103,7 +103,9 @@ impl ProxyPool {
 
     async fn send(&self, direct: Client, request: Request) -> Result<Response, String> {
         if !self.enabled || !is_official_info(&request) {
-            return direct.execute(request).await.map_err(|e| e.to_string());
+            return crate::network_activity::execute(&direct, request, false)
+                .await
+                .map_err(|e| e.to_string());
         }
         self.send_proxied(request).await
     }
@@ -130,7 +132,7 @@ impl ProxyPool {
                 return Err("Hyperliquid read request cannot be replayed".to_string());
             };
             *attempt.timeout_mut() = Some(remaining);
-            match self.routes[route.index].execute(attempt).await {
+            match crate::network_activity::execute(&self.routes[route.index], attempt, true).await {
                 Ok(response) if response.status().is_success() => return Ok(response),
                 Ok(response) => {
                     let status = response.status();
