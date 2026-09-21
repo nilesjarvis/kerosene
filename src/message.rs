@@ -1037,8 +1037,10 @@ pub(crate) enum Message {
     // Spaghetti chart
     SpaghettiSwitchTimeframe(SpaghettiChartId, Timeframe),
     SpaghettiReload(SpaghettiChartId),
+    SpaghettiFetchRequested(SpaghettiCandleFetch),
     SpaghettiCandlesLoaded(SpaghettiCandleFetch, Result<Vec<Candle>, String>),
     SpaghettiWsCandleUpdate(SpaghettiWsCandleContext, Candle),
+    SpaghettiWsCandleUnavailable(SpaghettiWsCandleContext, String),
     SpaghettiWsCandleLagged(SpaghettiWsCandleContext, u64),
     SpaghettiOpenEditor(SpaghettiChartId),
     SpaghettiCloseEditor(SpaghettiChartId),
@@ -1366,6 +1368,7 @@ pub(crate) enum Message {
     ),
     MacroCandlesLoaded(ChartId, u64, String, Timeframe, Result<Vec<Candle>, String>),
     ChartWsCandleUpdate(ChartId, String, String, MarketDataSourceContext, Candle),
+    ChartWsCandleUnavailable(ChartId, String, String, MarketDataSourceContext, String),
     ChartWsCandleLagged(ChartId, String, String, MarketDataSourceContext, u64),
     ChartPriceFlashTick,
     ChartHudOrderAnimationTick,

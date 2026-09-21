@@ -74,7 +74,7 @@ fn autocomplete_matches_keywords_key_and_ticker() {
 
 #[tokio::test]
 async fn autocomplete_scrolls_to_and_selects_matches_beyond_the_first_five() {
-    let mut renderer = iced::Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+    let renderer = iced::Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
         .await
         .expect("software renderer");
     let mut terminal = TradingTerminal::boot_from_config(KeroseneConfig::default()).0;
@@ -114,7 +114,7 @@ async fn autocomplete_scrolls_to_and_selects_matches_beyond_the_first_five() {
                 &Event::Mouse(event),
                 Layout::new(&node),
                 cursor,
-                &mut renderer,
+                &renderer,
                 &mut clipboard::Null,
                 &mut Shell::new(&mut messages),
                 &bounds,

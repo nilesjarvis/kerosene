@@ -9,7 +9,9 @@ mod order_book;
 mod order_status;
 mod outcome_volume;
 pub(crate) mod proxy;
+mod read_control;
 mod sec;
+mod shared_reads;
 mod user_fills;
 mod watchlist;
 

@@ -227,6 +227,10 @@ impl SpaghettiCanvas {
             } else {
                 s.candles.push(candle);
             }
+            s.loaded = true;
+            if s.candles.len() > 10_000 {
+                s.candles.drain(..s.candles.len() - 10_000);
+            }
             self.cache.clear();
         }
     }

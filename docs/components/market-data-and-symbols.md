@@ -20,7 +20,21 @@ risk filters, and pure iced views.
 
 Official REST reads use `api::proxy::HyperliquidRequestExt::send_info` so the
 optional [proxy pool](../operations/hyperliquid-proxies.md) can distribute each
-request. WebSocket subscriptions retain their existing routing and identity.
+request. `api/read_control.rs` provides weighted admission, reserved account-read
+capacity, bounded concurrency/waits, and provider cooldown after direct HTTP 429.
+`api/shared_reads.rs` shares complete public metadata/context snapshots and
+in-flight work across feature callers. Candle endpoint reads also coalesce by
+provider, credential scope, symbol, interval and range. No account responses are
+stored in this public cache.
+
+Candle adapters measure per-topic silence independently from socket health. They
+emit `ChartWsCandleUnavailable` / `SpaghettiWsCandleUnavailable`, request a
+reference-preserving topic resubscription, and reconcile affected history without
+clearing the display. Sparse markets have a longer silence threshold. History
+success and live-stream freshness remain separate. Comparison history starts via
+`SpaghettiFetchRequested`, with exact pending-request matching, retry backoff and
+live-update replay. See the [recovery audit](../market-data-pipeline-audit.md) for
+budgets, thresholds and remaining architectural tradeoffs.
 
 ## Symbol Universe
 

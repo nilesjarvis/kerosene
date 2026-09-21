@@ -54,6 +54,7 @@ pub(super) struct ActiveWsSubscriptions {
 struct ActiveWsSubscription {
     topic: String,
     count: usize,
+    repaired_at: Option<std::time::Instant>,
     payload: Value,
 }
 
@@ -90,6 +91,7 @@ impl ActiveWsSubscriptions {
         self.entries.push(ActiveWsSubscription {
             topic,
             count: 1,
+            repaired_at: None,
             payload,
         });
         Some(outbound_payload)
@@ -118,6 +120,19 @@ impl ActiveWsSubscriptions {
         WsUnsubscribeResult::Removed {
             unsubscribe_payload,
         }
+    }
+
+    pub(super) fn resubscribe(&mut self, topic: &str) -> Option<Value> {
+        let entry = self.entries.iter_mut().find(|entry| entry.topic == topic)?;
+        let now = std::time::Instant::now();
+        if entry
+            .repaired_at
+            .is_some_and(|at| now.duration_since(at) < std::time::Duration::from_secs(60))
+        {
+            return None;
+        }
+        entry.repaired_at = Some(now);
+        Some(entry.payload.clone())
     }
 
     pub(super) fn payloads(&self) -> impl Iterator<Item = &Value> {

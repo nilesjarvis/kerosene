@@ -602,6 +602,7 @@ impl TradingTerminal {
                                 *id,
                                 macro_request_id,
                                 &valid.key,
+                                &inst.macro_indicators,
                             ));
                             tasks.push(Task::batch(chart_tasks));
                         }

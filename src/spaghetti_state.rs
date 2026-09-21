@@ -97,7 +97,21 @@ fn finite_f32_value(value: f32) -> Option<f32> {
     value.is_finite().then_some(value)
 }
 
+#[derive(Default, Clone)]
+pub(crate) struct SpaghettiSeriesHealth {
+    pub(crate) pending: Option<SpaghettiCandleFetch>,
+    pub(crate) ws_during_fetch: Vec<crate::api::Candle>,
+    pub(crate) last_ws_ms: Option<u64>,
+    pub(crate) verified_ms: Option<u64>,
+    pub(crate) full_refresh_required: bool,
+    pub(crate) next_retry_ms: u64,
+    pub(crate) stream_error: Option<String>,
+    pub(crate) error: Option<String>,
+    pub(crate) failures: u32,
+}
+
 pub(crate) struct SpaghettiChartInstance {
+    pub(crate) health: std::collections::HashMap<String, SpaghettiSeriesHealth>,
     pub(crate) id: SpaghettiChartId,
     pub(crate) watchlist_preset_id: Option<crate::config::WatchlistPresetId>,
     pub(crate) canvas: spaghetti::SpaghettiCanvas,
@@ -116,6 +130,7 @@ impl SpaghettiChartInstance {
     pub(crate) fn new_empty(id: SpaghettiChartId) -> Self {
         Self {
             id,
+            health: Default::default(),
             watchlist_preset_id: None,
             canvas: spaghetti::SpaghettiCanvas::new(),
             interval: Timeframe::H1,
@@ -163,6 +178,16 @@ impl SpaghettiChartInstance {
 
         Self {
             id,
+            health: self
+                .health
+                .iter()
+                .map(|(symbol, health)| {
+                    let mut health = health.clone();
+                    health.pending = None;
+                    health.ws_during_fetch.clear();
+                    (symbol.clone(), health)
+                })
+                .collect(),
             watchlist_preset_id: self.watchlist_preset_id,
             canvas,
             interval: self.interval,
@@ -179,6 +204,9 @@ impl SpaghettiChartInstance {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SpaghettiCandleFetch {
+    pub(crate) request_id: u64,
+    pub(crate) start_ms: u64,
+    pub(crate) end_ms: u64,
     pub(crate) chart_id: SpaghettiChartId,
     pub(crate) instance_epoch: u64,
     pub(crate) symbol: String,

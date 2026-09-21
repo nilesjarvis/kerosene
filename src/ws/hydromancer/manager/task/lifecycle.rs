@@ -27,7 +27,9 @@ pub(super) fn handle_preconnect_hydromancer_command(
             active_subs.unsubscribe(topic, payload);
             HydromancerTaskControlFlow::Continue
         }
-        HydromancerCommand::Reconnect => HydromancerTaskControlFlow::Continue,
+        HydromancerCommand::Reconnect | HydromancerCommand::Resubscribe { .. } => {
+            HydromancerTaskControlFlow::Continue
+        }
         HydromancerCommand::Shutdown => HydromancerTaskControlFlow::Shutdown,
     }
 }

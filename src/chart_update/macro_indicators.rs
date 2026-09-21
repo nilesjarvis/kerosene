@@ -23,6 +23,7 @@ impl TradingTerminal {
             Message::ToggleMacroIndicator(id, key) => {
                 let hydromancer_key_missing = self.hydromancer_api_key.trim().is_empty();
                 let mut fetch_funding = false;
+                let mut macro_symbol = None;
                 let mut show_funding_key_prompt = false;
                 if let Some(inst) = self.charts.get_mut(&id) {
                     let enabled = !key.is_enabled(inst);
@@ -36,6 +37,9 @@ impl TradingTerminal {
                         }
                     }
                     if key.is_macro() {
+                        if enabled {
+                            macro_symbol = Some(inst.symbol.clone());
+                        }
                         inst.chart.macro_indicators = inst.macro_indicators.clone();
                     }
                     inst.chart.candle_cache.clear();
@@ -48,9 +52,13 @@ impl TradingTerminal {
                         true,
                     );
                 }
+                let mut tasks = macro_symbol
+                    .map(|symbol| self.queue_macro_candles_tasks(id, &symbol))
+                    .unwrap_or_default();
                 if fetch_funding {
-                    return self.maybe_fetch_chart_funding(id);
+                    tasks.push(self.maybe_fetch_chart_funding(id));
                 }
+                return Task::batch(tasks);
             }
             Message::MacroCandlesLoaded(id, request_id, symbol, tf, result) => {
                 if self.symbol_key_is_hidden(&symbol) {

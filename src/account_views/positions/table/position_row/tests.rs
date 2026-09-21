@@ -134,7 +134,7 @@ fn position_sizes_group_thousands_without_changing_precision() {
     }
     for coin in ["ETH", "@107"] {
         assert_eq!(
-            terminal.display_position_size(coin, 12_345.6789, PositionNumberMode::Full),
+            terminal.display_position_size(coin, 12_345.678_9, PositionNumberMode::Full),
             "12,345.6789"
         );
         assert_eq!(

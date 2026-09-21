@@ -15,6 +15,7 @@ fn subscribe_command_sends_payload_for_first_reference_only() {
             },
         ),
         WsCommandAction {
+            unsubscribe_first: false,
             outbound_payload: Some(json!({"method":"subscribe"})),
             disconnect_on_send_error: true,
             mark_ping_start: false,
@@ -47,6 +48,7 @@ fn subscribe_command_sends_payload_for_same_topic_different_payload() {
             },
         ),
         WsCommandAction {
+            unsubscribe_first: false,
             outbound_payload: Some(json!({"method":"different"})),
             disconnect_on_send_error: true,
             mark_ping_start: false,
@@ -80,6 +82,7 @@ fn unsubscribe_command_sends_payload_only_for_final_reference() {
             },
         ),
         WsCommandAction {
+            unsubscribe_first: false,
             outbound_payload: Some(json!({"method":"unsubscribe"})),
             disconnect_on_send_error: true,
             mark_ping_start: false,
@@ -111,6 +114,7 @@ fn ping_command_sends_ping_and_marks_latency_start() {
     assert_eq!(
         handle_ws_command(&mut subscriptions, WsCommand::Ping),
         WsCommandAction {
+            unsubscribe_first: false,
             outbound_payload: Some(json!({"method":"ping"})),
             disconnect_on_send_error: true,
             mark_ping_start: true,
@@ -127,6 +131,7 @@ fn reconnect_command_disconnects_without_changing_subscriptions() {
     assert_eq!(
         handle_ws_command(&mut subscriptions, WsCommand::Reconnect),
         WsCommandAction {
+            unsubscribe_first: false,
             outbound_payload: None,
             disconnect_on_send_error: false,
             mark_ping_start: false,
@@ -139,6 +144,7 @@ fn reconnect_command_disconnects_without_changing_subscriptions() {
 #[test]
 fn command_action_debug_redacts_outbound_payload() {
     let action = WsCommandAction {
+        unsubscribe_first: false,
         outbound_payload: Some(json!({
             "method": "subscribe",
             "subscription": {

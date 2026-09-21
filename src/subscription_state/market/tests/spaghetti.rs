@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn spaghetti_market_streams_skip_unloaded_empty_or_hidden_series() {
+fn spaghetti_market_streams_include_unloaded_series_but_skip_empty_or_hidden_symbols() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.spaghetti_charts.clear();
     terminal.muted_tickers.insert("HIDDEN".to_string());
@@ -20,5 +20,5 @@ fn spaghetti_market_streams_skip_unloaded_empty_or_hidden_series() {
     let mut subscriptions = Vec::new();
     terminal.push_spaghetti_market_subscriptions(&mut subscriptions);
 
-    assert_eq!(subscriptions.len(), 2);
+    assert_eq!(subscriptions.len(), 3);
 }

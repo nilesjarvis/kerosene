@@ -36,8 +36,20 @@ impl TradingTerminal {
             let sym = series.symbol.clone();
             let sid = id;
             let text_color = inst.canvas.series_render_color(&theme, series);
+            let health = inst.health.get(&series.symbol);
+            let status = health.map_or("", |health| {
+                if health.stream_error.is_some() {
+                    " · reconnecting"
+                } else if health.error.is_some() {
+                    " · retrying"
+                } else if health.pending.is_some() {
+                    " · loading"
+                } else {
+                    ""
+                }
+            });
             let remove_btn = button(
-                text(format!("{} x", series.display))
+                text(format!("{}{status} x", series.display))
                     .size(10)
                     .color(text_color),
             )
@@ -52,7 +64,14 @@ impl TradingTerminal {
                 },
                 ..Default::default()
             });
-            toolbar = toolbar.push(remove_btn);
+            let detail = health
+                .and_then(|health| health.stream_error.clone().or_else(|| health.error.clone()))
+                .unwrap_or_else(|| "Remove series".to_string());
+            toolbar = toolbar.push(tooltip(
+                remove_btn,
+                text(detail).size(10),
+                tooltip::Position::Bottom,
+            ));
         }
 
         let plus_icon: Element<'static, Message> =

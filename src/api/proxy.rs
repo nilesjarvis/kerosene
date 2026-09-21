@@ -103,9 +103,20 @@ impl ProxyPool {
 
     async fn send(&self, direct: Client, request: Request) -> Result<Response, String> {
         if !self.enabled || !is_official_info(&request) {
-            return crate::network_activity::execute(&direct, request, false)
+            let gate = super::read_control::gate(&request);
+            let _permit = match gate {
+                Some(gate) => Some(gate.acquire(&request).await?),
+                None => None,
+            };
+            let response = crate::network_activity::execute(&direct, request, false)
                 .await
-                .map_err(|e| e.to_string());
+                .map_err(|e| e.to_string())?;
+            if response.status() == StatusCode::TOO_MANY_REQUESTS
+                && let Some(gate) = gate
+            {
+                gate.cool_down(retry_after(&response, SystemTime::now()));
+            }
+            return Ok(response);
         }
         self.send_proxied(request).await
     }
@@ -116,11 +127,17 @@ impl ProxyPool {
             .copied()
             .unwrap_or(REQUEST_TIMEOUT)
             .min(REQUEST_TIMEOUT);
-        let deadline = Instant::now() + timeout;
+        let mut deadline = None;
         let mut attempted = Vec::new();
         let mut last_error =
             "Hyperliquid proxies unavailable or cooling down; retry shortly".to_string();
         for _ in 0..MAX_ATTEMPTS {
+            let gate = super::read_control::gate(&request);
+            let _permit = match gate {
+                Some(gate) => Some(gate.acquire(&request).await?),
+                None => None,
+            };
+            let deadline = *deadline.get_or_insert_with(|| Instant::now() + timeout);
             let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
                 break;
             };

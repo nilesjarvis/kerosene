@@ -1,4 +1,3 @@
-use crate::api;
 use crate::app_state::TradingTerminal;
 use crate::app_time::now_ms;
 use crate::chart_state::ChartBackfillFetchContext;
@@ -23,7 +22,11 @@ impl TradingTerminal {
         let (api_tf, start) = Self::spaghetti_fetch_plan(tf, session, session_granularity, now_ms);
         let sid = spaghetti_id;
         let coin_str = coin.to_string();
+        static NEXT_REQUEST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let request = SpaghettiCandleFetch {
+            request_id: NEXT_REQUEST.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            start_ms: start,
+            end_ms: now_ms,
             chart_id: sid,
             instance_epoch,
             symbol: coin_str.clone(),
@@ -34,17 +37,7 @@ impl TradingTerminal {
             session,
             session_granularity,
         };
-        Task::perform(
-            api::fetch_chart_backfill_candles(api::ChartCandleFetchRequest {
-                source: backfill.source,
-                hydromancer_api_key: backfill.hydromancer_api_key,
-                coin: coin_str.clone(),
-                interval: api_tf.api_str().to_string(),
-                start_time: start,
-                end_time: now_ms,
-                policy: api::CandleFetchPolicy::NetworkOnly,
-            }),
-            move |result| Message::SpaghettiCandlesLoaded(request.clone(), result),
-        )
+        drop(backfill.hydromancer_api_key);
+        Task::done(Message::SpaghettiFetchRequested(request))
     }
 }

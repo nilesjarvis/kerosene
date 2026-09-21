@@ -477,8 +477,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddPairRatioChart
         | Message::SpaghettiReload(_)
         | Message::SpaghettiSwitchTimeframe(_, _)
+        | Message::SpaghettiFetchRequested(_)
         | Message::SpaghettiCandlesLoaded(_, _)
         | Message::SpaghettiWsCandleUpdate(_, _)
+        | Message::SpaghettiWsCandleUnavailable(_, _)
         | Message::SpaghettiWsCandleLagged(_, _)
         | Message::SpaghettiOpenEditor(_)
         | Message::SpaghettiCloseEditor(_)
@@ -602,6 +604,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartSecondaryCandlesLoaded(_, _)
         | Message::ChartFundingHistoryLoaded(_, _)
         | Message::ChartWsCandleUpdate(_, _, _, _, _)
+        | Message::ChartWsCandleUnavailable(_, _, _, _, _)
         | Message::ChartWsCandleLagged(_, _, _, _, _)
         | Message::ChartPriceFlashTick
         | Message::ChartHudOrderAnimationTick

@@ -1,5 +1,3 @@
-use super::{API_URL, CLIENT};
-use crate::api::proxy::HyperliquidRequestExt;
 use crate::helpers::parse_finite_json_number;
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -39,13 +37,7 @@ struct AssetContextStats {
 /// interest. Every family must succeed so the UI never shows a partial total as
 /// though it covered the whole exchange.
 pub(crate) async fn fetch_exchange_stats() -> Result<ExchangeStats, String> {
-    let client = CLIENT.clone();
-    let dex_response = post_info(
-        client.clone(),
-        serde_json::json!({ "type": "perpDexs" }),
-        "perpDexs",
-    )
-    .await?;
+    let dex_response = post_info(serde_json::json!({ "type": "perpDexs" }), "perpDexs").await?;
     let dex_names = parse_perp_dex_names(&dex_response)?;
 
     let mut families = vec![
@@ -68,14 +60,13 @@ pub(crate) async fn fetch_exchange_stats() -> Result<ExchangeStats, String> {
         )
     }));
 
-    let requests = families.into_iter().map(|(label, body, family)| {
-        let client = client.clone();
-        async move {
-            let response = post_info(client, body, &label).await?;
+    let requests = families
+        .into_iter()
+        .map(|(label, body, family)| async move {
+            let response = post_info(body, &label).await?;
             parse_asset_context_stats(&response, family)
                 .map_err(|error| format!("{label}: {error}"))
-        }
-    });
+        });
     let family_stats = futures::future::join_all(requests).await;
 
     let mut exchange_stats = ExchangeStats {
@@ -97,18 +88,10 @@ pub(crate) async fn fetch_exchange_stats() -> Result<ExchangeStats, String> {
     Ok(exchange_stats)
 }
 
-async fn post_info(client: reqwest::Client, body: Value, label: &str) -> Result<Value, String> {
-    client
-        .post(API_URL)
-        .json(&body)
-        .send_info()
+async fn post_info(body: Value, label: &str) -> Result<Value, String> {
+    super::shared_reads::public_info(body)
         .await
-        .map_err(|error| format!("{label} request failed: {error}"))?
-        .error_for_status()
-        .map_err(|error| format!("{label} HTTP error: {error}"))?
-        .json()
-        .await
-        .map_err(|error| format!("{label} parse failed: {error}"))
+        .map_err(|error| format!("{label}: {error}"))
 }
 
 fn parse_perp_dex_names(response: &Value) -> Result<Vec<String>, String> {

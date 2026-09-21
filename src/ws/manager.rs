@@ -74,6 +74,7 @@ impl fmt::Debug for WsRoutedMessage {
 pub enum WsCommand {
     Subscribe { topic: String, payload: Value },
     Unsubscribe { topic: String, payload: Value },
+    Resubscribe { topic: String },
     Ping,
     Reconnect,
 }
@@ -90,6 +91,10 @@ impl fmt::Debug for WsCommand {
                 .debug_struct("Unsubscribe")
                 .field("topic", &redacted_ws_topic_debug_value(topic))
                 .field("payload", &redacted_ws_value(payload))
+                .finish(),
+            Self::Resubscribe { topic } => f
+                .debug_tuple("Resubscribe")
+                .field(&redacted_ws_topic_debug_value(topic))
                 .finish(),
             Self::Ping => f.write_str("Ping"),
             Self::Reconnect => f.write_str("Reconnect"),
@@ -393,11 +398,21 @@ async fn ws_manager_task_with_options(
                     if action.mark_ping_start {
                         telemetry_mark_ws_ping_start();
                     }
-                    if let Some(payload) = action.outbound_payload
-                        && !send_ws_text_with_timeout(&mut write, payload.to_string()).await
-                        && action.disconnect_on_send_error
-                    {
-                        disconnected = true;
+                    if let Some(payload) = action.outbound_payload {
+                        if action.unsubscribe_first {
+                            let mut unsubscribe = payload.clone();
+                            unsubscribe["method"] = serde_json::json!("unsubscribe");
+                            if !send_ws_text_with_timeout(&mut write, unsubscribe.to_string()).await
+                            {
+                                disconnected = true;
+                            }
+                        }
+                        if !disconnected
+                            && !send_ws_text_with_timeout(&mut write, payload.to_string()).await
+                            && action.disconnect_on_send_error
+                        {
+                            disconnected = true;
+                        }
                     }
                     if action.disconnect_after_handling {
                         disconnected = true;
@@ -619,7 +634,9 @@ fn handle_connecting_ws_command(
                 ConnectingWsCommandAction::ContinueConnecting
             }
         }
-        WsCommand::Ping => ConnectingWsCommandAction::ContinueConnecting,
+        WsCommand::Ping | WsCommand::Resubscribe { .. } => {
+            ConnectingWsCommandAction::ContinueConnecting
+        }
         WsCommand::Reconnect => ConnectingWsCommandAction::RestartLoop,
     }
 }
@@ -632,7 +649,7 @@ fn handle_disconnected_ws_command(active_subs: &mut ActiveWsSubscriptions, comma
         WsCommand::Unsubscribe { topic, payload } => {
             active_subs.unsubscribe(topic, payload);
         }
-        WsCommand::Ping | WsCommand::Reconnect => {}
+        WsCommand::Ping | WsCommand::Reconnect | WsCommand::Resubscribe { .. } => {}
     }
 }
 

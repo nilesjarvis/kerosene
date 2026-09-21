@@ -17,6 +17,7 @@ pub(in crate::ws) use asset_context::is_active_asset_ctx_channel;
 pub use asset_context::ws_asset_ctx_stream_keyed;
 pub use asset_context::ws_asset_ctx_stream_symbol;
 pub use books::ws_book_stream_keyed_events;
+pub(in crate::ws) use candles::CandleWatchdog;
 pub use candles::{ws_candle_stream_keyed, ws_spaghetti_candle_stream};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,6 +67,13 @@ pub enum SymbolAssetContextStreamEvent {
 
 #[derive(Debug, Clone)]
 pub enum KeyedCandleStreamEvent {
+    Unavailable {
+        id: u64,
+        symbol: String,
+        interval: String,
+        hydromancer_key_generation: Option<u64>,
+        reason: String,
+    },
     Item(u64, String, String, Option<u64>, Candle),
     Lagged {
         id: u64,
@@ -78,6 +86,16 @@ pub enum KeyedCandleStreamEvent {
 
 #[derive(Debug, Clone)]
 pub enum SpaghettiCandleStreamEvent {
+    Unavailable {
+        id: u64,
+        instance_epoch: u64,
+        symbol: String,
+        timeframe: Timeframe,
+        hydromancer_key_generation: Option<u64>,
+        session: Option<spaghetti::Session>,
+        session_granularity: Option<Timeframe>,
+        reason: String,
+    },
     Item {
         id: u64,
         instance_epoch: u64,

@@ -31,6 +31,9 @@ impl TradingTerminal {
             Message::ChartWsCandleUpdate(id, symbol, interval, source_context, candle) => {
                 self.apply_chart_ws_candle_update(id, symbol, interval, source_context, candle)
             }
+            Message::ChartWsCandleUnavailable(id, symbol, interval, source_context, reason) => {
+                self.apply_chart_ws_candle_unavailable(id, symbol, interval, source_context, reason)
+            }
             Message::ChartWsCandleLagged(id, symbol, interval, source_context, skipped) => {
                 self.apply_chart_ws_candle_lagged(id, symbol, interval, source_context, skipped)
             }

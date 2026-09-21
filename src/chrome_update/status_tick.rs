@@ -20,6 +20,38 @@ impl TradingTerminal {
         tasks.extend(self.queue_chart_asset_context_rest_fetches(now_ms));
         tasks.extend(self.queue_chart_price_change_history(now_ms));
 
+        let chart_retries: Vec<_> = self
+            .charts
+            .iter()
+            .flat_map(|(id, inst)| {
+                [
+                    (inst.candle_fetch_error.is_some(), false),
+                    (inst.secondary_candle_fetch_error.is_some(), true),
+                ]
+                .into_iter()
+                .filter_map(move |(failed, secondary)| failed.then_some((*id, secondary)))
+            })
+            .collect();
+        for (id, secondary) in chart_retries {
+            tasks.push(self.repair_chart_candles(id, secondary));
+        }
+        let comparison_retries: Vec<_> = self
+            .spaghetti_charts
+            .iter()
+            .flat_map(|(id, inst)| {
+                inst.health
+                    .iter()
+                    .filter(|(_, health)| {
+                        health.error.is_some()
+                            && health.next_retry_ms <= now_ms
+                            && health.pending.is_none()
+                    })
+                    .map(move |(symbol, _)| (*id, symbol.clone()))
+            })
+            .collect();
+        for (id, symbol) in comparison_retries {
+            tasks.push(self.repair_spaghetti_series(id, &symbol, false));
+        }
         self.drain_sound_status_messages();
 
         if calendar_retry_due(

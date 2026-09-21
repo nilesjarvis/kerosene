@@ -50,65 +50,32 @@ impl TradingTerminal {
         chart_id: ChartId,
         request_id: u64,
         coin: &str,
+        config: &crate::config::MacroIndicatorsConfig,
     ) -> Vec<Task<Message>> {
         let now_ms = Self::now_ms();
-
-        let id = chart_id;
-        let c1 = coin.to_string();
-        let c2 = coin.to_string();
-        let c3 = coin.to_string();
-        let c4 = coin.to_string();
-        let s1 = c1.clone();
-        let s2 = c2.clone();
-        let s3 = c3.clone();
-        let s4 = c4.clone();
-
-        vec![
-            Task::perform(
-                api::fetch_candles(
-                    c1,
-                    "1h".to_string(),
-                    now_ms.saturating_sub(Timeframe::H1.lookback_ms()),
-                    now_ms,
-                ),
-                move |result| {
-                    Message::MacroCandlesLoaded(id, request_id, s1.clone(), Timeframe::H1, result)
-                },
-            ),
-            Task::perform(
-                api::fetch_candles(
-                    c2,
-                    "1d".to_string(),
-                    now_ms.saturating_sub(Timeframe::D1.lookback_ms()),
-                    now_ms,
-                ),
-                move |result| {
-                    Message::MacroCandlesLoaded(id, request_id, s2.clone(), Timeframe::D1, result)
-                },
-            ),
-            Task::perform(
-                api::fetch_candles(
-                    c3,
-                    "1w".to_string(),
-                    now_ms.saturating_sub(Timeframe::W1.lookback_ms()),
-                    now_ms,
-                ),
-                move |result| {
-                    Message::MacroCandlesLoaded(id, request_id, s3.clone(), Timeframe::W1, result)
-                },
-            ),
-            Task::perform(
-                api::fetch_candles(
-                    c4,
-                    "1M".to_string(),
-                    now_ms.saturating_sub(Timeframe::Mo1.lookback_ms()),
-                    now_ms,
-                ),
-                move |result| {
-                    Message::MacroCandlesLoaded(id, request_id, s4.clone(), Timeframe::Mo1, result)
-                },
-            ),
-        ]
+        macro_history_timeframes(config)
+            .into_iter()
+            .map(|tf| {
+                let symbol = coin.to_string();
+                Task::perform(
+                    api::fetch_candles(
+                        symbol.clone(),
+                        tf.api_str().to_string(),
+                        now_ms.saturating_sub(tf.lookback_ms()),
+                        now_ms,
+                    ),
+                    move |result| {
+                        Message::MacroCandlesLoaded(
+                            chart_id,
+                            request_id,
+                            symbol.clone(),
+                            tf,
+                            result,
+                        )
+                    },
+                )
+            })
+            .collect()
     }
 
     pub(crate) fn queue_macro_candles_tasks(
@@ -116,14 +83,11 @@ impl TradingTerminal {
         chart_id: ChartId,
         coin: &str,
     ) -> Vec<Task<Message>> {
-        let Some(request_id) = self
-            .charts
-            .get_mut(&chart_id)
-            .map(|instance| instance.next_macro_candles_request_id())
-        else {
+        let Some(instance) = self.charts.get_mut(&chart_id) else {
             return Vec::new();
         };
-        Self::fetch_macro_candles_tasks(chart_id, request_id, coin)
+        let request_id = instance.next_macro_candles_request_id();
+        Self::fetch_macro_candles_tasks(chart_id, request_id, coin, &instance.macro_indicators)
     }
 
     pub(crate) fn build_candle_fetch_request(
@@ -492,14 +456,13 @@ impl TradingTerminal {
             })
             .collect();
 
-        for (chart_id, _, _, _, _) in &spaghetti_requests {
-            if let Some(instance) = self.spaghetti_charts.get_mut(chart_id) {
-                for series in &mut instance.canvas.series {
-                    series.candles.clear();
-                    series.loaded = false;
-                }
-                instance.canvas.cache.clear();
+        for instance in self.spaghetti_charts.values_mut() {
+            instance.health.clear();
+            for series in &mut instance.canvas.series {
+                series.candles.clear();
+                series.loaded = false;
             }
+            instance.canvas.cache.clear();
         }
 
         tasks.extend(spaghetti_requests.into_iter().map(
@@ -578,8 +541,49 @@ impl TradingTerminal {
     }
 }
 
+fn macro_history_timeframes(config: &crate::config::MacroIndicatorsConfig) -> Vec<Timeframe> {
+    [
+        (
+            Timeframe::H1,
+            config.sma_50h || config.ema_50h || config.sma_200h || config.ema_200h,
+        ),
+        (
+            Timeframe::D1,
+            config.sma_50d || config.ema_50d || config.sma_200d || config.ema_200d,
+        ),
+        (
+            Timeframe::W1,
+            config.sma_20w || config.ema_20w || config.sma_50w || config.ema_50w,
+        ),
+        (Timeframe::Mo1, config.sma_12m || config.ema_12m),
+    ]
+    .into_iter()
+    .filter_map(|(tf, enabled)| enabled.then_some(tf))
+    .collect()
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn macro_history_is_only_requested_for_enabled_intervals() {
+        let mut config = crate::config::MacroIndicatorsConfig::default();
+        assert!(super::macro_history_timeframes(&config).is_empty());
+        config.sma_50h = true;
+        config.ema_200h = true;
+        assert_eq!(
+            super::macro_history_timeframes(&config),
+            vec![crate::timeframe::Timeframe::H1]
+        );
+        config.sma_12m = true;
+        assert_eq!(
+            super::macro_history_timeframes(&config),
+            vec![
+                crate::timeframe::Timeframe::H1,
+                crate::timeframe::Timeframe::Mo1
+            ]
+        );
+    }
+
     use super::*;
     use crate::chart_state::ChartInstance;
 

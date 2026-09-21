@@ -13,6 +13,7 @@ mod tests;
 
 #[derive(Clone, PartialEq)]
 pub(super) struct WsCommandAction {
+    pub(super) unsubscribe_first: bool,
     pub(super) outbound_payload: Option<Value>,
     pub(super) disconnect_on_send_error: bool,
     pub(super) mark_ping_start: bool,
@@ -36,6 +37,7 @@ impl fmt::Debug for WsCommandAction {
 impl WsCommandAction {
     fn none() -> Self {
         Self {
+            unsubscribe_first: false,
             outbound_payload: None,
             disconnect_on_send_error: false,
             mark_ping_start: false,
@@ -45,6 +47,7 @@ impl WsCommandAction {
 
     fn outbound(payload: Value, disconnect_on_send_error: bool) -> Self {
         Self {
+            unsubscribe_first: false,
             outbound_payload: Some(payload),
             disconnect_on_send_error,
             mark_ping_start: false,
@@ -54,6 +57,7 @@ impl WsCommandAction {
 
     fn ping() -> Self {
         Self {
+            unsubscribe_first: false,
             outbound_payload: Some(serde_json::json!({ "method": "ping" })),
             disconnect_on_send_error: true,
             mark_ping_start: true,
@@ -63,6 +67,7 @@ impl WsCommandAction {
 
     fn reconnect() -> Self {
         Self {
+            unsubscribe_first: false,
             outbound_payload: None,
             disconnect_on_send_error: false,
             mark_ping_start: false,
@@ -85,6 +90,14 @@ pub(super) fn handle_ws_command(
             .removed_payload()
             .map(|payload| WsCommandAction::outbound(payload, true))
             .unwrap_or_else(WsCommandAction::none),
+        WsCommand::Resubscribe { topic } => {
+            let mut action = active_subs
+                .resubscribe(&topic)
+                .map(|payload| WsCommandAction::outbound(payload, true))
+                .unwrap_or_else(WsCommandAction::none);
+            action.unsubscribe_first = action.outbound_payload.is_some();
+            action
+        }
         WsCommand::Ping => WsCommandAction::ping(),
         WsCommand::Reconnect => WsCommandAction::reconnect(),
     }

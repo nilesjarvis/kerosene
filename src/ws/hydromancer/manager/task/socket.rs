@@ -59,6 +59,17 @@ where
                 | HydromancerUnsubscribeResult::Missing => false,
             }
         }
+        HydromancerCommand::Resubscribe { topic } => {
+            if session.connection_ready()
+                && let Some(payload) = active_subs.resubscribe(&topic)
+            {
+                if !send_text(write, hydromancer_unsubscribe_payload(&payload).to_string()).await {
+                    return true;
+                }
+                return !send_text(write, payload.to_string()).await;
+            }
+            false
+        }
         HydromancerCommand::Reconnect => true,
         // Shutdown is intercepted by the inner select arm in `task.rs`
         // before this dispatcher is called — but having the variant here

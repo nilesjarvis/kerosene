@@ -36,7 +36,16 @@ impl TradingTerminal {
                 .canvas
                 .series
                 .iter()
-                .filter(|s| !s.loaded && !s.symbol.is_empty())
+                .filter(|series| {
+                    !series.symbol.is_empty()
+                        && (!series.loaded
+                            || series.candles.is_empty()
+                            || source.health.get(&series.symbol).is_none_or(|health| {
+                                health.verified_ms.is_none()
+                                    || health.pending.is_some()
+                                    || health.error.is_some()
+                            }))
+                })
                 .map(|s| s.symbol.clone())
                 .collect();
             (

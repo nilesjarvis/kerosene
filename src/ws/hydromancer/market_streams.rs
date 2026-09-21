@@ -32,6 +32,10 @@ enum HydromancerAssetCtxStreamEvent {
 
 #[derive(Debug, Clone)]
 enum HydromancerCandleStreamEvent {
+    Unavailable {
+        hydromancer_key_generation: Option<u64>,
+        reason: String,
+    },
     Item(Option<u64>, Candle),
     Lagged {
         hydromancer_key_generation: Option<u64>,
@@ -237,6 +241,16 @@ pub fn ws_hydromancer_candle_stream_keyed(
                 candle,
             )
         }
+        HydromancerCandleStreamEvent::Unavailable {
+            hydromancer_key_generation,
+            reason,
+        } => KeyedCandleStreamEvent::Unavailable {
+            id,
+            symbol: coin.clone(),
+            interval: interval.clone(),
+            hydromancer_key_generation,
+            reason,
+        },
         HydromancerCandleStreamEvent::Lagged {
             hydromancer_key_generation,
             skipped,
@@ -283,6 +297,19 @@ pub fn ws_hydromancer_spaghetti_candle_stream(
                 candle,
             }
         }
+        HydromancerCandleStreamEvent::Unavailable {
+            hydromancer_key_generation,
+            reason,
+        } => SpaghettiCandleStreamEvent::Unavailable {
+            id,
+            instance_epoch,
+            symbol: coin.clone(),
+            timeframe,
+            hydromancer_key_generation,
+            session,
+            session_granularity,
+            reason,
+        },
         HydromancerCandleStreamEvent::Lagged {
             hydromancer_key_generation,
             skipped,
@@ -419,7 +446,7 @@ fn hydromancer_candle_stream(
     interval: String,
 ) -> WsStream<HydromancerCandleStreamEvent> {
     let hydromancer_key_generation = stream_key.generation();
-    Box::pin(iced::stream::channel(10, async move |mut output| {
+    Box::pin(iced::stream::channel(128, async move |mut output| {
         let (cmd_tx, mut msg_rx) = get_hydromancer_manager(stream_key);
         let (topic, payload) = hydromancer_candle_subscription(&coin, &interval);
         let subscription = (topic.clone(), payload.clone());
@@ -435,13 +462,31 @@ fn hydromancer_candle_stream(
         let reconnect_tx = cmd_tx.clone();
         let guard = HydromancerSubscriptionGuard::new(cmd_tx, vec![subscription]);
 
+        let mut watchdog = crate::ws::market_streams::CandleWatchdog::new(&coin, &interval);
         loop {
-            match msg_rx.recv().await {
+            let Some(message) = watchdog.recv(&mut msg_rx).await else {
+                let _ = reconnect_tx.send(HydromancerCommand::Resubscribe {
+                    topic: topic.clone(),
+                });
+                if output
+                    .send(HydromancerCandleStreamEvent::Unavailable {
+                        hydromancer_key_generation: Some(hydromancer_key_generation),
+                        reason: "Candle stream quiet · verifying history".to_string(),
+                    })
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+                continue;
+            };
+            match message {
                 Ok(msg) => {
                     if let Some(control) =
                         hydromancer_control_message(&msg.msg_type, msg.data.as_ref())
                     {
-                        if hydromancer_market_control_should_fallback(&control) {
+                        if interval != "1s" && hydromancer_market_control_should_fallback(&control)
+                        {
                             drop(guard);
                             let mut fallback = crate::ws::ws_candle_stream_keyed(&(
                                 0,
@@ -460,6 +505,14 @@ fn hydromancer_candle_stream(
                                         hydromancer_key_generation,
                                         candle,
                                     ),
+                                    KeyedCandleStreamEvent::Unavailable {
+                                        hydromancer_key_generation,
+                                        reason,
+                                        ..
+                                    } => HydromancerCandleStreamEvent::Unavailable {
+                                        hydromancer_key_generation,
+                                        reason,
+                                    },
                                     KeyedCandleStreamEvent::Lagged {
                                         hydromancer_key_generation,
                                         skipped,
@@ -475,6 +528,13 @@ fn hydromancer_candle_stream(
                             }
                             return;
                         }
+                        if matches!(control, HydromancerWsMessage::Disconnected(_))
+                            && watchdog.report_error_due()
+                        {
+                            // Provider errors may lack a topic. Surface a bounded,
+                            // redacted status; periodic probes retry only quiet topics.
+                            if output.send(HydromancerCandleStreamEvent::Unavailable { hydromancer_key_generation: Some(hydromancer_key_generation), reason: "Candle subscription unavailable · check provider limits or credentials".to_string() }).await.is_err() { return; }
+                        }
                         continue;
                     }
                     if msg.msg_type != "candle" {
@@ -487,33 +547,35 @@ fn hydromancer_candle_stream(
                             continue;
                         }
                         if let Ok(candle) = serde_json::from_value::<Candle>(item.clone())
-                            && output
+                            && crate::api::is_valid_candle(&candle)
+                        {
+                            watchdog.mark_valid();
+                            if output
                                 .send(HydromancerCandleStreamEvent::Item(
                                     Some(hydromancer_key_generation),
                                     candle,
                                 ))
                                 .await
                                 .is_err()
-                        {
-                            return;
+                            {
+                                return;
+                            }
                         }
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    if !super::emit_hydromancer_lag_after_reconnect(
-                        &reconnect_tx,
-                        HydromancerCandleStreamEvent::Lagged {
+                    if output
+                        .send(HydromancerCandleStreamEvent::Lagged {
                             hydromancer_key_generation: Some(hydromancer_key_generation),
                             skipped,
-                        },
-                        |event| async { output.send(event).await.is_ok() },
-                        std::time::Duration::from_secs(HYDROMANCER_RECONNECT_DELAY_SECS),
-                    )
-                    .await
+                        })
+                        .await
+                        .is_err()
                     {
                         return;
                     }
                 }
+
                 Err(error) if crate::ws::broadcast_receiver_closed(&error) => {
                     return;
                 }

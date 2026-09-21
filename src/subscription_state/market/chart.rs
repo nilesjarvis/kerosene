@@ -131,6 +131,17 @@ fn chart_candle_stream_event_message(
                 source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::ChartWsCandleUpdate(id, symbol, interval, source_context, candle)
         }
+        KeyedCandleStreamEvent::Unavailable {
+            id,
+            symbol,
+            interval,
+            hydromancer_key_generation,
+            reason,
+        } => {
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
+            Message::ChartWsCandleUnavailable(id, symbol, interval, source_context, reason)
+        }
         KeyedCandleStreamEvent::Lagged {
             id,
             symbol,
