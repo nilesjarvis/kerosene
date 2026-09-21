@@ -5,8 +5,8 @@ mod symbol;
 
 use self::feedback::format_signed_usd_change;
 use self::metrics::{
-    ChartHeaderMetricVisibility, push_asset_context_columns, push_outcome_asset_context_columns,
-    push_outcome_volume_column,
+    ChartHeaderMetricVisibility, funding_column, push_asset_context_columns,
+    push_outcome_asset_context_columns, push_outcome_volume_column,
 };
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
@@ -56,6 +56,11 @@ impl TradingTerminal {
 
         let metric_visibility = ChartHeaderMetricVisibility::for_width(available_width);
         let mut header_row = row![sym_btn].spacing(16).align_y(iced::Alignment::Center);
+        let is_perp = self.is_perp_coin(&instance.symbol);
+        if is_perp {
+            header_row =
+                header_row.push(funding_column(&theme, instance.asset_ctx.as_ref(), now_ms));
+        }
 
         if metric_visibility.show_24h_change {
             let change = self.chart_24h_change(instance, now_ms);
@@ -155,15 +160,17 @@ impl TradingTerminal {
                 instance.asset_volume_as_notional,
                 instance.open_interest_as_notional,
                 metric_visibility,
-                now_ms,
+                is_perp,
             );
         }
 
-        header_row = header_row
-            .push(Space::new().width(Fill))
-            .push(self.view_chart_screenshot_button(chart_id, surface_id));
-
-        header_row.into()
+        row![
+            header_row.width(Fill).wrap().vertical_spacing(4),
+            self.view_chart_screenshot_button(chart_id, surface_id),
+        ]
+        .spacing(8)
+        .align_y(iced::Alignment::Center)
+        .into()
     }
 }
 

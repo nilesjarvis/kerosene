@@ -216,6 +216,13 @@ removed when the symbol no longer has an open, unhidden chart.
 Header metric display modes can show values as raw or USD notional depending on
 the market and user preference.
 
+Expanded perpetual chart headers always include the current hourly funding
+rate and countdown beside the symbol, including in narrow panes. The header
+wraps metrics when needed. Market identity determines whether funding applies;
+missing context shows `-` rather than hiding funding or selecting spot metrics.
+The current rate comes from asset context independently of the optional funding
+history indicator and its Hydromancer integration.
+
 ## Canvas Rendering
 
 The chart canvas is implemented under `src/chart/`.
