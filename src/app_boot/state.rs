@@ -254,6 +254,7 @@ impl TradingTerminal {
             outcome_volumes_error: None,
             outcome_search_query: String::new(),
             outcome_collapsed_market_groups: HashSet::new(),
+            listings: crate::market_state::listings::ListingsState::load(),
             hype_etfs: crate::hype_etf_state::HypeEtfState::default(),
             hype_unstaking_queue: crate::hype_unstaking_state::HypeUnstakingQueueState::default(),
             display_denomination: cfg.display_denomination.clone().normalized(),

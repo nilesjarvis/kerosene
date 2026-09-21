@@ -1,6 +1,7 @@
 mod hype_etfs;
 mod hype_unstaking_queue;
 mod liquidations_distribution;
+mod listings;
 mod live_watchlist;
 mod order_book;
 mod outcomes;

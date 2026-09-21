@@ -14,6 +14,17 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
     menu.push(rule::horizontal(1))
         .push(section_label("Feeds", theme))
         .push(menu_item(
+            "New Listings",
+            if context.listings_open {
+                "Open"
+            } else {
+                "Pane"
+            },
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::NewListings)),
+            context.can_add_pane,
+            theme,
+        ))
+        .push(menu_item(
             "Outcomes",
             if context.outcomes_open {
                 "Open"

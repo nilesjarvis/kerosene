@@ -154,6 +154,7 @@ pub enum PaneKindConfig {
     TrackedTrades,
     TelegramFeed,
     Outcomes,
+    NewListings,
     HypeEtfs,
     HypeUnstakingQueue,
     /// Legacy or unknown persisted panes that no longer have runtime support.
@@ -187,6 +188,7 @@ pub enum WidgetPaddingTargetConfig {
     TrackedTrades,
     TelegramFeed,
     Outcomes,
+    NewListings,
     HypeEtfs,
     HypeUnstakingQueue,
 }

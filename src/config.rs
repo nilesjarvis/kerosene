@@ -8,6 +8,7 @@ mod files;
 mod fonts;
 mod hotkeys;
 mod layouts;
+pub(crate) mod listings;
 mod live_watchlist;
 mod order_presets;
 mod panes;

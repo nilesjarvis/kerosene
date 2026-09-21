@@ -35,6 +35,7 @@ pub(crate) enum PaneKind {
     TrackedTrades,
     TelegramFeed,
     Outcomes,
+    NewListings,
     HypeEtfs,
     HypeUnstakingQueue,
 }

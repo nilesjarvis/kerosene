@@ -39,6 +39,7 @@ impl WidgetPaddingTargetConfig {
             PaneKind::TrackedTrades => Self::TrackedTrades,
             PaneKind::TelegramFeed => Self::TelegramFeed,
             PaneKind::Outcomes => Self::Outcomes,
+            PaneKind::NewListings => Self::NewListings,
             PaneKind::HypeEtfs => Self::HypeEtfs,
             PaneKind::HypeUnstakingQueue => Self::HypeUnstakingQueue,
         }

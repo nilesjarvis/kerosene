@@ -210,6 +210,17 @@ impl TradingTerminal {
                     |kind| matches!(kind, PaneKind::Outcomes),
                 );
             }
+            Message::AddNewListingsPane => {
+                self.add_widget_menu_open = false;
+                self.add_or_focus_singleton_pane(
+                    workspace,
+                    self.add_widget_axis(),
+                    PaneKind::NewListings,
+                    "New Listings",
+                    |kind| matches!(kind, PaneKind::NewListings),
+                );
+                return self.request_listings_refresh(true);
+            }
             Message::AddHypeEtfsPane => {
                 self.add_widget_menu_open = false;
                 let outcome = self.add_or_focus_singleton_pane(

@@ -127,6 +127,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddCompactWalletTrackerPane
         | Message::AddXFeedPane
         | Message::AddOutcomesPane
+        | Message::AddNewListingsPane
         | Message::AddHypeEtfsPane
         | Message::AddHypeUnstakingQueuePane => UpdateRoute::Panes,
 
@@ -289,6 +290,11 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::OutcomeSearchChanged(_)
         | Message::OutcomeMarketGroupToggled(_)
         | Message::OutcomeVolumesLoaded(_, _, _)
+        | Message::ListingsTick
+        | Message::RefreshListings
+        | Message::ListingsFilterChanged(_)
+        | Message::ListingsLoaded(_, _)
+        | Message::ListingsSaved(_)
         | Message::RefreshHypeEtfs
         | Message::HypeEtfsRefreshTick
         | Message::HypeEtfsViewChanged(_)

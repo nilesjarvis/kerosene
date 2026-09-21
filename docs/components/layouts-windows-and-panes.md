@@ -48,6 +48,7 @@ It also includes singleton pane types:
 - `TrackedTrades`
 - `TelegramFeed`
 - `Outcomes`
+- `NewListings`
 - `HypeEtfs`
 - `HypeUnstakingQueue`
 

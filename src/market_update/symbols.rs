@@ -92,7 +92,7 @@ impl TradingTerminal {
         self.request_ticker_tape_context_refresh(true)
     }
 
-    fn request_exchange_symbols_refresh(&mut self) -> Task<Message> {
+    pub(crate) fn request_exchange_symbols_refresh(&mut self) -> Task<Message> {
         if self.symbols_loading || self.exchange_symbols_refresh_inflight {
             return Task::none();
         }

@@ -56,6 +56,45 @@ state. A full widget reload is only scheduled if the selected market universe
 changes (for example, an unavailable HIP-3 dex falls back to all markets).
 Canonical symbol migrations still refetch the affected widgets individually.
 
+## New Listings Feed
+
+The **New Listings** singleton pane is available under Add Widget > Feeds and
+through Alfred. It displays native perps, HIP-3 perps, and spot pairs with
+All / Perps / Spot filters. Selecting an available market uses the normal symbol
+selection flow. Hidden symbols are omitted from the feed.
+
+`api/exchange_symbols/listings.rs` reads public `allPerpMetas` and `spotMeta`
+snapshots every 30 seconds while the pane is open, including in Canvas windows.
+The one-second `ListingsTick` updates display time and checks the fetch cooldown;
+only two metadata requests are made per scan. Requests are coalesced, manual
+refresh has a five-second minimum interval, and request IDs reject stale results.
+This is polling-based discovery, not an announcement WebSocket or a trading-open
+guarantee. No API key or wallet is required.
+
+`market_state/listings.rs` establishes an independent, silent baseline for each
+market family on its first successful live response. Failures retain known IDs;
+recovered data, renamed spot aliases, and previously seen markets do not generate
+duplicate entries. Perps retain DEX-qualified identity and inactive metadata;
+spot identity uses the pair's asset index, not the token ticker. Newly discovered
+inactive perps are announced when they first become active. Inactive perps in the
+initial baseline are treated as already known because metadata cannot establish
+whether they previously traded.
+
+`config/listings.rs` defines the history payload stored by
+`config_persistence/listings.rs` in a versioned envelope in
+`<config-dir>/cache/v1/listings.json` using the existing atomic cache writer,
+off the UI thread. The latest 200 entries are retained, along with known market
+IDs for deduplication. Storage failures remain visible and are retried; tests
+and `--test` never access real user history. Clearing the app cache resets the
+feed baseline. Existing layout JSON remains compatible; the new pane and its
+padding target serialize as `NewListings`.
+
+Timestamps are **first detected** locally. Markets discovered after the app was
+closed are timestamped when next observed; no historical listing time is inferred.
+The first installation starts with an empty feed. The view is in
+`market_views/listings.rs`; `Listings*` messages route through
+`market_update/listings.rs` and trigger a symbol-universe refresh on additions.
+
 ## Spot Metadata And Identity Safety
 
 Perpetual, spot, and outcome metadata families are fetched independently, so a

@@ -2,9 +2,30 @@ use super::super::config_warning_guard;
 use super::{json_string, value_from_json};
 use crate::config::{
     AxisConfig, BottomTabConfig, KeroseneConfig, OrderBookConfig, OrderBookDisplayModeConfig,
-    OrderBookSymbolModeConfig, PaneKindConfig, PaneLayoutConfig, take_config_warnings,
+    OrderBookSymbolModeConfig, PaneKindConfig, PaneLayoutConfig, WidgetPaddingConfig,
+    WidgetPaddingTargetConfig, take_config_warnings,
 };
 use crate::session_data_state::SessionDataLookback;
+
+#[test]
+fn new_listings_layout_and_padding_round_trip() {
+    let layout = PaneLayoutConfig::Leaf(PaneKindConfig::NewListings);
+    let wire = serde_json::to_value(&layout).expect("serialize listings pane");
+    assert_eq!(wire, serde_json::json!({"Leaf":"NewListings"}));
+    assert_eq!(
+        serde_json::from_value::<PaneLayoutConfig>(wire).expect("restore listings pane"),
+        layout
+    );
+    let padding: WidgetPaddingConfig = serde_json::from_value(serde_json::json!({
+        "overrides":[{"target":"NewListings", "padding_px":8.0}]
+    }))
+    .expect("restore listings padding");
+    assert_eq!(padding.overrides.len(), 1);
+    assert_eq!(
+        padding.overrides[0].target,
+        WidgetPaddingTargetConfig::NewListings
+    );
+}
 
 #[test]
 fn legacy_assistant_pane_deserializes_as_unsupported() {
@@ -231,6 +252,10 @@ fn known_pane_variants_keep_existing_wire_shape() {
             serde_json::json!("TelegramFeed"),
         ),
         (PaneKindConfig::Outcomes, serde_json::json!("Outcomes")),
+        (
+            PaneKindConfig::NewListings,
+            serde_json::json!("NewListings"),
+        ),
         (PaneKindConfig::HypeEtfs, serde_json::json!("HypeEtfs")),
         (
             PaneKindConfig::HypeUnstakingQueue,

@@ -52,6 +52,7 @@ impl<'de> Visitor<'de> for WidgetPaddingTargetVisitor {
             "TrackedTrades" => Ok(known(WidgetPaddingTargetConfig::TrackedTrades)),
             "TelegramFeed" => Ok(known(WidgetPaddingTargetConfig::TelegramFeed)),
             "Outcomes" => Ok(known(WidgetPaddingTargetConfig::Outcomes)),
+            "NewListings" => Ok(known(WidgetPaddingTargetConfig::NewListings)),
             "HypeEtfs" => Ok(known(WidgetPaddingTargetConfig::HypeEtfs)),
             "HypeUnstakingQueue" => Ok(known(WidgetPaddingTargetConfig::HypeUnstakingQueue)),
             "Chart"
@@ -158,6 +159,7 @@ impl<'de> Visitor<'de> for WidgetPaddingTargetVisitor {
             | "TrackedTrades"
             | "TelegramFeed"
             | "Outcomes"
+            | "NewListings"
             | "HypeEtfs"
             | "HypeUnstakingQueue" => {
                 return Err(de::Error::custom(format!(

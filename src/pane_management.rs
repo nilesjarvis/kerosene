@@ -25,6 +25,7 @@ pub(crate) enum AddWidgetKind {
     Portfolio,
     Income,
     Outcomes,
+    NewListings,
     HypeEtfs,
     HypeUnstakingQueue,
     Liquidations,
@@ -51,6 +52,7 @@ impl AddWidgetKind {
             Self::Portfolio => "Portfolio",
             Self::Income => "Income",
             Self::Outcomes => "Outcomes",
+            Self::NewListings => "New Listings",
             Self::HypeEtfs => "HYPE ETFs",
             Self::HypeUnstakingQueue => "HYPE Unstaking Queue",
             Self::Liquidations => "Liquidations Feed",
@@ -162,6 +164,7 @@ impl TradingTerminal {
                     AddWidgetKind::Portfolio => matches!(kind, PaneKind::Portfolio),
                     AddWidgetKind::Income => matches!(kind, PaneKind::Income),
                     AddWidgetKind::Outcomes => matches!(kind, PaneKind::Outcomes),
+                    AddWidgetKind::NewListings => matches!(kind, PaneKind::NewListings),
                     AddWidgetKind::HypeEtfs => matches!(kind, PaneKind::HypeEtfs),
                     AddWidgetKind::HypeUnstakingQueue => {
                         matches!(kind, PaneKind::HypeUnstakingQueue)

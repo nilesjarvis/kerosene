@@ -14,6 +14,7 @@ pub(super) struct AddWidgetMenuContext {
     pub(super) tracked_trades_open: bool,
     pub(super) telegram_feed_open: bool,
     pub(super) outcomes_open: bool,
+    pub(super) listings_open: bool,
     pub(super) hype_etfs_open: bool,
     pub(super) hype_unstaking_queue_open: bool,
     pub(super) ticker_tape_open: bool,
@@ -53,6 +54,7 @@ impl AddWidgetMenuContext {
             telegram_feed_open: terminal
                 .pane_is_open(|kind| matches!(kind, PaneKind::TelegramFeed)),
             outcomes_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::Outcomes)),
+            listings_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::NewListings)),
             hype_etfs_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::HypeEtfs)),
             hype_unstaking_queue_open: terminal
                 .pane_is_open(|kind| matches!(kind, PaneKind::HypeUnstakingQueue)),

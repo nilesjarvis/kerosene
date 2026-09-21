@@ -212,6 +212,7 @@ impl TradingTerminal {
         if state.pane_is_open(|kind| matches!(kind, PaneKind::XFeed(_))) {
             boot_tasks.push(state.request_x_feed_auth_refresh());
         }
+        boot_tasks.push(state.request_listings_refresh(false));
         boot_tasks.push(state.request_hype_etfs_boot_refresh());
         boot_tasks.push(state.request_hype_unstaking_queue_boot_refresh());
 

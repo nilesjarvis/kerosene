@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn listings_messages_reach_the_market_and_pane_routes() {
+    assert_route(Message::AddNewListingsPane, UpdateRoute::Panes);
+    for message in [
+        Message::ListingsTick,
+        Message::RefreshListings,
+        Message::ListingsFilterChanged(crate::market_state::listings::ListingsFilter::Spot),
+        Message::ListingsLoaded(
+            7,
+            Box::new(crate::market_state::listings::ListingsSnapshot {
+                perps: Err("offline".into()),
+                spot: Err("offline".into()),
+            }),
+        ),
+        Message::ListingsSaved(Ok(())),
+    ] {
+        assert_route(message, UpdateRoute::Market);
+    }
+}
+
+#[test]
 fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
     let source_context = crate::read_data_provider::MarketDataSourceContext {
         provider: crate::config::ReadDataProvider::Hyperliquid,

@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::fmt;
 
+mod listings;
 mod model;
+pub(crate) use listings::fetch_listings_snapshot;
 mod outcomes;
 mod perps;
 mod spot;
