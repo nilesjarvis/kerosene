@@ -8,6 +8,7 @@ use iced::{Element, Fill};
 impl TradingTerminal {
     pub(super) fn view_liquidations_summary(&self, now_ms: u64) -> Element<'_, Message> {
         let theme = self.theme();
+        let (buy_color, sell_color) = self.direction_colors(&theme);
         let denomination = self.display_denomination_context();
         let timeframes = [(1, "1m"), (5, "5m"), (15, "15m"), (60, "1H")];
         let mut summary_row = row![].spacing(16);
@@ -17,12 +18,7 @@ impl TradingTerminal {
             let has_data = total > 0.0;
 
             let (text_l_color, text_s_color, bar_l_color, bar_s_color) = if has_data {
-                (
-                    theme.palette().danger,
-                    theme.palette().success,
-                    theme.palette().danger,
-                    theme.palette().success,
-                )
+                (sell_color, buy_color, sell_color, buy_color)
             } else {
                 let gray_text = theme.extended_palette().background.weak.text;
                 let gray_bar = theme.extended_palette().background.strong.color;

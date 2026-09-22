@@ -2,7 +2,7 @@ mod cells;
 mod style;
 
 use self::cells::liquidation_symbol_button;
-use self::style::{liquidation_row_color, liquidation_row_style};
+use self::style::liquidation_row_style;
 
 use crate::app_state::TradingTerminal;
 use crate::feed_state::LiquidationFeedRow;
@@ -24,7 +24,7 @@ impl TradingTerminal {
         row_layout: LiquidationFeedRowLayout,
     ) -> Element<'static, Message> {
         let theme = self.theme();
-        let (color, opacity) = liquidation_row_color(&theme, liq.is_buy, liq.notional);
+        let (color, opacity) = self.liquidation_row_color(&theme, liq.is_buy, liq.notional);
         let side_str = if liq.is_buy { "BUY" } else { "SELL" };
         let method_label = self.liquidation_method_label(&liq);
         let display_coin = self.display_name_for_symbol(&liq.coin);

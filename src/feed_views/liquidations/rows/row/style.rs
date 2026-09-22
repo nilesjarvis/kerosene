@@ -1,35 +1,37 @@
-use iced::Color;
+use crate::app_state::TradingTerminal;
 use iced::widget::container as container_style;
+use iced::{Color, Theme};
 
-// Neutral magnitude colors — row background conveys attention level, not side.
-// The Side cell carries the buy/sell semantic color separately.
-pub(super) fn liquidation_row_color(
-    _theme: &iced::Theme,
-    _is_buy: bool,
-    notional: f64,
-) -> (Color, f32) {
-    let color = Color {
-        r: 0.55,
-        g: 0.45,
-        b: 0.35,
-        a: 1.0,
-    };
+#[cfg(test)]
+mod tests;
 
-    let opacity = if notional < 1_000.0 {
-        0.02
-    } else if notional < 10_000.0 {
-        0.05
-    } else if notional < 50_000.0 {
-        0.1
-    } else if notional < 100_000.0 {
-        0.2
-    } else if notional < 500_000.0 {
-        0.35
-    } else {
-        0.6
-    };
+impl TradingTerminal {
+    pub(super) fn liquidation_row_color(
+        &self,
+        theme: &Theme,
+        is_buy: bool,
+        notional: f64,
+    ) -> (Color, f32) {
+        let (up, down) = self.direction_colors(theme);
+        let color = if is_buy { up } else { down };
 
-    (color, opacity)
+        // Magnitude changes the background opacity while preserving the candle hue.
+        let opacity = if notional < 1_000.0 {
+            0.02
+        } else if notional < 10_000.0 {
+            0.05
+        } else if notional < 50_000.0 {
+            0.1
+        } else if notional < 100_000.0 {
+            0.2
+        } else if notional < 500_000.0 {
+            0.35
+        } else {
+            0.6
+        };
+
+        (color, opacity)
+    }
 }
 
 pub(super) fn liquidation_row_style(
