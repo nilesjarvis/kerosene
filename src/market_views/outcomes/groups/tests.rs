@@ -33,6 +33,8 @@ fn outcome_symbol_with(
         market_type: MarketType::Outcome,
         outcome: Some(OutcomeSymbolInfo {
             outcome_id,
+            contract: crate::api::OutcomeContract::verified_fixture(),
+            venue: None,
             question_id,
             question_name: question_id.map(|_| "May CPI year-over-year".to_string()),
             question_description: question_id

@@ -17,6 +17,8 @@ mod outcomes;
 fn outcome_info(is_question_fallback: bool) -> OutcomeSymbolInfo {
     OutcomeSymbolInfo {
         outcome_id: 65,
+        contract: crate::api::OutcomeContract::verified_fixture(),
+        venue: None,
         question_id: Some(12),
         question_name: Some("Recurring".to_string()),
         question_description: Some(

@@ -1,6 +1,7 @@
 use super::*;
 
 mod binary;
+mod hardening;
 mod questions;
 
 fn outcome_meta_from_json(value: serde_json::Value) -> OutcomeMetaResponse {

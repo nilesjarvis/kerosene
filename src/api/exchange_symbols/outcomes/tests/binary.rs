@@ -39,7 +39,7 @@ fn appends_binary_outcome_symbol_metadata() {
 }
 
 #[test]
-fn outcome_quote_token_defaults_to_usdc_for_older_fixtures() {
+fn missing_outcome_quote_token_is_unknown_and_not_orderable() {
     let mut symbols = Vec::new();
     append_outcome_symbols(
         &mut symbols,
@@ -47,23 +47,25 @@ fn outcome_quote_token_defaults_to_usdc_for_older_fixtures() {
             "outcomes": [{
                 "outcome": 65,
                 "name": "Recurring",
-                "description": "class:priceBinary|underlying:BTC|targetPrice:76886",
-                "sideSpecs": [{"name": "Yes"}]
+                "description": "class:priceBinary|underlying:BTC|targetPrice:76886|expiry:20260520-0600",
+                "sideSpecs": [{"name": "Yes"}, {"name": "No"}]
             }],
             "questions": []
         })),
     );
 
     let info = outcome_by_key_or_panic(&symbols, "#650");
-    assert_eq!(info.quote_symbol, "USDC");
-    assert_eq!(info.quote_token_index, Some(crate::api::USDC_TOKEN_INDEX));
+    assert_eq!(info.quote_symbol, "UNKNOWN");
+    assert_eq!(info.quote_token_index, None);
+    assert_eq!(
+        info.trading_block_reason(0),
+        Some("Unsupported outcome quote token")
+    );
 }
 
 #[test]
-fn skips_non_binary_outcome_sides() {
-    let mut symbols = Vec::new();
-    append_outcome_symbols(
-        &mut symbols,
+fn rejects_non_binary_outcome_sides() {
+    let result = parse_outcome_symbols(
         outcome_meta_from_json(serde_json::json!({
             "outcomes": [{
                 "outcome": 65,
@@ -76,9 +78,11 @@ fn skips_non_binary_outcome_sides() {
             }],
             "questions": []
         })),
+        &[],
     );
 
-    assert!(symbols.iter().any(|symbol| symbol.key == "#650"));
-    assert!(symbols.iter().any(|symbol| symbol.key == "#651"));
-    assert!(!symbols.iter().any(|symbol| symbol.key == "#652"));
+    assert_eq!(
+        result.expect_err("three sides are not a binary contract"),
+        "Outcome metadata must contain exactly two sides"
+    );
 }

@@ -11,8 +11,11 @@ mod outcomes;
 mod perps;
 mod spot;
 
-pub use model::{ExchangeSymbol, MarketType, OutcomeSymbolInfo, spot_symbol_for_indexed_key};
-use outcomes::{OutcomeMetaResponse, append_outcome_symbols};
+pub use model::{
+    ExchangeSymbol, MarketType, OutcomeContract, OutcomeSymbolInfo, spot_symbol_for_indexed_key,
+};
+use outcomes::templates::OutcomeTemplate;
+use outcomes::{OutcomeMetaResponse, parse_outcome_symbols};
 use perps::append_perp_symbols;
 use spot::append_spot_symbols;
 
@@ -23,7 +26,7 @@ use spot::append_spot_symbols;
 pub struct ExchangeSymbolsPayload {
     pub symbols: Vec<ExchangeSymbol>,
     /// Runtime-only provenance. Cached metadata is useful for rendering, but
-    /// must never authorize spot trading until a live strict refresh succeeds.
+    /// must never authorize spot or outcome trading until a live refresh succeeds.
     #[serde(skip)]
     pub loaded_from_cache: bool,
     #[serde(default)]
@@ -79,7 +82,8 @@ impl ExchangeSymbolsPayload {
 }
 
 /// Fetch all tradeable symbols (perps + spot + outcomes) by combining
-/// allPerpMetas, perpConciseAnnotations, perpDexs, spotMeta, and outcomeMeta.
+/// allPerpMetas, perpConciseAnnotations, perpDexs, spotMeta, outcomeMeta,
+/// and outcomeTemplates.
 pub async fn fetch_exchange_symbols() -> Result<ExchangeSymbolsPayload, String> {
     let client = CLIENT.clone();
     let perp_client = client.clone();
@@ -106,11 +110,11 @@ pub async fn fetch_exchange_symbols() -> Result<ExchangeSymbolsPayload, String> 
             Ok::<_, String>(symbols)
         },
         async move {
-            let outcome_meta =
-                post_info_typed::<OutcomeMetaResponse>(outcome_client, "outcomeMeta").await?;
-            let mut symbols = Vec::new();
-            append_outcome_symbols(&mut symbols, outcome_meta);
-            Ok::<_, String>(symbols)
+            let (outcome_meta, templates) = futures::try_join!(
+                post_info_typed::<OutcomeMetaResponse>(outcome_client.clone(), "outcomeMeta"),
+                post_info_typed::<Vec<OutcomeTemplate>>(outcome_client, "outcomeTemplates"),
+            )?;
+            parse_outcome_symbols(outcome_meta, &templates)
         },
     );
 
@@ -157,6 +161,11 @@ pub async fn fetch_exchange_symbols_cached() -> Result<ExchangeSymbolsPayload, S
 
 fn mark_payload_loaded_from_cache(mut payload: ExchangeSymbolsPayload) -> ExchangeSymbolsPayload {
     payload.loaded_from_cache = true;
+    for symbol in &mut payload.symbols {
+        if let Some(info) = &mut symbol.outcome {
+            info.contract.verified = false;
+        }
+    }
     payload
 }
 

@@ -392,6 +392,22 @@ Key modules:
 Outcome markets force coin-size input for some order flows and should avoid
 incorrect USD-notional assumptions.
 
+### HIP-4 contract metadata
+
+Outcome discovery reads `outcomeMeta` and `outcomeTemplates` together. The
+`outcomes/templates.rs` and `outcomes/contracts.rs` modules validate identities,
+parent questions, template parameters, deadlines, quote tokens, and side labels.
+They render binary, touch, scalar, sports, IPO, AI, and policy contract terms.
+
+`OutcomeSymbolInfo` retains optional venue metadata, including Skew, and resolved
+`OutcomeContract` rules, lifecycle deadlines, and published fee scales. Venue
+labels are searchable and do not change native outcome coin or asset identities.
+Older caches default the added fields; contract verification never survives
+serialization. Unsupported contracts retain displayable terms and a block reason.
+
+Public HIP-4 metadata and template fixtures cover parsing, lifecycle boundaries,
+parent validation, fee terms, cache compatibility, and malformed metadata.
+
 ## HYPE ETF And Unstaking Widgets
 
 HYPE-specific market widgets live in:

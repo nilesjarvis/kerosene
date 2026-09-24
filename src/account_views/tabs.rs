@@ -418,6 +418,8 @@ mod tests {
             market_type: MarketType::Outcome,
             outcome: Some(OutcomeSymbolInfo {
                 outcome_id: 95,
+                contract: crate::api::OutcomeContract::verified_fixture(),
+                venue: None,
                 question_id: None,
                 question_name: None,
                 question_description: None,

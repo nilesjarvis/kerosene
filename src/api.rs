@@ -28,8 +28,8 @@ pub(crate) use chart_asset_context::{fetch_chart_asset_context, fetch_spot_chart
 pub(crate) use exchange_stats::{ExchangeStats, fetch_exchange_stats};
 pub(crate) use exchange_symbols::fetch_listings_snapshot;
 pub use exchange_symbols::{
-    ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OutcomeSymbolInfo, fetch_exchange_symbols,
-    fetch_exchange_symbols_cached, spot_symbol_for_indexed_key,
+    ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OutcomeContract, OutcomeSymbolInfo,
+    fetch_exchange_symbols, fetch_exchange_symbols_cached, spot_symbol_for_indexed_key,
 };
 pub(crate) use hype_etfs::fetch_hype_etfs;
 pub(crate) use hype_unstaking_queue::fetch_hype_unstaking_queue;

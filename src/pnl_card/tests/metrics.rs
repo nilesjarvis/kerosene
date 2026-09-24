@@ -28,6 +28,8 @@ fn outcome_symbol(key: &str) -> ExchangeSymbol {
         market_type: MarketType::Outcome,
         outcome: Some(OutcomeSymbolInfo {
             outcome_id: 95,
+            contract: crate::api::OutcomeContract::verified_fixture(),
+            venue: None,
             question_id: None,
             question_name: Some("Will BTC close green?".to_string()),
             question_description: None,

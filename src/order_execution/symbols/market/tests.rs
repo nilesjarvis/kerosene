@@ -33,6 +33,8 @@ fn outcome_symbol(key: &str, is_question_fallback: bool) -> ExchangeSymbol {
         market_type: MarketType::Outcome,
         outcome: Some(OutcomeSymbolInfo {
             outcome_id: 66,
+            contract: crate::api::OutcomeContract::verified_fixture(),
+            venue: None,
             question_id: Some(12),
             question_name: Some("Recurring".to_string()),
             question_description: None,

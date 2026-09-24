@@ -245,6 +245,8 @@ fn outcome_symbol(key: &str) -> crate::api::ExchangeSymbol {
         market_type: crate::api::MarketType::Outcome,
         outcome: Some(crate::api::OutcomeSymbolInfo {
             outcome_id: 95,
+            contract: crate::api::OutcomeContract::verified_fixture(),
+            venue: None,
             question_id: None,
             question_name: Some("Will BTC close green?".to_string()),
             question_description: None,
