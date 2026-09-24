@@ -75,7 +75,7 @@ impl TradingTerminal {
                     }
                     self.last_focused_workspace = crate::canvas_state::WorkspaceId::Main;
                     self.persist_config();
-                    return Task::none();
+                    return self.sync_outcome_volume_demand();
                 }
                 if self
                     .add_account_window

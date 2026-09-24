@@ -255,7 +255,18 @@ fields. The cached per-market context stores perpetual open interest as USD
 notional (`openInterest * markPx`) for cross-market ranking and retains the
 positive `markPx` used with `prevDayPx` for dynamic 24-hour gainer ranking.
 Legacy cache rows default these newer fields to unavailable. Outcome 24h
-volumes are fetched separately through `api::fetch_outcome_volumes_24h`.
+volumes are fetched separately through `api::fetch_outcome_volumes_24h`. An
+Outcomes widget in the main window or an open Canvas requests eligible markets;
+otherwise only primary symbols of open outcome charts (including detached
+charts) request volumes for their headers. Closed saved canvases and unused
+chart instances create no volume demand. Pane/layout/window changes reconcile
+demand immediately, and the existing status tick picks up chart symbol or
+visibility changes within one second. Changed demand aborts the old batch and
+rejects late results; repeated metadata refreshes reuse an in-flight batch for
+the same symbols. Runtime-only task and requested-symbol state preserve known
+volumes between batches. At most two candle fetches run concurrently, retaining
+the existing candle cache and shared API read budget. Outcome metadata, trading,
+chart subscriptions, and account reads remain independent of volume demand.
 
 ## Live Watchlists
 

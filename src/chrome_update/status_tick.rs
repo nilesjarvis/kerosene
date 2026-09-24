@@ -16,6 +16,7 @@ impl TradingTerminal {
             self.flush_config_save_if_due(now),
             self.stop_chase_if_limits_reached(now),
             self.retry_stopped_chase_cancels(now),
+            self.sync_outcome_volume_demand(),
         ];
         tasks.extend(self.queue_chart_asset_context_rest_fetches(now_ms));
         tasks.extend(self.queue_chart_price_change_history(now_ms));

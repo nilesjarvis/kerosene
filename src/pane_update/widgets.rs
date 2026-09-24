@@ -202,13 +202,16 @@ impl TradingTerminal {
             }
             Message::AddOutcomesPane => {
                 self.add_widget_menu_open = false;
-                self.add_or_focus_singleton_pane(
+                let outcome = self.add_or_focus_singleton_pane(
                     workspace,
                     self.add_widget_axis(),
                     PaneKind::Outcomes,
                     "Outcomes",
                     |kind| matches!(kind, PaneKind::Outcomes),
                 );
+                if !matches!(outcome, AddPaneOutcome::Failed) {
+                    return self.sync_outcome_volume_demand();
+                }
             }
             Message::AddNewListingsPane => {
                 self.add_widget_menu_open = false;

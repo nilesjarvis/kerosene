@@ -463,6 +463,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) symbol_search_status: Option<(String, bool)>,
     pub(crate) outcome_volumes_24h: HashMap<String, api::OutcomeVolume24h>,
     pub(crate) outcome_volumes_loading: bool,
+    pub(crate) outcome_volumes_task: Option<iced::task::Handle>,
+    pub(crate) outcome_volumes_requested_symbols: Vec<String>,
     pub(crate) outcome_volumes_request_id: u64,
     pub(crate) outcome_volumes_error: Option<String>,
     pub(crate) outcome_search_query: String,

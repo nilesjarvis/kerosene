@@ -83,7 +83,10 @@ impl TradingTerminal {
         self.last_focused_workspace = WorkspaceId::Canvas(id);
         self.add_widget_workspace = WorkspaceId::Canvas(id);
         self.persist_config();
-        open_task.map(Message::WindowOpened)
+        Task::batch([
+            open_task.map(Message::WindowOpened),
+            self.sync_outcome_volume_demand(),
+        ])
     }
 
     pub(crate) fn focus_workspace_window(&mut self, workspace: WorkspaceId) -> Task<Message> {

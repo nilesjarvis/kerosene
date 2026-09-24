@@ -250,6 +250,8 @@ impl TradingTerminal {
             symbol_search_status: None,
             outcome_volumes_24h: HashMap::new(),
             outcome_volumes_loading: false,
+            outcome_volumes_task: None,
+            outcome_volumes_requested_symbols: Vec::new(),
             outcome_volumes_request_id: 0,
             outcome_volumes_error: None,
             outcome_search_query: String::new(),
