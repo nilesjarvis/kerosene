@@ -390,6 +390,20 @@ Outcome markets have special handling:
 - outcome sell prefill can use held outcome balances
 - unsupported order surfaces should disable rather than route
 
+Outcome placement and modification additionally require live verified contract
+metadata, supported quote tokens, and an unpassed expiry/resolution deadline.
+These checks run in shared preparation, including ticket, presets, and moving
+existing orders. Cached, unknown, malformed, settled, and fallback contracts
+are not orderable. Cancellation stays available and can recover deterministic
+asset IDs from canonical `#(10 * outcome + side)` keys after metadata removal;
+that recovery never authorizes placement or modification.
+
+The ticket exposes template-derived rules, parent-question context, and
+published fee scales. Scalar prices represent fractional payout value, not
+event probabilities. Split/merge/negate operations are not exposed. See
+[market data and symbols](market-data-and-symbols.md#contract-verification-and-lifecycle)
+for metadata provenance and supported template families.
+
 Do not assume all market symbols are main-dex perpetuals.
 
 ## Security Boundaries

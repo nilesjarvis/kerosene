@@ -731,15 +731,22 @@ impl TradingTerminal {
         // Open-order snapshots identify spot markets as "@{index}", except
         // for the established API-named PURR/USDC pair. Cancellation can
         // safely recover those deterministic asset ids while metadata is
-        // unavailable. Keep this fallback cancellation-only: placement and
+        // unavailable. HIP-4 also has deterministic canonical side keys.
+        // Keep this fallback cancellation-only: placement and
         // modification still require complete metadata for decimals,
         // orderability, and market-type validation.
-        let Some(asset) = metadata_free_spot_cancel_asset(&intent.symbol_key) else {
+        let recovered = metadata_free_spot_cancel_asset(&intent.symbol_key)
+            .map(|asset| (asset, MarketType::Spot))
+            .or_else(|| {
+                metadata_free_outcome_cancel_asset(&intent.symbol_key)
+                    .map(|asset| (asset, MarketType::Outcome))
+            });
+        let Some((asset, market_type)) = recovered else {
             return Err(intent
                 .surface
                 .symbol_not_found_status_text(&intent.symbol_key));
         };
-        validate_surface_market_type(intent.surface, OrderOperation::Cancel, MarketType::Spot)
+        validate_surface_market_type(intent.surface, OrderOperation::Cancel, market_type)
             .map_err(OrderCapabilityError::status_text)?;
 
         Ok(PreparedCancelOrder {
@@ -747,7 +754,7 @@ impl TradingTerminal {
             symbol_key: intent.symbol_key,
             asset,
             oid: intent.oid,
-            market_type: MarketType::Spot,
+            market_type,
         })
     }
 
@@ -1026,6 +1033,24 @@ fn metadata_free_spot_cancel_asset(key: &str) -> Option<u32> {
         return None;
     }
     10_000u32.checked_add(index.parse::<u32>().ok()?)
+}
+
+/// Settled outcomes can disappear from metadata before their open-order
+/// snapshot refreshes. Only canonical HIP-4 side keys can recover an asset,
+/// and this helper is used exclusively for cancellation.
+fn metadata_free_outcome_cancel_asset(key: &str) -> Option<u32> {
+    let encoded = key.strip_prefix('#')?;
+    if encoded.is_empty()
+        || (encoded.len() > 1 && encoded.starts_with('0'))
+        || !encoded.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    let encoding = encoded.parse::<u32>().ok()?;
+    if encoding % 10 > 1 {
+        return None;
+    }
+    crate::api::OUTCOME_ASSET_ID_OFFSET.checked_add(encoding)
 }
 
 fn validate_prepared_price(
@@ -2025,6 +2050,119 @@ mod tests {
         assert_eq!(prepared.asset, 7);
         assert_eq!(prepared.oid, 42);
         assert_eq!(prepared.market_type, MarketType::Outcome);
+    }
+
+    #[test]
+    fn missing_outcome_metadata_only_allows_cancelling_canonical_side_assets() {
+        let terminal = TradingTerminal::boot().0;
+        for (key, asset) in [("#650", 100_000_650), ("#651", 100_000_651)] {
+            let cancel = terminal
+                .prepare_cancel_order(CancelIntent {
+                    surface: OrderSurface::Cancel,
+                    symbol_key: key.into(),
+                    oid: 42,
+                })
+                .expect("cancel without expired metadata");
+            assert_eq!(cancel.asset, asset);
+            assert_eq!(cancel.market_type, MarketType::Outcome);
+            assert!(
+                terminal
+                    .prepare_place_order(ticket_limit_intent(key))
+                    .is_err()
+            );
+            assert!(
+                terminal
+                    .prepare_modify_order(move_modify_intent(key))
+                    .is_err()
+            );
+        }
+        for key in [
+            "#",
+            "#0650",
+            "#652",
+            "#-650",
+            "#+650",
+            "#650 ",
+            "+650",
+            "#4294967290",
+            "#42949672950",
+        ] {
+            assert!(
+                terminal
+                    .prepare_cancel_order(CancelIntent {
+                        surface: OrderSurface::Cancel,
+                        symbol_key: key.into(),
+                        oid: 42,
+                    })
+                    .is_err(),
+                "{key}"
+            );
+        }
+    }
+
+    #[test]
+    fn unsafe_outcome_terms_block_ticket_preset_and_modify_but_preserve_cancellation() {
+        for state in [
+            "expired",
+            "unverified",
+            "unsupported",
+            "settled",
+            "unknown quote",
+        ] {
+            let mut terminal = TradingTerminal::boot().0;
+            let mut symbol = outcome_symbol("#650");
+            symbol.asset_index = 100_000_650;
+            let info = symbol.outcome.as_mut().expect("terms");
+            let expected_reason = match state {
+                "expired" => {
+                    info.contract.deadline_ms = Some(1);
+                    "Expired"
+                }
+                "unverified" => {
+                    info.contract.verified = false;
+                    "unverified"
+                }
+                "unsupported" => {
+                    info.contract.blocked_reason = Some("Contract template is unavailable".into());
+                    "template is unavailable"
+                }
+                "settled" => {
+                    info.question_settled_named_outcomes = vec![65];
+                    "Settled"
+                }
+                "unknown quote" => {
+                    info.quote_token_index = None;
+                    "Unsupported outcome quote token"
+                }
+                _ => unreachable!(),
+            };
+            terminal.exchange_symbols = vec![symbol];
+            // Keep the frame clock behind expiry to prove submission rechecks
+            // the actual time even before the UI has rendered its next frame.
+            terminal.status_bar_now_ms = 0;
+            for surface in [OrderSurface::Ticket, OrderSurface::Preset] {
+                let mut intent = ticket_limit_intent("#650");
+                intent.surface = surface;
+                let error = terminal
+                    .prepare_place_order(intent)
+                    .expect_err("unsafe placement rejected");
+                assert!(error.contains(expected_reason), "{state}: {error}");
+            }
+            let result = terminal.prepare_modify_order(move_modify_intent("#650"));
+            assert!(
+                matches!(result, Err(error) if error.contains(expected_reason)),
+                "{state}"
+            );
+            let cancel = terminal
+                .prepare_cancel_order(CancelIntent {
+                    surface: OrderSurface::Cancel,
+                    symbol_key: "#650".into(),
+                    oid: 42,
+                })
+                .expect("cancel remains available");
+            assert_eq!(cancel.asset, 100_000_650);
+            assert_eq!(cancel.oid, 42);
+        }
     }
 
     #[test]

@@ -102,15 +102,15 @@ impl TradingTerminal {
 
     /// A failed metadata request leaves that market type absent from the
     /// payload. Retained spot symbols stay visible but are fail-closed for new
-    /// orders; retained outcome symbols are label-only until fresh metadata
-    /// proves either market type orderable again.
+    /// orders; retained outcome terms remain visible for inspection and
+    /// cancellation until fresh metadata verifies them again.
     fn merge_symbols_payload(
         &self,
         payload: ExchangeSymbolsPayload,
     ) -> Vec<crate::api::ExchangeSymbol> {
         let ExchangeSymbolsPayload {
             mut symbols,
-            loaded_from_cache: _,
+            loaded_from_cache,
             perp_meta_failed,
             spot_meta_failed,
             outcome_meta_failed,
@@ -145,13 +145,22 @@ impl TradingTerminal {
                                 .cloned()
                                 .unwrap_or_else(|| Self::exchange_symbol_display_name(&symbol)),
                         );
-                        symbol.outcome = None;
+                        if let Some(info) = &mut symbol.outcome {
+                            info.contract.verified = false;
+                        }
                         symbol
                     }),
             );
         }
         if perp_meta_failed || spot_meta_failed || outcome_meta_failed {
             symbols.sort_by(|a, b| a.ticker.cmp(&b.ticker));
+        }
+        if loaded_from_cache {
+            for symbol in &mut symbols {
+                if let Some(info) = &mut symbol.outcome {
+                    info.contract.verified = false;
+                }
+            }
         }
         symbols
     }
@@ -436,7 +445,7 @@ impl TradingTerminal {
                 };
                 if loaded_from_cache {
                     self.symbol_search_status = Some((
-                        "Cached markets are visible while live spot metadata is verified; spot trading remains disabled until verification succeeds"
+                        "Cached markets are visible while live metadata is verified; spot and outcome trading remain disabled until verification succeeds"
                             .to_string(),
                         true,
                     ));
@@ -471,11 +480,7 @@ impl TradingTerminal {
                             .to_string(),
                         true,
                     ));
-                } else if outcome_meta_failed
-                    && !self.exchange_symbols.iter().any(|symbol| {
-                        symbol.market_type == MarketType::Outcome && symbol.outcome.is_some()
-                    })
-                {
+                } else if outcome_meta_failed {
                     self.symbol_search_status = Some((
                         "Outcome market metadata failed to load; retrying shortly".to_string(),
                         true,
@@ -679,6 +684,11 @@ impl TradingTerminal {
             }
             Err(error) => {
                 self.symbols_loading = false;
+                for symbol in &mut self.exchange_symbols {
+                    if let Some(info) = &mut symbol.outcome {
+                        info.contract.verified = false;
+                    }
+                }
                 // Background refreshes fail quietly; the next tick retries.
                 if self.exchange_symbols.is_empty() {
                     let message = format!(
@@ -982,13 +992,9 @@ mod tests {
             .validate_exchange_symbol_orderable(cached_spot, "Active")
             .expect_err("cache provenance cannot authorize a spot order");
         assert!(error.contains("temporarily unverified"));
-        assert!(
-            terminal
-                .symbol_search_status
-                .as_ref()
-                .is_some_and(|(message, is_error)| *is_error
-                    && message.contains("live spot metadata is verified"))
-        );
+        assert!(terminal.symbol_search_status.as_ref().is_some_and(
+            |(message, is_error)| *is_error && message.contains("live metadata is verified")
+        ));
 
         let _task = terminal.apply_symbols_loaded(Ok(payload(vec![perp_symbol("HYPE"), spot])));
 
@@ -1002,6 +1008,26 @@ mod tests {
                 .validate_exchange_symbol_orderable(verified_spot, "Active")
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn cached_and_failed_outcome_metadata_remains_inspectable_until_live_recovery() {
+        let mut terminal = TradingTerminal::boot().0;
+        let live = outcome_symbol("#950");
+        let mut cached = payload(vec![live.clone()]);
+        cached.loaded_from_cache = true;
+        let task = terminal.apply_symbols_loaded(Ok(cached));
+        assert!(task.units() >= 1);
+        assert!(terminal.exchange_symbols_refresh_inflight);
+        assert!(terminal.exchange_symbols[0].is_user_selectable_market());
+        assert!(!terminal.exchange_symbol_is_orderable(&terminal.exchange_symbols[0]));
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![live.clone()])));
+        assert!(terminal.exchange_symbol_is_orderable(&terminal.exchange_symbols[0]));
+        let _task = terminal.apply_symbols_loaded(Err("offline".into()));
+        assert!(terminal.exchange_symbols[0].is_user_selectable_market());
+        assert!(!terminal.exchange_symbol_is_orderable(&terminal.exchange_symbols[0]));
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![live])));
+        assert!(terminal.exchange_symbol_is_orderable(&terminal.exchange_symbols[0]));
     }
 
     #[test]
@@ -1677,8 +1703,15 @@ mod tests {
             terminal.exchange_symbols[0].display_name.as_deref(),
             Some("YES: Will BTC close green?")
         );
-        assert!(terminal.exchange_symbols[0].outcome.is_none());
-        assert!(!terminal.exchange_symbols[0].is_user_selectable_market());
+        assert!(
+            !terminal.exchange_symbols[0]
+                .outcome
+                .as_ref()
+                .expect("terms remain available")
+                .contract
+                .verified
+        );
+        assert!(terminal.exchange_symbols[0].is_user_selectable_market());
         assert!(!terminal.exchange_symbol_is_orderable(&terminal.exchange_symbols[0]));
         assert_eq!(
             terminal.display_name_for_symbol("#950"),
@@ -1694,6 +1727,8 @@ mod tests {
                 true
             ))
         );
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![outcome_symbol("#950")])));
+        assert!(terminal.exchange_symbol_is_orderable(&terminal.exchange_symbols[0]));
     }
 
     #[test]

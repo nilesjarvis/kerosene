@@ -1,4 +1,4 @@
-use crate::api::{MarketType, USDC_TOKEN_INDEX};
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 
 pub(crate) const OUTCOME_MIN_PRICE: f64 = 0.001;
@@ -37,16 +37,15 @@ impl TradingTerminal {
             .find(|symbol| symbol.key == coin && symbol.market_type == MarketType::Outcome)
             .and_then(|symbol| symbol.outcome.as_ref())
             .map(|info| info.quote_symbol.clone())
-            .unwrap_or_else(|| "USDC".to_string())
+            .unwrap_or_else(|| "UNKNOWN".to_string())
     }
 
-    pub(crate) fn outcome_quote_token_index_for_coin(&self, coin: &str) -> u32 {
+    pub(crate) fn outcome_quote_token_index_for_coin(&self, coin: &str) -> Option<u32> {
         self.exchange_symbols
             .iter()
             .find(|symbol| symbol.key == coin && symbol.market_type == MarketType::Outcome)
             .and_then(|symbol| symbol.outcome.as_ref())
             .and_then(|info| info.quote_token_index)
-            .unwrap_or(USDC_TOKEN_INDEX)
     }
 
     pub(crate) fn display_coin_for_spot_balance(&self, coin: &str) -> String {

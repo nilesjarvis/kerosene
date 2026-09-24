@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn outcome_mids_never_use_display_tickers_as_price_sources() {
+    let mut terminal = TradingTerminal::boot().0;
+    let mut outcome = outcome_symbol("#650", false);
+    outcome.ticker = "BTC".into();
+    terminal.exchange_symbols = vec![outcome];
+    let now = TradingTerminal::now_ms();
+    for alias in ["BTC", "UBTC"] {
+        terminal.all_mids.insert(alias.into(), 75_000.0);
+        terminal.all_mids_updated_at_ms.insert(alias.into(), now);
+    }
+    assert_eq!(terminal.mid_candidates_for_symbol("#650"), vec!["#650"]);
+    assert_eq!(terminal.resolve_mid_for_symbol_at("#650", now), None);
+    terminal.all_mids.insert("#650".into(), 0.42);
+    terminal.all_mids_updated_at_ms.insert("#650".into(), now);
+    assert_eq!(terminal.resolve_mid_for_symbol_at("#650", now), Some(0.42));
+}
+
+#[test]
 fn mid_candidates_cover_encoded_dex_and_u_prefixed_forms() {
     let mut terminal = TradingTerminal::boot().0;
 

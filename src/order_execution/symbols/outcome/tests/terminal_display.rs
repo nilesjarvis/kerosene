@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn outcome_quote_lookup_never_substitutes_usdc_for_unknown_metadata() {
+    let mut terminal = TradingTerminal::boot().0;
+    assert_eq!(terminal.outcome_quote_symbol_for_coin("#650"), "UNKNOWN");
+    assert_eq!(terminal.outcome_quote_token_index_for_coin("#650"), None);
+    let mut symbol = spot_symbol("#650", "OUT65-YES", "BTC price contract");
+    symbol.market_type = api::MarketType::Outcome;
+    symbol.outcome = Some(outcome_info());
+    terminal.exchange_symbols = vec![symbol];
+    assert_eq!(
+        terminal.outcome_quote_token_index_for_coin("#650"),
+        Some(150)
+    );
+    terminal.exchange_symbols[0]
+        .outcome
+        .as_mut()
+        .expect("terms")
+        .quote_token_index = None;
+    assert_eq!(terminal.outcome_quote_token_index_for_coin("#650"), None);
+}
+
+#[test]
 fn outcome_balance_coin_maps_to_trade_coin() {
     assert_eq!(
         TradingTerminal::outcome_balance_coin_to_trade_coin("+650"),

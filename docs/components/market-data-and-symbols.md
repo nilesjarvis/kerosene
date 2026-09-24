@@ -408,6 +408,22 @@ serialization. Unsupported contracts retain displayable terms and a block reason
 Public HIP-4 metadata and template fixtures cover parsing, lifecycle boundaries,
 parent validation, fee terms, cache compatibility, and malformed metadata.
 
+### Contract verification and order safety
+
+Outcome placement and modification require live verified metadata, a supported
+quote token, and an unpassed contract deadline. Failed or cached refreshes
+preserve readable terms and cancellation access while disabling new orders.
+Expiry is checked again against the actual clock during order preparation.
+
+Only the exact outcome coin supplies order pricing; display tickers and
+underlying-perpetual aliases cannot supply a mid. Unknown quote-token metadata
+never substitutes USDC for balances or percentage sizing. Canonical outcome
+side keys can recover deterministic asset IDs for cancellation after metadata
+removal, without authorizing placement or modification.
+
+Regression tests cover cached/failed refresh recovery, expired and settled
+contracts, ticket/preset/modify gates, quote lookups, and cancellation.
+
 ## HYPE ETF And Unstaking Widgets
 
 HYPE-specific market widgets live in:

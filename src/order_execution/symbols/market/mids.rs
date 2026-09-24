@@ -42,6 +42,12 @@ impl TradingTerminal {
             return out;
         }
 
+        // Outcome ticker aliases are presentation only, never price sources.
+        if symbol.starts_with('#')
+            || exchange_symbol.is_some_and(|symbol| symbol.market_type == MarketType::Outcome)
+        {
+            return out;
+        }
         if let Some(encoding) = symbol.strip_prefix('+') {
             push_unique(format!("#{encoding}"));
         }
