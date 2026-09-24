@@ -3,8 +3,7 @@ use crate::message::Message;
 use crate::timeframe::Timeframe;
 use crate::ws::{
     HydromancerStreamKey, KeyedAssetContextStreamEvent, KeyedCandleStreamEvent,
-    ws_asset_ctx_stream_keyed, ws_candle_stream_keyed, ws_hydromancer_asset_ctx_stream_keyed,
-    ws_hydromancer_candle_stream_keyed,
+    ws_asset_ctx_stream_keyed, ws_candle_stream_keyed, ws_hydromancer_candle_stream_keyed,
 };
 
 use super::source_context_for_stream_event;
@@ -64,9 +63,6 @@ impl TradingTerminal {
                 hydromancer_key_generation,
             )
         });
-        let hydromancer_read_provider_key = self.hydromancer_read_provider_key().map(|api_key| {
-            HydromancerStreamKey::from_zeroizing(api_key, hydromancer_key_generation)
-        });
         let source_context = self.market_data_source_context();
         let hydromancer_keyed_source_context = self.hydromancer_keyed_market_data_source_context();
         for ((symbol, interval), id) in candle_streams {
@@ -99,22 +95,14 @@ impl TradingTerminal {
             }
         }
         for (symbol, id) in asset_ctx_streams {
-            if let Some(api_key) = hydromancer_read_provider_key.clone() {
-                subs.push(
-                    Subscription::run_with(
-                        (api_key, id, symbol),
-                        ws_hydromancer_asset_ctx_stream_keyed,
-                    )
+            // Hydromancer's activeAssetCtx omits funding and prevDayPx. Its
+            // otherwise-live context also suppresses the REST fallback, so
+            // chart headers need the complete native Hyperliquid stream.
+            subs.push(
+                Subscription::run_with((id, symbol), ws_asset_ctx_stream_keyed)
                     .with(source_context)
                     .map(chart_asset_ctx_stream_event_message),
-                );
-            } else {
-                subs.push(
-                    Subscription::run_with((id, symbol), ws_asset_ctx_stream_keyed)
-                        .with(source_context)
-                        .map(chart_asset_ctx_stream_event_message),
-                );
-            }
+            );
         }
     }
 }
