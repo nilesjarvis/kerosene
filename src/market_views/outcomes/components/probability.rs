@@ -12,9 +12,10 @@ impl TradingTerminal {
         first_color: Color,
         second_color: Color,
     ) -> Element<'static, Message> {
+        let first_mid = valid_probability(first_mid);
+        let second_mid = valid_probability(second_mid);
         let (first_portion, second_portion) = outcome_probability_portions(first_mid, second_mid);
-        let has_mid = first_mid.is_some_and(|value| value.is_finite())
-            || second_mid.is_some_and(|value| value.is_finite());
+        let has_mid = first_mid.is_some() || second_mid.is_some();
         let first_bar = if has_mid {
             Color {
                 a: 0.80,
@@ -59,8 +60,8 @@ impl TradingTerminal {
 }
 
 fn outcome_probability_portions(first_mid: Option<f64>, second_mid: Option<f64>) -> (u16, u16) {
-    let first = first_mid.filter(|value| value.is_finite() && *value >= 0.0);
-    let second = second_mid.filter(|value| value.is_finite() && *value >= 0.0);
+    let first = valid_probability(first_mid);
+    let second = valid_probability(second_mid);
     let first_ratio = match (first, second) {
         (Some(first), Some(second)) if first + second > 0.0 => first / (first + second),
         (Some(first), _) => first.clamp(0.0, 1.0),
@@ -69,4 +70,30 @@ fn outcome_probability_portions(first_mid: Option<f64>, second_mid: Option<f64>)
     };
     let first_portion = (first_ratio * 1000.0).round().clamp(1.0, 999.0) as u16;
     (first_portion, 1000 - first_portion)
+}
+
+fn valid_probability(mid: Option<f64>) -> Option<f64> {
+    mid.filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outcome_probability_bar_does_not_normalize_invalid_prices() {
+        assert_eq!(
+            outcome_probability_portions(Some(0.4), Some(0.6)),
+            (400, 600)
+        );
+        assert_eq!(
+            outcome_probability_portions(Some(75_000.0), Some(0.6)),
+            (400, 600)
+        );
+        assert_eq!(
+            outcome_probability_portions(Some(-1.0), Some(f64::NAN)),
+            (500, 500)
+        );
+        assert_eq!(valid_probability(Some(1.1)), None);
+    }
 }

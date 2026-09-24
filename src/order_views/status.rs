@@ -49,7 +49,7 @@ impl TradingTerminal {
             let quote_symbol = self.outcome_quote_symbol_for_coin(&self.active_symbol);
             form.push(
                 text(format!(
-                    "Outcome orders use {quote_symbol}, probability prices, and whole-contract sizes"
+                    "Outcome orders use {quote_symbol} prices and whole-contract sizes"
                 ))
                 .size(10)
                 .color(color!(0x666666)),

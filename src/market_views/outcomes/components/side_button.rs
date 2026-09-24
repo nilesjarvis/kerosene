@@ -21,7 +21,8 @@ impl TradingTerminal {
         };
 
         let key = sym.key.clone();
-        let probability = outcome_probability_text(mid);
+        let probability =
+            outcome_price_text(mid, side_info.contract.scalar, &side_info.quote_symbol);
         let condition = side_info.side_condition_short_label();
         let side_label = column![
             text(&side_info.side_name)
@@ -95,8 +96,19 @@ impl TradingTerminal {
 
 fn outcome_probability_text(mid: Option<f64>) -> String {
     match mid.and_then(finite_value) {
-        Some(value) => format!("{:.1}%", value * 100.0),
+        Some(value) if (0.0..=1.0).contains(&value) => format!("{:.1}%", value * 100.0),
+        Some(_) => not_available_placeholder(),
         None => not_available_placeholder(),
+    }
+}
+
+fn outcome_price_text(mid: Option<f64>, scalar: bool, quote: &str) -> String {
+    if scalar {
+        mid.filter(|mid| mid.is_finite() && (0.0..=1.0).contains(mid))
+            .map(|mid| format!("{mid:.3} {quote}"))
+            .unwrap_or_else(not_available_placeholder)
+    } else {
+        outcome_probability_text(mid)
     }
 }
 

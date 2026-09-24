@@ -1,6 +1,7 @@
 use super::*;
 use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::app_state::TradingTerminal;
+use crate::message::Message;
 
 fn outcome_symbol() -> ExchangeSymbol {
     outcome_symbol_with(101, 0, Some(19), "Below 4.3%")
@@ -117,4 +118,41 @@ fn outcome_search_requires_each_search_term_to_match() {
 
     assert!(outcome_symbol_matches_search(&symbol, "cpi below"));
     assert!(!outcome_symbol_matches_search(&symbol, "cpi btc"));
+}
+
+#[test]
+fn outcome_venue_filter_routes_through_market_update_and_combines_with_search() {
+    let mut terminal = TradingTerminal::boot().0;
+    let mut skew_yes = outcome_symbol_with(95, 0, None, "BTC above 77,363");
+    let mut skew_no = outcome_symbol_with(95, 1, None, "BTC above 77,363");
+    for symbol in [&mut skew_yes, &mut skew_no] {
+        symbol.outcome.as_mut().expect("outcome").venue = Some("skew".to_string());
+    }
+    terminal.exchange_symbols = vec![skew_yes, skew_no, outcome_symbol()];
+    let original_active_symbol = terminal.active_symbol.clone();
+
+    let _ = terminal.update_market(Message::OutcomeVenueFilterChanged(Some("skew".to_string())));
+    let groups = terminal.grouped_outcome_markets();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].key, "outcome:95");
+    assert_eq!(groups[0].trade_coin_count, 2);
+    assert_eq!(terminal.active_symbol, original_active_symbol);
+
+    let _ = terminal.update_market(Message::OutcomeSearchChanged("SKEW btc".to_string()));
+    assert_eq!(terminal.grouped_outcome_markets().len(), 1);
+    let _ = terminal.update_market(Message::OutcomeSearchChanged("below 4.3".to_string()));
+    assert!(terminal.grouped_outcome_markets().is_empty());
+
+    let _ = terminal.update_market(Message::OutcomeSearchChanged(String::new()));
+    let _ = terminal.update_market(Message::OutcomeVenueFilterChanged(None));
+    assert_eq!(terminal.grouped_outcome_markets().len(), 2);
+}
+
+#[test]
+fn outcome_venue_filter_never_falls_back_to_another_venues_markets() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols = vec![outcome_symbol()];
+    let _ = terminal.update_market(Message::OutcomeVenueFilterChanged(Some("skew".to_string())));
+    assert!(terminal.grouped_outcome_markets().is_empty());
+    assert_eq!(terminal.outcome_venue_filter.as_deref(), Some("skew"));
 }

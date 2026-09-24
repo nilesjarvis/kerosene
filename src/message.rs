@@ -1501,6 +1501,8 @@ pub(crate) enum Message {
         Result<crate::api::WatchlistContextsResponse, String>,
     ),
     OutcomeSearchChanged(String),
+    OutcomeVenueFilterChanged(Option<String>),
+    OutcomeRulesToggled(u32),
     OutcomeMarketGroupToggled(String),
     OutcomeVolumesLoaded(
         u64,

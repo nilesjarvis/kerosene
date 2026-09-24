@@ -468,6 +468,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) outcome_volumes_request_id: u64,
     pub(crate) outcome_volumes_error: Option<String>,
     pub(crate) outcome_search_query: String,
+    pub(crate) outcome_venue_filter: Option<String>,
+    pub(crate) outcome_expanded_rules: HashSet<u32>,
     pub(crate) outcome_collapsed_market_groups: HashSet<String>,
     pub(crate) listings: crate::market_state::listings::ListingsState,
     pub(crate) hype_etfs: HypeEtfState,

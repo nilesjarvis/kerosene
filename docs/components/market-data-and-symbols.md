@@ -57,6 +57,7 @@ Symbol selection state lives in `TradingTerminal`:
 - `symbol_search_hip3_dex_filter`
 - `market_universe`
 - `outcome_search_query`
+- `outcome_venue_filter` (runtime-only)
 - `outcome_collapsed_market_groups`
 
 Symbol search is implemented in `market_state/symbol_search/` and
@@ -392,37 +393,102 @@ Key modules:
 Outcome markets force coin-size input for some order flows and should avoid
 incorrect USD-notional assumptions.
 
-### HIP-4 contract metadata
+### Skew / HIP-4 venues
 
-Outcome discovery reads `outcomeMeta` and `outcomeTemplates` together. The
-`outcomes/templates.rs` and `outcomes/contracts.rs` modules validate identities,
-parent questions, template parameters, deadlines, quote tokens, and side labels.
-They render binary, touch, scalar, sports, IPO, AI, and policy contract terms.
+Skew markets are native Hyperliquid outcome markets, discovered through the
+same mainnet `outcomeMeta` request as other HIP-4 contracts. No Skew login,
+API key, webview, or separate signing path is needed. Open the **Outcomes**
+widget and choose **Skew** in the venue picker, or search `skew` / `skew.trade`
+in symbol search. Selecting Yes or No selects that exact contract for the
+existing charts, order books, and main order ticket.
 
-`OutcomeSymbolInfo` retains optional venue metadata, including Skew, and resolved
-`OutcomeContract` rules, lifecycle deadlines, and published fee scales. Venue
-labels are searchable and do not change native outcome coin or asset identities.
-Older caches default the added fields; contract verification never survives
-serialization. Unsupported contracts retain displayable terms and a block reason.
+The optional `venue` field is retained in `OutcomeSymbolInfo`, symbol labels,
+search keywords, and the API metadata cache. Old cached symbols without the
+field still deserialize. The venue picker is populated from selectable,
+non-hidden metadata, combines with text search, and retains an unavailable
+selection across market rolls or metadata failures. Its
+`OutcomeVenueFilterChanged` message routes through the market update module;
+the filter is runtime-only, like outcome text search.
 
-Public HIP-4 metadata and template fixtures cover parsing, lifecycle boundaries,
-parent validation, fee terms, cache compatibility, and malformed metadata.
+Skew's current `template:binaryPrice` contracts normalize `perp`, `threshold`,
+and `time` to the existing underlying, target-price, and expiry fields.
+`template:Yes` / `template:No` become readable side labels. The original
+description remains intact; other template types are not assumed to have
+binary-price semantics. The Outcomes pane, ticket, and order book show the
+published `priceDescription` and `seconds` settlement window. This is not
+the underlying's live mark price: Skew's trade feed uses VWAP and its Pyth
+feed uses different weighting, despite the shared template's TWAP wording.
 
-### Contract verification and order safety
+Identity remains `#(10 * outcome + side)` for market data,
+`+(10 * outcome + side)` for balances, and `100_000_000 + 10 * outcome + side`
+for orders/cancels. Venue names never prefix the coin or alter asset IDs.
+Skew's current contracts are USDC-quoted and use whole-contract sizes.
+Trading continues through the existing HIP-4 ticket and account checks;
+Chase/TWAP remain unsupported for outcomes. No orders are sent by the
+integration or its tests.
 
-Outcome placement and modification require live verified metadata, a supported
-quote token, and an unpassed contract deadline. Failed or cached refreshes
-preserve readable terms and cancellation access while disabling new orders.
-Expiry is checked again against the actual clock during order preparation.
+References verified 2026-09-17:
 
-Only the exact outcome coin supplies order pricing; display tickers and
-underlying-perpetual aliases cannot supply a mid. Unknown quote-token metadata
-never substitutes USDC for balances or percentage sizing. Canonical outcome
-side keys can recover deterministic asset IDs for cancellation after metadata
-removal, without authorizing placement or modification.
+- [Skew market documentation](https://docs.skew.trade/markets/overview)
+- [Skew BTC Hourly terms and identity](https://docs.skew.trade/markets/btc-hourly)
+- [Hyperliquid outcome asset IDs](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/asset-ids)
 
-Regression tests cover cached/failed refresh recovery, expired and settled
-contracts, ticket/preset/modify gates, quote lookups, and cancellation.
+Regression fixtures in `api/exchange_symbols/outcomes/tests/fixtures/skew.json`
+contain public `outcomeMeta` rows for BTC, Nasdaq-100, and S&P 500. Tests cover
+labels, expiry, venue cache compatibility, both side assets, buy/sell/cancel
+preparation, and price/size/mid validation without signing or sending orders.
+
+### Contract verification and lifecycle
+
+Outcome discovery fetches `outcomeMeta` and `outcomeTemplates` together from
+Hyperliquid. `outcomes/templates.rs` validates template parameters and renders
+titles, sides, and full resolution rules from that registry. Supported lifecycle
+families include binary, touch, and scalar prices, sports contests and tournaments,
+IPO confirmation, AI model comparisons, and policy rate decisions. Named
+outcomes must reference a valid question with the expected parent template;
+they inherit its deadline and rules. Legacy price-binary and price-bucket
+metadata remains supported with validated bounds and expiry.
+
+`OutcomeSymbolInfo.contract` stores resolved `OutcomeContract` terms. Missing
+fields in older caches default safely; the `verified` flag is runtime-only and
+never survives serialization. A cached or failed metadata refresh preserves
+labels, rules, and cancellation access but blocks placement and modification
+until a live refresh verifies the contract. Unknown templates, invalid
+parameters, inconsistent side labels, and unsupported/missing quote tokens are
+also blocked. Unknown quote metadata never falls back to USDC for the ticket's
+available balance or percentage sizing. Duplicate/overflowing IDs, nonbinary side counts, and ambiguous
+question membership reject the outcome metadata family.
+
+Shared order preparation checks the actual clock against the contract expiry
+or resolution deadline. Views use the existing frame clock. Sports start times
+and scheduled policy decisions are not trading cutoffs: their explicit
+resolution/decision deadlines are used instead. Settled named outcomes and
+fallback settlement tokens cannot be traded. Early settlement still depends on
+fresh exchange metadata; the client does not infer an oracle decision from a
+live price. Removed markets retain historical display labels, and cancellation
+can recover the asset from a strictly validated canonical `#` side key.
+
+The Outcomes pane and ticket expose expandable **Contract rules**, routed by
+`OutcomeRulesToggled` through the market update module. Expansion is runtime
+state keyed by outcome ID. Sports and other custom side names are preserved;
+the second side is only described as a negation when its name is No. Scalar
+contracts show quote-token prices and omit probability bars. Order pricing
+uses exact outcome coin mids, never display-ticker or underlying-perp aliases.
+
+The ticket shows published protocol `feeScale` and `deployerFeeScale`, or
+explicitly unavailable values. Cached scales are not presented as live terms.
+These scales are not a dollar fee estimate: settlement fees depend on closing
+and settlement behavior, and HIP-4 has no maker rebates. Split, merge, and
+negate operations remain outside the supported ticket workflows.
+
+The public `hip4.json` and `templates.json` fixtures were captured on 2026-09-17
+from the mainnet info endpoints, excluding deployer addresses. Regression tests
+cover current template rendering, parent validation, lifecycle boundaries,
+cache/failure recovery, fee metadata, order gates, and cancellation without
+signing or submitting trades. Protocol references:
+
+- [Hyperliquid outcomes](https://hyperliquid.gitbook.io/hyperliquid-docs/hyperliquid-improvement-proposals-hips/hip-4-outcome-markets)
+- [Hyperliquid fees](https://hyperliquid.gitbook.io/hyperliquid-docs/trading/fees)
 
 ## HYPE ETF And Unstaking Widgets
 

@@ -65,6 +65,16 @@ impl TradingTerminal {
                 self.outcome_search_query = query;
                 Task::none()
             }
+            Message::OutcomeVenueFilterChanged(venue) => {
+                self.outcome_venue_filter = venue;
+                Task::none()
+            }
+            Message::OutcomeRulesToggled(outcome_id) => {
+                if !self.outcome_expanded_rules.insert(outcome_id) {
+                    self.outcome_expanded_rules.remove(&outcome_id);
+                }
+                Task::none()
+            }
             Message::OutcomeMarketGroupToggled(key) => {
                 if !self.outcome_collapsed_market_groups.insert(key.clone()) {
                     self.outcome_collapsed_market_groups.remove(&key);
@@ -1028,6 +1038,18 @@ mod tests {
         assert!(!terminal.exchange_symbol_is_orderable(&terminal.exchange_symbols[0]));
         let _task = terminal.apply_symbols_loaded(Ok(payload(vec![live])));
         assert!(terminal.exchange_symbol_is_orderable(&terminal.exchange_symbols[0]));
+    }
+
+    #[test]
+    fn outcome_rules_expand_independently_and_collapse_again() {
+        let mut terminal = TradingTerminal::boot().0;
+        let _task = terminal.update_symbol_search_market(Message::OutcomeRulesToggled(65));
+        let _task = terminal.update_symbol_search_market(Message::OutcomeRulesToggled(66));
+        let _task = terminal.update_symbol_search_market(Message::OutcomeRulesToggled(65));
+        assert_eq!(
+            terminal.outcome_expanded_rules,
+            std::collections::HashSet::from([66])
+        );
     }
 
     #[test]

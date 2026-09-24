@@ -11,7 +11,7 @@ mod twap_details;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::widget::{column, container, scrollable, text};
+use iced::widget::{button, column, container, scrollable, text};
 use iced::{Element, Fill};
 
 impl TradingTerminal {
@@ -41,11 +41,58 @@ impl TradingTerminal {
             let quote_symbol = self.outcome_quote_symbol_for_coin(&self.active_symbol);
             form = form.push(
                 text(format!(
-                    "{quote_symbol} outcome contract. Prices are probabilities; size is whole contracts."
+                    "{quote_symbol} outcome contract. Size is whole contracts."
                 ))
                 .size(10)
                 .color(theme.palette().primary),
             );
+            if let Some(info) = self
+                .resolve_exchange_symbol_by_key_or_ticker(&self.active_symbol)
+                .and_then(|symbol| symbol.outcome.as_ref())
+            {
+                if let Some(question) = &info.question_name {
+                    form = form.push(text(question.clone()).size(11));
+                }
+                if let Some(reason) = info.trading_block_reason(self.status_bar_now_ms) {
+                    form = form.push(
+                        text(reason.to_string())
+                            .size(11)
+                            .color(theme.palette().danger),
+                    );
+                }
+                if let Some(deadline) = info.contract_deadline_label() {
+                    form = form.push(text(deadline).size(10));
+                }
+                if let Some(venue) = info.venue_label() {
+                    form = form.push(text(format!("Venue: {venue}")).size(11));
+                }
+                if let Some(source) = info.settlement_source_label() {
+                    form = form.push(
+                        text(source)
+                            .size(10)
+                            .color(theme.extended_palette().background.weak.text),
+                    );
+                }
+                if let Some(rules) = &info.contract.rules {
+                    let expanded = self.outcome_expanded_rules.contains(&info.outcome_id);
+                    form = form.push(
+                        button(
+                            text(if expanded {
+                                "Hide contract rules"
+                            } else {
+                                "Contract rules"
+                            })
+                            .size(11),
+                        )
+                        .on_press(Message::OutcomeRulesToggled(info.outcome_id))
+                        .style(button::text)
+                        .padding([2, 0]),
+                    );
+                    if expanded {
+                        form = form.push(text(rules.clone()).size(11).width(Fill));
+                    }
+                }
+            }
         }
 
         form = self.push_order_input_controls(form, active_is_spot, active_is_outcome);

@@ -217,6 +217,11 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::Market,
     );
     assert_route(
+        Message::OutcomeVenueFilterChanged(Some("skew".to_string())),
+        UpdateRoute::Market,
+    );
+    assert_route(Message::OutcomeRulesToggled(65), UpdateRoute::Market);
+    assert_route(
         Message::TickerTapeExchangeStatsLoaded(
             1,
             10,

@@ -288,6 +288,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SymbolSearchHip3DexFilterChanged(_)
         | Message::SymbolSearchContextsLoaded(_, _, _, _)
         | Message::OutcomeSearchChanged(_)
+        | Message::OutcomeVenueFilterChanged(_)
+        | Message::OutcomeRulesToggled(_)
         | Message::OutcomeMarketGroupToggled(_)
         | Message::OutcomeVolumesLoaded(_, _, _)
         | Message::ListingsTick
