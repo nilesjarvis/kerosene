@@ -81,6 +81,8 @@ These documents remain useful when working in their specific feature areas:
 - [Liquidation Feed UI Audit](liquidation-feed-ui-audit.md)
 - [Order Lifecycle Refactor Audit](order-lifecycle-refactor-audit.md)
 - [Journal Chart Snapshots Plan](journal-chart-snapshots-plan.md)
+- [Market Data Pipeline And Rate-Limit Audit](market-data-pipeline-audit.md)
+- [End-to-End Runtime And API Performance Audit](end-to-end-performance-audit.md)
 
 ## Documentation Maintenance Rules
 

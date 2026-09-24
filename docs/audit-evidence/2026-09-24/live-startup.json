@@ -1,0 +1,266 @@
+{
+  "duration_s": 16.803,
+  "lost_entries": 0,
+  "totals": {
+    "errors": 253,
+    "finished": 437,
+    "rate_limited": 253,
+    "requests": 437,
+    "ws_bytes": 93865,
+    "ws_received": 102
+  },
+  "peak_http_awaiting_headers": 422,
+  "final_state": null,
+  "http_operations": {
+    "candleSnapshot": 415,
+    "other": 3,
+    "perpDexs": 1,
+    "spotMeta": 1,
+    "outcomeMeta": 1,
+    "l2Book": 4,
+    "ping": 1,
+    "allMids": 11
+  },
+  "http_results": {
+    "HttpResponse(200)": 184,
+    "HttpResponse(429)": 253
+  },
+  "http_sends_first_second": 434,
+  "timings": {
+    "WsUserDataUpdate": {
+      "count": 33,
+      "total_us": 46337,
+      "max_us": 3576,
+      "over_16ms": 0,
+      "mean_us": 1404.15,
+      "p50_upper_us": 2048,
+      "p95_upper_us": 4096,
+      "p99_upper_us": 4096
+    },
+    "subscription": {
+      "count": 579,
+      "total_us": 43130,
+      "max_us": 131,
+      "over_16ms": 0,
+      "mean_us": 74.49,
+      "p50_upper_us": 128,
+      "p95_upper_us": 128,
+      "p99_upper_us": 128
+    },
+    "AllMidsBootstrapLoaded": {
+      "count": 11,
+      "total_us": 13843,
+      "max_us": 2515,
+      "over_16ms": 0,
+      "mean_us": 1258.45,
+      "p50_upper_us": 2048,
+      "p95_upper_us": 4096,
+      "p99_upper_us": 4096
+    },
+    "SpinnerTick": {
+      "count": 419,
+      "total_us": 8810,
+      "max_us": 76,
+      "over_16ms": 0,
+      "mean_us": 21.03,
+      "p50_upper_us": 32,
+      "p95_upper_us": 32,
+      "p99_upper_us": 64
+    },
+    "view": {
+      "count": 579,
+      "total_us": 6143,
+      "max_us": 45,
+      "over_16ms": 0,
+      "mean_us": 10.61,
+      "p50_upper_us": 16,
+      "p95_upper_us": 16,
+      "p99_upper_us": 32
+    },
+    "SymbolsLoaded": {
+      "count": 1,
+      "total_us": 3031,
+      "max_us": 3031,
+      "over_16ms": 0,
+      "mean_us": 3031.0,
+      "p50_upper_us": 4096,
+      "p95_upper_us": 4096,
+      "p99_upper_us": 4096
+    },
+    "ChartPriceFlashTick": {
+      "count": 88,
+      "total_us": 1850,
+      "max_us": 54,
+      "over_16ms": 0,
+      "mean_us": 21.02,
+      "p50_upper_us": 32,
+      "p95_upper_us": 32,
+      "p99_upper_us": 64
+    },
+    "ChartWsCandleUpdate": {
+      "count": 17,
+      "total_us": 1056,
+      "max_us": 100,
+      "over_16ms": 0,
+      "mean_us": 62.12,
+      "p50_upper_us": 64,
+      "p95_upper_us": 128,
+      "p99_upper_us": 128
+    },
+    "StatusBarTick": {
+      "count": 16,
+      "total_us": 651,
+      "max_us": 128,
+      "over_16ms": 0,
+      "mean_us": 40.69,
+      "p50_upper_us": 64,
+      "p95_upper_us": 256,
+      "p99_upper_us": 256
+    },
+    "ToastAnimationTick": {
+      "count": 33,
+      "total_us": 607,
+      "max_us": 22,
+      "over_16ms": 0,
+      "mean_us": 18.39,
+      "p50_upper_us": 32,
+      "p95_upper_us": 32,
+      "p99_upper_us": 32
+    },
+    "ChartWsAssetCtxUpdate": {
+      "count": 17,
+      "total_us": 444,
+      "max_us": 52,
+      "over_16ms": 0,
+      "mean_us": 26.12,
+      "p50_upper_us": 32,
+      "p95_upper_us": 64,
+      "p99_upper_us": 64
+    },
+    "OrderBookWsAssetCtxUpdate": {
+      "count": 17,
+      "total_us": 436,
+      "max_us": 39,
+      "over_16ms": 0,
+      "mean_us": 25.65,
+      "p50_upper_us": 32,
+      "p95_upper_us": 64,
+      "p99_upper_us": 64
+    },
+    "OutcomeVolumesLoaded": {
+      "count": 1,
+      "total_us": 254,
+      "max_us": 254,
+      "over_16ms": 0,
+      "mean_us": 254.0,
+      "p50_upper_us": 256,
+      "p95_upper_us": 256,
+      "p99_upper_us": 256
+    },
+    "BookLoaded": {
+      "count": 4,
+      "total_us": 180,
+      "max_us": 71,
+      "over_16ms": 0,
+      "mean_us": 45.0,
+      "p50_upper_us": 64,
+      "p95_upper_us": 128,
+      "p99_upper_us": 128
+    },
+    "ChartCandlesLoaded": {
+      "count": 1,
+      "total_us": 164,
+      "max_us": 164,
+      "over_16ms": 0,
+      "mean_us": 164.0,
+      "p50_upper_us": 256,
+      "p95_upper_us": 256,
+      "p99_upper_us": 256
+    },
+    "MacroCandlesLoaded": {
+      "count": 4,
+      "total_us": 115,
+      "max_us": 46,
+      "over_16ms": 0,
+      "mean_us": 28.75,
+      "p50_upper_us": 32,
+      "p95_upper_us": 64,
+      "p99_upper_us": 64
+    },
+    "WsBookUpdate": {
+      "count": 3,
+      "total_us": 112,
+      "max_us": 60,
+      "over_16ms": 0,
+      "mean_us": 37.33,
+      "p50_upper_us": 64,
+      "p95_upper_us": 64,
+      "p99_upper_us": 64
+    },
+    "TickToastCleanup": {
+      "count": 5,
+      "total_us": 104,
+      "max_us": 24,
+      "over_16ms": 0,
+      "mean_us": 20.8,
+      "p50_upper_us": 32,
+      "p95_upper_us": 32,
+      "p99_upper_us": 32
+    },
+    "NoOp": {
+      "count": 2,
+      "total_us": 38,
+      "max_us": 22,
+      "over_16ms": 0,
+      "mean_us": 19.0,
+      "p50_upper_us": 32,
+      "p95_upper_us": 32,
+      "p99_upper_us": 32
+    },
+    "WindowOpened": {
+      "count": 1,
+      "total_us": 25,
+      "max_us": 25,
+      "over_16ms": 0,
+      "mean_us": 25.0,
+      "p50_upper_us": 32,
+      "p95_upper_us": 32,
+      "p99_upper_us": 32
+    },
+    "ChartCachedCandlesLoaded": {
+      "count": 1,
+      "total_us": 22,
+      "max_us": 22,
+      "over_16ms": 0,
+      "mean_us": 22.0,
+      "p50_upper_us": 32,
+      "p95_upper_us": 32,
+      "p99_upper_us": 32
+    },
+    "ConfigSaved": {
+      "count": 1,
+      "total_us": 21,
+      "max_us": 21,
+      "over_16ms": 0,
+      "mean_us": 21.0,
+      "p50_upper_us": 32,
+      "p95_upper_us": 32,
+      "p99_upper_us": 32
+    }
+  },
+  "process_by_phase": {
+    "startup": {
+      "seconds": 16.72,
+      "cpu_mean_pct": 60.06,
+      "cpu_max_pct": 119.7,
+      "rss_start_mib": 144.05,
+      "rss_end_mib": 279.12,
+      "rss_peak_mib": 285.56,
+      "fds_peak": 489
+    }
+  },
+  "actions": 1,
+  "ws_lifecycle": {
+    "WsConnected": 1
+  }
+}

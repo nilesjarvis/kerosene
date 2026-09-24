@@ -1,0 +1,39 @@
+--- baseline/src/ws/manager.rs
++++ experiment/src/ws/manager.rs
+@@ -132,7 +132,7 @@
+ 
+ struct WsManager {
+     cmd_tx: WsCommandSender,
+-    msg_rx: broadcast::Receiver<WsRoutedMessage>,
++    msg_tx: broadcast::Sender<WsRoutedMessage>,
+ }
+ 
+ static WS_MANAGER: OnceLock<WsManager> = OnceLock::new();
+@@ -195,7 +195,7 @@
+ pub(crate) fn get_manager() -> (WsCommandSender, broadcast::Receiver<WsRoutedMessage>) {
+     let mgr = WS_MANAGER.get_or_init(|| {
+         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+-        let (msg_tx, msg_rx) = broadcast::channel(10000);
++        let (msg_tx, _msg_rx) = broadcast::channel(10000);
+         let reconnect_gate = WsReconnectGate::default();
+         let command_sender = WsCommandSender::new(cmd_tx.clone(), reconnect_gate.clone());
+ 
+@@ -212,15 +212,15 @@
+         tokio::spawn(ws_manager_task_with_reconnect_gate(
+             crate::audit_runtime::ws_url(WS_URL),
+             cmd_rx,
+-            msg_tx,
++            msg_tx.clone(),
+             reconnect_gate,
+         ));
+         WsManager {
+             cmd_tx: command_sender,
+-            msg_rx,
++            msg_tx,
+         }
+     });
+-    (mgr.cmd_tx.clone(), mgr.msg_rx.resubscribe())
++    (mgr.cmd_tx.clone(), mgr.msg_tx.subscribe())
+ }
+ 
+ #[cfg(test)]
