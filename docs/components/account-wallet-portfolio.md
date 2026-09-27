@@ -476,6 +476,12 @@ values, and the 12-month projection; Tokens shows annualized per-token
 contributions; Payments shows recent hourly interest. Refresh and alert controls
 remain available from the pane title bar in every view.
 
+Portfolio daily rows borrow the selected bucket histories, and the performance
+chip is prepared only in dollar mode. Income compact and wide tables share their
+common cells; payment amounts remain in raw token units while position values
+use the display denomination. Income chart layout borrows projection labels and
+creates owned text only for visible axis labels and the hovered tooltip.
+
 ## PnL Cards
 
 `pnl_card/` creates exportable PnL card windows/images for a position or

@@ -22,8 +22,8 @@ pub(super) const MIN_SCALE: f64 = 1e-9;
 pub(super) const TOOLTIP_HEIGHT: f32 = 38.0;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct IncomeBarLayout {
-    pub(super) label: String,
+pub(super) struct IncomeBarLayout<'a> {
+    pub(super) label: &'a str,
     pub(super) value: f64,
     pub(super) center_x: f32,
     pub(super) x: f32,
@@ -35,8 +35,8 @@ pub(super) struct IncomeBarLayout {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct IncomeChartLayout {
-    pub(super) bars: Vec<IncomeBarLayout>,
+pub(super) struct IncomeChartLayout<'a> {
+    pub(super) bars: Vec<IncomeBarLayout<'a>>,
     pub(super) left_pad: f32,
     pub(super) top_pad: f32,
     pub(super) bottom_pad: f32,

@@ -84,12 +84,7 @@ impl TradingTerminal {
                 tables::income_hourly_section_header(data, &denomination, &theme),
                 summary::hairline(&theme),
                 tables::income_hourly_table_header(&theme, compact_table),
-                view_income_hourly_rows(
-                    &data.recent_hourly_payments,
-                    &denomination,
-                    &theme,
-                    compact_table,
-                ),
+                view_income_hourly_rows(&data.recent_hourly_payments, &theme, compact_table,),
             ]
             .spacing(8)
             .width(Fill),

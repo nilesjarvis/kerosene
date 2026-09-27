@@ -47,7 +47,7 @@ pub(super) fn draw_income_projection_chart(
 
         if bar.show_axis_label {
             frame.fill_text(canvas::Text {
-                content: bar.label.clone(),
+                content: bar.label.to_string(),
                 position: Point::new(bar.center_x, bounds.height - layout.bottom_pad + 6.0),
                 color: Color {
                     a: 0.55,
@@ -89,7 +89,7 @@ pub(super) fn draw_income_projection_chart(
         );
 
         frame.fill_text(canvas::Text {
-            content: bar.label.clone(),
+            content: bar.label.to_string(),
             position: Point::new(tooltip.origin.x + 8.0, tooltip.origin.y + 8.0),
             color: theme.palette().text,
             size: iced::Pixels(10.0),

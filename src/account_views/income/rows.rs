@@ -28,59 +28,43 @@ pub(super) fn view_income_token_rows(
             } else {
                 tokens::down(theme)
             };
+            let token = table_cell(
+                format!("{}  #{}", row_data.token_label, row_data.token),
+                3,
+                false,
+                tokens::text(theme),
+            );
+            let apr = table_cell(
+                format!("{:.2}%", row_data.supply_rate * 100.0),
+                2,
+                true,
+                theme.palette().primary,
+            );
+            let net = table_cell(
+                denomination.format_signed_value(row_data.net_yearly_usd, 2),
+                3,
+                true,
+                value_color,
+            );
             let cells = if compact {
-                row![
-                    table_cell(
-                        format!("{}  #{}", row_data.token_label, row_data.token),
-                        3,
-                        false,
-                        tokens::text(theme),
-                    ),
-                    table_cell(
-                        format!("{:.2}%", row_data.supply_rate * 100.0),
-                        2,
-                        true,
-                        theme.palette().primary,
-                    ),
-                    table_cell(
-                        denomination.format_signed_value(row_data.net_yearly_usd, 2),
-                        3,
-                        true,
-                        value_color,
-                    ),
-                ]
+                row![token, apr, net]
             } else {
                 row![
-                    table_cell(
-                        format!("{}  #{}", row_data.token_label, row_data.token),
-                        3,
-                        false,
-                        tokens::text(theme),
-                    ),
+                    token,
                     table_cell(
                         denomination.format_signed_value(row_data.supply_usd, 2),
                         3,
                         true,
                         theme.palette().primary,
                     ),
-                    table_cell(
-                        format!("{:.2}%", row_data.supply_rate * 100.0),
-                        2,
-                        true,
-                        theme.palette().primary,
-                    ),
+                    apr,
                     table_cell(
                         denomination.format_value(row_data.borrow_usd, 2),
                         3,
                         true,
                         theme.palette().warning,
                     ),
-                    table_cell(
-                        denomination.format_signed_value(row_data.net_yearly_usd, 2),
-                        3,
-                        true,
-                        value_color,
-                    ),
+                    net,
                 ]
             };
 
@@ -99,7 +83,6 @@ pub(super) fn view_income_token_rows(
 
 pub(super) fn view_income_hourly_rows(
     rows: &[IncomeHourlyPayment],
-    _denomination: &DisplayDenominationContext,
     theme: &Theme,
     compact: bool,
 ) -> Column<'static, Message> {
@@ -124,60 +107,57 @@ pub(super) fn view_income_hourly_rows(
             } else {
                 tokens::down(theme)
             };
-            let apr = format!("{:.2}%", row_data.supply_rate * 100.0);
             let size = if compact { 11.0 } else { 12.0 };
+            let time = table_cell_sized(time_label, 3, false, tokens::muted(theme), size);
+            let token = table_cell_sized(
+                row_data.token_label.clone(),
+                2,
+                false,
+                tokens::text(theme),
+                size,
+            );
+            let apr = table_cell_sized(
+                format!("{:.2}%", row_data.supply_rate * 100.0),
+                2,
+                true,
+                theme.palette().primary,
+                size,
+            );
+            let net = table_cell_sized(
+                signed_token_amount(row_data.net),
+                3,
+                true,
+                value_color,
+                size,
+            );
             let cells = if compact {
                 row![
-                    table_cell_sized(time_label, 3, false, tokens::muted(theme), size),
-                    table_cell_sized(
-                        row_data.token_label.clone(),
-                        2,
-                        false,
-                        tokens::text(theme),
-                        size
-                    ),
+                    time,
+                    token,
                     supply_borrow_cell(theme, row_data.supply, row_data.borrow, 3, size),
-                    table_cell_sized(apr, 2, true, theme.palette().primary, size),
-                    table_cell_sized(
-                        signed_token_amount(row_data.net),
-                        3,
-                        true,
-                        value_color,
-                        size
-                    ),
+                    apr,
+                    net,
                 ]
             } else {
                 row![
-                    table_cell_sized(time_label, 3, false, tokens::muted(theme), size),
-                    table_cell_sized(
-                        row_data.token_label.clone(),
-                        2,
-                        false,
-                        tokens::text(theme),
-                        size
-                    ),
+                    time,
+                    token,
                     table_cell_sized(
                         token_amount(row_data.supply),
                         2,
                         true,
                         theme.palette().primary,
-                        size
+                        size,
                     ),
                     table_cell_sized(
                         token_amount(row_data.borrow),
                         2,
                         true,
                         theme.palette().warning,
-                        size
+                        size,
                     ),
-                    table_cell_sized(apr, 2, true, theme.palette().primary, size),
-                    table_cell_sized(
-                        signed_token_amount(row_data.net),
-                        3,
-                        true,
-                        value_color,
-                        size
-                    ),
+                    apr,
+                    net,
                 ]
             };
 

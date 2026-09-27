@@ -51,8 +51,11 @@ impl TradingTerminal {
                 )
             };
 
-        let performance =
-            portfolio_total_performance(&self.selected_portfolio_performance_points());
+        let performance = if value_mode == PnlValueDisplayMode::Usd {
+            portfolio_total_performance(&self.selected_portfolio_performance_points())
+        } else {
+            None
+        };
 
         let scope_label = match self.portfolio.scope {
             PortfolioScope::All => "All",
@@ -71,7 +74,6 @@ impl TradingTerminal {
             total_text,
             tokens::pnl_color(&theme, total_value),
             performance,
-            value_mode == PnlValueDisplayMode::Usd,
         );
 
         let chart_body: Element<'_, Message> = if chart_points.len() >= 2 {

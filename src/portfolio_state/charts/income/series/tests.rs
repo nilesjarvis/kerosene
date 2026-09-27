@@ -15,7 +15,8 @@ fn layout_rejects_empty_bars() {
 
 #[test]
 fn layout_maps_negative_and_positive_bars_around_zero() {
-    let layout = prepare_income_chart_layout(&bars(), 120.0, 80.0).unwrap();
+    let bars = bars();
+    let layout = prepare_income_chart_layout(&bars, 120.0, 80.0).unwrap();
 
     assert_near(layout.plot_width, 96.0);
     assert_near(layout.plot_height, 38.0);
@@ -50,7 +51,8 @@ fn positive_only_projection_uses_the_full_chart_height() {
 
 #[test]
 fn hover_selects_bar_by_group_and_rejects_outside_plot() {
-    let layout = prepare_income_chart_layout(&bars(), 120.0, 80.0).unwrap();
+    let bars = bars();
+    let layout = prepare_income_chart_layout(&bars, 120.0, 80.0).unwrap();
 
     assert_eq!(
         hovered_income_bar(&layout, Point::new(20.0, 30.0))
@@ -70,7 +72,8 @@ fn hover_selects_bar_by_group_and_rejects_outside_plot() {
 
 #[test]
 fn tooltip_width_and_position_are_clamped_to_bounds() {
-    let layout = prepare_income_chart_layout(&bars(), 120.0, 80.0).unwrap();
+    let bars = bars();
+    let layout = prepare_income_chart_layout(&bars, 120.0, 80.0).unwrap();
     let tooltip = income_tooltip_layout(&layout.bars[1], "+$10.00", 120.0, 80.0);
 
     assert_near(tooltip.width, 132.0);

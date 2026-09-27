@@ -19,31 +19,17 @@ impl TradingTerminal {
             .connected_order_account_snapshot()
             .is_some_and(|(_, data)| data.is_portfolio_margin());
 
-        if !is_pm {
-            return container(self.view_income_unavailable())
-                .width(Fill)
-                .height(Fill)
-                .padding(10)
-                .into();
-        }
-
-        if self.income.loading && self.income.data.is_none() {
-            return container(self.view_income_loading())
-                .width(Fill)
-                .height(Fill)
-                .padding(10)
-                .into();
-        }
-
-        let Some(data) = &self.income.data else {
-            return container(self.view_income_empty())
-                .width(Fill)
-                .height(Fill)
-                .padding(10)
-                .into();
+        let content = if !is_pm {
+            self.view_income_unavailable().into()
+        } else if self.income.loading && self.income.data.is_none() {
+            self.view_income_loading().into()
+        } else if let Some(data) = &self.income.data {
+            self.view_income_data(data)
+        } else {
+            self.view_income_empty().into()
         };
 
-        container(self.view_income_data(data))
+        container(content)
             .width(Fill)
             .height(Fill)
             .padding(10)

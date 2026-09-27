@@ -45,19 +45,18 @@ pub(super) fn income_hourly_section_header(
 }
 
 pub(super) fn income_token_table_header(theme: &Theme, compact: bool) -> Element<'static, Message> {
+    let token = header_cell(theme, "Token", 3, false);
+    let apr = header_cell(theme, "S APR", 2, true);
+    let net = header_cell(theme, "Net / Y", 3, true);
     let row = if compact {
-        row![
-            header_cell(theme, "Token", 3, false),
-            header_cell(theme, "S APR", 2, true),
-            header_cell(theme, "Net / Y", 3, true),
-        ]
+        row![token, apr, net]
     } else {
         row![
-            header_cell(theme, "Token", 3, false),
+            token,
             header_cell(theme, "Supply", 3, true),
-            header_cell(theme, "S APR", 2, true),
+            apr,
             header_cell(theme, "Borrow", 3, true),
-            header_cell(theme, "Net / Y", 3, true),
+            net,
         ]
     };
 
@@ -68,22 +67,20 @@ pub(super) fn income_hourly_table_header(
     theme: &Theme,
     compact: bool,
 ) -> Element<'static, Message> {
+    let time = header_cell(theme, "Time", 3, false);
+    let token = header_cell(theme, "Token", 2, false);
+    let apr = header_cell(theme, "S APR", 2, true);
+    let net = header_cell(theme, "Net", 3, true);
     let row = if compact {
-        row![
-            header_cell(theme, "Time", 3, false),
-            header_cell(theme, "Token", 2, false),
-            header_cell(theme, "S / B", 3, true),
-            header_cell(theme, "S APR", 2, true),
-            header_cell(theme, "Net", 3, true),
-        ]
+        row![time, token, header_cell(theme, "S / B", 3, true), apr, net]
     } else {
         row![
-            header_cell(theme, "Time", 3, false),
-            header_cell(theme, "Token", 2, false),
+            time,
+            token,
             header_cell(theme, "Supply", 2, true),
             header_cell(theme, "Borrow", 2, true),
-            header_cell(theme, "S APR", 2, true),
-            header_cell(theme, "Net", 3, true),
+            apr,
+            net,
         ]
     };
 

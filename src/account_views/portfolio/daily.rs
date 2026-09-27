@@ -78,29 +78,18 @@ impl TradingTerminal {
     }
 
     fn daily_pnl_rows(&self, value_mode: PnlValueDisplayMode) -> Vec<(String, f64)> {
+        let Some(bucket) = self.daily_source_portfolio_bucket() else {
+            return Vec::new();
+        };
+
         match value_mode {
-            PnlValueDisplayMode::Percent => {
-                let (pnl_history, account_value_history) = self
-                    .daily_source_portfolio_bucket()
-                    .map(|bucket| {
-                        (
-                            bucket.pnl_history.clone(),
-                            bucket.account_value_history.clone(),
-                        )
-                    })
-                    .unwrap_or_default();
-                Self::compute_daily_percent_rows_from_cumulative(
-                    &pnl_history,
-                    &account_value_history,
-                    DAILY_ROWS,
-                )
-            }
+            PnlValueDisplayMode::Percent => Self::compute_daily_percent_rows_from_cumulative(
+                &bucket.pnl_history,
+                &bucket.account_value_history,
+                DAILY_ROWS,
+            ),
             PnlValueDisplayMode::Usd => {
-                let pnl_history = self
-                    .daily_source_portfolio_bucket()
-                    .map(|bucket| bucket.pnl_history.clone())
-                    .unwrap_or_default();
-                Self::compute_daily_pnl_rows_from_cumulative(&pnl_history, DAILY_ROWS)
+                Self::compute_daily_pnl_rows_from_cumulative(&bucket.pnl_history, DAILY_ROWS)
             }
         }
     }
