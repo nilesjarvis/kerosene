@@ -462,6 +462,14 @@ Portfolio state lives in `portfolio_state/` and is updated by
 The state is read-only analytics; trading actions should not depend on it for
 order-critical validation.
 
+Income snapshot assembly validates each token's carrying values and annualized
+projection before adding it to the totals. Recent payments sort borrowed hourly
+entries by descending time and build the first 12 valid rows, keeping input order
+for ties. Invalid amounts and aggregate samples do not consume that limit.
+Portfolio buckets retain history order and distinguish missing volume from an
+invalid supplied value. Portfolio data selection is independent of theme
+construction.
+
 The Income pane uses three local views so its small PaneGrid footprint remains
 readable: Overview presents realized interest, account health, current carrying
 values, and the 12-month projection; Tokens shows annualized per-token

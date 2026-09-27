@@ -16,7 +16,6 @@ use crate::helpers::finite_value;
 
 impl TradingTerminal {
     pub(crate) fn portfolio_bucket_by_key(&self, key: &str) -> Option<&PortfolioBucket> {
-        let _theme = self.theme();
         self.portfolio
             .data
             .as_ref()
@@ -24,7 +23,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn portfolio_alltime_bucket(&self) -> Option<&PortfolioBucket> {
-        let _theme = self.theme();
         let key = match self.portfolio.scope {
             PortfolioScope::All => "allTime",
             PortfolioScope::Perp => "perpAllTime",
@@ -33,7 +31,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn portfolio_window_bucket(&self) -> Option<&PortfolioBucket> {
-        let _theme = self.theme();
         let direct_key = match (self.portfolio.scope, self.portfolio.window) {
             (PortfolioScope::All, PortfolioWindow::Day) => Some("day"),
             (PortfolioScope::All, PortfolioWindow::Week) => Some("week"),
@@ -50,7 +47,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn daily_source_portfolio_bucket(&self) -> Option<&PortfolioBucket> {
-        let _theme = self.theme();
         let primary = match self.portfolio.scope {
             PortfolioScope::All => "week",
             PortfolioScope::Perp => "perpWeek",
@@ -72,7 +68,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn selected_portfolio_points(&self) -> Vec<(u64, f64)> {
-        let _theme = self.theme();
         let points = self
             .portfolio_window_bucket()
             .map(|b| b.pnl_history.clone())
@@ -81,7 +76,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn selected_portfolio_account_value_points(&self) -> Vec<(u64, f64)> {
-        let _theme = self.theme();
         let points = self
             .portfolio_window_bucket()
             .map(|b| b.account_value_history.clone())

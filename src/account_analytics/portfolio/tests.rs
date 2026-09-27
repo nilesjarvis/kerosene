@@ -123,3 +123,50 @@ fn portfolio_bucket_tracks_skipped_points_and_invalid_volume() {
     assert_eq!(bucket.vlm, None);
     assert!(bucket.invalid_vlm);
 }
+
+#[test]
+fn portfolio_bucket_distinguishes_missing_invalid_and_finite_volume() {
+    for (raw, volume, invalid) in [
+        (serde_json::json!({}), None, false),
+        (serde_json::json!({"vlm": null}), None, true),
+        (serde_json::json!({"vlm": "NaN"}), None, true),
+        (serde_json::json!({"vlm": "1e309"}), None, true),
+        (serde_json::json!({"vlm": false}), None, true),
+        (serde_json::json!({"vlm": 0}), Some(0.0), false),
+        (serde_json::json!({"vlm": "-2.5"}), Some(-2.5), false),
+        (serde_json::json!({"vlm": 12.5}), Some(12.5), false),
+    ] {
+        let bucket = parse_portfolio_bucket(raw.as_object().expect("bucket object"));
+        assert_eq!(bucket.vlm, volume, "{raw}");
+        assert_eq!(bucket.invalid_vlm, invalid, "{raw}");
+        assert!(bucket.account_value_history.is_empty());
+        assert!(bucket.pnl_history.is_empty());
+        assert_eq!(bucket.skipped_invalid_points, 0);
+    }
+}
+
+#[test]
+fn portfolio_bucket_preserves_history_order_and_counts_only_invalid_values() {
+    let raw = serde_json::json!({
+        "accountValueHistory": [
+            [3_000, "3"],
+            [1_000, "1"],
+            [1_000, "2"],
+            [2_000, "bad"],
+            [0, "bad"],
+            ["bad", "bad"],
+            [4_000],
+            [5_000, "5", "extra"],
+            null
+        ],
+        "pnlHistory": [[6_000, "bad"], [7_000, "-1"]]
+    });
+    let bucket = parse_portfolio_bucket(raw.as_object().expect("bucket object"));
+
+    assert_eq!(
+        bucket.account_value_history,
+        vec![(3_000, 3.0), (1_000, 1.0), (1_000, 2.0)]
+    );
+    assert_eq!(bucket.pnl_history, vec![(7_000, -1.0)]);
+    assert_eq!(bucket.skipped_invalid_points, 2);
+}

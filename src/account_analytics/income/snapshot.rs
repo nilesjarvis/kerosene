@@ -1,7 +1,7 @@
 use super::parsing::{income_per_day_dedup_with_stats, parse_f64_str};
 use crate::account_analytics::model::{
-    BorrowLendInterestEntry, BorrowLendReserveState, BorrowLendUserState, IncomeHourlyPayment,
-    IncomeSnapshot, IncomeTokenRow,
+    BorrowLendInterestEntry, BorrowLendReserveState, BorrowLendTokenState, BorrowLendUserState,
+    IncomeHourlyPayment, IncomeSnapshot, IncomeTokenRow,
 };
 use crate::app_time::now_ms;
 
@@ -29,51 +29,15 @@ pub(super) fn build_income_snapshot(
             continue;
         };
 
-        let Some(px) = parse_f64_str(&reserve.oracle_px) else {
-            invalid_token_rows += 1;
-            continue;
-        };
-        let Some(supply_rate) = parse_f64_str(&reserve.supply_yearly_rate) else {
-            invalid_token_rows += 1;
-            continue;
-        };
-        let Some(borrow_rate) = parse_f64_str(&reserve.borrow_yearly_rate) else {
+        let Some(row) = income_token_row(*token, state, reserve, token_name_by_id) else {
             invalid_token_rows += 1;
             continue;
         };
 
-        let Some(supply_value) = parse_f64_str(&state.supply.value) else {
-            invalid_token_rows += 1;
-            continue;
-        };
-        let Some(borrow_value) = parse_f64_str(&state.borrow.value) else {
-            invalid_token_rows += 1;
-            continue;
-        };
-        let supply_usd = supply_value * px;
-        let borrow_usd = borrow_value * px;
-
-        let net_yearly = supply_usd * supply_rate - borrow_usd * borrow_rate;
-        if !supply_usd.is_finite() || !borrow_usd.is_finite() || !net_yearly.is_finite() {
-            invalid_token_rows += 1;
-            continue;
-        }
-
-        token_rows.push(IncomeTokenRow {
-            token: *token,
-            token_label: token_name_by_id
-                .get(token)
-                .cloned()
-                .unwrap_or_else(|| format!("#{token}")),
-            supply_usd,
-            borrow_usd,
-            supply_rate,
-            net_yearly_usd: net_yearly,
-        });
-
-        net_yearly_projection += net_yearly;
-        current_supply_usd += supply_usd;
-        current_borrow_usd += borrow_usd;
+        net_yearly_projection += row.net_yearly_usd;
+        current_supply_usd += row.supply_usd;
+        current_borrow_usd += row.borrow_usd;
+        token_rows.push(row);
     }
 
     token_rows.sort_by(|a, b| {
@@ -118,6 +82,37 @@ pub(super) fn build_income_snapshot(
     }
 }
 
+fn income_token_row(
+    token: u32,
+    state: &BorrowLendTokenState,
+    reserve: &BorrowLendReserveState,
+    token_name_by_id: &HashMap<u32, String>,
+) -> Option<IncomeTokenRow> {
+    let px = parse_f64_str(&reserve.oracle_px)?;
+    let supply_rate = parse_f64_str(&reserve.supply_yearly_rate)?;
+    let borrow_rate = parse_f64_str(&reserve.borrow_yearly_rate)?;
+    let supply_value = parse_f64_str(&state.supply.value)?;
+    let borrow_value = parse_f64_str(&state.borrow.value)?;
+    let supply_usd = supply_value * px;
+    let borrow_usd = borrow_value * px;
+    let net_yearly = supply_usd * supply_rate - borrow_usd * borrow_rate;
+    if !supply_usd.is_finite() || !borrow_usd.is_finite() || !net_yearly.is_finite() {
+        return None;
+    }
+
+    Some(IncomeTokenRow {
+        token,
+        token_label: token_name_by_id
+            .get(&token)
+            .cloned()
+            .unwrap_or_else(|| format!("#{token}")),
+        supply_usd,
+        borrow_usd,
+        supply_rate,
+        net_yearly_usd: net_yearly,
+    })
+}
+
 fn recent_hourly_payments(
     interest_entries: &[BorrowLendInterestEntry],
     reserve_by_token: &HashMap<u32, BorrowLendReserveState>,
@@ -127,9 +122,14 @@ fn recent_hourly_payments(
         .iter()
         .map(|(id, name)| (name.as_str(), *id))
         .collect();
-    let mut recent_hourly: Vec<IncomeHourlyPayment> = interest_entries
+    let mut hourly_entries: Vec<_> = interest_entries
         .iter()
         .filter(|e| e.n_samples.is_none())
+        .collect();
+    hourly_entries.sort_by_key(|entry| Reverse(entry.time));
+
+    hourly_entries
+        .into_iter()
         .filter_map(|e| {
             let supply = parse_f64_str(&e.supply)?;
             let borrow = parse_f64_str(&e.borrow)?;
@@ -137,16 +137,11 @@ fn recent_hourly_payments(
             if !net.is_finite() {
                 return None;
             }
-            let token_label = e
-                .token
-                .parse::<u32>()
-                .ok()
+            let token_id = e.token.parse::<u32>().ok();
+            let token_label = token_id
                 .and_then(|idx| token_name_by_id.get(&idx).cloned())
                 .unwrap_or_else(|| e.token.clone());
-            let supply_rate = e
-                .token
-                .parse::<u32>()
-                .ok()
+            let supply_rate = token_id
                 .or_else(|| name_to_id.get(e.token.as_str()).copied())
                 .and_then(|idx| reserve_by_token.get(&idx))
                 .and_then(|reserve| parse_f64_str(&reserve.supply_yearly_rate))
@@ -160,10 +155,8 @@ fn recent_hourly_payments(
                 net,
             })
         })
-        .collect();
-    recent_hourly.sort_by_key(|payment| Reverse(payment.time));
-    recent_hourly.truncate(12);
-    recent_hourly
+        .take(12)
+        .collect()
 }
 
 #[cfg(test)]

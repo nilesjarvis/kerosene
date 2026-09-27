@@ -23,7 +23,7 @@ candidates; it does not establish that every module has been reviewed.
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts, axes, background setup, and crosshair drawing reviewed and consolidated; mode-specific formatting and series calculations retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
 | Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Candle request/response policies and watchlist/outcome-volume history inspected; candle normalization deduplicates in place and trailing-run searches stop at the final gap. Outcome parsing, contract/template resolution, question membership, and label helpers reviewed; the temporary question index borrows shared records and expiry formatting is shared. Calendar, unstaking, and ETF API entry points/conversion helpers inspected. Remaining API requests, ETF flow parsing, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
-| Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Snapshot models, planning, assembly, and metrics reviewed and separated; request bounds and history admission are shared. Snapshot update callers inspected, with freshness/admission policies retained. Journal cache persistence and tests reviewed; platform-specific replacement retained. Cockpit rendering/analytics reviewed and split by panel; per-asset aggregation copies coin names only for distinct output rows. Detail/chrome/list views, summary preparation/series/drawing, and small trade-card helpers reviewed; simplified series iteration and reused detail values. Snapshot canvas interaction/rendering reviewed and separated; the canvas borrows its snapshot. Broader account analytics still need review. |
+| Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Snapshot models, planning, assembly, and metrics reviewed and separated; request bounds and history admission are shared. Snapshot update callers inspected, with freshness/admission policies retained. Journal cache persistence and tests reviewed; platform-specific replacement retained. Cockpit rendering/analytics reviewed and split by panel; per-asset aggregation copies coin names only for distinct output rows. Detail/chrome/list views, summary preparation/series/drawing, and small trade-card helpers reviewed; simplified series iteration and reused detail values. Snapshot canvas interaction/rendering reviewed and separated; the canvas borrows its snapshot. Account analytics HTTP fan-out, reserve/name/history parsing, income assembly, and portfolio data selection reviewed; token validation is centralized, recent-payment formatting is bounded to 12 valid rows, portfolio bucket construction is direct, and unused theme construction is removed. Portfolio and PnL-card renderers remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Remaining integration stream internals still need review. |
@@ -1305,14 +1305,59 @@ Validation (using the local ALSA prefix documented above):
   `/tmp/kerosene-snapshot-canvas-smoke.5XqVO7`.
 - Removed two full snapshot copies; no measured runtime speedup is claimed.
 
+## 2026-09-27: simplify income assembly and portfolio data preparation
+
+- Reviewed account analytics HTTP helpers, required/optional income endpoint
+  handling, reserve and spot-name parsers, daily interest deduplication, snapshot
+  assembly, portfolio history parsing, and portfolio data selection. Retained
+  request fan-out, response-body timing, endpoint error precedence/redaction,
+  parser fallback priority, and the distinct daily/hourly validation policies.
+- Income token-row construction now owns numeric validation and projection
+  arithmetic. Snapshot assembly counts a rejected row in one place and sums
+  accepted row fields in the original input order. Missing reserves remain
+  excluded from the invalid-row count; finite signed/zero values stay accepted.
+- Recent payments sort borrowed hourly entries, then validate and format the
+  first 12 valid rows. Stable timestamp ties, aggregate exclusion, numeric-token
+  precedence, unknown labels, and invalid-rate defaults are preserved. Token
+  IDs are parsed once; discarded older rows no longer allocate labels or look
+  up rates.
+- Portfolio buckets now take parsed history vectors directly and parse volume
+  once, retaining the missing-versus-invalid distinction. Removed a pass-through
+  numeric helper; history parsing still preserves input order and counts only
+  invalid values with admissible timestamps.
+- Removed six unused theme constructions from portfolio data helpers after
+  inspecting theme creation. Bucket priority, empty-bucket handling, time-window
+  selection, and historical performance calculations are unchanged.
+- Added six regressions before editing production code: token parse failures and
+  arithmetic overflow/counting, signed values and stable projection ties, recent
+  valid-payment limits/ties, label/rate fallback precedence, volume presence, and
+  history ordering/error counts. Updated the account component guide.
+- No requests, schema, message routes, order behavior, rendering, or persisted
+  state changed. No measured runtime speedup is claimed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene account_analytics`:
+  **28 passed** before and after the production changes, including all six new
+  regression tests and the existing endpoint/error-redaction tests.
+- `cargo test --locked -j 2 --package kerosene --bin kerosene portfolio_state`:
+  **36 passed**.
+- Source comparison confirms portfolio data selection differs only by the
+  removal of six unused theme calls.
+- `cargo test --locked -j 2`: **4,364 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- No GUI smoke run for this batch: drawing, interaction, windows, and startup
+  were not changed.
+
 ## Next candidates
 
-1. Continue into `account_analytics/{http,portfolio,income}.rs` and
-   `portfolio_state/data.rs`: trace request fan-out, parsing, and required versus
-   optional result policies before sharing helpers. Portfolio and PnL-card
-   renderers also need review. Account state/persistence copies remain
-   intentional. Farside's repeated chart-marker lookup remains a smaller
-   candidate.
+1. Review portfolio/income chart and pane renderers, followed by PnL-card
+   rendering. Audit other unused theme constructions in state/update methods
+   before removing them. Account state/persistence copies remain intentional.
+   Farside's repeated chart-marker lookup remains a smaller candidate.
 2. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
    event parsing.
