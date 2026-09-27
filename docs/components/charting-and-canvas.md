@@ -110,6 +110,11 @@ The backfill source comes from `ReadDataProvider`:
 
 ## Shared Candle Cache
 
+`api/candles/normalize.rs` validates and stably sorts candles, then deduplicates
+in place so the last valid input for each timestamp wins. Trailing-run helpers
+search backward for the final discontinuity, using the same exact or tolerant
+spacing rules as cache containment.
+
 `chart_state/candles/cache.rs` stores the bounded in-memory LRU by
 `(ChartBackfillSource, symbol, Timeframe)`, so data from different providers
 cannot overwrite or satisfy one another.

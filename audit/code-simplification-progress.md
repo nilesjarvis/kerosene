@@ -21,7 +21,7 @@ candidates; it does not establish that every module has been reviewed.
 | --- | --- |
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts, axes, background setup, and crosshair drawing reviewed and consolidated; mode-specific formatting and series calculations retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
-| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Remaining API requests, outcome metadata internals, books, and other widgets need review. |
+| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Candle request/response policies and watchlist/outcome-volume history inspected; candle normalization deduplicates in place and trailing-run searches stop at the final gap. Remaining API requests, outcome metadata internals, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
@@ -785,6 +785,42 @@ Validation (using the local ALSA prefix documented above):
   Kerosene window under Xvfb, confirmed by `xwininfo`. Expected timeout exit 124
   after 20 seconds, no panic, and only the existing EGL/DRI3 warning. In-memory
   test mode kept personal configuration out of the run.
+
+## 2026-09-27: simplify candle normalization and trailing-run searches
+
+- Reviewed candle request orchestration, wire models, response parsing, interval
+  rules, normalization/gap detection, watchlist/screener history, outcome-volume
+  batching, and candle cache consumers. Provider fallback, credential scoping,
+  error redaction, cache policy, gap filling, partial-result rules, and request
+  concurrency remain separate and unchanged.
+- `normalize_candles` now uses in-place deduplication after the same validity
+  filter and stable sort. Swapping a duplicate into the retained slot preserves
+  the last valid input's complete payload. The result reuses the input allocation
+  instead of allocating a second candle vector; input capacity is retained.
+- Both trailing-run helpers now search adjacent pairs backward and stop at the
+  final discontinuity. Exact/tolerant thresholds, unknown-interval behavior,
+  saturating arithmetic, and returned suffix indices are unchanged.
+- Added an exhaustive test over 3,906 short input sequences, comparing every
+  retained candle field against a timestamp-map oracle. It covers duplicate
+  ordering, invalid updates, multiple groups, empty inputs, negative finite
+  prices, and signed-zero volume. Added 12 trailing-run boundary cases including
+  duplicate/backward timestamps, threshold edges, and `u64` limits.
+- Updated the charting guide. No network, cache wire format, chart geometry,
+  signing, order, or persistence changes.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene api::candles::`:
+  **22 passed** before and after the production changes, including both new tests.
+- Source comparison against HEAD confirms candle validation, gap thresholds,
+  and all gap-detection predicates are unchanged.
+- `cargo test --locked -j 2`: **4,326 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- The changes remove a result-vector allocation and scans before the final gap;
+  no measured runtime speedup is claimed.
 
 ## Next candidates
 

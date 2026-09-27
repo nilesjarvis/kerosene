@@ -20,17 +20,16 @@ pub fn normalize_candles(mut candles: Vec<Candle>) -> Vec<Candle> {
     candles.retain(is_valid_candle);
     candles.sort_by_key(|candle| candle.open_time);
 
-    let mut normalized: Vec<Candle> = Vec::with_capacity(candles.len());
-    for candle in candles {
-        if let Some(last) = normalized.last_mut()
-            && last.open_time == candle.open_time
-        {
-            *last = candle;
-            continue;
+    candles.dedup_by(|next, previous| {
+        if next.open_time != previous.open_time {
+            return false;
         }
-        normalized.push(candle);
-    }
-    normalized
+        // dedup_by removes its first argument. Retain the last valid input
+        // for each timestamp by swapping it into the surviving slot.
+        std::mem::swap(next, previous);
+        true
+    });
+    candles
 }
 
 // ---------------------------------------------------------------------------
@@ -103,17 +102,10 @@ pub fn trailing_contiguous_run_start(candles: &[Candle], interval_ms: u64) -> us
     let Some(max_gap) = max_contiguous_gap_ms(interval_ms) else {
         return 0;
     };
-    let mut start = 0;
-    for i in 1..candles.len() {
-        if candles[i]
-            .open_time
-            .saturating_sub(candles[i - 1].open_time)
-            > max_gap
-        {
-            start = i;
-        }
-    }
-    start
+    candles
+        .windows(2)
+        .rposition(|pair| pair[1].open_time.saturating_sub(pair[0].open_time) > max_gap)
+        .map_or(0, |index| index + 1)
 }
 
 /// Index of the first candle in the trailing exactly interval-spaced run.
@@ -121,13 +113,10 @@ pub fn trailing_exact_run_start(candles: &[Candle], interval_ms: u64) -> usize {
     if interval_ms == 0 {
         return 0;
     }
-    let mut start = 0;
-    for i in 1..candles.len() {
-        if candles[i].open_time != candles[i - 1].open_time.saturating_add(interval_ms) {
-            start = i;
-        }
-    }
-    start
+    candles
+        .windows(2)
+        .rposition(|pair| pair[1].open_time != pair[0].open_time.saturating_add(interval_ms))
+        .map_or(0, |index| index + 1)
 }
 
 #[cfg(test)]
@@ -198,5 +187,45 @@ mod gap_tests {
         assert_eq!(trailing_contiguous_run_start(&candles, 0), 0);
         assert_eq!(trailing_exact_run_start(&candles, 0), 0);
         assert!(!open_time_starts_after_gap(1, 10_000_000, 0));
+    }
+
+    #[test]
+    fn trailing_runs_preserve_gap_boundaries_and_saturating_arithmetic() {
+        let cases: &[(&[u64], u64, usize, usize)] = &[
+            (&[], 1, 0, 0),
+            (&[1], 1, 0, 0),
+            (&[1, 1, 2], 1, 0, 1),
+            (&[3, 2, 3], 1, 0, 1),
+            (&[1, 4, 5], 1, 0, 1),
+            (&[1, 5, 6], 1, 1, 1),
+            (&[1, 2, 9], 1, 2, 2),
+            (&[1, 9, 10, 20], 1, 3, 3),
+            (&[u64::MAX - 1, u64::MAX, u64::MAX], 1, 0, 0),
+            (&[1, u64::MAX], u64::MAX, 0, 0),
+            (&[0, u64::MAX], u64::MAX / 3, 0, 1),
+            (&[1, u64::MAX], 0, 0, 0),
+        ];
+        for &(times, interval, tolerant, exact) in cases {
+            // Build only the timestamps these helpers inspect; the extreme values
+            // deliberately include values outside valid candle payloads.
+            let candles: Vec<_> = times
+                .iter()
+                .map(|&time| Candle {
+                    open_time: time,
+                    close_time: time,
+                    ..Candle::test_flat(0, 1.0)
+                })
+                .collect();
+            assert_eq!(
+                trailing_contiguous_run_start(&candles, interval),
+                tolerant,
+                "{times:?}, interval {interval}"
+            );
+            assert_eq!(
+                trailing_exact_run_start(&candles, interval),
+                exact,
+                "{times:?}, interval {interval}"
+            );
+        }
     }
 }
