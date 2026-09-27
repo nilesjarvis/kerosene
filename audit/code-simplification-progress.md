@@ -20,8 +20,8 @@ candidates; it does not establish that every module has been reviewed.
 | Area | Current coverage |
 | --- | --- |
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
-| Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts and axes reviewed and consolidated; crosshair formatting and series calculations inspected but retained. Most chart rendering and interactions remain. |
-| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Remaining API requests, outcome metadata internals, symbol lifecycle, books, and other widgets need review. |
+| Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts and axes reviewed and consolidated; crosshair formatting and series calculations inspected but retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
+| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Remaining API requests, outcome metadata internals, symbol search planning, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
@@ -561,6 +561,62 @@ Validation (using the local ALSA prefix documented above):
 - `cargo fmt -- --check` and `git diff --check`: passed.
 - New tests use synthetic metadata only; no live provider credentials or
   network requests were required for them.
+
+## 2026-09-27: separate symbol lifecycle responsibilities
+
+- Reviewed all production methods and 30 inline tests in
+  `market_update/symbols.rs`, context-result helpers/tests, symbol resolution and
+  filter helpers, preset snapshot synchronization, and live-watchlist refresh
+  scheduling. Retained family-specific recovery and selection rules.
+- Reduced the 1,965-line symbol module to 108 lines of message dispatch and
+  selection controls. Moved metadata refresh orchestration to `refresh.rs`,
+  legacy spot migration to `migration.rs`, chart identity reconciliation to
+  `charts.rs`, and search-context result handling into the existing `contexts.rs`.
+  The 30 existing tests and eight fixtures/helpers now live in `tests.rs` with
+  context, migration, and refresh test groups. Methods remain scoped to this
+  feature; message routes and crate-facing refresh entry points are unchanged.
+- Extracted chart reconciliation from the metadata success branch at the same
+  point in the operation sequence. Preserved primary/secondary alias collision
+  handling, quick-order/HUD resets, macro-cache clearing, request context and
+  generation capture, task ordering, and persistence. Chart-key resolution now
+  borrows both keys rather than cloning them.
+- Shared preset/live-watchlist alias rewriting in `migrate_watchlist_symbols`.
+  It moves replaced keys into the invalidation set, preserves first-occurrence
+  order, and deduplicates only lists with a rewritten alias. Saved-layout preset
+  snapshots, cache removal, request invalidation, persistence, and refetching stay
+  at their original orchestration points.
+- Partial search-context responses reuse the existing map and extend it with
+  fresh values before filtering once to the requested scope. Removed the
+  unconditional full-cache clone and redundant filtered-map allocation. Complete
+  success still replaces the cache; errors and stale requests retain it.
+- Outcome labels update directly while borrowing the symbol list, avoiding an
+  intermediate vector and key copies for unchanged labels. Expired names remain
+  cached, and configuration is saved only if a label changes.
+- Added three tests for changed/unchanged preset and live-watchlist lists, saved
+  snapshots, cache invalidation and idempotence; mixed partial context results;
+  and expired/unchanged/changed outcome label persistence. Updated the component
+  guide with the new module boundaries and existing response policies.
+
+Validation (using the local ALSA prefix documented above):
+
+- Compared all 48 original method/test/helper bodies after extraction, allowing
+  visibility, whitespace, and rustfmt trailing commas: all match. The extracted
+  chart block also matches its original sequence.
+- `cargo test --locked -j 2 --package kerosene --bin kerosene
+  market_update::symbols::`: **60 passed** after extraction/new tests and again
+  after consolidation and copy removal. The final removal of redundant partial
+  context filtering was then exercised by the full suite.
+- Final source comparison confirms all 38 original test/helper bodies and seven
+  otherwise unchanged lifecycle methods match; chart reconciliation differs only
+  in borrowed key lookups. The three intentionally changed methods were reviewed
+  separately.
+- `cargo test --locked -j 2`: **4,313 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- New tests use synthetic in-memory state and unpolled tasks; no live provider
+  credentials or network requests were needed for them.
 
 ## Next candidates
 
