@@ -26,7 +26,7 @@ candidates; it does not establish that every module has been reviewed.
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Remaining integration stream internals still need review. |
-| Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing inspected. Other integration and assistant internals still need substantive review. |
+| Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing inspected. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling. Other integration and assistant internals still need substantive review. |
 | Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
 
@@ -929,11 +929,51 @@ Validation (using the local ALSA prefix documented above):
 - No measured runtime speedup is claimed; this change removes repeated date
   parsing while keeping temporary storage local to sorting/rendering.
 
+## 2026-09-27: separate SEC reader responsibilities
+
+- Reviewed the SEC API's HTTP requests, ticker/submission parsing, structured
+  earnings selection/formatting, archive URLs, document selection, HTML/text
+  conversion, summary ranking, public exports, and existing tests. Also reviewed
+  Farside ETF flow extraction and its tests; those parsing rules remain separate.
+- Split the 1,629-line SEC module into a 124-line entry point and five focused
+  children: `http`, `submissions`, `earnings`, `documents`, and `summary`. Wire
+  models stay beside their readers, while public request/result types and
+  filing-summary orchestration remain at the entry point. Existing API exports
+  are preserved, and internal helpers only expose what their parent needs.
+- Both SEC response readers now call one request/status helper, retaining the
+  shared client, configured user agent, observed GET, endpoint labels, request
+  errors, and status checks before body decoding. JSON/text decoding and their
+  distinct errors remain in the wrappers.
+- Moved all 12 existing tests beside the modules they cover. Added two loopback
+  HTTP regression tests covering method/headers, JSON and Unicode text success,
+  three failure statuses with incomplete bodies, malformed JSON, incomplete text,
+  and request-construction failure. The tests passed before the production change.
+  No live EDGAR/ETF requests or credentials are needed for these tests.
+- Updated the integrations guide with the module map. No chart request/cache,
+  message, persistence, dependency, or trading behavior changes.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene api::sec::`:
+  **14 passed** before and after the production changes, including both new
+  regression tests.
+- Source comparison confirms 49 production function bodies are byte-identical;
+  the remaining two wrappers share a request/status block that is byte-identical
+  to both originals. All 9 constants and 17 model definitions/derives are unchanged
+  apart from internal visibility. All 15 existing test/helper bodies match modulo
+  formatting.
+- `cargo test --locked -j 2`: **4,335 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+
 ## Next candidates
 
-1. Continue reviewing ETF flow parsing and remaining API readers, including
-   Farside's repeated chart-marker lookup and SEC request helpers. Preserve
-   parser acceptance, error precedence, and provider-specific fallback policies.
+1. SEC summary helpers repeatedly lowercase the same full filing text. Evaluate
+   sharing that work while preserving snippet ranking, boundaries, and fallbacks.
+   Farside chart extraction also repeats its marker lookup; preserve parser
+   acceptance and error precedence if simplifying it.
 2. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
    event parsing.

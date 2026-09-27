@@ -18,6 +18,7 @@ streams.
 | Feeds | `src/feed_state/`, `src/feed_update/`, `src/feed_views/` | Liquidation feed, tracked trades, Telegram feed, aggregation, alerts, rendering. |
 | Telegram | `src/telegram_feed.rs`, `src/telegram_fast_feed.rs` | Public channel scraping and optional MTProto fast/private feed. |
 | Calendar and screener | `src/calendar_*`, `src/screener_*` | Economic calendar, market screener contexts/history. |
+| SEC earnings | `src/api/sec.rs`, `src/api/sec/`, `src/chart_update/earnings.rs` | EDGAR earnings events, filing summaries, and chart request/cache state. |
 
 ## Remote Wallet Database
 
@@ -260,6 +261,27 @@ Low-latency behavior is REST polling while an X Feed pane is open. Following and
 List timelines are user-context REST endpoints, so X Filtered Stream is not a
 drop-in replacement for these sources; it is app-context public filtering and
 should only be added as an optional public watch source.
+
+## SEC earnings
+
+`api/sec.rs` owns the request/result types and filing-summary orchestration.
+Its child modules keep the read-only EDGAR pipeline separated by responsibility:
+
+- `http.rs`: endpoint URLs, configured user agent, observed GET requests, status
+  checks, and JSON/text decoding. Both readers share request/status handling and
+  retain distinct decode errors.
+- `submissions.rs`: ticker lookup, company submissions, and dated 8-K item 2.02
+  earnings events.
+- `earnings.rs`: company-facts decoding, periodic filing selection, metric
+  matching, and year-over-year formatting.
+- `documents.rs`: safe archive/document URLs, submission-package parsing, and
+  summary-document selection.
+- `summary.rs`: HTML-to-text conversion and headline/highlight extraction.
+
+Chart request generations, pending readers, and in-memory caches remain in
+`chart_update/earnings.rs`. Summary text is retained when optional company-facts
+data is unavailable. Module tests use fixtures; HTTP reader tests use a loopback
+server without contacting EDGAR.
 
 ## Calendar
 
