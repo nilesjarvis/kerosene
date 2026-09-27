@@ -11,6 +11,24 @@ use iced::Task;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    pub(crate) fn ensure_positioning_info_pane_instances(&mut self) {
+        let pane_ids: Vec<PositioningInfoId> = self
+            .workspace_pane_kinds()
+            .filter_map(|(_, _, kind)| match kind {
+                PaneKind::PositioningInfo(id) => Some(*id),
+                _ => None,
+            })
+            .collect();
+        for id in pane_ids {
+            if !self.positioning_infos.contains_key(&id) {
+                let symbol = self.visible_positioning_symbol("");
+                self.positioning_infos
+                    .insert(id, PositioningInfoInstance::new(id, symbol));
+                self.next_positioning_info_id = self.next_positioning_info_id.max(id + 1);
+            }
+        }
+    }
+
     pub(super) fn add_positioning_info_pane(&mut self) -> Task<Message> {
         self.add_widget_menu_open = false;
         let workspace = self.add_widget_workspace;

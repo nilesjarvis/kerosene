@@ -42,6 +42,21 @@ pub(crate) struct PositioningInfoInstance {
 }
 
 impl PositioningInfoInstance {
+    pub(crate) fn from_config(config: &config::PositioningInfoConfig, symbol: String) -> Self {
+        let mut instance = Self::new(config.id, symbol);
+        instance.page = config.page;
+        instance.side = config.side;
+        instance.sort_field = config.sort_field;
+        instance.sort_direction = config.sort_direction;
+        instance.entry_min_input = config.entry_min.clone();
+        instance.entry_max_input = config.entry_max.clone();
+        instance.change_timeframe = config.change_timeframe;
+        instance.change_sort_field = config.change_sort_field;
+        instance.change_sort_direction = config.change_sort_direction;
+        instance.normalize_removed_filters();
+        instance
+    }
+
     pub(crate) fn new(id: PositioningInfoId, symbol: String) -> Self {
         Self {
             id,

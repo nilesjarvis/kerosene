@@ -1,13 +1,11 @@
 mod controls;
+mod panes;
 mod results;
 mod symbols;
 
 use crate::api::WatchlistContext;
 use crate::app_state::TradingTerminal;
-use crate::config;
-use crate::market_state::LiveWatchlistInstance;
 use crate::message::Message;
-use crate::pane_state::PaneKind;
 use iced::Task;
 use std::collections::{HashMap, HashSet};
 
@@ -44,57 +42,7 @@ impl TradingTerminal {
                 }
                 Task::none()
             }
-            Message::AddLiveWatchlistPane => {
-                self.add_widget_menu_open = false;
-                let workspace = self.add_widget_workspace;
-                let Some(focus) = self.add_target_pane_in(workspace) else {
-                    self.push_toast(
-                        "Could not add Live Watchlist: no pane is available".to_string(),
-                        true,
-                    );
-                    return Task::none();
-                };
-
-                let id = crate::ws::now_ms();
-                let preset_id = self.ensure_default_watchlist_preset();
-                let symbols = self
-                    .watchlist_preset(preset_id)
-                    .map(|preset| {
-                        preset
-                            .symbols
-                            .iter()
-                            .filter(|symbol| !self.symbol_key_is_hidden(symbol))
-                            .cloned()
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                self.live_watchlists.insert(
-                    id,
-                    LiveWatchlistInstance {
-                        id,
-                        preset_id: Some(preset_id),
-                        symbols,
-                        search_query: String::new(),
-                        sort_column: Default::default(),
-                        sort_direction: Default::default(),
-                        visible_columns: config::default_live_watchlist_columns(),
-                        row_cache: Vec::new(),
-                    },
-                );
-                if self
-                    .add_pane_to_target(
-                        workspace,
-                        self.add_widget_axis(),
-                        focus,
-                        PaneKind::LiveWatchlist(id),
-                        "Live Watchlist",
-                    )
-                    .is_none()
-                {
-                    self.live_watchlists.remove(&id);
-                }
-                Task::none()
-            }
+            Message::AddLiveWatchlistPane => self.add_live_watchlist_pane(),
             Message::LiveWatchlistSearchChanged(id, query) => {
                 if let Some(watchlist) = self.live_watchlists.get_mut(&id) {
                     update_watchlist_search(watchlist, query);
@@ -334,6 +282,9 @@ impl TradingTerminal {
 mod tests {
     use super::*;
     use crate::api::WatchlistContext;
+    use crate::config;
+    use crate::market_state::LiveWatchlistInstance;
+    use crate::pane_state::PaneKind;
     use iced::widget::pane_grid;
 
     fn context(day_vlm: f64) -> WatchlistContext {

@@ -206,6 +206,11 @@ primary and comparison series.
 Runtime order books are keyed by `OrderBookId` and stored as
 `OrderBookInstance`.
 
+Startup and layout loading share `OrderBookInstance::from_config` for display
+settings and `ensure_order_book_pane_instances` for panes missing saved widget
+state. Their callers retain symbol resolution, tick-size fallback, and fetch
+scheduling.
+
 Order books support:
 
 - active-symbol or fixed-symbol mode
@@ -316,6 +321,10 @@ Live-watchlist layout configs store the preset ID plus an inline symbol snapshot
 for compatibility with older and imported layouts. Legacy inline-only lists are
 migrated to named presets when configuration is loaded.
 
+Default instances are created in `market_update/live_watchlist/panes.rs`.
+Startup and layout loading use its `ensure_live_watchlist_pane_instances`
+helper; Add Widget uses the same preset selection and visibility filtering.
+
 ## Ticker Tape
 
 The ticker tape is an optional full-width strip below the top bar. It displays
@@ -370,6 +379,12 @@ Key modules:
 
 Positioning requests use request keys for dedupe and stale-response protection.
 Asset-context streams update live mark/mid metadata for matching panes.
+
+`PositioningInfoInstance::from_config` restores saved filters and normalizes
+removed sort options. Startup and layout loading share
+`ensure_positioning_info_pane_instances` to populate missing pane state across
+the main workspace and canvases. Runtime layout loading clears pending requests
+before replacing instances.
 
 ## Session Data
 

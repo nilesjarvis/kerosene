@@ -1,10 +1,8 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
-use crate::market_state::{OrderBookDisplayMode, OrderBookInstance, OrderBookSymbolMode};
+use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
 use crate::message::Message;
-use crate::pane_state::PaneKind;
 use iced::Task;
-use std::collections::hash_map::Entry;
 
 // ---------------------------------------------------------------------------
 // Layout Order-Book Restoration
@@ -34,47 +32,19 @@ impl TradingTerminal {
                 }
             };
 
-            let mut instance = OrderBookInstance::new(
-                order_book_config.id,
+            let instance = OrderBookInstance::from_config(
+                order_book_config,
                 mode,
                 Self::normalized_order_book_tick_size(
                     order_book_config.tick_size,
                     layout.book_tick_size,
                 ),
             );
-            instance.display_mode = match order_book_config.display_mode {
-                config::OrderBookDisplayModeConfig::DepthList => OrderBookDisplayMode::DepthList,
-                config::OrderBookDisplayModeConfig::DomLadder => OrderBookDisplayMode::DomLadder,
-                config::OrderBookDisplayModeConfig::DepthChart => OrderBookDisplayMode::DepthChart,
-            };
-            instance.center_on_mid = order_book_config.center_on_mid;
-            instance.reverse_side = order_book_config.reverse_side;
-            instance.show_spread_chart = order_book_config.show_spread_chart;
-            instance.set_spread_chart_height(order_book_config.spread_chart_height);
-            instance.book_loading = true;
             self.order_books.insert(order_book_config.id, instance);
             self.next_order_book_id = self.next_order_book_id.max(order_book_config.id + 1);
         }
 
-        let pane_ids = self
-            .workspace_pane_kinds()
-            .filter_map(|(_, _, kind)| match kind {
-                PaneKind::OrderBook(id) => Some(*id),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        for id in pane_ids {
-            if let Entry::Vacant(entry) = self.order_books.entry(id) {
-                let mut instance = OrderBookInstance::new(
-                    id,
-                    OrderBookSymbolMode::Active,
-                    Self::normalized_book_tick_size(layout.book_tick_size),
-                );
-                instance.book_loading = true;
-                entry.insert(instance);
-                self.next_order_book_id = self.next_order_book_id.max(id + 1);
-            }
-        }
+        self.ensure_order_book_pane_instances(layout.book_tick_size);
 
         self.order_book_fetch_tasks_for_all()
     }
@@ -84,6 +54,7 @@ impl TradingTerminal {
 mod tests {
     use super::*;
     use crate::config::default_tick_size;
+    use crate::pane_state::PaneKind;
     use iced::widget::pane_grid;
 
     #[test]

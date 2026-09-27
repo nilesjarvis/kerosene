@@ -4,8 +4,31 @@ use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 use iced::Task;
+use std::collections::hash_map::Entry;
 
 impl TradingTerminal {
+    pub(crate) fn ensure_order_book_pane_instances(&mut self, fallback_tick_size: f64) {
+        let pane_ids = self
+            .workspace_pane_kinds()
+            .filter_map(|(_, _, kind)| match kind {
+                PaneKind::OrderBook(id) => Some(*id),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for id in pane_ids {
+            if let Entry::Vacant(entry) = self.order_books.entry(id) {
+                let mut instance = OrderBookInstance::new(
+                    id,
+                    OrderBookSymbolMode::Active,
+                    Self::normalized_book_tick_size(fallback_tick_size),
+                );
+                instance.book_loading = true;
+                entry.insert(instance);
+                self.next_order_book_id = self.next_order_book_id.max(id + 1);
+            }
+        }
+    }
+
     pub(in crate::market_update::order_book) fn add_order_book_pane(&mut self) -> Task<Message> {
         self.add_widget_menu_open = false;
         let workspace = self.add_widget_workspace;

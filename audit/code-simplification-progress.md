@@ -19,7 +19,7 @@ candidates; it does not establish that every module has been reviewed.
 
 | Area | Current coverage |
 | --- | --- |
-| Startup and layout restoration | Chart and comparison-chart initialization reviewed and consolidated; positioning initialization inspected, still duplicated. Remaining pane/layout flows need review. |
+| Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Rendering and interactions remain. |
 | Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. APIs, caching, symbol lifecycle, books, and other widgets remain. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
@@ -27,7 +27,7 @@ candidates; it does not establish that every module has been reviewed.
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Initial duplication scan only; substantive review remains. |
 | Feeds, integrations, assistant | Initial size/duplication scan only; substantive review remains. |
-| Views, settings, commands, app shell | Architecture mapped; substantive review remains. |
+| Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
 
 ## 2026-09-27: chart restoration
@@ -65,7 +65,7 @@ candidates; it does not establish that every module has been reviewed.
 - Account user-stream and risk-scrub copies were left alone: they span methods
   that borrow the full terminal and need a separate ownership review.
 
-## Validation
+## Validation for the first turn (`d886a9ae`)
 
 This environment has ALSA development files in a local dependency prefix. Plain
 `cargo check --locked -j 2` initially failed to locate `alsa.pc`. Cargo commands
@@ -101,18 +101,61 @@ LIBRARY_PATH=/home/thread/.local/kerosene-deps/usr/lib/x86_64-linux-gnu
   validates startup, not hardware GPU rendering. In-memory test mode kept
   personal configuration out of the smoke run.
 
+## 2026-09-27: remaining market-pane initialization
+
+- Positioning and order-book startup/layout paths repeated settings assignment
+  and reconstruction of instances missing from saved widget lists. Added
+  `PositioningInfoInstance::from_config` and `OrderBookInstance::from_config`,
+  and shared each feature's pane-recovery loop in its existing update module.
+- Kept symbol fallback/canonicalization, tick-size validation, request reset,
+  and fetch scheduling at the original call sites. Recovery still includes
+  closed canvas workspaces, retains existing instances, and advances IDs only
+  when it creates missing instances.
+- Default watchlist creation was repeated in boot, layout restoration, and
+  Add Widget. Moved it to `market_update/live_watchlist/panes.rs` and shared
+  preset selection and visibility filtering. The Add Widget message delegates
+  to a feature helper that preserves workspace targeting and split-failure
+  cleanup. Saved watchlist symbol resolution remains unchanged.
+- Added four integration tests in `layout_persistence/tests.rs`, covering
+  snapshots from both restoration paths, all order-book display modes,
+  deprecated positioning sorts, muted-symbol fallback, tick/height clamping,
+  missing canvas instances, stale-instance/request removal, ID allocation,
+  preservation of existing runtime state, and default watchlists at boot,
+  layout load, and Add Widget. Updated the market-data component guide.
+- Session-data restoration already delegates model construction and differs in
+  startup/runtime symbol fallback. Left its small orchestration loops explicit.
+- No schema, message routing, subscription, dependency, or trading changes.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene positioning`:
+  60 passed after the positioning/order-book extraction.
+- `cargo test --locked -j 2 --package kerosene --bin kerosene
+  layout_persistence::tests`: all 4 new tests passed after watchlist extraction.
+- `cargo test --locked -j 2`: **4,300 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  failed only on the same three pre-existing unused account message variants.
+- `cargo build --locked -j 2`: passed with the existing unused-message warning.
+- Headless startup smoke: `timeout 20s xvfb-run -a` running the built binary
+  with `--test` opened the 1600x960 Kerosene window, confirmed by `xwininfo`.
+  Expected timeout 124, no panic, and only the same EGL/DRI3 acceleration
+  warning as the first turn. This checks startup with in-memory configuration,
+  not hardware GPU rendering.
+
 ## Next candidates
 
-1. Positioning-info restoration repeats settings and missing-pane instance
-   setup in `app_boot/positioning_info.rs` and
-   `layout_persistence/positioning_info.rs`. Preserve the different symbol
-   fallback rules and runtime pending-request reset when consolidating.
-2. Review the three unused account message routes against the current account
+1. Review the three unused account message routes against the current account
    picker/setup flow before removing anything. Searches found only handlers,
    routes, and tests, but credential helper functions have substantial safety
    tests and must be assessed as a complete flow.
-3. Review repeated account-picker/layout-switcher styling and comparison-chart
+2. Review repeated account-picker/layout-switcher styling and comparison-chart
    axis drawing. Similar appearance alone is not sufficient reason to share a
    helper; preserve layout, coordinate, and interaction differences.
-4. Continue across the unreviewed areas in the coverage table. Large files often
+   The three active-row style closures in
+   `account_views/summary/layout_switcher.rs` and
+   `account_views/picker/dropdown/option_row.rs` were inspected and match; the
+   existing `helpers/ui/buttons.rs` styles have different state/color behavior.
+3. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.

@@ -1,5 +1,6 @@
 use crate::account::AssetContext;
 use crate::api::OrderBook;
+use crate::config;
 use crate::helpers::{positive_finite_value, tick_sizes_match};
 use crate::market_state::MARKET_ASSET_CONTEXT_MAX_AGE_MS;
 
@@ -92,6 +93,26 @@ pub struct OrderBookInstance {
 }
 
 impl OrderBookInstance {
+    /// Restore settings using the caller's resolved symbol mode and tick size.
+    pub(crate) fn from_config(
+        config: &config::OrderBookConfig,
+        mode: OrderBookSymbolMode,
+        tick_size: f64,
+    ) -> Self {
+        let mut instance = Self::new(config.id, mode, tick_size);
+        instance.display_mode = match config.display_mode {
+            config::OrderBookDisplayModeConfig::DepthList => OrderBookDisplayMode::DepthList,
+            config::OrderBookDisplayModeConfig::DomLadder => OrderBookDisplayMode::DomLadder,
+            config::OrderBookDisplayModeConfig::DepthChart => OrderBookDisplayMode::DepthChart,
+        };
+        instance.center_on_mid = config.center_on_mid;
+        instance.reverse_side = config.reverse_side;
+        instance.show_spread_chart = config.show_spread_chart;
+        instance.set_spread_chart_height(config.spread_chart_height);
+        instance.book_loading = true;
+        instance
+    }
+
     pub fn new(id: OrderBookId, mode: OrderBookSymbolMode, tick_size: f64) -> Self {
         Self {
             id,
