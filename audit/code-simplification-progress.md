@@ -21,7 +21,7 @@ candidates; it does not establish that every module has been reviewed.
 | --- | --- |
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts and axes reviewed and consolidated; crosshair formatting and series calculations inspected but retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
-| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Remaining API requests, outcome metadata internals, books, and other widgets need review. |
+| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion and row generation inspected. Remaining API requests, outcome metadata internals, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
@@ -662,13 +662,61 @@ Validation (using the local ALSA prefix documented above):
   improvement is removal of repeated scans, calculations, and allocations;
   no measured runtime speedup is claimed.
 
+## 2026-09-27: share watchlist and ticker-tape context reconciliation
+
+- Reviewed live-watchlist message handling, context/history completion, result
+  status helpers/tests, row generation, and ticker-tape request/completion paths.
+  Kept history timestamp guards, error presentation, exchange-stat snapshots,
+  and forced/non-forced follow-up scheduling in their existing callers.
+- Added `market_update/context_results.rs` for the identical response-scoping
+  policy used by live watchlists and the ticker tape. Both callers still reject
+  mismatched request IDs, requested symbol lists, and already-completed requests
+  before invoking the helper.
+- Current contexts outside the completed request survive. Complete responses
+  clear omitted requested entries; partial responses preserve their old values.
+  Incoming values must belong to both the original request and current scope.
+  Still-relevant errors prune removed symbols without advancing freshness. An
+  error for a wholly obsolete request still becomes successful completion and
+  records its timestamp, matching the prior behavior.
+- Successful reconciliation moves the retained cache into the returned response
+  instead of cloning its keys and values into a new map. Error handling no longer
+  builds an unused preserved-context map. The live-watchlist request-symbol set
+  now consumes the message's vector rather than copying its strings.
+- Kept symbol-search context handling separate: its scope and failure-cache
+  policies differ. No timer, subscription, request-generation, status-prefix,
+  persistence, or trading rules changed.
+- Moved all 20 existing inline live-watchlist/ticker-tape tests into adjacent
+  test modules. Added two shared integration tests exercising both message routes:
+  22 scope/response cases and six stale/not-loading/mismatched-scope rejections.
+  They check every context field, status isolation, timestamps, loading flags,
+  request IDs, and pending/request-symbol cleanup. Updated the component guide.
+
+Validation (using the local ALSA prefix documented above):
+
+- Before consolidation, compared production bodies and moved tests with HEAD:
+  unchanged except formatting in moved tests.
+- `cargo test --locked -j 2 --package kerosene --bin kerosene market_update::`:
+  **191 passed** before and after consolidation, including both new test matrices.
+- Final source comparison verifies all 36 other production/test/helper function
+  bodies match HEAD; only the two context-result handlers changed.
+- `cargo test --locked -j 2`: **4,320 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- New tests use synthetic, in-memory context snapshots and unpolled tasks; no
+  live provider requests or credentials were needed for them.
+
 ## Next candidates
 
 1. Comparison crosshair and background setup still have repeated drawing code.
    With the common frame context, evaluate whether sharing those sequences
    makes the modes clearer while preserving their formatting and range guards.
-2. Continue reviewing the remaining API request and symbol-lifecycle modules and
+2. Live-watchlist row refresh currently rebuilds the metadata index separately
+   for each pane. Evaluate sharing one borrowed index for a batch while preserving
+   metadata precedence, symbol visibility, cached labels, and stable row sorting.
+3. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
    event parsing.
-3. Continue across the unreviewed areas in the coverage table. Large files often
+4. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.

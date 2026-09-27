@@ -333,6 +333,16 @@ timer or symbol change
   -> view renders rows and flashes
 ```
 
+Live-watchlist and ticker-tape context results share scope reconciliation in
+`market_update/context_results.rs`. Callers reject stale IDs and mismatched
+request symbols before reconciliation. Incoming values must be both requested
+and currently displayed. Complete responses remove omitted requested values;
+partial responses retain them. Current values outside the request survive.
+Errors prune removed symbols without advancing freshness while any requested
+symbol remains current. When the entire request is obsolete, it completes
+without an error and records its timestamp. Status messages and follow-up
+refresh scheduling remain specific to each caller.
+
 Named presets are persisted globally in `KeroseneConfig::watchlist_presets`.
 Live-watchlist layout configs store the preset ID plus an inline symbol snapshot
 for compatibility with older and imported layouts. Legacy inline-only lists are
