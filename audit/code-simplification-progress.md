@@ -26,7 +26,7 @@ candidates; it does not establish that every module has been reviewed.
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Remaining integration stream internals still need review. |
-| Feeds, integrations, assistant | Initial size/duplication scan only; substantive review remains. |
+| Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing inspected. Other integration and assistant internals still need substantive review. |
 | Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
 
@@ -893,11 +893,47 @@ Validation (using the local ALSA prefix documented above):
   passed.
 - `cargo fmt -- --check` and `git diff --check`: passed.
 
+## 2026-09-27: reuse parsed calendar dates
+
+- Reviewed calendar HTTP handling, refresh/retry and stale-result guards, view
+  filters, summary selection, status, controls, and row rendering. Fetch/error
+  handling, refresh behavior, clocks, and rendering remain unchanged.
+- API sorting now computes each timestamp key at most once instead of parsing
+  both dates during every comparison. It retains whole-second precision,
+  raw-date tie breaking, invalid-date ordering, and stable equal-key ordering.
+  Temporary keys own copies of date strings; the event model is unchanged.
+- Each view builds one temporary vector of borrowed events and parsed dates,
+  shared by filtering and the next-event summary. The view retains full timestamp
+  precision, inclusive time boundaries, local-date filtering, unknown-date
+  visibility, and first-match summary ties. No persistent cache or invalidation
+  is introduced.
+- Added four regression tests covering all nine filter combinations, invalid and
+  empty dates, empty/single lists, time cutoffs, timezone offsets, fractional
+  seconds, duplicate ordering, summary eligibility, and retained event fields.
+  The tests passed against the original implementation before the refactor.
+- Updated the integrations guide. Also inspected Farside flow extraction,
+  derivation, and date parsing; those helpers are unchanged.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene calendar`:
+  **18 passed** before and after the production changes, including all four new
+  regression tests.
+- Reviewed the production diff: filtering, summary selection, UI composition,
+  request/error handling, and refresh/retry policies are unchanged.
+- `cargo test --locked -j 2`: **4,333 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- No measured runtime speedup is claimed; this change removes repeated date
+  parsing while keeping temporary storage local to sorting/rendering.
+
 ## Next candidates
 
-1. Calendar sorting reparses both timestamps during every comparison. Evaluate
-   computing timestamp keys once while preserving raw-date ties, invalid dates,
-   timezone equivalence, and stable input order.
+1. Continue reviewing ETF flow parsing and remaining API readers, including
+   Farside's repeated chart-marker lookup and SEC request helpers. Preserve
+   parser acceptance, error precedence, and provider-specific fallback policies.
 2. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
    event parsing.

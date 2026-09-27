@@ -4,6 +4,9 @@ use crate::network_activity::HttpRequestExt as _;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::Deserialize;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct CalendarEvent {
     pub title: String,
@@ -60,15 +63,16 @@ pub async fn fetch_economic_calendar() -> Result<Vec<CalendarEvent>, String> {
 
     let mut events: Vec<CalendarEvent> = serde_json::from_str(&text)
         .map_err(|e| format!("Failed to parse economic calendar JSON: {e}; {}", snippet()))?;
-    events.sort_by(|a, b| {
-        let a_ts = chrono::DateTime::parse_from_rfc3339(&a.date)
-            .map(|dt| dt.timestamp())
-            .ok();
-        let b_ts = chrono::DateTime::parse_from_rfc3339(&b.date)
-            .map(|dt| dt.timestamp())
-            .ok();
-        a_ts.cmp(&b_ts).then_with(|| a.date.cmp(&b.date))
-    });
+    sort_calendar_events(&mut events);
 
     Ok(events)
+}
+
+fn sort_calendar_events(events: &mut [CalendarEvent]) {
+    events.sort_by_cached_key(|event| {
+        let timestamp = chrono::DateTime::parse_from_rfc3339(&event.date)
+            .map(|dt| dt.timestamp())
+            .ok();
+        (timestamp, event.date.clone())
+    });
 }

@@ -276,6 +276,12 @@ Key modules:
 Calendar fetches are one-shot tasks triggered by pane open, manual refresh, or
 timer/retry behavior.
 
+The API sorts events by whole-second timestamps and then raw date text, computing
+each key once. The view shares one temporary set of parsed timestamps between
+filtering and the next-event summary, retaining full timestamp precision. Invalid
+dates remain visible under time filters but are excluded from the next-event
+summary; both sorts preserve input order for equal keys.
+
 The calendar uses a compact table at pane widths of 640px and above, with a
 grouped date gutter, local event times, impact pills, and right-aligned forecast
 and previous values. Narrower panes stack event details and omit empty value

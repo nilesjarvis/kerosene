@@ -3,10 +3,21 @@ use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use chrono::{DateTime, Local, Utc};
 use iced::{Color, Theme};
 
-pub(super) fn parse_event_dt(event: &api::CalendarEvent) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(&event.date)
-        .map(|dt| dt.with_timezone(&Utc))
-        .ok()
+#[cfg(test)]
+mod tests;
+
+pub(super) type DatedEvent<'a> = (&'a api::CalendarEvent, Option<DateTime<Utc>>);
+
+pub(super) fn parsed_events(events: &[api::CalendarEvent]) -> Vec<DatedEvent<'_>> {
+    events
+        .iter()
+        .map(|event| {
+            let dt = DateTime::parse_from_rfc3339(&event.date)
+                .map(|dt| dt.with_timezone(&Utc))
+                .ok();
+            (event, dt)
+        })
+        .collect()
 }
 
 pub(super) fn impact_rank(impact: &str) -> u8 {
@@ -56,17 +67,17 @@ pub(super) fn relative_time(dt_utc: DateTime<Utc>, now_utc: DateTime<Utc>) -> St
     }
 }
 
-pub(super) fn filtered_events(
-    events: &[api::CalendarEvent],
+pub(super) fn filtered_events<'a>(
+    events: &[DatedEvent<'a>],
     impact_filter: CalendarImpactFilter,
     window_filter: CalendarWindowFilter,
     now_utc: DateTime<Utc>,
     now_local: DateTime<Local>,
-) -> Vec<(&api::CalendarEvent, Option<DateTime<Utc>>)> {
+) -> Vec<DatedEvent<'a>> {
     let mut filtered: Vec<_> = events
         .iter()
-        .filter_map(|event| {
-            let dt = parse_event_dt(event);
+        .copied()
+        .filter_map(|(event, dt)| {
             let rank = impact_rank(&event.impact);
             let impact_ok = match impact_filter {
                 CalendarImpactFilter::All => true,
@@ -96,14 +107,15 @@ pub(super) fn filtered_events(
     filtered
 }
 
-pub(super) fn next_important_event(
-    events: &[api::CalendarEvent],
+pub(super) fn next_important_event<'a>(
+    events: &[DatedEvent<'a>],
     now_utc: DateTime<Utc>,
-) -> Option<(&api::CalendarEvent, DateTime<Utc>)> {
+) -> Option<(&'a api::CalendarEvent, DateTime<Utc>)> {
     events
         .iter()
-        .filter_map(|event| {
-            let dt = parse_event_dt(event)?;
+        .copied()
+        .filter_map(|(event, dt)| {
+            let dt = dt?;
             (dt >= now_utc && impact_rank(&event.impact) >= 2).then_some((event, dt))
         })
         .min_by_key(|(_, dt)| *dt)
