@@ -15,6 +15,28 @@ fn non_coalesced_channels_pass_through_immediately() {
 }
 
 #[test]
+fn books_without_coin_keep_their_shared_slot_and_distinct_precision() {
+    let (tx, mut rx) = broadcast::channel(16);
+    let mut sender = CoalescedSender::with_interval(tx, Duration::from_secs(60));
+    for data in [
+        json!({"seq": 1}),
+        json!({"seq": 2}),
+        json!({"seq": 3, "nSigFigs": 5}),
+    ] {
+        sender.submit("l2Book".to_string(), Arc::new(data));
+    }
+    let immediate = drain(&mut rx);
+    assert_eq!(immediate.len(), 2);
+    assert_eq!(immediate[0].1["seq"], 1);
+    assert_eq!(immediate[1].1["seq"], 3);
+    assert_eq!(sender.flush_all(), 1);
+    let flushed = drain(&mut rx);
+    assert_eq!(flushed.len(), 1);
+    assert_eq!(flushed[0].0, "l2Book");
+    assert_eq!(flushed[0].1["seq"], 2);
+}
+
+#[test]
 fn first_book_update_per_coin_emits_immediately() {
     let (tx, mut rx) = broadcast::channel(16);
     let mut sender = CoalescedSender::new(tx);

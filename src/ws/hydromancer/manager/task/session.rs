@@ -69,15 +69,7 @@ impl HydromancerSessionState {
         }
 
         match frame.kind {
-            HydromancerTextFrameKind::Connected => {
-                self.connection_ready = true;
-                self.session_id = frame.session_id.clone();
-                HydromancerFrameAction {
-                    resend_subscriptions: true,
-                    send_pong: false,
-                }
-            }
-            HydromancerTextFrameKind::Reconnected => {
+            HydromancerTextFrameKind::Connected | HydromancerTextFrameKind::Reconnected => {
                 self.connection_ready = true;
                 self.session_id = frame.session_id.clone();
                 HydromancerFrameAction {

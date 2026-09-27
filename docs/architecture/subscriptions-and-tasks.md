@@ -162,6 +162,13 @@ Key properties:
 - Stale read timeouts force reconnects to recover from half-open sockets.
 - `SubscriptionGuard` unsubscribes topics when a stream is dropped.
 
+Both providers share the snapshot pacing implementation in `ws/coalescer.rs`.
+Provider adapters retain their own channel, coin, and echoed precision rules,
+including Hydromancer batch splitting. The first snapshot emits immediately;
+updates within the 16 ms window replace the pending snapshot without extending
+its deadline. Other channels pass through, and pending snapshots flush before
+disconnect. The shared implementation also prunes expired emission history.
+
 Feature stream helpers in `src/ws/market_streams/` and `src/ws/user_streams/`
 subscribe to manager channels and convert routed payloads into typed app data.
 

@@ -1,3 +1,4 @@
+mod coalescer;
 mod connect;
 mod hydromancer;
 mod l2_book;

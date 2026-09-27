@@ -25,7 +25,7 @@ candidates; it does not establish that every module has been reviewed.
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
-| Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands and both managers' subscription reference counts inspected; Hydromancer preconnect behavior traced. Coalescers, Hydromancer registry/session internals, and other integration streams still need review. |
+| Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Remaining integration stream internals still need review. |
 | Feeds, integrations, assistant | Initial size/duplication scan only; substantive review remains. |
 | Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
@@ -425,12 +425,61 @@ Validation (using the local ALSA prefix documented above):
 - New recovery tests explicitly poll futures using local command channels;
   they do not wait for the test pause or require live provider credentials.
 
+## 2026-09-27: share snapshot coalescing and retain provider routing
+
+- Reviewed both websocket coalescers and their tests, Hydromancer session
+  transitions, and manager registry creation/replacement/eviction. Kept
+  registry task IDs, closed-channel checks, key scoping, lock handling, and
+  best-effort shutdown behavior explicit and unchanged.
+- Shared the duplicate snapshot pacing in `ws/coalescer.rs`. Provider adapters
+  still build their own keys and messages; only timing, latest-snapshot storage,
+  pruning, and emission are shared. Both providers retain their 16 ms default.
+- Preserved immediate first emission, fixed pending deadlines, replacement by
+  the latest snapshot, removal of older pending data before an immediate send,
+  independent coin/precision slots, passthrough channels, flush-on-disconnect,
+  and recording emission time even when no broadcast receiver is present.
+  Native missing-coin keys and Hydromancer batch/ambiguous-frame rules remain
+  different. The native adapter now retains the complete routed message while
+  pending, instead of reconstructing it from its key when flushing.
+- Changed Hydromancer batch inspection to borrow the source slice. Only valid
+  multi-item batches clone their items for splitting; empty, single-item, and
+  ambiguous batches keep their original frame without a speculative batch copy.
+  Data-wrapper precedence, item order, recursive splitting, and precision
+  extraction are unchanged.
+- Merged identical Connected/Reconnected session-ready branches. Cursor and
+  session-ID assignment, subscription replay, pong behavior, and redaction are
+  unchanged; existing tests exercise both session transitions independently.
+- Retained all 18 original coalescer tests, adapting only the two history-size
+  inspections to the shared implementation. Added seven tests covering fixed
+  deadlines, partial/full flushes, pruning with pending data, immediate updates,
+  zero intervals, failed broadcasts, borrowed/unsplit batch frames, batched
+  precision variants, and native missing-coin behavior. New timing tests use
+  controlled deadlines rather than sleeps.
+- Updated the subscription guide. No dependencies, wire formats, saved schema,
+  subscription identities, message routes, or trading behavior changed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene coalescer`:
+  **24 passed**, no failures, before the final native missing-coin case was added.
+- Compared the original Hydromancer timing bodies with the shared core after
+  replacing the concrete key type and key-expression parameter: submit,
+  history pruning, next-due calculation, and both flush methods match.
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- `cargo test --locked -j 2`: **4,302 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests). This includes all 25 coalescer tests and the existing
+  Connected/Reconnected session tests.
+- Validation used synthetic messages and local websocket integration tests;
+  no live provider credentials were required.
+
 ## Next candidates
 
 1. Comparison crosshair and background setup still have repeated drawing code.
    With the common frame context, evaluate whether sharing those sequences
    makes the modes clearer while preserving their formatting and range guards.
-2. Review API request construction, websocket coalescers, Hydromancer
-   registry/session internals, and the remaining integration streams.
+2. Review API request construction and the remaining integration stream
+   internals, including provider-specific socket commands and event parsing.
 3. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.
