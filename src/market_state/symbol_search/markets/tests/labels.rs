@@ -24,18 +24,18 @@ fn exchange_labels_match_market_kind() {
 fn exchange_rank_groups_native_spot_hip3_and_outcomes() {
     assert_eq!(
         symbol_search_exchange_rank(&symbol("BTC", MarketType::Perp)),
-        (0, String::new())
+        (0, "")
     );
     assert_eq!(
         symbol_search_exchange_rank(&symbol("@1", MarketType::Spot)),
-        (1, String::new())
+        (1, "")
     );
     assert_eq!(
         symbol_search_exchange_rank(&symbol("xyz:NVDA", MarketType::Perp)),
-        (2, "xyz".to_string())
+        (2, "xyz")
     );
     assert_eq!(
         symbol_search_exchange_rank(&symbol("#0", MarketType::Outcome)),
-        (3, String::new())
+        (3, "")
     );
 }

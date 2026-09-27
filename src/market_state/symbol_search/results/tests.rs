@@ -1,6 +1,8 @@
 use super::*;
 use crate::api::MarketType;
 
+mod ranking;
+
 fn symbol(key: &str, ticker: &str, market_type: MarketType) -> ExchangeSymbol {
     ExchangeSymbol {
         key: key.to_string(),

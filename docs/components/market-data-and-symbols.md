@@ -76,6 +76,14 @@ primary/secondary chart identities and schedules their replacement data;
 responses merge into the existing cache before it is filtered to requested
 symbols; complete responses replace it, and failed or stale responses retain it.
 
+`market_state/symbol_search/results.rs` computes favourite positions and the
+selected mode's relevance/volume values once per result rebuild. Sorting keeps
+favourites in their saved order and preserves input order for equal ranks.
+Ranking data is temporary; each rebuild uses the current query, metadata,
+contexts, and filters. Exchange ranking borrows DEX names, and volume lookup
+uses the exact symbol key so a builder market cannot inherit a native market's
+volume.
+
 The symbol universe refreshes every 120 seconds to discover new and expired
 markets. Metadata and label changes preserve open chart history and order-book
 state. A full widget reload is only scheduled if the selected market universe

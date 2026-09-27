@@ -16,10 +16,10 @@ pub(super) fn symbol_search_hip3_dexes(symbols: &[ExchangeSymbol]) -> Vec<String
         if symbol.market_type == MarketType::Perp
             && let Some((dex, _)) = symbol.key.split_once(':')
         {
-            dexes.insert(dex.to_string());
+            dexes.insert(dex);
         }
     }
-    dexes.into_iter().collect()
+    dexes.into_iter().map(str::to_string).collect()
 }
 
 pub(super) fn symbol_search_matches_market_filter(
@@ -64,16 +64,16 @@ pub(super) fn symbol_search_exchange_label(symbol: &ExchangeSymbol) -> String {
     }
 }
 
-pub(super) fn symbol_search_exchange_rank(symbol: &ExchangeSymbol) -> (u8, String) {
+pub(super) fn symbol_search_exchange_rank(symbol: &ExchangeSymbol) -> (u8, &str) {
     match symbol.market_type {
         MarketType::Perp => {
             if let Some((dex, _)) = symbol.key.split_once(':') {
-                (2, dex.to_string())
+                (2, dex)
             } else {
-                (0, String::new())
+                (0, "")
             }
         }
-        MarketType::Spot => (1, String::new()),
-        MarketType::Outcome => (3, String::new()),
+        MarketType::Spot => (1, ""),
+        MarketType::Outcome => (3, ""),
     }
 }

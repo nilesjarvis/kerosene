@@ -21,7 +21,7 @@ candidates; it does not establish that every module has been reviewed.
 | --- | --- |
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts and axes reviewed and consolidated; crosshair formatting and series calculations inspected but retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
-| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Remaining API requests, outcome metadata internals, symbol search planning, books, and other widgets need review. |
+| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Remaining API requests, outcome metadata internals, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
@@ -617,6 +617,50 @@ Validation (using the local ALSA prefix documented above):
 - `cargo fmt -- --check` and `git diff --check`: passed.
 - New tests use synthetic in-memory state and unpolled tasks; no live provider
   credentials or network requests were needed for them.
+
+## 2026-09-27: compute symbol-search ranking once per rebuild
+
+- Reviewed symbol-search result generation, request planning, context-key
+  selection, market filtering, DEX listing/ranking, volume lookup/formatting,
+  and their tests. Traced the view's use of cached result indices and favourite
+  counts. Kept refresh timing, request identity, pending refreshes, query
+  matching, and market eligibility unchanged.
+- Replaced repeated favourite-list scans inside the sort comparator with a
+  borrowed key-to-position map and a rank recorded per matching symbol. Duplicate
+  favourites keep their first saved position; duplicate matching rows still count
+  individually and retain input order when their favourite ranks are equal.
+- Relevance scores and finite volumes are calculated once per matching
+  non-favourite row when the selected sort needs them. Comparisons reuse those
+  values and share one ticker/key fallback. Alphabetical sorting does not compute
+  relevance or volume, and favourites only use their saved order. All ranking
+  data is local to one rebuild; no persistent cache or invalidation state was added.
+- Exchange rank now borrows the DEX substring instead of allocating it per
+  comparison. The DEX selector also deduplicates borrowed names before owning
+  its output. Exact case, lexical exchange grouping, and primary-DEX ordering
+  for same-ticker fallback are preserved.
+- Removed the volume helper's redundant fallback: it retried the same lookup
+  only when the ticker equaled the symbol key. Exact-pair lookup, missing-data
+  behavior, finite negative/zero values, and non-finite rejection are unchanged.
+- Added five ranking tests across all four modes, covering favourite precedence,
+  first duplicate favourite, stable duplicate rows, missing outcome metadata,
+  exact/prefix/substring/category/keyword matches, Unicode and untrimmed queries,
+  exchange grouping, primary-DEX ties, missing/non-finite volumes, negative
+  volumes, and signed-zero ties. Updated the component guide.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene
+  market_state::symbol_search::`: **26 passed** both before and after the
+  production changes, including all five new tests.
+- Compared query matching and relevance scoring bodies with HEAD: unchanged.
+- `cargo test --locked -j 2`: **4,318 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- Validation uses synthetic symbol metadata and contexts. The performance
+  improvement is removal of repeated scans, calculations, and allocations;
+  no measured runtime speedup is claimed.
 
 ## Next candidates
 
