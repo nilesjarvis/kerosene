@@ -74,6 +74,12 @@ Startup is implemented in `src/app_boot/`:
 Boot intentionally does not perform blocking I/O in view code. All network work
 is returned as iced `Task<Message>` values.
 
+On first run, `main_view/onboarding.rs` shows a centered Kerosene title and Start
+button over a subtle animated gradient using the active theme. The existing
+40 ms UI timer advances a seamless, roughly 31-second gradient cycle. Start
+dispatches `Message::EnterApplication`, which dismisses the welcome screen and
+persists that choice so subsequent launches open the terminal directly.
+
 ## Main Architectural Boundaries
 
 | Boundary | Modules | Responsibility |
