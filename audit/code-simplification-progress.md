@@ -21,7 +21,7 @@ candidates; it does not establish that every module has been reviewed.
 | --- | --- |
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts and axes reviewed and consolidated; crosshair formatting and series calculations inspected but retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
-| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion and row generation inspected. Remaining API requests, outcome metadata internals, books, and other widgets need review. |
+| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Remaining API requests, outcome metadata internals, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
@@ -707,16 +707,48 @@ Validation (using the local ALSA prefix documented above):
 - New tests use synthetic, in-memory context snapshots and unpolled tasks; no
   live provider requests or credentials were needed for them.
 
+## 2026-09-27: share live-watchlist metadata lookup across panes
+
+- Reviewed row-cache refresh, symbol labels, market visibility, live-mid alias
+  resolution and freshness, and the callers of single/bulk row refresh.
+- Both refresh entry points now use a shared helper that builds one borrowed
+  metadata index for the affected panes. Previously, every pane rebuilt the
+  entire index on each bulk refresh, including frequent mid-price updates.
+  Empty batches and unknown single-pane IDs still return without indexing.
+- The index exists only during the refresh, with last-duplicate-key precedence
+  unchanged. Rows are still computed and applied one pane at a time; no catalog
+  copies, persistent cache, or buffer of all replacement row caches is needed.
+- Removed a context fallback that retried the same key lookup. Exact market
+  scoping, current visibility, label fallbacks, mid-price resolution/freshness,
+  history, funding, percentage calculations, and stable sorting are preserved.
+- Updated existing row-generation tests to exercise the refresh entry point.
+  Added two integration tests covering bulk/single parity, independent pane
+  sorting, duplicate metadata and rows, missing prices, cached outcome labels,
+  hidden/incomplete/fallback markets, all row values, metadata replacement,
+  visibility changes, empty panes, and unknown IDs. Updated the component guide.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene
+  market_state::live_watchlist::rows::`: **8 passed** before and after the
+  production changes, including both new tests.
+- Source comparison against HEAD: history/row calculations and sorting helpers
+  are unchanged.
+- `cargo test --locked -j 2`: **4,322 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- Validation uses synthetic metadata and in-memory state. The performance
+  improvement removes repeated catalog indexing; no measured speedup is claimed.
+
 ## Next candidates
 
 1. Comparison crosshair and background setup still have repeated drawing code.
    With the common frame context, evaluate whether sharing those sequences
    makes the modes clearer while preserving their formatting and range guards.
-2. Live-watchlist row refresh currently rebuilds the metadata index separately
-   for each pane. Evaluate sharing one borrowed index for a batch while preserving
-   metadata precedence, symbol visibility, cached labels, and stable row sorting.
-3. Continue reviewing the remaining API request and symbol-lifecycle modules and
+2. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
    event parsing.
-4. Continue across the unreviewed areas in the coverage table. Large files often
+3. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.

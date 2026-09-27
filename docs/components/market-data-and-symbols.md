@@ -333,6 +333,10 @@ timer or symbol change
   -> view renders rows and flashes
 ```
 
+Row-cache refresh builds one borrowed symbol-metadata index for all affected
+panes. The index lives only for that refresh; each pane still applies its own
+symbol list and sorting, using current visibility, prices, history, and contexts.
+
 Live-watchlist and ticker-tape context results share scope reconciliation in
 `market_update/context_results.rs`. Callers reject stale IDs and mismatched
 request symbols before reconciliation. Incoming values must be both requested
