@@ -1,4 +1,4 @@
-use super::{ExchangeSymbol, append_spot_symbols};
+use super::{ExchangeSymbol, MarketType, append_spot_symbols};
 use serde_json::json;
 
 fn spot_symbols() -> Vec<ExchangeSymbol> {
@@ -26,6 +26,113 @@ fn symbol_for_key<'a>(symbols: &'a [ExchangeSymbol], key: &str) -> &'a ExchangeS
     match symbols.iter().find(|symbol| symbol.key == key) {
         Some(symbol) => symbol,
         None => panic!("expected a spot symbol keyed {key:?}"),
+    }
+}
+
+#[test]
+fn reused_tokens_preserve_trimmed_labels_precision_and_keywords() {
+    let meta = json!({
+        "tokens": [
+            {"name": " USDC ", "szDecimals": 8, "index": 0},
+            {"name": " BaSe ", "szDecimals": 3, "index": 1, "fullName": "MiXeD Ω"},
+            {"name": " QUOTE ", "szDecimals": 5, "index": 2}
+        ],
+        "universe": [
+            {"name": " @3 ", "tokens": [1, 0], "index": 3},
+            {"name": " BaSe/QUOTE ", "tokens": [1, 2], "index": 4},
+            {"name": "@4294967295", "tokens": [0, 1], "index": u32::MAX}
+        ]
+    });
+    let mut symbols = Vec::new();
+    append_spot_symbols(&mut symbols, &meta).expect("valid shared tokens");
+    let first = ExchangeSymbol {
+        key: "@3".to_string(),
+        ticker: "BaSe".to_string(),
+        category: "spot".to_string(),
+        display_name: Some("BaSe/USDC".to_string()),
+        keywords: vec!["mixed ω".to_string(), "spot".to_string()],
+        asset_index: 10_003,
+        collateral_token: Some(0),
+        sz_decimals: 3,
+        max_leverage: 1,
+        only_isolated: false,
+        growth_mode: false,
+        market_type: MarketType::Spot,
+        outcome: None,
+    };
+    let second = ExchangeSymbol {
+        key: "BaSe/QUOTE".to_string(),
+        display_name: Some("BaSe/QUOTE".to_string()),
+        asset_index: 10_004,
+        collateral_token: Some(2),
+        ..first.clone()
+    };
+    assert_eq!(symbols, vec![first, second]);
+}
+
+#[test]
+fn late_validation_failure_preserves_preexisting_symbols() {
+    for (last_pair, reason) in [
+        (
+            json!({"name": "@4", "tokens": [1, 99], "index": 4}),
+            "spotMeta universe index 4 references unknown quote token 99",
+        ),
+        (
+            json!({"name": "@3", "tokens": [1, 0], "index": 3}),
+            "spotMeta contains duplicate universe index 3",
+        ),
+        (
+            json!({"name": "@4294967295", "tokens": [1, 0], "index": u32::MAX}),
+            "spotMeta universe index 4294967295 cannot be encoded as an order asset",
+        ),
+        // Skipped USDC-base markets still require a valid quote token.
+        (
+            json!({"name": "@4", "tokens": [0, 99], "index": 4}),
+            "spotMeta universe index 4 references unknown quote token 99",
+        ),
+    ] {
+        let meta = json!({
+            "tokens": [
+                {"name": "USDC", "szDecimals": 8, "index": 0},
+                {"name": "BASE", "szDecimals": 3, "index": 1}
+            ],
+            "universe": [
+                {"name": "@3", "tokens": [1, 0], "index": 3},
+                last_pair
+            ]
+        });
+        let mut symbols = spot_symbols();
+        let original = symbols.clone();
+        assert_eq!(
+            append_spot_symbols(&mut symbols, &meta),
+            Err(reason.to_string())
+        );
+        assert_eq!(symbols, original);
+    }
+}
+
+#[test]
+fn malformed_field_errors_preserve_schema_context() {
+    for (tokens, universe, reason) in [
+        (
+            json!([]),
+            json!({}),
+            "invalid type: map, expected a sequence",
+        ),
+        (
+            json!([{"name": 7, "szDecimals": 2, "index": 1}]),
+            json!([]),
+            "invalid type: integer `7`, expected a string",
+        ),
+        (
+            json!([]),
+            json!([{"name": "@3", "tokens": [1], "index": 3}]),
+            "invalid length 1, expected an array of length 2",
+        ),
+    ] {
+        let meta = json!({"tokens": tokens, "universe": universe});
+        let error = append_spot_symbols(&mut Vec::new(), &meta).expect_err("malformed schema");
+        assert_eq!(error, format!("spotMeta schema invalid: {reason}"));
     }
 }
 

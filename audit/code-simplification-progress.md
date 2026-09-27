@@ -21,7 +21,7 @@ candidates; it does not establish that every module has been reviewed.
 | --- | --- |
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts and axes reviewed and consolidated; crosshair formatting and series calculations inspected but retained. Most chart rendering and interactions remain. |
-| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Remaining API requests, symbol lifecycle, books, and other widgets need review. |
+| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Remaining API requests, outcome metadata internals, symbol lifecycle, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
@@ -519,6 +519,48 @@ Validation (using the local ALSA prefix documented above):
 - `cargo fmt -- --check` and `git diff --check`: passed.
 - New parser tests use synthetic JSON responses; no live provider credentials
   or market-data requests were required.
+
+## 2026-09-27: borrow symbol metadata during parsing
+
+- Reviewed symbol-fetch orchestration, cache provenance, perpetual/spot metadata
+  parsers, DEX registry parsing, listings metadata parsers, and their tests.
+  Kept the separate market-family failure policies, strict spot validation,
+  and listings' inactive-market tracking. Symbol update dispatch and retained
+  metadata handling were traced; the rest of symbol lifecycle still needs review.
+- The perpetual annotation index now borrows coin keys and payloads from the
+  response, avoiding a copy of every annotation subtree. Retained last-duplicate
+  precedence, malformed-pair skipping, and default fields when annotations are
+  missing or invalid. Symbol names remain borrowed until the owned output is built.
+- Spot metadata deserializes directly from the borrowed JSON value instead of
+  cloning the entire response first. Pair construction borrows base/quote token
+  metadata; only the output ticker is cloned. Quote names and full names used to
+  derive display labels and search keywords no longer need intermediate copies.
+- Moved the eight perpetual parser tests to `perps/tests.rs` without changing
+  their bodies. Added five tests for duplicate/malformed annotations, absent
+  annotation arrays, token reuse across quotes, trimmed and case-preserving
+  labels, Unicode keyword conversion, precision/asset identity, schema-error
+  text, and atomic failures with previously loaded symbols. Covered USDC-base
+  validation and skip ordering, including otherwise overflowing asset indices.
+- Production changes affect ownership only. Asset-index calculations, collateral
+  identity, leverage/precision defaults, validation order, partial-result policy,
+  cache verification, request routing, and persisted formats are unchanged.
+
+Validation (using the local ALSA prefix documented above):
+
+- Added the new tests before changing production parser bodies and checked those
+  bodies against HEAD. Fixed the new overflow fixture to use `u32::MAX` rather
+  than an inferred `i32` literal; no production code was involved in that failure.
+- `cargo test --locked -j 2 --package kerosene --bin kerosene
+  api::exchange_symbols::`: **66 passed** both before and after the ownership
+  changes, including all five new tests.
+- Verified that all eight original perpetual parser test bodies were retained.
+- `cargo test --locked -j 2`: **4,310 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- New tests use synthetic metadata only; no live provider credentials or
+  network requests were required for them.
 
 ## Next candidates
 
