@@ -16,7 +16,7 @@ boundaries.
 | Fill fetch/cache | `src/journal/cache.rs`, `src/api/user_fills.rs`, `src/journal_update.rs` | Paged fill fetches, per-wallet cache, merge/dedup, cache writes. |
 | Aggregation | `src/journal/aggregation/` | Fill identity, ordering, perpetual trade reconstruction, spot/outcome grouping. |
 | Current positions | `src/journal/current_positions.rs` | Fallback partial trades from current account snapshot. |
-| Snapshots | `src/journal/snapshot.rs`, `src/journal/snapshot/`, `src/journal_views/trade_card/snapshot.rs` | Per-trade candle snapshots, request planning, markers, excursion metrics, embedded chart view. |
+| Snapshots | `src/journal/snapshot.rs`, `src/journal/snapshot/`, `src/journal_views/trade_card/snapshot.rs`, `src/journal_views/trade_card/snapshot/` | Per-trade candle snapshots, request planning, markers, excursion metrics, embedded chart view. |
 | Views | `src/journal_views/` | Journal window/pane, header, controls, summary, trade cards, notes editor. |
 | Analytics | `src/account_analytics/`, `src/portfolio_state/`, `src/pnl_card/` | Portfolio/income snapshots and exportable visual summaries. |
 
@@ -179,6 +179,13 @@ Pinning a live position to a fine timeframe caps its lookback separately.
 
 When the read-data provider changes, snapshot cache is cleared so later
 snapshots use the selected provider.
+
+`journal_views/trade_card/snapshot.rs` renders loading/unavailable states and the
+metric rows. Its `snapshot/` modules separate canvas wiring, viewport interaction,
+plot geometry, candle/guide drawing, and fill-marker grouping. The canvas borrows
+the loaded snapshot for the lifetime of the view; iced owns its viewport/drag
+state independently. Reset identity and zoom/pan boundaries live together in
+`interaction.rs`, with interaction and marker tests beside their owners.
 
 ## Summary And Analytics Views
 
