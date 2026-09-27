@@ -31,12 +31,8 @@ impl TradingTerminal {
         let denomination = self.display_denomination_context();
 
         // ---- Header ----
-        let monogram = journal_asset_badge(
-            &self.display_coin_for_journal(&trade.coin),
-            34.0,
-            20,
-            &theme,
-        );
+        let display_coin = self.display_coin_for_journal(&trade.coin);
+        let monogram = journal_asset_badge(&display_coin, 34.0, 20, &theme);
 
         let side = if is_non_perp_coin(&trade.coin) {
             ("SPOT", journal_muted(&theme))
@@ -65,9 +61,7 @@ impl TradingTerminal {
         let header = row![
             back,
             monogram,
-            text(self.display_coin_for_journal(&trade.coin))
-                .size(20)
-                .color(theme.palette().text),
+            text(display_coin).size(20).color(theme.palette().text),
             journal_chip(side.0, side.1),
             journal_chip(trade.status.clone(), status_tint),
             Space::new().width(Fill),
@@ -134,26 +128,19 @@ impl TradingTerminal {
         theme: &Theme,
     ) -> Element<'a, Message> {
         let is_perp = !is_non_perp_coin(&trade.coin);
-        let active_timeframe = self
-            .journal
-            .snapshots
-            .get(&trade.id)
-            .map(|snapshot| snapshot.timeframe)
-            .or_else(|| {
-                self.journal
-                    .snapshot_requests
-                    .get(&trade.id)
-                    .map(|request| request.timeframe)
-            });
+        let snapshot = self.journal.snapshots.get(&trade.id);
+        let active_timeframe = snapshot.map(|snapshot| snapshot.timeframe).or_else(|| {
+            self.journal
+                .snapshot_requests
+                .get(&trade.id)
+                .map(|request| request.timeframe)
+        });
 
         // Match the caption to how the chart actually renders: a live-position
         // chart (entry guide, no fill markers) only when the loaded snapshot is
         // flagged live. Before the snapshot loads, fill-less open positions
         // (fill_count 0) are the live case.
-        let is_live_chart = self
-            .journal
-            .snapshots
-            .get(&trade.id)
+        let is_live_chart = snapshot
             .map(|snapshot| snapshot.live_position)
             .unwrap_or_else(|| trade.end_time.is_none() && trade.fill_count == 0);
         let caption = if is_live_chart {
@@ -239,12 +226,11 @@ impl TradingTerminal {
         let (entry_display, exit_display) = if is_non_perp_coin(&trade.coin) {
             non_perp_entry_exit_display(trade)
         } else {
-            let snapshot = self.journal.snapshots.get(&trade.id);
-            let loaded = snapshot.is_some_and(|snapshot| {
-                matches!(snapshot.status, JournalTradeSnapshotStatus::Loaded)
-            });
+            let snapshot =
+                self.journal.snapshots.get(&trade.id).filter(|snapshot| {
+                    matches!(snapshot.status, JournalTradeSnapshotStatus::Loaded)
+                });
             let entry_price = snapshot
-                .filter(|_| loaded)
                 .map(|snapshot| snapshot.metrics.entry_price)
                 .filter(|price| price.is_finite() && *price > 0.0)
                 .unwrap_or(trade.avg_entry_price);
@@ -254,13 +240,14 @@ impl TradingTerminal {
                 "—".to_string()
             };
             let exit_display = snapshot
-                .filter(|_| loaded && trade.end_time.is_some())
+                .filter(|_| trade.end_time.is_some())
                 .map(|snapshot| helpers::format_price(snapshot.metrics.exit_price))
                 .unwrap_or_else(|| "—".to_string());
             (entry_display, exit_display)
         };
 
-        let r_display = journal_trade_r_multiple(trade, kpis.r_unit, include_fees)
+        let r_multiple = journal_trade_r_multiple(trade, kpis.r_unit, include_fees);
+        let r_display = r_multiple
             .map(|r| format!("{r:+.2}R"))
             .unwrap_or_else(|| "—".to_string());
 
@@ -305,8 +292,8 @@ impl TradingTerminal {
             stat_divider(),
             stat_cell(
                 "R MULTIPLE",
-                r_display.clone(),
-                journal_trade_r_multiple(trade, kpis.r_unit, include_fees)
+                r_display,
+                r_multiple
                     .map(|r| helpers::signed_number_color(r, theme))
                     .unwrap_or(text_color),
                 theme,

@@ -59,6 +59,81 @@ fn cumulative_pnl_points_apply_fees_when_requested() {
 }
 
 #[test]
+fn cumulative_pnl_keeps_stable_order_and_adds_each_trade_to_the_running_total() {
+    let first = trade(1, Some(1), 1e16);
+    let second = trade(2, Some(2), -1e16);
+    let third = trade(3, Some(2), 1.0);
+
+    for (trades, expected) in [
+        ([&second, &first, &third], 1.0),
+        ([&third, &first, &second], 0.0),
+    ] {
+        assert_eq!(
+            journal_cumulative_pnl_points(&trades, false),
+            [(0, 0.0), (1, 1e16), (2, expected)]
+        );
+    }
+}
+
+#[test]
+fn cumulative_pnl_handles_epoch_collisions_and_filters_effective_values() {
+    let mut invalid_fee = trade(2, None, 7.0);
+    invalid_fee.fee = f64::INFINITY;
+    let trades = [
+        trade(0, None, 5.0),
+        trade(100, Some(0), -2.0),
+        trade(1, None, 3.0),
+        trade(0, None, f64::NAN),
+        trade(0, None, f64::INFINITY),
+        trade(0, None, f64::NEG_INFINITY),
+        invalid_fee,
+    ];
+    let refs = trades.iter().collect::<Vec<_>>();
+    assert_eq!(
+        journal_cumulative_pnl_points(&refs, false),
+        [(0, 3.0), (1, 6.0), (2, 13.0)]
+    );
+    assert_eq!(
+        journal_cumulative_pnl_points(&refs, true),
+        [(0, 1.0), (1, 3.0)]
+    );
+    assert!(journal_cumulative_pnl_points(&[], false).is_empty());
+    assert!(journal_cumulative_pnl_points(&refs[3..6], false).is_empty());
+
+    // Finite inputs can overflow the running total; only input values are filtered.
+    let overflow = trade(0, None, f64::MAX);
+    assert_eq!(
+        journal_cumulative_pnl_points(&[&overflow, &overflow], false),
+        [(0, f64::INFINITY)]
+    );
+}
+
+#[test]
+fn subtract_latest_series_keeps_duplicate_precedence_and_carries_values_forward() {
+    let totals = [(4, 10.0), (2, 6.0), (2, 9.0), (0, 2.0), (3, f64::INFINITY)];
+    let subtrahends = [
+        (1, 1.0),
+        (2, f64::NAN),
+        (2, 3.0),
+        (2, 4.0),
+        (3, 5.0),
+        (5, f64::INFINITY),
+        (9, 20.0),
+    ];
+
+    assert_eq!(
+        subtract_latest_pnl_series(&totals, &subtrahends),
+        [(0, 2.0), (2, 2.0), (2, 5.0), (4, 5.0)]
+    );
+    assert_eq!(
+        subtract_latest_pnl_series(&totals, &[]),
+        [(0, 2.0), (2, 6.0), (2, 9.0), (4, 10.0)]
+    );
+    assert!(subtract_latest_pnl_series(&[], &subtrahends).is_empty());
+    assert!(subtract_latest_pnl_series(&[(0, f64::NAN)], &subtrahends).is_empty());
+}
+
+#[test]
 fn portfolio_margin_journal_pnl_kind_maps_spot_to_non_perp() {
     assert_eq!(
         journal_portfolio_pnl_kind(JournalFilter::All),

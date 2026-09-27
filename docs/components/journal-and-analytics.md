@@ -191,6 +191,12 @@ time window. Its `cockpit/` modules own the asset/direction bars, heatmap, KPI
 tiles, and win/loss canvas. The global KPI strip in `chrome.rs` stays all-time;
 `summary/` owns the account-value/PnL chart series and outcome strip.
 
+The summary chart prefers available portfolio-margin history and builds its
+fill-based PnL fallback only when needed. Cumulative fill PnL uses a stable
+timestamp sort and adds each trade to the running total in that order, updating
+the last chart point for equal timestamps. This preserves floating-point
+accumulation order and coalesces trades at the leading baseline timestamp.
+
 Portfolio/income analytics are adjacent but separate:
 
 - `account_analytics/portfolio/`
