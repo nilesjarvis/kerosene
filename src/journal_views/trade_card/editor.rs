@@ -52,7 +52,7 @@ impl TradingTerminal {
             .journal
             .edit_tag_raw
             .get(&trade.id)
-            .cloned()
+            .map(String::as_str)
             .unwrap_or_default();
 
         let open_input = text_input("What was the setup and thesis?", &note.open)
@@ -82,7 +82,7 @@ impl TradingTerminal {
             .size(13)
             .padding(8);
 
-        let tag_input = text_input("breakout momentum trend ...", &tag_raw)
+        let tag_input = text_input("breakout momentum trend ...", tag_raw)
             .style(journal_text_input_style)
             .on_input({
                 let id = trade.id.clone();
@@ -130,8 +130,8 @@ impl TradingTerminal {
         trade: &'a AggregatedTrade,
         theme: &Theme,
     ) -> Element<'a, Message> {
-        let note_key = journal::note_key_for_trade(&self.journal.entries, trade);
-        let note = journal::note_for_trade(&self.journal.entries, trade);
+        let entry = journal::note_entry_for_trade(&self.journal.entries, trade);
+        let note = entry.map(|(_, note)| note);
         let has_note = note.is_some_and(|note| !note.is_empty());
 
         let mut content = column![].spacing(8);
@@ -161,7 +161,10 @@ impl TradingTerminal {
             row![
                 Space::new().width(Fill),
                 button(text(label).size(11))
-                    .on_press(Message::JournalEditStart(trade.id.clone(), note_key))
+                    .on_press(Message::JournalEditStart(
+                        trade.id.clone(),
+                        entry.map(|(key, _)| key.to_owned()),
+                    ))
                     .padding([6, 12])
                     .style(journal_ghost_button_style),
             ]

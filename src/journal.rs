@@ -138,27 +138,23 @@ pub fn journal_tags_input(tags: &[String]) -> String {
     tags.join(" ")
 }
 
-pub fn note_key_for_trade(
-    entries: &HashMap<String, JournalNote>,
+/// Prefer the current trade ID, then the first stored legacy alias in list order.
+/// Empty notes still count as matches. Both returned references borrow the map.
+pub fn note_entry_for_trade<'a>(
+    entries: &'a HashMap<String, JournalNote>,
     trade: &AggregatedTrade,
-) -> Option<String> {
-    if entries.contains_key(&trade.id) {
-        return Some(trade.id.clone());
-    }
-
-    trade
-        .legacy_note_ids
-        .iter()
-        .find(|id| entries.contains_key(*id))
-        .cloned()
+) -> Option<(&'a str, &'a JournalNote)> {
+    std::iter::once(&trade.id)
+        .chain(&trade.legacy_note_ids)
+        .find_map(|id| entries.get_key_value(id))
+        .map(|(key, note)| (key.as_str(), note))
 }
 
 pub fn note_for_trade<'a>(
     entries: &'a HashMap<String, JournalNote>,
     trade: &AggregatedTrade,
 ) -> Option<&'a JournalNote> {
-    let key = note_key_for_trade(entries, trade)?;
-    entries.get(&key)
+    note_entry_for_trade(entries, trade).map(|(_, note)| note)
 }
 
 #[cfg(test)]

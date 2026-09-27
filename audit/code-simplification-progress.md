@@ -23,7 +23,7 @@ candidates; it does not establish that every module has been reviewed.
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts, axes, background setup, and crosshair drawing reviewed and consolidated; mode-specific formatting and series calculations retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
 | Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Candle request/response policies and watchlist/outcome-volume history inspected; candle normalization deduplicates in place and trailing-run searches stop at the final gap. Outcome parsing, contract/template resolution, question membership, and label helpers reviewed; the temporary question index borrows shared records and expiry formatting is shared. Calendar, unstaking, and ETF API entry points/conversion helpers inspected. Remaining API requests, ETF flow parsing, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
-| Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Cache/loaded-page callers, constructors, and parsing helpers inspected. Broader state, snapshot, cache, view rendering, and account analytics review remains. |
+| Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Cache/loaded-page callers, constructors, and parsing helpers inspected. Broader snapshot, cache, view rendering, and account analytics review remains. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Remaining integration stream internals still need review. |
@@ -1091,13 +1091,49 @@ Validation (using the local ALSA prefix documented above):
   passed.
 - `cargo fmt -- --check` and `git diff --check`: passed.
 
+## 2026-09-27: borrow journal notes and share account reset
+
+- Traced note lookup, the reflection editor, edit/save/cancel handling, Assistant
+  read-only callers, account switching, and journal reset callers. Left note
+  migration, persistence, draft mutation, and account-switch ownership intact.
+- Replaced the owned-key-only helper with `note_entry_for_trade`, which borrows
+  the matching map key and note together. `note_for_trade` no longer allocates a
+  key or hashes the selected key again. The display resolves its note once and
+  copies the selected key only when constructing the edit message. The editor
+  also borrows raw tag input instead of copying it before widget construction.
+- Consolidated identical account-data reset bodies: the address-specific variant
+  runs the common reset and then sets its address. Existing snapshot invalidation
+  policies, saved notes, preferences, and request generations are unchanged.
+- Added two note-lookup regressions covering empty current-ID precedence, ordered
+  aliases, exact case, missing/duplicate aliases, and borrowed note identity.
+  Expanded the reset test to cover both reset variants, loaded history, drafts,
+  selection, status, and retained notes/preferences. Updated the component guide.
+- No message, persistence format, trade calculation, API request, or order changes.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene journal`:
+  **137 passed** before and after the production change, including both new
+  note-lookup cases, the expanded reset case, and existing view/account tests.
+- Source comparison confirms account switching, persistence snapshots, the
+  no-address reset, and all snapshot-clearing policies are unchanged.
+- `cargo test --locked -j 2`: **4,346 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- Removed redundant copies and lookups; no measured runtime speedup is claimed.
+
 ## Next candidates
 
-1. `note_for_trade` obtains an owned key solely to look up a borrowed note.
-   Evaluate sharing a borrowed key lookup with editing callers, preserving
-   current-ID precedence and legacy alias order. Continue through journal state,
-   snapshots, and view rendering. Farside's repeated chart-marker lookup remains
-   a smaller candidate.
+1. Continue through journal snapshot request planning, metrics, cache, and view
+   rendering, including the large cockpit renderer. Initial inspection found
+   repeated historical-trade admission checks and request-padding calculations
+   in snapshot planning; inspect tests and error precedence before consolidating.
+   Account state and persistence
+   snapshots retain intentional copies; avoid a broad ownership rewrite without
+   a demonstrated benefit. Farside's repeated chart-marker lookup remains a
+   smaller candidate.
 2. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
    event parsing.

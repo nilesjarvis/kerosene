@@ -149,6 +149,12 @@ Trade notes are user-authored and persisted by account. Note changes should
 update journal state and call config persistence, but they should not mutate
 fill cache files.
 
+`journal::note_entry_for_trade` borrows the saved key and note from the same lookup:
+the current trade ID wins, including an empty note, followed by the first exact
+match in `legacy_note_ids` order. Read-only callers use `note_for_trade`; the
+reflection display copies the selected key only for its edit message so saving
+can migrate a legacy entry to the current ID.
+
 ## Chart Snapshots
 
 Journal chart snapshots request candles around a trade and render a compact
