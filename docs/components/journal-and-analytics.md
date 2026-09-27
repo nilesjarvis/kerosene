@@ -182,13 +182,14 @@ snapshots use the selected provider.
 
 ## Summary And Analytics Views
 
-`journal_views/summary/` computes and renders:
+`journal_views/analytics.rs` computes KPIs, direction splits, per-asset totals,
+and time-of-day aggregates. Per-asset aggregation borrows coin names while
+summing trades and copies each distinct name once into the resulting rows.
 
-- realized PnL summaries
-- win-rate metrics
-- fee totals
-- top assets
-- account value or PnL chart series
+`journal_views/cockpit.rs` arranges the analytics panels and applies the selected
+time window. Its `cockpit/` modules own the asset/direction bars, heatmap, KPI
+tiles, and win/loss canvas. The global KPI strip in `chrome.rs` stays all-time;
+`summary/` owns the account-value/PnL chart series and outcome strip.
 
 Portfolio/income analytics are adjacent but separate:
 

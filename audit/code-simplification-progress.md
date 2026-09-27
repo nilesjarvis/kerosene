@@ -23,7 +23,7 @@ candidates; it does not establish that every module has been reviewed.
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts, axes, background setup, and crosshair drawing reviewed and consolidated; mode-specific formatting and series calculations retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
 | Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Candle request/response policies and watchlist/outcome-volume history inspected; candle normalization deduplicates in place and trailing-run searches stop at the final gap. Outcome parsing, contract/template resolution, question membership, and label helpers reviewed; the temporary question index borrows shared records and expiry formatting is shared. Calendar, unstaking, and ETF API entry points/conversion helpers inspected. Remaining API requests, ETF flow parsing, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
-| Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Snapshot models, planning, assembly, and metrics reviewed and separated; request bounds and history admission are shared. Snapshot update callers inspected, with freshness/admission policies retained. Cache/loaded-page callers, constructors, and parsing helpers inspected. Broader cache, view rendering, and account analytics review remains. |
+| Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Snapshot models, planning, assembly, and metrics reviewed and separated; request bounds and history admission are shared. Snapshot update callers inspected, with freshness/admission policies retained. Journal cache persistence and tests reviewed; platform-specific replacement retained. Cockpit rendering/analytics reviewed and split by panel; per-asset aggregation copies coin names only for distinct output rows. Remaining detail/chrome/list rendering, chart series/drawing, and account analytics need review. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Remaining integration stream internals still need review. |
@@ -1164,15 +1164,61 @@ Validation (using the local ALSA prefix documented above):
   passed.
 - `cargo fmt -- --check` and `git diff --check`: passed.
 
+## 2026-09-27: separate cockpit panels and borrow asset grouping keys
+
+- Reviewed all cockpit rendering and analytics, snapshot metric traversal, and
+  journal cache persistence/tests. Compared journal replacement behavior with
+  config replacement: platform gates, file eligibility, sync errors, cleanup,
+  and filename conventions differ, so retained their separate implementations.
+- Kept snapshot metrics' collected overlapping references and ordered passes:
+  they make entry/exit error precedence and drawdown order explicit. Replacing
+  them with an accumulator or repeated filtered scans offers no demonstrated
+  benefit sufficient to justify the extra complexity here.
+- Split the 812-line cockpit into a 204-line orchestration/chrome module and
+  focused `cockpit/{bars,heatmap,tiles,win_loss}.rs` modules. Each panel keeps its
+  own helpers and constants. The win/loss panel now uses a free view function
+  because it never reads terminal state; its resulting widgets own their data.
+- Per-asset analytics groups trades by borrowed `&str` keys and copies each
+  distinct coin once into the owned output rows. It retains exact key matching,
+  trade iteration/fee arithmetic, sorting, tie-breaking, and non-finite values.
+- Added two regression tests for repeated/exact-case/empty coin keys, fee modes,
+  rebates, tied totals, open/incomplete trades, accumulation-order sensitivity,
+  empty input, infinities, and NaNs. Updated the component guide's view map.
+- Window selection, all-time KPI scope, panel order, colors, canvas geometry,
+  dimensions, denomination formatting, messages, cache behavior, and snapshot
+  metrics are unchanged.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene journal`:
+  **143 passed** before and after the production change, including both new
+  analytics tests and existing cockpit/detail/editor construction tests.
+- Source comparison verifies all 20 cockpit functions are retained. Nineteen
+  bodies are unchanged after removing indentation; the orchestration body only
+  changes the stateless win/loss call from a method to a free function. All
+  constants and canvas drawing bodies are unchanged.
+- `cargo test --locked -j 2`: **4,352 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check`, `git diff --check`, and `cargo build --locked -j 2`:
+  passed.
+- Headless startup smoke: the built binary with `--test` opened the 1600x960
+  Kerosene window under Xvfb, confirmed by `xwininfo`. Expected timeout exit 124
+  after 20 seconds and no panic markers. In-memory test mode kept personal
+  configuration out of the run. This checks startup, while focused view tests
+  construct the journal panels. Logs: `/tmp/kerosene-cockpit-smoke.hoSyfN`.
+- Removed per-trade coin-name copies; no measured runtime speedup is claimed.
+
 ## Next candidates
 
-1. Continue through journal metrics, cache, and view rendering, including the
-   large cockpit renderer. Metrics currently allocate overlapping candle
-   references and traverse them repeatedly; assess whether a simpler traversal
-   can preserve candle order, floating-point behavior, and error precedence.
-   Account state and persistence snapshots retain intentional copies; avoid a
-   broad ownership rewrite without a demonstrated benefit. Farside's repeated
-   chart-marker lookup remains a smaller candidate.
+1. Continue through remaining journal detail/chrome/list rendering and chart
+   series/drawing, then account analytics. Cumulative PnL series currently uses
+   a nested index loop over equal timestamps; assess a slice-run traversal that
+   preserves summation order and leading-zero behavior. Account state and
+   persistence snapshots retain intentional copies; avoid a broad ownership
+   rewrite without a demonstrated benefit. Farside's repeated chart-marker
+   lookup remains a smaller candidate.
 2. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
    event parsing.

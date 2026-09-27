@@ -170,13 +170,16 @@ pub(crate) fn journal_asset_pnls(
     trades: &[&AggregatedTrade],
     include_fees: bool,
 ) -> Vec<JournalAssetPnl> {
-    let mut by_coin: HashMap<String, f64> = HashMap::new();
+    let mut by_coin: HashMap<&str, f64> = HashMap::new();
     for trade in trades {
-        *by_coin.entry(trade.coin.clone()).or_insert(0.0) += trade.effective_pnl(include_fees);
+        *by_coin.entry(trade.coin.as_str()).or_insert(0.0) += trade.effective_pnl(include_fees);
     }
     let mut assets: Vec<JournalAssetPnl> = by_coin
         .into_iter()
-        .map(|(coin, pnl)| JournalAssetPnl { coin, pnl })
+        .map(|(coin, pnl)| JournalAssetPnl {
+            coin: coin.to_owned(),
+            pnl,
+        })
         .collect();
     assets.sort_by(|a, b| {
         b.pnl
@@ -400,6 +403,77 @@ mod tests {
         assert_eq!(assets[0].coin, "BTC");
         assert!((assets[0].pnl - 140.0).abs() < 1e-9);
         assert_eq!(assets.last().unwrap().coin, "SOL");
+    }
+
+    #[test]
+    fn asset_pnls_preserve_exact_keys_fee_modes_and_accumulation_order() {
+        let mut open = trade("BBB", false, 3.0, 2.0, 1);
+        open.status = "OPEN".to_string();
+        open.basis_complete = false;
+        let trades = [
+            trade("BTC", true, 1e16, 0.0, 1),
+            trade("BTC", false, 1.0, 0.0, 2),
+            trade("BTC", true, -1e16, 0.0, 3),
+            trade("AAA", true, 2.0, 1.0, 4),
+            open,
+            trade("btc", true, 2.0, 0.0, 5),
+            trade("", true, 0.0, 0.0, 6),
+            trade("PAIR/USDC", true, -5.0, -1.0, 7),
+        ];
+        let refs = trades.iter().collect::<Vec<_>>();
+        for (include_fees, expected) in [
+            (
+                false,
+                [
+                    ("BBB", 3.0),
+                    ("AAA", 2.0),
+                    ("btc", 2.0),
+                    ("", 0.0),
+                    ("BTC", 0.0),
+                    ("PAIR/USDC", -5.0),
+                ],
+            ),
+            (
+                true,
+                [
+                    ("btc", 2.0),
+                    ("AAA", 1.0),
+                    ("BBB", 1.0),
+                    ("", 0.0),
+                    ("BTC", 0.0),
+                    ("PAIR/USDC", -4.0),
+                ],
+            ),
+        ] {
+            let assets = journal_asset_pnls(&refs, include_fees);
+            let actual = assets
+                .iter()
+                .map(|asset| (asset.coin.as_str(), asset.pnl))
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected);
+        }
+        assert!(journal_asset_pnls(&[], true).is_empty());
+    }
+
+    #[test]
+    fn asset_pnls_retain_non_finite_totals() {
+        for pnl in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+            let trades = [
+                trade("BTC", true, pnl, 1.0, 1),
+                trade("BTC", true, 5.0, 2.0, 2),
+            ];
+            let refs = trades.iter().collect::<Vec<_>>();
+            for include_fees in [false, true] {
+                let assets = journal_asset_pnls(&refs, include_fees);
+                assert_eq!(assets.len(), 1);
+                assert_eq!(assets[0].coin, "BTC");
+                if pnl.is_nan() {
+                    assert!(assets[0].pnl.is_nan());
+                } else {
+                    assert_eq!(assets[0].pnl, pnl);
+                }
+            }
+        }
     }
 
     #[test]
