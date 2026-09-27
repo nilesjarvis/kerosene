@@ -21,7 +21,7 @@ candidates; it does not establish that every module has been reviewed.
 | --- | --- |
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts and axes reviewed and consolidated; crosshair formatting and series calculations inspected but retained. Most chart rendering and interactions remain. |
-| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API requests, symbol lifecycle, books, and other widgets remain. |
+| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Remaining API requests, symbol lifecycle, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
@@ -474,12 +474,59 @@ Validation (using the local ALSA prefix documented above):
 - Validation used synthetic messages and local websocket integration tests;
   no live provider credentials were required.
 
+## 2026-09-27: index batched spot chart contexts once per response
+
+- Reviewed API exports, order-book requests/parsing, chart asset-context reads,
+  watchlist context requests/parsing, exchange statistics, and the chart batch
+  request scheduler. Kept chart/watchlist parsers separate because their alias
+  precedence and duplicate handling differ. Exchange statistics require complete
+  family totals, while watchlists allow healthy partial results; retained those
+  policies.
+- Moved spot chart context fetching and parsing into
+  `api/chart_asset_context/spot.rs`, retaining the existing crate-facing fetch
+  path. The parent module keeps perpetual context request construction/parsing;
+  its function bodies are unchanged. Moved existing tests beside their parsers.
+- Build borrowed context and universe-symbol indexes once per response, instead
+  of rebuilding the full context map and scanning the universe for every requested
+  symbol. For U universe rows, C contexts, and S requested symbols, expected
+  lookup work is now O(U + C + S), previously O(S * (U + C)); this is a source-level
+  complexity improvement, not a measured runtime claim. Only selected contexts
+  are still cloned for deserialization.
+- Preserved first matching universe row, last duplicate context coin, requested
+  symbol before pair-name lookup, guarded positional fallback, rejection of
+  malformed selected contexts without another fallback, request order, duplicate
+  removal, and exact schema-error messages. The single-symbol wrapper now consumes
+  the returned vector directly instead of draining it.
+- Retained all ten existing tests and added three batch cases covering duplicate
+  universe entries, alias/index collisions, invalid index types, noncanonical
+  symbols, duplicate context coins, mixed keyed/unkeyed contexts, malformed and
+  missing contexts, output order, and schema validation.
+- Updated the charting guide. Request construction, shared-read caching,
+  subscriptions, provider routing, persisted schema, and trading behavior are
+  unchanged; no dependencies were added.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene api::`:
+  **266 passed, 0 failed, 1 ignored**. This filter also matches other module
+  paths containing `api::`, including provider and wallet database tests.
+- Compared the perpetual fetch/parser bodies and the spot positional-match
+  helper with their original bodies: unchanged.
+- `cargo test --locked -j 2`: **4,305 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- New parser tests use synthetic JSON responses; no live provider credentials
+  or market-data requests were required.
+
 ## Next candidates
 
 1. Comparison crosshair and background setup still have repeated drawing code.
    With the common frame context, evaluate whether sharing those sequences
    makes the modes clearer while preserving their formatting and range guards.
-2. Review API request construction and the remaining integration stream
-   internals, including provider-specific socket commands and event parsing.
+2. Continue reviewing the remaining API request and symbol-lifecycle modules and
+   integration stream internals, including provider-specific socket commands and
+   event parsing.
 3. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.

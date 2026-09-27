@@ -206,6 +206,14 @@ deduplicated by symbol and scoped to the current provider generation.
 `ChartWsAssetCtxUpdate` applies matching contexts to every chart instance unless
 the symbol is hidden.
 
+Spot chart REST fallback batches requested symbols through
+`api/chart_asset_context/spot.rs`. Each response builds one borrowed lookup for
+universe symbols/aliases and keyed contexts, then returns available contexts in
+request order with duplicate requests removed. This preserves first-match
+universe lookup, last-match duplicate context coins, and positional fallback
+only for responses without keyed contexts. Watchlist context parsing keeps its
+separate alias and duplicate-selection rules.
+
 The header's `24h Chg` compares the displayed latest candle close with a
 24-hour reference: `(last - previous) / previous * 100`. It prefers the
 exchange context's valid `prevDayPx`, including context already available in
