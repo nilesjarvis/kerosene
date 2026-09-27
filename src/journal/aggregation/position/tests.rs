@@ -1,14 +1,6 @@
 use super::*;
 
 #[test]
-fn non_perp_coin_detection_covers_spot_and_outcome_keys() {
-    assert!(is_non_perp_coin("@107"));
-    assert!(is_non_perp_coin("#0"));
-    assert!(!is_non_perp_coin("BTC"));
-    assert!(!is_non_perp_coin("xyz:NVDA"));
-}
-
-#[test]
 fn signed_fill_size_preserves_existing_side_mapping() {
     assert_eq!(signed_fill_size("A", 2.5), -2.5);
     assert_eq!(signed_fill_size("B", 2.5), 2.5);

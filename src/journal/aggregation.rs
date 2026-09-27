@@ -1,4 +1,5 @@
 use crate::api::UserFill;
+use crate::journal::is_non_perp_coin;
 
 mod builders;
 mod helpers;
@@ -10,8 +11,7 @@ use crate::helpers::non_perp_fee_usd;
 use builders::{apply_non_perp_fill, new_flip_trade, new_non_perp_trade, new_perp_trade};
 use helpers::{add_legacy_note_id, legacy_trade_id, parse_fill_values, stable_trade_id};
 use position::{
-    POSITION_EPSILON, fill_position_transition, is_non_perp_coin, resolved_start_position,
-    signed_fill_size,
+    POSITION_EPSILON, fill_position_transition, resolved_start_position, signed_fill_size,
 };
 use std::cmp::Reverse;
 use std::collections::HashMap;

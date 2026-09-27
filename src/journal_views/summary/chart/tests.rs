@@ -227,3 +227,29 @@ fn recent_trade_outcomes_apply_fees_when_requested() {
         ]
     );
 }
+
+#[test]
+fn recent_trade_outcomes_preserve_named_pair_eligibility() {
+    let trades = ["BTC", "@11", "#77", "PAIR/USDC", "xyz:PAIR/USDC"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, coin)| AggregatedTrade {
+            coin: coin.to_string(),
+            ..trade(index as u64 + 1, Some(index as u64 + 1), 2.0)
+        })
+        .collect::<Vec<_>>();
+    let refs = trades.iter().collect::<Vec<_>>();
+    let tiles = journal_recent_trade_outcome_tiles(&refs, true);
+    assert_eq!(
+        tiles
+            .iter()
+            .map(|tile| tile.trade_type.as_str())
+            .collect::<Vec<_>>(),
+        ["Long BTC", "Long PAIR/USDC", "Long xyz:PAIR/USDC"]
+    );
+    assert!(
+        tiles
+            .iter()
+            .all(|tile| tile.pnl == 1.0 && tile.outcome == JournalTradeOutcome::Win)
+    );
+}

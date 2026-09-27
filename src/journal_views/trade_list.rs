@@ -1,9 +1,9 @@
-use super::analytics::{journal_effective_pnl, journal_is_non_perp, journal_trade_r_multiple};
+use super::analytics::journal_trade_r_multiple;
 use super::trade_card::journal_chip;
 use super::trades::journal_pnl_color;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
-use crate::journal::AggregatedTrade;
+use crate::journal::{AggregatedTrade, is_non_perp_coin};
 use crate::journal_views::style::{
     journal_accent_focus, journal_accent_soft, journal_dim, journal_monogram_style, journal_muted,
     journal_rule_style,
@@ -80,7 +80,7 @@ impl TradingTerminal {
         let selected = self.journal.selected_trade_id.as_deref() == Some(trade.id.as_str());
         // The column is headed NET PNL, so honor the fee toggle exactly like
         // the KPI strip and the detail pane do.
-        let net_pnl = journal_effective_pnl(trade, self.journal.include_fees_in_pnl);
+        let net_pnl = trade.effective_pnl(self.journal.include_fees_in_pnl);
         let pnl_color = journal_pnl_color(net_pnl, theme);
         let display_coin = self.display_coin_for_journal(&trade.coin);
 
@@ -218,7 +218,7 @@ fn journal_row_style(theme: &Theme, status: button::Status, selected: bool) -> b
 }
 
 fn side_label(trade: &AggregatedTrade) -> &'static str {
-    if journal_is_non_perp(&trade.coin) {
+    if is_non_perp_coin(&trade.coin) {
         "SPOT"
     } else if trade.is_long {
         "LONG"
@@ -228,7 +228,7 @@ fn side_label(trade: &AggregatedTrade) -> &'static str {
 }
 
 fn side_tint(trade: &AggregatedTrade, theme: &Theme) -> Color {
-    if journal_is_non_perp(&trade.coin) {
+    if is_non_perp_coin(&trade.coin) {
         journal_muted(theme)
     } else if trade.is_long {
         theme.palette().success

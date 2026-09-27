@@ -30,6 +30,12 @@ pub(crate) use state::{
 };
 pub use state::{JournalFilter, JournalSort, JournalState, JournalSyncStatus};
 
+/// Spot indices (`@`), outcome contracts (`#`), and named spot pairs (`/`)
+/// do not represent perpetual margin positions in the journal.
+pub(crate) fn is_non_perp_coin(coin: &str) -> bool {
+    coin.starts_with('@') || coin.starts_with('#') || coin.contains('/')
+}
+
 #[derive(Clone, Default, Serialize)]
 pub struct JournalNote {
     pub open: String,

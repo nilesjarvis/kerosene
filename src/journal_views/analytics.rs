@@ -1,4 +1,4 @@
-use crate::journal::AggregatedTrade;
+use crate::journal::{AggregatedTrade, is_non_perp_coin};
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -18,21 +18,8 @@ const TIME_OF_DAY_WEEKDAYS: usize = 5;
 const MS_PER_DAY: u64 = 86_400_000;
 const MS_PER_HOUR: u64 = 3_600_000;
 
-pub(crate) fn journal_is_non_perp(coin: &str) -> bool {
-    // Spot index (`@`), outcome (`#`), or a named spot pair (`PURR/USDC`).
-    coin.starts_with('@') || coin.starts_with('#') || coin.contains('/')
-}
-
 fn journal_is_scored(trade: &AggregatedTrade) -> bool {
-    trade.status == "CLOSED" && !journal_is_non_perp(&trade.coin) && trade.basis_complete
-}
-
-pub(crate) fn journal_effective_pnl(trade: &AggregatedTrade, include_fees: bool) -> f64 {
-    if include_fees {
-        trade.pnl - trade.fee
-    } else {
-        trade.pnl
-    }
+    trade.status == "CLOSED" && !is_non_perp_coin(&trade.coin) && trade.basis_complete
 }
 
 #[derive(Debug, Clone)]
@@ -62,11 +49,11 @@ pub(crate) fn journal_kpis(trades: &[&AggregatedTrade], include_fees: bool) -> J
     let mut flats = 0usize;
 
     for trade in trades {
-        net_pnl += journal_effective_pnl(trade, include_fees);
+        net_pnl += trade.effective_pnl(include_fees);
         total_fees += trade.fee;
 
         if journal_is_scored(trade) {
-            let pnl = journal_effective_pnl(trade, include_fees);
+            let pnl = trade.effective_pnl(include_fees);
             if pnl > 0.0 {
                 wins += 1;
                 win_sum += pnl;
@@ -122,7 +109,7 @@ pub(crate) fn journal_trade_r_multiple(
     if !journal_is_scored(trade) {
         return None;
     }
-    Some(journal_effective_pnl(trade, include_fees) / unit)
+    Some(trade.effective_pnl(include_fees) / unit)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -152,8 +139,8 @@ pub(crate) fn journal_direction_split(
 ) -> JournalDirectionSplit {
     let mut split = JournalDirectionSplit::default();
     for trade in trades {
-        let pnl = journal_effective_pnl(trade, include_fees);
-        let segment = if journal_is_non_perp(&trade.coin) {
+        let pnl = trade.effective_pnl(include_fees);
+        let segment = if is_non_perp_coin(&trade.coin) {
             &mut split.spot
         } else if trade.is_long {
             &mut split.long
@@ -185,8 +172,7 @@ pub(crate) fn journal_asset_pnls(
 ) -> Vec<JournalAssetPnl> {
     let mut by_coin: HashMap<String, f64> = HashMap::new();
     for trade in trades {
-        *by_coin.entry(trade.coin.clone()).or_insert(0.0) +=
-            journal_effective_pnl(trade, include_fees);
+        *by_coin.entry(trade.coin.clone()).or_insert(0.0) += trade.effective_pnl(include_fees);
     }
     let mut assets: Vec<JournalAssetPnl> = by_coin
         .into_iter()
@@ -248,7 +234,7 @@ pub(crate) fn journal_time_of_day(
         let bucket = hour_bucket(trade.start_time);
         let cell = &mut grid.cells[weekday][bucket];
         cell.count += 1;
-        cell.pnl += journal_effective_pnl(trade, include_fees);
+        cell.pnl += trade.effective_pnl(include_fees);
     }
     grid.max_abs_pnl = grid
         .cells
@@ -319,6 +305,41 @@ mod tests {
         let net = journal_kpis(&refs, true);
         assert!((net.net_pnl - 90.0).abs() < 1e-9);
         assert!((net.total_fees - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn kpis_keep_scored_trades_separate_from_complete_pnl_and_fee_totals() {
+        let mut incomplete = trade("ZEC", true, 30.0, 2.0, 4);
+        incomplete.basis_complete = false;
+        let mut open = trade("ADA", true, 20.0, 3.0, 5);
+        open.status = "OPEN".to_string();
+        let trades = [
+            trade("BTC", true, 100.0, 5.0, 1),
+            trade("ETH", false, -40.0, 10.0, 2),
+            trade("SOL", true, 0.0, 0.0, 3),
+            incomplete,
+            open,
+            trade("@11", true, 5.0, 1.0, 6),
+            trade("#77", true, -10.0, 1.0, 7),
+            trade("PAIR/USDC", true, 2.0, 1.0, 8),
+        ];
+        let refs = trades.iter().collect::<Vec<_>>();
+        for (fees, total, win, loss, factor, expectancy, avg_r) in [
+            (false, 107.0, 100.0, 40.0, 2.5, 20.0, 0.5),
+            (true, 84.0, 95.0, 50.0, 1.9, 15.0, 0.3),
+        ] {
+            let kpis = journal_kpis(&refs, fees);
+            assert_eq!((kpis.wins, kpis.losses, kpis.scored), (1, 1, 3));
+            assert_eq!(kpis.net_pnl, total);
+            assert_eq!(kpis.total_fees, 23.0);
+            assert!((kpis.win_rate - 100.0 / 3.0).abs() < 1e-9);
+            assert_eq!(kpis.avg_win, Some(win));
+            assert_eq!(kpis.avg_loss, Some(-loss));
+            assert_eq!(kpis.r_unit, Some(loss));
+            assert_eq!(kpis.profit_factor, Some(factor));
+            assert_eq!(kpis.expectancy, Some(expectancy));
+            assert_eq!(kpis.avg_r, Some(avg_r));
+        }
     }
 
     #[test]

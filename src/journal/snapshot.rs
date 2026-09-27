@@ -1,4 +1,4 @@
-use super::{AggregatedTrade, JournalAttributedFillRole, JournalTradeDetails};
+use super::{AggregatedTrade, JournalAttributedFillRole, JournalTradeDetails, is_non_perp_coin};
 use crate::api::Candle;
 use crate::chart::TradeMarker;
 use crate::config::ChartBackfillSource;
@@ -184,7 +184,7 @@ pub fn initial_snapshot_request(
     settings: JournalSnapshotRequestSettings,
     trade: &AggregatedTrade,
 ) -> Result<JournalTradeSnapshotRequest, String> {
-    if is_spot_symbol(&trade.coin) {
+    if is_non_perp_coin(&trade.coin) {
         return Err("Chart snapshots are currently available for perp trades only.".to_string());
     }
     if !trade.basis_complete {
@@ -204,14 +204,10 @@ pub fn initial_snapshot_request(
     )
 }
 
-fn is_spot_symbol(coin: &str) -> bool {
-    coin.starts_with('@') || coin.starts_with('#') || coin.contains('/')
-}
-
 /// Validate that a trade can be charted as a live position: an open perp with a
 /// known entry price but no usable opening fills.
 fn validate_live_position(trade: &AggregatedTrade) -> Result<(), String> {
-    if is_spot_symbol(&trade.coin) {
+    if is_non_perp_coin(&trade.coin) {
         return Err("Chart snapshots are currently available for perp trades only.".to_string());
     }
     if trade.end_time.is_some() {
@@ -281,7 +277,7 @@ pub fn snapshot_request_for_timeframe(
     trade: &AggregatedTrade,
     timeframe: Timeframe,
 ) -> Result<JournalTradeSnapshotRequest, String> {
-    if is_spot_symbol(&trade.coin) {
+    if is_non_perp_coin(&trade.coin) {
         return Err("Chart snapshots are currently available for perp trades only.".to_string());
     }
     if !trade.basis_complete {

@@ -23,7 +23,7 @@ candidates; it does not establish that every module has been reviewed.
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts, axes, background setup, and crosshair drawing reviewed and consolidated; mode-specific formatting and series calculations retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
 | Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Candle request/response policies and watchlist/outcome-volume history inspected; candle normalization deduplicates in place and trailing-run searches stop at the final gap. Outcome parsing, contract/template resolution, question membership, and label helpers reviewed; the temporary question index borrows shared records and expiry formatting is shared. Calendar, unstaking, and ETF API entry points/conversion helpers inspected. Remaining API requests, ETF flow parsing, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
-| Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Cache and loaded-page callers, constructors, and parsing helpers inspected. Broader aggregation, reconciliation, views, and analytics remain. |
+| Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Cache/loaded-page callers, constructors, and parsing helpers inspected. Broader state, snapshot, cache, view rendering, and account analytics review remains. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Remaining integration stream internals still need review. |
@@ -1052,11 +1052,51 @@ Validation (using the local ALSA prefix documented above):
 - `cargo fmt -- --check` and `git diff --check`: passed.
 - Removed redundant allocations and copies; no measured runtime speedup is claimed.
 
+## 2026-09-27: centralize journal classification and fee arithmetic
+
+- Reviewed aggregation orchestration, current-position reconciliation, journal
+  filters, analytics, list/detail preparation, chart series/outcome admission,
+  and Assistant journal row/ranking call sites. Kept differing settlement, flip,
+  partial-history, reconciliation, scoring, and display rules explicit.
+- Moved the identical non-perp predicate from aggregation, snapshot admission,
+  and analytics to `journal::is_non_perp_coin`. The perp filter uses its negation.
+  Prefix checks and named-pair detection retain their exact matching behavior;
+  spot/outcome filters retain their individual rules and possible overlap.
+- `AggregatedTrade::effective_pnl` now owns optional fee subtraction, replacing
+  copies in analytics, trade rows/details/sorting, cumulative chart series,
+  outcome tiles, and Assistant journal exports/ranking. Callers retain their
+  own fee flag, eligibility, non-finite handling, accumulation and ordering.
+- Preserved an existing eligibility difference: KPI scoring excludes named
+  spot pairs, whereas the outcome strip excludes only `@`/`#` prefixes. Its
+  selector remains separate and a regression test records that behavior.
+- Expanded classification/filter cases and added three regression tests for
+  complete KPI totals versus scored trades, raw fee arithmetic (rebates, signed
+  zero, infinities, NaNs), and named-pair outcome-strip eligibility. Direct rule
+  tests now live beside their journal owners. Updated the component guide.
+- No metric formula, trade reconstruction, snapshot geometry, persistence,
+  Assistant redaction, API request, or order behavior changed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene journal`:
+  **135 passed** before and after the production change, including all three new
+  regression tests, snapshot admission, view construction, sorting, and exports.
+- Source comparison confirms aggregation/reconciliation bodies and outcome
+  eligibility/rendering are unchanged. The shared fee formula matches the
+  original arithmetic; Assistant row/selection bodies differ only by replacing
+  the duplicate formula/helper calls.
+- `cargo test --locked -j 2`: **4,344 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+
 ## Next candidates
 
-1. Continue through journal aggregation orchestration, current-position
-   reconciliation, and view preparation. Keep differing trade construction and
-   attribution policies explicit. Farside's repeated chart-marker lookup remains
+1. `note_for_trade` obtains an owned key solely to look up a borrowed note.
+   Evaluate sharing a borrowed key lookup with editing callers, preserving
+   current-ID precedence and legacy alias order. Continue through journal state,
+   snapshots, and view rendering. Farside's repeated chart-marker lookup remains
    a smaller candidate.
 2. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and

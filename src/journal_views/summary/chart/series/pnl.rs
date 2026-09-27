@@ -37,11 +37,7 @@ pub(in crate::journal_views::summary::chart) fn journal_cumulative_pnl_points(
     let mut trade_pnls = trades
         .iter()
         .filter_map(|trade| {
-            let pnl = if include_fees {
-                trade.pnl - trade.fee
-            } else {
-                trade.pnl
-            };
+            let pnl = trade.effective_pnl(include_fees);
             pnl.is_finite()
                 .then_some((trade.end_time.unwrap_or(trade.start_time), pnl))
         })

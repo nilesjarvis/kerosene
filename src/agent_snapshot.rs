@@ -686,7 +686,7 @@ impl TradingTerminal {
             "spot" => "spot",
             _ => "outcome",
         };
-        let net_pnl = trade.pnl - trade.fee;
+        let net_pnl = trade.effective_pnl(true);
         let return_on_entry_pct = positive_ratio_pct(net_pnl, trade.total_entry_notional);
         let net_pnl_per_volume_pct = positive_ratio_pct(net_pnl, trade.volume);
         let reflection = crate::journal::note_for_trade(&self.journal.entries, trade).map(|note| {
@@ -1113,8 +1113,9 @@ fn journal_trade_selection_indexes(
 
     let mut by_net_pnl = (0..trades.len()).collect::<Vec<_>>();
     by_net_pnl.sort_by(|left, right| {
-        journal_trade_net_pnl(&trades[*right])
-            .partial_cmp(&journal_trade_net_pnl(&trades[*left]))
+        trades[*right]
+            .effective_pnl(true)
+            .partial_cmp(&trades[*left].effective_pnl(true))
             .unwrap_or(Ordering::Equal)
             .then_with(|| left.cmp(right))
     });
@@ -1137,11 +1138,11 @@ fn journal_trade_selection_indexes(
     by_return.sort_by(|left, right| {
         compare_optional_f64_desc(
             positive_ratio_pct(
-                journal_trade_net_pnl(&trades[*left]),
+                trades[*left].effective_pnl(true),
                 trades[*left].total_entry_notional,
             ),
             positive_ratio_pct(
-                journal_trade_net_pnl(&trades[*right]),
+                trades[*right].effective_pnl(true),
                 trades[*right].total_entry_notional,
             ),
         )
@@ -1185,10 +1186,6 @@ fn extend_unique_indexes(
             category_count += 1;
         }
     }
-}
-
-fn journal_trade_net_pnl(trade: &crate::journal::AggregatedTrade) -> f64 {
-    trade.pnl - trade.fee
 }
 
 fn positive_ratio_pct(numerator: f64, denominator: f64) -> Option<f64> {

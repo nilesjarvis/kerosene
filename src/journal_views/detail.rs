@@ -1,12 +1,12 @@
-use super::analytics::{
-    JournalKpis, journal_effective_pnl, journal_is_non_perp, journal_trade_r_multiple,
-};
+use super::analytics::{JournalKpis, journal_trade_r_multiple};
 use super::trade_card::journal_chip;
 use super::trade_list::journal_asset_badge;
 use super::trades::trade_duration_ms;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
-use crate::journal::{AggregatedTrade, JournalSnapshotCoverage, JournalTradeSnapshotStatus};
+use crate::journal::{
+    AggregatedTrade, JournalSnapshotCoverage, JournalTradeSnapshotStatus, is_non_perp_coin,
+};
 use crate::journal_views::style::{
     journal_accent_soft, journal_card_style, journal_dim, journal_muted, journal_rule_style,
     journal_segment_style,
@@ -26,7 +26,7 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let theme = self.theme();
         let include_fees = self.journal.include_fees_in_pnl;
-        let net_pnl = journal_effective_pnl(trade, include_fees);
+        let net_pnl = trade.effective_pnl(include_fees);
         let pnl_color = helpers::signed_number_color(net_pnl, &theme);
         let denomination = self.display_denomination_context();
 
@@ -38,7 +38,7 @@ impl TradingTerminal {
             &theme,
         );
 
-        let side = if journal_is_non_perp(&trade.coin) {
+        let side = if is_non_perp_coin(&trade.coin) {
             ("SPOT", journal_muted(&theme))
         } else if trade.is_long {
             ("LONG", theme.palette().success)
@@ -133,7 +133,7 @@ impl TradingTerminal {
         trade: &'a AggregatedTrade,
         theme: &Theme,
     ) -> Element<'a, Message> {
-        let is_perp = !journal_is_non_perp(&trade.coin);
+        let is_perp = !is_non_perp_coin(&trade.coin);
         let active_timeframe = self
             .journal
             .snapshots
@@ -234,9 +234,9 @@ impl TradingTerminal {
     ) -> Element<'_, Message> {
         let denomination = self.display_denomination_context();
         let include_fees = self.journal.include_fees_in_pnl;
-        let net_pnl = journal_effective_pnl(trade, include_fees);
+        let net_pnl = trade.effective_pnl(include_fees);
 
-        let (entry_display, exit_display) = if journal_is_non_perp(&trade.coin) {
+        let (entry_display, exit_display) = if is_non_perp_coin(&trade.coin) {
             non_perp_entry_exit_display(trade)
         } else {
             let snapshot = self.journal.snapshots.get(&trade.id);

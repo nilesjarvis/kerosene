@@ -3,11 +3,32 @@ use crate::{
     config::ChartBackfillSource,
     journal::{
         JournalAccountState, JournalFilter, JournalState, JournalSyncStatus,
-        JournalTradeSnapshotRequest,
+        JournalTradeSnapshotRequest, is_non_perp_coin,
     },
     timeframe::Timeframe,
 };
 use std::collections::HashMap;
+
+#[test]
+fn non_perp_coin_detection_covers_spot_and_outcome_keys() {
+    for (coin, expected) in [
+        ("@107", true),
+        ("#0", true),
+        ("PAIR/USDC", true),
+        ("xyz:PAIR/USDC", true),
+        ("#0/USDC", true),
+        ("@", true),
+        ("#", true),
+        ("/", true),
+        ("BTC", false),
+        ("xyz:NVDA", false),
+        ("", false),
+        (" BTC ", false),
+        (" @107", false),
+    ] {
+        assert_eq!(is_non_perp_coin(coin), expected, "{coin}");
+    }
+}
 
 #[test]
 fn journal_filter_matches_expected_coin_prefixes() {
@@ -16,6 +37,10 @@ fn journal_filter_matches_expected_coin_prefixes() {
         ("xyz:NVDA", true, true, false, false),
         ("@107", true, false, true, false),
         ("#950", true, false, false, true),
+        ("PAIR/USDC", true, false, true, false),
+        ("xyz:PAIR/USDC", true, false, true, false),
+        ("#0/USDC", true, false, true, true),
+        ("", true, true, false, false),
     ];
 
     for (coin, all, perp, spot, outcome) in cases {

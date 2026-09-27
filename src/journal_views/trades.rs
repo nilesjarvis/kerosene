@@ -1,4 +1,3 @@
-use super::analytics::journal_effective_pnl;
 use crate::app_state::TradingTerminal;
 use crate::journal::{self, AggregatedTrade};
 use crate::message::Message;
@@ -25,18 +24,12 @@ impl TradingTerminal {
             }
             journal::JournalSort::PnlDesc => {
                 filtered_trades.sort_by(|a, b| {
-                    compare_f64_desc(
-                        journal_effective_pnl(a, include_fees),
-                        journal_effective_pnl(b, include_fees),
-                    )
+                    compare_f64_desc(a.effective_pnl(include_fees), b.effective_pnl(include_fees))
                 });
             }
             journal::JournalSort::PnlAsc => {
                 filtered_trades.sort_by(|a, b| {
-                    compare_f64_asc(
-                        journal_effective_pnl(a, include_fees),
-                        journal_effective_pnl(b, include_fees),
-                    )
+                    compare_f64_asc(a.effective_pnl(include_fees), b.effective_pnl(include_fees))
                 });
             }
         }

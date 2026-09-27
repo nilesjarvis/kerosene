@@ -98,6 +98,10 @@ when possible, falling back to deterministic sorting if the chain is ambiguous.
 Normalization retains the input vector and applies chain ordering separately to
 each time/coin group with multiple fills; single-fill groups need no copying.
 
+`journal::is_non_perp_coin` owns the shared `@`/`#`/named-pair classification used
+by aggregation, snapshot admission, the perp filter, and journal analytics/views.
+Spot and outcome filters retain their individual matching rules.
+
 ## Perpetual Trade Aggregation
 
 Perpetual fills are walked from oldest to newest. The aggregator tracks one
@@ -178,6 +182,12 @@ Portfolio/income analytics are adjacent but separate:
 
 These analytics should not be used as the authoritative source for trading
 validation.
+
+`AggregatedTrade::effective_pnl` owns the optional fee subtraction shared by
+analytics, rows/details, chart series, outcome tiles, and Assistant journal
+exports. Callers retain their eligibility, ordering, and non-finite-value rules;
+the outcome strip's legacy prefix-only eligibility remains separate from KPI
+scoring, which also excludes named spot pairs.
 
 ## Assistant Access
 
