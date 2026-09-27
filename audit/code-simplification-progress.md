@@ -225,6 +225,15 @@ Validation (using the local ALSA prefix documented above):
   passed (0 tests).
 - `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`,
   `cargo fmt -- --check`, and `git diff --check`: passed.
+- `cargo build --locked -j 2`: passed. Headless startup with the built binary
+  and `--test` opened the 1600x960 Kerosene window under Xvfb, confirmed by
+  `xwininfo`. Expected timeout 124 after 20 seconds, no panic, and only the
+  existing EGL/DRI3 acceleration warning.
+
+The staged cleanup was included in concurrent release commit `5d9aebe1`, which
+also changed the package version from 0.2.1 to 0.3.0 during final validation.
+The commands above ran before that metadata change. Final smoke results were
+recorded in a separate documentation commit; the release commit was preserved.
 
 ## Next candidates
 
