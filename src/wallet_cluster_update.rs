@@ -514,9 +514,6 @@ impl TradingTerminal {
             return Task::none();
         }
         let context_is_current = self.read_data_request_context_is_current(context);
-        let exchange_symbols = self.exchange_symbols.clone();
-        let muted_tickers = self.muted_tickers.clone();
-        let market_universe = self.market_universe.clone();
         let Some(state) = self.wallet_clusters.member_data.get_mut(&profile_secret_id) else {
             return Task::none();
         };
@@ -539,9 +536,9 @@ impl TradingTerminal {
         match result {
             Ok(data) => {
                 let data = Self::filter_wallet_details_for_hidden_symbols_with(
-                    &exchange_symbols,
-                    &muted_tickers,
-                    &market_universe,
+                    &self.exchange_symbols,
+                    &self.muted_tickers,
+                    &self.market_universe,
                     data,
                 );
                 // Full REST snapshot includes positions.
@@ -570,14 +567,11 @@ impl TradingTerminal {
         };
 
         let now_ms = Self::now_ms();
-        let exchange_symbols = self.exchange_symbols.clone();
-        let muted_tickers = self.muted_tickers.clone();
-        let market_universe = self.market_universe.clone();
         let is_hidden = |symbol: &str| {
             Self::symbol_key_is_hidden_with(
-                &exchange_symbols,
-                &muted_tickers,
-                &market_universe,
+                &self.exchange_symbols,
+                &self.muted_tickers,
+                &self.market_universe,
                 symbol,
             )
         };

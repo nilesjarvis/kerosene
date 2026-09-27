@@ -1,11 +1,9 @@
-use crate::annotations::{Annotation, AnnotationId};
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{CandleCacheTarget, ChartBackfillFetchContext, ChartId, ChartInstance};
 use crate::config::{ChartBackfillSource, ChartConfig, SpaghettiChartConfig};
 use crate::message::Message;
 use crate::spaghetti;
 use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
-use crate::timeframe::Timeframe;
 use iced::{Task, Theme};
 use std::collections::{HashMap, HashSet};
 use zeroize::Zeroizing;
@@ -21,52 +19,19 @@ impl TradingTerminal {
         let mut charts = HashMap::new();
         for chart_cfg in chart_configs {
             let id = chart_cfg.id;
-            let tf = Timeframe::from_config_str(&chart_cfg.timeframe);
             // `@0` is the legacy persisted key for the API-named PURR/USDC
             // pair. The candle endpoint rejects it, so wait for strict spot
             // metadata to supply the canonical key before loading cache or
             // issuing primary/macro requests.
             let defer_primary_legacy_spot = chart_cfg.symbol == "@0";
-            let mut instance = ChartInstance::new(id, chart_cfg.symbol.clone(), tf);
-            instance.chart.inverted = chart_cfg.inverted;
-            instance.chart.show_trade_markers = chart_cfg.show_trade_markers;
-            instance.show_earnings_markers = chart_cfg.show_earnings_markers;
-            instance.header_collapsed = chart_cfg.header_collapsed;
-            instance.drawing_toolbar_collapsed = chart_cfg.drawing_toolbar_collapsed;
-            instance
-                .chart
-                .set_funding_panel_height(chart_cfg.funding_panel_height as f32);
-            instance
-                .chart
-                .set_session_panel_height(chart_cfg.session_panel_height as f32);
-            instance.macro_indicators = chart_cfg.macro_indicators.clone();
-            instance.chart.macro_indicators = chart_cfg.macro_indicators.clone();
-            instance.quick_trade_actions = chart_cfg
-                .quick_trade_actions
-                .iter()
-                .filter(|action| action.is_valid())
-                .take(crate::config::MAX_QUICK_TRADE_ACTIONS)
-                .cloned()
-                .collect();
-            instance.open_interest_as_notional = chart_cfg.open_interest_as_notional;
-            instance.asset_volume_as_notional = chart_cfg.asset_volume_as_notional;
-            instance.outcome_volume_as_notional = chart_cfg.outcome_volume_as_notional;
+            let mut instance = ChartInstance::from_config(chart_cfg, chart_cfg.symbol.clone());
+            let tf = instance.interval;
             if let Some(symbol) = chart_cfg.secondary_symbol.as_ref().filter(|symbol| {
                 !symbol.is_empty() && !Self::key_matches_muted_tickers(&[], muted_tickers, symbol)
             }) {
                 let display = symbol.split(':').nth(1).unwrap_or(symbol).to_string();
                 instance.set_secondary_symbol_identity(symbol.clone(), display);
             }
-
-            let mut ann_id: AnnotationId = 0;
-            for acfg in &chart_cfg.annotations {
-                if let Some(ann) = Annotation::from_config(ann_id, acfg) {
-                    instance.annotations.push(ann);
-                    ann_id += 1;
-                }
-            }
-            instance.next_annotation_id = ann_id;
-            instance.chart.annotations = instance.annotations.clone();
 
             if !chart_cfg.symbol.is_empty()
                 && !Self::key_matches_muted_tickers(&[], muted_tickers, &chart_cfg.symbol)
@@ -165,28 +130,9 @@ impl TradingTerminal {
 
         for scfg in spaghetti_configs {
             let sid = scfg.id;
-            let tf = Timeframe::from_config_str(&scfg.timeframe);
-            let mut inst = SpaghettiChartInstance::new_empty(sid);
-            inst.watchlist_preset_id = (!scfg.pair_mode)
-                .then_some(scfg.watchlist_preset_id)
-                .flatten();
-            inst.interval = tf;
-            inst.pair_mode = scfg.pair_mode;
-            inst.canvas.pair_ratio_mode = scfg.pair_mode;
-            inst.pair_candle_mode = scfg.pair_candle_mode;
-            inst.canvas.pair_candle_mode = scfg.pair_candle_mode;
-            inst.canvas.color_mode = scfg.color_mode;
-            inst.canvas.show_labels = scfg.show_labels;
-            inst.canvas.active_session = scfg
-                .anchor
-                .as_deref()
-                .and_then(spaghetti::Session::from_config_str);
-            inst.session_granularity = scfg
-                .anchor_granularity
-                .as_deref()
-                .and_then(Timeframe::from_config_str_opt);
+            let mut inst = SpaghettiChartInstance::from_config(scfg);
+            let tf = inst.interval;
             Self::normalize_spaghetti_session_granularity(&mut inst, Self::now_ms());
-            inst.editor_open = false;
 
             for sym_key in scfg
                 .symbols

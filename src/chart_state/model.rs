@@ -15,6 +15,7 @@ mod instance;
 mod order_lines;
 mod price_flash;
 mod quick_order;
+mod restoration;
 mod surface;
 
 pub(crate) use price_flash::{CHART_PRICE_FLASH_MS, PriceFlash, PriceFlashDirection};

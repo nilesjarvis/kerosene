@@ -42,6 +42,12 @@ data, screenshots, and comparison charts.
 `TradingTerminal` stores chart instances in `charts: HashMap<ChartId,
 ChartInstance>` and allocates IDs through `alloc_chart_id`.
 
+Startup and saved-layout restoration share `ChartInstance::from_config` in
+`chart_state/model/restoration.rs` for persisted settings and annotations.
+Comparison charts use `SpaghettiChartInstance::from_config`. The callers retain
+symbol resolution, visibility filtering, and data request scheduling, which
+differ between startup and runtime layout changes.
+
 ## Chart Surfaces
 
 One chart can be rendered in different surfaces:

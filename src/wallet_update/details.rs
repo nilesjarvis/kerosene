@@ -15,9 +15,6 @@ impl TradingTerminal {
             Message::WalletDetailsLoaded(window_id, address, context, result) => {
                 let address = address.into_string();
                 let context_is_current = self.read_data_request_context_is_current(context);
-                let exchange_symbols = self.exchange_symbols.clone();
-                let muted_tickers = self.muted_tickers.clone();
-                let market_universe = self.market_universe.clone();
                 let Some(state) = self.wallet_detail_windows.get_mut(&window_id) else {
                     return Task::none();
                 };
@@ -36,9 +33,9 @@ impl TradingTerminal {
                 match *result {
                     Ok(data) => {
                         let data = Self::filter_wallet_details_for_hidden_symbols_with(
-                            &exchange_symbols,
-                            &muted_tickers,
-                            &market_universe,
+                            &self.exchange_symbols,
+                            &self.muted_tickers,
+                            &self.market_universe,
                             data,
                         );
                         state.last_refresh_ms = Some(data.fetched_at_ms);
