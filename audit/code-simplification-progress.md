@@ -21,11 +21,11 @@ candidates; it does not establish that every module has been reviewed.
 | --- | --- |
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts and axes reviewed and consolidated; crosshair formatting and series calculations inspected but retained. Most chart rendering and interactions remain. |
-| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. API transport, symbol lifecycle, books, and other widgets remain. |
+| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API requests, symbol lifecycle, books, and other widgets remain. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
-| Subscriptions and transport | Market subscription assembly reviewed: selected-provider book construction shared, chart deduplication now borrows keys, and order-book/positioning symbol copies reduced. Provider/key freshness differences and explicit-key subscriptions retained. Transport internals and remaining subscription families still need review. |
+| Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Native and Hydromancer market adapters inspected; Hydromancer adapters split by feature with shared borrowed payload selection. Manager internals and other stream families still need review. |
 | Feeds, integrations, assistant | Initial size/duplication scan only; substantive review remains. |
 | Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
@@ -328,12 +328,61 @@ Validation (using the local ALSA prefix documented above):
   warning. This verifies startup with in-memory configuration; hardware GPU
   rendering and other platforms were not exercised.
 
+## 2026-09-27: simplify Hydromancer market payload handling
+
+- Reviewed the remaining subscription assembly modules. Kept the short timer,
+  input, integration, account, wallet-detail, and cluster branches explicit:
+  their visibility, eligibility, key, and consumer-identity rules differ.
+  Corrected the subscription guide's user-data and window-event descriptions
+  to match the existing code, including cluster streams and unhandled `NoOp`.
+- Inspected native market adapters, public shared reads, and read admission.
+  Retained their provider-specific lag/watchdog, cancellation, expiry, priority,
+  and budget behavior. Manager lifecycle internals still need a separate review.
+- Split Hydromancer market adapters into `books.rs`, `asset_context.rs`, and
+  `candles.rs`, following the native stream layout. The root retains shared
+  authentication-fallback policy and stable public entry points. Moved all four
+  existing tests into adjacent test files.
+- Consolidated the common direct-item, wrapped-item, and data-batch selection
+  in `payloads.rs`. Selectors return slices borrowed from the incoming frame,
+  eliminating per-message vectors and the early copy of every candle in a batch.
+  Matching candles still clone once for deserialization, after routing filters.
+  Legacy `books` and singular `candle` fallbacks remain distinct. Field-presence
+  rules and empty-batch precedence are unchanged.
+- Removed a book fallback match that reconstructed both event variants with
+  exactly the same fields. Events now pass through directly, preserving the
+  fallback's source generation and downstream failure handling.
+- Compared existing production function bodies after normalizing whitespace
+  and the moved reconnect-helper import: 11 of 15 match the previous commit.
+  Only the three selectors and the identity-only book fallback match changed.
+  Subscription payloads, topics, guards, buffer sizes, reconnects, one-second
+  candle restrictions, watchdogs, event mapping, and validation are retained.
+- Added two fixture-matrix tests covering all three selectors, accepted and
+  rejected shapes, mixed/malformed batches, null fields, wrapper precedence,
+  and pointer identity proving selected values borrow the source frame.
+- No schema, dependencies, message routes, subscription parameters, external
+  protocol, or order-execution changes.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene ws::`:
+  **557 passed**, no failures. This filter includes the websocket tests plus
+  other module paths containing `ws::`, such as view tests.
+- Removed an unused reconnect-helper import from the candle module after the
+  initial extraction; candle lag intentionally does not reconnect the manager.
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo test --locked -j 2`: **4,292 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- Validation used synthetic/local fixtures and local websocket integration
+  tests; no live provider credentials or live market connections were used.
+
 ## Next candidates
 
 1. Comparison crosshair and background setup still have repeated drawing code.
    With the common frame context, evaluate whether sharing those sequences
    makes the modes clearer while preserving their formatting and range guards.
-2. Review the remaining subscription families and transport modules, including
-   API request construction and websocket lifecycle boundaries.
+2. Review API request construction, websocket manager lifecycle boundaries,
+   user-data streams, and the remaining integration streams.
 3. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.

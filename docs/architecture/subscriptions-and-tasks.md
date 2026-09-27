@@ -66,22 +66,16 @@ same-coin multi-precision live subscriptions.
 
 ## User Data Subscriptions
 
-`src/subscription_state/user_data.rs` always pushes a user-data stream with
-`WsUserDataStreamParams`.
+`src/subscription_state/user_data.rs` always pushes a base user-data stream with
+`WsUserDataStreamParams`. It covers connected-account private data and all-mids
+subscriptions for visible dexes, yielding `Message::WsUserDataUpdate`. The stream
+filters private subscriptions internally when no address is connected.
 
-The stream covers:
-
-- connected account private user data when a wallet is connected
-- all-mids subscriptions for visible dexes
-- wallet detail windows for addresses different from the connected address
-
-Results become:
-
-- `Message::WsUserDataUpdate`
-- `Message::WalletDetailsWsUpdate`
-
-The stream filters private subscriptions internally when no address is
-connected.
+Separate streams cover wallet detail addresses different from the connected
+address and members of the selected wallet cluster. Each group normalizes,
+sorts, and deduplicates its addresses. These streams opt out of mids and use
+distinct `WalletDetail` and `WalletCluster` purposes in their identity, yielding
+`Message::WalletDetailsWsUpdate` and `Message::WalletClusterWsUpdate` respectively.
 
 ## Integration Subscriptions
 
@@ -144,7 +138,10 @@ commands use the same `Message` path as button-driven commands.
 - close events -> `Message::WindowClosed`
 - resized -> `Message::WindowResized`
 - moved -> `Message::WindowMoved`
-- unhandled window event -> `Message::Tick`
+- focused -> `Message::WindowFocused`
+- file hover/leave -> `Message::AgentPnlCardHoverChanged`
+- dropped file -> `Message::AgentPnlCardDropped`
+- unhandled window event -> `Message::NoOp`
 
 Window messages let `window_update.rs` persist auxiliary window state, remove
 closed windows from maps, and keep layout min sizes synchronized.
@@ -179,6 +176,14 @@ Hydromancer covers:
 - liquidation feed
 - tracked trades
 - alternative candle/book/asset-context streams
+
+Market adapters are split by feature under `ws/hydromancer/market_streams/`.
+Their shared payload selectors return borrowed slices for direct items, wrapped
+items, and batches; each adapter filters its symbol and other routing fields
+before parsing. Book and candle legacy wrapper fallbacks retain their own rules.
+Authentication failures can switch market streams to Hyperliquid, except for
+one-second candles. Fallback events retain the source generation supplied by the
+fallback stream.
 
 Hydromancer keys are secret-bearing values and should only be passed into
 stream setup or request tasks, never logged.
