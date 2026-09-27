@@ -41,7 +41,7 @@ impl TradingTerminal {
     }
 
     /// Whether the connected summary (metrics or its loading skeleton) should be
-    /// shown rather than the disconnected add-account form. Covers the transient
+    /// shown rather than the disconnected toolbar. Covers the transient
     /// window during an account switch / boot where `connected_address` is still
     /// `None` but a connect is already loading or in flight.
     pub(crate) fn account_summary_is_connected_or_connecting(&self) -> bool {
@@ -60,10 +60,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn account_summary_bar_height(&self) -> f32 {
-        if !self.account_summary_is_connected_or_connecting() {
-            return ACCOUNT_SUMMARY_WRAPPED_HEIGHT;
-        }
-
         let Some(width) = self.main_window_size.map(|size| size.width) else {
             return ACCOUNT_SUMMARY_DEFAULT_HEIGHT;
         };
@@ -72,9 +68,10 @@ impl TradingTerminal {
         // metrics layout, so use the metrics breakpoint for both — this makes
         // the loading height pre-match the populated height so the no-data ->
         // data flip never jumps. The narrower status breakpoint only applies to
-        // the genuine non-loading no-data / error message.
-        let needs_wrapped_height = if self.connected_order_account_snapshot().is_some()
-            || self.account_summary_is_loading()
+        // the disconnected toolbar and genuine non-loading no-data / error message.
+        let needs_wrapped_height = if self.account_summary_is_connected_or_connecting()
+            && (self.connected_order_account_snapshot().is_some()
+                || self.account_summary_is_loading())
         {
             content_width < CONNECTED_SUMMARY_ACTION_BREAKPOINT
         } else {
@@ -174,13 +171,28 @@ mod tests {
     }
 
     #[test]
-    fn disconnected_bar_uses_wrapped_height() {
+    fn disconnected_bar_wraps_only_below_toolbar_breakpoint() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.connected_address = None;
-        assert_eq!(
-            terminal.account_summary_bar_height(),
-            ACCOUNT_SUMMARY_WRAPPED_HEIGHT
-        );
+        terminal.account_loading = false;
+        terminal.account_connect_pending = false;
+
+        for (content_width, expected_height) in [
+            (None, ACCOUNT_SUMMARY_DEFAULT_HEIGHT),
+            (
+                Some(CONNECTED_STATUS_ACTION_BREAKPOINT - 1.0),
+                ACCOUNT_SUMMARY_WRAPPED_HEIGHT,
+            ),
+            (
+                Some(CONNECTED_STATUS_ACTION_BREAKPOINT),
+                ACCOUNT_SUMMARY_DEFAULT_HEIGHT,
+            ),
+            (Some(1200.0), ACCOUNT_SUMMARY_DEFAULT_HEIGHT),
+        ] {
+            terminal.main_window_size = content_width
+                .map(|w| iced::Size::new(w + ACCOUNT_SUMMARY_HORIZONTAL_PADDING, 800.0));
+            assert_eq!(terminal.account_summary_bar_height(), expected_height);
+        }
     }
 
     #[test]
