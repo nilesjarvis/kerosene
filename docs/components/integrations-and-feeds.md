@@ -276,7 +276,10 @@ Its child modules keep the read-only EDGAR pipeline separated by responsibility:
   matching, and year-over-year formatting.
 - `documents.rs`: safe archive/document URLs, submission-package parsing, and
   summary-document selection.
-- `summary.rs`: HTML-to-text conversion and headline/highlight extraction.
+- `summary.rs`: HTML-to-text conversion and headline/highlight extraction. The
+  headline and highlight searches share one ASCII-folded copy of the filing;
+  candidate windows borrow the original text. Duplicate matching compares the
+  first 80 ASCII alphanumerics without building intermediate strings.
 
 Chart request generations, pending readers, and in-memory caches remain in
 `chart_update/earnings.rs`. Summary text is retained when optional company-facts

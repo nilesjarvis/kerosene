@@ -26,7 +26,7 @@ candidates; it does not establish that every module has been reviewed.
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Remaining integration stream internals still need review. |
-| Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing inspected. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling. Other integration and assistant internals still need substantive review. |
+| Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing inspected. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling and reduced summary text copies. Other integration and assistant internals still need substantive review. |
 | Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
 
@@ -968,12 +968,56 @@ Validation (using the local ALSA prefix documented above):
   passed.
 - `cargo fmt -- --check` and `git diff --check`: passed.
 
+## 2026-09-27: reduce repeated SEC summary text processing
+
+- Reviewed headline/highlight extraction, candidate boundaries, scoring,
+  boilerplate rejection, and duplicate detection. Also inspected user-fill
+  requests/pagination, fill normalization/identity, and order-status parsing,
+  matching, redaction, and terminal-status predicates. Those account/trading
+  readers and their differing validation policies are unchanged.
+- Summary searches now share one ASCII-lowercased copy of the full filing,
+  previously copied once for the headline and once per highlight category.
+  ASCII case folding retains the byte offsets used to select original text.
+- Candidate windows borrow their text until normalization rather than allocating
+  an intermediate string. Boundary scans, decimal handling, UTF-8 adjustment,
+  normalization, output limits, and selected original casing are preserved.
+- Duplicate detection now compares the normalized character iterators directly.
+  The first 80 ASCII alphanumerics, case folding, empty matches, candidate order,
+  and fallback exclusion rules remain the same. This also removes the fallback's
+  temporary copy of the excluded headline.
+- Added three regression tests: six complete summary outputs, decimal/Unicode
+  window cases, and eight duplicate-prefix cases. They cover empty input,
+  category order and the five-highlight limit, equal-score first matches,
+  boilerplate exclusion, cross-category deduplication, fallback exclusion,
+  punctuation/case handling, non-ASCII text, and the 80-character boundary.
+- Updated the integrations guide. No request, event, persistence, chart-cache,
+  metric calculation, or trading behavior changes.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene
+  api::sec::summary::`: **6 passed** against the original implementation,
+  including all three new regression tests.
+- `cargo test --locked -j 2 --package kerosene --bin kerosene api::sec::`:
+  **17 passed** after the refactor, including all six summary tests.
+- Source comparison confirms 12 existing helper bodies are byte-identical,
+  including HTML conversion, normalization, boundaries, trimming, relevance,
+  scoring, and boilerplate detection. The production diff retains the same
+  keywords, selection order, score comparisons, and character transforms.
+- `cargo test --locked -j 2`: **4,338 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- Removed repeated allocations/copies without claiming a measured runtime speedup.
+
 ## Next candidates
 
-1. SEC summary helpers repeatedly lowercase the same full filing text. Evaluate
-   sharing that work while preserving snippet ranking, boundaries, and fallbacks.
-   Farside chart extraction also repeats its marker lookup; preserve parser
-   acceptance and error precedence if simplifying it.
+1. `journal/aggregation/identity.rs` builds a string-heavy identity set after
+   sorting by the same identity fields. Evaluate adjacent deduplication while
+   preserving the first duplicate's payload and same-timestamp position chains.
+   The chain ordering also copies all fills and warrants a separate ownership
+   review. Farside's repeated chart-marker lookup remains a smaller candidate.
 2. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
    event parsing.

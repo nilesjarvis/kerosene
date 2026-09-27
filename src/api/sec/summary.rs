@@ -138,7 +138,9 @@ fn normalize_filing_text(text: &str) -> String {
 }
 
 pub(super) fn summarize_filing_text(text: &str) -> (Option<String>, Vec<String>) {
-    let headline = filing_headline(text);
+    // ASCII folding preserves byte offsets into the original Unicode text.
+    let lower = text.to_ascii_lowercase();
+    let headline = filing_headline(text, &lower);
     let mut highlights = Vec::new();
     for keywords in [
         &["revenue", "net sales", "sales"][..],
@@ -150,7 +152,7 @@ pub(super) fn summarize_filing_text(text: &str) -> (Option<String>, Vec<String>)
         &["guidance", "outlook", "expects", "forecast"][..],
         &["dividend", "repurchase", "buyback"][..],
     ] {
-        if let Some(snippet) = first_relevant_snippet(text, keywords, &highlights) {
+        if let Some(snippet) = first_relevant_snippet(text, &lower, keywords, &highlights) {
             highlights.push(snippet);
         }
         if highlights.len() >= 5 {
@@ -167,31 +169,36 @@ pub(super) fn summarize_filing_text(text: &str) -> (Option<String>, Vec<String>)
     (headline, highlights)
 }
 
-fn filing_headline(text: &str) -> Option<String> {
-    let lower = text.to_ascii_lowercase();
+fn filing_headline(text: &str, lower: &str) -> Option<String> {
     for needle in ["reports", "announces", "financial results", "quarter"] {
         if let Some(index) = lower.find(needle) {
             let snippet = snippet_around(text, index, 90, 130);
-            if snippet_has_numbers_or_reporting_words(&snippet) {
-                return Some(trim_summary_snippet(&snippet, 132));
+            if snippet_has_numbers_or_reporting_words(snippet) {
+                return Some(trim_summary_snippet(snippet, 132));
             }
         }
     }
     fallback_filing_snippet(text, None)
 }
 
-fn first_relevant_snippet(text: &str, keywords: &[&str], existing: &[String]) -> Option<String> {
-    let lower = text.to_ascii_lowercase();
+fn first_relevant_snippet(
+    text: &str,
+    lower: &str,
+    keywords: &[&str],
+    existing: &[String],
+) -> Option<String> {
     let mut best: Option<(i32, String)> = None;
     for keyword in keywords {
         let mut cursor = 0;
         while let Some(relative_index) = lower[cursor..].find(keyword) {
             let index = cursor + relative_index;
-            let snippet = trim_summary_snippet(&snippet_around(text, index, 70, 170), 150);
+            let snippet = trim_summary_snippet(snippet_around(text, index, 70, 170), 150);
             cursor = index + keyword.len();
             if snippet_has_numbers_or_reporting_words(&snippet)
                 && !snippet_is_boilerplate(&snippet)
-                && !summary_snippet_seen(&snippet, existing)
+                && !existing
+                    .iter()
+                    .any(|item| summary_snippets_match(&snippet, item))
             {
                 let score = summary_snippet_score(&snippet, keywords);
                 if best
@@ -211,8 +218,7 @@ fn fallback_filing_snippet(text: &str, exclude: Option<&str>) -> Option<String> 
         let snippet = trim_summary_snippet(chunk, 140);
         if snippet.len() > 35
             && !snippet_is_boilerplate(&snippet)
-            && exclude
-                .is_none_or(|excluded| !summary_snippet_seen(&snippet, &[excluded.to_string()]))
+            && exclude.is_none_or(|excluded| !summary_snippets_match(&snippet, excluded))
         {
             return Some(snippet);
         }
@@ -220,14 +226,14 @@ fn fallback_filing_snippet(text: &str, exclude: Option<&str>) -> Option<String> 
     None
 }
 
-fn snippet_around(text: &str, index: usize, before: usize, after: usize) -> String {
+fn snippet_around(text: &str, index: usize, before: usize, after: usize) -> &str {
     let start = previous_summary_delimiter(text, index)
         .map(|pos| pos + 1)
         .unwrap_or_else(|| previous_char_boundary(text, index.saturating_sub(before)));
     let end = next_summary_delimiter(text, index)
         .map(|pos| pos + 1)
         .unwrap_or_else(|| next_char_boundary(text, (index + after).min(text.len())));
-    text[start..end].to_string()
+    &text[start..end]
 }
 
 fn previous_summary_delimiter(text: &str, before: usize) -> Option<usize> {
@@ -366,21 +372,17 @@ fn snippet_is_boilerplate(snippet: &str) -> bool {
         || lower.contains("additional information")
 }
 
-fn summary_snippet_seen(snippet: &str, existing: &[String]) -> bool {
-    let normalized = snippet
+fn summary_snippets_match(left: &str, right: &str) -> bool {
+    normalized_summary_chars(left).eq(normalized_summary_chars(right))
+}
+
+// Duplicate detection uses only the first 80 ASCII alphanumerics, ignoring case.
+fn normalized_summary_chars(snippet: &str) -> impl Iterator<Item = char> {
+    snippet
         .chars()
         .filter(|ch| ch.is_ascii_alphanumeric())
         .map(|ch| ch.to_ascii_lowercase())
         .take(80)
-        .collect::<String>();
-    existing.iter().any(|item| {
-        item.chars()
-            .filter(|ch| ch.is_ascii_alphanumeric())
-            .map(|ch| ch.to_ascii_lowercase())
-            .take(80)
-            .collect::<String>()
-            == normalized
-    })
 }
 
 #[cfg(test)]
