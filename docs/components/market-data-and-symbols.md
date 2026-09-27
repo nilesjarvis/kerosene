@@ -507,6 +507,10 @@ outcomes must reference a valid question with the expected parent template;
 they inherit its deadline and rules. Legacy price-binary and price-bucket
 metadata remains supported with validated bounds and expiry.
 
+Outcome parsing builds each question record once and uses a borrowed index to
+associate its named, settled, and fallback outcomes. The index lasts only for
+that parse; each final symbol still owns its question metadata and contract terms.
+
 `OutcomeSymbolInfo.contract` stores resolved `OutcomeContract` terms. Missing
 fields in older caches default safely; the `verified` flag is runtime-only and
 never survives serialization. A cached or failed metadata refresh preserves

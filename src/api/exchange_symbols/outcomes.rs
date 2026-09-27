@@ -10,7 +10,7 @@ use crate::api::{USDC_TOKEN_INDEX, USDH_TOKEN_INDEX};
 use contracts::resolve_contract;
 use description::parse_outcome_description;
 use encoding::{outcome_asset_index, outcome_coin_key, outcome_encoding};
-use questions::questions_by_outcome;
+use questions::{OutcomeQuestionInfo, questions_by_outcome};
 use serde::Deserialize;
 use templates::OutcomeTemplate;
 
@@ -63,7 +63,12 @@ pub(super) fn parse_outcome_symbols(
     templates: &[OutcomeTemplate],
 ) -> Result<Vec<ExchangeSymbol>, String> {
     validate_metadata(&outcome_meta)?;
-    let questions_by_outcome = questions_by_outcome(&outcome_meta.questions, templates);
+    let questions: Vec<_> = outcome_meta
+        .questions
+        .into_iter()
+        .map(|entry| OutcomeQuestionInfo::from_entry(entry, templates))
+        .collect();
+    let questions_by_outcome = questions_by_outcome(&questions);
     let mut symbols = Vec::new();
 
     for outcome in outcome_meta.outcomes {
@@ -89,7 +94,7 @@ pub(super) fn parse_outcome_symbols(
             .map(str::trim)
             .filter(|venue| !venue.is_empty())
             .map(str::to_ascii_lowercase);
-        let question = questions_by_outcome.get(&outcome.outcome);
+        let question = questions_by_outcome.get(&outcome.outcome).copied();
         let (mut contract, side_names) = resolve_contract(&outcome, question, templates);
         contract.fee_scale = valid_fee_scale(outcome_meta.fee_scale.as_deref());
         contract.deployer_fee_scale = valid_fee_scale(outcome.deployer_fee_scale.as_deref());
