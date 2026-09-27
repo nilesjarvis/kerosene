@@ -23,7 +23,7 @@ candidates; it does not establish that every module has been reviewed.
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts, axes, background setup, and crosshair drawing reviewed and consolidated; mode-specific formatting and series calculations retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
 | Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Candle request/response policies and watchlist/outcome-volume history inspected; candle normalization deduplicates in place and trailing-run searches stop at the final gap. Outcome parsing, contract/template resolution, question membership, and label helpers reviewed; the temporary question index borrows shared records and expiry formatting is shared. Calendar, unstaking, and ETF API entry points/conversion helpers inspected. Remaining API requests, ETF flow parsing, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
-| Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Cache/loaded-page callers, constructors, and parsing helpers inspected. Broader snapshot, cache, view rendering, and account analytics review remains. |
+| Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Snapshot models, planning, assembly, and metrics reviewed and separated; request bounds and history admission are shared. Snapshot update callers inspected, with freshness/admission policies retained. Cache/loaded-page callers, constructors, and parsing helpers inspected. Broader cache, view rendering, and account analytics review remains. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Remaining integration stream internals still need review. |
@@ -1124,16 +1124,55 @@ Validation (using the local ALSA prefix documented above):
 - `cargo fmt -- --check` and `git diff --check`: passed.
 - Removed redundant copies and lookups; no measured runtime speedup is claimed.
 
+## 2026-09-27: separate snapshot planning and share request bounds
+
+- Reviewed all snapshot models, request planning, assembly, marker generation,
+  candle/price metrics, and tests, plus update callers' fill/live selection,
+  request admission, coverage/timeframe changes, and stale-result checks.
+- Split the 916-line snapshot module into a 245-line model/assembly entry point,
+  `snapshot/requests.rs`, and `snapshot/metrics.rs`. Tests now live beside their
+  owners, with common synthetic fixtures in `snapshot/tests.rs`. Existing public
+  entry points and all model definitions remain unchanged.
+- Shared complete-history admission between automatic and pinned requests.
+  Shared saturating request bounds between initial and retry requests. Retries
+  now name only the changed timeframe/index/range and copy their remaining
+  context with struct update syntax.
+- Retained separate live-position admission and lookback policies. Automatic
+  rung selection still budgets both padding sides even for open positions;
+  actual open requests stop at the reference time. Pinned fine-timeframe live
+  requests retain their independent lookback cap and validation order.
+- Added four regression tests for error precedence, explicit bounds near zero
+  and `u64::MAX`, reversed trade endpoints, open-request padding/rung selection,
+  retry equality across every rung/coverage with preserved provider generations,
+  terminal/invalid rung handling, and capped versus automatic live lookback.
+- Metric calculations, fill VWAP, candle/marker order, snapshot assembly,
+  redaction, update routes, provider/account checks, and persistence are unchanged.
+  Updated the journal component map and request-policy documentation.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene journal`:
+  **141 passed** before and after the production change, including all four new
+  tests and existing snapshot update/view tests.
+- Before consolidation, source comparison verified all 19 production function
+  bodies survived the split unchanged. Final comparison verifies all six models
+  and 15 unchanged bodies; only the four planned request functions differ.
+  All 15 snapshot tests were preserved through relocation.
+- `cargo test --locked -j 2`: **4,350 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+
 ## Next candidates
 
-1. Continue through journal snapshot request planning, metrics, cache, and view
-   rendering, including the large cockpit renderer. Initial inspection found
-   repeated historical-trade admission checks and request-padding calculations
-   in snapshot planning; inspect tests and error precedence before consolidating.
-   Account state and persistence
-   snapshots retain intentional copies; avoid a broad ownership rewrite without
-   a demonstrated benefit. Farside's repeated chart-marker lookup remains a
-   smaller candidate.
+1. Continue through journal metrics, cache, and view rendering, including the
+   large cockpit renderer. Metrics currently allocate overlapping candle
+   references and traverse them repeatedly; assess whether a simpler traversal
+   can preserve candle order, floating-point behavior, and error precedence.
+   Account state and persistence snapshots retain intentional copies; avoid a
+   broad ownership rewrite without a demonstrated benefit. Farside's repeated
+   chart-marker lookup remains a smaller candidate.
 2. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
    event parsing.

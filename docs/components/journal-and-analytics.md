@@ -16,7 +16,7 @@ boundaries.
 | Fill fetch/cache | `src/journal/cache.rs`, `src/api/user_fills.rs`, `src/journal_update.rs` | Paged fill fetches, per-wallet cache, merge/dedup, cache writes. |
 | Aggregation | `src/journal/aggregation/` | Fill identity, ordering, perpetual trade reconstruction, spot/outcome grouping. |
 | Current positions | `src/journal/current_positions.rs` | Fallback partial trades from current account snapshot. |
-| Snapshots | `src/journal/snapshot.rs`, `src/journal_views/trade_card/snapshot.rs` | Per-trade candle snapshots, markers, excursion metrics, embedded chart view. |
+| Snapshots | `src/journal/snapshot.rs`, `src/journal/snapshot/`, `src/journal_views/trade_card/snapshot.rs` | Per-trade candle snapshots, request planning, markers, excursion metrics, embedded chart view. |
 | Views | `src/journal_views/` | Journal window/pane, header, controls, summary, trade cards, notes editor. |
 | Analytics | `src/account_analytics/`, `src/portfolio_state/`, `src/pnl_card/` | Portfolio/income snapshots and exportable visual summaries. |
 
@@ -165,6 +165,17 @@ trade-specific chart. Snapshot state includes:
 - excursion metrics
 - cached snapshot results
 - expanded snapshot trade IDs
+
+`snapshot.rs` owns the snapshot models, assembly, and fill markers;
+`snapshot/requests.rs` owns admission, timeframe selection, retry planning, and
+request bounds; `snapshot/metrics.rs` computes prices, excursions, and drawdown.
+Automatic and pinned requests share the same trade-history admission checks.
+Initial requests and retries share saturating bounds calculations, while live
+positions retain their separate admission and recent-history lookback rules.
+
+Automatic timeframe selection budgets padding on both sides of the window.
+Open-position requests still stop at the reference time without forward padding.
+Pinning a live position to a fine timeframe caps its lookback separately.
 
 When the read-data provider changes, snapshot cache is cleared so later
 snapshots use the selected provider.
