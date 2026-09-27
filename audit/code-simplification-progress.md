@@ -20,14 +20,14 @@ candidates; it does not establish that every module has been reviewed.
 | Area | Current coverage |
 | --- | --- |
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
-| Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Rendering and interactions remain. |
+| Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts and axes reviewed and consolidated; crosshair formatting and series calculations inspected but retained. Most chart rendering and interactions remain. |
 | Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. APIs, caching, symbol lifecycle, books, and other widgets remain. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Initial duplication scan only; substantive review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
-| Subscriptions and transport | Initial duplication scan only; substantive review remains. |
+| Subscriptions and transport | Initial duplication scan plus comparison, positioning, position-PnL, and order-book subscription assembly inspected; no changes yet. Stream identities and provider/key freshness differences need fuller review before sharing helpers. |
 | Feeds, integrations, assistant | Initial size/duplication scan only; substantive review remains. |
-| Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Substantive review of other surfaces remains. |
+| Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
 
 ## 2026-09-27: chart restoration
@@ -187,14 +187,54 @@ Validation (using the local ALSA prefix documented above):
   124 after 20 seconds, no panic, and only the existing EGL/DRI3 warning. This
   checks startup with in-memory configuration, not hardware GPU rendering.
 
+## 2026-09-27: share picker styling and comparison-chart axes
+
+- Replaced three identical account/layout-picker style closures with
+  `helpers::selected_row_button_style`. Preserved hover precedence, selected
+  borders, transparent unselected backgrounds, and disabled/pressed styling.
+  Button contents, layout, and messages remain at their original call sites.
+- Replaced the two almost-identical comparison rendering context types with
+  one `RenderContext`, assembled once before selecting the rendering mode.
+  The normalized reference timestamp remains an explicit mode-specific input.
+- Shared the value grid, axis border, relative-time axis, and dashed session
+  marker in `spaghetti/axes.rs`. The normalized zero-percent line still renders
+  between its grid and border. Ratio formatting and normalization/ratio data
+  calculations are unchanged; both modes retain their original drawing order.
+- Added software-renderer tests spanning normalized lines, ratio lines, and
+  ratio candles at three widths, two themes, grid/dotted backgrounds, and
+  ordinary/anchored/panned viewports. They check the shared time axis and the
+  single-loaded-series fallback to normalized mode. Optional preview output
+  uses synthetic data only and supports direct before/after image comparisons.
+- Updated the charting component guide. No schema, messages, subscriptions,
+  dependencies, account behavior, or order behavior changed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene spaghetti::`:
+  **40 passed**, including both new software-renderer tests.
+- Ran the same two rendering tests against parent commit `3fe76603` in a
+  temporary detached checkout: both passed. All **108** synthetic preview PNGs
+  from the old and new implementations were **byte-for-byte identical**,
+  verified with SHA-256. This covers the stated rendering matrix on tiny-skia;
+  it is not a hardware GPU comparison. Removed the temporary checkout after
+  verification. Preview files remain outside the repository under
+  `/tmp/kerosene-comparison-before` and `/tmp/kerosene-comparison-after`.
+- Compared the three original picker style bodies to the shared helper after
+  normalizing whitespace and the boolean parameter name: all match.
+- `cargo test --locked -j 2`: **4,282 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`,
+  `cargo fmt -- --check`, and `git diff --check`: passed.
+
 ## Next candidates
 
-1. Review repeated account-picker/layout-switcher styling and comparison-chart
-   axis drawing. Similar appearance alone is not sufficient reason to share a
-   helper; preserve layout, coordinate, and interaction differences.
-   The three active-row style closures in
-   `account_views/summary/layout_switcher.rs` and
-   `account_views/picker/dropdown/option_row.rs` were inspected and match; the
-   existing `helpers/ui/buttons.rs` styles have different state/color behavior.
-2. Continue across the unreviewed areas in the coverage table. Large files often
+1. Comparison crosshair and background setup still have repeated drawing code.
+   With the common frame context, evaluate whether sharing those sequences
+   makes the modes clearer while preserving their formatting and range guards.
+2. Continue the subscription/provider review. Selected-provider market streams
+   and explicitly Hydromancer-keyed streams intentionally use different
+   freshness rules; preserve that distinction. Several subscription loops copy
+   owned symbols unnecessarily, but verify the complete identity and event
+   mapping before changing them.
+3. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.

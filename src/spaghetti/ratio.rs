@@ -1,40 +1,21 @@
-mod axes;
 mod crosshair;
 mod series;
 
-use self::axes::{draw_ratio_base_line, draw_ratio_grid, draw_ratio_time_axis};
 use self::crosshair::draw_ratio_crosshair;
 use self::series::{draw_ratio_candles, draw_ratio_line};
+use super::axes;
 use super::helpers::has_positive_finite_prices;
-use super::{PRICE_PADDING_PCT, Series, SpaghettiCanvas, SpaghettiChartState};
+use super::{PRICE_PADDING_PCT, RenderContext, Series, SpaghettiCanvas};
 use crate::api::Candle;
 use crate::chart_background::{draw_dotted_background, draw_gradient_background};
+use iced::Point;
 use iced::alignment;
 use iced::widget::canvas;
-use iced::{Point, Rectangle, Renderer, Theme};
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 // Pair Ratio Rendering
 // ---------------------------------------------------------------------------
-
-pub(super) struct PairRatioRenderContext<'a> {
-    pub(super) state: &'a SpaghettiChartState,
-    pub(super) renderer: &'a Renderer,
-    pub(super) theme: &'a Theme,
-    pub(super) bounds: Rectangle,
-    pub(super) chart_w: f32,
-    pub(super) chart_h: f32,
-    pub(super) left_ts: f64,
-    pub(super) right_ts: f64,
-    pub(super) visible_ms: f64,
-    pub(super) time_px_per_ms: f64,
-    pub(super) effective_max: u64,
-    pub(super) base_timestamp: Option<u64>,
-    pub(super) crosshair_style: crate::config::ChartCrosshairStyle,
-    pub(super) crosshair_guides_enabled: bool,
-    pub(super) crosshair_scale: f32,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct RatioCandle {
@@ -48,7 +29,7 @@ pub(super) struct RatioCandle {
 impl SpaghettiCanvas {
     pub(super) fn draw_pair_ratio(
         &self,
-        ctx: PairRatioRenderContext<'_>,
+        ctx: RenderContext<'_>,
         loaded_series: &[&Series],
     ) -> Vec<canvas::Geometry> {
         let series_a = loaded_series[0];
@@ -118,15 +99,17 @@ impl SpaghettiCanvas {
                 crate::chart::fisheye::ChartFisheye::disabled(),
             );
         }
-        draw_ratio_grid(
+        axes::draw_value_grid(
             &mut frame,
             &ctx,
             ratio_hi,
             ratio_range,
             !self.dotted_background,
+            format_ratio_value,
         );
-        draw_ratio_time_axis(&mut frame, &ctx);
-        draw_ratio_base_line(&mut frame, &ctx, &ts_to_x);
+        axes::draw_value_axis_border(&mut frame, &ctx);
+        axes::draw_time_axis(&mut frame, &ctx);
+        axes::draw_session_start_line(&mut frame, &ctx, &ts_to_x, self.base_timestamp);
 
         if self.pair_candle_mode {
             draw_ratio_candles(

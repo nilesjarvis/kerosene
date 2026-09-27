@@ -1,4 +1,4 @@
-use super::NormalizedRenderContext;
+use super::RenderContext;
 use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
 use crate::spaghetti::helpers::format_relative_time;
 use iced::alignment;
@@ -10,7 +10,7 @@ use iced::{Color, Point};
 // ---------------------------------------------------------------------------
 
 pub(super) fn draw_crosshair_overlay(
-    ctx: &NormalizedRenderContext<'_>,
+    ctx: &RenderContext<'_>,
     pct_hi: f64,
     pct_range: f64,
 ) -> canvas::Geometry {

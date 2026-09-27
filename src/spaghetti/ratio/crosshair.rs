@@ -1,4 +1,4 @@
-use super::PairRatioRenderContext;
+use super::RenderContext;
 use super::format_ratio_value;
 use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
 use crate::spaghetti::helpers::format_relative_time;
@@ -11,7 +11,7 @@ use iced::{Color, Point};
 // ---------------------------------------------------------------------------
 
 pub(super) fn draw_ratio_crosshair(
-    ctx: &PairRatioRenderContext<'_>,
+    ctx: &RenderContext<'_>,
     ratio_hi: f64,
     ratio_range: f64,
 ) -> canvas::Geometry {

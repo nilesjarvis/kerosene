@@ -5,7 +5,7 @@ use crate::helpers;
 use crate::message::Message;
 
 use iced::widget::{Row, button, column, container, row, text, text_input};
-use iced::{Color, Element, Fill, Theme};
+use iced::{Element, Fill, Theme};
 
 mod components;
 
@@ -115,25 +115,7 @@ impl TradingTerminal {
                 .padding(account_option_row_padding())
                 .width(Fill)
                 .style(move |theme: &Theme, status| {
-                    let bg = match status {
-                        button::Status::Hovered => theme.extended_palette().background.strong.color,
-                        _ if is_active => theme.extended_palette().background.weak.color,
-                        _ => Color::TRANSPARENT,
-                    };
-                    button::Style {
-                        background: Some(bg.into()),
-                        text_color: theme.palette().text,
-                        border: iced::Border {
-                            radius: 4.0.into(),
-                            width: if is_active { 1.0 } else { 0.0 },
-                            color: if is_active {
-                                theme.palette().primary
-                            } else {
-                                Color::TRANSPARENT
-                            },
-                        },
-                        ..Default::default()
-                    }
+                    helpers::selected_row_button_style(theme, status, is_active)
                 })
                 .into()
         };

@@ -1,10 +1,10 @@
+use super::axes;
 use super::helpers::find_candle_at;
-use super::{PRICE_PADDING_PCT, Series, SpaghettiCanvas, SpaghettiChartState};
+use super::{PRICE_PADDING_PCT, RenderContext, Series, SpaghettiCanvas};
 use crate::chart_background::{draw_dotted_background, draw_gradient_background};
 use iced::widget::canvas;
-use iced::{Color, Point, Rectangle, Renderer, Theme};
+use iced::{Color, Point};
 
-mod axes;
 mod crosshair;
 mod series;
 
@@ -12,36 +12,19 @@ mod series;
 // Normalized Percentage Rendering
 // ---------------------------------------------------------------------------
 
-pub(super) struct NormalizedRenderContext<'a> {
-    pub(super) state: &'a SpaghettiChartState,
-    pub(super) renderer: &'a Renderer,
-    pub(super) theme: &'a Theme,
-    pub(super) bounds: Rectangle,
-    pub(super) chart_w: f32,
-    pub(super) chart_h: f32,
-    pub(super) left_ts: f64,
-    pub(super) right_ts: f64,
-    pub(super) visible_ms: f64,
-    pub(super) time_px_per_ms: f64,
-    pub(super) effective_max: u64,
-    pub(super) base_ts: u64,
-    pub(super) crosshair_style: crate::config::ChartCrosshairStyle,
-    pub(super) crosshair_guides_enabled: bool,
-    pub(super) crosshair_scale: f32,
-}
-
 impl SpaghettiCanvas {
     pub(super) fn draw_normalized(
         &self,
-        ctx: NormalizedRenderContext<'_>,
+        ctx: RenderContext<'_>,
         loaded_series: &[&Series],
+        base_ts: u64,
     ) -> Vec<canvas::Geometry> {
         let ts_to_x = |ts: u64| -> f32 { ((ts as f64 - ctx.left_ts) * ctx.time_px_per_ms) as f32 };
 
         let series_data: Vec<(&Series, Vec<(f32, f64)>)> = loaded_series
             .iter()
             .filter_map(|s| {
-                let base_idx = find_candle_at(&s.candles, ctx.base_ts)?;
+                let base_idx = find_candle_at(&s.candles, base_ts)?;
                 let base_price = s.candles[base_idx].close;
                 if base_price <= 0.0 {
                     return None;
@@ -112,15 +95,31 @@ impl SpaghettiCanvas {
                 crate::chart::fisheye::ChartFisheye::disabled(),
             );
         }
-        axes::draw_grid_and_axes(
+        axes::draw_value_grid(
             &mut frame,
             &ctx,
             pct_hi,
             pct_range,
-            &pct_to_y,
             !self.dotted_background,
+            |value| format!("{value:+.1}%"),
         );
-        series::draw_session_start_line(&mut frame, &ctx, &ts_to_x, self.base_timestamp);
+        let zero_y = pct_to_y(0.0);
+        if zero_y >= 0.0 && zero_y <= ctx.chart_h {
+            let baseline =
+                canvas::Path::line(Point::new(0.0, zero_y), Point::new(ctx.chart_w, zero_y));
+            frame.stroke(
+                &baseline,
+                canvas::Stroke::default()
+                    .with_color(Color {
+                        a: 0.15,
+                        ..ctx.theme.palette().text
+                    })
+                    .with_width(1.0),
+            );
+        }
+        axes::draw_value_axis_border(&mut frame, &ctx);
+        axes::draw_time_axis(&mut frame, &ctx);
+        axes::draw_session_start_line(&mut frame, &ctx, &ts_to_x, self.base_timestamp);
         series::draw_series_lines(&mut frame, &ctx, &series_data, &pct_to_y, self.color_mode);
         if self.effective_show_labels() {
             series::draw_series_labels(&mut frame, &ctx, &series_data, &pct_to_y, self.color_mode);

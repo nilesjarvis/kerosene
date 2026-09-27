@@ -1,4 +1,4 @@
-use super::{PairRatioRenderContext, RatioCandle};
+use super::{RatioCandle, RenderContext};
 use iced::widget::canvas;
 use iced::{Color, Point, Size, Theme};
 
@@ -8,7 +8,7 @@ use iced::{Color, Point, Size, Theme};
 
 pub(super) fn draw_ratio_candles(
     frame: &mut canvas::Frame,
-    ctx: &PairRatioRenderContext<'_>,
+    ctx: &RenderContext<'_>,
     ratio_candles: &[RatioCandle],
     ratio_to_y: &impl Fn(f64) -> f32,
     theme: &Theme,
@@ -76,7 +76,7 @@ pub(super) fn draw_ratio_candles(
 
 pub(super) fn draw_ratio_line(
     frame: &mut canvas::Frame,
-    ctx: &PairRatioRenderContext<'_>,
+    ctx: &RenderContext<'_>,
     ratio_candles: &[RatioCandle],
     ratio_to_y: &impl Fn(f64) -> f32,
     color: Color,
