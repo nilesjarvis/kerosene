@@ -21,7 +21,7 @@ candidates; it does not establish that every module has been reviewed.
 | --- | --- |
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts and axes reviewed and consolidated; crosshair formatting and series calculations inspected but retained. Most chart rendering and interactions remain. |
-| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. APIs, caching, symbol lifecycle, books, and other widgets remain. |
+| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. API transport, symbol lifecycle, books, and other widgets remain. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
@@ -282,13 +282,58 @@ Validation (using the local ALSA prefix documented above):
   124 after 20 seconds, no panic, and only the existing EGL/DRI3 acceleration
   warning. This verifies startup with in-memory configuration.
 
+## 2026-09-27: separate API cache responsibilities and streamline queued writes
+
+- Split `api_cache.rs` into candle policy in `api_cache/candles.rs`, queued
+  writes in `api_cache/writer.rs`, and JSON envelopes, paths, and atomic file
+  replacement in `api_cache/storage.rs`. Exchange metadata and watchlist
+  freshness remain in the root module. Public entry points retain their paths,
+  including the atomic writer used by listings persistence.
+- Replaced repeated searches through later jobs with one reverse pass and a
+  set of superseding target paths. This changes worst-case quadratic scanning
+  to expected linear work in the batch size and avoids constructing target
+  paths for merge-only jobs. No wall-clock speedup is claimed.
+- Retained the exact coalescing rule: a later save or removal supersedes an
+  earlier plain save for the same target; a merge does not. Merges and removals
+  always run, and retained jobs execute in their original forward order.
+  Best-effort error handling, the single writer thread, and inline fallback
+  after a thread-spawn failure are unchanged.
+- Kept candle closure, coverage, freshness, interval-gap, provider/key, and
+  length policies unchanged, as well as cache schemas, namespaces, timestamps,
+  path encoding, temporary-file permissions, fsync, and replacement behavior.
+  Compared all 44 existing function bodies after normalizing whitespace:
+  only `writes_to_run` changed; the other 43 match the previous commit.
+- Moved all 13 existing tests beside their respective modules. Added five
+  tests covering all 37,449 job sequences of length zero through five across
+  four job kinds and two targets, actual save/merge/removal order, continued
+  writes after a failed job, envelope metadata rejection, and atomic replacement
+  cleanup. Fixtures and temporary files use synthetic data only.
+- Updated the charting component guide. No schema, messages, subscriptions,
+  dependencies, or trading behavior changed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene api_cache::`:
+  **18 passed**, no failures.
+- Strict Clippy initially flagged a modulo comparison in a new test fixture;
+  replaced it with indexing into the fixture's two symbols.
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo test --locked -j 2`: **4,290 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- `cargo build --locked -j 2`: passed. Headless startup with `--test` opened the
+  1600x960 Kerosene window under Xvfb, confirmed by `xwininfo`. Expected timeout
+  124 after 20 seconds, no panic, and only the existing EGL/DRI3 acceleration
+  warning. This verifies startup with in-memory configuration; hardware GPU
+  rendering and other platforms were not exercised.
+
 ## Next candidates
 
 1. Comparison crosshair and background setup still have repeated drawing code.
    With the common frame context, evaluate whether sharing those sequences
    makes the modes clearer while preserving their formatting and range guards.
-2. Review the remaining subscription families and transport/cache modules.
-   `api_cache.rs` has 1,284 lines including tests; inspect its cache policies
-   and production/test boundary before deciding whether to split it.
+2. Review the remaining subscription families and transport modules, including
+   API request construction and websocket lifecycle boundaries.
 3. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.

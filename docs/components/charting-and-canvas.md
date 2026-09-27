@@ -114,10 +114,16 @@ The backfill source comes from `ReadDataProvider`:
 `(ChartBackfillSource, symbol, Timeframe)`, so data from different providers
 cannot overwrite or satisfy one another.
 
-The persistent cache is owned by `api_cache.rs`. Candle snapshots use their own
-versioned namespace, persist only buckets that were closed when the write was
-queued, and record coverage through the final close time. A snapshot without
-complete coverage cannot satisfy a range request.
+The persistent cache keeps its public entry points in `api_cache.rs`, with
+candle policy in `api_cache/candles.rs`, queued writes in `api_cache/writer.rs`,
+and JSON envelopes/path handling/atomic file replacement in
+`api_cache/storage.rs`. The writer identifies superseded saves in a single
+reverse pass, then executes retained jobs in their original order. Merges and
+removals always run.
+
+Candle snapshots use their own versioned namespace, persist only buckets that
+were closed when the write was queued, and record coverage through the final
+close time. A snapshot without complete coverage cannot satisfy a range request.
 
 Continuous-market cache reads require exact interval spacing and return only
 the trailing exact run after a discontinuity. Sparse spot/outcome and
