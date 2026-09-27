@@ -11,11 +11,19 @@ mod twap_details;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::widget::{button, column, container, scrollable, text};
+use iced::widget::{button, column, container, responsive, row, rule, scrollable, text};
 use iced::{Element, Fill};
 
 impl TradingTerminal {
     pub(crate) fn view_order_entry(&self) -> Element<'_, Message> {
+        responsive(move |size| self.view_order_entry_for_width(size.width))
+            .width(Fill)
+            .height(Fill)
+            .into()
+    }
+
+    fn view_order_entry_for_width(&self, width: f32) -> Element<'_, Message> {
+        let wide = width >= 560.0;
         let theme = self.theme();
         let active_is_spot = self.is_spot_coin(&self.active_symbol);
         let active_is_outcome = self.is_outcome_coin(&self.active_symbol);
@@ -29,7 +37,16 @@ impl TradingTerminal {
         let (symbol_row, margin_used) = self.view_order_entry_symbol_row(&theme);
         let context_row = self.view_order_entry_context_row(margin_used, &theme);
         let type_row = self.view_order_entry_type_row();
-        let mut form = column![symbol_row, context_row].spacing(8);
+        let mut form = if wide {
+            column![
+                row![symbol_row, context_row]
+                    .spacing(16)
+                    .align_y(iced::Alignment::Center)
+            ]
+        } else {
+            column![symbol_row, context_row]
+        }
+        .spacing(8);
         if self.order_leverage_dropdown_open
             && let Some(leverage_dropdown) = self.view_order_entry_leverage_dropdown(can_trade)
         {
@@ -95,22 +112,35 @@ impl TradingTerminal {
             }
         }
 
-        form = self.push_order_input_controls(form, active_is_spot, active_is_outcome);
+        form = self.push_order_input_controls(form, active_is_spot, active_is_outcome, wide);
 
-        form = self.push_order_action_controls(form, can_trade);
-
-        form = self.push_order_presets_menu(form, active_is_outcome);
-
-        form = self.push_order_status_feedback(form, &theme);
-        form = self.push_order_entry_hint(form, active_is_outcome, can_trade);
+        let actions = self.push_order_action_controls(column![].spacing(6), can_trade);
+        let feedback = self.push_order_status_feedback(column![].spacing(4), &theme);
+        let feedback = self.push_order_entry_hint(feedback, active_is_outcome, can_trade);
+        let feedback = container(scrollable(feedback)).max_height(60).width(Fill);
+        let footer_content: Element<'_, Message> = if wide {
+            row![feedback, actions.width(Fill)]
+                .spacing(16)
+                .align_y(iced::Alignment::Center)
+                .into()
+        } else {
+            column![actions, feedback].spacing(6).into()
+        };
+        let footer = column![rule::horizontal(1), footer_content].spacing(6);
 
         container(
-            scrollable(form).direction(iced::widget::scrollable::Direction::Vertical(
-                iced::widget::scrollable::Scrollbar::new()
-                    .width(4)
-                    .margin(0)
-                    .scroller_width(4),
-            )),
+            column![
+                scrollable(container(form).padding(iced::Padding::default().right(8)))
+                    .height(Fill)
+                    .direction(iced::widget::scrollable::Direction::Vertical(
+                        iced::widget::scrollable::Scrollbar::new()
+                            .width(4)
+                            .margin(0)
+                            .scroller_width(4),
+                    )),
+                footer
+            ]
+            .spacing(8),
         )
         .width(Fill)
         .height(Fill)

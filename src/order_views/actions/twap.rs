@@ -4,7 +4,7 @@ use crate::message::{Message, RedactedOrderInput};
 use crate::order_execution::TwapOrderStartSnapshot;
 use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
 use iced::widget::{Column, button, checkbox, column, container, row, text, text_input};
-use iced::{Alignment, Color, Element, Fill, Theme, color};
+use iced::{Alignment, Color, Element, Fill, Theme};
 
 // ---------------------------------------------------------------------------
 // TWAP Controls
@@ -17,9 +17,46 @@ impl TradingTerminal {
         can_trade: bool,
     ) -> Column<'a, Message> {
         let theme = self.theme();
-        let weak_text = theme.extended_palette().background.weak.text;
         let can_start =
             can_trade && self.active_advanced_order_count() < MAX_ACTIVE_ADVANCED_ORDERS;
+
+        let snapshot = self.twap_order_start_snapshot();
+        let buy = twap_start_button(
+            format!("TWAP BUY {}", self.active_symbol_display.to_uppercase()),
+            true,
+            theme.palette().success,
+            can_start,
+            snapshot.clone(),
+        );
+        let sell = twap_start_button(
+            format!("TWAP SELL {}", self.active_symbol_display.to_uppercase()),
+            false,
+            theme.palette().danger,
+            can_start,
+            snapshot,
+        );
+
+        let mut form = form;
+
+        if can_trade && !can_start {
+            form = form.push(
+                text(format!(
+                    "Maximum of {MAX_ACTIVE_ADVANCED_ORDERS} active advanced orders reached"
+                ))
+                .size(10)
+                .color(theme.palette().danger),
+            );
+        }
+
+        form.push(row![buy, sell].spacing(8))
+    }
+
+    pub(in crate::order_views) fn push_twap_settings<'a>(
+        &'a self,
+        form: Column<'a, Message>,
+    ) -> Column<'a, Message> {
+        let theme = self.theme();
+        let weak_text = theme.extended_palette().background.weak.text;
 
         let duration = compact_input(
             "Min",
@@ -55,45 +92,20 @@ impl TradingTerminal {
         ]
         .spacing(5);
 
-        let snapshot = self.twap_order_start_snapshot();
-        let buy = twap_start_button(
-            format!("TWAP BUY {}", self.active_symbol_display.to_uppercase()),
-            true,
-            theme.palette().success,
-            can_start,
-            snapshot.clone(),
-        );
-        let sell = twap_start_button(
-            format!("TWAP SELL {}", self.active_symbol_display.to_uppercase()),
-            false,
-            theme.palette().danger,
-            can_start,
-            snapshot,
-        );
-
-        let mut form = form.push(container(settings).padding([6, 7]).width(Fill).style(
-            |theme: &Theme| iced::widget::container::Style {
-                background: Some(theme.extended_palette().background.weak.color.into()),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 1.0,
-                    color: theme.extended_palette().background.strong.color,
-                },
-                ..Default::default()
-            },
-        ));
-
-        if can_trade && !can_start {
-            form = form.push(
-                text(format!(
-                    "Maximum of {MAX_ACTIVE_ADVANCED_ORDERS} active advanced orders reached"
-                ))
-                .size(10)
-                .color(theme.palette().danger),
-            );
-        }
-
-        form.push(row![buy, sell].spacing(8))
+        form.push(
+            container(settings)
+                .padding([6, 7])
+                .width(Fill)
+                .style(|theme: &Theme| iced::widget::container::Style {
+                    background: Some(theme.extended_palette().background.weak.color.into()),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        width: 1.0,
+                        color: theme.extended_palette().background.strong.color,
+                    },
+                    ..Default::default()
+                }),
+        )
     }
 }
 
@@ -128,46 +140,41 @@ fn twap_start_button(
             snapshot,
         }
     };
-    let bg_hover = if is_buy {
-        color!(0x162c1d)
-    } else {
-        color!(0x2c1616)
-    };
-    let bg_default = if is_buy {
-        color!(0x122017)
-    } else {
-        color!(0x201212)
-    };
 
-    let mut button = button(
-        text(label)
-            .size(10)
-            .center()
-            .color(Color { a: 0.8, ..accent })
-            .width(Fill),
-    )
-    .padding([4, 8])
-    .width(Fill)
-    .style(move |_theme: &Theme, status| {
-        let bg = match status {
-            button::Status::Hovered if enabled => bg_hover,
-            _ if enabled => bg_default,
-            _ => color!(0x202020),
-        };
-        button::Style {
-            background: Some(bg.into()),
-            text_color: accent,
-            border: iced::Border {
-                radius: 4.0.into(),
-                width: 1.0,
-                color: Color {
-                    a: if enabled { 0.15 } else { 0.05 },
+    let mut button = button(text(label).size(10).center().width(Fill))
+        .padding([4, 8])
+        .width(Fill)
+        .style(move |theme: &Theme, status| {
+            let bg = if enabled {
+                Color {
+                    a: if matches!(status, button::Status::Hovered) {
+                        0.16
+                    } else {
+                        0.1
+                    },
                     ..accent
+                }
+            } else {
+                theme.extended_palette().background.weak.color
+            };
+            button::Style {
+                background: Some(bg.into()),
+                text_color: if enabled {
+                    accent
+                } else {
+                    theme.extended_palette().background.weak.text
                 },
-            },
-            ..Default::default()
-        }
-    });
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    width: 1.0,
+                    color: Color {
+                        a: if enabled { 0.15 } else { 0.05 },
+                        ..accent
+                    },
+                },
+                ..Default::default()
+            }
+        });
 
     if enabled {
         button = button.on_press(message);

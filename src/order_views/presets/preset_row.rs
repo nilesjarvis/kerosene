@@ -4,7 +4,7 @@ use crate::helpers;
 use crate::message::Message;
 use crate::signing::OrderKind;
 use iced::widget::{button, column, row, scrollable, text, text_input};
-use iced::{Element, Theme, color};
+use iced::{Color, Element, Theme};
 
 impl TradingTerminal {
     pub(super) fn view_order_preset_row<'a>(
@@ -35,40 +35,47 @@ impl TradingTerminal {
 
                     row_items = row_items.push(row![input, save_btn].spacing(4));
                 } else {
-                    let edit_btn = button(text(p.label.clone()).size(10).color(color!(0xbbbbbb)))
-                        .on_press(Message::EditPresetStart(kind, idx, p.size.to_string()))
-                        .padding([3, 6])
-                        .style(|theme: &Theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => {
-                                    theme.extended_palette().background.strong.color
-                                }
-                                _ => color!(0x222222),
-                            };
-                            button::Style {
-                                background: Some(bg.into()),
-                                text_color: theme.palette().text,
-                                border: iced::Border {
-                                    radius: 3.0.into(),
-                                    width: 1.0,
-                                    color: color!(0x444444),
-                                },
-                                ..Default::default()
+                    let edit_btn = button(
+                        text(p.label.clone())
+                            .size(10)
+                            .color(theme.extended_palette().background.weak.text),
+                    )
+                    .on_press(Message::EditPresetStart(kind, idx, p.size.to_string()))
+                    .padding([3, 6])
+                    .style(|theme: &Theme, status| {
+                        let bg = match status {
+                            button::Status::Hovered => {
+                                theme.extended_palette().background.strong.color
                             }
-                        });
+                            _ => theme.extended_palette().background.weak.color,
+                        };
+                        button::Style {
+                            background: Some(bg.into()),
+                            text_color: theme.palette().text,
+                            border: iced::Border {
+                                radius: 3.0.into(),
+                                width: 1.0,
+                                color: theme.extended_palette().background.strong.color,
+                            },
+                            ..Default::default()
+                        }
+                    });
                     row_items = row_items.push(edit_btn);
                 }
             } else {
                 let buy_btn = button(
                     text(format!("Buy {}", p.label))
                         .size(10)
-                        .color(color!(0x50fa7b)),
+                        .color(theme.palette().success),
                 )
                 .on_press(Message::ExecutePreset(kind, preset.clone(), true))
                 .padding([3, 6])
                 .style(|theme: &Theme, status| {
                     let bg = match status {
-                        button::Status::Hovered => color!(0x1a3a25),
+                        button::Status::Hovered => Color {
+                            a: 0.15,
+                            ..theme.palette().success
+                        },
                         _ => theme.extended_palette().background.weak.color,
                     };
                     button::Style {
@@ -85,13 +92,16 @@ impl TradingTerminal {
                 let sell_btn = button(
                     text(format!("Sell {}", p.label))
                         .size(10)
-                        .color(color!(0xff5555)),
+                        .color(theme.palette().danger),
                 )
                 .on_press(Message::ExecutePreset(kind, preset.clone(), false))
                 .padding([3, 6])
                 .style(|theme: &Theme, status| {
                     let bg = match status {
-                        button::Status::Hovered => color!(0x3a1a1a),
+                        button::Status::Hovered => Color {
+                            a: 0.15,
+                            ..theme.palette().danger
+                        },
                         _ => theme.extended_palette().background.weak.color,
                     };
                     button::Style {
@@ -110,7 +120,9 @@ impl TradingTerminal {
         }
 
         column![
-            text(title).size(11).color(color!(0x888888)),
+            text(title)
+                .size(11)
+                .color(theme.extended_palette().background.weak.text),
             scrollable(row_items).direction(iced::widget::scrollable::Direction::Horizontal(
                 iced::widget::scrollable::Scrollbar::new()
                     .width(4)

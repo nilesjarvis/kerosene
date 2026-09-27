@@ -6,7 +6,7 @@ use crate::helpers::{
 use crate::message::Message;
 use crate::order_execution::OrderLeverageSubmissionSnapshot;
 use crate::signing::OrderKind;
-use iced::widget::{Space, button, container, row, text, text_input};
+use iced::widget::{Space, button, column, container, row, text, text_input};
 use iced::{Color, Element, Fill, Length, Theme};
 
 #[cfg(test)]
@@ -19,14 +19,14 @@ impl TradingTerminal {
     ) -> (Element<'_, Message>, Option<f64>) {
         let mut symbol_badge = row![];
         if let Some(icon) =
-            helpers::symbol_icon(&self.active_symbol_display, 20, theme.palette().text)
+            helpers::symbol_icon(&self.active_symbol_display, 16, theme.palette().text)
         {
             symbol_badge = symbol_badge.push(icon).push(Space::new().width(6.0));
         }
         symbol_badge = symbol_badge
             .push(
                 text(self.active_symbol_display.to_uppercase().to_string())
-                    .size(16)
+                    .size(13)
                     .font(iced::Font {
                         weight: iced::font::Weight::Bold,
                         ..iced::Font::DEFAULT
@@ -35,25 +35,7 @@ impl TradingTerminal {
             )
             .align_y(iced::Alignment::Center);
 
-        let symbol_label = container(symbol_badge)
-            .padding([4, 12])
-            .style(move |theme: &Theme| container::Style {
-                background: Some(
-                    Color {
-                        a: 0.2,
-                        ..theme.palette().primary
-                    }
-                    .into(),
-                ),
-                border: iced::Border {
-                    radius: 6.0.into(),
-                    width: 1.0,
-                    color: theme.palette().primary,
-                },
-                ..Default::default()
-            });
-
-        let mut symbol_row = row![symbol_label]
+        let mut symbol_row = row![symbol_badge, Space::new().width(Fill)]
             .spacing(8)
             .align_y(iced::Alignment::Center);
         let mut margin_used = Some(0.0);
@@ -120,7 +102,7 @@ impl TradingTerminal {
         let margin_used_color = optional_value_color(margin_used, weak_color, invalid_color);
 
         row![
-            text(format!("Avail: {available_label}"))
+            text(format!("Available: {available_label}"))
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
                 .color(available_color),
@@ -166,7 +148,7 @@ impl TradingTerminal {
             leverage_apply_button(can_apply, self.order_leverage_submission_snapshot())
         };
 
-        let controls = row![
+        let mode_controls = row![
             text("Leverage")
                 .size(12)
                 .color(theme.extended_palette().background.weak.text),
@@ -182,7 +164,10 @@ impl TradingTerminal {
                 true,
                 Message::SetOrderLeverageCross(false),
             ),
-            Space::new().width(Fill),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center);
+        let leverage_controls = row![
             input,
             text("x")
                 .size(12)
@@ -190,13 +175,14 @@ impl TradingTerminal {
             text(format!("Max {max_leverage}x"))
                 .size(11)
                 .color(theme.extended_palette().background.weak.text),
+            Space::new().width(Fill),
             apply_button,
         ]
         .spacing(6)
         .align_y(iced::Alignment::Center);
 
         Some(
-            container(controls)
+            container(column![mode_controls, leverage_controls].spacing(6))
                 .width(Fill)
                 .padding(8)
                 .style(leverage_dropdown_container_style)
@@ -269,18 +255,18 @@ fn order_leverage_label(is_cross: bool, leverage: u32, is_actual: bool) -> Strin
 }
 
 fn order_leverage_badge(label: String, open: bool) -> Element<'static, Message> {
-    button(text(label).size(10).color(Color::WHITE))
-        .padding([2, 6])
+    button(text(label).size(11))
+        .padding([4, 6])
         .on_press(Message::ToggleOrderLeverageDropdown)
         .style(move |theme: &Theme, status| {
             let background = if matches!(status, button::Status::Hovered) {
-                theme.palette().primary
-            } else {
                 theme.extended_palette().background.strong.color
+            } else {
+                theme.extended_palette().background.weak.color
             };
             button::Style {
                 background: Some(background.into()),
-                text_color: Color::WHITE,
+                text_color: theme.palette().text,
                 border: iced::Border {
                     radius: 4.0.into(),
                     width: if open { 1.0 } else { 0.0 },

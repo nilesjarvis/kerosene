@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kerosene — Order entry study</title>
+<style>
+  :root { color-scheme: dark; --bg:#191815; --panel:#201f1b; --field:#2b2924; --line:#39362e; --text:#eee9df; --muted:#aaa599; --accent:#ff8906; --buy:#73c39a; --sell:#ec8989; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#121210; color:var(--text); font:15px/1.6 system-ui,sans-serif; }
+  main { max-width:1160px; margin:auto; padding:48px 28px 80px; }
+  h1 { font-size:38px; line-height:1.15; letter-spacing:-1.2px; margin:12px 0 18px; }
+  h2 { font-size:23px; margin:42px 0 16px; }
+  h3 { font-size:17px; margin:0 0 8px; }
+  p { max-width:850px; }
+  a { color:#ffc17b; text-underline-offset:3px; }
+  .eyebrow { color:var(--accent); font-size:12px; letter-spacing:2px; text-transform:uppercase; }
+  .muted, figcaption { color:var(--muted); }
+  .references { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+  figure { margin:0; border:1px solid var(--line); padding:20px; border-radius:12px; background:#191917; }
+  .reference-image { height:470px; display:flex; justify-content:center; align-items:start; overflow:auto; background:#0e1014; margin-bottom:16px; }
+  .reference-image a { display:block; width:100%; height:100%; }
+  .reference-image img { width:100%; height:100%; object-fit:contain; }
+  figcaption { font-size:13px; line-height:1.6; }
+  .findings { width:100%; border-collapse:collapse; font-size:14px; }
+  .findings th { color:var(--muted); text-align:left; font-weight:500; }
+  .findings td, .findings th { padding:14px 16px 14px 0; border-bottom:1px solid var(--line); vertical-align:top; }
+  .findings td:first-child { width:29%; }
+  .study { border:1px solid var(--line); padding:24px; border-radius:12px; background:linear-gradient(125deg,#24221c,#171715); }
+  .toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:24px; font-size:13px; }
+  button, select, input { font:inherit; }
+  button, select { border:1px solid var(--line); border-radius:5px; background:var(--field); color:var(--text); padding:6px 10px; }
+  button { cursor:pointer; }
+  button:hover { border-color:var(--muted); }
+  button[aria-pressed="true"] { color:var(--accent); border-color:var(--accent); }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+  .stage { overflow:auto; padding-bottom:8px; }
+  .ticket { container-type:inline-size; width:360px; height:560px; max-width:100%; display:flex; flex-direction:column; background:var(--bg); border:1px solid var(--line); border-radius:6px; box-shadow:0 14px 45px #0004; font-size:12px; line-height:1.4; }
+  .ticket.wide { width:700px; height:320px; }
+  .ticket.short { width:360px; height:300px; }
+  .chrome { display:flex; justify-content:space-between; border-bottom:1px solid var(--line); padding:6px 12px; color:var(--muted); font-size:11px; }
+  .ticket-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 12px 6px; flex-wrap:wrap; }
+  .symbol { font-size:14px; font-weight:650; }
+  .symbol small { color:var(--muted); font-size:10px; font-weight:400; }
+  .settings { display:flex; gap:6px; color:var(--muted); }
+  .settings span { border:1px solid var(--line); border-radius:4px; padding:4px 7px; }
+  .body { overflow-y:auto; scrollbar-width:thin; min-height:0; padding:0 12px 12px; flex:1; }
+  .context { color:var(--muted); display:flex; justify-content:space-between; margin:6px 0 10px; font-size:11px; }
+  .tabs { display:flex; gap:18px; border-bottom:1px solid var(--line); margin-bottom:14px; }
+  .tabs button { padding:8px 0; border:0; border-radius:0; background:none; color:var(--muted); }
+  .tabs button[aria-selected="true"] { border-bottom:2px solid var(--accent); color:var(--text); }
+  .fields { display:grid; gap:10px; }
+  .field { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px; min-height:43px; border:1px solid var(--line); background:var(--field); border-radius:5px; }
+  .field .label { color:var(--muted); }
+  .field .value { font-family:ui-monospace,monospace; font-size:13px; margin-left:auto; }
+  .field .unit { color:var(--muted); }
+  .field .shortcut { color:var(--accent); font-size:11px; }
+  .conversion { color:var(--muted); text-align:right; margin:5px 0 6px; font-size:11px; }
+  .slider { padding:10px 3px 6px; }
+  .rail { height:3px; background:var(--line); display:flex; justify-content:space-between; align-items:center; }
+  .rail i { width:7px; height:7px; border:1px solid var(--muted); background:var(--bg); border-radius:50%; }
+  .rail i:nth-child(3) { width:10px; height:10px; border:2px solid var(--accent); }
+  .marks { display:flex; justify-content:space-between; margin-top:10px; color:var(--muted); font-size:10px; }
+  .options { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:14px; }
+  .options label { display:flex; align-items:center; gap:4px; }
+  input[type=checkbox] { accent-color:var(--accent); }
+  .options select { padding:3px 6px; font-size:11px; }
+  .summary { display:grid; grid-template-columns:1fr auto; row-gap:7px; margin-top:16px; padding-top:12px; border-top:1px solid var(--line); }
+  .summary span:nth-child(odd) { color:var(--muted); }
+  .summary span:nth-child(even) { text-align:right; font-family:ui-monospace,monospace; }
+  .quick { margin-top:14px; padding-top:10px; border-top:1px solid var(--line); color:var(--muted); font-size:11px; }
+  .quick summary { cursor:pointer; }
+  .quick p { margin:8px 0 0; font-size:11px; }
+  .footer { border-top:1px solid var(--line); padding:10px 12px; flex-shrink:0; background:var(--panel); }
+  .actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .actions button { height:37px; font-size:12px; font-weight:650; color:#121713; border:0; }
+  .buy { background:var(--buy); } .sell { background:var(--sell); }
+  .feedback { font-size:10px; color:var(--muted); margin-top:7px; min-height:14px; }
+  .demo-note { font-size:12px; color:var(--muted); margin:18px 0 0; }
+  .twap { display:none; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; }
+  .twap div { padding:8px; border:1px solid var(--line); border-radius:4px; color:var(--muted); }
+  .twap b { color:var(--text); display:block; font-weight:400; margin-top:4px; }
+  @container (min-width:520px) {
+    .ticket-head { padding:8px 12px 4px; }
+    .context { margin:2px 0 5px; }
+    .tabs { margin-bottom:10px; }
+    .tabs button { padding:5px 0; }
+    .columns { display:grid; grid-template-columns:1.1fr 1fr; gap:20px; }
+    .fields { grid-template-columns:1fr 1fr; }
+    .field { flex-wrap:wrap; gap:4px; padding:7px 8px; }
+    .field .label { width:100%; font-size:10px; }
+    .field .value { margin-left:0; }
+    .field .shortcut { margin-left:auto; }
+    .summary { margin-top:0; padding-top:0; border-top:0; }
+    .options { margin-top:8px; }
+    .quick { margin-top:8px; padding-top:7px; }
+    .footer { padding:8px 12px; display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:20px; }
+    .actions { grid-column:2; grid-row:1; }
+    .feedback { grid-column:1; grid-row:1; margin:0; }
+  }
+  @media(max-width:750px) { .references { grid-template-columns:1fr; } main { padding:24px 16px; } .study { padding:14px; } h1 { font-size:30px; } }
+</style>
+<main>
+  <div class="eyebrow">Kerosene / Design research / 27 September 2026</div>
+  <h1>A clearer order ticket, at every pane size.</h1>
+  <p>Keep Kerosene’s direct trading controls and compact terminal character. Strengthen the reading order: <strong>market → order type → price and size → execution options → review → submit.</strong></p>
+  <p class="muted">Research and layout proposal only. Current behavior was checked against the order-entry source and the bundled README screenshot; the running application was not captured.</p>
+
+  <h2>Exchange references</h2>
+  <p>Official help-center screenshots, viewed directly. These document particular interface versions and account modes; they are not live captures of today’s signed-in exchange interfaces. Click an image to inspect the original resolution.</p>
+  <div class="references">
+    <figure>
+      <div class="reference-image"><a href="references/bybit-order-zone.png"><img src="references/bybit-order-zone.png" alt="Bybit order ticket with margin and leverage controls, price and quantity fields, a value/cost summary, execution options, and Long/Short actions, alongside its tools menu."></a></div>
+      <h3>Bybit — strong grouping</h3>
+      <figcaption>Margin and leverage sit above the order-type tabs. Price and quantity have substantial input surfaces. A distinct value/cost/liquidation block separates sizing from execution options. The tools menu holds additional order strategies. Borrow the grouping; scale its generous spacing down for Kerosene.<br><a href="https://www.bybit.com/en/help-center/article/How-to-navigate-Bybit-perpetual-expiry-contract-trading-page">Official navigation guide</a> · updated June 18, 2026.</figcaption>
+    </figure>
+    <figure>
+      <div class="reference-image"><a href="references/binance-limit.png"><img src="references/binance-limit.png" alt="Binance limit order ticket with inline price and size labels and units, percentage slider, TP/SL and Reduce-Only options, time in force, and Buy/Long and Sell/Short buttons."></a></div>
+      <h3>Binance — efficient fields</h3>
+      <figcaption>Labels, values, units, and the Last shortcut share each input surface. A thin slider keeps sizing compact. Execution options form a separate group, and green/red actions dominate the bottom. Cost and maximum size sit under the corresponding side.<br><a href="https://www.binance.com/en/support/faq/detail/360033779452">Official order-types guide</a> · updated April 7, 2026.<br><a href="references/binance-cost-summary.png">Additional cost-summary screenshot</a> from the <a href="https://www.binance.com/en/support/faq/detail/87fa7ee33b574f7084d42bd2ce2e463b">official cost guide</a>.</figcaption>
+    </figure>
+  </div>
+
+  <h2>What should change in Kerosene</h2>
+  <table class="findings">
+    <thead><tr><th>Current implementation</th><th>Proposed improvement</th></tr></thead>
+    <tbody>
+      <tr><td>The whole form scrolls, including submit buttons, presets, and feedback.</td><td><strong>Keep submission and status in a fixed footer.</strong> Scroll only the inputs and optional controls. Reflow price/size and the summary into columns in short, wide panes. The bundled screenshot exposes this need: only the top of the ticket fits in its bottom-right pane.</td></tr>
+      <tr><td>A large outlined symbol badge; a small combined leverage badge; “Avail” and “Used” on a separate row.</td><td><strong>Use a quiet, compact context header.</strong> Keep the symbol, market type, margin mode, and leverage together. Make available funds readable. Move used margin to secondary details and expose the active account alias without a wallet address.</td></tr>
+      <tr><td>Separate Price and Size headings, a detached Mid button, and a small COIN/USD denomination toggle.</td><td><strong>Put persistent labels and explicit units inside the fields.</strong> Show HYPE/BTC rather than generic COIN, the actual quote currency for price, and the existing converted amount just below size. Keep Mid adjacent to price.</td></tr>
+      <tr><td>The percentage slider is as tall as an input, with unlabeled clickable quarter marks.</td><td><strong>Use a thin track with a generous hit area and visible 25/50/75/100% labels.</strong> Preserve the existing sizing behavior and show the selected percentage. This improves discoverability without adding more controls.</td></tr>
+      <tr><td>Notional conversion sits in the size heading; maker/taker estimates form a tiny centered sentence.</td><td><strong>Group order value and fees into aligned label/value rows.</strong> Preserve maker/taker uncertainty for ordinary limits; use a taker estimate for market orders. A future margin or liquidation estimate needs a correct Hyperliquid calculation before appearing here.</td></tr>
+      <tr><td>Reduce Only and IOC appear together; Market, Limit, Chase, and TWAP are equally accessible.</td><td><strong>Keep all four order types directly accessible.</strong> Replace IOC’s checkbox presentation with an explicit GTC/IOC time-in-force control for limits. Show slippage for market orders. Expand algorithm-specific fields only when selected.</td></tr>
+      <tr><td>Presets expand below submission and directly execute Buy/Sell orders.</td><td><strong>Label that section “Quick trade presets.”</strong> Keep execution presets distinct from size selectors. Put errors and account-readiness reasons next to the stable action buttons; retain side labels while pending.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="layout">Layout proposal</h2>
+  <p>Switch pane shapes and order types to inspect the hierarchy. The short-pane example deliberately scrolls the form while keeping actions visible. This is a layout study with synthetic values, not a working trading form.</p>
+  <div class="study">
+    <div class="toolbar" aria-label="Preview pane dimensions">
+      <span class="muted">Pane shape</span>
+      <button type="button" data-shape="tall" aria-pressed="true">Narrow · tall</button>
+      <button type="button" data-shape="wide" aria-pressed="false">Wide · short</button>
+      <button type="button" data-shape="short" aria-pressed="false">Narrow · short</button>
+    </div>
+    <div class="stage">
+      <section class="ticket" aria-label="Proposed order entry widget">
+        <div class="chrome"><span>Order Entry</span><span>Primary · demo</span></div>
+        <div class="ticket-head"><span class="symbol">HYPE <small>PERP</small></span><div class="settings"><span>Cross</span><span>5×</span></div></div>
+        <div class="body">
+          <div class="context"><span>Available</span><span>2,400.00 USDC</span></div>
+          <div class="tabs" role="tablist" aria-label="Order type">
+            <button type="button" role="tab" data-mode="Market" aria-selected="false">Market</button>
+            <button type="button" role="tab" data-mode="Limit" aria-selected="true">Limit</button>
+            <button type="button" role="tab" data-mode="Chase" aria-selected="false">Chase</button>
+            <button type="button" role="tab" data-mode="TWAP" aria-selected="false">TWAP</button>
+          </div>
+          <div class="columns">
+            <div>
+              <div class="fields">
+                <div class="field" id="price-field"><span class="label" id="price-label">Price</span><span class="value" id="price-value">60.00</span><span class="unit">USDC</span><span class="shortcut" id="mid">Mid</span></div>
+                <div class="field"><span class="label">Size</span><span class="value">100</span><span class="unit">HYPE</span></div>
+              </div>
+              <div class="conversion">≈ 6,000.00 USD</div>
+              <div class="slider" aria-label="Illustrative percentage sizing control">
+                <div class="rail"><i></i><i></i><i></i><i></i><i></i></div>
+                <div class="marks"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+              </div>
+              <div class="twap" id="twap"><div>Duration<b>30 min</b></div><div>Slices<b>10</b></div></div>
+            </div>
+            <div>
+              <div class="summary"><span>Order value</span><span>6,000.00 USD</span><span id="fee-label">Est. fees · maker / taker</span><span id="fee-value">— / —</span></div>
+              <div class="options"><label><input id="reduce" type="checkbox"> Reduce only</label><label id="tif-wrap">TIF <select aria-label="Time in force"><option>GTC</option><option>IOC</option></select></label><span id="slippage" hidden>Slippage 0.50%</span></div>
+              <details class="quick"><summary>Quick trade presets</summary><p>Existing presets execute Buy/Sell orders immediately. Keep their direction labels and a distinct execution surface.</p></details>
+            </div>
+          </div>
+        </div>
+        <div class="footer">
+          <div class="actions"><button class="buy" type="button">Buy / Long</button><button class="sell" type="button">Sell / Short</button></div>
+          <div class="feedback" role="status">Layout preview · no exchange connection</div>
+        </div>
+      </section>
+    </div>
+    <p class="demo-note">Only pane shape, order type, Reduce only, TIF, and the preset disclosure are interactive. Values and sizing marks are illustrative. Colors approximate the bundled dark theme; implementation should use the active iced theme palette.</p>
+  </div>
+
+  <h2>Suggested first pass</h2>
+  <p>Implement the header, input grouping, labeled percentage track, explicit GTC/IOC selector, fee summary, responsive arrangement, and fixed action/status footer. Preserve existing submission snapshots, sizing rules, account validation, and all four order types.</p>
+  <p>For spot and outcome contracts, retain their market-specific labels and restrictions. Use Buy/Sell for spot, contract units for outcomes, and hide leverage controls where inapplicable. Percentage sizing must retain the current side-specific balance checks. Hyperliquid position effects should drive action wording; Bybit/Binance hedge-mode Open/Close tabs should not be copied without matching semantics.</p>
+  <p><strong>Later feature work:</strong> attached TP/SL, a standard post-only option, and margin/liquidation previews. These need order lifecycle or calculation work; they are not cosmetic additions to the first pass.</p>
+  <p class="muted">Source map: <a href="../../src/order_views.rs">form composition and scrolling</a>, <a href="../../src/order_views/header.rs">header and modes</a>, <a href="../../src/order_views/inputs/size.rs">size and options</a>, <a href="../../src/order_views/inputs/fees.rs">fee estimates</a>, <a href="../../src/order_views/presets/preset_row.rs">execution presets</a>, <a href="../../src/order_views/status.rs">status and readiness</a>, <a href="../../assets/screenshots/themes/dark.png">bundled terminal screenshot</a>. The source is the current-behavior reference; bundled screenshots can lag implementation.</p>
+</main>
+<script>
+  const ticket = document.querySelector('.ticket');
+  const status = document.querySelector('.feedback');
+  let mode = 'Limit';
+  document.querySelectorAll('[data-shape]').forEach(button => button.addEventListener('click', () => {
+    ticket.className = 'ticket' + (button.dataset.shape === 'tall' ? '' : ' ' + button.dataset.shape);
+    document.querySelectorAll('[data-shape]').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
+  }));
+  function updateMode() {
+    document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === mode)));
+    document.getElementById('price-field').style.display = mode === 'TWAP' ? 'none' : 'flex';
+    document.getElementById('price-label').textContent = mode === 'Market' ? 'Market · mid' : mode === 'Chase' ? 'Chase · mid' : 'Price';
+    document.getElementById('mid').hidden = mode !== 'Limit';
+    document.getElementById('tif-wrap').hidden = mode !== 'Limit';
+    document.getElementById('tif-wrap').style.display = mode === 'Limit' ? 'flex' : 'none';
+    document.getElementById('slippage').hidden = mode !== 'Market';
+    document.getElementById('twap').style.display = mode === 'TWAP' ? 'grid' : 'none';
+    document.getElementById('fee-label').textContent = mode === 'Market' ? 'Est. fee · taker' : 'Est. fees · maker / taker';
+    document.getElementById('fee-value').textContent = mode === 'Market' ? '—' : '— / —';
+    const suffix = document.getElementById('reduce').checked ? ' · Reduce only' : '';
+    const prefix = mode === 'Chase' || mode === 'TWAP' ? mode + ' ' : '';
+    document.querySelector('.buy').textContent = prefix + (suffix ? 'Buy' : 'Buy / Long') + suffix;
+    document.querySelector('.sell').textContent = prefix + (suffix ? 'Sell' : 'Sell / Short') + suffix;
+    status.textContent = 'Layout preview · no exchange connection';
+  }
+  document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => { mode = button.dataset.mode; updateMode(); }));
+  document.getElementById('reduce').addEventListener('change', updateMode);
+  document.querySelectorAll('.actions button').forEach(button => button.addEventListener('click', () => { status.textContent = 'Preview only — no order was submitted.'; }));
+  const initialShape = new URLSearchParams(location.search).get('shape');
+  if (['wide', 'short'].includes(initialShape)) document.querySelector('[data-shape="' + initialShape + '"]').click();
+</script>
+</html>

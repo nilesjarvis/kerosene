@@ -61,6 +61,15 @@ guards continue to govern account switching.
 
 ## Standard Ticket Flow
 
+The order-entry pane keeps submission controls and status feedback below the
+scrolling form. Wider panes place inputs beside the order-value, fee, and
+execution-option summary; narrow panes stack these groups. Price and size keep
+explicit denomination labels, percentage shortcuts only update sizing, and the
+GTC/IOC selector uses the existing limit-order kinds. Quick trade presets remain
+immediate Buy/Sell actions. Chase status and TWAP settings scroll with the form
+while their start controls remain in the footer. All controls use the active
+application theme and retain the shared order-submission boundary.
+
 ```text
 PlaceBuy / PlaceSell
   -> order_update.rs chooses by OrderKind

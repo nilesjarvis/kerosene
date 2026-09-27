@@ -3,8 +3,9 @@ use crate::helpers;
 use crate::message::Message;
 use crate::signing::OrderKind;
 
+use iced::Fill;
 use iced::Theme;
-use iced::widget::{Column, button, row, text, text_input};
+use iced::widget::{Column, Space, button, column, row, text, text_input};
 
 impl TradingTerminal {
     pub(super) fn push_price_input_controls<'a>(
@@ -57,12 +58,26 @@ impl TradingTerminal {
             .spacing(4)
             .align_y(iced::Alignment::Center);
 
-        form.push(
+        let quote = if self.is_outcome_coin(&self.active_symbol) {
+            self.outcome_quote_symbol_for_coin(&self.active_symbol)
+        } else if self.is_spot_coin(&self.active_symbol) {
+            self.active_symbol_display
+                .rsplit_once('/')
+                .map(|(_, quote)| quote.to_string())
+                .unwrap_or_else(|| "\u{2014}".to_string())
+        } else {
+            "USD".to_string()
+        };
+        let label = row![
             text("Price")
                 .size(12)
                 .color(theme.extended_palette().background.weak.text),
-        )
-        .push(price_row)
+            Space::new().width(Fill),
+            text(quote)
+                .size(11)
+                .color(theme.extended_palette().background.weak.text),
+        ];
+        form.push(column![label, price_row].spacing(4))
     }
 }
 

@@ -4,12 +4,12 @@ use crate::message::Message;
 use crate::signing::OrderKind;
 use calculations::{denomination_label, order_notional_text, parse_positive_finite};
 use components::denomination_button;
-use presets::{SIZE_PERCENT_LABEL_WIDTH, SIZE_SLIDER_HEIGHT, SizePresetMarks, size_slider_style};
+use presets::{SIZE_PERCENT_LABEL_WIDTH, SIZE_SLIDER_HEIGHT, size_slider_style};
 
 use iced::widget::{
-    Column, Space, canvas, checkbox, container, row, slider, stack, text, text_input,
+    Column, Space, button, checkbox, column, pick_list, row, slider, text, text_input,
 };
-use iced::{Fill, Length, Theme};
+use iced::{Fill, Length};
 
 mod calculations;
 mod components;
@@ -19,8 +19,8 @@ impl TradingTerminal {
     pub(super) fn push_size_input_controls<'a>(
         &'a self,
         mut form: Column<'a, Message>,
-        active_is_spot: bool,
         active_is_outcome: bool,
+        wide: bool,
     ) -> (Column<'a, Message>, Option<f64>) {
         let theme = self.theme();
         let qty_placeholder = if active_is_outcome {
@@ -53,16 +53,13 @@ impl TradingTerminal {
             text("Size")
                 .size(12)
                 .color(theme.extended_palette().background.weak.text),
-            Space::new().width(6.0),
+            Space::new().width(Fill),
             denomination_button(denomination_label(
                 self.order_quantity_is_usd,
                 active_is_outcome,
+                &self.active_symbol_display,
                 &self.outcome_quote_symbol_for_coin(&self.active_symbol),
             )),
-            Space::new().width(Fill),
-            text(notional_text)
-                .size(11)
-                .color(theme.extended_palette().background.weak.text),
         ]
         .align_y(iced::Alignment::Center);
 
@@ -75,40 +72,50 @@ impl TradingTerminal {
         .height(SIZE_SLIDER_HEIGHT)
         .step(1.0)
         .style(size_slider_style);
-        let preset_markers = canvas(SizePresetMarks {
-            current_pct: self.order_percentage,
-        })
-        .width(Fill)
-        .height(Length::Fixed(SIZE_SLIDER_HEIGHT));
-        let size_slider = stack![percent_slider, preset_markers]
-            .width(Fill)
-            .height(Length::Fixed(SIZE_SLIDER_HEIGHT));
-
-        let slider_label = container(
-            text(format!("{:.0}%", self.order_percentage))
-                .size(12)
-                .color(theme.palette().text)
-                .center(),
-        )
-        .width(Length::Fixed(SIZE_PERCENT_LABEL_WIDTH))
-        .height(Length::Fixed(SIZE_SLIDER_HEIGHT))
-        .align_x(iced::alignment::Horizontal::Center)
-        .align_y(iced::alignment::Vertical::Center)
-        .style(|theme: &Theme| container::Style {
-            background: Some(theme.extended_palette().background.weak.color.into()),
-            border: iced::Border {
-                radius: 5.0.into(),
-                width: 1.0,
-                color: theme.extended_palette().background.strong.color,
-            },
-            ..Default::default()
-        });
-        let slider_row = row![size_slider, Space::new().width(6.0), slider_label]
-            .spacing(4)
+        let slider_label = text(format!("{:.0}%", self.order_percentage))
+            .size(11)
+            .center()
+            .width(Length::Fixed(SIZE_PERCENT_LABEL_WIDTH));
+        let slider_row = row![percent_slider, slider_label]
+            .spacing(8)
             .align_y(iced::Alignment::Center);
 
-        form = form.push(size_header).push(qty_input).push(slider_row);
+        let mut size = column![size_header, qty_input].spacing(4);
+        if !notional_text.is_empty() {
+            size = size.push(
+                text(notional_text)
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text)
+                    .width(Fill)
+                    .align_x(iced::alignment::Horizontal::Right),
+            );
+        }
+        let mut percentages = row![].spacing(4);
+        for pct in [25, 50, 75, 100] {
+            percentages = percentages.push(
+                button(text(format!("{pct}%")).size(11).center())
+                    .on_press(Message::OrderPercentageChanged(pct as f32))
+                    .padding([2, 4])
+                    .width(Fill)
+                    .style(button::text),
+            );
+        }
+        form = if wide && self.order_kind != OrderKind::Twap {
+            column![row![form.width(Fill), size.width(Fill)].spacing(8)].spacing(8)
+        } else {
+            form.push(size)
+        };
+        form = form.push(column![slider_row, percentages].spacing(0));
 
+        (form, notional_val)
+    }
+
+    pub(in crate::order_views::inputs) fn push_order_execution_options<'a>(
+        &'a self,
+        mut form: Column<'a, Message>,
+        active_is_spot: bool,
+        active_is_outcome: bool,
+    ) -> Column<'a, Message> {
         let limit_selected = matches!(self.order_kind, OrderKind::Limit | OrderKind::LimitIoc);
         let mut options_row = row![].spacing(14).align_y(iced::Alignment::Center);
         let mut has_options = false;
@@ -117,7 +124,7 @@ impl TradingTerminal {
             has_options = true;
             options_row = options_row.push(
                 checkbox(self.order_reduce_only)
-                    .label("Reduce Only")
+                    .label("Reduce only")
                     .on_toggle(|_| Message::ToggleReduceOnly)
                     .size(14)
                     .text_size(12)
@@ -126,19 +133,28 @@ impl TradingTerminal {
         }
         if limit_selected {
             has_options = true;
-            options_row = options_row.push(
-                checkbox(self.order_kind == OrderKind::LimitIoc)
-                    .label("IOC")
-                    .on_toggle(|enabled| {
-                        Message::SetOrderKind(if enabled {
+            let selected = if self.order_kind == OrderKind::LimitIoc {
+                "IOC"
+            } else {
+                "GTC"
+            };
+            options_row = options_row.push(Space::new().width(Fill)).push(
+                row![
+                    text("TIF")
+                        .size(11)
+                        .color(self.theme().extended_palette().background.weak.text),
+                    pick_list(["GTC", "IOC"], Some(selected), |value| {
+                        Message::SetOrderKind(if value == "IOC" {
                             OrderKind::LimitIoc
                         } else {
                             OrderKind::Limit
                         })
                     })
-                    .size(14)
-                    .text_size(12)
-                    .text_shaping(iced::widget::text::Shaping::Advanced),
+                    .text_size(11)
+                    .padding([4, 6]),
+                ]
+                .spacing(6)
+                .align_y(iced::Alignment::Center),
             );
         }
 
@@ -146,7 +162,7 @@ impl TradingTerminal {
             form = form.push(options_row);
         }
 
-        (form, notional_val)
+        form
     }
 }
 

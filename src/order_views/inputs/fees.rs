@@ -1,3 +1,4 @@
+use super::order_detail_row;
 use crate::app_state::TradingTerminal;
 use crate::helpers::parse_number;
 use crate::message::Message;
@@ -26,10 +27,9 @@ impl TradingTerminal {
                 .unwrap_or_else(|| "Outcome fee terms unavailable".to_string());
             return form.push(
                 text(terms)
-                    .size(10)
+                    .size(11)
                     .color(theme.extended_palette().background.weak.text)
-                    .width(Fill)
-                    .align_x(iced::alignment::Horizontal::Center),
+                    .width(Fill),
             );
         }
 
@@ -53,36 +53,21 @@ impl TradingTerminal {
             )
         });
 
-        let combined_fees = match (fee_price, fee_qty) {
-            (Some(price), Some(quantity)) => {
-                let maker_text = if let Some((fee_amt, _)) =
-                    self.estimate_fee(price, quantity, true, active_is_spot)
-                {
-                    format!("Maker: ${fee_amt:.2}")
-                } else {
-                    "Maker: \u{2014}".to_string()
-                };
-
-                let taker_text = if let Some((fee_amt, _)) =
-                    self.estimate_fee(price, quantity, false, active_is_spot)
-                {
-                    format!("Taker: ${fee_amt:.2}")
-                } else {
-                    "Taker: \u{2014}".to_string()
-                };
-
-                format!("Est. Fees: {maker_text} | {taker_text}")
-            }
-            _ => "Est. Fees: Maker: \u{2014} | Taker: \u{2014}".to_string(),
+        let fee_text = |is_maker| {
+            fee_price
+                .zip(fee_qty)
+                .and_then(|(price, quantity)| {
+                    self.estimate_fee(price, quantity, is_maker, active_is_spot)
+                })
+                .map(|(amount, _)| format!("${amount:.2}"))
+                .unwrap_or_else(|| "\u{2014}".to_string())
         };
-
-        form.push(
-            text(combined_fees)
-                .size(10)
-                .color(theme.extended_palette().background.weak.text)
-                .width(Fill)
-                .align_x(iced::alignment::Horizontal::Center),
-        )
+        if matches!(self.order_kind, OrderKind::Market | OrderKind::LimitIoc) {
+            form.push(order_detail_row("Est. taker fee", fee_text(false), &theme))
+        } else {
+            form.push(order_detail_row("Est. maker fee", fee_text(true), &theme))
+                .push(order_detail_row("Est. taker fee", fee_text(false), &theme))
+        }
     }
 }
 

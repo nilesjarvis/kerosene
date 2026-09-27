@@ -3,7 +3,7 @@ use crate::message::Message;
 use crate::signing::OrderKind;
 use iced::widget::container as container_style;
 use iced::widget::{Column, Space, button, container, row, text};
-use iced::{Element, Fill, Theme, color};
+use iced::{Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(in crate::order_views) fn push_order_presets_menu<'a>(
@@ -13,9 +13,9 @@ impl TradingTerminal {
     ) -> Column<'a, Message> {
         let presets_toggle = button(
             text(if self.presets_menu_expanded {
-                "Presets  \u{2212}"
+                "Quick trade presets  \u{2212}"
             } else {
-                "Presets  +"
+                "Quick trade presets  +"
             })
             .size(11)
             .center(),
@@ -26,7 +26,7 @@ impl TradingTerminal {
         .style(|theme: &Theme, status| {
             let bg = match status {
                 button::Status::Hovered => theme.extended_palette().background.strong.color,
-                _ => color!(0x222222),
+                _ => theme.extended_palette().background.weak.color,
             };
             button::Style {
                 background: Some(bg.into()),
@@ -39,7 +39,7 @@ impl TradingTerminal {
             }
         });
 
-        form = form.push(Space::new().height(8.0)).push(presets_toggle);
+        form = form.push(presets_toggle);
 
         if self.presets_menu_expanded {
             form = form.push(self.view_order_presets_menu(active_is_outcome));
@@ -62,7 +62,9 @@ impl TradingTerminal {
         };
 
         let currency_toggle = row![
-            text("Size Denomination:").size(11).color(color!(0x888888)),
+            text("Size Denomination:")
+                .size(11)
+                .color(theme.extended_palette().background.weak.text),
             Space::new().width(Fill),
             button(
                 text(denomination_label)
@@ -80,7 +82,7 @@ impl TradingTerminal {
                     "Edit"
                 })
                 .size(10)
-                .color(color!(0xbbbbbb))
+                .color(theme.extended_palette().background.weak.text)
             )
             .padding([2, 6])
             .on_press(Message::TogglePresetEditMode)
@@ -132,8 +134,8 @@ impl TradingTerminal {
         container(presets_col)
             .padding(8)
             .width(Fill)
-            .style(|_theme: &Theme| container_style::Style {
-                background: Some(color!(0x151515).into()),
+            .style(|theme: &Theme| container_style::Style {
+                background: Some(theme.extended_palette().background.weak.color.into()),
                 border: iced::Border {
                     radius: 4.0.into(),
                     ..Default::default()

@@ -1,6 +1,28 @@
-use super::calculations::{order_notional_text, parse_positive_finite};
+use super::calculations::{denomination_label, order_notional_text, parse_positive_finite};
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
+
+#[test]
+fn size_units_identify_the_asset_without_the_spot_quote() {
+    assert_eq!(denomination_label(false, false, "BTC", "USDC"), "BTC");
+    assert_eq!(
+        denomination_label(false, false, "HYPE/USDC", "USDC"),
+        "HYPE"
+    );
+    assert_eq!(denomination_label(true, false, "HYPE/USDC", "USDC"), "USD");
+}
+
+#[test]
+fn outcome_size_units_preserve_contract_and_quote_denominations() {
+    assert_eq!(
+        denomination_label(false, true, "YES: BTC above 75348", "USDH"),
+        "CONTRACTS"
+    );
+    assert_eq!(
+        denomination_label(true, true, "YES: BTC above 75348", "USDH"),
+        "USDH"
+    );
+}
 
 fn spot_symbol(key: &str, display_name: &str) -> ExchangeSymbol {
     ExchangeSymbol {

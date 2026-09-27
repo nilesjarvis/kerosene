@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use iced::widget::{Column, button, row, text};
-use iced::{Fill, Theme, color};
+use iced::{Fill, Theme};
 
 impl TradingTerminal {
     pub(super) fn push_order_status_feedback<'a>(
@@ -23,15 +23,7 @@ impl TradingTerminal {
             button(text("X").size(10))
                 .on_press(Message::DismissOrderStatus)
                 .padding([1, 4])
-                .style(|_theme: &Theme, _status| button::Style {
-                    background: Some(color!(0x3a3a3a).into()),
-                    text_color: color!(0xaaaaaa),
-                    border: iced::Border {
-                        radius: 2.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }),
+                .style(button::text),
         ]
         .spacing(4)
         .align_y(iced::Alignment::Center);
@@ -52,13 +44,19 @@ impl TradingTerminal {
                     "Outcome orders use {quote_symbol} prices and whole-contract sizes"
                 ))
                 .size(10)
-                .color(color!(0x666666)),
+                .color(self.theme().extended_palette().background.weak.text),
             )
         } else if !can_trade {
             form.push(
-                text("Connect wallet + agent key to trade")
-                    .size(10)
-                    .color(color!(0x666666)),
+                text(if self.connected_address.is_none() {
+                    "Connect wallet to trade"
+                } else if !self.has_active_committed_agent_key() {
+                    "Add agent key to trade"
+                } else {
+                    "Market unavailable for trading"
+                })
+                .size(10)
+                .color(self.theme().extended_palette().background.weak.text),
             )
         } else {
             form
