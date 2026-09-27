@@ -1,5 +1,4 @@
 use super::RenderContext;
-use super::format_ratio_value;
 use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
 use crate::spaghetti::helpers::format_relative_time;
 use iced::alignment;
@@ -7,13 +6,12 @@ use iced::widget::canvas;
 use iced::{Color, Point};
 
 // ---------------------------------------------------------------------------
-// Pair Ratio Crosshair
+// Comparison Chart Crosshair
 // ---------------------------------------------------------------------------
 
-pub(super) fn draw_ratio_crosshair(
+pub(super) fn draw_crosshair_overlay(
     ctx: &RenderContext<'_>,
-    ratio_hi: f64,
-    ratio_range: f64,
+    value_label_at_y: impl Fn(f32) -> Option<String>,
 ) -> canvas::Geometry {
     let mut overlay = canvas::Frame::new(ctx.renderer, ctx.bounds.size());
     if let Some(pos) = ctx.state.cursor_position
@@ -36,22 +34,24 @@ pub(super) fn draw_ratio_crosshair(
             },
         );
 
-        let hover_ratio = ratio_hi - (pos.y as f64 / ctx.chart_h as f64) * ratio_range;
-        overlay.fill_text(canvas::Text {
-            content: format_ratio_value(hover_ratio),
-            position: Point::new(ctx.chart_w + 4.0, pos.y),
-            color: Color::WHITE,
-            size: iced::Pixels(10.0),
-            align_x: alignment::Horizontal::Left.into(),
-            align_y: alignment::Vertical::Center,
-            font: crate::app_fonts::monospace_font(),
-            ..canvas::Text::default()
-        });
+        if let Some(content) = value_label_at_y(pos.y) {
+            overlay.fill_text(canvas::Text {
+                content,
+                position: Point::new(ctx.chart_w + 4.0, pos.y),
+                color: Color::WHITE,
+                size: iced::Pixels(10.0),
+                align_x: alignment::Horizontal::Left.into(),
+                align_y: alignment::Vertical::Center,
+                font: crate::app_fonts::monospace_font(),
+                ..canvas::Text::default()
+            });
+        }
 
         let cursor_ts = ctx.left_ts + (pos.x as f64 / ctx.time_px_per_ms);
         let delta = ctx.effective_max as f64 - cursor_ts;
+        let time_label = format_relative_time(delta);
         overlay.fill_text(canvas::Text {
-            content: format_relative_time(delta),
+            content: time_label,
             position: Point::new(pos.x, ctx.chart_h + 4.0),
             color: Color::WHITE,
             size: iced::Pixels(10.0),
@@ -61,5 +61,6 @@ pub(super) fn draw_ratio_crosshair(
             ..canvas::Text::default()
         });
     }
+
     overlay.into_geometry()
 }

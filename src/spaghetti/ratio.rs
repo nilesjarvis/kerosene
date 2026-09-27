@@ -1,13 +1,10 @@
-mod crosshair;
 mod series;
 
-use self::crosshair::draw_ratio_crosshair;
 use self::series::{draw_ratio_candles, draw_ratio_line};
-use super::axes;
 use super::helpers::has_positive_finite_prices;
 use super::{PRICE_PADDING_PCT, RenderContext, Series, SpaghettiCanvas};
+use super::{axes, crosshair};
 use crate::api::Candle;
-use crate::chart_background::{draw_dotted_background, draw_gradient_background};
 use iced::Point;
 use iced::alignment;
 use iced::widget::canvas;
@@ -77,28 +74,7 @@ impl SpaghettiCanvas {
         let ratio_to_y =
             |ratio: f64| -> f32 { ((ratio_hi - ratio) / ratio_range * ctx.chart_h as f64) as f32 };
 
-        let mut frame = canvas::Frame::new(ctx.renderer, ctx.bounds.size());
-        frame.fill_rectangle(Point::ORIGIN, ctx.bounds.size(), iced::Color::TRANSPARENT);
-
-        if self.gradient_background {
-            draw_gradient_background(
-                &mut frame,
-                ctx.theme,
-                ctx.chart_w,
-                ctx.chart_h,
-                self.gradient_contrast,
-            );
-        }
-        if self.dotted_background {
-            draw_dotted_background(
-                &mut frame,
-                ctx.theme,
-                ctx.chart_w,
-                ctx.chart_h,
-                self.dotted_background_opacity,
-                crate::chart::fisheye::ChartFisheye::disabled(),
-            );
-        }
+        let mut frame = self.background_frame(&ctx);
         axes::draw_value_grid(
             &mut frame,
             &ctx,
@@ -149,7 +125,10 @@ impl SpaghettiCanvas {
         }
 
         let base_geo = frame.into_geometry();
-        let overlay = draw_ratio_crosshair(&ctx, ratio_hi, ratio_range);
+        let overlay = crosshair::draw_crosshair_overlay(&ctx, |y| {
+            let hover_ratio = ratio_hi - (y as f64 / ctx.chart_h as f64) * ratio_range;
+            Some(format_ratio_value(hover_ratio))
+        });
         vec![base_geo, overlay]
     }
 }

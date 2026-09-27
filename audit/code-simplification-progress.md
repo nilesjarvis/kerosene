@@ -20,7 +20,7 @@ candidates; it does not establish that every module has been reviewed.
 | Area | Current coverage |
 | --- | --- |
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
-| Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts and axes reviewed and consolidated; crosshair formatting and series calculations inspected but retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
+| Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts, axes, background setup, and crosshair drawing reviewed and consolidated; mode-specific formatting and series calculations retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
 | Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Remaining API requests, outcome metadata internals, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
@@ -742,13 +742,54 @@ Validation (using the local ALSA prefix documented above):
 - Validation uses synthetic metadata and in-memory state. The performance
   improvement removes repeated catalog indexing; no measured speedup is claimed.
 
+## 2026-09-27: share comparison-chart background and crosshair drawing
+
+- Reviewed normalized and pair-ratio drawing, the shared frame context and axes,
+  crosshair call parameters, background helpers, and existing software-renderer
+  coverage.
+- Moved identical frame creation, transparent clearing, gradient, and dotted
+  background setup into `SpaghettiCanvas::background_frame`. Each mode calls it
+  after its own data/range checks and before its existing grid/series drawing.
+- Replaced the two crosshair modules with `spaghetti/crosshair.rs`. It draws the
+  reticle and labels once; callers supply an optional value label at the cursor's
+  Y coordinate. Percentage precision and positive-range guard remain in normalized
+  rendering; ratio formatting remains in pair-ratio rendering. Cursor guards,
+  guide/style/scale settings, time calculation, text styling, and layer order are
+  unchanged.
+- Expanded the rendering matrix to cover independent dotted/gradient backgrounds.
+  Added tests for cursor boundaries and all nine crosshair enum variants, with
+  guides disabled/enabled and two scales across normalized, ratio-line, and
+  ratio-candle modes. Synthetic preview helpers are shared between these tests.
+- Updated the charting component guide. No series math, interaction, message,
+  persistence, dependency, or account changes.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene spaghetti::`:
+  **42 passed** before and after the production changes, including both new tests.
+- All **297** before/after synthetic preview PNGs are byte-for-byte identical,
+  verified by SHA-256. They cover the specified backgrounds, viewports, modes,
+  styles, and cursor positions using tiny-skia. This is a software-renderer
+  comparison, not a hardware GPU comparison. Previews are outside the repository
+  under `/tmp/kerosene-comparison-draw.lW0FUY/{before,after}`.
+- Source comparison against HEAD confirms the canvas program, both modes'
+  series/range calculations and base drawing, and the ratio data/formatting/range
+  helpers are unchanged.
+- `cargo test --locked -j 2`: **4,324 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check`, `git diff --check`, and `cargo build --locked -j 2`:
+  passed.
+- Headless startup smoke: the built binary with `--test` opened the 1600x960
+  Kerosene window under Xvfb, confirmed by `xwininfo`. Expected timeout exit 124
+  after 20 seconds, no panic, and only the existing EGL/DRI3 warning. In-memory
+  test mode kept personal configuration out of the run.
+
 ## Next candidates
 
-1. Comparison crosshair and background setup still have repeated drawing code.
-   With the common frame context, evaluate whether sharing those sequences
-   makes the modes clearer while preserving their formatting and range guards.
-2. Continue reviewing the remaining API request and symbol-lifecycle modules and
+1. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
    event parsing.
-3. Continue across the unreviewed areas in the coverage table. Large files often
+2. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.

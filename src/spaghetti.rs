@@ -1,4 +1,5 @@
 mod axes;
+mod crosshair;
 mod helpers;
 mod interaction;
 mod model;
@@ -9,10 +10,11 @@ mod state;
 #[cfg(test)]
 mod tests;
 
+use crate::chart_background::{draw_dotted_background, draw_gradient_background};
 use crate::message::Message;
 use iced::mouse;
 use iced::widget::canvas;
-use iced::{Rectangle, Renderer, Theme};
+use iced::{Color, Point, Rectangle, Renderer, Theme};
 
 use self::helpers::{chart_time_window, global_time_range};
 pub use self::model::ComparisonColorMode;
@@ -48,6 +50,34 @@ struct RenderContext<'a> {
     crosshair_style: crate::config::ChartCrosshairStyle,
     crosshair_guides_enabled: bool,
     crosshair_scale: f32,
+}
+
+impl SpaghettiCanvas {
+    fn background_frame(&self, ctx: &RenderContext<'_>) -> canvas::Frame {
+        let mut frame = canvas::Frame::new(ctx.renderer, ctx.bounds.size());
+        frame.fill_rectangle(Point::ORIGIN, ctx.bounds.size(), Color::TRANSPARENT);
+
+        if self.gradient_background {
+            draw_gradient_background(
+                &mut frame,
+                ctx.theme,
+                ctx.chart_w,
+                ctx.chart_h,
+                self.gradient_contrast,
+            );
+        }
+        if self.dotted_background {
+            draw_dotted_background(
+                &mut frame,
+                ctx.theme,
+                ctx.chart_w,
+                ctx.chart_h,
+                self.dotted_background_opacity,
+                crate::chart::fisheye::ChartFisheye::disabled(),
+            );
+        }
+        frame
+    }
 }
 
 // ---------------------------------------------------------------------------

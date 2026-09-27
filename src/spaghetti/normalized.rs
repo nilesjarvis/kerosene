@@ -1,11 +1,9 @@
-use super::axes;
 use super::helpers::find_candle_at;
 use super::{PRICE_PADDING_PCT, RenderContext, Series, SpaghettiCanvas};
-use crate::chart_background::{draw_dotted_background, draw_gradient_background};
+use super::{axes, crosshair};
 use iced::widget::canvas;
 use iced::{Color, Point};
 
-mod crosshair;
 mod series;
 
 // ---------------------------------------------------------------------------
@@ -73,28 +71,7 @@ impl SpaghettiCanvas {
         let pct_to_y =
             |pct: f64| -> f32 { ((pct_hi - pct) / pct_range * ctx.chart_h as f64) as f32 };
 
-        let mut frame = canvas::Frame::new(ctx.renderer, ctx.bounds.size());
-        frame.fill_rectangle(Point::ORIGIN, ctx.bounds.size(), Color::TRANSPARENT);
-
-        if self.gradient_background {
-            draw_gradient_background(
-                &mut frame,
-                ctx.theme,
-                ctx.chart_w,
-                ctx.chart_h,
-                self.gradient_contrast,
-            );
-        }
-        if self.dotted_background {
-            draw_dotted_background(
-                &mut frame,
-                ctx.theme,
-                ctx.chart_w,
-                ctx.chart_h,
-                self.dotted_background_opacity,
-                crate::chart::fisheye::ChartFisheye::disabled(),
-            );
-        }
+        let mut frame = self.background_frame(&ctx);
         axes::draw_value_grid(
             &mut frame,
             &ctx,
@@ -127,7 +104,12 @@ impl SpaghettiCanvas {
         series::draw_legend(&mut frame, ctx.theme, self.color_mode, &series_data);
 
         let base_geo = frame.into_geometry();
-        let overlay_geo = crosshair::draw_crosshair_overlay(&ctx, pct_hi, pct_range);
+        let overlay_geo = crosshair::draw_crosshair_overlay(&ctx, |y| {
+            (pct_range > 0.0).then(|| {
+                let hover_pct = pct_hi - (y as f64 / ctx.chart_h as f64) * pct_range;
+                format!("{hover_pct:+.2}%")
+            })
+        });
 
         vec![base_geo, overlay_geo]
     }

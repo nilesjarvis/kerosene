@@ -464,6 +464,7 @@ Key modules:
 - `spaghetti_state.rs`
 - `spaghetti/model.rs`
 - `spaghetti/axes.rs`
+- `spaghetti/crosshair.rs`
 - `spaghetti/normalized/`
 - `spaghetti/ratio/`
 - `spaghetti_update/`
@@ -471,8 +472,10 @@ Key modules:
 
 Both render modes receive the same frame context from `spaghetti.rs` and share
 grid lines, the value-axis border, relative-time labels, and session-start
-markers in `spaghetti/axes.rs`. Each mode retains its value calculations and
-formatting; the zero-percent baseline belongs to normalized rendering.
+markers in `spaghetti/axes.rs`. They also use the same background-frame setup
+and crosshair overlay, with each mode supplying its optional hover-value label.
+Each mode retains its value calculations and formatting; the zero-percent
+baseline and positive-range guard for hover labels belong to normalized rendering.
 
 Spaghetti data uses the shared candle backfill infrastructure where practical
 but keeps its own chart instance map and canvas cache.
