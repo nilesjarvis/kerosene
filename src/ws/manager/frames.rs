@@ -32,7 +32,7 @@ impl fmt::Debug for WsTextFrame {
 }
 
 pub(super) fn parse_ws_text_frame(text: &str) -> WsTextFrame {
-    let Ok(json) = serde_json::from_str::<Value>(text) else {
+    let Ok(mut json) = serde_json::from_str::<Value>(text) else {
         return WsTextFrame::Ignored;
     };
     let Some(channel) = json.get("channel").and_then(|value| value.as_str()) else {
@@ -43,12 +43,10 @@ pub(super) fn parse_ws_text_frame(text: &str) -> WsTextFrame {
         return WsTextFrame::Pong;
     }
 
-    let Some(data) = json.get("data") else {
+    let channel = channel.to_string();
+    let Some(data) = json.get_mut("data").map(Value::take) else {
         return WsTextFrame::Ignored;
     };
 
-    WsTextFrame::Data {
-        channel: channel.to_string(),
-        data: data.clone(),
-    }
+    WsTextFrame::Data { channel, data }
 }

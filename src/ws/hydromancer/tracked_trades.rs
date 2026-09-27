@@ -92,8 +92,8 @@ pub fn ws_hydromancer_tracked_trades(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    if !super::emit_hydromancer_lag_after_reconnect(
-                        &reconnect_tx,
+                    if !super::emit_after_reconnect(
+                        || reconnect_tx.request_lag_reconnect(),
                         HydromancerWsMessage::Lagged { skipped },
                         |event| async { output.send(event).await.is_ok() },
                         std::time::Duration::from_secs(HYDROMANCER_RECONNECT_DELAY_SECS),

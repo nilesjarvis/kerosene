@@ -1,3 +1,4 @@
+use super::recovery::emit_after_reconnect;
 use crate::network_activity::HttpRequestExt as _;
 mod liquidations;
 mod manager;
@@ -17,7 +18,6 @@ use crate::message::Message;
 use futures::SinkExt as _;
 use std::collections::hash_map::DefaultHasher;
 use std::fmt;
-use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 #[cfg(test)]
@@ -88,32 +88,6 @@ impl Hash for HydromancerStreamKey {
         self.generation.hash(state);
         self.api_key.as_str().hash(state);
     }
-}
-
-fn request_hydromancer_reconnect_after_lag(cmd_tx: &manager::HydromancerCommandSender) -> bool {
-    cmd_tx.request_lag_reconnect()
-}
-
-async fn emit_hydromancer_lag_after_reconnect<T, Emit, Fut>(
-    cmd_tx: &manager::HydromancerCommandSender,
-    event: T,
-    emit: Emit,
-    pause: Duration,
-) -> bool
-where
-    Emit: FnOnce(T) -> Fut,
-    Fut: Future<Output = bool>,
-{
-    if !request_hydromancer_reconnect_after_lag(cmd_tx) {
-        return false;
-    }
-    if !emit(event).await {
-        return false;
-    }
-    if !pause.is_zero() {
-        tokio::time::sleep(pause).await;
-    }
-    true
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +278,7 @@ mod tests {
         let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
         let cmd_tx = manager::HydromancerCommandSender::new_for_test(raw_cmd_tx);
 
-        assert!(request_hydromancer_reconnect_after_lag(&cmd_tx));
+        assert!(cmd_tx.request_lag_reconnect());
         assert!(matches!(
             cmd_rx.try_recv().unwrap(),
             manager::HydromancerCommand::Reconnect
@@ -316,14 +290,14 @@ mod tests {
         let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
         let cmd_tx = manager::HydromancerCommandSender::new_for_test(raw_cmd_tx);
 
-        assert!(request_hydromancer_reconnect_after_lag(&cmd_tx));
-        assert!(request_hydromancer_reconnect_after_lag(&cmd_tx));
+        assert!(cmd_tx.request_lag_reconnect());
+        assert!(cmd_tx.request_lag_reconnect());
         let command = cmd_rx.try_recv().expect("first reconnect command");
         assert!(matches!(command, manager::HydromancerCommand::Reconnect));
         assert!(cmd_rx.try_recv().is_err());
 
         cmd_tx.note_command_dequeued_for_test(&command);
-        assert!(request_hydromancer_reconnect_after_lag(&cmd_tx));
+        assert!(cmd_tx.request_lag_reconnect());
         assert!(matches!(
             cmd_rx.try_recv().unwrap(),
             manager::HydromancerCommand::Reconnect
@@ -335,8 +309,8 @@ mod tests {
         let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
         let cmd_tx = manager::HydromancerCommandSender::new_for_test(raw_cmd_tx);
 
-        let emitted = emit_hydromancer_lag_after_reconnect(
-            &cmd_tx,
+        let emitted = emit_after_reconnect(
+            || cmd_tx.request_lag_reconnect(),
             HydromancerWsMessage::Lagged { skipped: 7 },
             |_event| async { false },
             Duration::ZERO,

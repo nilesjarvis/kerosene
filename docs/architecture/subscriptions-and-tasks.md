@@ -165,6 +165,14 @@ Key properties:
 Feature stream helpers in `src/ws/market_streams/` and `src/ws/user_streams/`
 subscribe to manager channels and convert routed payloads into typed app data.
 
+Streams that recover by reconnecting share `ws/recovery.rs`: request the
+provider's reconnect, notify the downstream consumer, then apply the caller's
+pause. Failed reconnect requests or downstream sends stop that sequence.
+User-data streams dispatch parsed messages and broadcast lag through the same
+action handler; malformed targeted spot state reconciles without a pause, while
+broadcast lag retains its two-second pause. Candle lag continues to use history
+repair without reconnecting the shared transport.
+
 ## Hydromancer Websocket Paths
 
 Hydromancer streams live under `src/ws/hydromancer/`. They are separate from

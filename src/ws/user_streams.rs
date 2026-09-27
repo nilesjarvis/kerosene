@@ -1,3 +1,4 @@
+use super::recovery::emit_after_reconnect;
 mod events;
 mod model;
 mod routing;
@@ -106,6 +107,20 @@ enum UserStreamReceiveAction {
 }
 
 impl UserStreamReceiveAction {
+    async fn emit<Emit, Fut>(self, cmd_tx: &WsCommandSender, emit: Emit, pause: Duration) -> bool
+    where
+        Emit: FnOnce(KeyedUserData) -> Fut,
+        Fut: Future<Output = bool>,
+    {
+        match self {
+            Self::Emit(update) => emit(update).await,
+            Self::EmitAndReconnect(update) => {
+                emit_after_reconnect(|| cmd_tx.request_lag_reconnect(), update, emit, pause).await
+            }
+            Self::Ignore => true,
+        }
+    }
+
     #[cfg(test)]
     fn should_reconnect_after_emit(&self) -> bool {
         matches!(self, Self::EmitAndReconnect(_))
@@ -181,263 +196,44 @@ pub fn ws_user_data_stream(
         };
 
         loop {
-            match msg_rx.recv().await {
-                Ok(msg) => {
-                    let action = user_stream_routed_action(
+            let (action, pause) = match msg_rx.recv().await {
+                Ok(msg) => (
+                    user_stream_routed_action(
                         msg.channel.as_str(),
                         msg.data.as_ref(),
                         addr.as_deref(),
                         addr.clone(),
                         include_mids,
-                    );
-                    match action {
-                        UserStreamReceiveAction::Emit(update) => {
-                            if output.send(update).await.is_err() {
-                                return;
-                            }
-                        }
-                        UserStreamReceiveAction::EmitAndReconnect(update) => {
-                            if !emit_user_data_after_reconnect(
-                                &reconnect_tx,
-                                update,
-                                |update| async { output.send(update).await.is_ok() },
-                                Duration::ZERO,
-                            )
-                            .await
-                            {
-                                return;
-                            }
-                        }
-                        UserStreamReceiveAction::Ignore => {}
-                    }
-                }
+                    ),
+                    Duration::ZERO,
+                ),
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    // Falling behind the 10k-frame broadcast buffer means
-                    // we lost order/fill/position updates. Trading code
-                    // must NOT silently continue from an unknown state —
-                    // surface the lag so the downstream handler can force
-                    // a full account refresh.
-                    let action = user_stream_lagged_action(addr.clone(), skipped);
-                    match action {
-                        UserStreamReceiveAction::Emit(update) => {
-                            if output.send(update).await.is_err() {
-                                return;
-                            }
-                        }
-                        UserStreamReceiveAction::EmitAndReconnect(update) => {
-                            if !emit_user_data_after_reconnect(
-                                &reconnect_tx,
-                                update,
-                                |update| async { output.send(update).await.is_ok() },
-                                Duration::from_secs(2),
-                            )
-                            .await
-                            {
-                                return;
-                            }
-                        }
-                        UserStreamReceiveAction::Ignore => {}
-                    }
+                    // Lost account updates require reconciliation and transport
+                    // recovery before more data can be trusted.
+                    (
+                        user_stream_lagged_action(addr.clone(), skipped),
+                        Duration::from_secs(2),
+                    )
                 }
-                Err(error) if crate::ws::broadcast_receiver_closed(&error) => {
-                    return;
-                }
+                Err(error) if crate::ws::broadcast_receiver_closed(&error) => return,
                 Err(_error) => {
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    continue;
                 }
+            };
+            if !action
+                .emit(
+                    &reconnect_tx,
+                    |update| async { output.send(update).await.is_ok() },
+                    pause,
+                )
+                .await
+            {
+                return;
             }
         }
     }))
 }
 
-fn request_user_data_reconnect_after_lag(cmd_tx: &WsCommandSender) -> bool {
-    cmd_tx.request_lag_reconnect()
-}
-
-async fn emit_user_data_after_reconnect<T, Emit, Fut>(
-    cmd_tx: &WsCommandSender,
-    update: T,
-    emit: Emit,
-    pause: Duration,
-) -> bool
-where
-    Emit: FnOnce(T) -> Fut,
-    Fut: Future<Output = bool>,
-{
-    if !request_user_data_reconnect_after_lag(cmd_tx) {
-        return false;
-    }
-    if !emit(update).await {
-        return false;
-    }
-    if !pause.is_zero() {
-        tokio::time::sleep(pause).await;
-    }
-    true
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ws::WsUserData;
-
-    #[test]
-    fn opted_out_stream_ignores_broadcast_all_mids_frames() {
-        let update = parse_user_stream_routed_message(
-            "allMids",
-            &serde_json::json!({ "mids": { "BTC": "100" } }),
-            Some("0xabc0000000000000000000000000000000000000"),
-            Some("0xabc0000000000000000000000000000000000000".to_string()),
-            false,
-        );
-
-        assert!(update.is_none());
-    }
-
-    #[test]
-    fn stream_params_debug_redacts_address() {
-        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
-
-        let params = WsUserDataStreamParams::without_mids(
-            Some(ADDRESS.to_string()),
-            vec!["".to_string(), "dex-a".to_string()],
-        );
-        let rendered = format!("{params:?}");
-
-        assert!(rendered.contains("<redacted>"));
-        assert!(!rendered.contains(ADDRESS), "{rendered}");
-        assert!(rendered.contains("dex-a"), "{rendered}");
-        assert!(rendered.contains("include_mids: false"), "{rendered}");
-    }
-
-    #[test]
-    fn opted_in_stream_keeps_all_mids_frames() {
-        let Some((source_addr, WsUserData::AllMids(mids))) = parse_user_stream_routed_message(
-            "allMids",
-            &serde_json::json!({ "mids": { "BTC": "100" } }),
-            Some("0xabc0000000000000000000000000000000000000"),
-            Some("0xabc0000000000000000000000000000000000000".to_string()),
-            true,
-        ) else {
-            panic!("expected mids update");
-        };
-
-        assert_eq!(
-            source_addr.as_deref(),
-            Some("0xabc0000000000000000000000000000000000000")
-        );
-        assert_eq!(mids.get("BTC"), Some(&100.0));
-    }
-
-    #[test]
-    fn normal_user_data_action_does_not_request_reconnect() {
-        let action = user_stream_routed_action(
-            "allMids",
-            &serde_json::json!({ "mids": { "BTC": "100" } }),
-            Some("0xabc0000000000000000000000000000000000000"),
-            Some("0xabc0000000000000000000000000000000000000".to_string()),
-            true,
-        );
-
-        assert!(!action.should_reconnect_after_emit());
-        let UserStreamReceiveAction::Emit((source_addr, WsUserData::AllMids(mids))) = action else {
-            panic!("expected normal mids update");
-        };
-        assert_eq!(
-            source_addr.as_deref(),
-            Some("0xabc0000000000000000000000000000000000000")
-        );
-        assert_eq!(mids.get("BTC"), Some(&100.0));
-    }
-
-    #[test]
-    fn lagged_user_data_action_requests_reconnect() {
-        let action = user_stream_lagged_action(
-            Some("0xabc0000000000000000000000000000000000000".to_string()),
-            7,
-        );
-
-        assert!(action.should_reconnect_after_emit());
-        let UserStreamReceiveAction::EmitAndReconnect((
-            source_addr,
-            WsUserData::Lagged { skipped },
-        )) = action
-        else {
-            panic!("expected lagged reconnect update");
-        };
-        assert_eq!(
-            source_addr.as_deref(),
-            Some("0xabc0000000000000000000000000000000000000")
-        );
-        assert_eq!(skipped, 7);
-    }
-
-    #[test]
-    fn malformed_targeted_spot_state_forces_reconciliation_and_reconnect() {
-        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
-        let action = user_stream_routed_action(
-            "spotState",
-            &serde_json::json!({
-                "user": ADDRESS,
-                "spotState": { "balances": "invalid" }
-            }),
-            Some(ADDRESS),
-            Some(ADDRESS.to_string()),
-            true,
-        );
-
-        assert!(action.should_reconnect_after_emit());
-        let UserStreamReceiveAction::EmitAndReconnect((
-            source_addr,
-            WsUserData::Lagged { skipped: 1 },
-        )) = action
-        else {
-            panic!("malformed targeted spotState must reconcile");
-        };
-        assert_eq!(source_addr.as_deref(), Some(ADDRESS));
-    }
-
-    #[test]
-    fn malformed_spot_state_for_another_address_is_ignored() {
-        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
-        const OTHER: &str = "0xdef0000000000000000000000000000000000000";
-        let action = user_stream_routed_action(
-            "spotState",
-            &serde_json::json!({
-                "user": OTHER,
-                "spotState": { "balances": "invalid" }
-            }),
-            Some(ADDRESS),
-            Some(ADDRESS.to_string()),
-            true,
-        );
-
-        assert!(matches!(action, UserStreamReceiveAction::Ignore));
-    }
-
-    #[test]
-    fn user_data_lag_requests_shared_ws_reconnect() {
-        let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
-        let cmd_tx = WsCommandSender::new_for_test(raw_cmd_tx);
-
-        assert!(request_user_data_reconnect_after_lag(&cmd_tx));
-        assert!(matches!(cmd_rx.try_recv().unwrap(), WsCommand::Reconnect));
-    }
-
-    #[tokio::test]
-    async fn lag_emit_requests_reconnect_before_downstream_send_failure() {
-        let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
-        let cmd_tx = WsCommandSender::new_for_test(raw_cmd_tx);
-
-        let emitted = emit_user_data_after_reconnect(
-            &cmd_tx,
-            (None::<String>, WsUserData::Lagged { skipped: 7 }),
-            |_update| async { false },
-            Duration::ZERO,
-        )
-        .await;
-
-        assert!(!emitted);
-        assert!(matches!(cmd_rx.try_recv().unwrap(), WsCommand::Reconnect));
-    }
-}
+mod tests;

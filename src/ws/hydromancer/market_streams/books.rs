@@ -2,9 +2,7 @@ use super::super::manager::{
     HydromancerCommand, HydromancerSubscriptionGuard, get_hydromancer_manager,
 };
 use super::super::parsing::hydromancer_control_message;
-use super::super::{
-    HYDROMANCER_RECONNECT_DELAY_SECS, HydromancerStreamKey, emit_hydromancer_lag_after_reconnect,
-};
+use super::super::{HYDROMANCER_RECONNECT_DELAY_SECS, HydromancerStreamKey, emit_after_reconnect};
 use super::hydromancer_market_control_should_fallback;
 use super::payloads::l2_book_items;
 use crate::api::parse_ws_book;
@@ -89,8 +87,8 @@ pub fn ws_hydromancer_book_stream_keyed_events(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    if !emit_hydromancer_lag_after_reconnect(
-                        &reconnect_tx,
+                    if !emit_after_reconnect(
+                        || reconnect_tx.request_lag_reconnect(),
                         KeyedBookStreamEvent::Lagged {
                             id,
                             coin: coin.clone(),

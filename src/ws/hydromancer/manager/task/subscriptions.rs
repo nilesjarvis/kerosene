@@ -111,8 +111,7 @@ impl ActiveHydromancerSubscriptions {
             return HydromancerUnsubscribeResult::StillActive;
         }
 
-        let payload = entry.payload.clone();
-        self.entries.remove(index);
+        let payload = self.entries.remove(index).payload;
         HydromancerUnsubscribeResult::Removed {
             payload,
             became_empty: self.entries.is_empty(),

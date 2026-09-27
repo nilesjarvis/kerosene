@@ -25,7 +25,7 @@ candidates; it does not establish that every module has been reviewed.
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
-| Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Native and Hydromancer market adapters inspected; Hydromancer adapters split by feature with shared borrowed payload selection. Manager internals and other stream families still need review. |
+| Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands and both managers' subscription reference counts inspected; Hydromancer preconnect behavior traced. Coalescers, Hydromancer registry/session internals, and other integration streams still need review. |
 | Feeds, integrations, assistant | Initial size/duplication scan only; substantive review remains. |
 | Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
@@ -377,12 +377,60 @@ Validation (using the local ALSA prefix documented above):
 - Validation used synthetic/local fixtures and local websocket integration
   tests; no live provider credentials or live market connections were used.
 
+## 2026-09-27: share websocket recovery and avoid owned-payload copies
+
+- Reviewed user-data routing, parsing, subscription construction, and receive
+  handling, along with the native manager's connect/read/backoff loop and
+  both providers' subscription reference counts. Kept provider-specific manager
+  loops separate: idle shutdown, key rotation, session resumption, command
+  handling while connecting, and backoff policies differ.
+- Replaced three identical reconnect-before-notify helpers with
+  `ws/recovery.rs`. Callers supply their existing reconnect operation, event,
+  output callback, and pause. Reconnect requests still occur only when the
+  future is polled, before notification; either failure short-circuits, and
+  the pause occurs only after successful notification. Provider reconnect
+  gates and all callers' pause durations are unchanged.
+- Shared user-data action execution in `UserStreamReceiveAction::emit`.
+  Parsed frames and broadcast lag now select an action and pause before using
+  one dispatch path. Targeted malformed spot state still reconciles with no
+  pause; broadcast lag retains its two-second pause. Ordinary updates and
+  ignored messages neither reconnect nor pause. Address checks, mids opt-out,
+  payload parsing, and subscription identity are unchanged.
+- Native text-frame parsing takes its owned `data` value instead of cloning
+  the entire JSON subtree. Final unsubscribe handling in both managers moves
+  the removed entry's payload instead of cloning it before removal. Preserved
+  null/scalar payload handling, pong precedence, reference counts, payload
+  matching, entry ordering, and native unsubscribe-method rewriting.
+- Moved the nine existing user-stream tests to `user_streams/tests.rs`. Added
+  three tests: recovery operation ordering/failures/pause with lazy polling;
+  a 24-case action-dispatch matrix with live/closed local command channels;
+  and frame payload shapes, malformed envelopes, and pong precedence.
+  Existing reconnect-gate, private routing, redaction, reference-count, and
+  local websocket lifecycle tests remain.
+- Updated the subscription guide. No dependencies, wire formats, persisted
+  schema, message routes, account eligibility, or trading behavior changed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene ws::`:
+  **560 passed**, no failures. The filter includes websocket tests and other
+  module paths containing `ws::`, including view tests.
+- Compared the three original recovery bodies with the shared helper after
+  renaming the request operation and event parameter: all match.
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo test --locked -j 2`: **4,295 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- New recovery tests explicitly poll futures using local command channels;
+  they do not wait for the test pause or require live provider credentials.
+
 ## Next candidates
 
 1. Comparison crosshair and background setup still have repeated drawing code.
    With the common frame context, evaluate whether sharing those sequences
    makes the modes clearer while preserving their formatting and range guards.
-2. Review API request construction, websocket manager lifecycle boundaries,
-   user-data streams, and the remaining integration streams.
+2. Review API request construction, websocket coalescers, Hydromancer
+   registry/session internals, and the remaining integration streams.
 3. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.

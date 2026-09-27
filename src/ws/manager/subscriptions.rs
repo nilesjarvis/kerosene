@@ -112,11 +112,10 @@ impl ActiveWsSubscriptions {
             return WsUnsubscribeResult::StillActive;
         }
 
-        let mut unsubscribe_payload = entry.payload.clone();
+        let mut unsubscribe_payload = self.entries.remove(index).payload;
         if let Some(obj) = unsubscribe_payload.as_object_mut() {
             obj.insert("method".to_string(), serde_json::json!("unsubscribe"));
         }
-        self.entries.remove(index);
         WsUnsubscribeResult::Removed {
             unsubscribe_payload,
         }

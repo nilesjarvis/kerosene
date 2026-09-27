@@ -2,9 +2,7 @@ use super::super::manager::{
     HydromancerCommand, HydromancerSubscriptionGuard, get_hydromancer_manager,
 };
 use super::super::parsing::hydromancer_control_message;
-use super::super::{
-    HYDROMANCER_RECONNECT_DELAY_SECS, HydromancerStreamKey, emit_hydromancer_lag_after_reconnect,
-};
+use super::super::{HYDROMANCER_RECONNECT_DELAY_SECS, HydromancerStreamKey, emit_after_reconnect};
 use super::hydromancer_market_control_should_fallback;
 use super::payloads::active_asset_ctx_items;
 use crate::account::AssetContext;
@@ -152,8 +150,8 @@ fn hydromancer_asset_ctx_stream(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    if !emit_hydromancer_lag_after_reconnect(
-                        &reconnect_tx,
+                    if !emit_after_reconnect(
+                        || reconnect_tx.request_lag_reconnect(),
                         HydromancerAssetCtxStreamEvent::Lagged {
                             hydromancer_key_generation: Some(hydromancer_key_generation),
                             skipped,
