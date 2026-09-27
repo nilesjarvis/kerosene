@@ -33,10 +33,6 @@ impl TradingTerminal {
             Message::PnlCardCopied(result) => self.handle_pnl_card_copied(result),
             Message::SavePnlCard(window_id) => self.save_pnl_card_image(window_id),
             Message::PnlCardSaved(result) => self.handle_pnl_card_saved(result),
-            Message::WalletKeyInputChanged(value) => self.update_wallet_key_input(value),
-            Message::WalletAddressInputChanged(value) => {
-                self.update_wallet_address_input(value.into_string())
-            }
             Message::ToggleAccountPicker => self.toggle_account_picker(),
             Message::AccountPickerSelected(index) => self.select_account_from_picker(index),
             Message::AccountPickerRenameToggled(index) => self.toggle_account_picker_rename(index),
@@ -62,7 +58,6 @@ impl TradingTerminal {
             }
             Message::ForgetGhostAccount(index) => self.forget_ghost_account_from_picker(index),
             Message::DeleteSavedAccount(index) => self.delete_saved_account_task(index),
-            Message::SaveCredentials => self.save_active_account_credentials(),
             Message::ConnectWallet => self.connect_wallet(),
             Message::DisconnectWallet => self.disconnect_wallet(),
             Message::AccountDataLoaded(address, context, result) => {

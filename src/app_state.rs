@@ -70,6 +70,7 @@ impl SensitiveString {
         self.0.as_str()
     }
 
+    #[cfg(test)]
     pub(crate) fn into_zeroizing(self) -> Zeroizing<String> {
         self.0
     }

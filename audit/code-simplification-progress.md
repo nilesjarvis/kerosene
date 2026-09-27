@@ -22,7 +22,7 @@ candidates; it does not establish that every module has been reviewed.
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Rendering and interactions remain. |
 | Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. APIs, caching, symbol lifecycle, books, and other widgets remain. |
-| Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
+| Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Initial duplication scan only; substantive review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Initial duplication scan only; substantive review remains. |
@@ -144,18 +144,57 @@ Validation (using the local ALSA prefix documented above):
   warning as the first turn. This checks startup with in-memory configuration,
   not hardware GPU rendering.
 
+## 2026-09-27: remove retired account-editing routes
+
+- Traced the three compiler-reported unused messages through the account views,
+  root routing, account dispatch, and credential persistence. No production
+  code constructs `SaveCredentials`, `WalletKeyInputChanged`, or
+  `WalletAddressInputChanged`; account setup uses the dedicated Add Account
+  window and its draft messages.
+- Removed those variants, routes, legacy profile-editing handlers, and 22 tests
+  that only exercised the removed handlers. Kept the live connection/rebinding,
+  switching, deferred migration, and shared credential-persistence paths and
+  their tests. Active wallet input fields are still needed by those flows.
+  `SensitiveString::into_zeroizing` is now only needed by test fixtures and is
+  compiled under `cfg(test)`, alongside its existing test-only `clear` helper.
+- Moved the Add Account tests into `account_update/add_window/tests.rs` without
+  changing that module's production logic. Added a test through the root update
+  route proving draft edits and cancellation preserve the active signer and
+  stored credentials. Extended the locked-store failure test to check the
+  signer, active inputs, retained draft, and encrypted payload. Added coverage
+  for all Add Account draft/lifecycle routes; existing redaction tests still
+  cover the active address and key messages.
+- Updated the account component guide and a stale connection comment. No
+  persisted format, subscription, dependency, or user-facing behavior changed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene account_update::`:
+  **160 passed**, including connection/rebinding and Add Account safety tests.
+- `cargo test --locked -j 2`: **4,280 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests). The count decreased by 20: 22 tests of removed handlers
+  were deleted and 2 active-flow/routing tests were added.
+- Compared the extracted Add Account production module and all 10 retained
+  profile methods against the previous commit: their implementations match.
+- Strict Clippy initially identified the now-test-only `SensitiveString`
+  conversion after the old handlers were removed; scoped it to test builds.
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  **passed**, with no lint allowances.
+- `cargo fmt -- --check`, `git diff --check`, and
+  `cargo build --locked -j 2`: passed.
+- Headless startup smoke with the built binary and `--test`: the 1600x960
+  Kerosene window opened under Xvfb, confirmed by `xwininfo`. Expected timeout
+  124 after 20 seconds, no panic, and only the existing EGL/DRI3 warning. This
+  checks startup with in-memory configuration, not hardware GPU rendering.
+
 ## Next candidates
 
-1. Review the three unused account message routes against the current account
-   picker/setup flow before removing anything. Searches found only handlers,
-   routes, and tests, but credential helper functions have substantial safety
-   tests and must be assessed as a complete flow.
-2. Review repeated account-picker/layout-switcher styling and comparison-chart
+1. Review repeated account-picker/layout-switcher styling and comparison-chart
    axis drawing. Similar appearance alone is not sufficient reason to share a
    helper; preserve layout, coordinate, and interaction differences.
    The three active-row style closures in
    `account_views/summary/layout_switcher.rs` and
    `account_views/picker/dropdown/option_row.rs` were inspected and match; the
    existing `helpers/ui/buttons.rs` styles have different state/color behavior.
-3. Continue across the unreviewed areas in the coverage table. Large files often
+2. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.

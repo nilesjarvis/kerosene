@@ -105,6 +105,21 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
 }
 
 #[test]
+fn add_account_draft_messages_route_to_account() {
+    for message in [
+        Message::OpenAddAccountWindow,
+        Message::AddAccountNameChanged("New account".to_string()),
+        Message::AddAccountAddressChanged("0xabc0000000000000000000000000000000000000".into()),
+        Message::AddAccountKeyChanged("sentinel-secret".into()),
+        Message::AddAccountSwitchToggled(false),
+        Message::AddAccountSubmit,
+        Message::AddAccountCancel,
+    ] {
+        assert_route(message, UpdateRoute::Account);
+    }
+}
+
+#[test]
 fn transfer_history_messages_route_to_account() {
     assert_route(Message::RefreshTransferHistory, UpdateRoute::Account);
     for kind in [

@@ -245,7 +245,7 @@ impl TradingTerminal {
             } else {
                 self.accounts[self.active_account_index].wallet_address = addr.clone();
                 // Connecting an unchanged saved wallet is read-only. Trading
-                // keys are committed explicitly through SaveCredentials.
+                // keys are committed when a profile is added.
                 // Rewriting the full credential bundle here is especially
                 // dangerous during boot: a transient keychain read failure
                 // would otherwise replace global-only credentials (such as an

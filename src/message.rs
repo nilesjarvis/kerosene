@@ -656,7 +656,6 @@ pub(crate) enum Message {
     GhostWallet(RedactedAddress),
     ForgetGhostAccount(usize),
     DeleteSavedAccount(usize),
-    SaveCredentials,
     PaneResized(WorkspaceId, pane_grid::ResizeEvent),
     PaneDragged(WorkspaceId, pane_grid::DragEvent),
     PaneClicked(WorkspaceId, pane_grid::Pane),
@@ -1553,8 +1552,6 @@ pub(crate) enum Message {
     OrderBookSearchChanged(OrderBookId, String),
     OrderBookSetMode(OrderBookId, OrderBookSymbolMode),
     SetOrderBookDisplayMode(OrderBookId, OrderBookDisplayMode),
-    WalletKeyInputChanged(SecretInput),
-    WalletAddressInputChanged(RedactedAddress),
     HydromancerKeyInputChanged(SecretInput),
     SaveHydromancerKey,
     PositionPnlWsBookUpdate {
@@ -1763,7 +1760,6 @@ mod tests {
                 5,
                 XProfileImageMessageResult::new(Err("sentinel-secret".to_string())),
             ),
-            Message::WalletKeyInputChanged("sentinel-secret".into()),
             Message::AddAccountKeyChanged("sentinel-secret".into()),
             Message::HydromancerKeyInputChanged("sentinel-secret".into()),
             Message::HyperdashKeyInputChanged("sentinel-secret".into()),
@@ -2045,7 +2041,6 @@ mod tests {
                 oid: 42,
                 result: Box::new(Err("move status failed".to_string())),
             },
-            Message::WalletAddressInputChanged(ADDRESS.into()),
             Message::AddAccountAddressChanged(ADDRESS.into()),
             Message::WsHydromancerTrackedTrades {
                 hydromancer_key_generation: 1,

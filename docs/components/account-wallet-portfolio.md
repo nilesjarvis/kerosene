@@ -40,7 +40,12 @@ The account picker can:
 - add ghost wallets
 - forget ghost accounts
 - delete saved accounts
-- save credentials for the active profile
+
+The Add Account window holds address and key drafts separately from the active
+profile. `AddAccountAddressChanged` and `AddAccountKeyChanged` only update that
+draft. `AddAccountSubmit` validates it and persists the new profile's credentials
+before optionally switching accounts through the normal trading-state guards.
+Cancelling drops the draft without changing saved or active credentials.
 
 ### Existing Subaccounts
 
