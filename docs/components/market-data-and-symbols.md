@@ -511,6 +511,11 @@ Outcome parsing builds each question record once and uses a borrowed index to
 associate its named, settled, and fallback outcomes. The index lasts only for
 that parse; each final symbol still owns its question metadata and contract terms.
 
+Binary, bucket, fallback, and legacy recurring labels share optional expiry
+formatting in `model/outcome_labels/expiry.rs`. Countdown labels reuse the parsed
+expiry timestamp; the callers retain their wording, expiry source, and short-label
+rules.
+
 `OutcomeSymbolInfo.contract` stores resolved `OutcomeContract` terms. Missing
 fields in older caches default safely; the `verified` flag is runtime-only and
 never survives serialization. A cached or failed metadata refresh preserves

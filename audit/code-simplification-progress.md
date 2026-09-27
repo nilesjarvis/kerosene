@@ -21,7 +21,7 @@ candidates; it does not establish that every module has been reviewed.
 | --- | --- |
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts, axes, background setup, and crosshair drawing reviewed and consolidated; mode-specific formatting and series calculations retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
-| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Candle request/response policies and watchlist/outcome-volume history inspected; candle normalization deduplicates in place and trailing-run searches stop at the final gap. Outcome parsing, contract/template resolution, and question membership reviewed; the temporary question index borrows shared records. Remaining API requests, outcome label helpers, books, and other widgets need review. |
+| Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Candle request/response policies and watchlist/outcome-volume history inspected; candle normalization deduplicates in place and trailing-run searches stop at the final gap. Outcome parsing, contract/template resolution, question membership, and label helpers reviewed; the temporary question index borrows shared records and expiry formatting is shared. Calendar, unstaking, and ETF API entry points/conversion helpers inspected. Remaining API requests, ETF flow parsing, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
@@ -859,10 +859,47 @@ Validation (using the local ALSA prefix documented above):
   or orders were sent. Removed redundant data copies without claiming a measured
   runtime speedup.
 
+## 2026-09-27: share outcome expiry-label formatting
+
+- Reviewed outcome market/side/venue/source labels, bucket and fallback wording,
+  target-price formatting, expiry/countdown helpers, and their public call sites.
+  Also inspected calendar and unstaking readers, ETF orchestration/HTTP helpers,
+  THYP/BHYP conversions, and numeric helpers; their differing response and
+  fallback policies remain separate. ETF flow parsing still needs review.
+- Binary, legacy recurring, bucket, and fallback labels now use one optional
+  expiry-suffix helper. Each caller retains its existing condition text,
+  early-return rules, own-versus-question expiry source, and short-label flag.
+- Countdown formatting reuses the already parsed timestamp instead of parsing
+  the same expiry again. Shared remaining-time calculation keeps checked clock
+  conversion, saturating subtraction, expired wording, and duration formatting.
+  The intermediate string used only to append `left` is no longer needed.
+- Added two public-label regression tests: 24 combinations of binary/bucket/
+  fallback sides and expiry availability, plus invalid question-expiry precedence,
+  unrepresentable clocks, pre-epoch dates, and legacy recurring labels. Existing
+  expiry tests now assert the complete formatted countdown. Updated the guide.
+- No contract verification, metadata parsing, order, message, persistence, or
+  request behavior changed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene outcome`:
+  **194 passed** before and after the production changes, including both new
+  regression tests.
+- Reviewed the production diff: condition wording, source selection, date parse
+  format, clock conversion, and remaining-time arithmetic are unchanged.
+- `cargo test --locked -j 2`: **4,329 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+
 ## Next candidates
 
-1. Continue reviewing the remaining API request and symbol-lifecycle modules and
+1. Calendar sorting reparses both timestamps during every comparison. Evaluate
+   computing timestamp keys once while preserving raw-date ties, invalid dates,
+   timezone equivalence, and stable input order.
+2. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
    event parsing.
-2. Continue across the unreviewed areas in the coverage table. Large files often
+3. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.
