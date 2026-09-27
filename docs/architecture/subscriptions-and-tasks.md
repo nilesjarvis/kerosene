@@ -43,9 +43,17 @@ They cover:
 - live watchlist refresh ticks
 - ticker tape context refresh ticks
 
-The order-book subscription path chooses Hyperliquid or Hydromancer stream
-helpers based on the configured read-data provider and available Hydromancer
-key. Hidden or unsupported symbols are skipped before subscriptions are added.
+Order-book panes, Chase, and TWAP use `market_book_subscription` to choose the
+Hyperliquid or Hydromancer stream from the configured read-data provider and
+available key. Each consumer keeps its own eligibility checks and message
+mapping; these mappings distinguish subscriptions even when IDs and symbols
+match. Order-book pane assembly lives in `market/order_book.rs`.
+
+Chart subscriptions deduplicate borrowed symbol/timeframe keys before creating
+owned stream parameters, retaining the lowest chart ID for each key. Native
+chart asset-context streams still provide funding data with either selected
+provider. One-second candles and real-time position PnL retain their explicit
+Hydromancer-keyed source context, independent of the selected read provider.
 
 L2 book subscriptions use one canonical live precision per coin across
 order-book panes, Chase, and TWAP. Stream helpers filter frames when a provider

@@ -49,7 +49,7 @@ impl TradingTerminal {
             if let Some(api_key) = hydromancer_key.clone() {
                 subs.push(
                     Subscription::run_with(
-                        (api_key, symbol.clone()),
+                        (api_key, symbol),
                         ws_hydromancer_asset_ctx_stream_symbol,
                     )
                     .with(source_context)
@@ -57,7 +57,7 @@ impl TradingTerminal {
                 );
             } else {
                 subs.push(
-                    Subscription::run_with((symbol.clone(),), ws_asset_ctx_stream_symbol)
+                    Subscription::run_with((symbol,), ws_asset_ctx_stream_symbol)
                         .with(source_context)
                         .map(positioning_asset_ctx_stream_event_message),
                 );

@@ -1,9 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::ws::{
-    HydromancerStreamKey, KeyedBookStreamEvent, ws_book_stream_keyed_events,
-    ws_hydromancer_book_stream_keyed_events,
-};
+use crate::ws::KeyedBookStreamEvent;
 
 use iced::Subscription;
 
@@ -37,35 +34,15 @@ impl TradingTerminal {
             {
                 continue;
             }
-            let sigfigs = self.canonical_l2_book_sigfigs(&twap.coin);
-            let source_context = self.market_data_source_context();
-            if let Some(api_key) = self.hydromancer_read_provider_key() {
-                let hydromancer_key_generation = self.hydromancer_key_generation;
-                let stream_key =
-                    HydromancerStreamKey::from_zeroizing(api_key, hydromancer_key_generation);
-                subs.push(
-                    Subscription::run_with(
-                        (stream_key, twap.id, twap.coin.clone(), sigfigs),
-                        ws_hydromancer_book_stream_keyed_events,
-                    )
-                    .with(source_context)
+            subs.push(
+                self.market_book_subscription(twap.id, &twap.coin)
                     .map(twap_book_stream_event_message),
-                );
-            } else {
-                subs.push(
-                    Subscription::run_with(
-                        (twap.id, twap.coin.clone(), sigfigs),
-                        ws_book_stream_keyed_events,
-                    )
-                    .with(source_context)
-                    .map(twap_book_stream_event_message),
-                );
-            }
+            );
         }
     }
 }
 
-fn twap_book_stream_event_message(
+pub(super) fn twap_book_stream_event_message(
     (source_context, event): (
         crate::read_data_provider::MarketDataSourceContext,
         KeyedBookStreamEvent,

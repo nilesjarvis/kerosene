@@ -1,18 +1,93 @@
+use super::super::chart::chart_candle_stream_event_message;
 use super::*;
-use iced::advanced::subscription::{Hasher, into_recipes};
-use std::hash::Hasher as _;
+use crate::ws::{ws_candle_stream_keyed, ws_hydromancer_candle_stream_keyed};
 
 mod funding_live;
 
-fn subscription_hashes(subscription: Subscription<Message>) -> Vec<u64> {
-    into_recipes(subscription)
-        .into_iter()
-        .map(|recipe| {
-            let mut hasher = Hasher::default();
-            recipe.hash(&mut hasher);
-            hasher.finish()
-        })
-        .collect()
+#[test]
+fn chart_deduplication_preserves_recipe_keys_minimum_ids_and_provider_scopes() {
+    for provider in [ReadDataProvider::Hyperliquid, ReadDataProvider::Hydromancer] {
+        for has_key in [false, true] {
+            let mut terminal = TradingTerminal::boot().0;
+            terminal.charts.clear();
+            terminal.read_data_provider = provider;
+            terminal.read_data_provider_generation = 4;
+            terminal.hydromancer_key_generation = 9;
+            terminal.hydromancer_api_key = if has_key { "test-key" } else { "" }.into();
+            terminal.muted_tickers.insert("HIDDEN".into());
+            for (id, symbol, interval, secondary) in [
+                (9, "BTC", Timeframe::H1, Some("ETH")),
+                (2, "ETH", Timeframe::H1, None),
+                (5, "BTC", Timeframe::H1, None),
+                (7, "BTC", Timeframe::M5, None),
+                (8, "SOL", Timeframe::S1, None),
+                (10, "HIDDEN", Timeframe::H1, Some("BTC")),
+            ] {
+                let mut chart = ChartInstance::new(id, symbol.into(), interval);
+                chart.secondary_symbol = secondary.map(str::to_string);
+                terminal.charts.insert(id, chart);
+            }
+            let context = terminal.market_data_source_context();
+            let mut expected = Vec::new();
+            for (id, symbol, interval) in [
+                (5, "BTC", Timeframe::H1),
+                (7, "BTC", Timeframe::M5),
+                (2, "ETH", Timeframe::H1),
+                (8, "SOL", Timeframe::S1),
+            ] {
+                if interval == Timeframe::S1 && !has_key {
+                    continue;
+                }
+                let stream_context = if interval == Timeframe::S1 {
+                    // One-second candles use the available Hydromancer key even
+                    // when the selected read provider is Hyperliquid.
+                    crate::read_data_provider::MarketDataSourceContext {
+                        hydromancer_key_generation: Some(9),
+                        ..context
+                    }
+                } else {
+                    context
+                };
+                let stream = if interval == Timeframe::S1
+                    || (provider == ReadDataProvider::Hydromancer && has_key)
+                {
+                    Subscription::run_with(
+                        (
+                            HydromancerStreamKey::new("test-key", 9),
+                            id,
+                            symbol.to_string(),
+                            interval.api_str().to_string(),
+                        ),
+                        ws_hydromancer_candle_stream_keyed,
+                    )
+                } else {
+                    Subscription::run_with(
+                        (id, symbol.to_string(), interval.api_str().to_string()),
+                        ws_candle_stream_keyed,
+                    )
+                };
+                expected.push(
+                    stream
+                        .with(stream_context)
+                        .map(chart_candle_stream_event_message),
+                );
+            }
+            for (id, symbol) in [(5, "BTC"), (2, "ETH"), (8, "SOL")] {
+                expected.push(
+                    Subscription::run_with((id, symbol.to_string()), ws_asset_ctx_stream_keyed)
+                        .with(context)
+                        .map(chart_asset_ctx_stream_event_message),
+                );
+            }
+            let mut actual = Vec::new();
+            terminal.push_chart_market_subscriptions(&mut actual);
+            assert_eq!(
+                subscription_hashes(Subscription::batch(actual)),
+                subscription_hashes(Subscription::batch(expected)),
+                "chart stream identities for {provider:?}, key present: {has_key}",
+            );
+        }
+    }
 }
 
 #[test]

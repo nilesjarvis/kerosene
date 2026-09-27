@@ -23,9 +23,9 @@ candidates; it does not establish that every module has been reviewed.
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts and axes reviewed and consolidated; crosshair formatting and series calculations inspected but retained. Most chart rendering and interactions remain. |
 | Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. APIs, caching, symbol lifecycle, books, and other widgets remain. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
-| Orders, signing, Chase, TWAP | Initial duplication scan only; substantive review remains. |
+| Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
-| Subscriptions and transport | Initial duplication scan plus comparison, positioning, position-PnL, and order-book subscription assembly inspected; no changes yet. Stream identities and provider/key freshness differences need fuller review before sharing helpers. |
+| Subscriptions and transport | Market subscription assembly reviewed: selected-provider book construction shared, chart deduplication now borrows keys, and order-book/positioning symbol copies reduced. Provider/key freshness differences and explicit-key subscriptions retained. Transport internals and remaining subscription families still need review. |
 | Feeds, integrations, assistant | Initial size/duplication scan only; substantive review remains. |
 | Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
@@ -235,15 +235,60 @@ also changed the package version from 0.2.1 to 0.3.0 during final validation.
 The commands above ran before that metadata change. Final smoke results were
 recorded in a separate documentation commit; the release commit was preserved.
 
+## 2026-09-27: simplify market-subscription assembly
+
+- Shared the identical selected-provider book setup used by order-book panes,
+  Chase, and TWAP in `market_book_subscription`. Canonical precision and source
+  context remain in the shared setup; each consumer retains its eligibility
+  filters, timers, and distinct message-mapping function. Keeping those
+  function items distinct is necessary for iced subscription identity.
+- Moved order-book pane assembly and its event mappings from `market.rs` into
+  the existing `market/order_book.rs` feature module. Both moved event-mapping
+  bodies and the Chase/TWAP event-mapping bodies match the previous commit.
+- Borrowed chart symbol/timeframe keys while deduplicating in `BTreeMap`, then
+  created owned strings only for the resulting stream recipes. The ordering,
+  minimum chart ID, primary/secondary eligibility, and recipe tuple types are
+  preserved. Order-book mode selection now borrows its symbol, and positioning
+  subscriptions consume the strings they already own.
+- Kept selected-provider and explicit Hydromancer-keyed source rules distinct.
+  Native chart funding streams, one-second candles, real-time position PnL,
+  and transport fallback generation handling retain their existing behavior.
+- Added three tests covering exact recipe identities, provider/key selection,
+  canonical precision with and without fresh prices, consumer separation when
+  IDs coincide, automation eligibility/timers, chart deduplication/minimum IDs,
+  secondary symbols, and the one-second candle source scope. Existing event
+  mapping and stale-source tests remain. Updated the subscription guide.
+- No schema, dependency versions, messages, network protocol, signing, or
+  order-execution changes.
+
+Validation (using the local ALSA prefix documented above):
+
+- The first `--locked` run identified that the tracked `Cargo.lock`
+  still held package version 0.2.1 after the concurrent 0.3.0 release bump.
+  Let Cargo refresh it with `--offline`; diff verified that only the root
+  package version changed. Include that one-line synchronization so locked
+  builds work from the committed tree; no dependency versions changed.
+- The initial focused run exposed a missing freshness timestamp in the new
+  mid-price fixture. Added the timestamp so both precision paths are exercised.
+- `cargo test --locked -j 2 --package kerosene --bin kerosene
+  subscription_state::market::tests`: **23 passed, 1 ignored**, no failures.
+- `cargo test --locked -j 2`: **4,285 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo build --locked -j 2`: passed. Headless startup with `--test` opened the
+  1600x960 Kerosene window under Xvfb, confirmed by `xwininfo`. Expected timeout
+  124 after 20 seconds, no panic, and only the existing EGL/DRI3 acceleration
+  warning. This verifies startup with in-memory configuration.
+
 ## Next candidates
 
 1. Comparison crosshair and background setup still have repeated drawing code.
    With the common frame context, evaluate whether sharing those sequences
    makes the modes clearer while preserving their formatting and range guards.
-2. Continue the subscription/provider review. Selected-provider market streams
-   and explicitly Hydromancer-keyed streams intentionally use different
-   freshness rules; preserve that distinction. Several subscription loops copy
-   owned symbols unnecessarily, but verify the complete identity and event
-   mapping before changing them.
+2. Review the remaining subscription families and transport/cache modules.
+   `api_cache.rs` has 1,284 lines including tests; inspect its cache policies
+   and production/test boundary before deciding whether to split it.
 3. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.

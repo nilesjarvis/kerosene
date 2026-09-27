@@ -1,4 +1,5 @@
 use super::chart::chart_asset_ctx_stream_event_message;
+use super::order_book::*;
 use super::position_pnl::position_pnl_book_stream_event_message;
 use super::positioning_info::positioning_asset_ctx_stream_event_message;
 use super::*;
@@ -10,14 +11,29 @@ use crate::positioning_state::PositioningInfoInstance;
 use crate::spaghetti::{Series, SpaghettiCanvas};
 use crate::spaghetti_state::SpaghettiChartInstance;
 use crate::timeframe::Timeframe;
+use crate::ws::ws_asset_ctx_stream_keyed;
 use iced::Color;
+use iced::advanced::subscription::{Hasher, into_recipes};
 use iced::widget::pane_grid;
+use std::hash::Hasher as _;
 
+mod automation;
 mod charts;
 mod order_books;
 mod position_pnl;
 mod positioning_info;
 mod spaghetti;
+
+fn subscription_hashes(subscription: Subscription<Message>) -> Vec<u64> {
+    into_recipes(subscription)
+        .into_iter()
+        .map(|recipe| {
+            let mut hasher = Hasher::default();
+            recipe.hash(&mut hasher);
+            hasher.finish()
+        })
+        .collect()
+}
 
 fn spaghetti_series(symbol: &str, loaded: bool) -> Series {
     Series {
