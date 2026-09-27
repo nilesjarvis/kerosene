@@ -45,6 +45,17 @@ impl TradingTerminal {
         row![
             column![
                 text("Wallet Tracker").size(16).color(theme.palette().text),
+                text(if self.wallet_tracker.remote_database.url.is_empty() {
+                    String::new()
+                } else {
+                    self.wallet_tracker.remote_database.status_text()
+                })
+                .size(11)
+                .color(if self.wallet_tracker.remote_database.error.is_some() {
+                    theme.palette().danger
+                } else {
+                    theme.extended_palette().background.weak.text
+                }),
                 text(format!(
                     "{} wallets | Equity {} | Available {} | uPnL {}",
                     wallet_count,

@@ -1,5 +1,6 @@
 mod hype_etfs;
 mod hype_unstaking_queue;
+mod listings;
 mod live_watchlist;
 mod order_book;
 mod positioning_info;
@@ -23,11 +24,18 @@ impl TradingTerminal {
             | Message::SymbolSearchHip3DexFilterChanged(_)
             | Message::SymbolSearchContextsLoaded(_, _, _, _)
             | Message::OutcomeSearchChanged(_)
+            | Message::OutcomeVenueFilterChanged(_)
+            | Message::OutcomeRulesToggled(_)
             | Message::OutcomeMarketGroupToggled(_)
             | Message::OutcomeVolumesLoaded(_, _, _)
             | Message::SymbolSelected(_)) => {
                 return self.update_symbol_search_market(message);
             }
+            message @ (Message::ListingsTick
+            | Message::RefreshListings
+            | Message::ListingsFilterChanged(_)
+            | Message::ListingsLoaded(_, _)
+            | Message::ListingsSaved(_)) => return self.update_listings_market(message),
             message @ (Message::RefreshHypeEtfs
             | Message::HypeEtfsRefreshTick
             | Message::HypeEtfsViewChanged(_)

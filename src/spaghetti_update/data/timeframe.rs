@@ -88,6 +88,7 @@ impl TradingTerminal {
         }
 
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
+            inst.health.clear();
             for series in &mut inst.canvas.series {
                 series.candles.clear();
                 series.loaded = false;

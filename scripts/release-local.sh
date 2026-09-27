@@ -21,7 +21,7 @@
 #
 # Environment:
 #   RELEASE_FORCE=1   force a release even with no new commits (backfill/retry)
-#   GH_TAG_DATE=      (unused; reserved) 
+#   GH_TAG_DATE=      (unused; reserved)
 #
 # Prereqs on this box:
 #   - gh authenticated (`gh auth status`)

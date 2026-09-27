@@ -15,6 +15,31 @@ fn start_twap_keeps_base_size_when_quantity_is_not_usd() {
 }
 
 #[test]
+fn start_twap_captures_subaccount_target_across_active_profile_changes() {
+    const PARENT: &str = "0xdef0000000000000000000000000000000000000";
+    let mut terminal = twap_ready_terminal();
+    terminal.accounts[0].master_address = Some(PARENT.to_string());
+    terminal.set_committed_agent_key_for_test("original-parent-agent");
+
+    let _task = terminal.start_twap(true);
+
+    terminal.accounts[0].master_address = None;
+    terminal.accounts[0].wallet_address = PARENT.to_string();
+    terminal.set_committed_agent_key_for_test("new-parent-agent");
+    terminal.connected_address = Some(PARENT.to_string());
+    terminal.wallet_address_input = PARENT.to_string();
+
+    let twap = started_twap_or_panic(&terminal);
+    assert_eq!(twap.account_address, TEST_ACCOUNT);
+    assert_eq!(twap.agent_key.as_str(), "original-parent-agent");
+    assert_eq!(twap.agent_key.vault_address(), Some(TEST_ACCOUNT));
+    assert_eq!(
+        twap.agent_key.clone_for_task().vault_address(),
+        Some(TEST_ACCOUNT)
+    );
+}
+
+#[test]
 fn spot_percentage_twap_sell_uses_exact_base_balance_not_rounded_usd_display() {
     let mut terminal = twap_ready_terminal();
     configure_spot_percentage_twap(&mut terminal, "30014.285", "0", 0.00035);

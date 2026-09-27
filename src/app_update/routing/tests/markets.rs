@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn listings_messages_reach_the_market_and_pane_routes() {
+    assert_route(Message::AddNewListingsPane, UpdateRoute::Panes);
+    for message in [
+        Message::ListingsTick,
+        Message::RefreshListings,
+        Message::ListingsFilterChanged(crate::market_state::listings::ListingsFilter::Spot),
+        Message::ListingsLoaded(
+            7,
+            Box::new(crate::market_state::listings::ListingsSnapshot {
+                perps: Err("offline".into()),
+                spot: Err("offline".into()),
+            }),
+        ),
+        Message::ListingsSaved(Ok(())),
+    ] {
+        assert_route(message, UpdateRoute::Market);
+    }
+}
+
+#[test]
 fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
     let source_context = crate::read_data_provider::MarketDataSourceContext {
         provider: crate::config::ReadDataProvider::Hyperliquid,
@@ -54,6 +74,48 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::Preferences,
     );
     assert_route(Message::OpenDetachedChart(7), UpdateRoute::Chart);
+    assert_route(
+        Message::ChartWsCandleUnavailable(
+            7,
+            "BTC".into(),
+            "1m".into(),
+            source_context,
+            "quiet".into(),
+        ),
+        UpdateRoute::Chart,
+    );
+    let comparison = crate::spaghetti_state::SpaghettiCandleFetch {
+        request_id: 1,
+        chart_id: 7,
+        instance_epoch: 0,
+        symbol: "BTC".into(),
+        timeframe: crate::timeframe::Timeframe::M1,
+        source: crate::config::ChartBackfillSource::Hyperliquid,
+        read_data_provider_generation: 0,
+        hydromancer_key_generation: 0,
+        start_ms: 1,
+        end_ms: 60_000,
+        session: None,
+        session_granularity: None,
+    };
+    assert_route(
+        Message::SpaghettiFetchRequested(comparison),
+        UpdateRoute::Spaghetti,
+    );
+    let comparison_context = crate::spaghetti_state::SpaghettiWsCandleContext {
+        chart_id: 7,
+        instance_epoch: 0,
+        symbol: "BTC".into(),
+        timeframe: crate::timeframe::Timeframe::M1,
+        source_context,
+        session: None,
+        session_granularity: None,
+    };
+    assert_route(
+        Message::SpaghettiWsCandleUnavailable(comparison_context, "quiet".into()),
+        UpdateRoute::Spaghetti,
+    );
+
     assert_route(Message::OpenQuickTradeEditor(7), UpdateRoute::Chart);
     assert_route(Message::QuickTradeActionAdded, UpdateRoute::Chart);
     assert_route(Message::SaveQuickTradeActions, UpdateRoute::Chart);
@@ -154,6 +216,11 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         Message::OutcomeMarketGroupToggled("question:19".to_string()),
         UpdateRoute::Market,
     );
+    assert_route(
+        Message::OutcomeVenueFilterChanged(Some("skew".to_string())),
+        UpdateRoute::Market,
+    );
+    assert_route(Message::OutcomeRulesToggled(65), UpdateRoute::Market);
     assert_route(
         Message::TickerTapeExchangeStatsLoaded(
             1,

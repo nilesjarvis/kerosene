@@ -17,6 +17,7 @@ use super::telemetry::{
 };
 #[cfg(not(test))]
 use crate::api::proxy::HyperliquidRequestExt;
+use crate::network_activity::{ActivityKind, Provider, record_ws_frame, record_ws_lifecycle};
 use futures::{Sink, SinkExt as _};
 use serde_json::Value;
 use std::fmt;
@@ -73,6 +74,7 @@ impl fmt::Debug for WsRoutedMessage {
 pub enum WsCommand {
     Subscribe { topic: String, payload: Value },
     Unsubscribe { topic: String, payload: Value },
+    Resubscribe { topic: String },
     Ping,
     Reconnect,
 }
@@ -89,6 +91,10 @@ impl fmt::Debug for WsCommand {
                 .debug_struct("Unsubscribe")
                 .field("topic", &redacted_ws_topic_debug_value(topic))
                 .field("payload", &redacted_ws_value(payload))
+                .finish(),
+            Self::Resubscribe { topic } => f
+                .debug_tuple("Resubscribe")
+                .field(&redacted_ws_topic_debug_value(topic))
                 .finish(),
             Self::Ping => f.write_str("Ping"),
             Self::Reconnect => f.write_str("Reconnect"),
@@ -291,6 +297,7 @@ async fn ws_manager_task_with_options(
             return;
         }
 
+        record_ws_lifecycle(Provider::Hyperliquid, ActivityKind::WsConnecting);
         let mut connect_fut = Box::pin(connect_with_timeout(
             tokio_tungstenite::connect_async(&ws_url),
             connect_timeout,
@@ -323,6 +330,7 @@ async fn ws_manager_task_with_options(
         let ws_stream = match connect_result {
             ConnectAttempt::Finished(Ok((ws, _))) => ws,
             ConnectAttempt::Finished(Err(_)) | ConnectAttempt::TimedOut => {
+                record_ws_lifecycle(Provider::Hyperliquid, ActivityKind::WsFailed);
                 if !sleep_with_disconnected_ws_commands(
                     Duration::from_secs(reconnect_delay_secs),
                     &mut active_subs,
@@ -338,6 +346,7 @@ async fn ws_manager_task_with_options(
             }
         };
         telemetry_on_connect();
+        record_ws_lifecycle(Provider::Hyperliquid, ActivityKind::WsConnected);
         let connected_at = Instant::now();
 
         let (mut write, mut read) = ws_stream.split();
@@ -389,11 +398,21 @@ async fn ws_manager_task_with_options(
                     if action.mark_ping_start {
                         telemetry_mark_ws_ping_start();
                     }
-                    if let Some(payload) = action.outbound_payload
-                        && !send_ws_text_with_timeout(&mut write, payload.to_string()).await
-                        && action.disconnect_on_send_error
-                    {
-                        disconnected = true;
+                    if let Some(payload) = action.outbound_payload {
+                        if action.unsubscribe_first {
+                            let mut unsubscribe = payload.clone();
+                            unsubscribe["method"] = serde_json::json!("unsubscribe");
+                            if !send_ws_text_with_timeout(&mut write, unsubscribe.to_string()).await
+                            {
+                                disconnected = true;
+                            }
+                        }
+                        if !disconnected
+                            && !send_ws_text_with_timeout(&mut write, payload.to_string()).await
+                            && action.disconnect_on_send_error
+                        {
+                            disconnected = true;
+                        }
                     }
                     if action.disconnect_after_handling {
                         disconnected = true;
@@ -407,6 +426,7 @@ async fn ws_manager_task_with_options(
                 }
                 Ok(Either::Right((msg_opt, _))) => match msg_opt {
                     Some(Ok(WsMsg::Text(text))) => {
+                        record_ws_frame(Provider::Hyperliquid, &WsMsg::Text(text.clone()), true);
                         last_rx_at = Instant::now();
                         telemetry_add_rx(text.len() as u64);
                         match parse_ws_text_frame(&text) {
@@ -419,7 +439,8 @@ async fn ws_manager_task_with_options(
                             WsTextFrame::Ignored => {}
                         }
                     }
-                    Some(Ok(_)) => {
+                    Some(Ok(message)) => {
+                        record_ws_frame(Provider::Hyperliquid, &message, true);
                         last_rx_at = Instant::now();
                     }
                     Some(Err(_)) | None => {
@@ -431,6 +452,7 @@ async fn ws_manager_task_with_options(
 
         coalescer.flush_all();
         telemetry_on_disconnect();
+        record_ws_lifecycle(Provider::Hyperliquid, ActivityKind::WsDisconnected);
         let (delay_secs, next_delay_secs) =
             policy.after_disconnect(reconnect_delay_secs, connected_at.elapsed());
         if !sleep_with_disconnected_ws_commands(
@@ -546,7 +568,9 @@ where
     W: Sink<WsMsg> + Unpin,
 {
     telemetry_add_tx(text.len() as u64);
-    let mut send = std::pin::pin!(write.send(WsMsg::Text(text.into())));
+    let message = WsMsg::Text(text.into());
+    record_ws_frame(Provider::Hyperliquid, &message, false);
+    let mut send = std::pin::pin!(write.send(message));
     let first_poll = futures::future::poll_fn(|cx| {
         std::task::Poll::Ready(std::future::Future::poll(send.as_mut(), cx))
     })
@@ -610,7 +634,9 @@ fn handle_connecting_ws_command(
                 ConnectingWsCommandAction::ContinueConnecting
             }
         }
-        WsCommand::Ping => ConnectingWsCommandAction::ContinueConnecting,
+        WsCommand::Ping | WsCommand::Resubscribe { .. } => {
+            ConnectingWsCommandAction::ContinueConnecting
+        }
         WsCommand::Reconnect => ConnectingWsCommandAction::RestartLoop,
     }
 }
@@ -623,7 +649,7 @@ fn handle_disconnected_ws_command(active_subs: &mut ActiveWsSubscriptions, comma
         WsCommand::Unsubscribe { topic, payload } => {
             active_subs.unsubscribe(topic, payload);
         }
-        WsCommand::Ping | WsCommand::Reconnect => {}
+        WsCommand::Ping | WsCommand::Reconnect | WsCommand::Resubscribe { .. } => {}
     }
 }
 

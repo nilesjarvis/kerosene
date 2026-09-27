@@ -13,6 +13,8 @@ fn bottom_tab_to_config(tab: BottomTab) -> BottomTabConfig {
         BottomTab::Balances => BottomTabConfig::Balances,
         BottomTab::TradeHistory => BottomTabConfig::TradeHistory,
         BottomTab::FundingHistory => BottomTabConfig::FundingHistory,
+        BottomTab::DepositsWithdrawals => BottomTabConfig::DepositsWithdrawals,
+        BottomTab::Transfers => BottomTabConfig::Transfers,
     }
 }
 
@@ -23,6 +25,8 @@ fn bottom_tab_from_config(tab: BottomTabConfig) -> BottomTab {
         BottomTabConfig::Balances => BottomTab::Balances,
         BottomTabConfig::TradeHistory => BottomTab::TradeHistory,
         BottomTabConfig::FundingHistory => BottomTab::FundingHistory,
+        BottomTabConfig::DepositsWithdrawals => BottomTab::DepositsWithdrawals,
+        BottomTabConfig::Transfers => BottomTab::Transfers,
     }
 }
 
@@ -52,6 +56,7 @@ pub(super) fn pane_kind_to_config(kind: &PaneKind) -> PaneKindConfig {
         PaneKind::TrackedTrades => PaneKindConfig::TrackedTrades,
         PaneKind::TelegramFeed => PaneKindConfig::TelegramFeed,
         PaneKind::Outcomes => PaneKindConfig::Outcomes,
+        PaneKind::NewListings => PaneKindConfig::NewListings,
         PaneKind::HypeEtfs => PaneKindConfig::HypeEtfs,
         PaneKind::HypeUnstakingQueue => PaneKindConfig::HypeUnstakingQueue,
     }
@@ -86,8 +91,54 @@ pub(super) fn pane_kind_from_config(kind: &PaneKindConfig) -> Option<PaneKind> {
         PaneKindConfig::TrackedTrades => Some(PaneKind::TrackedTrades),
         PaneKindConfig::TelegramFeed => Some(PaneKind::TelegramFeed),
         PaneKindConfig::Outcomes => Some(PaneKind::Outcomes),
+        PaneKindConfig::NewListings => Some(PaneKind::NewListings),
         PaneKindConfig::HypeEtfs => Some(PaneKind::HypeEtfs),
         PaneKindConfig::HypeUnstakingQueue => Some(PaneKind::HypeUnstakingQueue),
         PaneKindConfig::Unsupported | PaneKindConfig::Unknown(_) => None,
+    }
+}
+
+#[cfg(test)]
+mod transfer_tests {
+    use super::*;
+
+    #[test]
+    fn transfers_tab_round_trips_through_layout_config() {
+        let pane = PaneKind::BottomTabs {
+            active_tab: BottomTab::Transfers,
+        };
+        let config = pane_kind_to_config(&pane);
+        assert_eq!(
+            config,
+            PaneKindConfig::BottomTabs {
+                active_tab: BottomTabConfig::Transfers
+            }
+        );
+        assert!(matches!(
+            pane_kind_from_config(&config),
+            Some(PaneKind::BottomTabs {
+                active_tab: BottomTab::Transfers
+            })
+        ));
+    }
+
+    #[test]
+    fn deposits_withdrawals_tab_round_trips_through_layout_config() {
+        let pane = PaneKind::BottomTabs {
+            active_tab: BottomTab::DepositsWithdrawals,
+        };
+        let config = pane_kind_to_config(&pane);
+        assert_eq!(
+            config,
+            PaneKindConfig::BottomTabs {
+                active_tab: BottomTabConfig::DepositsWithdrawals
+            }
+        );
+        assert!(matches!(
+            pane_kind_from_config(&config),
+            Some(PaneKind::BottomTabs {
+                active_tab: BottomTab::DepositsWithdrawals
+            })
+        ));
     }
 }

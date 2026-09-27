@@ -59,6 +59,8 @@ impl ChartInstance {
             heatmap_status: None,
             heatmap_fetching: false,
             candle_fetch_request: None,
+            candle_stream_error: None,
+            candle_repair_at_ms: None,
             candle_fetch_error: None,
             candle_history_verified_at_ms: None,
             candle_ws_updated_at_ms: None,
@@ -67,6 +69,8 @@ impl ChartInstance {
             candle_backfill_exhausted: false,
             spot_candle_gap_reloaded_at_ms: None,
             secondary_candle_fetch_request: None,
+            secondary_candle_stream_error: None,
+            secondary_candle_repair_at_ms: None,
             secondary_candle_fetch_error: None,
             secondary_candle_history_verified_at_ms: None,
             secondary_candle_ws_updated_at_ms: None,
@@ -183,6 +187,8 @@ impl ChartInstance {
             heatmap_status: self.heatmap_status.clone(),
             heatmap_fetching: false,
             candle_fetch_request: None,
+            candle_stream_error: None,
+            candle_repair_at_ms: None,
             candle_fetch_error: self.candle_fetch_error.clone(),
             candle_history_verified_at_ms: self.candle_history_verified_at_ms,
             candle_ws_updated_at_ms: self.candle_ws_updated_at_ms,
@@ -191,6 +197,8 @@ impl ChartInstance {
             candle_backfill_exhausted: self.candle_backfill_exhausted,
             spot_candle_gap_reloaded_at_ms: self.spot_candle_gap_reloaded_at_ms,
             secondary_candle_fetch_request: None,
+            secondary_candle_stream_error: None,
+            secondary_candle_repair_at_ms: None,
             secondary_candle_fetch_error: self.secondary_candle_fetch_error.clone(),
             secondary_candle_history_verified_at_ms: self.secondary_candle_history_verified_at_ms,
             secondary_candle_ws_updated_at_ms: self.secondary_candle_ws_updated_at_ms,
@@ -221,6 +229,8 @@ impl ChartInstance {
     }
 
     pub(crate) fn reset_primary_candle_trust(&mut self) {
+        self.candle_stream_error = None;
+        self.candle_repair_at_ms = None;
         self.candle_history_verified_at_ms = None;
         self.candle_ws_updated_at_ms = None;
         self.candle_ws_updates_during_fetch.clear();
@@ -228,6 +238,8 @@ impl ChartInstance {
     }
 
     pub(crate) fn reset_secondary_candle_trust(&mut self) {
+        self.secondary_candle_stream_error = None;
+        self.secondary_candle_repair_at_ms = None;
         self.secondary_candle_history_verified_at_ms = None;
         self.secondary_candle_ws_updated_at_ms = None;
         self.secondary_candle_ws_updates_during_fetch.clear();
@@ -235,6 +247,7 @@ impl ChartInstance {
     }
 
     pub(crate) fn remember_primary_ws_candle(&mut self, candle: crate::api::Candle, now_ms: u64) {
+        self.candle_stream_error = None;
         self.candle_ws_updated_at_ms = Some(now_ms);
         if self.candle_fetch_request.is_some() {
             remember_ws_candle(&mut self.candle_ws_updates_during_fetch, candle);
@@ -242,6 +255,7 @@ impl ChartInstance {
     }
 
     pub(crate) fn remember_secondary_ws_candle(&mut self, candle: crate::api::Candle, now_ms: u64) {
+        self.secondary_candle_stream_error = None;
         self.secondary_candle_ws_updated_at_ms = Some(now_ms);
         if self.secondary_candle_fetch_request.is_some() {
             remember_ws_candle(&mut self.secondary_candle_ws_updates_during_fetch, candle);
@@ -407,6 +421,8 @@ impl ChartInstance {
             heatmap_status: None,
             heatmap_fetching: false,
             candle_fetch_request: None,
+            candle_stream_error: None,
+            candle_repair_at_ms: None,
             candle_fetch_error: None,
             candle_history_verified_at_ms: None,
             candle_ws_updated_at_ms: None,
@@ -415,6 +431,8 @@ impl ChartInstance {
             candle_backfill_exhausted: false,
             spot_candle_gap_reloaded_at_ms: None,
             secondary_candle_fetch_request: None,
+            secondary_candle_stream_error: None,
+            secondary_candle_repair_at_ms: None,
             secondary_candle_fetch_error: None,
             secondary_candle_history_verified_at_ms: None,
             secondary_candle_ws_updated_at_ms: None,

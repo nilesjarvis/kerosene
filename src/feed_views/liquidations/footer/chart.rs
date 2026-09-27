@@ -36,8 +36,7 @@ impl TradingTerminal {
         }
 
         let max_bar_height = 24.0;
-        let success_color = theme.palette().success;
-        let danger_color = theme.palette().danger;
+        let (buy_color, sell_color) = self.direction_colors(&theme);
 
         for (l, s) in chart_data {
             let s_h = ((s / max_vol) as f32 * max_bar_height).max(0.0);
@@ -52,14 +51,14 @@ impl TradingTerminal {
                     .width(bar_width)
                     .height(iced::Length::Fixed(s_fill))
                     .style(move |_| container_style::Style {
-                        background: Some(success_color.into()),
+                        background: Some(buy_color.into()),
                         ..Default::default()
                     }),
                 container(Space::new())
                     .width(bar_width)
                     .height(iced::Length::Fixed(l_fill))
                     .style(move |_| container_style::Style {
-                        background: Some(danger_color.into()),
+                        background: Some(sell_color.into()),
                         ..Default::default()
                     }),
             ]

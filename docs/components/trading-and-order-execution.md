@@ -44,6 +44,21 @@ Orders can originate from several surfaces:
 All surfaces should route through the same execution boundary rather than
 duplicating signing or order construction logic.
 
+### Subaccount Trading Identity
+
+`capture_profile_signing_key` captures the committed agent key and effective
+subaccount target together in `CapturedAgentKey`. A profile with
+`master_address: Some(parent)` must have valid, distinct parent and child
+addresses. It signs the child's `wallet_address` as `vaultAddress`; ordinary
+profiles retain a null target. Invalid metadata blocks trading.
+
+Place, cancel, cancel-by-CLOID, modify, and leverage actions include the captured
+target in both the action hash and JSON payload. Task clones, Chase/TWAP
+lifecycles, late-result cancellation, move-order replacements, and cluster legs
+retain that target. Reads, optimistic indicators, and result reconciliation use
+the same effective child address. The existing pending-request and automation
+guards continue to govern account switching.
+
 ## Standard Ticket Flow
 
 ```text
@@ -374,6 +389,20 @@ Outcome markets have special handling:
 - some forms force coin-size rather than USD-notional input
 - outcome sell prefill can use held outcome balances
 - unsupported order surfaces should disable rather than route
+
+Outcome placement and modification additionally require live verified contract
+metadata, supported quote tokens, and an unpassed expiry/resolution deadline.
+These checks run in shared preparation, including ticket, presets, and moving
+existing orders. Cached, unknown, malformed, settled, and fallback contracts
+are not orderable. Cancellation stays available and can recover deterministic
+asset IDs from canonical `#(10 * outcome + side)` keys after metadata removal;
+that recovery never authorizes placement or modification.
+
+The ticket exposes template-derived rules, parent-question context, and
+published fee scales. Scalar prices represent fractional payout value, not
+event probabilities. Split/merge/negate operations are not exposed. See
+[market data and symbols](market-data-and-symbols.md#contract-verification-and-lifecycle)
+for metadata provenance and supported template families.
 
 Do not assume all market symbols are main-dex perpetuals.
 

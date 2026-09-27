@@ -41,7 +41,7 @@ fn pending_leverage_update() -> PendingLeverageUpdateContext {
 fn pending_move_context() -> PendingMoveOrderContext {
     PendingMoveOrderContext::new(
         TEST_ACCOUNT.to_string(),
-        sensitive_string("move-agent").into_zeroizing(),
+        sensitive_string("move-agent").into_zeroizing().into(),
     )
     .expect("move context")
 }

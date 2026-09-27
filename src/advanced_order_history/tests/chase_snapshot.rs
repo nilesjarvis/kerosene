@@ -227,5 +227,6 @@ fn fill(oid: u64, time: u64, px: &str, sz: &str, fee: &str, closed_pnl: &str) ->
         closed_pnl: closed_pnl.to_string(),
         fee: fee.to_string(),
         fee_token: None,
+        start_position: None,
     }
 }

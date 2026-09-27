@@ -37,6 +37,7 @@ pub(crate) fn fill(time: u64) -> UserFill {
         closed_pnl: "0".to_string(),
         fee: "0.01".to_string(),
         fee_token: None,
+        start_position: None,
     }
 }
 

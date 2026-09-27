@@ -22,7 +22,7 @@ impl TradingTerminal {
                 if self.wallet_tracker.tracked_addresses.contains(&addr) {
                     if was_muted {
                         let label = self.wallet_tracker.add_label_input.trim();
-                        if !label.is_empty() {
+                        if !label.is_empty() && !self.wallet_is_remote(&addr) {
                             self.address_book.entry(addr.clone()).or_default().label =
                                 label.to_string();
                         }
@@ -86,6 +86,10 @@ impl TradingTerminal {
                 let address = address.into_string();
                 let normalized_address =
                     Self::normalize_wallet_address(&address).unwrap_or(address);
+                if self.wallet_is_remote(&normalized_address) {
+                    self.push_toast("Manage this wallet in the remote database".into(), false);
+                    return Task::none();
+                }
                 let was_labeled = self.wallet_label(&normalized_address).is_some();
                 self.wallet_tracker
                     .tracked_addresses
@@ -111,6 +115,9 @@ impl TradingTerminal {
                 let Some(address) = Self::normalize_wallet_address(address.as_str()) else {
                     return Task::none();
                 };
+                if self.wallet_is_remote(&address) {
+                    return Task::none();
+                }
                 let was_labeled = self.wallet_label(&address).is_some();
                 let label = label.trim().to_string();
                 if label.is_empty() {

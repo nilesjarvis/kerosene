@@ -5,7 +5,7 @@ use self::header::position_size_is_nonzero;
 use super::table_helpers::{account_table_scroll, empty_account_table};
 use crate::account::{self, AccountDataSection};
 use crate::app_state::TradingTerminal;
-use crate::helpers::format_price;
+use crate::helpers::{format_price, section_separator};
 use crate::message::Message;
 use crate::order_pending_indicators::ProjectedPositionDelta;
 
@@ -30,6 +30,7 @@ pub(super) const POSITION_SIDE_WIDTH: f32 = 65.0;
 pub(super) const POSITION_ENTRY_WIDTH: f32 = 90.0;
 pub(super) const POSITION_LIQ_WIDTH: f32 = 90.0;
 pub(super) const POSITION_MARK_WIDTH: f32 = 90.0;
+pub(super) const POSITION_SPENT_FEES_WIDTH: f32 = 100.0;
 pub(super) const POSITION_FUNDING_WIDTH: f32 = 90.0;
 pub(super) const POSITION_LEVERAGE_WIDTH: f32 = 100.0;
 
@@ -67,33 +68,37 @@ const HIDE_LIQUIDATION_BELOW: f32 = POSITION_SIDE_WIDTH
     + 8.0 * ROW_SPACING // 9 children
     + ROW_HORIZONTAL_PADDING
     + 4.0 * MIN_FILL_WIDTH;
+const HIDE_SPENT_FEES_BELOW: f32 = HIDE_LIQUIDATION_BELOW + POSITION_SPENT_FEES_WIDTH + ROW_SPACING;
 const HIDE_FUNDING_BELOW: f32 = POSITION_SIDE_WIDTH
     + POSITION_ENTRY_WIDTH
     + POSITION_LIQ_WIDTH
     + POSITION_MARK_WIDTH
+    + POSITION_SPENT_FEES_WIDTH
     + POSITION_FUNDING_WIDTH
     + POSITION_ACTION_WIDTH
-    + 9.0 * ROW_SPACING // 10 children
+    + 10.0 * ROW_SPACING // 11 children
     + ROW_HORIZONTAL_PADDING
     + 4.0 * MIN_FILL_WIDTH;
 const HIDE_LEVERAGE_BELOW: f32 = POSITION_SIDE_WIDTH
     + POSITION_ENTRY_WIDTH
     + POSITION_LIQ_WIDTH
     + POSITION_MARK_WIDTH
+    + POSITION_SPENT_FEES_WIDTH
     + POSITION_FUNDING_WIDTH
     + POSITION_LEVERAGE_WIDTH
     + POSITION_ACTION_WIDTH
-    + 10.0 * ROW_SPACING // 11 children
+    + 11.0 * ROW_SPACING // 12 children
     + ROW_HORIZONTAL_PADDING
     + 4.0 * MIN_FILL_WIDTH;
 const HIDE_TOTAL_PNL_BELOW: f32 = POSITION_SIDE_WIDTH
     + POSITION_ENTRY_WIDTH
     + POSITION_LIQ_WIDTH
     + POSITION_MARK_WIDTH
+    + POSITION_SPENT_FEES_WIDTH
     + POSITION_FUNDING_WIDTH
     + POSITION_LEVERAGE_WIDTH
     + POSITION_ACTION_WIDTH
-    + 11.0 * ROW_SPACING // 12 children
+    + 12.0 * ROW_SPACING // 13 children
     + ROW_HORIZONTAL_PADDING
     + 5.0 * MIN_FILL_WIDTH; // Total PnL is itself a Fill column
 const HIDE_ENTRY_BELOW: f32 = 560.0;
@@ -105,6 +110,7 @@ pub(super) struct PositionColumnVisibility {
     pub(super) entry: bool,
     pub(super) liquidation: bool,
     pub(super) mark: bool,
+    pub(super) spent_fees: bool,
     pub(super) funding: bool,
     pub(super) total_pnl: bool,
     pub(super) leverage: bool,
@@ -116,6 +122,7 @@ impl PositionColumnVisibility {
             entry: width >= HIDE_ENTRY_BELOW,
             liquidation: width >= HIDE_LIQUIDATION_BELOW,
             mark: width >= HIDE_MARK_BELOW,
+            spent_fees: width >= HIDE_SPENT_FEES_BELOW,
             funding: width >= HIDE_FUNDING_BELOW,
             total_pnl: width >= HIDE_TOTAL_PNL_BELOW,
             leverage: width >= HIDE_LEVERAGE_BELOW,
@@ -231,7 +238,8 @@ impl TradingTerminal {
             .push(rows);
         for delta in &opening_deltas {
             let symbol_label = self.display_name_for_symbol(&delta.symbol);
-            let size_label = self.display_size_for_symbol(&delta.symbol, delta.signed_size.abs());
+            let size_label =
+                self.display_position_size(&delta.symbol, delta.signed_size.abs(), number_mode);
             content = content.push(position_content_inset(opening_position_row(
                 delta,
                 symbol_label,
@@ -306,13 +314,11 @@ impl TradingTerminal {
 
         if !spot_positions.is_empty() {
             if !perp_positions.is_empty() {
-                content = content.push(position_content_inset(rule::horizontal(1)));
+                content = content.push(position_content_inset(section_separator()));
             }
             content = content
                 .push(position_content_inset(position_section_header(
-                    "Spot",
-                    spot_positions.len(),
-                    theme,
+                    "Spot", None, theme,
                 )))
                 .push(self.view_position_rows(
                     &spot_positions,
@@ -325,12 +331,12 @@ impl TradingTerminal {
 
         if !outcome_positions.is_empty() {
             if !perp_positions.is_empty() || !spot_positions.is_empty() {
-                content = content.push(position_content_inset(rule::horizontal(1)));
+                content = content.push(position_content_inset(section_separator()));
             }
             content = content
                 .push(position_content_inset(position_section_header(
                     "Outcomes",
-                    outcome_positions.len(),
+                    Some(outcome_positions.len()),
                     theme,
                 )))
                 .push(self.view_position_rows(
@@ -406,14 +412,14 @@ fn opening_position_label(
 
 fn position_section_header<'a>(
     label: &'static str,
-    count: usize,
+    count: Option<usize>,
     theme: &Theme,
 ) -> Element<'a, Message> {
     let text_color = theme.extended_palette().background.weak.text;
     let badge_color = theme.palette().primary;
-    container(
-        row![
-            text(label).size(11).color(text_color),
+    let mut header = row![text(label).size(11).color(text_color)];
+    if let Some(count) = count {
+        header = header.push(
             container(text(count.to_string()).size(10).color(badge_color))
                 .padding([1, 5])
                 .style(move |_theme: &Theme| iced::widget::container::Style {
@@ -434,17 +440,16 @@ fn position_section_header<'a>(
                     },
                     ..Default::default()
                 }),
-        ]
-        .spacing(6)
-        .align_y(iced::Alignment::Center),
-    )
-    .padding(iced::Padding {
-        top: 4.0,
-        right: 8.0,
-        bottom: 0.0,
-        left: 8.0,
-    })
-    .into()
+        );
+    }
+    container(header.spacing(6).align_y(iced::Alignment::Center))
+        .padding(iced::Padding {
+            top: 4.0,
+            right: 8.0,
+            bottom: 0.0,
+            left: 8.0,
+        })
+        .into()
 }
 
 #[cfg(test)]

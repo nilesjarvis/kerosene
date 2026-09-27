@@ -22,6 +22,15 @@ impl TradingTerminal {
         let is_active = option.index == self.active_account_index;
         let label = Self::truncate_display_text(&Self::account_picker_label(option), 28);
         let address = Self::account_picker_address_line(option);
+        let address = if self
+            .accounts
+            .get(option.index)
+            .is_some_and(|profile| profile.master_address.is_some())
+        {
+            format!("{address} · Subaccount")
+        } else {
+            address
+        };
         let active_marker = if is_active { ">" } else { "" };
         let index = option.index;
         let is_renaming = self.account_picker_rename_index == Some(index);

@@ -22,7 +22,6 @@ use formatting::{
 
 const HIDE_MARK_ORACLE_BELOW: f32 = 720.0;
 const HIDE_OPEN_INTEREST_BELOW: f32 = 560.0;
-const HIDE_FUNDING_BELOW: f32 = 460.0;
 const HIDE_24H_VOLUME_BELOW: f32 = 420.0;
 const HIDE_24H_CHANGE_BELOW: f32 = 340.0;
 
@@ -32,7 +31,6 @@ pub(crate) struct ChartHeaderMetricVisibility {
     pub(crate) show_24h_volume: bool,
     pub(crate) show_mark_oracle: bool,
     pub(crate) show_open_interest: bool,
-    pub(crate) show_funding: bool,
 }
 
 impl ChartHeaderMetricVisibility {
@@ -43,7 +41,6 @@ impl ChartHeaderMetricVisibility {
             show_24h_volume: width >= HIDE_24H_VOLUME_BELOW,
             show_mark_oracle: width >= HIDE_MARK_ORACLE_BELOW,
             show_open_interest: width >= HIDE_OPEN_INTEREST_BELOW,
-            show_funding: width >= HIDE_FUNDING_BELOW,
         }
     }
 }
@@ -141,14 +138,7 @@ pub(super) fn push_perp_metric_columns<'a>(
     asset_volume_as_notional: bool,
     open_interest_as_notional: bool,
     visibility: ChartHeaderMetricVisibility,
-    now_ms: u64,
 ) -> Row<'a, Message> {
-    let funding = parse_ctx_f64(ctx.funding.as_deref());
-    let funding_color = match funding {
-        Some(value) if value >= 0.0 => theme.palette().success,
-        Some(_) => theme.palette().danger,
-        None => theme.palette().warning,
-    };
     let mark = parse_ctx_f64(ctx.mark_px.as_deref());
     let oracle = parse_ctx_f64(ctx.oracle_px.as_deref());
     let oi = parse_ctx_f64(ctx.open_interest.as_deref());
@@ -183,15 +173,6 @@ pub(super) fn push_perp_metric_columns<'a>(
         ));
     }
 
-    if visibility.show_funding {
-        header_row = header_row.push(metric_column(
-            format!("Funding ({})", funding_countdown(now_ms)),
-            format_funding_pct(funding),
-            funding_color,
-            theme,
-        ));
-    }
-
     if visibility.show_open_interest {
         header_row = header_row.push(clickable_metric_column(
             open_interest_label(open_interest_as_notional),
@@ -203,6 +184,30 @@ pub(super) fn push_perp_metric_columns<'a>(
     }
 
     header_row
+}
+
+pub(in crate::chart_views::header) fn funding_column(
+    theme: &Theme,
+    ctx: Option<&AssetContext>,
+    now_ms: u64,
+) -> iced::widget::Column<'static, Message> {
+    let raw_funding = ctx.and_then(|ctx| ctx.funding.as_deref());
+    let funding = parse_ctx_f64(raw_funding);
+    let color = match funding {
+        Some(value) if value >= 0.0 => theme.palette().success,
+        Some(_) => theme.palette().danger,
+        None => theme.palette().warning,
+    };
+    metric_column(
+        format!("Funding ({})", funding_countdown(now_ms)),
+        if raw_funding.is_some() {
+            format_funding_pct(funding)
+        } else {
+            "-".to_string()
+        },
+        color,
+        theme,
+    )
 }
 
 pub(super) fn push_spot_metric_columns<'a>(

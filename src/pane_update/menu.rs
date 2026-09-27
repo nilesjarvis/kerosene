@@ -19,6 +19,13 @@ impl TradingTerminal {
                 self.set_workspace_focus(workspace, Some(pane));
                 self.last_focused_workspace = workspace;
                 self.persist_config();
+                if matches!(
+                    tab,
+                    crate::account_state::BottomTab::DepositsWithdrawals
+                        | crate::account_state::BottomTab::Transfers
+                ) {
+                    return self.refresh_transfer_history();
+                }
             }
             Message::CloseAllMenus => {
                 self.close_chart_header_menus();
@@ -141,6 +148,7 @@ pub(super) fn add_widget_message(
         AddWidgetKind::Portfolio => Message::AddPortfolioPane,
         AddWidgetKind::Income => Message::AddIncomePane,
         AddWidgetKind::Outcomes => Message::AddOutcomesPane,
+        AddWidgetKind::NewListings => Message::AddNewListingsPane,
         AddWidgetKind::HypeEtfs => Message::AddHypeEtfsPane,
         AddWidgetKind::HypeUnstakingQueue => Message::AddHypeUnstakingQueuePane,
         AddWidgetKind::Liquidations => Message::AddLiquidationsPane,

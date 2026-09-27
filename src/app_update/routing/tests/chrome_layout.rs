@@ -1,6 +1,21 @@
 use super::*;
 
 #[test]
+fn console_messages_route_to_console() {
+    for message in [
+        Message::OpenConsoleWindow,
+        Message::ConsoleTick,
+        Message::ConsoleTogglePause,
+        Message::ConsoleProviderChanged(crate::network_activity::Provider::Hyperliquid),
+        Message::ConsoleFilterChanged(crate::console_state::ConsoleFilter::Http),
+        Message::ConsolePageChanged(1),
+        Message::ConsoleClear,
+    ] {
+        assert_route(message, UpdateRoute::Console);
+    }
+}
+
+#[test]
 fn chrome_layout_calendar_and_portfolio_routes_cover_shared_shell_messages() {
     assert_route(Message::Tick, UpdateRoute::Calendar);
     assert_route(

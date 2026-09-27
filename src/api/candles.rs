@@ -4,7 +4,13 @@ use crate::config::ChartBackfillSource;
 use crate::timeframe::Timeframe;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::Serialize;
+use sha3::{Digest, Sha3_256};
+use std::sync::LazyLock;
+use std::time::Duration;
 use zeroize::Zeroizing;
+
+static LIVE_READS: LazyLock<super::shared_reads::SharedReads<Vec<Candle>>> =
+    LazyLock::new(super::shared_reads::SharedReads::new);
 
 mod model;
 mod normalize;
@@ -229,49 +235,63 @@ async fn fetch_candles_from_endpoint(
     start_time: u64,
     end_time: u64,
 ) -> Result<Vec<Candle>, String> {
-    let body = CandleRequest {
-        req_type: "candleSnapshot".to_string(),
-        req: CandleRequestInner {
-            coin,
-            start_time,
-            end_time,
-            interval,
-        },
-    };
+    // Bucket both bounds by a second so panes opened in the same render cycle
+    // share the request. Keep the historical upper bound exclusive of newer
+    // candles when backfilling; no rounding to a future candle boundary.
+    let start_time = start_time / 1000 * 1000;
+    let end_time = end_time / 1000 * 1000;
+    let credential_scope = bearer_token
+        .as_ref()
+        .map(|token| format!("{:x}", Sha3_256::digest(token.as_bytes())))
+        .unwrap_or_default();
+    let key = format!("{url}|{credential_scope}|{coin}|{interval}|{start_time}|{end_time}");
+    LIVE_READS
+        .get(key, Duration::from_secs(1), async move {
+            let body = CandleRequest {
+                req_type: "candleSnapshot".to_string(),
+                req: CandleRequestInner {
+                    coin,
+                    start_time,
+                    end_time,
+                    interval,
+                },
+            };
 
-    let redact_sensitive_response = bearer_token.is_some();
-    let client = CLIENT.clone();
-    let mut request = client
-        .post(url)
-        .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .json(&body);
-    if let Some(token) = bearer_token {
-        request = request.bearer_auth(token.as_str());
-    }
+            let redact_sensitive_response = bearer_token.is_some();
+            let client = CLIENT.clone();
+            let mut request = client
+                .post(url)
+                .header(USER_AGENT, KEROSENE_USER_AGENT)
+                .json(&body);
+            if let Some(token) = bearer_token {
+                request = request.bearer_auth(token.as_str());
+            }
 
-    let response = request
-        .send_info()
+            let response = request
+                .send_info()
+                .await
+                .map_err(|e| format!("Request failed: {e}"))?;
+
+            let status = response.status();
+            let content_type = response
+                .headers()
+                .get(CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string);
+
+            let text = response
+                .text()
+                .await
+                .map_err(|e| format!("Failed to read response: {e}"))?;
+
+            parse_candle_response(
+                status,
+                content_type.as_deref(),
+                &text,
+                redact_sensitive_response,
+            )
+        })
         .await
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    let status = response.status();
-    let content_type = response
-        .headers()
-        .get(CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_string);
-
-    let text = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    parse_candle_response(
-        status,
-        content_type.as_deref(),
-        &text,
-        redact_sensitive_response,
-    )
 }
 
 fn candle_interval_ms(interval: &str) -> Option<u64> {

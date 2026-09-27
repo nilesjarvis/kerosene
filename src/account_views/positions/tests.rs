@@ -8,6 +8,7 @@ fn position_columns_hide_one_group_at_a_time_as_width_shrinks() {
             entry: true,
             liquidation: true,
             mark: true,
+            spent_fees: true,
             funding: true,
             total_pnl: true,
             leverage: true,
@@ -19,6 +20,7 @@ fn position_columns_hide_one_group_at_a_time_as_width_shrinks() {
             entry: true,
             liquidation: true,
             mark: true,
+            spent_fees: true,
             funding: true,
             total_pnl: false,
             leverage: true,
@@ -30,6 +32,7 @@ fn position_columns_hide_one_group_at_a_time_as_width_shrinks() {
             entry: true,
             liquidation: true,
             mark: true,
+            spent_fees: true,
             funding: true,
             total_pnl: false,
             leverage: false,
@@ -41,6 +44,7 @@ fn position_columns_hide_one_group_at_a_time_as_width_shrinks() {
             entry: true,
             liquidation: true,
             mark: true,
+            spent_fees: true,
             funding: false,
             total_pnl: false,
             leverage: false,
@@ -52,6 +56,7 @@ fn position_columns_hide_one_group_at_a_time_as_width_shrinks() {
             entry: true,
             liquidation: false,
             mark: true,
+            spent_fees: false,
             funding: false,
             total_pnl: false,
             leverage: false,
@@ -65,6 +70,7 @@ fn position_columns_hide_one_group_at_a_time_as_width_shrinks() {
             entry: false,
             liquidation: false,
             mark: true,
+            spent_fees: false,
             funding: false,
             total_pnl: false,
             leverage: false,
@@ -76,6 +82,7 @@ fn position_columns_hide_one_group_at_a_time_as_width_shrinks() {
             entry: false,
             liquidation: false,
             mark: false,
+            spent_fees: false,
             funding: false,
             total_pnl: false,
             leverage: false,
@@ -105,6 +112,10 @@ fn fixed_layout_budget(width: f32) -> f32 {
     }
     if columns.mark {
         fixed += POSITION_MARK_WIDTH;
+        children += 1;
+    }
+    if columns.spent_fees {
+        fixed += POSITION_SPENT_FEES_WIDTH;
         children += 1;
     }
     if columns.funding {
@@ -230,4 +241,10 @@ fn opening_lines_are_suppressed_for_symbols_with_any_position_even_hidden() {
     let without_position = terminal.optimistic_opening_position_deltas(&["BTC".to_string()]);
     assert_eq!(without_position.len(), 1);
     assert_eq!(without_position[0].symbol, "ETH");
+}
+
+#[test]
+fn spent_fees_reveal_without_squeezing_other_columns() {
+    assert!(PositionColumnVisibility::for_width(HIDE_SPENT_FEES_BELOW).spent_fees);
+    assert!(!PositionColumnVisibility::for_width(HIDE_SPENT_FEES_BELOW - 1.0).spent_fees);
 }

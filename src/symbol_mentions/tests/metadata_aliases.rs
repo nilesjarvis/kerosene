@@ -106,6 +106,8 @@ fn generic_outcome_keywords_do_not_alias_every_outcome_market() {
     ];
     outcome.outcome = Some(OutcomeSymbolInfo {
         outcome_id: 95,
+        contract: crate::api::OutcomeContract::verified_fixture(),
+        venue: None,
         question_id: None,
         question_name: Some("Will BTC close green?".to_string()),
         question_description: None,

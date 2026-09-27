@@ -23,6 +23,9 @@ impl TradingTerminal {
             sym.market_type == MarketType::Outcome
                 && sym.is_user_selectable_market()
                 && !self.exchange_symbol_is_hidden(sym)
+                && self.outcome_venue_filter.as_deref().is_none_or(|venue| {
+                    sym.outcome.as_ref().and_then(|info| info.venue.as_deref()) == Some(venue)
+                })
                 && outcome_symbol_matches_search(sym, query)
         }) {
             if let Some(info) = &sym.outcome {
@@ -124,6 +127,8 @@ fn outcome_symbol_search_haystack(symbol: &ExchangeSymbol) -> String {
 
     for value in [
         info.question_name.as_deref(),
+        info.venue.as_deref(),
+        info.venue_label(),
         info.question_description.as_deref(),
         info.question_class.as_deref(),
         info.question_underlying.as_deref(),

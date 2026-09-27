@@ -13,6 +13,9 @@ pub struct AccountProfile {
     pub secret_id: String,
     pub name: String,
     pub wallet_address: String,
+    /// Parent account for a subaccount; `wallet_address` remains the effective account.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub master_address: Option<String>,
     #[serde(default, skip_serializing)]
     pub agent_key: Zeroizing<String>,
     #[serde(default)]
@@ -26,6 +29,10 @@ impl fmt::Debug for AccountProfile {
             .field("secret_id", &"<redacted>")
             .field("name", &self.name)
             .field("wallet_address", &"<redacted>")
+            .field(
+                "master_address",
+                &self.master_address.as_ref().map(|_| "<redacted>"),
+            )
             .field("agent_key", &"<redacted>")
             .field("hydromancer_api_key", &"<redacted>")
             .finish()
@@ -88,6 +95,7 @@ mod tests {
     #[test]
     fn account_profile_debug_redacts_secret_identity_metadata() {
         let profile = AccountProfile {
+            master_address: Some("0x1234567890123456789012345678901234567890".to_string()),
             secret_id: "acct-secret-id".to_string(),
             name: "Trading Profile".to_string(),
             wallet_address: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd".to_string(),
@@ -102,10 +110,37 @@ mod tests {
         for secret in [
             "acct-secret-id",
             "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+            "0x1234567890123456789012345678901234567890",
             "agent-secret",
             "hydro-secret",
         ] {
             assert!(!rendered.contains(secret), "debug output leaked {secret}");
         }
+    }
+
+    #[test]
+    fn account_profile_subaccount_metadata_round_trips_and_defaults_for_legacy() {
+        let legacy = serde_json::json!({
+            "secret_id": "acct-a",
+            "name": "Trading",
+            "wallet_address": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+        });
+        let mut profile: AccountProfile = serde_json::from_value(legacy).expect("legacy profile");
+        assert!(profile.master_address.is_none());
+        assert!(
+            serde_json::to_value(&profile)
+                .expect("profile JSON")
+                .get("master_address")
+                .is_none()
+        );
+
+        profile.master_address = Some("0x1234567890123456789012345678901234567890".to_string());
+        profile.agent_key = "agent-secret".to_string().into();
+        let encoded = serde_json::to_value(&profile).expect("subaccount JSON");
+        assert!(encoded.get("agent_key").is_none());
+        let decoded: AccountProfile = serde_json::from_value(encoded).expect("subaccount profile");
+        assert_eq!(decoded.master_address, profile.master_address);
+        assert_eq!(decoded.wallet_address, profile.wallet_address);
+        assert!(decoded.agent_key.is_empty());
     }
 }

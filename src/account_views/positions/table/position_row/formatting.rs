@@ -45,7 +45,7 @@ pub(super) fn format_position_entry_price(entry_px: Option<f64>, raw: &str) -> S
         return raw.to_string();
     }
 
-    format_large_wire_price(raw).unwrap_or_else(|| format_price(entry_px))
+    group_position_number(raw).unwrap_or_else(|| format_price(entry_px))
 }
 
 pub(super) fn format_spot_position_entry_price(entry_px: Option<f64>) -> String {
@@ -54,7 +54,7 @@ pub(super) fn format_spot_position_entry_price(entry_px: Option<f64>) -> String 
         .unwrap_or_else(|| "Invalid".to_string())
 }
 
-fn format_large_wire_price(raw: &str) -> Option<String> {
+pub(super) fn group_position_number(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;

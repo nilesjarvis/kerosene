@@ -1,4 +1,5 @@
 use super::CLIENT;
+use crate::network_activity::HttpRequestExt as _;
 use chrono::NaiveDate;
 use reqwest::header::USER_AGENT;
 use serde::Deserialize;
@@ -322,7 +323,7 @@ where
     let response = CLIENT
         .get(url)
         .header(USER_AGENT, sec_user_agent())
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("SEC request failed: {e}"))?;
 
@@ -344,7 +345,7 @@ async fn sec_get_text(url: &str) -> Result<String, String> {
     let response = CLIENT
         .get(url)
         .header(USER_AGENT, sec_user_agent())
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("SEC request failed: {e}"))?;
 

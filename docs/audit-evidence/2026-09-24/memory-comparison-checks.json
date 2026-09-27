@@ -1,0 +1,12 @@
+{
+  "app_survived": true,
+  "no_telemetry_loss": true,
+  "no_account_connected": true,
+  "history_loaded": true,
+  "screenshots_completed": true,
+  "handled_EnterApplication": true,
+  "handled_SymbolsLoaded": true,
+  "handled_SymbolSearchChanged": true,
+  "handled_ChartWsCandleUpdate": true,
+  "handled_WsBookUpdate": true
+}

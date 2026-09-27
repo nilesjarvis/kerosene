@@ -10,6 +10,8 @@ mod terminal_display;
 fn outcome_info() -> api::OutcomeSymbolInfo {
     api::OutcomeSymbolInfo {
         outcome_id: 65,
+        contract: crate::api::OutcomeContract::verified_fixture(),
+        venue: None,
         question_id: None,
         question_name: None,
         question_description: None,

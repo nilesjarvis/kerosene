@@ -101,6 +101,8 @@ impl TradingTerminal {
         boot_tasks.push(self.restore_layout_positioning_infos(&layout));
         boot_tasks.push(self.restore_layout_session_data(&layout));
         self.restore_layout_x_feeds(&layout);
+        boot_tasks.push(self.request_listings_refresh(false));
+        boot_tasks.push(self.sync_outcome_volume_demand());
 
         if self.is_calendar_open() {
             boot_tasks.push(self.request_calendar_refresh(false));

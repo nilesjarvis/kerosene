@@ -95,9 +95,8 @@ impl TradingTerminal {
                 if self.is_spot_coin(&self.active_symbol) {
                     self.spot_spendable_quote_balance(&self.active_symbol, data)
                 } else if self.is_outcome_coin(&self.active_symbol) {
-                    data.available_margin_for_token(
-                        self.outcome_quote_token_index_for_coin(&self.active_symbol),
-                    )
+                    self.outcome_quote_token_index_for_coin(&self.active_symbol)
+                        .and_then(|index| data.available_margin_for_token(index))
                 } else {
                     self.visible_available_margin_usdc(data)
                 }

@@ -2,6 +2,7 @@ use super::*;
 
 fn profile(secret_id: &str) -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: secret_id.to_string(),
         name: secret_id.to_string(),
         wallet_address: String::new(),
@@ -358,6 +359,7 @@ fn migrates_leftover_legacy_agent_key_into_active_account() {
         agent_key: "legacy-active-agent".to_string().into(),
         accounts: vec![
             AccountProfile {
+                master_address: None,
                 secret_id: "one".to_string(),
                 name: "one".to_string(),
                 wallet_address: "0x1111111111111111111111111111111111111111".to_string(),
@@ -365,6 +367,7 @@ fn migrates_leftover_legacy_agent_key_into_active_account() {
                 hydromancer_api_key: String::new().into(),
             },
             AccountProfile {
+                master_address: None,
                 secret_id: "two".to_string(),
                 name: "two".to_string(),
                 wallet_address: "0x2222222222222222222222222222222222222222".to_string(),
@@ -383,11 +386,37 @@ fn migrates_leftover_legacy_agent_key_into_active_account() {
 }
 
 #[test]
+fn leftover_legacy_agent_key_never_binds_to_subaccount_markers() {
+    let child_address = "0x1111111111111111111111111111111111111111";
+    for parent in ["0x2222222222222222222222222222222222222222", "", "invalid"] {
+        for existing_key in ["", "bound-subaccount-agent"] {
+            let mut account = profile("child");
+            account.wallet_address = child_address.to_string();
+            account.master_address = Some(parent.to_string());
+            account.agent_key = existing_key.to_string().into();
+            let mut config = KeroseneConfig {
+                agent_key: "legacy-unbound-agent".to_string().into(),
+                accounts: vec![account],
+                ..KeroseneConfig::default()
+            };
+
+            normalize_loaded_config(&mut config);
+
+            assert_eq!(config.accounts[0].wallet_address, child_address);
+            assert_eq!(config.accounts[0].master_address.as_deref(), Some(parent));
+            assert_eq!(config.accounts[0].agent_key.as_str(), existing_key);
+            assert!(config.agent_key.is_empty());
+        }
+    }
+}
+
+#[test]
 fn leftover_legacy_agent_key_does_not_overwrite_existing_active_account_key() {
     let mut config = KeroseneConfig {
         active_account_index: 0,
         agent_key: "legacy-agent".to_string().into(),
         accounts: vec![AccountProfile {
+            master_address: None,
             secret_id: "one".to_string(),
             name: "one".to_string(),
             wallet_address: "0x1111111111111111111111111111111111111111".to_string(),

@@ -37,6 +37,7 @@ pub(crate) struct CandleFetchRequest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CandleFetchMode {
     Refresh,
+    RepairTail,
     BackfillOlder,
 }
 
@@ -51,7 +52,9 @@ impl CandleFetchRequest {
     /// Historical pagination may reuse a complete, finalized cache page.
     pub(crate) fn fetch_policy(&self) -> crate::api::CandleFetchPolicy {
         match self.mode {
-            CandleFetchMode::Refresh => crate::api::CandleFetchPolicy::NetworkOnly,
+            CandleFetchMode::Refresh | CandleFetchMode::RepairTail => {
+                crate::api::CandleFetchPolicy::NetworkOnly
+            }
             CandleFetchMode::BackfillOlder => crate::api::CandleFetchPolicy::CacheFirst,
         }
     }
@@ -203,6 +206,8 @@ pub(crate) struct ChartInstance {
     /// Latest in-flight historical candle request for stale-response guards.
     pub(crate) candle_fetch_request: Option<CandleFetchRequest>,
     /// Non-blocking refresh error shown while previously loaded candles remain visible.
+    pub(crate) candle_stream_error: Option<String>,
+    pub(crate) candle_repair_at_ms: Option<u64>,
     pub(crate) candle_fetch_error: Option<String>,
     /// Last successful provider verification of the visible primary history.
     /// `None` means any displayed history is cache-only and must be labelled.
@@ -225,6 +230,8 @@ pub(crate) struct ChartInstance {
     /// Latest in-flight secondary comparison candle request for stale-response guards.
     pub(crate) secondary_candle_fetch_request: Option<CandleFetchRequest>,
     /// Non-blocking secondary comparison refresh error.
+    pub(crate) secondary_candle_stream_error: Option<String>,
+    pub(crate) secondary_candle_repair_at_ms: Option<u64>,
     pub(crate) secondary_candle_fetch_error: Option<String>,
     pub(crate) secondary_candle_history_verified_at_ms: Option<u64>,
     pub(crate) secondary_candle_ws_updated_at_ms: Option<u64>,

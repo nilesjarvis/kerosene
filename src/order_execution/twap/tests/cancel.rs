@@ -170,6 +170,50 @@ fn unexpected_cancel_retry_due_revalidates_current_pending_cancel() {
 }
 
 #[test]
+fn subaccount_unexpected_cancel_retry_preserves_original_context_after_account_change() {
+    const CHILD: &str = "0xabc0000000000000000000000000000000000000";
+    const PARENT: &str = "0xdef0000000000000000000000000000000000000";
+    let mut terminal = terminal_with_unexpected_cancel();
+    {
+        let twap = terminal.twap_orders.get_mut(&1).expect("twap");
+        twap.account_address = CHILD.to_string();
+        twap.agent_key = crate::signing::CapturedAgentKey::for_account(
+            "original-parent-agent".to_string().into(),
+            Some(CHILD),
+        )
+        .expect("subaccount signing context");
+    }
+    terminal.connected_address = Some(PARENT.to_string());
+    terminal.wallet_address_input = PARENT.to_string();
+    terminal.accounts.clear();
+
+    let _retry_schedule = terminal.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        Ok(empty_cancel_response()),
+    );
+    let task =
+        terminal.handle_twap_unexpected_cancel_retry_due(1, Some(OID), Some(CLOID.to_string()), 1);
+
+    // Construct the retry without polling its network future. Its credential is
+    // retained by the TWAP even when no active profile can sign a new order.
+    assert_eq!(task.units(), 1);
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(twap.account_address, CHILD);
+    assert_eq!(twap.agent_key.as_str(), "original-parent-agent");
+    assert_eq!(twap.agent_key.vault_address(), Some(CHILD));
+    assert_eq!(twap.cancel_retries, 1);
+    assert_eq!(
+        twap.pending_op,
+        Some(TwapPendingOp::CancelUnexpectedResting {
+            oid: Some(OID),
+            cloid: Some(CLOID.to_string()),
+        })
+    );
+}
+
+#[test]
 fn unexpected_cancel_retry_due_ignores_stale_attempt() {
     let mut terminal = terminal_with_unexpected_cancel();
     {

@@ -79,6 +79,8 @@ pub struct ProfileSecretPayload {
     pub secret_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_address: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub master_address: Option<String>,
     pub agent_key: Zeroizing<String>,
 }
 
@@ -91,6 +93,10 @@ impl fmt::Debug for ProfileSecretPayload {
                 &self.wallet_address.as_ref().map(|_| "<redacted>"),
             )
             .field("agent_key", &"<redacted>")
+            .field(
+                "master_address",
+                &self.master_address.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }
@@ -228,6 +234,9 @@ impl SecretPayload {
                 .map(|profile| ProfileSecretPayload {
                     secret_id: profile.secret_id.clone(),
                     wallet_address: Self::normalize_wallet_address(&profile.wallet_address),
+                    master_address: profile.master_address.as_ref().map(|address| {
+                        Self::normalize_wallet_address(address).unwrap_or_else(|| address.clone())
+                    }),
                     agent_key: profile.agent_key.to_string().into(),
                 })
                 .collect(),
@@ -271,31 +280,37 @@ impl SecretPayload {
         &self,
         secret_id: &str,
         wallet_address: &str,
+        master_address: Option<&str>,
     ) -> Option<&ProfileSecretPayload> {
         let normalized_wallet = Self::normalize_wallet_address(wallet_address);
         if let Some(wallet_address) = normalized_wallet.as_deref()
             && let Some(profile) = self.profiles.iter().find(|profile| {
                 profile.secret_id == secret_id
                     && profile.wallet_address.as_deref() == Some(wallet_address)
+                    && profile.master_address_matches(wallet_address, master_address)
             })
         {
             return Some(profile);
         }
 
         self.profiles.iter().find(|profile| {
-            profile.secret_id == secret_id && profile.wallet_address_matches(wallet_address)
+            profile.secret_id == secret_id
+                && profile.wallet_address_matches(wallet_address)
+                && profile.master_address_matches(wallet_address, master_address)
         })
     }
 
+    #[cfg(test)]
     pub fn profile_agent_key_for_wallet(
         &self,
         secret_id: &str,
         wallet_address: &str,
     ) -> Option<&str> {
-        self.profile_secret_for_wallet(secret_id, wallet_address)
+        self.profile_secret_for_wallet(secret_id, wallet_address, None)
             .map(|profile| profile.agent_key.as_str())
     }
 
+    #[cfg(test)]
     pub fn profile_agent_key_binding_mismatches(
         &self,
         secret_id: &str,
@@ -305,8 +320,24 @@ impl SecretPayload {
             .iter()
             .any(|profile| profile.secret_id == secret_id)
             && self
-                .profile_secret_for_wallet(secret_id, wallet_address)
+                .profile_secret_for_wallet(secret_id, wallet_address, None)
                 .is_none()
+    }
+
+    pub fn profile_agent_key_for_account(&self, account: &AccountProfile) -> Option<&str> {
+        self.profile_secret_for_wallet(
+            &account.secret_id,
+            &account.wallet_address,
+            account.master_address.as_deref(),
+        )
+        .map(|profile| profile.agent_key.as_str())
+    }
+
+    pub fn profile_agent_key_binding_mismatches_account(&self, account: &AccountProfile) -> bool {
+        self.profiles
+            .iter()
+            .any(|profile| profile.secret_id == account.secret_id)
+            && self.profile_agent_key_for_account(account).is_none()
     }
 
     pub fn global_hydromancer_api_key(&self) -> &str {
@@ -338,10 +369,30 @@ impl SecretPayload {
         self.upsert_profile_agent_key_for_wallet(secret_id, None, agent_key)
     }
 
+    #[cfg(test)]
     pub fn upsert_profile_agent_key_for_wallet(
         &mut self,
         secret_id: &str,
         wallet_address: Option<&str>,
+        agent_key: &str,
+    ) -> bool {
+        self.upsert_profile_agent_key_with_binding(secret_id, wallet_address, None, agent_key)
+    }
+
+    pub fn upsert_profile_agent_key_for_account(&mut self, account: &AccountProfile) -> bool {
+        self.upsert_profile_agent_key_with_binding(
+            &account.secret_id,
+            Some(&account.wallet_address),
+            account.master_address.as_deref(),
+            &account.agent_key,
+        )
+    }
+
+    pub fn upsert_profile_agent_key_with_binding(
+        &mut self,
+        secret_id: &str,
+        wallet_address: Option<&str>,
+        master_address: Option<&str>,
         agent_key: &str,
     ) -> bool {
         let secret_id = secret_id.trim();
@@ -353,6 +404,12 @@ impl SecretPayload {
             return self.remove_profile(secret_id);
         }
 
+        // Preserve an invalid parent marker rather than silently turning a
+        // malformed subaccount into a main account. Loading fails closed.
+        let master_address = master_address.map(|address| {
+            Self::normalize_wallet_address(address).unwrap_or_else(|| address.to_string())
+        });
+
         if let Some(profile) = self
             .profiles
             .iter_mut()
@@ -361,10 +418,12 @@ impl SecretPayload {
             let normalized_wallet = wallet_address.and_then(Self::normalize_wallet_address);
             if profile.agent_key.as_str() == agent_key
                 && profile.wallet_address == normalized_wallet
+                && profile.master_address == master_address
             {
                 return false;
             }
             profile.wallet_address = normalized_wallet;
+            profile.master_address = master_address;
             profile.agent_key = agent_key.to_string().into();
             return true;
         }
@@ -372,6 +431,7 @@ impl SecretPayload {
         self.profiles.push(ProfileSecretPayload {
             secret_id: secret_id.to_string(),
             wallet_address: wallet_address.and_then(Self::normalize_wallet_address),
+            master_address,
             agent_key: agent_key.to_string().into(),
         });
         true
@@ -386,13 +446,14 @@ impl SecretPayload {
             let secret_id = profile.secret_id.trim();
             if secret_id.is_empty()
                 || profile.wallet_address.is_some()
+                || profile.master_address.is_some()
                 || profile.agent_key.trim().is_empty()
             {
                 continue;
             }
 
             let mut matching_wallets = profiles.iter().filter_map(|account| {
-                (account.secret_id.trim() == secret_id)
+                (account.secret_id.trim() == secret_id && account.master_address.is_none())
                     .then(|| Self::normalize_wallet_address(&account.wallet_address))
                     .flatten()
             });
@@ -466,6 +527,32 @@ impl SecretPayload {
 }
 
 impl ProfileSecretPayload {
+    pub(crate) fn has_valid_account_binding(&self) -> bool {
+        self.master_address_matches(
+            self.wallet_address.as_deref().unwrap_or_default(),
+            self.master_address.as_deref(),
+        )
+    }
+
+    fn master_address_matches(&self, wallet_address: &str, master_address: Option<&str>) -> bool {
+        match (self.master_address.as_deref(), master_address) {
+            (None, None) => true,
+            (Some(saved), Some(current)) => {
+                let Some(wallet) = SecretPayload::normalize_wallet_address(wallet_address) else {
+                    return false;
+                };
+                let Some(saved) = SecretPayload::normalize_wallet_address(saved) else {
+                    return false;
+                };
+                self.wallet_address.is_some()
+                    && saved != wallet
+                    && SecretPayload::normalize_wallet_address(current).as_deref()
+                        == Some(saved.as_str())
+            }
+            _ => false,
+        }
+    }
+
     fn wallet_address_matches(&self, wallet_address: &str) -> bool {
         let Some(saved_address) = self.wallet_address.as_deref() else {
             return true;

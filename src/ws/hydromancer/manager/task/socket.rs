@@ -8,6 +8,7 @@ use super::messages::{
 };
 use super::session::HydromancerSessionState;
 use super::subscriptions::{ActiveHydromancerSubscriptions, HydromancerUnsubscribeResult};
+use crate::network_activity::{Provider, record_ws_frame};
 use crate::ws::{telemetry_add_hydromancer_rx, telemetry_add_hydromancer_tx};
 
 use futures::{Sink, SinkExt as _};
@@ -58,6 +59,17 @@ where
                 | HydromancerUnsubscribeResult::Missing => false,
             }
         }
+        HydromancerCommand::Resubscribe { topic } => {
+            if session.connection_ready()
+                && let Some(payload) = active_subs.resubscribe(&topic)
+            {
+                if !send_text(write, hydromancer_unsubscribe_payload(&payload).to_string()).await {
+                    return true;
+                }
+                return !send_text(write, payload.to_string()).await;
+            }
+            false
+        }
         HydromancerCommand::Reconnect => true,
         // Shutdown is intercepted by the inner select arm in `task.rs`
         // before this dispatcher is called — but having the variant here
@@ -77,6 +89,7 @@ pub(super) async fn handle_hydromancer_ws_message<W>(
 where
     W: Sink<WsMsg> + Unpin,
 {
+    record_ws_frame(Provider::Hydromancer, &msg, true);
     match msg {
         WsMsg::Text(text) => {
             telemetry_add_hydromancer_rx(text.len() as u64);
@@ -160,6 +173,7 @@ async fn send_with_timeout<W>(write: &mut W, message: WsMsg) -> bool
 where
     W: Sink<WsMsg> + Unpin,
 {
+    record_ws_frame(Provider::Hydromancer, &message, false);
     let mut send = std::pin::pin!(write.send(message));
     let first_poll = futures::future::poll_fn(|cx| {
         std::task::Poll::Ready(std::future::Future::poll(send.as_mut(), cx))

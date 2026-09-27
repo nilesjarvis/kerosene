@@ -18,11 +18,24 @@ impl TradingTerminal {
             Message::AddPairRatioChart => self.add_pair_ratio_chart(),
             Message::SpaghettiReload(id) => self.reload_spaghetti_chart(id),
             Message::SpaghettiSwitchTimeframe(id, tf) => self.switch_spaghetti_timeframe(id, tf),
+            Message::SpaghettiFetchRequested(request) => self.start_spaghetti_fetch(request),
             Message::SpaghettiCandlesLoaded(request, result) => {
                 self.apply_spaghetti_candles_loaded(request, result)
             }
             Message::SpaghettiWsCandleUpdate(context, candle) => {
                 self.apply_spaghetti_ws_candle_update(context, candle)
+            }
+            Message::SpaghettiWsCandleUnavailable(context, reason) => {
+                if !self.spaghetti_ws_candle_context_is_current(&context) {
+                    return Task::none();
+                }
+                if let Some(inst) = self.spaghetti_charts.get_mut(&context.chart_id) {
+                    inst.health
+                        .entry(context.symbol.clone())
+                        .or_default()
+                        .stream_error = Some(reason);
+                }
+                self.reload_spaghetti_chart_after_ws_lag(context)
             }
             Message::SpaghettiWsCandleLagged(context, _skipped) => {
                 self.reload_spaghetti_chart_after_ws_lag(context)
@@ -65,7 +78,7 @@ mod tests {
     use iced::{Color, widget::pane_grid};
 
     #[test]
-    fn spaghetti_candle_lagged_reloads_chart_series() {
+    fn spaghetti_candle_lagged_retains_chart_series() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.spaghetti_charts.clear();
 
@@ -91,12 +104,12 @@ mod tests {
 
         assert_eq!(task.units(), 1);
         let series = &terminal.spaghetti_charts[&7].canvas.series[0];
-        assert!(series.candles.is_empty());
-        assert!(!series.loaded);
+        assert!(!series.candles.is_empty());
+        assert!(series.loaded);
     }
 
     #[test]
-    fn queued_spaghetti_candle_lags_reload_chart_once() {
+    fn queued_spaghetti_candle_lags_repair_each_affected_series_once() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.spaghetti_charts.clear();
 
@@ -114,11 +127,20 @@ mod tests {
             3,
         ));
 
-        assert_eq!(first_task.units(), 2);
-        assert_eq!(second_task.units(), 0);
+        assert_eq!(first_task.units(), 1);
+        assert_eq!(second_task.units(), 1);
+        assert_eq!(
+            terminal
+                .update_spaghetti(Message::SpaghettiWsCandleLagged(
+                    ws_context(&terminal, 7, "BTC", None),
+                    2
+                ))
+                .units(),
+            0
+        );
         for series in &terminal.spaghetti_charts[&7].canvas.series {
-            assert!(series.candles.is_empty());
-            assert!(!series.loaded);
+            assert!(!series.candles.is_empty());
+            assert!(series.loaded);
         }
     }
 
@@ -182,6 +204,9 @@ mod tests {
         terminal.spaghetti_charts.insert(7, instance);
 
         let request = crate::spaghetti_state::SpaghettiCandleFetch {
+            request_id: 1,
+            start_ms: 0,
+            end_ms: 60_000,
             chart_id: 7,
             instance_epoch: terminal.spaghetti_instance_epoch,
             symbol: "BTC".to_string(),
@@ -221,6 +246,9 @@ mod tests {
         terminal.spaghetti_charts.insert(7, instance);
 
         let request = crate::spaghetti_state::SpaghettiCandleFetch {
+            request_id: 1,
+            start_ms: 0,
+            end_ms: 60_000,
             chart_id: 7,
             instance_epoch: terminal.spaghetti_instance_epoch,
             symbol: "BTC".to_string(),
@@ -369,8 +397,8 @@ mod tests {
 
         assert_eq!(task.units(), 1);
         let series = &terminal.spaghetti_charts[&7].canvas.series[0];
-        assert!(!series.loaded);
-        assert!(series.candles.is_empty());
+        assert!(series.loaded);
+        assert!(!series.candles.is_empty());
     }
 
     #[test]
@@ -512,6 +540,8 @@ mod tests {
 
         let mut source = SpaghettiChartInstance::new_empty(7);
         source.canvas.series.push(loaded_series("BTC"));
+        source.health.entry("BTC".into()).or_default().verified_ms =
+            Some(TradingTerminal::now_ms());
         terminal.spaghetti_charts.insert(7, source);
 
         let task = terminal.open_detached_spaghetti_window(7);
@@ -563,6 +593,9 @@ mod tests {
         ));
 
         let stale_request = crate::spaghetti_state::SpaghettiCandleFetch {
+            request_id: 1,
+            start_ms: 0,
+            end_ms: 60_000,
             chart_id: 7,
             instance_epoch: terminal.spaghetti_instance_epoch,
             symbol: "BTC".to_string(),

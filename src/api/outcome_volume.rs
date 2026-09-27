@@ -1,10 +1,13 @@
 use super::{Candle, fetch_candles};
 use crate::helpers::positive_finite_value;
+use futures::{StreamExt, stream};
 
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const OUTCOME_VOLUME_LOOKBACK_MS: u64 = 24 * 60 * 60 * 1000;
+// Leave capacity in the shared read queue for charts and other market widgets.
+const MAX_CONCURRENT_OUTCOME_VOLUME_FETCHES: usize = 2;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct OutcomeVolume24h {
@@ -26,24 +29,41 @@ pub async fn fetch_outcome_volumes_24h(
         .min(u128::from(u64::MAX)) as u64;
     let start_time = end_time.saturating_sub(OUTCOME_VOLUME_LOOKBACK_MS);
 
-    let fetches = symbols
-        .into_iter()
-        .map(|symbol| fetch_outcome_symbol_volume(symbol, start_time, end_time));
-    let results = futures::future::join_all(fetches).await;
+    fetch_outcome_volumes_with(symbols, |symbol| {
+        fetch_outcome_symbol_volume(symbol, start_time, end_time)
+    })
+    .await
+}
+
+async fn fetch_outcome_volumes_with<F, Fut>(
+    symbols: Vec<String>,
+    fetch: F,
+) -> Result<HashMap<String, OutcomeVolume24h>, String>
+where
+    F: FnMut(String) -> Fut,
+    Fut: Future<Output = Result<(String, OutcomeVolume24h), String>>,
+{
+    // Keep futures in this task so aborting a hidden widget drops queued and
+    // in-flight reads, including waits for the shared API budget.
+    let mut results = stream::iter(symbols)
+        .map(fetch)
+        .buffer_unordered(MAX_CONCURRENT_OUTCOME_VOLUME_FETCHES);
 
     let mut volumes = HashMap::new();
-    let mut errors = Vec::new();
-    for result in results {
+    let mut first_error = None;
+    while let Some(result) = results.next().await {
         match result {
             Ok((symbol, volume)) => {
                 volumes.insert(symbol, volume);
             }
-            Err(error) => errors.push(error),
+            Err(error) => {
+                first_error.get_or_insert(error);
+            }
         }
     }
 
     if volumes.is_empty()
-        && let Some(error) = errors.into_iter().next()
+        && let Some(error) = first_error
     {
         return Err(error);
     }

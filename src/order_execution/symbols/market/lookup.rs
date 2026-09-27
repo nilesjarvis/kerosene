@@ -36,7 +36,10 @@ impl TradingTerminal {
     pub(crate) fn exchange_symbol_is_orderable(&self, symbol: &ExchangeSymbol) -> bool {
         symbol.is_user_selectable_market()
             && !self.exchange_symbol_is_hidden(symbol)
-            && (symbol.market_type != MarketType::Outcome || symbol.outcome.is_some())
+            && (symbol.market_type != MarketType::Outcome
+                || symbol.outcome.as_ref().is_some_and(|info| {
+                    info.trading_block_reason(self.status_bar_now_ms).is_none()
+                }))
     }
 
     pub(crate) fn validate_exchange_symbol_orderable(
@@ -62,6 +65,14 @@ impl TradingTerminal {
                 Self::exchange_symbol_display_name(symbol)
             ));
         }
+        if let Some(info) = &symbol.outcome
+            && let Some(reason) = info.trading_block_reason(Self::now_ms())
+        {
+            return Err(format!(
+                "{}: {reason}",
+                Self::exchange_symbol_display_name(symbol)
+            ));
+        }
         if self.exchange_symbol_is_hidden(symbol) {
             return Err(format!(
                 "{hidden_context} ticker is hidden in Settings > Risk"
@@ -83,7 +94,10 @@ impl TradingTerminal {
         }
 
         self.resolve_exchange_symbol_by_key_or_ticker(requested)
-            .filter(|symbol| self.exchange_symbol_is_orderable(symbol))
+            // Preserve inspection and cancellation when a contract expires.
+            .filter(|symbol| {
+                symbol.is_user_selectable_market() && !self.exchange_symbol_is_hidden(symbol)
+            })
             .map(|symbol| symbol.key.clone())
             .or_else(|| self.fallback_unmuted_symbol_key())
     }

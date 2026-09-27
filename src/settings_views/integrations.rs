@@ -1,3 +1,5 @@
+mod remote_wallet_database;
+
 use crate::app_state::TradingTerminal;
 use crate::config::ReadDataProvider;
 use crate::helpers;
@@ -65,6 +67,8 @@ impl TradingTerminal {
             text("Integrations")
                 .size(16)
                 .color(current_theme.palette().text),
+            rule::horizontal(1),
+            self.view_remote_wallet_database_settings(),
             rule::horizontal(1),
             column![
                 row![

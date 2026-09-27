@@ -1,4 +1,5 @@
 use crate::api::CLIENT;
+use crate::network_activity::HttpRequestExt as _;
 use reqwest::header::USER_AGENT;
 use zeroize::Zeroizing;
 
@@ -102,7 +103,7 @@ pub async fn fetch_ticker_positions(
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .bearer_auth(api_key.as_str())
         .json(&body)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("HyperDash positioning request failed: {e}"))?;
 
@@ -167,7 +168,7 @@ pub async fn fetch_perp_deltas(
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .bearer_auth(api_key.as_str())
         .json(&body)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("HyperDash perp deltas request failed: {e}"))?;
 

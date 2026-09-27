@@ -25,6 +25,7 @@ impl TradingTerminal {
             inst.canvas.cache.clear();
 
             let mut tasks = Vec::new();
+            inst.health.clear();
             for series in &mut inst.canvas.series {
                 series.candles.clear();
                 series.loaded = false;
@@ -72,6 +73,7 @@ impl TradingTerminal {
             }
 
             let mut tasks = Vec::new();
+            inst.health.clear();
             for series in &mut inst.canvas.series {
                 series.candles.clear();
                 series.loaded = false;

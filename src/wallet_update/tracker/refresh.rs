@@ -7,7 +7,10 @@ impl TradingTerminal {
         match message {
             Message::WalletTrackerRefresh => {
                 self.queue_wallet_tracker_core_refresh_all();
-                self.refresh_next_wallet_tracker_core()
+                Task::batch([
+                    self.request_remote_wallet_sync(),
+                    self.refresh_next_wallet_tracker_core(),
+                ])
             }
             Message::WalletTrackerRefreshDue => Task::batch([
                 self.refresh_next_wallet_tracker_core(),

@@ -20,7 +20,21 @@ risk filters, and pure iced views.
 
 Official REST reads use `api::proxy::HyperliquidRequestExt::send_info` so the
 optional [proxy pool](../operations/hyperliquid-proxies.md) can distribute each
-request. WebSocket subscriptions retain their existing routing and identity.
+request. `api/read_control.rs` provides weighted admission, reserved account-read
+capacity, bounded concurrency/waits, and provider cooldown after direct HTTP 429.
+`api/shared_reads.rs` shares complete public metadata/context snapshots and
+in-flight work across feature callers. Candle endpoint reads also coalesce by
+provider, credential scope, symbol, interval and range. No account responses are
+stored in this public cache.
+
+Candle adapters measure per-topic silence independently from socket health. They
+emit `ChartWsCandleUnavailable` / `SpaghettiWsCandleUnavailable`, request a
+reference-preserving topic resubscription, and reconcile affected history without
+clearing the display. Sparse markets have a longer silence threshold. History
+success and live-stream freshness remain separate. Comparison history starts via
+`SpaghettiFetchRequested`, with exact pending-request matching, retry backoff and
+live-update replay. See the [recovery audit](../market-data-pipeline-audit.md) for
+budgets, thresholds and remaining architectural tradeoffs.
 
 ## Symbol Universe
 
@@ -43,12 +57,58 @@ Symbol selection state lives in `TradingTerminal`:
 - `symbol_search_hip3_dex_filter`
 - `market_universe`
 - `outcome_search_query`
+- `outcome_venue_filter` (runtime-only)
 - `outcome_collapsed_market_groups`
 
 Symbol search is implemented in `market_state/symbol_search/` and
 `market_update/symbols.rs`. It normalizes labels, applies market-universe
 filters, hides muted tickers, resolves aliases, and feeds chart/order-book/order
 entry selection.
+
+The symbol universe refreshes every 120 seconds to discover new and expired
+markets. Metadata and label changes preserve open chart history and order-book
+state. A full widget reload is only scheduled if the selected market universe
+changes (for example, an unavailable HIP-3 dex falls back to all markets).
+Canonical symbol migrations still refetch the affected widgets individually.
+
+## New Listings Feed
+
+The **New Listings** singleton pane is available under Add Widget > Feeds and
+through Alfred. It displays native perps, HIP-3 perps, and spot pairs with
+All / Perps / Spot filters. Selecting an available market uses the normal symbol
+selection flow. Hidden symbols are omitted from the feed.
+
+`api/exchange_symbols/listings.rs` reads public `allPerpMetas` and `spotMeta`
+snapshots every 30 seconds while the pane is open, including in Canvas windows.
+The one-second `ListingsTick` updates display time and checks the fetch cooldown;
+only two metadata requests are made per scan. Requests are coalesced, manual
+refresh has a five-second minimum interval, and request IDs reject stale results.
+This is polling-based discovery, not an announcement WebSocket or a trading-open
+guarantee. No API key or wallet is required.
+
+`market_state/listings.rs` establishes an independent, silent baseline for each
+market family on its first successful live response. Failures retain known IDs;
+recovered data, renamed spot aliases, and previously seen markets do not generate
+duplicate entries. Perps retain DEX-qualified identity and inactive metadata;
+spot identity uses the pair's asset index, not the token ticker. Newly discovered
+inactive perps are announced when they first become active. Inactive perps in the
+initial baseline are treated as already known because metadata cannot establish
+whether they previously traded.
+
+`config/listings.rs` defines the history payload stored by
+`config_persistence/listings.rs` in a versioned envelope in
+`<config-dir>/cache/v1/listings.json` using the existing atomic cache writer,
+off the UI thread. The latest 200 entries are retained, along with known market
+IDs for deduplication. Storage failures remain visible and are retried; tests
+and `--test` never access real user history. Clearing the app cache resets the
+feed baseline. Existing layout JSON remains compatible; the new pane and its
+padding target serialize as `NewListings`.
+
+Timestamps are **first detected** locally. Markets discovered after the app was
+closed are timestamped when next observed; no historical listing time is inferred.
+The first installation starts with an empty feed. The view is in
+`market_views/listings.rs`; `Listings*` messages route through
+`market_update/listings.rs` and trigger a symbol-universe refresh on additions.
 
 ## Spot Metadata And Identity Safety
 
@@ -196,7 +256,18 @@ fields. The cached per-market context stores perpetual open interest as USD
 notional (`openInterest * markPx`) for cross-market ranking and retains the
 positive `markPx` used with `prevDayPx` for dynamic 24-hour gainer ranking.
 Legacy cache rows default these newer fields to unavailable. Outcome 24h
-volumes are fetched separately through `api::fetch_outcome_volumes_24h`.
+volumes are fetched separately through `api::fetch_outcome_volumes_24h`. An
+Outcomes widget in the main window or an open Canvas requests eligible markets;
+otherwise only primary symbols of open outcome charts (including detached
+charts) request volumes for their headers. Closed saved canvases and unused
+chart instances create no volume demand. Pane/layout/window changes reconcile
+demand immediately, and the existing status tick picks up chart symbol or
+visibility changes within one second. Changed demand aborts the old batch and
+rejects late results; repeated metadata refreshes reuse an in-flight batch for
+the same symbols. Runtime-only task and requested-symbol state preserve known
+volumes between batches. At most two candle fetches run concurrently, retaining
+the existing candle cache and shared API read budget. Outcome metadata, trading,
+chart subscriptions, and account reads remain independent of volume demand.
 
 ## Live Watchlists
 
@@ -321,6 +392,103 @@ Key modules:
 
 Outcome markets force coin-size input for some order flows and should avoid
 incorrect USD-notional assumptions.
+
+### Skew / HIP-4 venues
+
+Skew markets are native Hyperliquid outcome markets, discovered through the
+same mainnet `outcomeMeta` request as other HIP-4 contracts. No Skew login,
+API key, webview, or separate signing path is needed. Open the **Outcomes**
+widget and choose **Skew** in the venue picker, or search `skew` / `skew.trade`
+in symbol search. Selecting Yes or No selects that exact contract for the
+existing charts, order books, and main order ticket.
+
+The optional `venue` field is retained in `OutcomeSymbolInfo`, symbol labels,
+search keywords, and the API metadata cache. Old cached symbols without the
+field still deserialize. The venue picker is populated from selectable,
+non-hidden metadata, combines with text search, and retains an unavailable
+selection across market rolls or metadata failures. Its
+`OutcomeVenueFilterChanged` message routes through the market update module;
+the filter is runtime-only, like outcome text search.
+
+Skew's current `template:binaryPrice` contracts normalize `perp`, `threshold`,
+and `time` to the existing underlying, target-price, and expiry fields.
+`template:Yes` / `template:No` become readable side labels. The original
+description remains intact; other template types are not assumed to have
+binary-price semantics. The Outcomes pane, ticket, and order book show the
+published `priceDescription` and `seconds` settlement window. This is not
+the underlying's live mark price: Skew's trade feed uses VWAP and its Pyth
+feed uses different weighting, despite the shared template's TWAP wording.
+
+Identity remains `#(10 * outcome + side)` for market data,
+`+(10 * outcome + side)` for balances, and `100_000_000 + 10 * outcome + side`
+for orders/cancels. Venue names never prefix the coin or alter asset IDs.
+Skew's current contracts are USDC-quoted and use whole-contract sizes.
+Trading continues through the existing HIP-4 ticket and account checks;
+Chase/TWAP remain unsupported for outcomes. No orders are sent by the
+integration or its tests.
+
+References verified 2026-09-17:
+
+- [Skew market documentation](https://docs.skew.trade/markets/overview)
+- [Skew BTC Hourly terms and identity](https://docs.skew.trade/markets/btc-hourly)
+- [Hyperliquid outcome asset IDs](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/asset-ids)
+
+Regression fixtures in `api/exchange_symbols/outcomes/tests/fixtures/skew.json`
+contain public `outcomeMeta` rows for BTC, Nasdaq-100, and S&P 500. Tests cover
+labels, expiry, venue cache compatibility, both side assets, buy/sell/cancel
+preparation, and price/size/mid validation without signing or sending orders.
+
+### Contract verification and lifecycle
+
+Outcome discovery fetches `outcomeMeta` and `outcomeTemplates` together from
+Hyperliquid. `outcomes/templates.rs` validates template parameters and renders
+titles, sides, and full resolution rules from that registry. Supported lifecycle
+families include binary, touch, and scalar prices, sports contests and tournaments,
+IPO confirmation, AI model comparisons, and policy rate decisions. Named
+outcomes must reference a valid question with the expected parent template;
+they inherit its deadline and rules. Legacy price-binary and price-bucket
+metadata remains supported with validated bounds and expiry.
+
+`OutcomeSymbolInfo.contract` stores resolved `OutcomeContract` terms. Missing
+fields in older caches default safely; the `verified` flag is runtime-only and
+never survives serialization. A cached or failed metadata refresh preserves
+labels, rules, and cancellation access but blocks placement and modification
+until a live refresh verifies the contract. Unknown templates, invalid
+parameters, inconsistent side labels, and unsupported/missing quote tokens are
+also blocked. Unknown quote metadata never falls back to USDC for the ticket's
+available balance or percentage sizing. Duplicate/overflowing IDs, nonbinary side counts, and ambiguous
+question membership reject the outcome metadata family.
+
+Shared order preparation checks the actual clock against the contract expiry
+or resolution deadline. Views use the existing frame clock. Sports start times
+and scheduled policy decisions are not trading cutoffs: their explicit
+resolution/decision deadlines are used instead. Settled named outcomes and
+fallback settlement tokens cannot be traded. Early settlement still depends on
+fresh exchange metadata; the client does not infer an oracle decision from a
+live price. Removed markets retain historical display labels, and cancellation
+can recover the asset from a strictly validated canonical `#` side key.
+
+The Outcomes pane and ticket expose expandable **Contract rules**, routed by
+`OutcomeRulesToggled` through the market update module. Expansion is runtime
+state keyed by outcome ID. Sports and other custom side names are preserved;
+the second side is only described as a negation when its name is No. Scalar
+contracts show quote-token prices and omit probability bars. Order pricing
+uses exact outcome coin mids, never display-ticker or underlying-perp aliases.
+
+The ticket shows published protocol `feeScale` and `deployerFeeScale`, or
+explicitly unavailable values. Cached scales are not presented as live terms.
+These scales are not a dollar fee estimate: settlement fees depend on closing
+and settlement behavior, and HIP-4 has no maker rebates. Split, merge, and
+negate operations remain outside the supported ticket workflows.
+
+The public `hip4.json` and `templates.json` fixtures were captured on 2026-09-17
+from the mainnet info endpoints, excluding deployer addresses. Regression tests
+cover current template rendering, parent validation, lifecycle boundaries,
+cache/failure recovery, fee metadata, order gates, and cancellation without
+signing or submitting trades. Protocol references:
+
+- [Hyperliquid outcomes](https://hyperliquid.gitbook.io/hyperliquid-docs/hyperliquid-improvement-proposals-hips/hip-4-outcome-markets)
+- [Hyperliquid fees](https://hyperliquid.gitbook.io/hyperliquid-docs/trading/fees)
 
 ## HYPE ETF And Unstaking Widgets
 

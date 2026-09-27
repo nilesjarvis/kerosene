@@ -183,9 +183,16 @@ and can be resized through chart messages.
 
 ## Asset Context And Header Metrics
 
-Asset context streams supply mark/oracle/mid/open-interest/funding-like metadata
-for chart headers and overlays. `ChartWsAssetCtxUpdate` applies matching
-contexts to chart instances unless the symbol is hidden.
+Chart headers and overlays always use Hyperliquid's native `activeAssetCtx`
+stream for mark/oracle/mid prices, open interest, and current funding, including
+when Hydromancer is the selected read provider. Hydromancer's documented
+[`activeAssetCtx` payload](https://docs.hydromancer.xyz/readme/websocket/prices-data-and-asset-context/activeassetctx)
+omits funding and `prevDayPx`; accepting those pushes as complete context kept
+funding blank and prevented the missing-context REST fallback from running.
+Candles still use the selected read provider. Context subscriptions remain
+deduplicated by symbol and scoped to the current provider generation.
+`ChartWsAssetCtxUpdate` applies matching contexts to every chart instance unless
+the symbol is hidden.
 
 The header's `24h Chg` compares the displayed latest candle close with a
 24-hour reference: `(last - previous) / previous * 100`. It prefers the
@@ -215,6 +222,18 @@ removed when the symbol no longer has an open, unhidden chart.
 
 Header metric display modes can show values as raw or USD notional depending on
 the market and user preference.
+
+Expanded perpetual chart headers always include the current hourly funding
+rate and countdown beside the symbol, including in narrow panes. The header
+wraps metrics when needed. Market identity determines whether funding applies;
+missing context shows `-` rather than hiding funding or selecting spot metrics.
+The current rate comes from asset context independently of the optional funding
+history indicator and its Hydromancer integration.
+
+The opt-in live regression test exercises the production subscription through
+header layout for a native perp and a HIP-3 perp with Hydromancer selected:
+`cargo test --bin kerosene live_native_funding_reaches_chart_header_with_hydromancer_selected -- --ignored --nocapture`.
+It uses public Hyperliquid data and needs no credentials.
 
 ## Canvas Rendering
 
@@ -260,6 +279,15 @@ Gaming HUD order modes are key-bound: `L` selects Limit, `M` selects Market,
 and `H` selects Chase. Market and Chase use the `Y`/`X` side selector; Limit
 infers its side from the clicked price. An armed Chase click routes through the
 normal client-side Chase lifecycle for the chart's symbol.
+
+HUD Limit and Market clicks use the entered coin quantity and do not wait for
+background account reconciliation, including post-trade refreshes or refresh
+rate-limit backoff. Market clicks still serialize pending trading requests and
+unresolved order-status checks; Limit clicks retain their bounded concurrent
+placement path. Signing-account identity, fresh prices, shared order preflight,
+and exchange-enforced margin/balance and reduce-only checks still apply. Account
+refreshes continue for display and account-dependent actions such as close/NUKE
+and percentage sizing.
 
 Interaction messages should carry chart ID and surface ID so detached windows
 and inline panes do not fight over state.

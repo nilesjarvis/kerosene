@@ -3,7 +3,11 @@ use crate::message::Message;
 use iced::Element;
 use iced::widget::{button, row, text};
 
-pub(super) fn wallet_tracker_actions(address: String, is_muted: bool) -> Element<'static, Message> {
+pub(super) fn wallet_tracker_actions(
+    address: String,
+    is_muted: bool,
+    is_remote: bool,
+) -> Element<'static, Message> {
     let mute_button = if is_muted {
         button(text("Unmute").size(10))
             .on_press(Message::WalletTrackerUnmute(address.clone().into()))
@@ -14,6 +18,15 @@ pub(super) fn wallet_tracker_actions(address: String, is_muted: bool) -> Element
             .padding([2, 6])
     };
 
+    let delete_action: Element<'static, Message> = if is_remote {
+        text("Remote").size(10).into()
+    } else {
+        button(text("Delete").size(10))
+            .on_press(Message::WalletTrackerRemove(address.clone().into()))
+            .padding([2, 6])
+            .into()
+    };
+
     row![
         button(text("Refresh").size(10))
             .on_press(Message::WalletTrackerRefreshOne(address.clone().into()))
@@ -22,9 +35,7 @@ pub(super) fn wallet_tracker_actions(address: String, is_muted: bool) -> Element
             .on_press(Message::WalletTrackerRefreshOrders(address.clone().into()))
             .padding([2, 6]),
         mute_button,
-        button(text("Delete").size(10))
-            .on_press(Message::WalletTrackerRemove(address.clone().into()))
-            .padding([2, 6]),
+        delete_action,
     ]
     .spacing(4)
     .width(220)

@@ -17,6 +17,7 @@ use zeroize::Zeroize;
 
 fn account(secret_id: &str, name: &str, wallet_address: &str) -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: secret_id.to_string(),
         name: name.to_string(),
         wallet_address: wallet_address.to_string(),
@@ -508,6 +509,53 @@ fn account_switch_does_not_rewrite_terminal_twaps() {
     assert_eq!(twap.status, TwapStatus::Completed);
     assert!(!twap.stop_requested);
     assert_eq!(twap.stop_reason, None);
+}
+
+#[test]
+fn deferred_legacy_loader_never_reads_or_commits_keys_for_subaccount_markers() {
+    for master_address in [
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "",
+        "invalid-parent",
+    ] {
+        let mut terminal = TradingTerminal::boot().0;
+        let mut profile = account(
+            "legacy-child",
+            "Child",
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        );
+        profile.agent_key.zeroize();
+        profile.master_address = Some(master_address.to_string());
+        terminal.accounts = vec![profile.clone()];
+        terminal.active_account_index = 0;
+        terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+        terminal.wallet_key_input.zeroize();
+        terminal.hydromancer_api_key = sensitive_string("configured-hydro");
+        terminal.secret_store_status = None;
+        let load_calls = Cell::new(0);
+        let persist_calls = Cell::new(0);
+
+        terminal.load_deferred_legacy_account_key_with(
+            0,
+            |legacy_profile| {
+                load_calls.set(load_calls.get() + 1);
+                legacy_profile.agent_key = "unbound-agent-key".to_string().into();
+                legacy_profile.hydromancer_api_key = "unbound-hydro".to_string().into();
+                Ok(())
+            },
+            |_| {
+                persist_calls.set(persist_calls.get() + 1);
+                true
+            },
+        );
+
+        assert_eq!(load_calls.get(), 0);
+        assert_eq!(persist_calls.get(), 0);
+        assert_eq!(terminal.accounts[0], profile);
+        assert!(terminal.wallet_key_input.is_empty());
+        assert_eq!(terminal.hydromancer_api_key.as_str(), "configured-hydro");
+        assert!(terminal.secret_store_status.is_none());
+    }
 }
 
 #[test]

@@ -1,0 +1,41 @@
+{
+  "outcomes": [
+    {
+      "outcome": 2896,
+      "name": "template:binaryPrice",
+      "description": "perp:BTC|priceDescription:the Pyth BTC/USD price|seconds:90|threshold:74950|time:20260918-0600",
+      "sideSpecs": [{"name": "template:Yes"}, {"name": "template:No"}],
+      "quoteToken": "USDC",
+      "venue": "skew",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 2904,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:XYZ100|priceDescription:the Pyth US100 index price|seconds:90|threshold:28630|time:20260918-2000",
+      "sideSpecs": [{"name": "template:Yes"}, {"name": "template:No"}],
+      "quoteToken": "USDC",
+      "venue": "skew",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 2910,
+      "name": "template:binaryPrice",
+      "description": "perp:xyz:SP500|priceDescription:the Pyth US500 index price|seconds:90|threshold:7555|time:20260918-2000",
+      "sideSpecs": [{"name": "template:Yes"}, {"name": "template:No"}],
+      "quoteToken": "USDC",
+      "venue": "skew",
+      "deployerFeeScale": "1.0"
+    },
+    {
+      "outcome": 3770,
+      "name": "template:binaryPrice",
+      "description": "perp:BTC|priceDescription:the Hyperliquid BTC perp trade|seconds:90|threshold:76724|time:20260917-1400",
+      "sideSpecs": [{"name": "template:Yes"}, {"name": "template:No"}],
+      "quoteToken": "USDC",
+      "venue": "skew",
+      "deployerFeeScale": "1.0"
+    }
+  ],
+  "questions": []
+}

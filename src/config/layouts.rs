@@ -62,6 +62,8 @@ pub enum BottomTabConfig {
     Balances,
     TradeHistory,
     FundingHistory,
+    DepositsWithdrawals,
+    Transfers,
 }
 
 impl BottomTabConfig {
@@ -72,6 +74,8 @@ impl BottomTabConfig {
             "Balances" => Some(Self::Balances),
             "TradeHistory" => Some(Self::TradeHistory),
             "FundingHistory" => Some(Self::FundingHistory),
+            "DepositsWithdrawals" => Some(Self::DepositsWithdrawals),
+            "Transfers" => Some(Self::Transfers),
             _ => None,
         }
     }
@@ -83,6 +87,8 @@ impl BottomTabConfig {
             Self::Balances => "Balances",
             Self::TradeHistory => "TradeHistory",
             Self::FundingHistory => "FundingHistory",
+            Self::DepositsWithdrawals => "DepositsWithdrawals",
+            Self::Transfers => "Transfers",
         }
     }
 }
@@ -148,6 +154,7 @@ pub enum PaneKindConfig {
     TrackedTrades,
     TelegramFeed,
     Outcomes,
+    NewListings,
     HypeEtfs,
     HypeUnstakingQueue,
     /// Legacy or unknown persisted panes that no longer have runtime support.
@@ -181,6 +188,7 @@ pub enum WidgetPaddingTargetConfig {
     TrackedTrades,
     TelegramFeed,
     Outcomes,
+    NewListings,
     HypeEtfs,
     HypeUnstakingQueue,
 }

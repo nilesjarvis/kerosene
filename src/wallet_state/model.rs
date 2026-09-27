@@ -107,6 +107,7 @@ fn redacted_presence<T>(value: &Option<T>) -> Option<&'static str> {
 }
 
 pub(crate) struct WalletTrackerState {
+    pub(crate) remote_database: super::remote_database::RemoteWalletDatabaseState,
     pub(crate) compact_selections:
         HashMap<super::CompactWalletTrackerId, super::compact::CompactWalletSelection>,
     pub(crate) window_id: Option<window::Id>,
@@ -151,6 +152,7 @@ impl WalletTrackerState {
         }
 
         Self {
+            remote_database: Default::default(),
             compact_selections: HashMap::new(),
             window_id: None,
             open: cfg.open,
@@ -190,8 +192,17 @@ impl WalletTrackerState {
         &self,
         address_book: &HashMap<String, AddressBookEntry>,
     ) -> WalletTrackerConfig {
-        let wallets = self
+        let is_local = |address: &&String| {
+            !self.remote_database.added_addresses.contains(*address)
+                || address_book.contains_key(*address)
+        };
+        let tracked_addresses: Vec<_> = self
             .tracked_addresses
+            .iter()
+            .filter(is_local)
+            .cloned()
+            .collect();
+        let wallets = tracked_addresses
             .iter()
             .map(|address| TrackedWalletConfig {
                 address: address.clone(),
@@ -203,8 +214,13 @@ impl WalletTrackerState {
             .collect();
 
         WalletTrackerConfig {
-            tracked_addresses: self.tracked_addresses.clone(),
-            muted_addresses: self.muted_addresses.clone(),
+            tracked_addresses,
+            muted_addresses: self
+                .muted_addresses
+                .iter()
+                .filter(is_local)
+                .cloned()
+                .collect(),
             wallets,
             open: self.open,
             width: self.width,

@@ -127,6 +127,7 @@ impl TradingTerminal {
                         id,
                         macro_request_id,
                         &primary_symbol,
+                        &instance.macro_indicators,
                     ));
                 }
             } else if !primary_symbol.is_empty() && self.is_ticker_muted(&primary_symbol) {

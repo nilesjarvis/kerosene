@@ -2,9 +2,6 @@ use super::model::{WatchlistContext, WatchlistContextsResponse};
 use super::parsing::{
     append_perp_contexts_for_symbols, append_spot_contexts_for_symbols, insert_empty_context,
 };
-use crate::api::proxy::HyperliquidRequestExt;
-use crate::api::{API_URL, CLIENT};
-use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 enum ContextFamily {
@@ -95,22 +92,13 @@ async fn fetch_watchlist_contexts_with_cache(
         });
     }
 
-    let client = CLIENT.clone();
-    let results = futures::future::join_all(
-        families
-            .into_iter()
-            .map(|family| fetch_context_family(client.clone(), family)),
-    )
-    .await;
+    let results = futures::future::join_all(families.into_iter().map(fetch_context_family)).await;
     let response = merge_context_family_results(map, results)?;
     let _ = crate::api_cache::save_watchlist_contexts(&response.contexts);
     Ok(response)
 }
 
-async fn fetch_context_family(
-    client: reqwest::Client,
-    family: ContextFamily,
-) -> ContextFamilyResult {
+async fn fetch_context_family(family: ContextFamily) -> ContextFamilyResult {
     let label = family.label();
     let result = async {
         let body = match &family {
@@ -125,17 +113,7 @@ async fn fetch_context_family(
                 serde_json::json!({ "type": "spotMetaAndAssetCtxs" })
             }
         };
-        let response: Value = client
-            .post(API_URL)
-            .json(&body)
-            .send_info()
-            .await
-            .map_err(|e| format!("request failed: {e}"))?
-            .error_for_status()
-            .map_err(|e| format!("HTTP error: {e}"))?
-            .json()
-            .await
-            .map_err(|e| format!("parse failed: {e}"))?;
+        let response = crate::api::shared_reads::public_info(body).await?;
 
         let mut contexts = HashMap::new();
         match family {

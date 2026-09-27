@@ -147,10 +147,53 @@ impl TradingTerminal {
         let side_selector = self.view_outcome_group_sides(&sides, theme, available_width);
 
         let mut group_content = column![market_header].spacing(6).width(Fill);
+        if let Some(reason) = info.trading_block_reason(now_ms) {
+            group_content = group_content.push(
+                text(reason.to_string())
+                    .size(11)
+                    .color(theme.palette().danger),
+            );
+        }
+        if let Some(deadline) = info.contract_deadline_label() {
+            group_content = group_content.push(
+                text(deadline)
+                    .size(10)
+                    .color(theme.extended_palette().background.weak.text),
+            );
+        }
+        if let Some(source) = info.settlement_source_label() {
+            group_content = group_content.push(
+                text(source)
+                    .size(10)
+                    .color(theme.extended_palette().background.weak.text)
+                    .width(Fill),
+            );
+        }
         if let Some(probability_bar) = probability_bar {
             group_content = group_content.push(probability_bar);
         }
         group_content = group_content.push(side_selector);
+        if let Some(rules) = &info.contract.rules {
+            let expanded = self.outcome_expanded_rules.contains(&info.outcome_id);
+            group_content = group_content.push(
+                button(
+                    text(if expanded {
+                        "Hide contract rules"
+                    } else {
+                        "Contract rules"
+                    })
+                    .size(11),
+                )
+                .on_press(Message::OutcomeRulesToggled(info.outcome_id))
+                .style(button::text)
+                .padding([2, 0]),
+            );
+            if expanded {
+                group_content = group_content.push(text(rules.clone()).size(11).width(Fill));
+                group_content =
+                    group_content.push(text(info.fee_terms_label()).size(10).width(Fill));
+            }
+        }
 
         Some(container(group_content).width(Fill).padding([2, 0]).into())
     }
@@ -172,8 +215,11 @@ impl TradingTerminal {
             return None;
         };
 
-        let first_mid = self.resolve_mid_for_symbol(&first.key);
-        let second_mid = self.resolve_mid_for_symbol(&second.key);
+        if first_info.contract.scalar || second_info.contract.scalar {
+            return None;
+        }
+        let first_mid = self.resolve_mid_for_symbol_at(&first.key, self.status_bar_now_ms);
+        let second_mid = self.resolve_mid_for_symbol_at(&second.key, self.status_bar_now_ms);
         let first_color =
             Self::outcome_side_accent(theme, &first_info.side_name, first_info.side_index);
         let second_color =
@@ -198,7 +244,7 @@ impl TradingTerminal {
                 let Some(side_info) = &sym.outcome else {
                     continue;
                 };
-                let mid = self.resolve_mid_for_symbol(&sym.key);
+                let mid = self.resolve_mid_for_symbol_at(&sym.key, self.status_bar_now_ms);
                 let accent =
                     Self::outcome_side_accent(theme, &side_info.side_name, side_info.side_index);
                 cards = cards.push(self.view_outcome_side_button(
@@ -216,7 +262,7 @@ impl TradingTerminal {
                 let Some(side_info) = &sym.outcome else {
                     continue;
                 };
-                let mid = self.resolve_mid_for_symbol(&sym.key);
+                let mid = self.resolve_mid_for_symbol_at(&sym.key, self.status_bar_now_ms);
                 let accent =
                     Self::outcome_side_accent(theme, &side_info.side_name, side_info.side_index);
                 cards = cards.push(self.view_outcome_side_button(
@@ -243,10 +289,19 @@ fn outcome_market_set_summary(group: &OutcomeMarketSet<'_>) -> String {
     } else {
         "trade coins"
     };
-    format!(
+    let summary = format!(
         "{} {} | {} {} | {}",
         group.outcome_count, outcome_label, group.trade_coin_count, coin_label, group.quote_symbol
-    )
+    );
+    match group
+        .outcomes
+        .values()
+        .flatten()
+        .find_map(|symbol| symbol.outcome.as_ref()?.venue_label())
+    {
+        Some(venue) => format!("{venue} | {summary}"),
+        None => summary,
+    }
 }
 
 fn outcome_market_title(info: &crate::api::OutcomeSymbolInfo, nested: bool, now_ms: u64) -> String {

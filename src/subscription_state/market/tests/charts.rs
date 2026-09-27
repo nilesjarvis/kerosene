@@ -1,4 +1,102 @@
 use super::*;
+use iced::advanced::subscription::{Hasher, into_recipes};
+use std::hash::Hasher as _;
+
+mod funding_live;
+
+fn subscription_hashes(subscription: Subscription<Message>) -> Vec<u64> {
+    into_recipes(subscription)
+        .into_iter()
+        .map(|recipe| {
+            let mut hasher = Hasher::default();
+            recipe.hash(&mut hasher);
+            hasher.finish()
+        })
+        .collect()
+}
+
+#[test]
+fn chart_funding_uses_native_asset_context_with_either_read_provider() {
+    for provider in [ReadDataProvider::Hyperliquid, ReadDataProvider::Hydromancer] {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+        terminal.read_data_provider = provider;
+        terminal.hydromancer_api_key = "test-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+        for (id, symbol) in [(1, "BTC"), (2, "BTC"), (3, "xyz:NVDA")] {
+            terminal.charts.insert(
+                id,
+                ChartInstance::new(id, symbol.to_string(), Timeframe::H1),
+            );
+        }
+        let source_context = terminal.market_data_source_context();
+        let mut subscriptions = Vec::new();
+        terminal.push_chart_market_subscriptions(&mut subscriptions);
+        let actual = subscription_hashes(Subscription::batch(subscriptions));
+        assert_eq!(actual.len(), 4, "one candle and context stream per symbol");
+
+        for (id, symbol) in [(1, "BTC"), (3, "xyz:NVDA")] {
+            // Hydromancer's activeAssetCtx omits funding. The chart header
+            // must use Hyperliquid's complete context even with that provider.
+            let expected =
+                Subscription::run_with((id, symbol.to_string()), ws_asset_ctx_stream_keyed)
+                    .with(source_context)
+                    .map(chart_asset_ctx_stream_event_message);
+            for hash in subscription_hashes(expected) {
+                assert!(
+                    actual.contains(&hash),
+                    "native funding stream for {provider:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn native_chart_funding_updates_all_matching_charts_with_hydromancer_selected() {
+    for funding in ["0.0000125", "0", "-0.0001"] {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "test-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+        for (id, symbol) in [(1, "BTC"), (2, "BTC"), (3, "ETH")] {
+            terminal.charts.insert(
+                id,
+                ChartInstance::new(id, symbol.to_string(), Timeframe::H1),
+            );
+        }
+        let source_context = terminal.market_data_source_context();
+        let ctx = serde_json::from_value(serde_json::json!({ "funding": funding }))
+            .expect("native asset context");
+        let message = chart_asset_ctx_stream_event_message((
+            source_context,
+            crate::ws::KeyedAssetContextStreamEvent::Item(1, "BTC".into(), None, Box::new(ctx)),
+        ));
+        let _task = terminal.update_chart(message.clone());
+        for id in [1, 2] {
+            let ctx = terminal.charts[&id]
+                .asset_ctx
+                .as_ref()
+                .expect("chart context");
+            assert_eq!(ctx.funding.as_deref(), Some(funding));
+        }
+        assert!(terminal.charts[&3].asset_ctx.is_none());
+
+        // A provider switch still invalidates messages from the old stream.
+        terminal.read_data_provider_generation += 1;
+        for chart in terminal.charts.values_mut() {
+            chart.set_asset_context(None);
+        }
+        let _task = terminal.update_chart(message);
+        assert!(
+            terminal
+                .charts
+                .values()
+                .all(|chart| chart.asset_ctx.is_none())
+        );
+    }
+}
 
 #[test]
 fn duplicate_chart_market_streams_are_deduplicated_by_market_key() {

@@ -3,6 +3,7 @@ mod connection;
 mod position_pnl;
 mod profile;
 mod stream;
+mod transfers;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -47,6 +48,11 @@ impl TradingTerminal {
             Message::AddAccountAddressChanged(value) => {
                 self.update_add_account_address(value.into_string())
             }
+            Message::AddAccountDiscoverSubaccounts => self.discover_add_account_subaccounts(),
+            Message::AddAccountSubaccountsLoaded(request, result) => {
+                self.apply_add_account_subaccounts(request, result)
+            }
+            Message::AddAccountTargetSelected(target) => self.select_add_account_target(target),
             Message::AddAccountKeyChanged(value) => self.update_add_account_key(value),
             Message::AddAccountSwitchToggled(value) => self.toggle_add_account_switch(value),
             Message::AddAccountSubmit => self.submit_add_account(),
@@ -64,6 +70,16 @@ impl TradingTerminal {
             }
             Message::RetryTwapReconciliationAccountData(address) => {
                 self.retry_twap_reconciliation_account_data(address.into_string())
+            }
+            Message::RefreshTransferHistory => self.refresh_transfer_history(),
+            Message::TransferHistoryLoaded(address, generation, provider, result) => {
+                self.apply_transfer_history(address.into_string(), generation, provider, *result)
+            }
+            Message::TransferHistoryPage(kind, next) => {
+                self.change_transfer_history_page(kind, next)
+            }
+            Message::ToggleTransferDetails(kind, index) => {
+                self.toggle_transfer_details(kind, index)
             }
             Message::RefreshAccountData => self.refresh_account_data(),
             Message::AccountRefreshBackoffElapsed(due_ms) => {

@@ -42,6 +42,34 @@ The account picker can:
 - delete saved accounts
 - save credentials for the active profile
 
+### Existing Subaccounts
+
+The Add Account window discovers existing Hyperliquid subaccounts through the
+public `subAccounts` info request, using the configured Hyperliquid read proxies
+when enabled. Enter the parent address, choose **Discover
+Subaccounts**, select the child, and supply an agent key approved by the parent
+if trading is needed. Each child is saved as its own account profile. Creation
+and transfers are outside this workflow.
+
+`wallet_address` remains the effective account address used for positions,
+balances, fills, WebSocket subscriptions, portfolio history, and reconciliation.
+The optional `master_address` records the parent for a subaccount; legacy and
+ordinary account profiles default to `None`. Changing a saved subaccount's
+address requires adding or selecting a different profile, so its parent/key
+binding cannot be reused accidentally.
+
+`account_state/subaccounts.rs` validates discovery results and redacts message
+payloads. The messages `AddAccountDiscoverSubaccounts`,
+`AddAccountSubaccountsLoaded`, and `AddAccountTargetSelected` route through the
+account update module. Results carry window ID, request generation, and parent
+address; stale responses are discarded after edits or window replacement.
+Invalidating a selected child requires an explicit new selection before save.
+
+Trading uses a parent-approved API/agent wallet, with the selected child's
+address signed into `vaultAddress`. Parent and child addresses are also bound
+to the stored credential, including backup/config-loss recovery. HyperDash and
+Hydromancer keys remain global data-provider credentials.
+
 ## Connect Flow
 
 ```text
@@ -159,11 +187,117 @@ Account views cover:
 - spot balances
 - trade history
 - funding history
+- deposits and withdrawals (native USDC bridge and Unit spot assets)
+- spot token and USDC transfers
 - portfolio tab content
 - income view
 
 Spot and outcome balances can feed order-entry helpers such as outcome sell
 prefill.
+
+### Deposits/Withdrawals
+
+The Positions / History widget's **Deposits/Withdrawals** tab combines the
+native Hyperliquid USDC bridge with Unit Protocol operations, including spot
+assets deposited or withdrawn through TradeXYZ. TradeXYZ uses Unit for these
+transfers; no TradeXYZ credentials or trading agent key are required.
+
+- `account/transfers/` owns the public read clients, exact decimal formatting,
+  and the common runtime transfer model.
+- `account_state/transfers.rs` owns the account-scoped history, independent
+  provider loading/error states, pagination, and expanded row.
+- `account_update/transfers.rs` handles `RefreshTransferHistory`,
+  `TransferHistoryLoaded`, `TransferHistoryPage`, and `ToggleTransferDetails`.
+- `account_views/history_tables/transfers.rs` renders 50 rows per page, newest
+  first, with expandable wallet, bridge, fee, confirmation, and transaction
+  details. Full addresses and references can be copied through redacted messages.
+
+Opening the tab fetches both sources. A saved selected tab also loads on wallet
+connection, and `subscription_state/timers/analytics.rs` polls every 30 seconds
+while the tab is selected in an open workspace. A failed source retains its
+previous rows with an explicit warning; the other source remains usable.
+Connect, disconnect, invalid-address reset, and account switching clear this
+runtime data and advance a generation so late replies cannot restore it.
+These reads always use their native APIs, independently of the selected market
+data provider. Hyperliquid requests honor the existing REST proxy transport.
+
+Only the tab selections (`BottomTabConfig::DepositsWithdrawals` and `Transfers`)
+are persisted. Existing tab names and the fallback for unknown names remain
+compatible. Transfer data and external wallet addresses are neither persisted
+nor included in Debug logs.
+
+### Transfers
+
+The **Transfers** tab shows Hyperliquid spot token and USDC transfers, including
+sent/received transfers, subaccount USDC transfers, and internal spot/perps USDC
+movements. It uses the same account-scoped ledger reader, refresh controls, and
+30-second polling as Deposits/Withdrawals. The tabs filter the shared history
+before pagination and keep separate page and expanded-row state.
+
+Rows show UTC time, direction, asset, exact decimal amount, sender/recipient
+(or the internal account route), and status. Expanded rows expose the full
+wallet addresses and ledger transaction with copy controls. Transfer fees use
+the reported fee asset when present; older spot records do not infer that asset
+from the transferred token. Unit errors are only shown in Deposits/Withdrawals.
+
+The [Hyperliquid ledger schema](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions)
+(checked 2026-09-17) defines `spotTransfer`, `internalTransfer`,
+`subAccountTransfer`, and `accountClassTransfer`. Direction is relative to the
+connected account, with case-insensitive address comparisons. Bridge records
+remain in Deposits/Withdrawals; vault flows, rewards, and genesis allocations
+are not token transfers. Unit's Hyperliquid-side spot movement may appear in
+Transfers while its bridge operation appears in Deposits/Withdrawals.
+
+### API contracts and limitations
+
+Verified against primary sources on 2026-09-07:
+
+- [TradeXYZ deposits](https://docs.trade.xyz/getting-started/funding-your-wallet/deposits)
+  and [spot](https://docs.trade.xyz/trading/spot) identify Unit as the underlying
+  native-chain asset bridge.
+- [Unit API](https://docs.hyperunit.xyz/developers/api) and
+  [operations](https://docs.hyperunit.xyz/developers/api/operations):
+  `GET https://api.hyperunit.xyz/operations/{hyperliquid_account_address}`
+  returns all associated operations. No pagination parameter is documented.
+  `sourceChain`/`destinationChain` determine direction relative to Hyperliquid;
+  `sourceAddress` is the source wallet, while `protocolAddress` is the separate
+  Unit bridge address. The API can omit the destination and operation ID for
+  newly discovered deposits. A missing address is displayed as **Not provided**;
+  the bridge address is never substituted for the sender.
+- Unit's amounts and fee estimates use native asset base units. They are
+  converted with decimal-string arithmetic, including fractional fee estimates.
+  Native decimals come from the operation contract and the
+  [official Unit frontend asset registry](https://app.hyperunit.xyz/)
+  (`unit.nativeDecimals`, inspected in its published JavaScript bundle).
+  They must not be replaced with HyperCore token `weiDecimals`: BTC uses 8
+  native decimals versus UBTC's 10; ETH uses 18 versus UETH's 9. Known historical
+  assets remain recognized. Future unknown assets remain visible with amounts
+  explicitly labeled **base units** rather than guessed token quantities.
+- Unit transaction references include suffixes: Bitcoin `txid:vout`, Ethereum
+  `hash:trace-id`, Solana `signature:destination-address`, and Hyperliquid
+  `sender:nonce`. These are preserved and labeled **references**, not blindly
+  linked as transaction hashes. Unknown operation states remain visible.
+- [Hyperliquid ledger history](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals)
+  uses `POST https://api.hyperliquid.xyz/info` with
+  `{"type":"userNonFundingLedgerUpdates","user":"<account>","startTime":0,"endTime":<milliseconds>}`.
+  Only `deposit` and `withdraw` deltas become native Arbitrum USDC bridge rows.
+  Internal, spot, and account-class transfers appear separately in Transfers;
+  vault flows are excluded from both tabs.
+- Native history follows the documented inclusive timestamp pagination for
+  **all** ledger categories, deduplicating the overlapping boundary. Each fetch
+  is bounded to 100 pages / 60 seconds; partial reads carry a warning and a
+  continuation cursor. Completed reads subsequently overlap the last minute.
+  A full page that cannot advance its timestamp is explicitly incomplete.
+- The [ledger wire schema](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions)
+  does not provide the external Arbitrum sender/recipient or delivery
+  transaction. Native rows therefore expose the ledger hash separately and
+  leave the external wallet unavailable. A native withdrawal is **Debited**,
+  not claimed to be finalized on Arbitrum; a deposit is **Credited**. Additional
+  verified chain indexing would be needed to enrich that missing information.
+
+Focused checks: `cargo test transfers`, the account message-route tests,
+config pane serialization tests, layout conversion tests, and analytics timer
+tests. Fixtures contain synthetic wallet/transaction values only.
 
 ## Wallet Tracker
 
@@ -196,8 +330,18 @@ negative balances. Missing spot state or marks produce a redacted valuation
 warning and retain a usable perp snapshot rather than silently presenting a
 partial spot total as authoritative.
 
-Tracked wallets are persisted, but any private trading keys are not part of
-wallet tracker state.
+Local tracked wallets are persisted, but private trading keys are not part of
+wallet tracker state. The optional remote wallet database is a read-only,
+runtime-only source: only its URL is persisted. `wallet_state/remote_database.rs`
+and `wallet_state/remote_database/api.rs` own the mirror and paginated PocketBase
+client; `wallet_update/remote_database.rs` applies complete snapshots, guards
+request IDs across endpoint changes, and reconciles remote additions/deletions.
+The local address book remains separate; display and tracked-trade subscription
+helpers combine the two sources. Remote metadata cannot be edited in the tracker
+and is excluded from saved config and label exports. The timer in
+`subscription_state/timers/wallet.rs` polls every 30 seconds independently of
+tracker visibility, with an immediate boot/save sync. Failures retain the last
+snapshot only in memory. See the [README database contract](../../README.md#remote-wallet-label-database).
 
 ### Compact Wallet Tracker
 
@@ -382,3 +526,29 @@ Use focused tests in these areas:
 
 For account-data changes, include tests for stale data, merge behavior,
 spot/HIP-3 handling, and websocket repair where relevant.
+
+## Position Execution Fees
+
+The Positions tab includes a sortable **Spent Fees** column beside uPnL. It
+shows net execution fees in USD for the current position's lifetime: opening
+fills, increases and partial closes, less maker rebates. A reversal attributes
+only the opening fraction of that fill's fee to the new position. Funding and
+the existing Total PnL calculation remain separate. The column follows the
+responsive table layout and the Hide PnL privacy toggle.
+
+`account/position_fees.rs` walks the account's deduplicated recent fills backward
+using their optional `startPosition` metadata, resolving execution order within
+a timestamp through position continuity. It requires a chain back to flat or a
+reversal that reconciles to the live size. Missing opening history, gaps,
+unrecognized fee tokens, invalid values, stale account ownership, incomplete
+snapshots or a temporary fill/position mismatch show `—` with a tooltip. A
+transferred balance is not assigned fees from an unrelated position. Spot base
+token fees are converted at each fill's execution price and deducted from the
+inventory used for reconciliation.
+
+The account feed retains up to 2,000 fills; websocket snapshots merge into that
+history so a short snapshot cannot evict REST-loaded opening fills. No new
+history fetch or persistent account field is introduced. The optional fill
+metadata defaults to absent for older/provider payloads and remains redacted in
+Debug output. Hyperliquid's reported `fee` already includes any builder fee;
+see the [official fill response documentation](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#retrieve-a-users-fills).

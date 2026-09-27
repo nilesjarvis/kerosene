@@ -367,7 +367,7 @@ mod tests {
             MoveOrderKey::new("BTC", 42),
             PendingMoveOrderContext::new(
                 TEST_ACCOUNT.to_string(),
-                Zeroizing::new("agent-key".to_string()),
+                Zeroizing::new("agent-key".to_string()).into(),
             )
             .expect("pending move context"),
         );
@@ -418,7 +418,7 @@ mod tests {
             MoveOrderKey::new("ETH", 42),
             PendingMoveOrderContext::new(
                 TEST_ACCOUNT.to_string(),
-                Zeroizing::new("agent-key".to_string()),
+                Zeroizing::new("agent-key".to_string()).into(),
             )
             .expect("pending move context"),
         );
@@ -716,7 +716,7 @@ mod tests {
             MoveOrderKey::new("BTC", 42),
             PendingMoveOrderContext::new(
                 OTHER_ACCOUNT.to_string(),
-                Zeroizing::new("other-agent-key".to_string()),
+                Zeroizing::new("other-agent-key".to_string()).into(),
             )
             .expect("other pending move context"),
         );

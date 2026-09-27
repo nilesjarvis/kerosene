@@ -140,6 +140,7 @@ fn account_data_debug_summarizes_account_payloads() {
         closed_pnl: "fill-secret-pnl".to_string(),
         fee: "fill-secret-fee".to_string(),
         fee_token: Some("fill-secret-fee-token".to_string()),
+        start_position: None,
     });
     data.funding_history.push(FundingEntry {
         delta: FundingDelta {

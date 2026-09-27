@@ -140,10 +140,9 @@ fn ws_candle_after_large_gap_triggers_reload_instead_of_blind_append() {
     );
 
     let instance = terminal.charts.get(&1).expect("chart");
-    // The phantom candle was NOT appended; a reload was queued and the stale
-    // series cleared so the refetch replaces rather than stitches.
+    // Keep the presentation while an authoritative refresh repairs the gap.
     assert!(instance.candle_fetch_request.is_some());
-    assert!(instance.chart.candles.is_empty());
+    assert!(!instance.chart.candles.is_empty());
 }
 
 #[test]
@@ -167,7 +166,7 @@ fn new_spot_candle_gap_triggers_one_reconciliation_reload() {
 
     let instance = terminal.charts.get(&1).expect("chart");
     assert!(instance.candle_fetch_request.is_some());
-    assert!(instance.chart.candles.is_empty());
+    assert!(!instance.chart.candles.is_empty());
     assert!(instance.spot_candle_gap_reloaded_at_ms.is_some());
 }
 
@@ -242,7 +241,7 @@ fn misaligned_forward_ws_candle_reloads_continuous_market() {
 
     let instance = terminal.charts.get(&1).expect("chart");
     assert!(instance.candle_fetch_request.is_some());
-    assert!(instance.chart.candles.is_empty());
+    assert!(!instance.chart.candles.is_empty());
 }
 
 #[test]
@@ -265,7 +264,7 @@ fn ws_candle_skipping_one_interval_reloads_continuous_market() {
 
     let instance = terminal.charts.get(&1).expect("chart");
     assert!(instance.candle_fetch_request.is_some());
-    assert!(instance.chart.candles.is_empty());
+    assert!(!instance.chart.candles.is_empty());
 }
 
 #[test]
@@ -288,7 +287,7 @@ fn out_of_order_ws_candle_triggers_network_reconciliation() {
 
     let instance = terminal.charts.get(&1).expect("chart");
     assert!(instance.candle_fetch_request.is_some());
-    assert!(instance.chart.candles.is_empty());
+    assert!(!instance.chart.candles.is_empty());
 }
 
 #[test]
@@ -531,4 +530,90 @@ fn ws_candle_lag_gates_provider_source() {
         3,
     );
     assert!(terminal.charts[&1].candle_fetch_request.is_some());
+}
+
+#[test]
+fn silent_candle_repair_is_selective_bounded_and_does_not_claim_live_after_rest() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    let now = TradingTerminal::now_ms();
+    let open = now / 60_000 * 60_000;
+    let mut chart = ChartInstance::new(1, "BTC".into(), Timeframe::M1);
+    chart
+        .chart
+        .set_candles(vec![candle(open - 60_000, 100.0), candle(open, 101.0)]);
+    chart.candle_history_verified_at_ms = Some(now - 90_000);
+    chart.set_secondary_symbol_identity("ETH".into(), "ETH".into());
+    chart.chart.set_secondary_candles(vec![candle(open, 20.0)]);
+    terminal.charts.insert(1, chart);
+    let context = source_context(&terminal, None);
+    let task = terminal.apply_chart_ws_candle_unavailable(
+        1,
+        "BTC".into(),
+        "1m".into(),
+        context,
+        "quiet".into(),
+    );
+    assert_eq!(task.units(), 1);
+    assert_eq!(terminal.charts[&1].chart.candles.len(), 2);
+    assert!(terminal.charts[&1].secondary_candle_fetch_request.is_none());
+    let request = terminal.charts[&1]
+        .candle_fetch_request
+        .clone()
+        .expect("tail repair");
+    assert_eq!(
+        request.mode,
+        crate::chart_state::CandleFetchMode::RepairTail
+    );
+    assert!(request.end_ms - request.start_ms < 4 * 60_000);
+    assert_eq!(
+        terminal
+            .apply_chart_ws_candle_unavailable(
+                1,
+                "BTC".into(),
+                "1m".into(),
+                context,
+                "quiet".into()
+            )
+            .units(),
+        0
+    );
+    let _ = terminal.apply_chart_candles_loaded(request, Ok(vec![candle(open, 102.0)]));
+    assert!(terminal.charts[&1].candle_stream_error.is_some());
+    let _ = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".into(),
+        "1m".into(),
+        context,
+        candle(open, 103.0),
+    );
+    assert!(terminal.charts[&1].candle_stream_error.is_none());
+    assert_eq!(last_close(&terminal, 1), Some(103.0));
+}
+
+#[test]
+fn a_verified_chart_with_a_new_gap_still_requests_complete_reconciliation() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    let now = TradingTerminal::now_ms();
+    let open = now / 60_000 * 60_000;
+    let mut chart = ChartInstance::new(1, "BTC".into(), Timeframe::M1);
+    chart
+        .chart
+        .set_candles(vec![candle(open - 10 * 60_000, 100.0)]);
+    chart.candle_history_verified_at_ms = Some(now - 600_000);
+    terminal.charts.insert(1, chart);
+    let _ = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".into(),
+        "1m".into(),
+        source_context(&terminal, None),
+        candle(open, 110.0),
+    );
+    let request = terminal.charts[&1]
+        .candle_fetch_request
+        .as_ref()
+        .expect("gap repair");
+    assert_eq!(request.mode, crate::chart_state::CandleFetchMode::Refresh);
+    assert!(request.start_ms < open - 10 * 60_000);
 }

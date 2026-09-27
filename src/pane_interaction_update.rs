@@ -190,7 +190,7 @@ impl TradingTerminal {
                         }
                     }
                     self.persist_config();
-                    let mut tasks = Vec::new();
+                    let mut tasks = vec![self.sync_outcome_volume_demand()];
                     if workspace == WorkspaceId::Main {
                         tasks.push(self.sync_main_window_min_size());
                     }

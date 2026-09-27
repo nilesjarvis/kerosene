@@ -124,6 +124,7 @@ mod tests {
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();
         terminal.accounts = vec![AccountProfile {
+            master_address: None,
             secret_id: "acct-a".to_string(),
             name: "Account A".to_string(),
             wallet_address: TEST_ACCOUNT.to_string(),
@@ -236,7 +237,7 @@ mod tests {
     fn pending_move_context() -> PendingMoveOrderContext {
         PendingMoveOrderContext::new(
             TEST_ACCOUNT.to_string(),
-            sensitive_string("move-agent").into_zeroizing(),
+            sensitive_string("move-agent").into_zeroizing().into(),
         )
         .expect("move context")
     }

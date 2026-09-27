@@ -231,7 +231,7 @@ impl TradingTerminal {
 
         let available_margin = if self.is_outcome_coin(&self.active_symbol) {
             data.available_margin_for_token(
-                self.outcome_quote_token_index_for_coin(&self.active_symbol),
+                self.outcome_quote_token_index_for_coin(&self.active_symbol)?,
             )?
         } else {
             self.visible_available_margin_usdc(data)?

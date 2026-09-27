@@ -1,0 +1,23 @@
+{
+  "date": "2026-09-24",
+  "head": "ed7f7b4d78f89db23cc7b41d1e6fa9c15d6b092a",
+  "working_tree_included": true,
+  "production_sources": 1893,
+  "source_hash_manifest_sha256": "ec25a07bb9a625c583454d95aad5c436a9ab8c880c982aa61a904d0113435f37",
+  "source_unchanged_during_audit": true,
+  "tokio_version": "1.50.0",
+  "resolution": [
+    1600,
+    1000
+  ],
+  "renderer": "Vulkan requested; baseline process observed on NVIDIA GeForce RTX 4090",
+  "rustc": "rustc 1.96.1 (31fca3adb 2026-06-26)",
+  "profile": "release",
+  "fixtures": "public metadata, synthetic prices/candles/books; no account",
+  "tests": {
+    "passed": 4225,
+    "failed": 1,
+    "ignored": 5
+  },
+  "clippy_errors": 2
+}

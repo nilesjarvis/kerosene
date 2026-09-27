@@ -53,7 +53,20 @@ impl TradingTerminal {
         self.persist_config();
 
         let mut tasks = vec![task.map(Message::WindowOpened)];
-        if !detached_symbol.is_empty() {
+        if !detached_symbol.is_empty()
+            && self.charts.get(&detached_chart_id).is_some_and(|instance| {
+                instance.chart.candles.is_empty()
+                    || instance.candle_history_verified_at_ms.is_none()
+                    || instance.candle_fetch_error.is_some()
+                    || instance.candle_stream_error.is_some()
+                    || instance
+                        .candle_ws_updated_at_ms
+                        .into_iter()
+                        .chain(instance.candle_history_verified_at_ms)
+                        .max()
+                        .is_none_or(|at| Self::now_ms().saturating_sub(at) > 90_000)
+            })
+        {
             tasks.push(self.queue_candle_fetch_for(
                 detached_chart_id,
                 &detached_symbol,

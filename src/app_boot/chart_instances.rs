@@ -107,6 +107,7 @@ impl TradingTerminal {
                         id,
                         macro_request_id,
                         &chart_cfg.symbol,
+                        &instance.macro_indicators,
                     ));
                 }
             } else if !chart_cfg.symbol.is_empty() {

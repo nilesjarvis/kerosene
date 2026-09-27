@@ -160,6 +160,7 @@ mod tests {
             closed_pnl: "0".to_string(),
             fee: fee.to_string(),
             fee_token: Some(fee_token.to_string()),
+            start_position: None,
         }
     }
 

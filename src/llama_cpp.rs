@@ -1,3 +1,4 @@
+use crate::network_activity::HttpRequestExt as _;
 use reqwest::Url;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -113,7 +114,7 @@ async fn probe_server(client: &reqwest::Client, base_url: &str) -> Option<LlamaC
     let root_url = base_url.strip_suffix("/v1")?;
     let props = client
         .get(format!("{root_url}/props"))
-        .send()
+        .send_observed()
         .await
         .ok()?
         .error_for_status()
@@ -127,7 +128,7 @@ async fn probe_server(client: &reqwest::Client, base_url: &str) -> Option<LlamaC
 
     let catalog = client
         .get(format!("{base_url}/models"))
-        .send()
+        .send_observed()
         .await
         .ok()?
         .error_for_status()

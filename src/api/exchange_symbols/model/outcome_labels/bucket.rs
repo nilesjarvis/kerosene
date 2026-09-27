@@ -121,6 +121,6 @@ impl OutcomeSymbolInfo {
     }
 
     pub(super) fn is_no_side(&self) -> bool {
-        self.side_name.trim().eq_ignore_ascii_case("no") || self.side_index == 1
+        self.side_name.trim().eq_ignore_ascii_case("no")
     }
 }

@@ -33,10 +33,7 @@ impl TradingTerminal {
                 now_ms,
             );
             for series in &inst.canvas.series {
-                if series.loaded
-                    && !series.symbol.is_empty()
-                    && !self.symbol_key_is_hidden(&series.symbol)
-                {
+                if !series.symbol.is_empty() && !self.symbol_key_is_hidden(&series.symbol) {
                     if let Some(api_key) = hydromancer_key.clone() {
                         subs.push(
                             Subscription::run_with(
@@ -107,6 +104,31 @@ fn spaghetti_candle_stream_event_to_message(
                     session_granularity,
                 },
                 candle,
+            )
+        }
+        SpaghettiCandleStreamEvent::Unavailable {
+            id,
+            instance_epoch,
+            symbol,
+            timeframe,
+            hydromancer_key_generation,
+            session,
+            session_granularity,
+            reason,
+        } => {
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
+            Message::SpaghettiWsCandleUnavailable(
+                SpaghettiWsCandleContext {
+                    chart_id: id.saturating_sub(10000),
+                    instance_epoch,
+                    symbol,
+                    timeframe,
+                    source_context,
+                    session,
+                    session_granularity,
+                },
+                reason,
             )
         }
         SpaghettiCandleStreamEvent::Lagged {

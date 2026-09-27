@@ -42,6 +42,8 @@ pub(crate) enum BottomTab {
     Balances,
     TradeHistory,
     FundingHistory,
+    DepositsWithdrawals,
+    Transfers,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +57,7 @@ pub(crate) enum PositionsSortColumn {
     Value,
     UnrealizedPnl,
     Funding,
+    SpentFees,
     TotalPnl,
     Leverage,
 }
@@ -70,6 +73,7 @@ impl PositionsSortColumn {
             | Self::Value
             | Self::UnrealizedPnl
             | Self::Funding
+            | Self::SpentFees
             | Self::TotalPnl
             | Self::Leverage => config::SortDirection::Descending,
         }

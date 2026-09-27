@@ -24,6 +24,7 @@ fn connect_test_account(terminal: &mut TradingTerminal) {
     terminal.connected_address = Some(TEST_ACCOUNT.to_string());
     terminal.wallet_address_input = TEST_ACCOUNT.to_string();
     terminal.accounts = vec![AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: TEST_ACCOUNT.to_string(),

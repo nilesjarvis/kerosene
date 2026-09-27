@@ -737,7 +737,7 @@ fn envelope_bytes<T: Serialize>(
     Ok((path, bytes))
 }
 
-fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let Some(parent) = path.parent() else {
         return Err(format!(
             "cache path {} has no parent",

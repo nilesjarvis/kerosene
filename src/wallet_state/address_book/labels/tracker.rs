@@ -57,13 +57,28 @@ impl TradingTerminal {
     }
 
     pub(crate) fn labeled_wallet_addresses(&self) -> Vec<String> {
-        Self::labeled_wallet_addresses_from_address_book(&self.address_book)
+        let mut addresses = Self::labeled_wallet_addresses_from_address_book(&self.address_book);
+        addresses.extend(Self::labeled_wallet_addresses_from_address_book(
+            &self.wallet_tracker.remote_database.entries,
+        ));
+        addresses.sort();
+        addresses.dedup();
+        addresses
     }
 
     pub(crate) fn tracked_trade_subscription_addresses(&self) -> Vec<String> {
-        Self::tracked_trade_subscription_addresses_from_address_book(
+        let mut addresses = Self::tracked_trade_subscription_addresses_from_address_book(
             &self.address_book,
             &self.wallet_tracker.muted_addresses,
-        )
+        );
+        addresses.extend(
+            Self::tracked_trade_subscription_addresses_from_address_book(
+                &self.wallet_tracker.remote_database.entries,
+                &self.wallet_tracker.muted_addresses,
+            ),
+        );
+        addresses.sort();
+        addresses.dedup();
+        addresses
     }
 }

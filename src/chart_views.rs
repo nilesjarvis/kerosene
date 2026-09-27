@@ -366,8 +366,15 @@ fn candle_surface_status(instance: &ChartInstance, now_ms: u64) -> Option<(Strin
         return None;
     }
 
+    if instance.candle_stream_error.is_some() {
+        return Some(("CANDLES · RECONNECTING".to_string(), true));
+    }
+    if instance.secondary_candle_stream_error.is_some() {
+        return Some(("COMPARISON · RECONNECTING".to_string(), true));
+    }
     if let Some(request) = instance.candle_fetch_request.as_ref() {
         let label = match request.mode {
+            CandleFetchMode::RepairTail => "Verifying recent candles".to_string(),
             CandleFetchMode::BackfillOlder => "Loading older candles".to_string(),
             CandleFetchMode::Refresh
                 if instance.candle_history_verified_at_ms.is_none()

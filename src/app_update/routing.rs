@@ -16,6 +16,7 @@ pub(super) enum UpdateRoute {
     ChartScreenshot,
     Chrome,
     CombinedPortfolio,
+    Console,
     Feed,
     Hyperdash,
     Journal,
@@ -37,6 +38,15 @@ pub(super) enum UpdateRoute {
 
 pub(super) fn message_route(message: &Message) -> UpdateRoute {
     match message {
+        Message::OpenConsoleWindow
+        | Message::ConsoleTick
+        | Message::ConsoleTogglePause
+        | Message::ConsoleProviderChanged(_)
+        | Message::ConsoleFilterChanged(_)
+        | Message::ConsolePageChanged(_)
+        | Message::ConsoleScrolled(_)
+        | Message::ConsoleClear => UpdateRoute::Console,
+
         Message::OpenAgentWindow
         | Message::AgentInputChanged(_)
         | Message::AgentSubmit
@@ -117,6 +127,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddCompactWalletTrackerPane
         | Message::AddXFeedPane
         | Message::AddOutcomesPane
+        | Message::AddNewListingsPane
         | Message::AddHypeEtfsPane
         | Message::AddHypeUnstakingQueuePane => UpdateRoute::Panes,
 
@@ -277,8 +288,15 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SymbolSearchHip3DexFilterChanged(_)
         | Message::SymbolSearchContextsLoaded(_, _, _, _)
         | Message::OutcomeSearchChanged(_)
+        | Message::OutcomeVenueFilterChanged(_)
+        | Message::OutcomeRulesToggled(_)
         | Message::OutcomeMarketGroupToggled(_)
         | Message::OutcomeVolumesLoaded(_, _, _)
+        | Message::ListingsTick
+        | Message::RefreshListings
+        | Message::ListingsFilterChanged(_)
+        | Message::ListingsLoaded(_, _)
+        | Message::ListingsSaved(_)
         | Message::RefreshHypeEtfs
         | Message::HypeEtfsRefreshTick
         | Message::HypeEtfsViewChanged(_)
@@ -461,8 +479,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddPairRatioChart
         | Message::SpaghettiReload(_)
         | Message::SpaghettiSwitchTimeframe(_, _)
+        | Message::SpaghettiFetchRequested(_)
         | Message::SpaghettiCandlesLoaded(_, _)
         | Message::SpaghettiWsCandleUpdate(_, _)
+        | Message::SpaghettiWsCandleUnavailable(_, _)
         | Message::SpaghettiWsCandleLagged(_, _)
         | Message::SpaghettiOpenEditor(_)
         | Message::SpaghettiCloseEditor(_)
@@ -513,7 +533,12 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::CombinedPortfolioScopeChanged(_)
         | Message::CombinedPortfolioWindowChanged(_) => UpdateRoute::CombinedPortfolio,
 
-        Message::OpenWalletTrackerWindow
+        Message::RemoteWalletDatabaseUrlChanged(_)
+        | Message::SaveRemoteWalletDatabase
+        | Message::DisconnectRemoteWalletDatabase
+        | Message::RemoteWalletDatabaseSync
+        | Message::RemoteWalletDatabaseLoaded(_, _)
+        | Message::OpenWalletTrackerWindow
         | Message::OpenWalletDetailsWindow(_)
         | Message::RefreshWalletDetails(_)
         | Message::CompactWalletSelected(_, _)
@@ -581,6 +606,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartSecondaryCandlesLoaded(_, _)
         | Message::ChartFundingHistoryLoaded(_, _)
         | Message::ChartWsCandleUpdate(_, _, _, _, _)
+        | Message::ChartWsCandleUnavailable(_, _, _, _, _)
         | Message::ChartWsCandleLagged(_, _, _, _, _)
         | Message::ChartPriceFlashTick
         | Message::ChartHudOrderAnimationTick
@@ -641,6 +667,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::OpenAddAccountWindow
         | Message::AddAccountNameChanged(_)
         | Message::AddAccountAddressChanged(_)
+        | Message::AddAccountDiscoverSubaccounts
+        | Message::AddAccountSubaccountsLoaded(_, _)
+        | Message::AddAccountTargetSelected(_)
         | Message::AddAccountKeyChanged(_)
         | Message::AddAccountSwitchToggled(_)
         | Message::AddAccountSubmit
@@ -653,6 +682,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::DisconnectWallet
         | Message::AccountDataLoaded(_, _, _)
         | Message::RetryTwapReconciliationAccountData(_)
+        | Message::RefreshTransferHistory
+        | Message::TransferHistoryLoaded(_, _, _, _)
+        | Message::TransferHistoryPage(_, _)
+        | Message::ToggleTransferDetails(_, _)
         | Message::RefreshAccountData
         | Message::AccountRefreshBackoffElapsed(_)
         | Message::AllMidsBootstrapLoaded(_, _)

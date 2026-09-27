@@ -108,7 +108,7 @@ impl TradingTerminal {
         let whole_unit_volume = self.is_outcome_coin(&request.symbol);
         let symbol_is_spot =
             self.is_spot_coin(&request.symbol) || is_spot_asset_context_symbol(&request.symbol);
-        let is_spot_refresh = request.mode == CandleFetchMode::Refresh && symbol_is_spot;
+        let is_spot_refresh = request.mode != CandleFetchMode::BackfillOlder && symbol_is_spot;
         let symbol_allows_sparse_intervals = symbol_is_spot || whole_unit_volume;
         let result = result.map(normalize_candles);
         let response_has_interval_gap = result.as_ref().ok().is_some_and(|candles| {
@@ -171,6 +171,12 @@ impl TradingTerminal {
                             // provider response.
                             instance.chart.set_candles(candles);
                         } else {
+                            if request.mode == CandleFetchMode::RepairTail {
+                                instance
+                                    .chart
+                                    .candles
+                                    .retain(|candle| candle.open_time < request.start_ms);
+                            }
                             instance.chart.merge_candles(candles);
                         }
                         // REST was started before any buffered live events. Replay
@@ -182,7 +188,7 @@ impl TradingTerminal {
                             request.timeframe,
                             symbol_allows_sparse_intervals,
                         );
-                        if request.mode == CandleFetchMode::Refresh {
+                        if request.mode != CandleFetchMode::BackfillOlder {
                             instance.candle_history_verified_at_ms = Some(received_at_ms);
                             instance.candle_interval_gap =
                                 response_has_interval_gap || merged_has_interval_gap;
@@ -234,7 +240,7 @@ impl TradingTerminal {
                     {
                         let mut next_request = request.clone();
                         next_request.attempt = next_attempt;
-                        if next_request.mode == CandleFetchMode::Refresh {
+                        if next_request.mode != CandleFetchMode::BackfillOlder {
                             next_request.end_ms = Self::now_ms();
                         }
                         instance.candle_fetch_request = Some(next_request.clone());
@@ -370,6 +376,13 @@ impl TradingTerminal {
                         if request.mode == CandleFetchMode::Refresh {
                             instance.chart.set_secondary_candles(candles);
                         } else {
+                            if request.mode == CandleFetchMode::RepairTail
+                                && let Some(series) = instance.chart.secondary_series.as_mut()
+                            {
+                                series
+                                    .candles
+                                    .retain(|candle| candle.open_time < request.start_ms);
+                            }
                             instance.chart.merge_secondary_candles(candles);
                         }
                         instance.chart.merge_secondary_candles(ws_updates);
@@ -384,7 +397,7 @@ impl TradingTerminal {
                                     symbol_allows_sparse_intervals,
                                 )
                             });
-                        if request.mode == CandleFetchMode::Refresh {
+                        if request.mode != CandleFetchMode::BackfillOlder {
                             instance.secondary_candle_history_verified_at_ms = Some(received_at_ms);
                             instance.secondary_candle_interval_gap =
                                 response_has_interval_gap || merged_has_interval_gap;
@@ -426,7 +439,7 @@ impl TradingTerminal {
                     {
                         let mut next_request = request.clone();
                         next_request.attempt = next_attempt;
-                        if next_request.mode == CandleFetchMode::Refresh {
+                        if next_request.mode != CandleFetchMode::BackfillOlder {
                             next_request.end_ms = Self::now_ms();
                         }
                         instance.secondary_candle_fetch_request = Some(next_request.clone());

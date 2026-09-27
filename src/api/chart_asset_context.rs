@@ -1,6 +1,4 @@
-use super::{API_URL, CLIENT};
 use crate::account::AssetContext;
-use crate::api::proxy::HyperliquidRequestExt;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -41,18 +39,7 @@ pub async fn fetch_chart_asset_context(symbol: String) -> Result<Option<AssetCon
         body["dex"] = Value::String(dex.to_string());
     }
 
-    let resp: Value = CLIENT
-        .clone()
-        .post(API_URL)
-        .json(&body)
-        .send_info()
-        .await
-        .map_err(|e| format!("metaAndAssetCtxs request failed: {e}"))?
-        .error_for_status()
-        .map_err(|e| format!("metaAndAssetCtxs HTTP error: {e}"))?
-        .json()
-        .await
-        .map_err(|e| format!("metaAndAssetCtxs parse failed: {e}"))?;
+    let resp = super::shared_reads::public_info(body).await?;
 
     Ok(parse_chart_asset_context(&resp, &symbol, dex.as_deref()))
 }
@@ -75,30 +62,9 @@ pub(crate) async fn fetch_spot_chart_asset_contexts(
         return Ok(Vec::new());
     }
 
-    let response = CLIENT
-        .clone()
-        .post(API_URL)
-        .json(&serde_json::json!({ "type": "spotMetaAndAssetCtxs" }))
-        .send_info()
-        .await
-        .map_err(|e| format!("spotMetaAndAssetCtxs request failed: {e}"))?;
-    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        let retry_after = response
-            .headers()
-            .get(reqwest::header::RETRY_AFTER)
-            .and_then(|value| value.to_str().ok())
-            .map(|value| format!("; retry after {value}"))
-            .unwrap_or_default();
-        return Err(format!(
-            "spotMetaAndAssetCtxs rate limited (HTTP 429){retry_after}"
-        ));
-    }
-    let resp: Value = response
-        .error_for_status()
-        .map_err(|e| format!("spotMetaAndAssetCtxs HTTP error: {e}"))?
-        .json()
-        .await
-        .map_err(|e| format!("spotMetaAndAssetCtxs parse failed: {e}"))?;
+    let resp =
+        super::shared_reads::public_info(serde_json::json!({ "type": "spotMetaAndAssetCtxs" }))
+            .await?;
     validate_spot_chart_asset_context_response(&resp)?;
 
     let mut seen = std::collections::HashSet::new();

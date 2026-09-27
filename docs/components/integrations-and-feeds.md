@@ -19,6 +19,21 @@ streams.
 | Telegram | `src/telegram_feed.rs`, `src/telegram_fast_feed.rs` | Public channel scraping and optional MTProto fast/private feed. |
 | Calendar and screener | `src/calendar_*`, `src/screener_*` | Economic calendar, market screener contexts/history. |
 
+## Remote Wallet Database
+
+Settings → Integrations accepts a custom PocketBase base URL under
+`remote_wallet_database.url`. The wallet feature owns its read-only client,
+runtime mirror, and update messages (`RemoteWalletDatabaseUrlChanged`,
+`SaveRemoteWalletDatabase`, `DisconnectRemoteWalletDatabase`,
+`RemoteWalletDatabaseSync`, `RemoteWalletDatabaseLoaded`), all routed through
+`WalletTracker`. Boot and an independent 30-second timer request full paginated
+snapshots with entity expansion. One request runs at a time per active source;
+unique request IDs reject late results after switching/disconnecting/resetting.
+No admin credentials or remote records are persisted. Read failures retain the
+last complete in-memory snapshot and surface stale status in settings/tracker.
+The [README](../../README.md#remote-wallet-label-database) defines the collection
+schema, permissions, polling behavior, bounds, and local/remote precedence.
+
 ## Hyperliquid REST
 
 `src/api.rs` owns:

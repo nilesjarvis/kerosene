@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+mod outcome_contract;
 mod outcome_labels;
+pub use outcome_contract::OutcomeContract;
 
 /// Whether a symbol is a perpetual or spot market.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -14,6 +16,11 @@ pub enum MarketType {
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OutcomeSymbolInfo {
     pub outcome_id: u32,
+    #[serde(default)]
+    pub contract: OutcomeContract,
+    /// HIP-4 deployer venue from outcomeMeta; absent in older cached metadata.
+    #[serde(default)]
+    pub venue: Option<String>,
     pub question_id: Option<u32>,
     pub question_name: Option<String>,
     pub question_description: Option<String>,
@@ -45,6 +52,9 @@ impl fmt::Debug for OutcomeSymbolInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OutcomeSymbolInfo")
             .field("outcome_id", &self.outcome_id)
+            .field("metadata_verified", &self.contract.verified)
+            .field("has_contract_rules", &self.contract.rules.is_some())
+            .field("venue", &self.venue)
             .field("question_id", &self.question_id)
             .field("has_question_name", &self.question_name.is_some())
             .field(
@@ -211,6 +221,8 @@ mod tests {
     fn outcome_info() -> OutcomeSymbolInfo {
         OutcomeSymbolInfo {
             outcome_id: 66,
+            contract: crate::api::OutcomeContract::verified_fixture(),
+            venue: None,
             question_id: Some(12),
             question_name: Some("Will BTC close above the secret threshold?".to_string()),
             question_description: Some("Long question text with raw market details".to_string()),

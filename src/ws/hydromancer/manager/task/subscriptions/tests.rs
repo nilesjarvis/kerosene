@@ -116,3 +116,21 @@ fn subscription_debug_redacts_tracked_trade_addresses_and_payloads() {
     assert!(removed_rendered.contains("<redacted>"));
     assert!(!removed_rendered.contains(address));
 }
+
+#[test]
+fn topic_repair_preserves_references_and_is_throttled() {
+    let mut subscriptions = ActiveHydromancerSubscriptions::default();
+    let topic = "candle:BTC:1m".to_string();
+    let payload = json!({"method":"subscribe", "subscription":{"type":"candle", "coin":"BTC", "interval":"1m"}});
+    subscriptions.subscribe(topic.clone(), payload.clone());
+    subscriptions.subscribe(topic.clone(), payload.clone());
+    assert_eq!(subscriptions.resubscribe(&topic), Some(payload.clone()));
+    assert_eq!(subscriptions.resubscribe(&topic), None);
+    assert_eq!(
+        subscriptions.unsubscribe(topic.clone(), payload.clone()),
+        HydromancerUnsubscribeResult::StillActive
+    );
+    assert!(subscriptions.resubscribe("candle:ETH:1m").is_none());
+    subscriptions.unsubscribe(topic, payload);
+    assert!(subscriptions.is_empty());
+}

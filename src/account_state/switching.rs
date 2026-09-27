@@ -48,6 +48,7 @@ impl TradingTerminal {
         self.account_refresh_backoff_until_ms = None;
         self.account_refresh_retry_due_ms = None;
         self.clear_portfolio_income_account_state();
+        self.transfer_history.clear();
         self.clear_account_scoped_chart_state();
         if self.journal.window_id.is_some() {
             self.journal.clear_active_account_data();
@@ -92,7 +93,9 @@ impl TradingTerminal {
         let Some(profile) = self.accounts.get(index) else {
             return;
         };
-        if !profile.agent_key.trim().is_empty() {
+        // Only ordinary legacy profiles can migrate unbound per-profile keys.
+        // Subaccounts must load credentials through the parent-bound bundle.
+        if profile.master_address.is_some() || !profile.agent_key.trim().is_empty() {
             return;
         }
 

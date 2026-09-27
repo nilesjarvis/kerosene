@@ -148,6 +148,17 @@ The terminal opens with a default chart view. To trade:
 3. Select a symbol from search or click a position symbol.
 4. Use the order-entry pane to place orders.
 
+To trade on an existing subaccount, open **Add Account**, enter the parent
+account address, click **Discover Subaccounts**, and select the subaccount.
+Enter an agent private key approved by the parent account, then save the
+profile. Leave the key empty for watch-only access. Saved subaccounts appear
+in the account picker and can be used with standard orders, Chase, TWAP, and
+wallet clusters. Subaccount creation and funding transfers are managed outside
+Kerosene.
+
+HyperDash and Hydromancer data keys are configured once in
+**Settings > Integrations** and reused across account profiles.
+
 ## Security and Secrets
 
 - Agent private keys are used locally to sign Hyperliquid actions.
@@ -188,6 +199,106 @@ through the configured secret-storage backend.
     </td>
   </tr>
 </table>
+
+### Remote Wallet Label Database
+
+In **Settings → Integrations → Remote wallet database**, enter your PocketBase
+base URL (for example `http://127.0.0.1:8090` or
+`https://wallets.example.com`) and click **Save**. A reverse-proxy path prefix is
+supported. Use the base URL, without `/api/collections/.../records` or `/_/`.
+**Sync now** refreshes immediately; **Disconnect** removes the remote source.
+
+Kerosene reads the database at startup and polls every **30 seconds**, including
+when the wallet tracker is closed. Additions, label/entity renames, and deletions
+appear in the Wallet Tracker and Compact Wallet Tracker. Remote labels also work
+in address displays and the labeled-wallet tracked-trade feed (which still
+requires Hydromancer). Position/account snapshots use your selected read-data
+provider independently of label sync.
+
+The database is authoritative and the integration is **read-only**: manage its
+records in PocketBase's admin UI or your own tooling. Kerosene saves only the
+connection URL. Remote wallets, labels, tags, and remote-only mute choices remain
+in memory; they are excluded from config, backups, and wallet-label exports.
+Existing local wallets and labels are preserved. For overlapping addresses, a
+nonempty remote label takes display priority; disconnecting restores the local
+label. Remote rows cannot be renamed or deleted in Kerosene. Muting a remote-only
+wallet lasts for the current session. Explicitly imported local labels continue
+to be local data.
+
+If a request fails, the last complete sync stays visible in memory, the UI marks
+it stale, and polling retries. Restarting requires a new successful read. Switching
+URLs or disconnecting clears the previous remote list immediately. Each sync
+fetches all pages before applying changes; malformed/incomplete responses never
+replace the current list.
+
+#### PocketBase collections and REST format
+
+Compatible with the PocketBase **v0.40.3** records API. Create a `wallets`
+collection with these fields:
+
+| Field | Type | Use |
+| --- | --- | --- |
+| `id` | PocketBase record ID | Required unique ID, supplied by PocketBase. |
+| `address` | Text, unique | Required wallet address: `0x` plus 40 hexadecimal characters. Matching ignores case. Unsupported addresses are skipped. Duplicate normalized addresses reject the sync. |
+| `label` | Text | Display label; blank/missing uses the related entity's `name`. |
+| `entity` | Optional single relation → `entities` | Expanded with `expand=entity`. |
+| `tags` | JSON array of strings or multi-select | Optional; merged with entity tags in memory. |
+| `chain` | Text | Optional descriptive metadata. All valid EVM addresses are included regardless of chain. |
+| `notes`, `data` | Text, JSON | Optional database metadata; ignored by Kerosene. |
+
+The optional `entities` collection has `name` (text) and `tags` (JSON string array
+or multi-select). It may also contain `type`, `description`, and `data`; these are
+ignored. Wallet label takes priority over entity name. A wallet with neither
+label displays its shortened address.
+
+Allow unauthenticated **list** access to `wallets` and **view** access to
+`entities` for relation expansion. Kerosene sends no admin token and accepts no
+credentials or query parameters in the URL. Create/update/delete rules can stay
+locked; write access is not needed. Use an endpoint reachable from the machine
+running Kerosene, and restrict network access if your labels are private.
+
+The request is:
+
+```http
+GET /api/collections/wallets/records?page=1&perPage=200&sort=id&expand=entity
+```
+
+Kerosene also selects only `id,address,label,tags,expand.entity.name,expand.entity.tags`
+using PocketBase's `fields` parameter. A compatible response looks like:
+
+```json
+{
+  "page": 1,
+  "perPage": 200,
+  "totalPages": 1,
+  "totalItems": 1,
+  "items": [
+    {
+      "id": "wallet000000001",
+      "address": "0x1111111111111111111111111111111111111111",
+      "chain": "hyperevm",
+      "label": "Example vault",
+      "entity": "entity000000001",
+      "tags": ["hyperliquid"],
+      "expand": {
+        "entity": {
+          "id": "entity000000001",
+          "name": "Example entity",
+          "tags": ["desk"]
+        }
+      }
+    }
+  ]
+}
+```
+
+Custom compatible services must honor `page`, `perPage`, stable `sort=id`, and
+`expand=entity`, and return accurate `page`, `perPage`, `totalPages`, `totalItems`,
+and `items`. An empty database returns `items: []`, `totalItems: 0`,
+`totalPages: 0`. Limits are 100,000 records, 2 MiB per response page, and 60 seconds
+per complete sync (15 seconds per request). Redirects are not followed; configure
+the final URL. See the [PocketBase records API](https://pocketbase.io/docs/api-records/)
+for pagination, field selection, and relation expansion.
 
 ## Test and Validate
 

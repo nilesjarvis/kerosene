@@ -2,8 +2,8 @@ use crate::message::Message;
 use crate::order_execution::{cancel_order_by_cloid_task, cancel_order_task};
 use crate::twap_state::TwapChildOrder;
 
+use crate::signing::CapturedAgentKey;
 use iced::Task;
-use zeroize::Zeroizing;
 
 // ---------------------------------------------------------------------------
 // TWAP Cancellation Helpers
@@ -42,12 +42,12 @@ pub(in crate::order_execution::twap) fn twap_cancel_label(
 
 pub(in crate::order_execution::twap) fn twap_cancel_child_task(
     twap_id: u64,
-    key: Zeroizing<String>,
+    key: CapturedAgentKey,
     asset: u32,
     oid: Option<u64>,
     cloid: Option<String>,
 ) -> Task<Message> {
-    if key.trim().is_empty() {
+    if key.is_empty() {
         return Task::perform(
             async { Err("original agent key unavailable".to_string()) },
             move |result| Message::TwapUnexpectedCancelResult {

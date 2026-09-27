@@ -41,6 +41,8 @@ pub(super) fn outcome_symbol(key: &str, is_question_fallback: bool) -> ExchangeS
         market_type: MarketType::Outcome,
         outcome: Some(OutcomeSymbolInfo {
             outcome_id: 66,
+            contract: crate::api::OutcomeContract::verified_fixture(),
+            venue: None,
             question_id: Some(12),
             question_name: Some("Recurring".to_string()),
             question_description: None,
@@ -128,6 +130,7 @@ pub(super) fn terminal_with_move_order(
     terminal.connected_address = Some(account.to_string());
     terminal.wallet_address_input = account.to_string();
     terminal.accounts = vec![AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: account.to_string(),

@@ -50,6 +50,10 @@ impl TradingTerminal {
                     self.close_agent_session();
                     return self.flush_pending_config_save_and_exit();
                 }
+                if Some(id) == self.console.window_id {
+                    self.console.window_id = None;
+                    self.console.snapshot = Default::default();
+                }
                 if Some(id) == self.agent.window_id {
                     self.close_agent_session();
                 }
@@ -71,7 +75,7 @@ impl TradingTerminal {
                     }
                     self.last_focused_workspace = crate::canvas_state::WorkspaceId::Main;
                     self.persist_config();
-                    return Task::none();
+                    return self.sync_outcome_volume_demand();
                 }
                 if self
                     .add_account_window

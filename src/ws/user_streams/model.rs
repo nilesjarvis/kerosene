@@ -181,6 +181,7 @@ mod tests {
                         closed_pnl: "1234.56".to_string(),
                         fee: "10.00".to_string(),
                         fee_token: None,
+                        start_position: None,
                     }],
                     is_snapshot: true,
                 }

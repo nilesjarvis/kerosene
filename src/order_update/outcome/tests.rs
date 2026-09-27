@@ -37,6 +37,8 @@ fn outcome_symbol() -> ExchangeSymbol {
         market_type: MarketType::Outcome,
         outcome: Some(OutcomeSymbolInfo {
             outcome_id: 650,
+            contract: crate::api::OutcomeContract::verified_fixture(),
+            venue: None,
             question_id: Some(650),
             question_name: Some("Test outcome".to_string()),
             question_description: None,

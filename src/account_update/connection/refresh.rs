@@ -417,6 +417,7 @@ mod tests {
             closed_pnl: "0".to_string(),
             fee: "0.01".to_string(),
             fee_token: None,
+            start_position: None,
         }
     }
 

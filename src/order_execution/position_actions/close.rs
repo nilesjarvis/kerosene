@@ -9,8 +9,8 @@ use crate::signing::ExchangeOrderKind;
 
 use super::reject_if_positions_incomplete_for_action;
 
+use crate::signing::CapturedAgentKey;
 use iced::Task;
-use zeroize::Zeroizing;
 
 #[cfg(test)]
 mod tests;
@@ -167,7 +167,7 @@ impl TradingTerminal {
 
     fn submit_prepared_close_position_order(
         &mut self,
-        key: Zeroizing<String>,
+        key: CapturedAgentKey,
         account_address: String,
         coin: &str,
         fraction: f64,

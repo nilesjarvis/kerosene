@@ -146,6 +146,7 @@ impl TradingTerminal {
             | Message::ChartSecondaryCandlesLoaded(_, _)
             | Message::ChartFundingHistoryLoaded(_, _)
             | Message::ChartWsCandleUpdate(_, _, _, _, _)
+            | Message::ChartWsCandleUnavailable(_, _, _, _, _)
             | Message::ChartWsCandleLagged(_, _, _, _, _)) => {
                 return self.update_chart_candles(message);
             }

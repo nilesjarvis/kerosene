@@ -19,8 +19,13 @@ impl TradingTerminal {
     ) -> Column<'a, Message> {
         let theme = self.theme();
         if active_is_outcome {
+            let terms = self
+                .exchange_symbol_for_key(&self.active_symbol)
+                .and_then(|symbol| symbol.outcome.as_ref())
+                .map(|info| info.fee_terms_label())
+                .unwrap_or_else(|| "Outcome fee terms unavailable".to_string());
             return form.push(
-                text("Est. Fees: outcome fees apply on close/settlement")
+                text(terms)
                     .size(10)
                     .color(theme.extended_palette().background.weak.text)
                     .width(Fill)

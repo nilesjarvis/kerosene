@@ -18,6 +18,7 @@ pub(in crate::account_views::positions::table) struct PositionRowData {
     pub(in crate::account_views::positions::table) upnl: Option<f64>,
     pub(in crate::account_views::positions::table) liq_px: Option<f64>,
     pub(in crate::account_views::positions::table) funding_since_open: Option<f64>,
+    pub(in crate::account_views::positions::table) spent_fees: Option<f64>,
     pub(in crate::account_views::positions::table) total_pnl: Option<f64>,
     pub(in crate::account_views::positions::table) leverage: u32,
 }
@@ -33,6 +34,11 @@ impl TradingTerminal {
             .collect();
 
         row_data.sort_by(|a, b| {
+            if self.positions_sort_column == PositionsSortColumn::SpentFees
+                && a.spent_fees.is_some() != b.spent_fees.is_some()
+            {
+                return b.spent_fees.is_some().cmp(&a.spent_fees.is_some());
+            }
             let cmp = match self.positions_sort_column {
                 PositionsSortColumn::Symbol => a.coin.cmp(&b.coin),
                 PositionsSortColumn::Side => {
@@ -48,6 +54,7 @@ impl TradingTerminal {
                     optional_numeric_cmp(a.position_value, b.position_value)
                 }
                 PositionsSortColumn::UnrealizedPnl => optional_numeric_cmp(a.upnl, b.upnl),
+                PositionsSortColumn::SpentFees => optional_numeric_cmp(a.spent_fees, b.spent_fees),
                 PositionsSortColumn::Funding => {
                     optional_numeric_cmp(a.funding_since_open, b.funding_since_open)
                 }
@@ -84,6 +91,25 @@ impl TradingTerminal {
             parse_position_row_number(&pos.unrealized_pnl),
             mark_px,
         );
+        let spent_fees = self
+            .connected_order_account_snapshot()
+            .and_then(|(_, data)| {
+                let spot_like = self.is_spot_coin(&pos.coin) || self.is_outcome_coin(&pos.coin);
+                let positions_complete = if spot_like {
+                    data.completeness.spot_balances_complete
+                } else {
+                    data.completeness.positions_complete
+                };
+                if !data.completeness.fills_complete || !positions_complete {
+                    return None;
+                }
+                let base_token = spot_like.then(|| {
+                    self.exchange_symbol_for_key(&pos.coin)
+                        .map(|symbol| symbol.ticker.as_str())
+                        .unwrap_or(pos.coin.as_str())
+                });
+                account::derive_position_spent_fees(pos, &data.fills, base_token)
+            });
         let funding_since_open = Self::position_funding_pnl(pos.cum_funding.as_ref());
         let total_pnl = upnl.map(|upnl| funding_since_open.map_or(upnl, |funding| upnl + funding));
 
@@ -98,6 +124,7 @@ impl TradingTerminal {
             upnl,
             liq_px: Self::parse_liquidation_px(ap),
             funding_since_open,
+            spent_fees,
             total_pnl,
             leverage: pos.leverage.value,
         }

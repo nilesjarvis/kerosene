@@ -1,3 +1,4 @@
+use crate::account::transfers::TransferHistoryKind;
 use crate::account_state::BottomTab;
 use crate::app_state::TradingTerminal;
 use crate::canvas_state::WorkspaceId;
@@ -54,6 +55,20 @@ impl TradingTerminal {
                 active_tab == BottomTab::FundingHistory,
                 Message::SwitchBottomTab(workspace, pane, BottomTab::FundingHistory),
             ))
+            .push(bottom_tab_separator())
+            .push(bottom_tab_button(
+                "Deposits/Withdrawals",
+                None,
+                active_tab == BottomTab::DepositsWithdrawals,
+                Message::SwitchBottomTab(workspace, pane, BottomTab::DepositsWithdrawals),
+            ))
+            .push(bottom_tab_separator())
+            .push(bottom_tab_button(
+                "Transfers",
+                None,
+                active_tab == BottomTab::Transfers,
+                Message::SwitchBottomTab(workspace, pane, BottomTab::Transfers),
+            ))
             .push(Space::new().width(Fill))
             .push(bottom_tab_separator())
             .push(bottom_journal_button())
@@ -69,6 +84,10 @@ impl TradingTerminal {
             BottomTab::Balances => self.view_balances(),
             BottomTab::TradeHistory => self.view_trade_history(),
             BottomTab::FundingHistory => self.view_funding_history(),
+            BottomTab::DepositsWithdrawals => {
+                self.view_transfer_history(TransferHistoryKind::DepositsWithdrawals)
+            }
+            BottomTab::Transfers => self.view_transfer_history(TransferHistoryKind::Transfers),
         };
 
         let body_padding = if active_tab == BottomTab::Positions {
@@ -119,19 +138,31 @@ impl TradingTerminal {
 }
 
 fn bottom_tab_strip<'a>(content: Row<'a, Message>) -> Element<'a, Message> {
-    container(column![content, section_separator()].spacing(0))
-        .width(Fill)
-        .style(|theme: &Theme| {
-            let background = Color {
-                a: 0.04,
-                ..theme.extended_palette().background.weak.color
-            };
-            container::Style {
-                background: Some(background.into()),
-                ..Default::default()
-            }
-        })
-        .into()
+    container(
+        column![
+            iced::widget::scrollable(content).direction(
+                iced::widget::scrollable::Direction::Horizontal(
+                    iced::widget::scrollable::Scrollbar::new()
+                        .width(3)
+                        .scroller_width(3)
+                )
+            ),
+            section_separator()
+        ]
+        .spacing(0),
+    )
+    .width(Fill)
+    .style(|theme: &Theme| {
+        let background = Color {
+            a: 0.04,
+            ..theme.extended_palette().background.weak.color
+        };
+        container::Style {
+            background: Some(background.into()),
+            ..Default::default()
+        }
+    })
+    .into()
 }
 
 fn bottom_tab_button(
@@ -387,6 +418,8 @@ mod tests {
             market_type: MarketType::Outcome,
             outcome: Some(OutcomeSymbolInfo {
                 outcome_id: 95,
+                contract: crate::api::OutcomeContract::verified_fixture(),
+                venue: None,
                 question_id: None,
                 question_name: None,
                 question_description: None,

@@ -8,6 +8,7 @@ mod files;
 mod fonts;
 mod hotkeys;
 mod layouts;
+pub(crate) mod listings;
 mod live_watchlist;
 mod order_presets;
 mod panes;
@@ -109,9 +110,9 @@ pub(crate) use secrets::{load_keychain_secret_payload, store_secret_payload};
 pub(crate) use themes::default_custom_themes;
 pub use themes::{CustomThemeConfig, default_theme};
 pub use wallets::{
-    AddressBookEntryConfig, CombinedPortfolioConfig, TrackedWalletConfig,
-    WALLET_LABELS_EXPORT_SCHEMA, WalletClusterConfig, WalletClusterMemberConfig,
-    WalletClustersConfig, WalletLabelsExport, WalletTrackerConfig,
+    AddressBookEntryConfig, CombinedPortfolioConfig, RemoteWalletDatabaseConfig,
+    TrackedWalletConfig, WALLET_LABELS_EXPORT_SCHEMA, WalletClusterConfig,
+    WalletClusterMemberConfig, WalletClustersConfig, WalletLabelsExport, WalletTrackerConfig,
     default_wallet_cluster_member_weight, default_wallet_clusters_height,
     default_wallet_clusters_width,
 };

@@ -1,7 +1,9 @@
 use super::*;
 
 mod binary;
+mod hardening;
 mod questions;
+mod skew;
 
 fn outcome_meta_from_json(value: serde_json::Value) -> OutcomeMetaResponse {
     match serde_json::from_value(value) {

@@ -95,6 +95,26 @@ When adding assets:
 - update packaging templates/scripts if the asset must ship
 - avoid committing generated secrets or real account screenshots
 
+Ticker SVGs are discovered by filename in `src/helpers/symbols.rs` and embedded
+from `assets/` for release builds; no separate ticker registry is needed.
+`assets/WLD.svg` uses the black RGB World logomark from the
+[official brand assets](https://world.org/brand), which permit the World logo
+to represent Worldcoin. Its export padding is trimmed for ticker-sized display;
+the logo path is unchanged.
+
+`assets/AR.svg` is the original dark Arweave glyph from the
+[Arweave brand kit](https://www.arweave.org/brand-kit) (Creative Commons BY-ND),
+retrieved from the project's [official asset archive](https://github.com/ArweaveTeam/arweave-org/blob/main/public/brand-kit/GlyphSVG.zip).
+
+`assets/CASHCAT.svg` is a solid full-body silhouette traced from the alpha mask
+of [Cashcat's published artwork](https://cashcat.cc/assets/cashcat.png), with
+transparent padding trimmed. The source is a PNG photograph; this local SVG
+preserves the cat's pose and outline and supports the existing theme tint.
+
+The stock, ETF, and commodity logos for the XYZ markets are documented in
+[Ticker logo sources](ticker-logo-sources.md), including issuer artwork,
+monochrome adaptations, raw/display ticker aliases, and bundled licenses.
+
 ## Linux Packaging
 
 `scripts/package.sh` builds Linux packages:

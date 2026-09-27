@@ -244,3 +244,21 @@ fn compact_wallet_routes_reach_panes_and_wallet_tracker() {
         assert_route(message, UpdateRoute::WalletTracker);
     }
 }
+
+#[test]
+fn remote_wallet_database_messages_route_to_wallet_tracker() {
+    for message in [
+        Message::RemoteWalletDatabaseUrlChanged("http://localhost:8090".into()),
+        Message::SaveRemoteWalletDatabase,
+        Message::DisconnectRemoteWalletDatabase,
+        Message::RemoteWalletDatabaseSync,
+        Message::RemoteWalletDatabaseLoaded(
+            7,
+            crate::wallet_state::remote_database::RemoteWalletDatabaseResult(
+                Ok(Default::default()),
+            ),
+        ),
+    ] {
+        assert_route(message, UpdateRoute::WalletTracker);
+    }
+}

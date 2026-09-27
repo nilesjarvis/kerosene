@@ -154,6 +154,7 @@ impl TradingTerminal {
 
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             inst.canvas.series.retain(|s| s.symbol != symbol);
+            inst.health.remove(&symbol);
             Self::refresh_spaghetti_session_anchor(inst);
             inst.canvas.cache.clear();
             self.persist_config();

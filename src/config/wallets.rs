@@ -2,6 +2,21 @@ use crate::helpers::redact_wallet_address_debug_value;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+/// Only the connection is persisted; remote records remain in memory.
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RemoteWalletDatabaseConfig {
+    #[serde(default)]
+    pub url: String,
+}
+
+impl fmt::Debug for RemoteWalletDatabaseConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RemoteWalletDatabaseConfig")
+            .field("configured", &!self.url.is_empty())
+            .finish()
+    }
+}
+
 /// Persisted tracked-wallet entry.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TrackedWalletConfig {

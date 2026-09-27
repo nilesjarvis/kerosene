@@ -13,6 +13,14 @@ impl TradingTerminal {
         &self,
         subs: &mut Vec<Subscription<Message>>,
     ) {
+        if !self.wallet_tracker.remote_database.url.is_empty() {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(
+                    crate::wallet_state::remote_database::SYNC_INTERVAL_SECS,
+                ))
+                .map(|_| Message::RemoteWalletDatabaseSync),
+            );
+        }
         if self.wallet_tracker_is_visible() && !self.wallet_tracker.tracked_addresses.is_empty() {
             subs.push(
                 iced::time::every(std::time::Duration::from_secs(
@@ -36,6 +44,25 @@ impl TradingTerminal {
 mod tests {
     use super::*;
     use crate::pane_state::PaneKind;
+
+    #[test]
+    fn remote_wallet_sync_runs_with_no_wallets_or_visible_tracker() {
+        let config = crate::config::KeroseneConfig {
+            remote_wallet_database: crate::config::RemoteWalletDatabaseConfig {
+                url: "http://wallets.test".into(),
+            },
+            ..Default::default()
+        };
+        let mut terminal = TradingTerminal::boot_from_config(config).0;
+        terminal.panes = iced::widget::pane_grid::State::new(PaneKind::Watchlist).0;
+        let mut subscriptions = Vec::new();
+        terminal.push_wallet_tracker_timer_subscriptions(&mut subscriptions);
+        assert_eq!(subscriptions.len(), 1);
+        let _ = terminal.update(Message::DisconnectRemoteWalletDatabase);
+        subscriptions.clear();
+        terminal.push_wallet_tracker_timer_subscriptions(&mut subscriptions);
+        assert!(subscriptions.is_empty());
+    }
 
     #[test]
     fn compact_wallet_timer_runs_without_tracker_window_and_skips_order_counts() {

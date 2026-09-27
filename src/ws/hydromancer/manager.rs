@@ -50,6 +50,9 @@ pub(super) enum HydromancerCommand {
         topic: String,
         payload: Value,
     },
+    Resubscribe {
+        topic: String,
+    },
     Reconnect,
     /// Tear down the manager task entirely. Sent during API-key rotation
     /// so the previous key's task exits, dropping its owned `api_key`
@@ -69,6 +72,10 @@ impl fmt::Debug for HydromancerCommand {
                 .debug_struct("Unsubscribe")
                 .field("topic", &redacted_hydromancer_topic_debug_value(topic))
                 .field("payload", &redacted_hydromancer_value(payload))
+                .finish(),
+            Self::Resubscribe { topic } => f
+                .debug_tuple("Resubscribe")
+                .field(&redacted_hydromancer_topic_debug_value(topic))
                 .finish(),
             Self::Reconnect => f.write_str("Reconnect"),
             Self::Shutdown => f.write_str("Shutdown"),

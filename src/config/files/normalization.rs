@@ -811,6 +811,7 @@ fn migrate_legacy_single_account(config: &mut KeroseneConfig) {
     }
 
     config.accounts.push(AccountProfile {
+        master_address: None,
         secret_id: new_secret_id(),
         name: "Main Trading".to_string(),
         wallet_address: config.wallet_address.clone(),
@@ -827,7 +828,9 @@ fn migrate_legacy_agent_key_into_active_account(config: &mut KeroseneConfig) {
     }
 
     let active_index = config.active_account_index.min(config.accounts.len() - 1);
-    if config.accounts[active_index].agent_key.trim().is_empty() {
+    if config.accounts[active_index].master_address.is_none()
+        && config.accounts[active_index].agent_key.trim().is_empty()
+    {
         config.accounts[active_index].agent_key = config.agent_key.clone();
     }
     config.agent_key.zeroize();
@@ -836,6 +839,7 @@ fn migrate_legacy_agent_key_into_active_account(config: &mut KeroseneConfig) {
 fn ensure_account_profile(config: &mut KeroseneConfig) {
     if config.accounts.is_empty() {
         config.accounts.push(AccountProfile {
+            master_address: None,
             secret_id: new_secret_id(),
             name: "Main Trading".to_string(),
             wallet_address: String::new(),

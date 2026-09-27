@@ -101,6 +101,10 @@ impl TradingTerminal {
         // Auto-connect if we have a saved wallet address in the active profile
         let address_book = Self::build_address_book(&cfg);
         let mut wallet_tracker = WalletTrackerState::from_config(&cfg.wallet_tracker);
+        wallet_tracker.remote_database =
+            crate::wallet_state::remote_database::RemoteWalletDatabaseState::from_config(
+                &cfg.remote_wallet_database,
+            );
         let wallet_tracker_added_labels = Self::add_labeled_addresses_to_wallet_tracker(
             &mut wallet_tracker.tracked_addresses,
             &address_book,
@@ -190,6 +194,7 @@ impl TradingTerminal {
             Task::none()
         };
 
+        boot_tasks.push(state.request_remote_wallet_sync());
         boot_tasks.push(symbols_task);
         boot_tasks.push(book_task);
         boot_tasks.push(positioning_task);
@@ -207,6 +212,7 @@ impl TradingTerminal {
         if state.pane_is_open(|kind| matches!(kind, PaneKind::XFeed(_))) {
             boot_tasks.push(state.request_x_feed_auth_refresh());
         }
+        boot_tasks.push(state.request_listings_refresh(false));
         boot_tasks.push(state.request_hype_etfs_boot_refresh());
         boot_tasks.push(state.request_hype_unstaking_queue_boot_refresh());
 

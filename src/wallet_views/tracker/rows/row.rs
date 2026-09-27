@@ -42,6 +42,7 @@ impl TradingTerminal {
                     address.clone(),
                     label_value,
                     display,
+                    self.wallet_is_remote(&address),
                     self.hovered_wallet_address_actions.as_deref(),
                     theme,
                 ),
@@ -64,7 +65,11 @@ impl TradingTerminal {
                     .width(95),
                 container(state_el).width(90),
                 Space::new().width(Fill),
-                wallet_tracker_actions(address.clone(), self.wallet_tracker.is_muted(&address)),
+                wallet_tracker_actions(
+                    address.clone(),
+                    self.wallet_tracker.is_muted(&address),
+                    self.wallet_is_remote(&address)
+                ),
             ]
             .spacing(8)
             .align_y(iced::Alignment::Center),

@@ -1,5 +1,7 @@
 use super::feedback::{chart_header_changed_text, format_signed_usd_change};
 
+mod funding;
+
 #[test]
 fn changed_text_highlights_only_changed_decimal_digit() {
     let parts = chart_header_changed_text("82,543.2", "82,543.3").expect("changed text");

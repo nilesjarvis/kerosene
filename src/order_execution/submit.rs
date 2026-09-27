@@ -9,9 +9,9 @@ use crate::order_execution::{
 };
 use crate::signing::{ExchangeOrderKind, OrderKind};
 
+use crate::signing::CapturedAgentKey;
 use iced::Task;
 use std::fmt;
-use zeroize::Zeroizing;
 
 #[cfg(test)]
 mod inputs;
@@ -207,7 +207,7 @@ impl TradingTerminal {
 
     fn submit_prepared_ticket_order(
         &mut self,
-        key: Zeroizing<String>,
+        key: CapturedAgentKey,
         account_address: String,
         prepared: PreparedExchangeOrder,
     ) -> Task<Message> {

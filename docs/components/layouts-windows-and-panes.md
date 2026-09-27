@@ -48,6 +48,7 @@ It also includes singleton pane types:
 - `TrackedTrades`
 - `TelegramFeed`
 - `Outcomes`
+- `NewListings`
 - `HypeEtfs`
 - `HypeUnstakingQueue`
 
@@ -270,6 +271,7 @@ Kerosene is an iced daemon app, so the runtime can render more than one window.
 - screener
 - journal
 - combined portfolio
+- Console (read-only network activity; see [Console](console.md))
 - wallet tracker
 - wallet details
 - TWAP details

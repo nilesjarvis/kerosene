@@ -564,6 +564,7 @@ fn backup_config_for_pending_keychain_delete_does_not_resurrect_deleted_account(
     let previous_config = KeroseneConfig {
         accounts: vec![
             AccountProfile {
+                master_address: None,
                 secret_id: "acct-a".to_string(),
                 name: "Account A".to_string(),
                 wallet_address: String::new(),
@@ -571,6 +572,7 @@ fn backup_config_for_pending_keychain_delete_does_not_resurrect_deleted_account(
                 hydromancer_api_key: String::new().into(),
             },
             AccountProfile {
+                master_address: None,
                 secret_id: "acct-b".to_string(),
                 name: "Account B".to_string(),
                 wallet_address: String::new(),
@@ -628,6 +630,7 @@ fn backup_config_clears_pending_keychain_delete_after_cleanup_state_save() {
     let _warning_guard = config_warning_guard();
     let path = test_path("backup-pending-keychain-delete-cleared");
     let account_a = AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: String::new(),
@@ -676,6 +679,7 @@ fn encrypted_config_fixture(profiles: &[(&str, &str, &str)], password: &str) -> 
     let accounts: Vec<_> = profiles
         .iter()
         .map(|(secret_id, wallet_address, agent_key)| AccountProfile {
+            master_address: None,
             secret_id: (*secret_id).to_string(),
             name: (*secret_id).to_string(),
             wallet_address: (*wallet_address).to_string(),

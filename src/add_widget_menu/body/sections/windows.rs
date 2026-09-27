@@ -76,6 +76,17 @@ pub(in crate::add_widget_menu::body) fn add_window_section(
             theme,
         ))
         .push(menu_item(
+            "Console",
+            if context.console_open {
+                "Open"
+            } else {
+                "Window"
+            },
+            Some(Message::OpenConsoleWindow),
+            true,
+            theme,
+        ))
+        .push(menu_item(
             "Assistant",
             if context.agent_open { "Open" } else { "Window" },
             Some(Message::OpenAgentWindow),

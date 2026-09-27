@@ -1,4 +1,5 @@
 use crate::api::CLIENT;
+use crate::network_activity::HttpRequestExt as _;
 use reqwest::header::USER_AGENT;
 use zeroize::Zeroizing;
 
@@ -106,7 +107,7 @@ pub async fn fetch_liquidation_heatmap(
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .bearer_auth(api_key.as_str())
         .json(&body)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("HyperDash heatmap request failed: {e}"))?;
 

@@ -135,7 +135,6 @@ fn metric_visibility_collapses_in_priority_order() {
             show_24h_volume: true,
             show_mark_oracle: true,
             show_open_interest: true,
-            show_funding: true,
         }
     );
     assert_eq!(
@@ -145,7 +144,6 @@ fn metric_visibility_collapses_in_priority_order() {
             show_24h_volume: true,
             show_mark_oracle: false,
             show_open_interest: true,
-            show_funding: true,
         }
     );
     assert_eq!(
@@ -155,7 +153,6 @@ fn metric_visibility_collapses_in_priority_order() {
             show_24h_volume: true,
             show_mark_oracle: false,
             show_open_interest: false,
-            show_funding: true,
         }
     );
     assert_eq!(
@@ -165,7 +162,6 @@ fn metric_visibility_collapses_in_priority_order() {
             show_24h_volume: true,
             show_mark_oracle: false,
             show_open_interest: false,
-            show_funding: false,
         }
     );
     assert_eq!(
@@ -175,7 +171,6 @@ fn metric_visibility_collapses_in_priority_order() {
             show_24h_volume: false,
             show_mark_oracle: false,
             show_open_interest: false,
-            show_funding: false,
         }
     );
 }

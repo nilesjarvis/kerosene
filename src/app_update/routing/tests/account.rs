@@ -51,6 +51,22 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
     assert_route(Message::ConnectWallet, UpdateRoute::Account);
     assert_route(Message::DisconnectWallet, UpdateRoute::Account);
     assert_route(Message::AccountPickerRenameToggled(0), UpdateRoute::Account);
+    assert_route(Message::AddAccountDiscoverSubaccounts, UpdateRoute::Account);
+    assert_route(
+        Message::AddAccountTargetSelected(crate::account_state::AddAccountTarget::Master),
+        UpdateRoute::Account,
+    );
+    assert_route(
+        Message::AddAccountSubaccountsLoaded(
+            crate::account_state::SubaccountDiscoveryRequest {
+                window_id,
+                generation: 1,
+                master_address: "0xabc0000000000000000000000000000000000000".into(),
+            },
+            crate::account_state::SubaccountDiscoveryResult(Ok(Vec::new())),
+        ),
+        UpdateRoute::Account,
+    );
     assert_route(
         Message::AccountPickerLabelChanged(0, "Main".to_string()),
         UpdateRoute::Account,
@@ -85,5 +101,32 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
             },
         }),
         UpdateRoute::Order,
+    );
+}
+
+#[test]
+fn transfer_history_messages_route_to_account() {
+    assert_route(Message::RefreshTransferHistory, UpdateRoute::Account);
+    for kind in [
+        crate::account::transfers::TransferHistoryKind::DepositsWithdrawals,
+        crate::account::transfers::TransferHistoryKind::Transfers,
+    ] {
+        assert_route(
+            Message::TransferHistoryPage(kind, true),
+            UpdateRoute::Account,
+        );
+        assert_route(
+            Message::ToggleTransferDetails(kind, 0),
+            UpdateRoute::Account,
+        );
+    }
+    assert_route(
+        Message::TransferHistoryLoaded(
+            "0xabc0000000000000000000000000000000000000".into(),
+            7,
+            crate::account::transfers::TransferProvider::Unit,
+            Box::new(Ok(crate::account::transfers::TransferSnapshot::default())),
+        ),
+        UpdateRoute::Account,
     );
 }

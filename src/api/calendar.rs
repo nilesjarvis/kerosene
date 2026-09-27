@@ -1,5 +1,6 @@
 use super::{CLIENT, KEROSENE_USER_AGENT};
 use crate::helpers::response_excerpt;
+use crate::network_activity::HttpRequestExt as _;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::Deserialize;
 
@@ -19,7 +20,7 @@ pub async fn fetch_economic_calendar() -> Result<Vec<CalendarEvent>, String> {
         .clone()
         .get(url)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .send()
+        .send_observed()
         .await
         .map_err(|e| format!("Economic calendar request failed: {e}"))?;
 

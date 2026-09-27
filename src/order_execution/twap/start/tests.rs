@@ -42,6 +42,8 @@ fn fallback_outcome_symbol(key: &str) -> ExchangeSymbol {
         market_type: MarketType::Outcome,
         outcome: Some(OutcomeSymbolInfo {
             outcome_id: 66,
+            contract: crate::api::OutcomeContract::verified_fixture(),
+            venue: None,
             question_id: Some(12),
             question_name: Some("Recurring".to_string()),
             question_description: None,
@@ -80,6 +82,7 @@ fn twap_ready_terminal() -> TradingTerminal {
     terminal.connected_address = Some(TEST_ACCOUNT.to_string());
     terminal.wallet_address_input = TEST_ACCOUNT.to_string();
     terminal.accounts = vec![AccountProfile {
+        master_address: None,
         secret_id: "acct-a".to_string(),
         name: "Account A".to_string(),
         wallet_address: TEST_ACCOUNT.to_string(),

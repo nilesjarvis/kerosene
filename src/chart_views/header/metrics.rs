@@ -1,7 +1,8 @@
 mod columns;
 
 pub(super) use self::columns::{
-    ChartHeaderMetricVisibility, push_outcome_asset_context_columns, push_outcome_volume_column,
+    ChartHeaderMetricVisibility, funding_column, push_outcome_asset_context_columns,
+    push_outcome_volume_column,
 };
 use self::columns::{push_perp_metric_columns, push_spot_metric_columns};
 
@@ -27,9 +28,9 @@ pub(super) fn push_asset_context_columns<'a>(
     asset_volume_as_notional: bool,
     open_interest_as_notional: bool,
     visibility: ChartHeaderMetricVisibility,
-    now_ms: u64,
+    is_perp: bool,
 ) -> Row<'a, Message> {
-    if ctx.funding.is_some() {
+    if is_perp {
         push_perp_metric_columns(
             header_row,
             theme,
@@ -40,7 +41,6 @@ pub(super) fn push_asset_context_columns<'a>(
             asset_volume_as_notional,
             open_interest_as_notional,
             visibility,
-            now_ms,
         )
     } else {
         push_spot_metric_columns(

@@ -1,3 +1,4 @@
+use crate::network_activity::HttpRequestExt as _;
 mod liquidations;
 mod manager;
 mod market_streams;
@@ -140,7 +141,7 @@ async fn update_hydromancer_api_latency_once(api_key: Zeroizing<String>) {
         .post(HYDROMANCER_API_URL)
         .bearer_auth(api_key.trim())
         .json(&payload)
-        .send()
+        .send_observed()
         .await
     {
         Ok(resp) if resp.status().is_success() => {

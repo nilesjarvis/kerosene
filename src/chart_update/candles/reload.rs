@@ -7,6 +7,88 @@ use crate::timeframe::Timeframe;
 use iced::Task;
 
 impl TradingTerminal {
+    /// Reconcile one affected series while retaining its last good presentation.
+    pub(crate) fn repair_chart_candles(&mut self, id: ChartId, secondary: bool) -> Task<Message> {
+        let now = Self::now_ms();
+        let Some(instance) = self.charts.get(&id) else {
+            return Task::none();
+        };
+        let tf = instance.interval;
+        let (symbol, pending, last_repair) = if secondary {
+            (
+                instance.secondary_symbol.clone(),
+                instance.secondary_candle_fetch_request.is_some(),
+                instance.secondary_candle_repair_at_ms,
+            )
+        } else {
+            (
+                Some(instance.symbol.clone()),
+                instance.candle_fetch_request.is_some(),
+                instance.candle_repair_at_ms,
+            )
+        };
+        let Some(symbol) = symbol else {
+            return Task::none();
+        };
+        if pending
+            || !tf.uses_candle_backfill()
+            || symbol.is_empty()
+            || self.symbol_key_is_hidden(&symbol)
+            || last_repair.is_some_and(|at| now.saturating_sub(at) < 60_000)
+        {
+            return Task::none();
+        }
+        let has_gap = if secondary {
+            instance.secondary_candle_interval_gap
+        } else {
+            instance.candle_interval_gap
+        };
+        let (verified, last_open) = if secondary {
+            (
+                instance.secondary_candle_history_verified_at_ms,
+                instance
+                    .chart
+                    .secondary_series
+                    .as_ref()
+                    .and_then(|series| series.candles.last())
+                    .map(|c| c.open_time),
+            )
+        } else {
+            (
+                instance.candle_history_verified_at_ms,
+                instance.chart.candles.last().map(|c| c.open_time),
+            )
+        };
+        let mut request = Self::build_candle_fetch_request(
+            id,
+            &symbol,
+            tf,
+            self.chart_backfill_request_context_for_timeframe(tf),
+            None,
+            0,
+        );
+        if let Some(last_open) = last_open
+            && verified.is_some()
+            && !has_gap
+            && now.saturating_sub(last_open) < tf.duration_ms().saturating_mul(200)
+        {
+            request.mode = crate::chart_state::CandleFetchMode::RepairTail;
+            request.start_ms = last_open.saturating_sub(tf.duration_ms().saturating_mul(2));
+        }
+        if let Some(instance) = self.charts.get_mut(&id) {
+            if secondary {
+                instance.secondary_candle_repair_at_ms = Some(now);
+            } else {
+                instance.candle_repair_at_ms = Some(now);
+            }
+        }
+        if secondary {
+            self.queue_secondary_candle_fetch(request)
+        } else {
+            self.queue_candle_fetch(request)
+        }
+    }
+
     pub(in crate::chart_update) fn reload_chart_candles(&mut self, id: ChartId) -> Task<Message> {
         let symbol = self
             .charts

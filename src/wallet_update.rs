@@ -4,11 +4,19 @@ use iced::Task;
 
 mod compact;
 mod details;
+mod remote_database;
 mod tracker;
 
 impl TradingTerminal {
     pub(crate) fn update_wallet_tracker(&mut self, message: Message) -> Task<Message> {
         match message {
+            message @ (Message::RemoteWalletDatabaseUrlChanged(_)
+            | Message::SaveRemoteWalletDatabase
+            | Message::DisconnectRemoteWalletDatabase
+            | Message::RemoteWalletDatabaseSync
+            | Message::RemoteWalletDatabaseLoaded(_, _)) => {
+                return self.update_remote_wallet_database(message);
+            }
             message @ (Message::CompactWalletSelected(_, _)
             | Message::CompactWalletBack(_)
             | Message::CompactWalletRefresh(_)

@@ -3,13 +3,14 @@ use crate::message::Message;
 use crate::wallet_state::address_book::WalletDisplay;
 use crate::wallet_views::{WalletAddressActionCell, wallet_address_action_cell};
 
-use iced::widget::{column, text_input};
+use iced::widget::{column, text, text_input};
 use iced::{Element, Theme};
 
 pub(super) fn wallet_identity_cell(
     address: String,
     label_value: String,
     display: WalletDisplay,
+    is_remote: bool,
     hovered_wallet_action_key: Option<&str>,
     theme: &Theme,
 ) -> Element<'static, Message> {
@@ -25,7 +26,19 @@ pub(super) fn wallet_identity_cell(
     };
     let secondary_text = theme.extended_palette().background.weak.text;
 
-    column![
+    let label: Element<'static, Message> = if is_remote {
+        column![
+            text(if label_value.is_empty() {
+                "Unlabeled".into()
+            } else {
+                label_value
+            })
+            .size(11),
+            text("Remote").size(10).color(secondary_text),
+        ]
+        .width(185)
+        .into()
+    } else {
         text_input("Label", &label_value)
             .style(helpers::text_input_style)
             .on_input({
@@ -34,7 +47,12 @@ pub(super) fn wallet_identity_cell(
             })
             .size(11)
             .padding([3, 6])
-            .width(185),
+            .width(185)
+            .into()
+    };
+
+    column![
+        label,
         wallet_address_action_cell(WalletAddressActionCell {
             address: address.clone(),
             label: address_text,

@@ -456,6 +456,7 @@ fn cleanup_failure(error: &str) -> ConfigFileCleanupSummary {
 
 fn account(secret_id: &str) -> AccountProfile {
     AccountProfile {
+        master_address: None,
         secret_id: secret_id.to_string(),
         name: "Test".to_string(),
         wallet_address: "0xabc0000000000000000000000000000000000000".to_string(),

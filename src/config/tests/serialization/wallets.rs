@@ -39,3 +39,24 @@ fn combined_portfolio_round_trips_and_legacy_configs_default_empty() {
     assert!(legacy.combined_portfolio.wallets.is_empty());
     assert!(!legacy.combined_portfolio.open);
 }
+
+#[test]
+fn remote_wallet_database_round_trips_and_legacy_configs_default_disabled() {
+    let config = KeroseneConfig {
+        remote_wallet_database: crate::config::RemoteWalletDatabaseConfig {
+            url: "https://wallets.example.test/pocketbase".into(),
+        },
+        ..Default::default()
+    };
+    let json = json_string(&config, "remote database config serializes");
+    let decoded: KeroseneConfig = value_from_str(&json, "remote database config deserializes");
+    assert_eq!(
+        decoded.remote_wallet_database,
+        config.remote_wallet_database
+    );
+    assert!(!format!("{:?}", config.remote_wallet_database).contains("wallets.example.test"));
+    let mut legacy = default_config_value();
+    remove_field(&mut legacy, "remote_wallet_database", "config object");
+    let legacy: KeroseneConfig = value_from_json(legacy, "old config remains compatible");
+    assert!(legacy.remote_wallet_database.url.is_empty());
+}

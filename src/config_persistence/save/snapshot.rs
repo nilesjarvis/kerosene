@@ -8,6 +8,7 @@ impl TradingTerminal {
             .iter()
             .filter(|profile| !self.ghost_account_secret_ids.contains(&profile.secret_id))
             .map(|profile| config::AccountProfile {
+                master_address: profile.master_address.clone(),
                 secret_id: profile.secret_id.clone(),
                 name: profile.name.clone(),
                 wallet_address: profile.wallet_address.clone(),
@@ -173,6 +174,9 @@ impl TradingTerminal {
 
             spaghetti_charts: self.spaghetti_chart_configs_snapshot(),
             detached_spaghetti_windows: self.detached_spaghetti_window_configs_snapshot(),
+            remote_wallet_database: config::RemoteWalletDatabaseConfig {
+                url: self.wallet_tracker.remote_database.url.clone(),
+            },
             wallet_tracker: self.wallet_tracker.to_config(&self.address_book),
             combined_portfolio: self.combined_portfolio.to_config(),
             wallet_clusters: self.wallet_clusters.to_config(),

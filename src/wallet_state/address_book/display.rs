@@ -41,11 +41,33 @@ impl TradingTerminal {
     }
 
     pub(crate) fn wallet_label(&self, address: &str) -> Option<&str> {
-        Self::wallet_label_from_address_book(&self.address_book, address)
+        Self::wallet_label_from_address_book(&self.wallet_tracker.remote_database.entries, address)
+            .or_else(|| Self::wallet_label_from_address_book(&self.address_book, address))
+    }
+
+    pub(crate) fn wallet_is_remote(&self, address: &str) -> bool {
+        Self::normalize_wallet_address(address).is_some_and(|address| {
+            self.wallet_tracker
+                .remote_database
+                .entries
+                .contains_key(&address)
+        })
     }
 
     pub(crate) fn wallet_display(&self, address: &str) -> WalletDisplay {
-        Self::wallet_display_from_address_book(&self.address_book, address)
+        if Self::wallet_label_from_address_book(
+            &self.wallet_tracker.remote_database.entries,
+            address,
+        )
+        .is_some()
+        {
+            Self::wallet_display_from_address_book(
+                &self.wallet_tracker.remote_database.entries,
+                address,
+            )
+        } else {
+            Self::wallet_display_from_address_book(&self.address_book, address)
+        }
     }
 
     pub(crate) fn wallet_detail_symbol(dex: &str, coin: &str) -> String {

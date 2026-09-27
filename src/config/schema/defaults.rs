@@ -406,6 +406,7 @@ impl Default for KeroseneConfig {
             telegram_feed_private_channels: Vec::new(),
             spaghetti_charts: Vec::new(),
             detached_spaghetti_windows: Vec::new(),
+            remote_wallet_database: Default::default(),
             wallet_tracker: WalletTrackerConfig {
                 tracked_addresses: Vec::new(),
                 muted_addresses: Vec::new(),

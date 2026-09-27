@@ -435,6 +435,9 @@ pub struct KeroseneConfig {
     /// Detached comparison chart windows to reopen on startup.
     #[serde(default)]
     pub detached_spaghetti_windows: Vec<DetachedSpaghettiWindowConfig>,
+    /// Read-only PocketBase wallet database connection (no remote records).
+    #[serde(default)]
+    pub remote_wallet_database: super::RemoteWalletDatabaseConfig,
     /// Wallet tracker window state.
     #[serde(default)]
     pub wallet_tracker: WalletTrackerConfig,
