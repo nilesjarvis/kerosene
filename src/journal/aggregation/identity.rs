@@ -41,20 +41,20 @@ struct FillPositionEdge {
 pub fn compare_fills(a: &UserFill, b: &UserFill) -> Ordering {
     a.time
         .cmp(&b.time)
-        .then(a.coin.cmp(&b.coin))
-        .then(a.tid.cmp(&b.tid))
-        .then(a.oid.cmp(&b.oid))
-        .then(a.hash.cmp(&b.hash))
-        .then(a.side.cmp(&b.side))
-        .then(a.px.cmp(&b.px))
-        .then(a.sz.cmp(&b.sz))
+        .then_with(|| a.coin.cmp(&b.coin))
+        .then_with(|| a.tid.cmp(&b.tid))
+        .then_with(|| a.oid.cmp(&b.oid))
+        .then_with(|| a.hash.cmp(&b.hash))
+        .then_with(|| a.side.cmp(&b.side))
+        .then_with(|| a.px.cmp(&b.px))
+        .then_with(|| a.sz.cmp(&b.sz))
 }
 
 pub fn normalize_fills(fills: &mut Vec<UserFill>) {
     fills.sort_by(compare_fills);
 
-    let mut seen = HashSet::with_capacity(fills.len());
-    fills.retain(|fill| seen.insert(FillIdentity::from(fill)));
+    // The sort key covers the full identity; keep the first duplicate's payload.
+    fills.dedup_by(|a, b| compare_fills(a, b).is_eq());
     order_same_timestamp_position_chains(fills);
 }
 
@@ -77,33 +77,15 @@ pub fn newest_fill_time(fills: &[UserFill]) -> Option<u64> {
     fills.iter().map(|fill| fill.time).max()
 }
 
-fn order_same_timestamp_position_chains(fills: &mut Vec<UserFill>) {
-    if fills.len() < 2 {
-        return;
-    }
-
-    let mut ordered = Vec::with_capacity(fills.len());
-    let mut start = 0;
-
-    while start < fills.len() {
-        let time = fills[start].time;
-        let coin = fills[start].coin.clone();
-        let mut end = start + 1;
-
-        while end < fills.len() && fills[end].time == time && fills[end].coin == coin {
-            end += 1;
+fn order_same_timestamp_position_chains(fills: &mut [UserFill]) {
+    for group in fills.chunk_by_mut(|a, b| a.time == b.time && a.coin == b.coin) {
+        if group.len() > 1 {
+            let ordered = position_chain_order(group);
+            for (fill, ordered_fill) in group.iter_mut().zip(ordered) {
+                *fill = ordered_fill;
+            }
         }
-
-        if end - start > 1 {
-            ordered.extend(position_chain_order(&fills[start..end]));
-        } else {
-            ordered.push(fills[start].clone());
-        }
-
-        start = end;
     }
-
-    *fills = ordered;
 }
 
 fn position_chain_order(group: &[UserFill]) -> Vec<UserFill> {

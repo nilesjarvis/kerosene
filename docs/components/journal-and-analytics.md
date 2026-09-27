@@ -88,10 +88,15 @@ Aggregation starts by normalizing fill identity and order:
 
 The composite identity includes time, trade/order IDs, hash, coin, side, price,
 and size. This avoids dropping legitimate fills that share only one identifier.
+Stable sorting places equal identities together, so normalization deduplicates
+adjacent fills in place and keeps the first occurrence's complete payload,
+including fields outside the identity such as fees and starting position.
 
 Same-millisecond groups can arrive with transaction IDs that do not reflect
 execution order. The journal chains fills by `startPosition` and signed size
 when possible, falling back to deterministic sorting if the chain is ambiguous.
+Normalization retains the input vector and applies chain ordering separately to
+each time/coin group with multiple fills; single-fill groups need no copying.
 
 ## Perpetual Trade Aggregation
 
