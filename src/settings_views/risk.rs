@@ -38,24 +38,19 @@ impl TradingTerminal {
 
     fn view_market_universe_picker(&self) -> Element<'_, Message> {
         let current_theme = self.theme();
-        let mut options = self.market_universe_options();
-        if !options.contains(&self.market_universe) {
-            options.push(self.market_universe.clone());
-        }
+        let (options, selected) = self.market_universe_picker_options();
 
         column![
             text("Market Universe")
                 .size(14)
                 .color(current_theme.palette().text),
             row![
-                pick_list(
-                    options,
-                    Some(self.market_universe.clone()),
-                    Message::MarketUniverseChanged,
-                )
+                pick_list(options, Some(selected), |option| {
+                    Message::MarketUniverseChanged(option.universe)
+                },)
                 .padding([4, 8])
                 .text_size(12)
-                .width(iced::Length::Fixed(220.0)),
+                .width(iced::Length::Shrink),
             ]
             .spacing(8)
             .align_y(iced::Alignment::Center),

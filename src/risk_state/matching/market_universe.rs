@@ -2,11 +2,27 @@ use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::config::MarketUniverseConfig;
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, fmt};
 
 // ---------------------------------------------------------------------------
 // Market Universe Matching
 // ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MarketUniverseOption {
+    pub(crate) universe: MarketUniverseConfig,
+    no_active_markets: bool,
+}
+
+impl fmt::Display for MarketUniverseOption {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.universe.fmt(f)?;
+        if self.no_active_markets {
+            f.write_str(" (no active markets)")?;
+        }
+        Ok(())
+    }
+}
 
 impl TradingTerminal {
     pub(crate) fn symbol_matches_market_universe(
@@ -66,7 +82,8 @@ impl TradingTerminal {
     }
 
     pub(crate) fn market_universe_options(&self) -> Vec<MarketUniverseConfig> {
-        let mut dexes = BTreeSet::new();
+        let mut dexes: BTreeSet<_> = self.perp_dexes.iter().map(|dex| dex.name.clone()).collect();
+        // Symbol-derived entries also support caches written before the registry existed.
         for symbol in &self.exchange_symbols {
             if symbol.market_type == MarketType::Perp
                 && let Some((dex, _)) = symbol.key.split_once(':')
@@ -79,6 +96,26 @@ impl TradingTerminal {
         let mut options = vec![MarketUniverseConfig::All];
         options.extend(dexes.into_iter().map(MarketUniverseConfig::hip3_dex));
         options
+    }
+
+    pub(crate) fn market_universe_picker_options(
+        &self,
+    ) -> (Vec<MarketUniverseOption>, MarketUniverseOption) {
+        let mut options = self.market_universe_options();
+        if !options.contains(&self.market_universe) {
+            options.push(self.market_universe.clone());
+        }
+        let labelled = |universe: MarketUniverseConfig| {
+            let registered = universe
+                .selected_hip3_dex()
+                .is_some_and(|name| self.perp_dexes.iter().any(|dex| dex.name == name));
+            MarketUniverseOption {
+                no_active_markets: registered && !self.market_universe_has_symbols(&universe),
+                universe,
+            }
+        };
+        let selected = labelled(self.market_universe.clone());
+        (options.into_iter().map(labelled).collect(), selected)
     }
 
     pub(crate) fn market_universe_has_symbols(&self, universe: &MarketUniverseConfig) -> bool {
@@ -96,7 +133,13 @@ impl TradingTerminal {
         universe: MarketUniverseConfig,
     ) -> MarketUniverseConfig {
         let universe = universe.normalized();
-        if self.exchange_symbols.is_empty() || self.market_universe_has_symbols(&universe) {
+        let registered = universe
+            .selected_hip3_dex()
+            .is_some_and(|name| self.perp_dexes.iter().any(|dex| dex.name == name));
+        if (self.exchange_symbols.is_empty() && self.perp_dexes.is_empty())
+            || registered
+            || self.market_universe_has_symbols(&universe)
+        {
             universe
         } else {
             MarketUniverseConfig::All

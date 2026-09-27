@@ -1,10 +1,55 @@
 use super::{ExchangeSymbol, MarketType};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 // Perp Symbols
 // ---------------------------------------------------------------------------
+
+/// Registered builder DEX metadata, retained even when all its markets are delisted.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PerpDex {
+    pub name: String,
+    pub collateral_token: Option<u32>,
+}
+
+pub(super) fn parse_perp_dexes(
+    dexs_raw: &Value,
+    metas_raw: &Value,
+) -> Result<Vec<PerpDex>, String> {
+    let dexs = dexs_raw
+        .as_array()
+        .ok_or("Expected array of perp dex metadata")?;
+    let metas = metas_raw.as_array().ok_or("Expected array of dex metas")?;
+    let mut registered = Vec::new();
+    for (index, dex) in dexs.iter().enumerate() {
+        // The native DEX occupies index zero and is represented by null.
+        if index == 0 && dex.is_null() {
+            continue;
+        }
+        let name = dex
+            .get("name")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("perpDexs entry {index} is missing its name"))?
+            .trim()
+            .to_ascii_lowercase();
+        if name.is_empty() {
+            continue;
+        }
+        registered.push(PerpDex {
+            name,
+            collateral_token: metas
+                .get(index)
+                .and_then(|meta| meta.get("collateralToken"))
+                .and_then(Value::as_u64)
+                .and_then(|token| u32::try_from(token).ok()),
+        });
+    }
+    registered.sort_by(|a, b| a.name.cmp(&b.name));
+    registered.dedup_by(|a, b| a.name == b.name);
+    Ok(registered)
+}
 
 pub(super) fn append_perp_symbols(
     symbols: &mut Vec<ExchangeSymbol>,
@@ -176,8 +221,57 @@ fn annotation_map_from(annotations_raw: &Value) -> HashMap<String, Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{append_perp_symbols, margin_mode_disallows_cross};
+    use super::{append_perp_symbols, margin_mode_disallows_cross, parse_perp_dexes};
     use crate::api::MarketType;
+
+    #[test]
+    fn registered_perp_dexes_include_empty_and_delisted_markets_without_listing_contracts() {
+        let dexes = serde_json::json!([
+            null, {"name": "active"}, {"name": "halted"}, {"name": "empty"}
+        ]);
+        let metas = serde_json::json!([
+            {"universe": [{"name": "BTC"}]},
+            {"collateralToken": 0, "universe": [{"name": "active:ABC"}]},
+            {"collateralToken": 404, "universe": [{"name": "halted:ABC", "isDelisted": true}]},
+            {"collateralToken": 7, "universe": []}
+        ]);
+
+        let registered = parse_perp_dexes(&dexes, &metas).expect("registered DEXes");
+        assert_eq!(
+            registered
+                .iter()
+                .map(|dex| (dex.name.as_str(), dex.collateral_token))
+                .collect::<Vec<_>>(),
+            vec![
+                ("active", Some(0)),
+                ("empty", Some(7)),
+                ("halted", Some(404))
+            ]
+        );
+        let mut symbols = Vec::new();
+        append_perp_symbols(&mut symbols, &metas, &serde_json::json!([]), &dexes)
+            .expect("tradable symbols");
+        assert_eq!(
+            symbols
+                .iter()
+                .map(|symbol| symbol.key.as_str())
+                .collect::<Vec<_>>(),
+            vec!["BTC", "active:ABC"]
+        );
+    }
+
+    #[test]
+    fn registered_perp_dexes_normalize_names_without_guessing_missing_collateral() {
+        let dexes = serde_json::json!([
+            {"name": ""}, {"name": " NewDex "}, {"name": "newdex"}
+        ]);
+        let registered = parse_perp_dexes(&dexes, &serde_json::json!([{}]))
+            .expect("registered DEX with pending market metadata");
+        assert_eq!(registered.len(), 1);
+        assert_eq!(registered[0].name, "newdex");
+        assert_eq!(registered[0].collateral_token, None);
+        assert!(parse_perp_dexes(&serde_json::json!([null, {}]), &serde_json::json!([])).is_err());
+    }
 
     #[test]
     fn margin_mode_strict_isolated_disallows_cross() {

@@ -16,7 +16,8 @@ pub use model::{
 };
 use outcomes::templates::OutcomeTemplate;
 use outcomes::{OutcomeMetaResponse, parse_outcome_symbols};
-use perps::append_perp_symbols;
+pub use perps::PerpDex;
+use perps::{append_perp_symbols, parse_perp_dexes};
 use spot::append_spot_symbols;
 
 /// Result of a symbols fetch. Spot and outcome metadata failures are partial:
@@ -25,6 +26,9 @@ use spot::append_spot_symbols;
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExchangeSymbolsPayload {
     pub symbols: Vec<ExchangeSymbol>,
+    /// None for legacy caches or failed perp metadata; preserve the last-known registry.
+    #[serde(default)]
+    pub perp_dexes: Option<Vec<PerpDex>>,
     /// Runtime-only provenance. Cached metadata is useful for rendering, but
     /// must never authorize spot or outcome trading until a live refresh succeeds.
     #[serde(skip)]
@@ -51,6 +55,7 @@ impl fmt::Debug for ExchangeSymbolsPayload {
 
         f.debug_struct("ExchangeSymbolsPayload")
             .field("symbols_len", &self.symbols.len())
+            .field("perp_dexes_len", &self.perp_dexes.as_ref().map(Vec::len))
             .field("perp_count", &perp_count)
             .field("spot_count", &spot_count)
             .field("outcome_count", &outcome_count)
@@ -101,7 +106,8 @@ pub async fn fetch_exchange_symbols() -> Result<ExchangeSymbolsPayload, String> 
             )?;
             let mut symbols = Vec::new();
             append_perp_symbols(&mut symbols, &metas_raw, &annotations_raw, &dexs_raw)?;
-            Ok::<_, String>(symbols)
+            let perp_dexes = parse_perp_dexes(&dexs_raw, &metas_raw)?;
+            Ok::<_, String>((symbols, perp_dexes))
         },
         async move {
             let spot_meta = post_info_value(spot_client, "spotMeta").await?;
@@ -127,15 +133,17 @@ pub async fn fetch_exchange_symbols() -> Result<ExchangeSymbolsPayload, String> 
 }
 
 fn payload_from_source_results(
-    perp_result: Result<Vec<ExchangeSymbol>, String>,
+    perp_result: Result<(Vec<ExchangeSymbol>, Vec<PerpDex>), String>,
     spot_result: Result<Vec<ExchangeSymbol>, String>,
     outcome_result: Result<Vec<ExchangeSymbol>, String>,
 ) -> ExchangeSymbolsPayload {
     let perp_meta_failed = perp_result.is_err();
     let spot_meta_failed = spot_result.is_err();
     let outcome_meta_failed = outcome_result.is_err();
-    let mut symbols = Vec::new();
-    symbols.extend(perp_result.unwrap_or_default());
+    let (mut symbols, perp_dexes) = match perp_result {
+        Ok((symbols, dexes)) => (symbols, Some(dexes)),
+        Err(_) => (Vec::new(), None),
+    };
     symbols.extend(spot_result.unwrap_or_default());
     symbols.extend(outcome_result.unwrap_or_default());
 
@@ -143,6 +151,7 @@ fn payload_from_source_results(
 
     ExchangeSymbolsPayload {
         symbols,
+        perp_dexes,
         loaded_from_cache: false,
         perp_meta_failed,
         spot_meta_failed,

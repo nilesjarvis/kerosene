@@ -97,6 +97,7 @@ fn exchange_symbols_payload_debug_summarizes_symbol_list() {
             },
             test_outcome_symbol(),
         ],
+        perp_dexes: None,
         loaded_from_cache: false,
         perp_meta_failed: false,
         spot_meta_failed: true,
@@ -121,6 +122,7 @@ fn exchange_symbols_payload_debug_summarizes_symbol_list() {
 fn symbol_cache_requires_complete_sources_and_spot_quote_tokens() {
     let complete = ExchangeSymbolsPayload {
         symbols: vec![test_spot_symbol(Some(0))],
+        perp_dexes: None,
         loaded_from_cache: false,
         perp_meta_failed: false,
         spot_meta_failed: false,
@@ -151,6 +153,7 @@ fn symbol_cache_requires_complete_sources_and_spot_quote_tokens() {
 fn cache_provenance_is_runtime_only() {
     let payload = ExchangeSymbolsPayload {
         symbols: vec![test_spot_symbol(Some(0))],
+        perp_dexes: None,
         loaded_from_cache: true,
         perp_meta_failed: false,
         spot_meta_failed: false,
@@ -168,6 +171,7 @@ fn cache_provenance_is_runtime_only() {
 fn cached_fetch_marks_payload_as_unverified_for_runtime() {
     let payload = ExchangeSymbolsPayload {
         symbols: vec![test_spot_symbol(Some(0))],
+        perp_dexes: None,
         loaded_from_cache: false,
         perp_meta_failed: false,
         spot_meta_failed: false,
@@ -191,6 +195,27 @@ fn legacy_cached_payload_defaults_perp_failure_flag_to_false() {
     .expect("legacy payload still deserializes");
 
     assert!(!payload.perp_meta_failed);
+    assert!(payload.perp_dexes.is_none());
+}
+
+#[test]
+fn registered_perp_dexes_survive_payload_caching_without_active_symbols() {
+    let dexes = vec![super::PerpDex {
+        name: "inactive".to_string(),
+        collateral_token: Some(404),
+    }];
+    let payload = payload_from_source_results(
+        Ok((Vec::new(), dexes.clone())),
+        Ok(vec![test_spot_symbol(Some(0))]),
+        Ok(Vec::new()),
+    );
+    assert!(payload.is_cacheable());
+    let encoded = serde_json::to_value(&payload).expect("cache payload serializes");
+    let decoded: ExchangeSymbolsPayload =
+        serde_json::from_value(encoded).expect("cache payload loads");
+    assert_eq!(decoded.perp_dexes, Some(dexes));
+    assert_eq!(decoded.symbols.len(), 1);
+    assert_eq!(decoded.symbols[0].market_type, MarketType::Spot);
 }
 
 #[test]
@@ -202,6 +227,7 @@ fn perp_source_failure_preserves_successful_spot_result() {
     );
 
     assert!(payload.perp_meta_failed);
+    assert!(payload.perp_dexes.is_none());
     assert!(!payload.spot_meta_failed);
     assert_eq!(payload.symbols.len(), 1);
     assert_eq!(payload.symbols[0].market_type, MarketType::Spot);

@@ -225,6 +225,7 @@ impl TradingTerminal {
             active_symbol: boot_symbols.active_symbol,
             active_symbol_display: boot_symbols.active_symbol_display,
             exchange_symbols: Vec::new(),
+            perp_dexes: Vec::new(),
             symbols_loading: true,
             exchange_symbols_refresh_inflight: false,
             spot_metadata_degraded: false,

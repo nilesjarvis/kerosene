@@ -124,6 +124,7 @@ impl TradingTerminal {
             perp_meta_failed,
             spot_meta_failed,
             outcome_meta_failed,
+            ..
         } = payload;
 
         if perp_meta_failed {
@@ -436,11 +437,16 @@ impl TradingTerminal {
     ) -> Task<Message> {
         self.exchange_symbols_refresh_inflight = false;
         match result {
-            Ok(payload) => {
+            Ok(mut payload) => {
                 let loaded_from_cache = payload.loaded_from_cache;
                 let perp_meta_failed = payload.perp_meta_failed;
                 let spot_meta_failed = payload.spot_meta_failed;
                 let outcome_meta_failed = payload.outcome_meta_failed;
+                let mut perp_dexes_changed = false;
+                if !perp_meta_failed && let Some(dexes) = payload.perp_dexes.take() {
+                    perp_dexes_changed = self.perp_dexes != dexes;
+                    self.perp_dexes = dexes;
+                }
                 let was_spot_metadata_degraded = self.spot_metadata_degraded;
                 self.spot_metadata_degraded = spot_meta_failed || loaded_from_cache;
                 let symbols = self.merge_symbols_payload(payload);
@@ -496,7 +502,18 @@ impl TradingTerminal {
                         true,
                     ));
                 }
-                if !symbols_changed && !self.exchange_symbols.is_empty() {
+                // Cached/partial metadata cannot prove that a saved DEX disappeared.
+                let normalized_universe = if loaded_from_cache || perp_meta_failed {
+                    self.market_universe.clone()
+                } else {
+                    self.normalize_market_universe_selection(self.market_universe.clone())
+                };
+                let market_universe_changed = normalized_universe != self.market_universe;
+                if !symbols_changed
+                    && !perp_dexes_changed
+                    && !market_universe_changed
+                    && !self.exchange_symbols.is_empty()
+                {
                     self.symbols_loading = false;
                     return Task::batch(initial_tasks);
                 }
@@ -504,13 +521,9 @@ impl TradingTerminal {
                 self.telegram_feed
                     .rebuild_ticker_mention_resolver(&self.exchange_symbols);
                 self.refresh_telegram_ticker_mentions();
-                let mut market_universe_changed = false;
-                let normalized_universe =
-                    self.normalize_market_universe_selection(self.market_universe.clone());
-                if normalized_universe != self.market_universe {
+                if market_universe_changed {
                     self.market_universe = normalized_universe;
                     self.clear_percentage_order_quantity();
-                    market_universe_changed = true;
                     self.symbol_search_status = Some((
                         "Saved market universe was unavailable; showing all markets".to_string(),
                         true,
@@ -685,6 +698,8 @@ impl TradingTerminal {
                     // labels. Reload all widgets only when the selected market
                     // universe changes; symbol migrations are handled above.
                     tasks.push(self.reconcile_market_universe_state());
+                }
+                if market_universe_changed || perp_dexes_changed {
                     tasks.push(self.refresh_account_data());
                 }
 
@@ -909,6 +924,7 @@ mod tests {
     fn payload(symbols: Vec<ExchangeSymbol>) -> ExchangeSymbolsPayload {
         ExchangeSymbolsPayload {
             symbols,
+            perp_dexes: None,
             loaded_from_cache: false,
             perp_meta_failed: false,
             spot_meta_failed: false,
@@ -946,6 +962,7 @@ mod tests {
 
         let _task = terminal.apply_symbols_loaded(Ok(ExchangeSymbolsPayload {
             symbols: vec![perp_symbol("HYPE")],
+            perp_dexes: None,
             loaded_from_cache: false,
             perp_meta_failed: false,
             spot_meta_failed: true,
@@ -1060,6 +1077,7 @@ mod tests {
 
         let _task = terminal.apply_symbols_loaded(Ok(ExchangeSymbolsPayload {
             symbols: vec![perp_symbol("HYPE")],
+            perp_dexes: None,
             loaded_from_cache: false,
             perp_meta_failed: false,
             spot_meta_failed: true,
@@ -1078,6 +1096,7 @@ mod tests {
 
         let merged = terminal.merge_symbols_payload(ExchangeSymbolsPayload {
             symbols: vec![spot_symbol("@107")],
+            perp_dexes: None,
             loaded_from_cache: false,
             perp_meta_failed: true,
             spot_meta_failed: false,
@@ -1525,6 +1544,117 @@ mod tests {
         assert!(terminal.order_books[&9].pending_book_request_id().is_some());
     }
 
+    #[test]
+    fn symbols_refresh_keeps_registered_dex_selected_after_last_market_delists() {
+        let mut terminal = symbols_refresh_terminal(false);
+        terminal.market_universe = MarketUniverseConfig::hip3_dex("inactive");
+        terminal.exchange_symbols = vec![perp_symbol("BTC"), perp_symbol("inactive:ABC")];
+        let mut refreshed = payload(vec![perp_symbol("BTC")]);
+        refreshed.perp_dexes = Some(vec![crate::api::PerpDex {
+            name: "inactive".to_string(),
+            collateral_token: Some(404),
+        }]);
+
+        let _task = terminal.apply_symbols_loaded(Ok(refreshed.clone()));
+        assert_eq!(
+            terminal.market_universe.selected_hip3_dex(),
+            Some("inactive")
+        );
+        assert_eq!(terminal.visible_collateral_token(), Some(404));
+        assert!(terminal.exchange_symbol_for_key("inactive:ABC").is_none());
+
+        // An unchanged background refresh must also preserve the selection.
+        let _task = terminal.apply_symbols_loaded(Ok(refreshed));
+        assert_eq!(
+            terminal.market_universe.selected_hip3_dex(),
+            Some("inactive")
+        );
+
+        let mut failed = payload(vec![spot_symbol("@107")]);
+        failed.perp_meta_failed = true;
+        let _task = terminal.apply_symbols_loaded(Ok(failed));
+        assert_eq!(
+            terminal.market_universe.selected_hip3_dex(),
+            Some("inactive")
+        );
+        assert_eq!(terminal.perp_dexes[0].name, "inactive");
+        let _task = terminal.apply_symbols_loaded(Err("metadata unavailable".to_string()));
+        assert_eq!(
+            terminal.market_universe.selected_hip3_dex(),
+            Some("inactive")
+        );
+        assert_eq!(terminal.perp_dexes[0].name, "inactive");
+    }
+
+    #[test]
+    fn legacy_cached_symbols_preserve_inactive_selection_until_live_registry_arrives() {
+        let mut terminal = symbols_refresh_terminal(false);
+        terminal.market_universe = MarketUniverseConfig::hip3_dex("inactive");
+        let mut cached = payload(vec![perp_symbol("BTC")]);
+        cached.loaded_from_cache = true;
+        let _task = terminal.apply_symbols_loaded(Ok(cached));
+        assert_eq!(
+            terminal.market_universe.selected_hip3_dex(),
+            Some("inactive")
+        );
+
+        let mut live = payload(vec![perp_symbol("BTC")]);
+        live.perp_dexes = Some(vec![crate::api::PerpDex {
+            name: "inactive".to_string(),
+            collateral_token: Some(404),
+        }]);
+        let _task = terminal.apply_symbols_loaded(Ok(live));
+        assert_eq!(
+            terminal.market_universe.selected_hip3_dex(),
+            Some("inactive")
+        );
+        assert_eq!(terminal.visible_collateral_token(), Some(404));
+    }
+
+    #[test]
+    fn registry_only_refresh_adds_and_removes_dexes_even_when_symbols_are_unchanged() {
+        let mut terminal = symbols_refresh_terminal(false);
+        terminal.exchange_symbols = vec![perp_symbol("BTC")];
+        let mut live = payload(terminal.exchange_symbols.clone());
+        live.perp_dexes = Some(vec![crate::api::PerpDex {
+            name: "empty".to_string(),
+            collateral_token: Some(404),
+        }]);
+        let _task = terminal.apply_symbols_loaded(Ok(live.clone()));
+        let empty = MarketUniverseConfig::hip3_dex("empty");
+        assert!(terminal.market_universe_options().contains(&empty));
+        assert!(
+            terminal
+                .account_data_fetch_scope()
+                .hip3_dexes(&[])
+                .contains(&"empty".to_string())
+        );
+
+        terminal.market_universe = empty.clone();
+        live.perp_dexes = Some(Vec::new());
+        let _task = terminal.apply_symbols_loaded(Ok(live));
+        assert!(!terminal.market_universe_options().contains(&empty));
+        assert_eq!(terminal.market_universe, MarketUniverseConfig::All);
+    }
+
+    #[test]
+    fn unchanged_live_metadata_normalizes_selection_preserved_during_cache_load() {
+        let mut terminal = symbols_refresh_terminal(false);
+        terminal.market_universe = MarketUniverseConfig::hip3_dex("removed");
+        let mut live = payload(vec![perp_symbol("BTC")]);
+        live.perp_dexes = Some(Vec::new());
+        let mut cached = live.clone();
+        cached.loaded_from_cache = true;
+        let _task = terminal.apply_symbols_loaded(Ok(cached));
+        assert_eq!(
+            terminal.market_universe.selected_hip3_dex(),
+            Some("removed")
+        );
+
+        let _task = terminal.apply_symbols_loaded(Ok(live));
+        assert_eq!(terminal.market_universe, MarketUniverseConfig::All);
+    }
+
     fn symbols_refresh_terminal(with_widgets: bool) -> TradingTerminal {
         let mut terminal = TradingTerminal::boot().0;
         terminal.charts.clear();
@@ -1709,6 +1839,7 @@ mod tests {
 
         let _task = terminal.apply_symbols_loaded(Ok(ExchangeSymbolsPayload {
             symbols: Vec::new(),
+            perp_dexes: None,
             loaded_from_cache: false,
             perp_meta_failed: false,
             spot_meta_failed: false,

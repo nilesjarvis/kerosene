@@ -77,6 +77,9 @@ impl TradingTerminal {
             .selected_hip3_dex()
             .map(|dex| vec![dex.to_string()])
             .unwrap_or_else(|| Self::known_mids_dexes_from_symbols(&self.exchange_symbols));
+        if self.market_universe.selected_hip3_dex().is_none() {
+            dexes.extend(self.perp_dexes.iter().map(|dex| dex.name.clone()));
+        }
         if let Some(dex) = self.display_denomination.mids_dex() {
             dexes.push(dex.to_string());
         }

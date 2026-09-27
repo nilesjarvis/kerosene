@@ -1858,6 +1858,7 @@ mod tests {
                     encoding: 660,
                 }),
             }],
+            perp_dexes: None,
             loaded_from_cache: false,
             perp_meta_failed: false,
             spot_meta_failed: false,

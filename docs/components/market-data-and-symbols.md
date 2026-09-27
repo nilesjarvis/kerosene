@@ -49,6 +49,8 @@ represented by `ExchangeSymbol` and include:
 Symbol selection state lives in `TradingTerminal`:
 
 - `exchange_symbols`
+- `perp_dexes` (registered HIP-3 DEX names and collateral tokens, including DEXes
+  with no active markets)
 - `active_symbol`
 - `active_symbol_display`
 - `symbol_search_query`
@@ -68,8 +70,18 @@ entry selection.
 The symbol universe refreshes every 120 seconds to discover new and expired
 markets. Metadata and label changes preserve open chart history and order-book
 state. A full widget reload is only scheduled if the selected market universe
-changes (for example, an unavailable HIP-3 dex falls back to all markets).
+changes (for example, a HIP-3 DEX removed from live metadata falls back to all markets).
 Canonical symbol migrations still refetch the affected widgets individually.
+
+The account-summary and Risk settings market-universe pickers use the registered
+`perpDexs` list, with symbol-derived entries as a fallback for older caches.
+DEXes without non-delisted contracts are labelled **(no active markets)** and
+remain selectable across refreshes. Delisted contracts stay excluded from the
+tradable symbol list. The registry retains each DEX's collateral token from
+`allPerpMetas` for account summaries, and adds registered DEXes to the All Markets
+account fetch scope. It is cached alongside symbols; missing legacy registry
+fields and failed perp refreshes retain existing registry state. Cached or failed
+metadata does not invalidate a saved DEX selection before live verification.
 
 ## New Listings Feed
 

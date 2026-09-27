@@ -432,6 +432,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) active_symbol_display: String,
     // Symbol search (replaces old watchlist)
     pub(crate) exchange_symbols: Vec<ExchangeSymbol>,
+    pub(crate) perp_dexes: Vec<api::PerpDex>,
     pub(crate) symbols_loading: bool,
     pub(crate) exchange_symbols_refresh_inflight: bool,
     /// A spot metadata refresh failed validation or transport. Previously

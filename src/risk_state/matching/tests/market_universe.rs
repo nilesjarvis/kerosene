@@ -45,3 +45,66 @@ fn market_universe_options_include_discovered_dexes_not_only_known_constants() {
             .contains(&MarketUniverseConfig::hip3_dex("newdex"))
     );
 }
+
+#[test]
+fn market_universe_picker_includes_and_labels_registered_dexes_without_active_markets() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.perp_dexes = ["active", "inactive", "empty"]
+        .into_iter()
+        .map(|name| crate::api::PerpDex {
+            name: name.to_string(),
+            collateral_token: Some(0),
+        })
+        .collect();
+    terminal.exchange_symbols = vec![perp_symbol_with_collateral("active:ABC", Some(0))];
+    terminal.market_universe = MarketUniverseConfig::hip3_dex("inactive");
+
+    let (options, selected) = terminal.market_universe_picker_options();
+    assert_eq!(
+        options.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        vec![
+            "All Markets",
+            "HIP-3: active",
+            "HIP-3: empty (no active markets)",
+            "HIP-3: inactive (no active markets)"
+        ]
+    );
+    assert!(options.contains(&selected));
+    assert_eq!(selected.universe, terminal.market_universe);
+    assert_eq!(
+        terminal.normalize_market_universe_selection(terminal.market_universe.clone()),
+        terminal.market_universe
+    );
+    assert_eq!(
+        terminal.normalize_market_universe_selection(MarketUniverseConfig::hip3_dex("unknown")),
+        MarketUniverseConfig::All
+    );
+}
+
+#[test]
+fn selecting_registered_inactive_dex_scopes_account_without_selecting_a_contract() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.market_universe = MarketUniverseConfig::All;
+    terminal.exchange_symbols = vec![perp_symbol_with_collateral("BTC", Some(0))];
+    terminal.perp_dexes = vec![crate::api::PerpDex {
+        name: "inactive".to_string(),
+        collateral_token: Some(404),
+    }];
+    terminal.active_symbol = "BTC".to_string();
+
+    let _task = terminal.update(crate::message::Message::MarketUniverseChanged(
+        MarketUniverseConfig::hip3_dex("inactive"),
+    ));
+
+    assert_eq!(
+        terminal.market_universe.selected_hip3_dex(),
+        Some("inactive")
+    );
+    assert_eq!(
+        terminal.account_data_fetch_scope().selected_hip3_dex(),
+        Some("inactive")
+    );
+    assert!(terminal.active_symbol.is_empty());
+    assert!(terminal.fallback_unmuted_symbol_key().is_none());
+    assert_eq!(terminal.visible_collateral_token(), Some(404));
+}

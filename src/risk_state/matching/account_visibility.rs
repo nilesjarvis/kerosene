@@ -55,17 +55,25 @@ impl TradingTerminal {
         self.market_universe
             .selected_hip3_dex()
             .and_then(|selected_dex| {
-                self.exchange_symbols.iter().find_map(|symbol| {
-                    if symbol.market_type == MarketType::Perp
-                        && symbol.key.split_once(':').is_some_and(|(symbol_dex, _)| {
-                            symbol_dex.eq_ignore_ascii_case(selected_dex)
-                        })
-                    {
-                        symbol.collateral_token
-                    } else {
-                        None
-                    }
-                })
+                self.exchange_symbols
+                    .iter()
+                    .find_map(|symbol| {
+                        if symbol.market_type == MarketType::Perp
+                            && symbol.key.split_once(':').is_some_and(|(symbol_dex, _)| {
+                                symbol_dex.eq_ignore_ascii_case(selected_dex)
+                            })
+                        {
+                            symbol.collateral_token
+                        } else {
+                            None
+                        }
+                    })
+                    .or_else(|| {
+                        self.perp_dexes
+                            .iter()
+                            .find(|dex| dex.name.eq_ignore_ascii_case(selected_dex))
+                            .and_then(|dex| dex.collateral_token)
+                    })
             })
             .or(Some(0).filter(|_| self.market_universe.selected_hip3_dex().is_none()))
     }

@@ -13,16 +13,11 @@ const DROPDOWN_CHEVRON_DOWN: &str = "\u{25BE}";
 
 impl TradingTerminal {
     pub(crate) fn summary_market_universe_picker(&self) -> Element<'_, Message> {
-        let mut options = self.market_universe_options();
-        if !options.contains(&self.market_universe) {
-            options.push(self.market_universe.clone());
-        }
+        let (options, selected) = self.market_universe_picker_options();
 
-        pick_list(
-            options,
-            Some(self.market_universe.clone()),
-            Message::MarketUniverseChanged,
-        )
+        pick_list(options, Some(selected), |option| {
+            Message::MarketUniverseChanged(option.universe)
+        })
         .padding([4, 8])
         .text_size(10)
         .width(Length::Shrink)

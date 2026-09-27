@@ -253,6 +253,7 @@ mod tests {
         let request_id = terminal.outcome_volumes_request_id;
         let _ = terminal.update_market(Message::SymbolsLoaded(Ok(api::ExchangeSymbolsPayload {
             symbols: vec![perp_symbol("HYPE"), outcome_symbol("#1")],
+            perp_dexes: None,
             loaded_from_cache: false,
             perp_meta_failed: false,
             spot_meta_failed: false,
