@@ -125,6 +125,16 @@ perpetual clearinghouse state independently so a failed perpetual read does not
 discard a valid spot snapshot. Percentage orders require a complete, fresh
 spot snapshot and use the selected pair's verified base/quote token identities.
 
+`account/types/data/completeness.rs` records unique section/message pairs and
+builds the overall warning summary from borrowed messages in order of first
+occurrence, deduplicating identical text across sections. Section warnings retain
+their own messages and fallback text. Marking positions incomplete clears
+actionability; marking them degraded preserves the existing actionability flag.
+
+Fetch-scope constructors borrow input, trim whitespace, and fold ASCII case when
+building owned DEX keys. Selecting a blank DEX falls back to the default
+all-markets scope.
+
 ## User Data Stream
 
 `subscription_state/user_data.rs` creates `WsUserDataStreamParams` for:

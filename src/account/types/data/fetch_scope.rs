@@ -31,8 +31,8 @@ impl AccountDataFetchScope {
         Self::AllMarkets { hip3_dexes }
     }
 
-    pub fn hip3_dex(dex: impl Into<String>) -> Self {
-        normalized_hip3_dex(&dex.into())
+    pub fn hip3_dex(dex: impl AsRef<str>) -> Self {
+        normalized_hip3_dex(dex.as_ref())
             .map(|dex| Self::Hip3Dex { dex })
             .unwrap_or_default()
     }

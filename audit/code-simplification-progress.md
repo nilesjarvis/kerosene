@@ -22,7 +22,7 @@ candidates; it does not establish that every module has been reviewed.
 | Startup and layout restoration | Chart, comparison-chart, positioning, order-book, and default-watchlist initialization reviewed and consolidated. Session-data restoration inspected and left explicit because its fallback policies differ and its model construction is already shared. Remaining pane/layout flows need review. |
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts, axes, background setup, and crosshair drawing reviewed and consolidated; mode-specific formatting and series calculations retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
 | Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Candle request/response policies and watchlist/outcome-volume history inspected; candle normalization deduplicates in place and trailing-run searches stop at the final gap. Outcome parsing, contract/template resolution, question membership, and label helpers reviewed; the temporary question index borrows shared records and expiry formatting is shared. Calendar, unstaking, and ETF API entry points/conversion helpers inspected. Order-status request/parsing and outcome-volume batching/cancellation reviewed; identity checks, concurrency, and partial-failure behavior retained. Remaining API requests, books, and other widgets need review. |
-| Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Account refresh admission, rate-limit retries, and reconciliation flow inspected; the original fills snapshot is retained across terminal mutations. Account bootstrap, wallet detail/snapshot/order-count reads, and analytics HTTP ownership reviewed; helpers now share borrowed clients without changing request policy. Account persistence snapshots and wallet tracker model, queue, selection, refresh, and compact-model paths were revisited. Tracker ranking now borrows candidates until selection, refresh-all borrows tracked state and copies only admitted addresses, and core refresh setup reuses its row lookup. Seven baseline-tested regressions preserve FIFO precedence, timestamp ties, batch bounds, loading/retry/age and snapshot rules, queue deduplication, and request context. Account bootstrap merging and fee parsing were inspected and retained; completeness warning ownership is a concrete follow-up. Other account and portfolio flows remain. |
+| Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Account refresh admission, rate-limit retries, and reconciliation flow inspected; the original fills snapshot is retained across terminal mutations. Account bootstrap, wallet detail/snapshot/order-count reads, and analytics HTTP ownership reviewed; helpers now share borrowed clients without changing request policy. Account persistence snapshots and wallet tracker model, queue, selection, refresh, and compact-model paths were revisited. Tracker ranking now borrows candidates until selection, refresh-all borrows tracked state and copies only admitted addresses, and core refresh setup reuses its row lookup. Seven baseline-tested regressions preserve FIFO precedence, timestamp ties, batch bounds, loading/retry/age and snapshot rules, queue deduplication, and request context. Account bootstrap merging and fee parsing were inspected and retained. Completeness warning comparisons now borrow one owned entry, and summaries borrow unique messages; section/global deduplication and actionability policies have baseline-tested regressions. Selected-DEX scope construction borrows input before producing its normalized owned key. Freshness, balance, leverage, and scope helpers were traced without changing their policies; owned portfolio JSON extraction is a concrete follow-up. Other account and portfolio flows remain. |
 | Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Snapshot models, planning, assembly, and metrics reviewed and separated; request bounds and history admission are shared. Snapshot update callers inspected, with freshness/admission policies retained. Journal cache persistence and tests reviewed; platform-specific replacement retained. Cockpit rendering/analytics reviewed and split by panel; per-asset aggregation copies coin names only for distinct output rows. Detail/chrome/list views, summary preparation/series/drawing, and small trade-card helpers reviewed; simplified series iteration and reused detail values. Snapshot canvas interaction/rendering reviewed and separated; the canvas borrows its snapshot. Account analytics HTTP fan-out, reserve/name/history parsing, income assembly, and portfolio data selection reviewed; token validation is centralized, recent-payment formatting is bounded to 12 valid rows, portfolio bucket construction is direct, and unused theme construction is removed. Portfolio/income panes, table variants, projection generation, chart layout/hover/tooltip, and PnL area rendering reviewed; daily histories and income labels now borrow data, hidden-chip preparation is skipped, and common table cells/status wrapping are shared. PnL-card state/metrics, privacy text, preview/export rendering, contrast, and output paths reviewed; digit masking is shared and position percentages are reused. Owned export snapshots and account binding remain intact. Account metric helpers reviewed and retained; portfolio/income refresh lifecycle now has one shared implementation with independent state per feature, while caller admission and result policies remain explicit. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Removed discarded theme constructions from order/Chase entry points after checking theme purity; request and lifecycle code is otherwise byte-identical. Substantive order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Proxy URL normalization, redacted labels, deserialization/revalidation, settings commit order, and startup fallback inspected; existing security and persistence behavior retained. Remaining persistence/security code needs review. |
@@ -2449,15 +2449,56 @@ Validation (using the local ALSA prefix documented above):
 - Source comparison confirms selection changes only candidate/output ownership;
   all refresh task construction, batch/order setup, and dispatch are byte-identical.
 
+## 2026-09-28: reduce account warning and fetch-scope string copies
+
+- Completeness warning insertion now builds one owned section/message entry and
+  borrows it for `contains`, removing the full string copy previously made for
+  every comparison. Summary preparation collects borrowed message slices rather
+  than copying each unique message. Per-section pair deduplication and global
+  message deduplication retain their separate roles and original ordering.
+- Added two regressions before the warning changes. They cover duplicate and
+  shared messages across all sections, distinct case/whitespace/Unicode text,
+  first-occurrence summary order, exact section output, empty-warning fallback
+  text, and incomplete versus degraded position actionability. Warning strings,
+  storage, state flags, fallback text, and returned owned UI strings are intact.
+- The selected-DEX fetch-scope constructor now accepts `AsRef<str>`, matching the
+  all-markets constructor, and borrows its input before normalization. Both live
+  callers pass borrowed strings; the previous conversion made an unnecessary
+  owned copy before the normalized key allocation. A regression passed before
+  and after this change for string slices, borrowed/owned Strings, blank values,
+  surrounding whitespace, mixed ASCII case, and non-ASCII text. Scope variants,
+  default fallback, membership, request weight, and refresh interval are unchanged.
+- Traced account freshness and its separate per-DEX/order/position/spot timestamps,
+  collateral-balance fallbacks, exact-symbol leverage lookup, and fetch-scope
+  callers. Kept those policy distinctions explicit. Inspected owned Hydromancer
+  portfolio JSON parsing and its consumers; top-level field extraction currently
+  clones values that can be moved, which is the next ownership-review target.
+- Updated the account/wallet guide. No schemas, message routes, subscriptions,
+  freshness thresholds, trading calculations, provider policy, network behavior,
+  dependencies, assets, or UI changes; no measured speedup claimed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene account::types::data`:
+  **28 passed** before/after warning changes, then **29 passed** before/after the
+  scope-constructor change; no failures or ignored tests.
+- `cargo test --locked -j 2`: **4,434 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed. `cargo fmt -- --check` and `git diff --check`: passed.
+- Source comparison confirms 7 other completeness helper bodies and 10 other
+  fetch-scope helper bodies are unchanged. All pre-existing completeness and
+  fetch-scope test bodies are preserved.
+
 ## Next candidates
 
-1. Review account completeness warning construction: comparison currently clones
-   warning strings, and summaries clone unique messages before joining. Preserve
-   per-section deduplication, global first-occurrence order, exact warning text,
-   and the positions-actionability distinction between incomplete and degraded.
-2. Continue account data, wallet model, and update ownership review, including
-   fetch-scope/read-only helpers and wallet config normalization. Account
+1. Review owned portfolio response extraction in
+   `account/data/bootstrap/hydromancer.rs`: move top-level JSON fields instead of
+   cloning where the response is consumed. Preserve missing/null distinctions,
+   error precedence, abstraction defaulting, redaction, and scoped conversion.
+2. Continue account data and wallet ownership review, including scoped DEX lists,
+   wallet config normalization, and remaining update/model helpers. Account
    state/persistence copies remain intentional where they protect a snapshot
-   across terminal mutations.
+   across terminal mutations or serve multiple consumers.
 3. Continue across the unreviewed areas in the coverage table. Large files often
    include inline tests, so distinguish production complexity from file length.
