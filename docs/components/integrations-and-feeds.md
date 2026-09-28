@@ -169,6 +169,13 @@ unmatched results preserve current state. Key and distribution regression tests
 live in `hyperdash_update/key/tests.rs` and
 `hyperdash_update/liquidations_distribution/tests.rs`.
 
+Heatmap responses move into the bounded cache before updating waiting charts.
+Cache hits and fresh responses borrow that stored data for chart updates, which
+retain independent render cells and lightweight loaded markers. Cache admission
+order, muted/request guards, status text, and canvas invalidation are unchanged.
+Heatmap lifecycle tests live in `chart_state/heatmap/tests.rs` and
+`hyperdash_update/heatmap/tests.rs`.
+
 The HyperDash key is secret-bearing.
 
 ## OpenRouter

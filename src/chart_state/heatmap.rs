@@ -2,6 +2,9 @@ mod cache;
 mod range;
 mod request;
 
+#[cfg(test)]
+mod tests;
+
 use super::ChartId;
 use crate::app_state::TradingTerminal;
 use crate::hyperdash_api::fetch_liquidation_heatmap;
@@ -49,11 +52,11 @@ impl TradingTerminal {
         };
 
         let cache_key = request.cache_key();
-        if let Some(data) = self.heatmap_data_cache.get(&cache_key).cloned() {
+        if self.heatmap_data_cache.contains_key(&cache_key) {
             if let Some(inst) = self.charts.get_mut(&chart_id) {
                 inst.heatmap_last_fetch = Some(request);
             }
-            self.apply_heatmap_data_to_chart(chart_id, &cache_key, &data, true);
+            self.apply_cached_heatmap_to_chart(chart_id, &cache_key, true);
             return Task::none();
         }
 
