@@ -97,7 +97,7 @@ limit behavior is represented by `OrderKind::LimitIoc`.
 
 ## Prepared Order Boundary
 
-`order_execution/core.rs` defines the boundary between user intent and signed
+`order_execution/core.rs` exposes the boundary between user intent and signed
 exchange action:
 
 - `OrderSurface`
@@ -111,6 +111,19 @@ exchange action:
 - `QuantitySource`
 - `QuantityDenomination`
 - `ReduceOnlySource`
+
+The implementation lives in focused modules under `order_execution/core/`:
+
+- `model.rs`: intents, prepared orders, redacted formatting, and request/context
+  construction. Both placement helpers share the request field mapping.
+- `capabilities.rs`: market-type policy, surface labels, and capability errors.
+- `cloid.rs`: monotonic nonce allocation and one-shot client-order ID hashing.
+- `preparation.rs`: place/cancel/modify validation and prepared wire values,
+  including cancellation-only recovery when metadata is missing.
+- `tasks.rs`: owned signing inputs and asynchronous exchange task wrappers.
+
+Tests live beside each responsibility; preparation tests are grouped by place,
+cancel, and modify actions. Validation order stays explicit in preparation.
 
 This layer centralizes:
 
