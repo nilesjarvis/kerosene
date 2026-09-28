@@ -128,7 +128,6 @@ impl TradingTerminal {
             return task;
         }
 
-        let _theme = self.theme();
         let Some((key, account_address)) = self.order_signing_context() else {
             return Task::none();
         };

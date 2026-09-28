@@ -13,7 +13,6 @@ use self::trades::trade_markers_for_symbol;
 impl TradingTerminal {
     /// Update position and order overlays for a specific chart.
     pub(crate) fn sync_chart_position_for(&mut self, chart_id: ChartId) {
-        let _theme = self.theme();
         let symbol = match self.charts.get(&chart_id) {
             Some(inst) => inst.symbol.clone(),
             None => return,
@@ -47,7 +46,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn sync_chart_orders_for(&mut self, chart_id: ChartId) {
-        let _theme = self.theme();
         let symbol = match self.charts.get(&chart_id) {
             Some(inst) => inst.symbol.clone(),
             None => return,
@@ -225,7 +223,6 @@ impl TradingTerminal {
 
     /// Sync overlays for all chart instances.
     pub(crate) fn sync_all_chart_overlays(&mut self) {
-        let _theme = self.theme();
         let ids: Vec<ChartId> = self.charts.keys().copied().collect();
         for id in ids {
             self.sync_chart_position_for(id);
@@ -237,7 +234,6 @@ impl TradingTerminal {
 
     /// Sync only order overlays for all chart instances.
     pub(crate) fn sync_all_chart_orders(&mut self) {
-        let _theme = self.theme();
         let ids: Vec<ChartId> = self.charts.keys().copied().collect();
         for id in ids {
             self.sync_chart_orders_for(id);

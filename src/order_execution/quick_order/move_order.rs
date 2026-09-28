@@ -53,7 +53,6 @@ impl TradingTerminal {
         oid: u64,
         new_price: f64,
     ) -> Task<Message> {
-        let _theme = self.theme();
         let move_key = MoveOrderKey::new(coin, oid);
         if self.has_pending_cancel_indicator(oid) {
             self.order_status = Some((

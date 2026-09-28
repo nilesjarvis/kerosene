@@ -32,6 +32,8 @@ impl TradingTerminal {
         let numbers = PositionCardNumbers::from_position(self, pos)?;
         let side = if numbers.szi >= 0.0 { "Long" } else { "Short" };
         let leverage = pos.leverage.value.max(1);
+        let asset_move_pct =
+            position_asset_move_pct(numbers.szi, numbers.entry_px, numbers.mark_px);
 
         Some(PnlCardMetrics {
             ticker: self.display_name_for_symbol(&pos.coin),
@@ -44,9 +46,8 @@ impl TradingTerminal {
             ),
             private_context: Some(format!("{side} position")),
             upnl: numbers.upnl,
-            asset_move_pct: position_asset_move_pct(numbers.szi, numbers.entry_px, numbers.mark_px),
-            leveraged_pct: position_asset_move_pct(numbers.szi, numbers.entry_px, numbers.mark_px)
-                .map(|pct| pct * f64::from(leverage)),
+            asset_move_pct,
+            leveraged_pct: asset_move_pct.map(|pct| pct * f64::from(leverage)),
         })
     }
 

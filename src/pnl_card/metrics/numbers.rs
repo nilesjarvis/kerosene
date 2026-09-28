@@ -19,14 +19,14 @@ impl PositionCardNumbers {
         terminal: &TradingTerminal,
         pos: &account::Position,
     ) -> Option<Self> {
-        let szi = parse_pnl_card_number(&pos.szi)?;
-        let entry_px = parse_pnl_card_number(&pos.entry_px)?;
-        let wire_upnl = parse_pnl_card_number(&pos.unrealized_pnl);
+        let szi = parse_finite_number(&pos.szi)?;
+        let entry_px = parse_finite_number(&pos.entry_px)?;
+        let wire_upnl = parse_finite_number(&pos.unrealized_pnl);
         let mark_px = terminal
             .resolve_mid_for_symbol(&pos.coin)
             .or_else(|| mark_from_wire_upnl(szi, entry_px, wire_upnl))?;
         let upnl = szi * (mark_px - entry_px);
-        let margin_used = parse_pnl_card_number(&pos.margin_used).unwrap_or_default();
+        let margin_used = parse_finite_number(&pos.margin_used).unwrap_or_default();
 
         Some(Self {
             szi,
@@ -36,10 +36,6 @@ impl PositionCardNumbers {
             margin_used,
         })
     }
-}
-
-fn parse_pnl_card_number(raw: &str) -> Option<f64> {
-    parse_finite_number(raw)
 }
 
 pub(in crate::pnl_card) fn mark_from_wire_upnl(

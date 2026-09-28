@@ -100,7 +100,6 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let _theme = self.theme();
         let Some((key, account_address)) = self.order_signing_context() else {
             self.toast_order_status();
             return Task::none();

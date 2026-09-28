@@ -23,12 +23,12 @@ candidates; it does not establish that every module has been reviewed.
 | Charting and canvas | Instance construction, persisted chart settings, annotation loading, and comparison settings reviewed. Comparison-chart rendering contexts, axes, background setup, and crosshair drawing reviewed and consolidated; mode-specific formatting and series calculations retained. Metadata-driven chart identity reconciliation reviewed and separated from symbol refresh orchestration. Most chart rendering and interactions remain. |
 | Market data | Mid-price update visibility filtering reviewed; unnecessary catalog copies removed. Persistent API cache reviewed and split into candle policy, queued writes, and storage, with write coalescing simplified. Public shared reads and read admission inspected and retained. API exports, order-book reads, chart asset-context reads, watchlist context requests/parsing, and exchange statistics reviewed. Spot chart context lookup indexed once per response; differing parser and partial-result policies retained. Symbol metadata orchestration, perpetual/spot parsers, DEX registry parsing, and listings parsers reviewed; unnecessary metadata copies removed. Symbol refresh, legacy spot migration, label updates, and search context results reviewed and split; shared watchlist alias rewriting and removed intermediate copies. Symbol search planning, filtering, sorting, DEX listing/ranking, and volume lookup reviewed; ranking work moved out of comparisons. Live-watchlist and ticker-tape context completion reviewed and shared, retaining their distinct status/refresh policies. Watchlist history completion inspected; row-cache refresh now shares one borrowed metadata index per batch. Candle request/response policies and watchlist/outcome-volume history inspected; candle normalization deduplicates in place and trailing-run searches stop at the final gap. Outcome parsing, contract/template resolution, question membership, and label helpers reviewed; the temporary question index borrows shared records and expiry formatting is shared. Calendar, unstaking, and ETF API entry points/conversion helpers inspected. Remaining API requests, ETF flow parsing, books, and other widgets need review. |
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Broader account and portfolio flows remain. |
-| Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Snapshot models, planning, assembly, and metrics reviewed and separated; request bounds and history admission are shared. Snapshot update callers inspected, with freshness/admission policies retained. Journal cache persistence and tests reviewed; platform-specific replacement retained. Cockpit rendering/analytics reviewed and split by panel; per-asset aggregation copies coin names only for distinct output rows. Detail/chrome/list views, summary preparation/series/drawing, and small trade-card helpers reviewed; simplified series iteration and reused detail values. Snapshot canvas interaction/rendering reviewed and separated; the canvas borrows its snapshot. Account analytics HTTP fan-out, reserve/name/history parsing, income assembly, and portfolio data selection reviewed; token validation is centralized, recent-payment formatting is bounded to 12 valid rows, portfolio bucket construction is direct, and unused theme construction is removed. Portfolio/income panes, table variants, projection generation, chart layout/hover/tooltip, and PnL area rendering reviewed; daily histories and income labels now borrow data, hidden-chip preparation is skipped, and common table cells/status wrapping are shared. PnL-card rendering remains. |
-| Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Order execution, signing, and automation state-machine review remains. |
+| Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Snapshot models, planning, assembly, and metrics reviewed and separated; request bounds and history admission are shared. Snapshot update callers inspected, with freshness/admission policies retained. Journal cache persistence and tests reviewed; platform-specific replacement retained. Cockpit rendering/analytics reviewed and split by panel; per-asset aggregation copies coin names only for distinct output rows. Detail/chrome/list views, summary preparation/series/drawing, and small trade-card helpers reviewed; simplified series iteration and reused detail values. Snapshot canvas interaction/rendering reviewed and separated; the canvas borrows its snapshot. Account analytics HTTP fan-out, reserve/name/history parsing, income assembly, and portfolio data selection reviewed; token validation is centralized, recent-payment formatting is bounded to 12 valid rows, portfolio bucket construction is direct, and unused theme construction is removed. Portfolio/income panes, table variants, projection generation, chart layout/hover/tooltip, and PnL area rendering reviewed; daily histories and income labels now borrow data, hidden-chip preparation is skipped, and common table cells/status wrapping are shared. PnL-card state/metrics, privacy text, preview/export rendering, contrast, and output paths reviewed; digit masking is shared and position percentages are reused. Owned export snapshots and account binding remain intact. |
+| Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Removed discarded theme constructions from order/Chase entry points after checking theme purity; request and lifecycle code is otherwise byte-identical. Substantive order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Remaining integration stream internals still need review. |
 | Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing inspected. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling and reduced summary text copies. Other integration and assistant internals still need substantive review. |
-| Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Substantive review of other surfaces remains. |
+| Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Theme construction and discarded theme calls in root update, notifications, chart helpers, and order helpers reviewed; the unused calls are removed. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
 
 ## 2026-09-27: chart restoration
@@ -1400,12 +1400,63 @@ Validation (using the local ALSA prefix documented above):
   tests cover chart geometry, hover behavior, and history calculations. Logs:
   `/tmp/kerosene-portfolio-view-smoke.vGSjE3`.
 
+## 2026-09-28: share PnL-card masking and remove discarded theme construction
+
+- Reviewed PnL-card state, metrics and fallbacks, render-text/privacy rules,
+  preview and shared canvas rendering, contrast, export requests/output, and
+  window controls. Kept owned async export snapshots, account-binding checks,
+  unknown-total refusal, privacy defaults, font timing, and rendering intact.
+- Whole-price and fractional-price masking now share one ASCII-digit walk.
+  Whole-price rules reuse the already computed digit count. Preserved sign and
+  whitespace handling, ASCII-only masking, separators/non-digit characters,
+  significant-digit selection, and existing byte-length behavior for fractions.
+- Reused the position's asset-move percentage for leveraged return and removed
+  a pass-through number parser. Pricing fallback and all arithmetic are unchanged.
+- Added a regression before production changes covering empty/whitespace values,
+  signed prices, separators, non-ASCII characters, short fractions, mixed digit
+  and non-digit fractions, and privacy-disabled output.
+- Audited `theme()`/`get_theme_by_name`, palette helpers, transparency adjustment,
+  and iced's custom-theme constructor. They construct immutable palette data;
+  discarded calls do not synchronize state or perform I/O.
+- Removed 24 unused `let _theme = self.theme()` calls across 18 files: root
+  message dispatch, notifications, chart allocation/overlays/heatmap, and order,
+  Chase, fee, and symbol helpers. This includes a palette construction on every
+  message and repeated nested constructions during chart/order processing.
+- Source comparison confirms every other byte in those 18 files is unchanged.
+  This is a scoped removal of unused work, not a completed review of order
+  execution or chart lifecycle behavior. No request, signing, account, freshness,
+  retry, notification, or routing policy changed.
+- Updated the PnL-card and theme component guides. No schema, dependencies,
+  assets, message variants, or subscriptions changed. No measured runtime
+  speedup is claimed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene pnl_card`:
+  **32 passed** before and after production changes, including the new privacy
+  regression, account binding, contrast, render text, and offscreen PNG tests.
+- Focused targets using the same test command: `order_execution` **401 passed**,
+  `app_update::routing` **15 passed**, `chart_state` **73 passed**, and
+  `notification_state` **5 passed**.
+- Source comparison confirms exactly 24 call deletions across 18 files, with
+  every other byte unchanged; no discarded theme bindings remain.
+- `cargo test --locked -j 2`: **4,365 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check`, `git diff --check`, and `cargo build --locked -j 2`:
+  passed.
+- Headless startup smoke: the built binary with `--test` opened the 1600x960
+  Kerosene window under Xvfb, confirmed by `xwininfo`. Expected timeout exit 124
+  after 20 seconds, with no panic markers. In-memory test mode kept personal
+  configuration out of the run. Logs: `/tmp/kerosene-pnl-theme-smoke.Sr431z`.
+
 ## Next candidates
 
-1. Review PnL-card metrics, rendering, and export preparation, then audit other
-   unused theme constructions in state/update methods before removing them.
-   Account state/persistence copies remain intentional. Farside's repeated
-   chart-marker lookup remains a smaller candidate.
+1. Review account metrics and notification/toast lifecycle helpers for repeated
+   calculations or policies, then continue account/portfolio refresh and state
+   ownership. Account state/persistence copies remain intentional. Farside's
+   repeated chart-marker lookup remains a smaller candidate.
 2. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
    event parsing.

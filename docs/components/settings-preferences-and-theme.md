@@ -67,6 +67,10 @@ Themes are split into:
 - custom theme config under `config/themes.rs`
 - runtime mapping in `app_theme.rs`
 
+`TradingTerminal::theme()` constructs a palette from the current preferences; it
+does not apply settings or synchronize state. Call it where the resulting theme
+is consumed, rather than as setup for state-only update helpers.
+
 Theme changes call:
 
 - `apply_chart_theme_colors`

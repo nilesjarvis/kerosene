@@ -55,7 +55,6 @@ impl TradingTerminal {
         fraction: f64,
         use_market: bool,
     ) -> Task<Message> {
-        let _theme = self.theme();
         // The close menu closes after the first click, but a second queued
         // click still dispatches; without this gate a double-fired partial
         // close stacks (two 50% closes flatten the position).

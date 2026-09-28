@@ -143,7 +143,6 @@ impl TradingTerminal {
     /// Push a toast notification. Also plays sound and sends desktop
     /// notification if enabled.
     pub(crate) fn push_toast(&mut self, message: String, is_error: bool) {
-        let _theme = self.theme();
         push_toast_entry(
             &mut self.toasts,
             &mut self.next_toast_id,
@@ -165,7 +164,6 @@ impl TradingTerminal {
 
     /// Push a positive interest alert with dedicated sound and summary.
     pub(crate) fn push_interest_alert(&mut self, message: String) {
-        let _theme = self.theme();
         push_toast_entry(
             &mut self.toasts,
             &mut self.next_toast_id,
@@ -220,7 +218,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn play_notification_sound(&self, is_error: bool) {
-        let _theme = self.theme();
         if self.sound_enabled {
             if is_error {
                 sound::play_error();
@@ -231,7 +228,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn set_order_status(&mut self, message: String, is_error: bool) {
-        let _theme = self.theme();
         self.order_status = Some((message.clone(), is_error));
         if is_error {
             // Execution failures must stay visible when the order ticket pane

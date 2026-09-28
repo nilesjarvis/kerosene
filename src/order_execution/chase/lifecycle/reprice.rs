@@ -70,7 +70,6 @@ impl TradingTerminal {
         chase_id: u64,
         best: f64,
     ) -> Task<Message> {
-        let _theme = self.theme();
         if let Some(chase) = self.chase_orders.get(&chase_id)
             && !chase_account_matches(chase, self.connected_address.as_deref())
         {

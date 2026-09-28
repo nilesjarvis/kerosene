@@ -276,7 +276,6 @@ pub(crate) struct ChartInstance {
 impl TradingTerminal {
     /// Allocate the next chart ID.
     pub(crate) fn alloc_chart_id(&mut self) -> ChartId {
-        let _theme = self.theme();
         let id = self.next_chart_id;
         self.next_chart_id += 1;
         id

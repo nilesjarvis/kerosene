@@ -14,7 +14,6 @@ impl TradingTerminal {
     /// Fetch heatmap data for a chart if the overlay is enabled and we
     /// have candle data to derive the visible price/time range.
     pub(crate) fn maybe_fetch_heatmap(&mut self, chart_id: ChartId) -> Task<Message> {
-        let _theme = self.theme();
         if self.hyperdash_api_key.is_empty() {
             return Task::none();
         }

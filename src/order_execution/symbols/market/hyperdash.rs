@@ -9,7 +9,6 @@ impl TradingTerminal {
     /// Resolve a chart symbol key to the coin symbol expected by HyperDash.
     /// Returns None for symbols HyperDash does not support (spot/outcome markets).
     pub(crate) fn hyperdash_coin_for_symbol(&self, symbol_key: &str) -> Option<String> {
-        let _theme = self.theme();
         if let Some(sym) = self.exchange_symbols.iter().find(|s| s.key == symbol_key) {
             return match sym.market_type {
                 MarketType::Perp => Some(sym.key.clone()),

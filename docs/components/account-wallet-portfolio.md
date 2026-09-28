@@ -501,6 +501,11 @@ Features include:
 PnL cards can include financial values, so privacy toggles and output handling
 should be treated carefully.
 
+Preview and export use the same `pnl_card_render_text` transformation. Whole-price
+and fractional-price privacy rules share one ASCII-digit masking helper, with
+their visibility thresholds selected separately. Export requests own snapshots
+of the card settings and metrics after checking the card's account binding.
+
 ## Freshness And Refresh
 
 Account data carries freshness information. Close-position, NUKE, and some
