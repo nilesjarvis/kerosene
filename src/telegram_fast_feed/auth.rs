@@ -69,10 +69,7 @@ pub(crate) async fn request_telegram_fast_login_code(
             .await
             .map_err(|_| "Telegram login code request failed".to_string())?;
         if let Ok(mut pending) = pending_auths().lock() {
-            pending.insert(
-                (session_path.clone(), request_id),
-                PendingAuth::Login(token),
-            );
+            pending.insert((session_path, request_id), PendingAuth::Login(token));
         }
         Ok(TelegramFastAuthOutcome::CodeSent)
     })
@@ -92,26 +89,23 @@ pub(crate) async fn submit_telegram_fast_login_code(
 
     let session_path = telegram_fast_session_path()
         .ok_or_else(|| "Could not resolve Kerosene config directory".to_string())?;
-    let token = match pending_auths()
-        .lock()
-        .map_err(|_| "Telegram login state is unavailable".to_string())?
-        .remove(&(session_path.clone(), challenge_request_id))
-    {
-        Some(PendingAuth::Login(token)) => token,
-        Some(PendingAuth::Password(password)) => {
-            if let Ok(mut pending) = pending_auths().lock() {
-                pending.insert(
-                    (session_path, challenge_request_id),
-                    PendingAuth::Password(password),
-                );
+    let token = {
+        let mut pending = pending_auths()
+            .lock()
+            .map_err(|_| "Telegram login state is unavailable".to_string())?;
+        let key = (session_path, challenge_request_id);
+        match pending.remove(&key) {
+            Some(PendingAuth::Login(token)) => token,
+            Some(auth @ PendingAuth::Password(_)) => {
+                pending.insert(key, auth);
+                return Err("Enter the Telegram 2FA password".to_string());
             }
-            return Err("Enter the Telegram 2FA password".to_string());
+            #[cfg(test)]
+            Some(PendingAuth::Placeholder) => {
+                return Err("Request a Telegram login code first".to_string());
+            }
+            None => return Err("Request a Telegram login code first".to_string()),
         }
-        #[cfg(test)]
-        Some(PendingAuth::Placeholder) => {
-            return Err("Request a Telegram login code first".to_string());
-        }
-        None => return Err("Request a Telegram login code first".to_string()),
     };
 
     with_telegram_client(api_id, |client| async move {
@@ -149,26 +143,23 @@ pub(crate) async fn submit_telegram_fast_password(
 
     let session_path = telegram_fast_session_path()
         .ok_or_else(|| "Could not resolve Kerosene config directory".to_string())?;
-    let token = match pending_auths()
-        .lock()
-        .map_err(|_| "Telegram login state is unavailable".to_string())?
-        .remove(&(session_path.clone(), challenge_request_id))
-    {
-        Some(PendingAuth::Password(token)) => *token,
-        Some(PendingAuth::Login(login)) => {
-            if let Ok(mut pending) = pending_auths().lock() {
-                pending.insert(
-                    (session_path, challenge_request_id),
-                    PendingAuth::Login(login),
-                );
+    let token = {
+        let mut pending = pending_auths()
+            .lock()
+            .map_err(|_| "Telegram login state is unavailable".to_string())?;
+        let key = (session_path, challenge_request_id);
+        match pending.remove(&key) {
+            Some(PendingAuth::Password(token)) => *token,
+            Some(auth @ PendingAuth::Login(_)) => {
+                pending.insert(key, auth);
+                return Err("Submit the Telegram login code first".to_string());
             }
-            return Err("Submit the Telegram login code first".to_string());
+            #[cfg(test)]
+            Some(PendingAuth::Placeholder) => {
+                return Err("No Telegram 2FA challenge is pending".to_string());
+            }
+            None => return Err("No Telegram 2FA challenge is pending".to_string()),
         }
-        #[cfg(test)]
-        Some(PendingAuth::Placeholder) => {
-            return Err("No Telegram 2FA challenge is pending".to_string());
-        }
-        None => return Err("No Telegram 2FA challenge is pending".to_string()),
     };
 
     with_telegram_client(api_id, |client| async move {

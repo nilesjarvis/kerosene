@@ -275,7 +275,9 @@ Core implementation:
   existing adjacent-peer deduplication policy.
 - `src/telegram_fast_feed/auth.rs`: optional MTProto sign-in/sign-out, bundled
   credentials, and request-owned pending challenges. Its tests cover challenge
-  cleanup and sign-out outcomes.
+  cleanup, sign-out outcomes, and restoration after a wrong-stage submission.
+  Challenge extraction/restoration uses one registry lock scope before any
+  network work; a deadline-bounded subprocess regression checks for deadlock.
 - `src/telegram_fast_feed/session.rs`: session paths, permissions, SQLite open
   retries, serialized short-lived clients, pool shutdown, and session-file
   cleanup. Its tests cover path redaction and graceful/timed-out shutdown;

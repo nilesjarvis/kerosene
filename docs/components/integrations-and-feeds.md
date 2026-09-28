@@ -327,6 +327,9 @@ over characters without collecting a temporary vector.
 Fast-feed authentication and pending challenges live in `telegram_fast_feed/auth.rs`;
 session files, permissions, client-operation serialization, and pool shutdown live
 in `telegram_fast_feed/session.rs`. Each module keeps its focused tests nearby.
+Challenge removal and restoration share one registry guard, which leaves scope
+before network work. A wrong challenge type retains its original request ownership
+and returns the existing input error without acquiring the same lock twice.
 The root retains private-channel scans, stream orchestration, channel
 resolution/backfill, and cursor generations. Scans cache the ASCII-folded title
 and peer ID for sorting while retaining stable order and adjacent-peer deduplication.
