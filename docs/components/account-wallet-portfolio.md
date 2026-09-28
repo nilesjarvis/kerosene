@@ -521,6 +521,13 @@ Key behavior:
 Cluster close actions require fresh member snapshots and route through the
 shared order preparation boundary with `OrderSurface::ClusterClose`.
 
+Order and close plans share `PreparedClusterLeg::new` to bind the prepared
+request and completion context to the captured member. Dispatch moves the owned
+signing key and context into the task while execution history retains its own
+client-order ID. Position aggregation borrows input symbol names and copies a
+name only when creating a summary; calculation order and optional totals remain
+unchanged.
+
 Full-cluster and single-member refreshes share selection in `data.rs`. They copy
 the selected cluster ID and matching profile IDs before updating state, preserving
 member order and repeated entries without cloning names, weights, or input drafts.

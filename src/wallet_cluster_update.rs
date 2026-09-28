@@ -8,12 +8,11 @@ use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers::trim_decimal_zeros;
 use crate::message::Message;
-use crate::order_execution::OneShotPlacementContext;
+use crate::order_execution::{OneShotPlacementContext, PreparedExchangeOrder};
 use iced::Task;
 
 const POSITION_EPSILON: f64 = 1e-12;
 
-#[derive(Clone)]
 struct ClusterTradingMember {
     profile_secret_id: String,
     label: String,
@@ -22,7 +21,6 @@ struct ClusterTradingMember {
     weight: f64,
 }
 
-#[derive(Clone)]
 struct PreparedClusterLeg {
     member: ClusterTradingMember,
     request: crate::signing::PlaceOrderRequest,
@@ -31,6 +29,21 @@ struct PreparedClusterLeg {
     size: String,
     price: String,
     market_type: MarketType,
+}
+
+impl PreparedClusterLeg {
+    fn new(member: ClusterTradingMember, order: PreparedExchangeOrder, is_buy: bool) -> Self {
+        let (request, context) = order.place_request_with_context(&member.address);
+        Self {
+            member,
+            request,
+            context,
+            is_buy,
+            size: order.size,
+            price: order.price,
+            market_type: order.market_type,
+        }
+    }
 }
 
 impl TradingTerminal {

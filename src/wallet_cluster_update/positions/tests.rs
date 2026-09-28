@@ -1,5 +1,7 @@
 use super::*;
 
+mod aggregation;
+
 const ADDRESS: &str = "0x1111111111111111111111111111111111111111";
 
 fn position_member(profile: &str, dex: &str, size: f64) -> WalletClusterPositionMember {

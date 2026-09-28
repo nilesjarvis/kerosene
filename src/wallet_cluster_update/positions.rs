@@ -64,7 +64,7 @@ impl TradingTerminal {
                 .filter(|name| !name.is_empty())
                 .unwrap_or_else(|| self.wallet_display(&state.address).primary);
             for position in &data.positions {
-                let coin = position.asset_position.position.coin.clone();
+                let coin = position.asset_position.position.coin.as_str();
                 let Some(size) = parse_finite_number(&position.asset_position.position.szi) else {
                     continue;
                 };
@@ -74,7 +74,7 @@ impl TradingTerminal {
                 let entry_price = parse_finite_number(&position.asset_position.position.entry_px);
                 let value = parse_finite_number(&position.asset_position.position.position_value)
                     .or_else(|| {
-                        self.resolve_mid_for_symbol(&coin)
+                        self.resolve_mid_for_symbol(coin)
                             .map(|mid| mid * size.abs())
                     });
                 let unrealized_pnl =
@@ -84,7 +84,7 @@ impl TradingTerminal {
                     index
                 } else {
                     summaries.push(WalletClusterPositionSummary {
-                        symbol: coin.clone(),
+                        symbol: coin.to_string(),
                         net_size: 0.0,
                         long_size: 0.0,
                         short_size: 0.0,
@@ -126,6 +126,7 @@ impl TradingTerminal {
     }
 }
 
+/// A missing value clears the total; the next known value starts a new total.
 fn add_optional(target: &mut Option<f64>, value: Option<f64>) {
     match (target.as_mut(), value) {
         (Some(total), Some(value)) => *total += value,

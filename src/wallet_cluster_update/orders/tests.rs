@@ -1,6 +1,86 @@
 use super::*;
 use crate::wallet_cluster_state::WalletClusterMember;
 
+#[test]
+fn prepared_cluster_leg_keeps_request_fields_context_and_captured_member_target() {
+    use crate::order_execution::PreparedExchangeOrder;
+    use crate::signing::CapturedAgentKey;
+    use zeroize::Zeroizing;
+
+    for (surface, market_type, kind) in [
+        (
+            OrderSurface::Cluster,
+            MarketType::Perp,
+            ExchangeOrderKind::Limit,
+        ),
+        (
+            OrderSurface::ClusterClose,
+            MarketType::Perp,
+            ExchangeOrderKind::Market,
+        ),
+        (
+            OrderSurface::Cluster,
+            MarketType::Spot,
+            ExchangeOrderKind::LimitIoc,
+        ),
+        (
+            OrderSurface::Cluster,
+            MarketType::Outcome,
+            ExchangeOrderKind::Limit,
+        ),
+    ] {
+        let member = ClusterTradingMember {
+            profile_secret_id: "member".into(),
+            label: "Member".into(),
+            address: ADDRESS.into(),
+            agent_key: CapturedAgentKey::for_account(
+                Zeroizing::new("synthetic-invalid-key".into()),
+                Some(ADDRESS),
+            )
+            .expect("captured subaccount"),
+            weight: 2.5,
+        };
+        let order = PreparedExchangeOrder {
+            surface,
+            symbol_key: "BTC".into(),
+            asset: 7,
+            is_buy: false,
+            price: "123.45".into(),
+            size: "0.25".into(),
+            order_kind: kind,
+            reduce_only: true,
+            market_type,
+        };
+        // The recorded direction and prepared request direction remain separate inputs.
+        let leg = PreparedClusterLeg::new(member, order, true);
+        assert_eq!(leg.member.profile_secret_id, "member");
+        assert_eq!(leg.member.label, "Member");
+        assert_eq!(leg.member.address, ADDRESS);
+        assert_eq!(leg.member.weight, 2.5);
+        assert_eq!(leg.member.agent_key.vault_address(), Some(ADDRESS));
+        assert!(!leg.member.agent_key.is_empty());
+        assert!(leg.is_buy);
+        assert_eq!(leg.market_type, market_type);
+        assert_eq!(leg.price, "123.45");
+        assert_eq!(leg.size, "0.25");
+        assert_eq!(leg.request.asset, 7);
+        assert!(!leg.request.is_buy);
+        assert_eq!(leg.request.price, "123.45");
+        assert_eq!(leg.request.size, "0.25");
+        assert_eq!(leg.request.order_kind, kind);
+        assert!(leg.request.reduce_only);
+        assert_eq!(
+            leg.request.cloid.as_deref(),
+            Some(leg.context.cloid.as_str())
+        );
+        assert!(!leg.context.cloid.is_empty());
+        assert_eq!(leg.context.account_address, ADDRESS);
+        assert_eq!(leg.context.surface, surface);
+        assert_eq!(leg.context.symbol_key, "BTC");
+        assert_eq!(leg.context.order_kind, kind);
+    }
+}
+
 const ADDRESS: &str = "0x1111111111111111111111111111111111111111";
 
 #[test]

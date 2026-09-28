@@ -4,6 +4,8 @@ use crate::order_execution::OrderSurface;
 use crate::signing::ExchangeOrderKind;
 use serde_json::json;
 
+mod start;
+
 const ADDRESS: &str = "0x1111111111111111111111111111111111111111";
 
 fn terminal_with_execution() -> TradingTerminal {

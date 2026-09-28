@@ -175,16 +175,7 @@ impl TradingTerminal {
                 );
                 return Task::none();
             }
-            let (request, context) = order.place_request_with_context(&member.address);
-            prepared.push(PreparedClusterLeg {
-                member,
-                request,
-                context,
-                is_buy,
-                size: order.size,
-                price: order.price,
-                market_type: order.market_type,
-            });
+            prepared.push(PreparedClusterLeg::new(member, order, is_buy));
         }
 
         self.start_wallet_cluster_execution(
@@ -290,16 +281,7 @@ impl TradingTerminal {
                     return Task::none();
                 }
             };
-            let (request, context) = order.place_request_with_context(&member.address);
-            prepared.push(PreparedClusterLeg {
-                member,
-                request,
-                context,
-                is_buy,
-                size: order.size,
-                price: order.price,
-                market_type: order.market_type,
-            });
+            prepared.push(PreparedClusterLeg::new(member, order, is_buy));
         }
 
         if prepared.is_empty() {

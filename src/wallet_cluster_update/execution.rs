@@ -37,8 +37,9 @@ impl TradingTerminal {
                 leg.market_type,
             );
             let member_key: RedactedAccountKey = Some(leg.member.profile_secret_id.clone()).into();
-            let context = leg.context.clone();
-            let key = leg.member.agent_key.clone();
+            let cloid = leg.context.cloid.clone();
+            let context = leg.context;
+            let key = leg.member.agent_key;
             tasks.push(place_order_task(key, leg.request, move |result| {
                 Message::WalletClusterOrderResult {
                     execution_id,
@@ -55,7 +56,7 @@ impl TradingTerminal {
                 is_buy: leg.is_buy,
                 size: leg.size,
                 price: leg.price,
-                cloid: leg.context.cloid,
+                cloid,
                 status: WalletClusterLegStatus::Pending,
                 message: "Submitted".to_string(),
             });
