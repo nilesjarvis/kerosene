@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 mod aggregation;
 mod cache;
 mod price_history;
+mod requests;
 mod scope;
 
 #[cfg(test)]
@@ -18,6 +19,7 @@ mod tests;
 
 pub use aggregation::AggregatedDepth;
 pub(super) use aggregation::aggregate_with_cumulative;
+use requests::PendingOrderBookRequest;
 use scope::merge_books_preserving_scope;
 
 // ---------------------------------------------------------------------------
@@ -230,80 +232,6 @@ impl OrderBookInstance {
         self.book_source_mid
     }
 
-    pub fn pending_book_sigfigs(&self) -> Option<(Option<u8>, Option<u8>)> {
-        self.pending_book_request
-            .as_ref()
-            .map(|request| request.sigfigs)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn pending_book_request_id(&self) -> Option<u64> {
-        self.pending_book_request
-            .as_ref()
-            .map(|request| request.request_id)
-    }
-
-    pub fn pending_book_request_matches(
-        &self,
-        symbol: &str,
-        tick_size: f64,
-        sigfigs: (Option<u8>, Option<u8>),
-    ) -> bool {
-        self.pending_book_request.as_ref().is_some_and(|request| {
-            request.symbol == symbol
-                && tick_sizes_match(request.tick_size, tick_size)
-                && request.sigfigs == sigfigs
-        })
-    }
-
-    pub fn pending_book_request_matches_id(
-        &self,
-        request_id: u64,
-        symbol: &str,
-        tick_size: f64,
-        sigfigs: (Option<u8>, Option<u8>),
-    ) -> bool {
-        self.pending_book_request.as_ref().is_some_and(|request| {
-            request.request_id == request_id
-                && request.symbol == symbol
-                && tick_sizes_match(request.tick_size, tick_size)
-                && request.sigfigs == sigfigs
-        })
-    }
-
-    pub fn mark_book_request(
-        &mut self,
-        symbol: String,
-        tick_size: f64,
-        sigfigs: (Option<u8>, Option<u8>),
-    ) -> u64 {
-        self.next_book_request_id = self.next_book_request_id.wrapping_add(1);
-        let request_id = self.next_book_request_id;
-        self.pending_book_request = Some(PendingOrderBookRequest {
-            request_id,
-            symbol,
-            tick_size,
-            sigfigs,
-        });
-        request_id
-    }
-
-    pub fn clear_matching_book_request(
-        &mut self,
-        request_id: u64,
-        symbol: &str,
-        tick_size: f64,
-        sigfigs: (Option<u8>, Option<u8>),
-    ) {
-        if self.pending_book_request_matches_id(request_id, symbol, tick_size, sigfigs) {
-            self.pending_book_request = None;
-        }
-    }
-
-    pub fn clear_book_request(&mut self) {
-        self.pending_book_request = None;
-    }
-
     pub fn apply_book_update_preserving_scope(
         &mut self,
         incoming: OrderBook,
@@ -342,11 +270,4 @@ impl OrderBookInstance {
             && self.can_render_book_at_tick(self.tick_size)
             && (!self.book.bids.is_empty() || !self.book.asks.is_empty())
     }
-}
-
-struct PendingOrderBookRequest {
-    request_id: u64,
-    symbol: String,
-    tick_size: f64,
-    sigfigs: (Option<u8>, Option<u8>),
 }

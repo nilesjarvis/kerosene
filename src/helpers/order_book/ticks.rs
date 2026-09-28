@@ -29,9 +29,9 @@ pub fn default_tick_for_price(mid_price: f64) -> f64 {
 
 /// Compute dynamic tick size options based on the current mid price.
 /// Returns 5 geometrically spaced options centered around the default tick.
-pub fn book_tick_options(mid_price: f64) -> Vec<f64> {
+pub fn book_tick_options(mid_price: f64) -> [f64; 5] {
     let base = default_tick_for_price(mid_price);
-    vec![base, base * 5.0, base * 10.0, base * 50.0, base * 100.0]
+    [base, base * 5.0, base * 10.0, base * 50.0, base * 100.0]
 }
 
 pub fn compute_sigfigs(tick_size: f64, mid_price: f64) -> (Option<u8>, Option<u8>) {
@@ -46,8 +46,8 @@ pub fn compute_sigfigs(tick_size: f64, mid_price: f64) -> (Option<u8>, Option<u8
     let mut best_server_tick = 0.0;
 
     for n in [5, 4, 3, 2] {
-        let allowed_m = if n == 5 { vec![1, 2, 5] } else { vec![1] };
-        for m in allowed_m {
+        let allowed_m: &[i32] = if n == 5 { &[1, 2, 5] } else { &[1] };
+        for &m in allowed_m {
             let server_tick = (m as f64) * 10f64.powi(e - n + 1);
             if server_tick <= tick_size * 1.0001 && server_tick > best_server_tick {
                 best_server_tick = server_tick;

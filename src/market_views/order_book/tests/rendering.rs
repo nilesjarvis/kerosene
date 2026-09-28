@@ -1,5 +1,5 @@
 use super::*;
-use crate::api::{BookLevel, OrderBook};
+use crate::api::{BookLevel, ExchangeSymbol, MarketType, OrderBook};
 use crate::config::KeroseneConfig;
 use crate::market_state::OrderBookDisplayMode;
 use crate::message::Message;
@@ -7,6 +7,120 @@ use iced::advanced::renderer::Headless;
 use iced::advanced::{Layout, Shell, clipboard, layout, mouse, renderer, widget::Tree};
 use iced::{Element, Event, Font, Pixels, Point, Rectangle, Size, Theme};
 use std::collections::BTreeSet;
+
+fn symbol(key: &str, name: &str, market_type: MarketType) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: key.to_string(),
+        category: "crypto".to_string(),
+        display_name: Some(name.to_string()),
+        keywords: Vec::new(),
+        asset_index: 1,
+        collateral_token: None,
+        sz_decimals: 2,
+        max_leverage: 10,
+        only_isolated: false,
+        growth_mode: false,
+        market_type,
+        outcome: None,
+    }
+}
+
+#[tokio::test]
+async fn settings_preserve_symbol_order_limits_and_toggle_actions() {
+    let mut renderer = iced::Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+        .await
+        .expect("software renderer");
+    let mut terminal = TradingTerminal::boot_from_config(KeroseneConfig::default()).0;
+    terminal.exchange_symbols = [
+        ("MUTED", "Muted Asset", MarketType::Perp),
+        ("#1", "Unselectable Asset", MarketType::Outcome),
+        ("FIRST", "First Asset", MarketType::Perp),
+        ("SECOND", "Second Asset", MarketType::Perp),
+        ("THIRD", "Third Asset", MarketType::Perp),
+        ("FOURTH", "Fourth Asset", MarketType::Perp),
+        ("FIFTH", "Fifth Asset", MarketType::Perp),
+        ("SIXTH", "Sixth Asset", MarketType::Perp),
+    ]
+    .into_iter()
+    .map(|(key, name, kind)| symbol(key, name, kind))
+    .collect();
+    terminal.muted_tickers.insert("MUTED".to_string());
+    let theme = terminal.theme();
+    let size = Size::new(440.0, 320.0);
+    for (query, expected) in [
+        ("", vec!["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH"]),
+        ("ASSET", vec!["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH"]),
+        ("second", vec!["SECOND"]),
+        ("missing", vec![]),
+    ] {
+        for (name, mode) in [
+            ("list", OrderBookDisplayMode::DepthList),
+            ("dom", OrderBookDisplayMode::DomLadder),
+            ("chart", OrderBookDisplayMode::DepthChart),
+        ] {
+            for active in [false, true] {
+                let symbol_mode = if active {
+                    OrderBookSymbolMode::Active
+                } else {
+                    OrderBookSymbolMode::Fixed("THIRD".to_string())
+                };
+                let mut inst = OrderBookInstance::new(91, symbol_mode, 1.0);
+                inst.display_mode = mode;
+                inst.search_query = query.to_string();
+                inst.reverse_side = active;
+                inst.show_spread_chart = !active;
+                let mut view = terminal.view_order_book_settings(91, &inst);
+                let (mut tree, node) = render(
+                    &mut view,
+                    &mut renderer,
+                    &theme,
+                    size,
+                    &format!("settings-{query}-{name}-{active}"),
+                );
+                let mut keys = Vec::new();
+                let mut track_active = false;
+                let mut reverse = false;
+                let mut spread = false;
+                for y in (5..315).step_by(5) {
+                    for message in click(
+                        &mut view,
+                        &mut tree,
+                        &node,
+                        &mut renderer,
+                        size,
+                        Point::new(200.0, y as f32),
+                    ) {
+                        match message {
+                            Message::OrderBookSetMode(id, OrderBookSymbolMode::Active) => {
+                                assert_eq!(id, 91);
+                                track_active = true;
+                            }
+                            Message::OrderBookSetMode(id, OrderBookSymbolMode::Fixed(key)) => {
+                                assert_eq!(id, 91);
+                                if keys.last() != Some(&key) {
+                                    keys.push(key);
+                                }
+                            }
+                            Message::ToggleOrderBookReverseSide(id) => {
+                                assert_eq!(id, 91);
+                                reverse = true;
+                            }
+                            Message::ToggleOrderBookSpreadChart(id) => {
+                                assert_eq!(id, 91);
+                                spread = true;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                assert_eq!(keys, expected);
+                assert!(track_active && spread);
+                assert_eq!(reverse, mode != OrderBookDisplayMode::DepthChart);
+            }
+        }
+    }
+}
 
 fn book() -> OrderBook {
     OrderBook {

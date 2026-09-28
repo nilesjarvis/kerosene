@@ -269,12 +269,21 @@ The update path rejects websocket data that does not match the instance's
 symbol mode or canonical precision. Tick-size changes reuse cached book data
 when possible and refetch when precision changes require it.
 
+Pending fetch identity lives in `market_state/types/order_book/requests.rs`.
+Deduplication and response matching share the same symbol, tick-tolerance, and
+sigfig comparison; response application additionally requires the request ID.
+The five tick-selector options and supported sigfig mantissas use fixed storage.
+
 Empty and populated books share the pane's title, settings, tick controls, and
 header composition. Empty books keep the spread chart hidden. Centered depth
 lists move their prepared rows into responsive closures; depth and DOM views
 also consume the freshly built user-order markers. Cached DOM rows and depth
 chart levels still require owned copies because their cache guards cannot
 outlive view construction.
+
+Settings share the orientation/spread toggle widget and symbol-choice styling.
+Symbol results retain catalog order, visibility filtering, and the five-result
+limit; only the selection message needs an owned copy of each admitted key.
 
 ## Symbol Search And Watchlist
 
