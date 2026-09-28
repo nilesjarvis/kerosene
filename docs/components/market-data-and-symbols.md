@@ -613,7 +613,16 @@ flows at the existing width thresholds; metric cards consume their formatted
 values, while error, warning, and fund-date text borrow the retained state.
 
 Unstaking queue state supports window filters, amount filters, sorting, and
-mine-only filtering.
+mine-only filtering. The pane root composes controls, summary metrics, and event
+rows from `market_views/hype_unstaking_queue/`. Row formatting and amount heat
+styling live beside the row module. Filtering and sorting cover the full upcoming
+set before the 250-row display limit; summary totals and heat scaling also use
+that full set. Mine-only matching compares borrowed addresses without changing
+their ASCII-insensitive, whitespace-preserving semantics.
+
+Unstaking refreshes retain cached data on failure. A background refresh of an
+existing cache retains its previous error until success; a manual refresh clears
+it on admission. State, update, and presentation tests live beside their modules.
 
 These panes are informational. They are refreshed by timers and manual refresh
 messages, not by trading-order state.
