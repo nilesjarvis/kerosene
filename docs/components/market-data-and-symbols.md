@@ -209,12 +209,17 @@ live websocket context always wins a race with REST fallback data.
 Perpetual and spot chart contexts decode directly from borrowed response values.
 The resulting contexts own their fields; decoding preserves optional-string
 validation and each market family's existing lookup/fallback policy.
+Perpetual lookup compares borrowed names with the full requested symbol or its
+literal DEX prefix removed. Qualified names match as written, and the first
+matching universe row selects the context.
 
 Watchlist/context requests are request-scoped: malformed top-level spot data is
 rejected, missing unrelated universe rows do not poison requested results, and
 missing requested symbols are reported without presenting a partial response
 as complete. Healthy requested market families are returned alongside explicit
 partial errors when another family fails.
+After a cache miss, request groups and local outcome contexts take ownership of
+the input symbol strings; request/result keys remain owned.
 
 Sparse spot candle history is loaded but visibly marked stale when its tail is
 too old. A live jump beyond the normal contiguous window triggers a bounded

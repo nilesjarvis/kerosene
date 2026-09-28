@@ -99,3 +99,37 @@ fn context_decoding_keeps_optional_strings_and_rejects_malformed_fields() {
         );
     }
 }
+
+#[test]
+fn context_lookup_preserves_literal_dex_prefix_and_qualified_name_matching() {
+    for (name, dex, symbol, matches) in [
+        ("BTC", None, "BTC", true),
+        ("BTC", None, "btc", false),
+        ("BTC", Some("xyz"), "xyz:BTC", true),
+        ("BTC", Some("xyz"), "BTC", false),
+        ("BTC", Some("xyz"), "xyzz:BTC", false),
+        ("xyz:BTC", None, "xyz:BTC", true),
+        ("xyz:BTC", Some("other"), "xyz:BTC", true),
+        ("xyz:BTC", Some("xyz"), "BTC", false),
+        ("xyz:BTC", Some("xyz"), "xyz:xyz:BTC", false),
+        ("BTC", Some("x:y"), "x:y:BTC", true),
+        ("BTC", Some(""), ":BTC", true),
+        ("BTC", Some(""), "BTC", false),
+        ("", Some(""), ":", true),
+        ("", None, "", true),
+        (":BTC", Some("xyz"), ":BTC", true),
+        (" btc ", Some(" xyz "), " xyz : btc ", true),
+        ("Ω", Some("界"), "界:Ω", true),
+    ] {
+        let response = json!([
+            { "universe": [null, { "name": 7 }, { "name": name }] },
+            [{ "midPx": "99" }, { "midPx": "100" }, { "midPx": "101" }]
+        ]);
+        let context = parse_chart_asset_context(&response, symbol, dex);
+        assert_eq!(
+            context.and_then(|context| context.mid_px).as_deref(),
+            matches.then_some("101"),
+            "name={name:?}, dex={dex:?}, symbol={symbol:?}"
+        );
+    }
+}

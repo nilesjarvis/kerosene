@@ -36,16 +36,16 @@ pub async fn fetch_chart_asset_context(symbol: String) -> Result<Option<AssetCon
         return fetch_spot_chart_asset_context(symbol).await;
     }
 
-    let dex = symbol.split_once(':').map(|(dex, _)| dex.to_string());
+    let dex = symbol.split_once(':').map(|(dex, _)| dex);
 
     let mut body = serde_json::json!({ "type": "metaAndAssetCtxs" });
-    if let Some(dex) = dex.as_deref() {
+    if let Some(dex) = dex {
         body["dex"] = Value::String(dex.to_string());
     }
 
     let resp = super::shared_reads::public_info(body).await?;
 
-    Ok(parse_chart_asset_context(&resp, &symbol, dex.as_deref()))
+    Ok(parse_chart_asset_context(&resp, &symbol, dex))
 }
 
 /// Locate `symbol` within a `metaAndAssetCtxs` `[meta, contexts]` response and
@@ -65,19 +65,23 @@ pub(crate) fn parse_chart_asset_context(
     }
     let universe = arr[0].as_object()?.get("universe")?.as_array()?;
     let ctxs = arr[1].as_array()?;
+    let unprefixed_symbol = match dex {
+        Some(dex) => symbol
+            .strip_prefix(dex)
+            .and_then(|rest| rest.strip_prefix(':')),
+        None => Some(symbol),
+    };
 
     for (i, coin_meta) in universe.iter().enumerate() {
         let Some(name) = coin_meta.get("name").and_then(Value::as_str) else {
             continue;
         };
-        let canonical_key = if name.contains(':') {
-            name.to_string()
-        } else if let Some(dex) = dex {
-            format!("{dex}:{name}")
+        let matches = if name.contains(':') {
+            name == symbol
         } else {
-            name.to_string()
+            Some(name) == unprefixed_symbol
         };
-        if canonical_key != symbol {
+        if !matches {
             continue;
         }
         let ctx_val = ctxs.get(i)?;

@@ -3,9 +3,9 @@ use crate::helpers::parse_finite_json_number;
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
-pub(super) fn insert_empty_context(map: &mut HashMap<String, WatchlistContext>, symbol: &str) {
+pub(super) fn insert_empty_context(map: &mut HashMap<String, WatchlistContext>, symbol: String) {
     map.insert(
-        symbol.to_string(),
+        symbol,
         WatchlistContext {
             funding: None,
             prev_day_px: None,

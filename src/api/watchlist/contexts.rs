@@ -54,18 +54,18 @@ async fn fetch_watchlist_contexts_with_cache(
     let mut dex_symbols: BTreeMap<String, HashSet<String>> = BTreeMap::new();
     let mut spot_symbols = HashSet::new();
 
-    for symbol in &symbols {
+    for symbol in symbols {
         if symbol.starts_with('#') {
             insert_empty_context(&mut map, symbol);
         } else if symbol.starts_with('@') || symbol.contains('/') {
-            spot_symbols.insert(symbol.clone());
+            spot_symbols.insert(symbol);
         } else if let Some((dex, _)) = symbol.split_once(':') {
             dex_symbols
                 .entry(dex.to_string())
                 .or_default()
-                .insert(symbol.clone());
+                .insert(symbol);
         } else {
-            main_symbols.insert(symbol.clone());
+            main_symbols.insert(symbol);
         }
     }
 
