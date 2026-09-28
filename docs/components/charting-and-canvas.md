@@ -372,6 +372,12 @@ price and liquidation overlays reuse their line style for badge connectors; orde
 styles select side colors and animation settings independently. Synthetic rendering
 tests cover pending/dragged orders, stacked badges, fisheye effects, and privacy.
 
+Order-label drawing and hit testing share the same stacking geometry. A single
+packing routine handles the full label area and the bands above/below a position
+label, including reserved-region avoidance and crowded-edge adjustments.
+Right-axis badges retain their separate variable-height and fixed-position rules;
+each band sorts its anchors once before packing.
+
 ## Liquidations And Heatmap
 
 Chart liquidation data comes from HyperDash update modules:

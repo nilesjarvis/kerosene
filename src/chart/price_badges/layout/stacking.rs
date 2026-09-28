@@ -35,12 +35,6 @@ pub(in crate::chart::price_badges) fn stack_right_axis_badge_positions(
         return stack_right_axis_badges_around_fixed_position(anchors, position_index, price_h);
     }
 
-    anchors.sort_by(|a, b| {
-        a.source_y
-            .total_cmp(&b.source_y)
-            .then_with(|| a.sort_rank.cmp(&b.sort_rank))
-    });
-
     let min_top = RIGHT_AXIS_BADGE_MARGIN;
     let max_bottom = (price_h - RIGHT_AXIS_BADGE_MARGIN).max(min_top);
     stack_right_axis_badges_in_band(anchors, min_top, max_bottom, true, true)
