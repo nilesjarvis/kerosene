@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import keroseneExtension from "../assets/agent/kerosene.ts";
+import { checkCalculations } from "./agent-extension-checks/calculations.ts";
 import { checkSessions } from "./agent-extension-checks/sessions.ts";
 import { checkWorkspaceActions } from "./agent-extension-checks/workspace.ts";
 
@@ -83,6 +84,7 @@ try {
 
   await checkWorkspaceActions(tools, snapshotPath);
   await checkSessions(tools);
+  await checkCalculations(tools, snapshotPath);
 
   const originalFetch = globalThis.fetch;
   const candidateAddress = "0x1111111111111111111111111111111111111111";

@@ -587,6 +587,18 @@ function valueSpotBalance(snapshot: JsonObject, balance: JsonObject) {
   };
 }
 
+function emptyAssetExposure(coin: string): JsonObject {
+  return {
+    coin,
+    spot_units: 0,
+    spot_value_usd: 0,
+    perp_size: 0,
+    perp_value_usd: 0,
+    net_value_usd: 0,
+    valuation_notes: [],
+  };
+}
+
 function calculateExposure(snapshot: JsonObject) {
   const account = snapshot.account ?? {};
   const positions = Array.isArray(account.positions) ? account.positions : [];
@@ -605,15 +617,7 @@ function calculateExposure(snapshot: JsonObject) {
     }
     includedBalances += 1;
     if (valued.value_usd === null && valued.units !== 0) missingPrices.push(valued.coin);
-    const group = byAsset.get(valued.coin) ?? {
-      coin: valued.coin,
-      spot_units: 0,
-      spot_value_usd: 0,
-      perp_size: 0,
-      perp_value_usd: 0,
-      net_value_usd: 0,
-      valuation_notes: [],
-    };
+    const group = byAsset.get(valued.coin) ?? emptyAssetExposure(valued.coin);
     group.spot_units += valued.units;
     if (valued.value_usd !== null) {
       group.spot_value_usd += valued.value_usd;
@@ -638,15 +642,7 @@ function calculateExposure(snapshot: JsonObject) {
       ? reportedValue === null ? null : Math.sign(size || 1) * Math.abs(reportedValue)
       : size * mid;
     if (signedValue === null) missingPrices.push(coin);
-    const group = byAsset.get(coin) ?? {
-      coin,
-      spot_units: 0,
-      spot_value_usd: 0,
-      perp_size: 0,
-      perp_value_usd: 0,
-      net_value_usd: 0,
-      valuation_notes: [],
-    };
+    const group = byAsset.get(coin) ?? emptyAssetExposure(coin);
     group.perp_size += size;
     if (signedValue !== null) {
       group.perp_value_usd += signedValue;
@@ -1967,17 +1963,12 @@ export default function keroseneExtension(pi: ExtensionAPI) {
         }
       } else if (params.operation === "exposure") result = calculateExposure(snapshot);
       else if (params.operation === "liquidation_buffers") result = calculateLiquidationBuffers(snapshot);
-      else if (params.operation === "fill_aggregation") {
-        const rows = filterActivity(activityRows(snapshot, "fills"), params);
+      else if (params.operation === "fill_aggregation" || params.operation === "funding_aggregation") {
+        const kind = params.operation === "fill_aggregation" ? "fills" : "funding";
+        const rows = filterActivity(activityRows(snapshot, kind), params);
         result = {
-          aggregate: aggregateFills(rows),
-          coverage: { matched_rows: rows.length, source: snapshot?._tool_data?.activity?.coverage?.fills ?? null },
-        };
-      } else if (params.operation === "funding_aggregation") {
-        const rows = filterActivity(activityRows(snapshot, "funding"), params);
-        result = {
-          aggregate: aggregateFunding(rows),
-          coverage: { matched_rows: rows.length, source: snapshot?._tool_data?.activity?.coverage?.funding ?? null },
+          aggregate: kind === "fills" ? aggregateFills(rows) : aggregateFunding(rows),
+          coverage: { matched_rows: rows.length, source: snapshot?._tool_data?.activity?.coverage?.[kind] ?? null },
         };
       } else if (params.operation === "portfolio_reconciliation") result = calculateRisk(snapshot);
       else {

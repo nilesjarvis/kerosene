@@ -82,8 +82,9 @@ fixed reasons and warnings. Raw provider error messages and request context are
 never returned to the model. `scripts/check-agent-extension.ts` exercises the
 30-row page limit, pagination/search bounds, empty results, and error redaction.
 Its `scripts/agent-extension-checks/` helpers cover chart-action preflight and
-acknowledgements, plus session statistics across daylight-saving transitions,
-leap day, and year boundaries using offline fixtures.
+acknowledgements, session statistics across daylight-saving transitions, leap
+day, and year boundaries, and fill/funding aggregation, exposure, and stress
+calculations using offline fixtures.
 
 Assistant text uses an adaptive native reveal queue on top of Pi's real text
 deltas. Short backlogs resolve word by word with a fading leading edge and an
