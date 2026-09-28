@@ -176,6 +176,13 @@ unmatched results preserve current state. Key and distribution regression tests
 live in `hyperdash_update/key/tests.rs` and
 `hyperdash_update/liquidations_distribution/tests.rs`.
 
+The liquidation-distribution view composes its pane and metrics in
+`market_views/liquidations_distribution.rs`, with controls in `controls.rs`,
+canvas geometry/interaction in `chart.rs`, and axes, mark labels, and hover
+presentation in `chart/labels.rs` under the same directory. The canvas borrows
+the current dataset; symbol buttons borrow display text and keep owned selection
+messages. Drawing order, zoom behavior, and responsive dimensions are unchanged.
+
 Heatmap responses move into the bounded cache before updating waiting charts.
 Cache hits and fresh responses borrow that stored data for chart updates, which
 retain independent render cells and lightweight loaded markers. Cache admission
