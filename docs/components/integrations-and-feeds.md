@@ -13,7 +13,7 @@ streams.
 | Hyperliquid REST | `src/api.rs`, `src/api/` | Shared HTTP client, info API calls, candles, symbols, books, fills, order status. |
 | Hyperliquid websocket | `src/ws.rs`, `src/ws/manager.rs`, `src/ws/market_streams/`, `src/ws/user_streams/` | Singleton exchange websocket, subscriptions, coalescing, routed market/user streams. |
 | Hydromancer | `src/hydromancer_api.rs`, `src/ws/hydromancer/`, `src/feed_update/connection.rs` | Funding history, authenticated liquidation/tracked-trade feeds, optional read-data provider. |
-| HyperDash | `src/hyperdash_api.rs`, `src/hyperdash_update/` | GraphQL liquidation heatmaps, liquidation levels, positioning info, liquidation distribution. |
+| HyperDash | `src/hyperdash_api.rs`, `src/hyperdash_api/`, `src/hyperdash_update/` | GraphQL liquidation heatmaps, liquidation levels, positioning info, liquidation distribution. |
 | OpenRouter | `src/openrouter_api.rs`, `src/openrouter_api/`, `src/openrouter_update.rs`, `src/agent_*` | AI completion foundation plus the Pi-backed Kerosene Assistant; key validation and default-model selection. |
 | Feeds | `src/feed_state/`, `src/feed_update/`, `src/feed_views/` | Liquidation feed, tracked trades, Telegram feed, aggregation, alerts, rendering. |
 | Telegram | `src/telegram_feed.rs`, `src/telegram_fast_feed.rs` | Public channel scraping and optional MTProto fast/private feed. |
@@ -150,6 +150,13 @@ HyperDash integration is GraphQL-based and covers:
 - historical liquidation heatmaps
 - liquidation distribution pane
 - positioning info
+
+Liquidation levels, heatmaps, and ticker positions share observed send, body-read,
+and HTTP status handling in `hyperdash_api/http.rs`. Their request builders,
+parsers, and error contexts remain endpoint-specific. Perp deltas retain the
+bounded chunk reader and strict UTF-8 decoding in `positioning/response.rs`.
+Heatmap bucket inference sorts its temporary timestamp buffer in place and
+ignores zero-length gaps, preserving duplicate and missing-timestamp behavior.
 
 Update modules live under `hyperdash_update/`:
 
