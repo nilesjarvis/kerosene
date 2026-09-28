@@ -168,19 +168,13 @@ impl TradingTerminal {
     }
 
     pub(crate) fn order_book_fetch_task_for_id(&mut self, id: OrderBookId) -> Task<Message> {
-        let Some((mode, tick_size, book_mid, symbol)) = self.order_books.get(&id).map(|inst| {
-            let symbol = self.order_book_symbol_for_mode(&inst.mode);
-            (
-                inst.mode.clone(),
-                inst.tick_size,
-                inst.book.mid_price(),
-                symbol,
-            )
-        }) else {
+        let Some(inst) = self.order_books.get(&id) else {
             return Task::none();
         };
+        let symbol = self.order_book_symbol_for_mode(&inst.mode);
+        let book_mid = inst.book.mid_price();
 
-        if let Some(reason) = self.order_book_unavailable_reason(&symbol) {
+        if let Some(reason) = self.order_book_unavailable_reason(symbol) {
             if let Some(inst) = self.order_books.get_mut(&id) {
                 inst.book_loading = false;
                 inst.clear_book_request();
@@ -191,11 +185,11 @@ impl TradingTerminal {
 
         let Some(plan) = plan_order_book_fetch(
             id,
-            &mode,
+            &inst.mode,
             &self.active_symbol,
-            tick_size,
+            inst.tick_size,
             book_mid,
-            self.resolve_mid_for_symbol(&symbol),
+            self.resolve_mid_for_symbol(symbol),
             false,
         ) else {
             if let Some(inst) = self.order_books.get_mut(&id) {
@@ -205,10 +199,9 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        if self.order_books.get(&id).is_some_and(|inst| {
-            inst.book_loading
-                && inst.pending_book_request_matches(&plan.symbol, plan.tick_size, plan.sigfigs)
-        }) {
+        if inst.book_loading
+            && inst.pending_book_request_matches(&plan.symbol, plan.tick_size, plan.sigfigs)
+        {
             return Task::none();
         }
 
@@ -254,8 +247,7 @@ impl TradingTerminal {
             .iter()
             .filter_map(|(&id, inst)| {
                 let symbol = self.order_book_symbol_for_mode(&inst.mode);
-                if inst.book_error.is_some()
-                    || self.order_book_unavailable_reason(&symbol).is_some()
+                if inst.book_error.is_some() || self.order_book_unavailable_reason(symbol).is_some()
                 {
                     return None;
                 }
@@ -265,7 +257,7 @@ impl TradingTerminal {
                     inst.book_source_mid(),
                     inst.pending_book_sigfigs(),
                     inst.book_loading,
-                    self.resolve_mid_for_symbol(&symbol),
+                    self.resolve_mid_for_symbol(symbol),
                 )
                 .then_some(id)
             })

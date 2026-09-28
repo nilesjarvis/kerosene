@@ -28,8 +28,8 @@ pub(in crate::market_update::order_book) fn plan_order_book_fetch(
     unavailable: bool,
 ) -> Option<OrderBookFetchPlan> {
     let symbol = match mode {
-        OrderBookSymbolMode::Active => active_symbol.to_string(),
-        OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
+        OrderBookSymbolMode::Active => active_symbol,
+        OrderBookSymbolMode::Fixed(symbol) => symbol.as_str(),
     };
     if symbol.is_empty() || unavailable {
         return None;
@@ -43,7 +43,7 @@ pub(in crate::market_update::order_book) fn plan_order_book_fetch(
 
     Some(OrderBookFetchPlan {
         id,
-        symbol,
+        symbol: symbol.to_string(),
         tick_size,
         sigfigs,
     })

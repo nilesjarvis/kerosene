@@ -274,6 +274,11 @@ Deduplication and response matching share the same symbol, tick-tolerance, and
 sigfig comparison; response application additionally requires the request ID.
 The five tick-selector options and supported sigfig mantissas use fixed storage.
 
+Availability checks, canonical precision lookup, boot filtering, and refresh
+scans borrow the active or fixed symbol. Fetch admission retains its borrowed
+instance through validation and deduplication; plans, pending requests, and
+asynchronous request/result data keep owned keys.
+
 Empty and populated books share the pane's title, settings, tick controls, and
 header composition. Empty books keep the spread chart hidden. Centered depth
 lists move their prepared rows into responsive closures; depth and DOM views

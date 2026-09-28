@@ -6,10 +6,13 @@ use crate::market_state::{OrderBookId, OrderBookSymbolMode};
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(crate) fn order_book_symbol_for_mode(&self, mode: &OrderBookSymbolMode) -> String {
+    pub(crate) fn order_book_symbol_for_mode<'a>(
+        &'a self,
+        mode: &'a OrderBookSymbolMode,
+    ) -> &'a str {
         match mode {
-            OrderBookSymbolMode::Active => self.active_symbol.clone(),
-            OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
+            OrderBookSymbolMode::Active => &self.active_symbol,
+            OrderBookSymbolMode::Fixed(symbol) => symbol,
         }
     }
 
@@ -28,11 +31,7 @@ impl TradingTerminal {
         id: OrderBookId,
     ) -> bool {
         self.order_books.get(&id).is_some_and(|inst| {
-            let symbol = match &inst.mode {
-                OrderBookSymbolMode::Active => self.active_symbol.clone(),
-                OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
-            };
-            self.symbol_key_is_hidden(&symbol)
+            self.symbol_key_is_hidden(self.order_book_symbol_for_mode(&inst.mode))
         })
     }
 }
