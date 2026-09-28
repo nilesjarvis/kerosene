@@ -72,7 +72,7 @@ impl CandlestickChart {
             }
         }
 
-        for visible_order in &visible_orders {
+        for visible_order in visible_orders {
             if let Some(position) =
                 order_label_position(&label_positions, visible_order.order_index)
             {

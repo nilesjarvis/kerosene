@@ -2,6 +2,8 @@ use super::*;
 use crate::config::ChartSeriesStyle;
 use iced::{Color, Theme};
 
+mod rendering;
+
 #[test]
 fn position_and_order_overlay_render_guard_follows_privacy_flag() {
     let mut chart = CandlestickChart::new(1);

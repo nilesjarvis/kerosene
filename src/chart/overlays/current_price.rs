@@ -46,18 +46,19 @@ impl CandlestickChart {
                 let badge_kind = RightAxisBadgeKind::CurrentPrice;
                 let line_end_x =
                     right_axis_line_end_x(ctx.right_axis_badges, badge_kind, ctx.chart_w);
+                let line_style = SegmentedHLineStyle {
+                    segment_len: 2.0,
+                    gap_len: 3.0,
+                    offset: 0.0,
+                    color: price_color_dim,
+                    width: 1.0,
+                };
                 stroke_projected_segmented_hline_with_offset(
                     ctx.frame,
                     ctx.fisheye,
                     line_end_x,
                     last_y,
-                    SegmentedHLineStyle {
-                        segment_len: 2.0,
-                        gap_len: 3.0,
-                        offset: 0.0,
-                        color: price_color_dim,
-                        width: 1.0,
-                    },
+                    line_style,
                 );
                 draw_stacked_right_axis_badge(
                     ctx.frame,
@@ -74,15 +75,7 @@ impl CandlestickChart {
                         text_size: 10.0,
                         text_color,
                     },
-                    RightAxisBadgeConnectorStyle::Segmented {
-                        style: SegmentedHLineStyle {
-                            segment_len: 2.0,
-                            gap_len: 3.0,
-                            offset: 0.0,
-                            color: price_color_dim,
-                            width: 1.0,
-                        },
-                    },
+                    RightAxisBadgeConnectorStyle::Segmented { style: line_style },
                     ctx.fisheye,
                 );
             }

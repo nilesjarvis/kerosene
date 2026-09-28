@@ -365,6 +365,13 @@ an intermediate vector. Overlay rows still own the strings they need.
 Confirmed orders, Chase replacements, and pending decorations retain their order
 and distinct account/numeric matching rules; trade markers retain stable time order.
 
+Drawing lives in `chart/overlays/`. Order rendering prepares visible orders once,
+then draws lines and price badges, label connectors, and labels in separate passes.
+The last pass consumes the prepared labels without copying their strings. Current
+price and liquidation overlays reuse their line style for badge connectors; order
+styles select side colors and animation settings independently. Synthetic rendering
+tests cover pending/dragged orders, stacked badges, fisheye effects, and privacy.
+
 ## Liquidations And Heatmap
 
 Chart liquidation data comes from HyperDash update modules:
