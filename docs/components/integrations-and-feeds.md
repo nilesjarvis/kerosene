@@ -257,6 +257,11 @@ owned row. Each feed retains its own grouping keys, scan limits, and render
 limits. Tracked-trade cells reuse their row view's theme, and optional PnL, fee,
 and intent labels are formatted only for visible columns.
 
+The two feeds share header text, settings-dropdown containers, and toggle
+widgets in `feed_views/controls.rs`; labels, toggle messages, and text sizes
+remain in each caller. Tracked-trade wallet counts are computed during the
+empty-state checks and passed through responsive rendering to the top bar.
+
 ## Telegram Feed
 
 Telegram has two modes:

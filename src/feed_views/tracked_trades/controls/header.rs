@@ -1,12 +1,12 @@
 use crate::app_state::TradingTerminal;
+use crate::feed_views::controls::feed_header_text;
 use crate::feed_views::tracked_trades::layout::{
     COIN_WIDTH, NUMBER_WIDTH, ROW_SPACING, SIDE_WIDTH, TIME_WIDTH, TrackedTradeRowLayout,
     WALLET_COLUMN_WIDTH,
 };
 use crate::message::Message;
 
-use iced::widget::text::Wrapping;
-use iced::widget::{Space, row, text};
+use iced::widget::{Space, row};
 use iced::{Element, Fill};
 
 impl TradingTerminal {
@@ -15,102 +15,46 @@ impl TradingTerminal {
         row_layout: TrackedTradeRowLayout,
     ) -> Element<'_, Message> {
         let theme = self.theme();
+        let muted_text = theme.extended_palette().background.weak.text;
 
         let mut header = row![].spacing(ROW_SPACING).align_y(iced::Alignment::Center);
 
         if row_layout.show_time {
-            header = header.push(
-                text("Time")
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text)
-                    .wrapping(Wrapping::None)
-                    .width(TIME_WIDTH),
-            );
+            header = header.push(feed_header_text("Time", muted_text).width(TIME_WIDTH));
         }
 
         header = header
-            .push(
-                text("Wallet")
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text)
-                    .wrapping(Wrapping::None)
-                    .width(WALLET_COLUMN_WIDTH),
-            )
-            .push(
-                text("Coin")
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text)
-                    .wrapping(Wrapping::None)
-                    .width(COIN_WIDTH),
-            );
+            .push(feed_header_text("Wallet", muted_text).width(WALLET_COLUMN_WIDTH))
+            .push(feed_header_text("Coin", muted_text).width(COIN_WIDTH));
 
         if row_layout.show_side {
-            header = header.push(
-                text("Side")
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text)
-                    .wrapping(Wrapping::None)
-                    .width(SIDE_WIDTH),
-            );
+            header = header.push(feed_header_text("Side", muted_text).width(SIDE_WIDTH));
         }
 
         if row_layout.show_size {
-            header = header.push(
-                text("Size")
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text)
-                    .wrapping(Wrapping::None)
-                    .width(NUMBER_WIDTH),
-            );
+            header = header.push(feed_header_text("Size", muted_text).width(NUMBER_WIDTH));
         }
 
         if row_layout.show_price {
-            header = header.push(
-                text("Price")
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text)
-                    .wrapping(Wrapping::None)
-                    .width(NUMBER_WIDTH),
-            );
+            header = header.push(feed_header_text("Price", muted_text).width(NUMBER_WIDTH));
         }
 
         if row_layout.show_notional {
-            header = header.push(
-                text("Notional")
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text)
-                    .wrapping(Wrapping::None)
-                    .width(NUMBER_WIDTH),
-            );
+            header = header.push(feed_header_text("Notional", muted_text).width(NUMBER_WIDTH));
         }
 
         if row_layout.show_pnl {
-            header = header.push(
-                text("PnL")
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text)
-                    .wrapping(Wrapping::None)
-                    .width(NUMBER_WIDTH),
-            );
+            header = header.push(feed_header_text("PnL", muted_text).width(NUMBER_WIDTH));
         }
 
         if row_layout.show_fee {
-            header = header.push(
-                text("Fee")
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text)
-                    .wrapping(Wrapping::None)
-                    .width(NUMBER_WIDTH),
-            );
+            header = header.push(feed_header_text("Fee", muted_text).width(NUMBER_WIDTH));
         }
 
         if row_layout.show_intent {
-            header = header.push(Space::new().width(Fill)).push(
-                text("Intent")
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text)
-                    .wrapping(Wrapping::None),
-            );
+            header = header
+                .push(Space::new().width(Fill))
+                .push(feed_header_text("Intent", muted_text));
         }
 
         header.into()

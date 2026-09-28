@@ -1,3 +1,4 @@
+mod controls;
 mod liquidations;
 mod telegram;
 mod tracked_trades;

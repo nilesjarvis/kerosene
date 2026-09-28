@@ -27,7 +27,7 @@ candidates; it does not establish that every module has been reviewed.
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Removed discarded theme constructions from order/Chase entry points after checking theme purity; request and lifecycle code is otherwise byte-identical. Substantive order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Proxy URL normalization, redacted labels, deserialization/revalidation, settings commit order, and startup fallback inspected; existing security and persistence behavior retained. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Proxy transport/admission reviewed and retained. Hydromancer frame/control parsing now moves resume strings out of JSON and borrows error text. Both API probes now share telemetry state/update code with independent provider state; snapshot fields and atomic ordering remain unchanged. Hydromancer connection/retry/idle-wait handling reviewed; connect errors and timeouts share one retry path. Fill tuple parsing borrows addresses and feed subscriptions move their final topic use; event formats, dedupe policy, and command cancellation are retained. Liquidation/tracked-trade subscription, receive, dedupe, recovery, and cleanup now share one handler; feature payloads/parsers and separate history limits remain explicit. Remaining integration stream internals still need review. |
-| Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing reviewed; data and label extraction now share one chart marker lookup. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling and reduced summary text copies. Shared-client request construction inspected across API, Hydromancer, HyperDash, and OpenRouter paths; unnecessary temporary client copies removed. Liquidation/tracked-trade update admission, control status, lag handling, and bucket accumulation reviewed; control transitions and liquidation accumulation are shared, while filtering/freshness, alerts, and retention remain feed-specific. Feed aggregation keys, intent, row models, alert eligibility, and row views reviewed; merge checks share one predicate, suppressed alerts defer row construction, and views reuse themes/owned strings and skip hidden-column formatting. Other integration and assistant internals still need substantive review. |
+| Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing reviewed; data and label extraction now share one chart marker lookup. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling and reduced summary text copies. Shared-client request construction inspected across API, Hydromancer, HyperDash, and OpenRouter paths; unnecessary temporary client copies removed. Liquidation/tracked-trade update admission, control status, lag handling, and bucket accumulation reviewed; control transitions and liquidation accumulation are shared, while filtering/freshness, alerts, and retention remain feed-specific. Feed aggregation keys, intent, row models, alert eligibility, and row views reviewed; merge checks share one predicate, suppressed alerts defer row construction, and views reuse themes/owned strings and skip hidden-column formatting. Remaining feed controls, headers, responsive thresholds, footer charts/summaries, and connection presentation reviewed; identical controls are shared and wallet counts reused, while chart math and per-feed presentation differences remain intact. Other integration and assistant internals still need substantive review. |
 | Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Theme construction and discarded theme calls in root update, notifications, chart helpers, and order helpers reviewed; the unused calls are removed. Notification delivery, sound entry points, toast retention/animation, and order-status alert policy reviewed; repeated delivery now shares one helper and copies messages only for desktop notifications. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
 
@@ -1901,10 +1901,51 @@ Validation (using the local ALSA prefix documented above):
 - Merge/view source comparisons, `cargo fmt -- --check`, and
   `git diff --check`: passed.
 
+## 2026-09-28: consolidate feed controls and reuse wallet counts
+
+- Reviewed both feeds' top bars, connection controls, settings dropdowns,
+  headers, responsive layouts, empty states, and liquidation footer chart and
+  summary calculations. Retained the explicit breakpoints, chart sampling and
+  scaling, summary fold order, status logic, and differing clear/settings button
+  corner policies and text sizes.
+- Added `feed_views/controls.rs` for the identical header-text settings, toggle
+  widget/style, and settings-dropdown container. Eighteen header cells, six
+  toggles, and two dropdown wrappers now share those implementations. Caller
+  labels, widths, visibility conditions, messages, row order, spacing, and
+  10px/11px toggle text sizes remain unchanged.
+- Tracked-trade wallet lists are built once during the existing empty-state
+  checks; their counts pass through responsive rendering into the top bar.
+  This avoids collecting/sorting the same labeled and unmuted lists again in
+  the header. Missing keys/labels now skip unused list preparation. Both feed
+  entry points construct their otherwise-unused theme only for an empty state.
+- Source comparison verified both old toggle bodies and dropdown styles against
+  the shared helpers, and expanded all header-helper calls back to the original
+  widget bodies. Footer charts, responsive thresholds, and connection-status
+  calculations are byte-for-byte unchanged. Address-count sources, saturating
+  muted-count arithmetic, empty-state precedence, and displayed labels remain
+  the same.
+- Updated the integration guide. Reused existing view tests and compilation for
+  this widget extraction; no new calculation/state behavior was introduced.
+  No schemas, messages, routes, subscriptions, dependencies, or assets changed;
+  no measured speedup is claimed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene feed_views`:
+  **12 passed** before and after production changes.
+- `cargo check --locked -j 2`: passed.
+- `cargo test --locked -j 2`: **4,394 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- Widget/source comparisons, `cargo fmt -- --check`, and `git diff --check`:
+  passed.
+
 ## Next candidates
 
-1. Continue through remaining feed controls, footer/chart rendering, responsive
-   layout helpers, and status presentation.
+1. Continue through Telegram/X feed state, update, and rendering internals;
+   these integrations have not yet had the same detailed review as the
+   liquidation/tracked-trade path.
 2. Continue through account data, wallet model, and update ownership. Account
    state/persistence copies remain intentional where they protect a snapshot
    across terminal mutations.

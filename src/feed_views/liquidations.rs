@@ -13,12 +13,11 @@ const LIQUIDATIONS_CONTENT_HORIZONTAL_PADDING: f32 = 12.0;
 
 impl TradingTerminal {
     pub(crate) fn view_liquidations(&self) -> Element<'_, Message> {
-        let theme = self.theme();
         let now_ms = self.status_bar_now_ms;
 
         if self.hydromancer_api_key.trim().is_empty() {
             return super::feed_empty_state(
-                &theme,
+                &self.theme(),
                 "Add Hydromancer key in Settings > Integrations",
             );
         }

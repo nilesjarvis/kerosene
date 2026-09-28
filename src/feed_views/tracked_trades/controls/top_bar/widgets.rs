@@ -1,3 +1,4 @@
+use crate::feed_views::controls::{feed_settings_dropdown, feed_toggle_button};
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{Space, button, container, row, text, tooltip};
@@ -91,7 +92,7 @@ pub(super) fn tracked_trade_settings_dropdown(
     aggregation_enabled: bool,
     alerts_enabled: bool,
 ) -> Element<'static, Message> {
-    let aggregation_btn = tracked_trade_toggle_button(
+    let aggregation_btn = feed_toggle_button(
         if aggregation_enabled {
             "Rows: Orders"
         } else {
@@ -100,8 +101,9 @@ pub(super) fn tracked_trade_settings_dropdown(
         aggregation_enabled,
         true,
         Message::ToggleTrackedTradeAggregation,
+        10.0,
     );
-    let alerts_btn = tracked_trade_toggle_button(
+    let alerts_btn = feed_toggle_button(
         if alerts_enabled {
             "Alerts: ON"
         } else {
@@ -110,29 +112,16 @@ pub(super) fn tracked_trade_settings_dropdown(
         alerts_enabled,
         false,
         Message::ToggleTrackedTradeAlerts,
+        10.0,
     );
 
-    container(
+    feed_settings_dropdown(
         row![aggregation_btn, alerts_btn]
             .spacing(8)
             .align_y(iced::Alignment::Center)
             .wrap()
             .vertical_spacing(6),
     )
-    .padding([6, 8])
-    .style(|theme: &Theme| container_style::Style {
-        background: Some(theme.extended_palette().background.weak.color.into()),
-        border: iced::Border {
-            radius: 4.0.into(),
-            width: 1.0,
-            color: Color {
-                a: 0.32,
-                ..theme.extended_palette().background.strong.color
-            },
-        },
-        ..Default::default()
-    })
-    .into()
 }
 
 pub(super) fn tracked_trade_clear_button() -> Element<'static, Message> {
@@ -147,41 +136,6 @@ pub(super) fn tracked_trade_clear_button() -> Element<'static, Message> {
             button::Style {
                 background: Some(bg.into()),
                 text_color: theme.palette().text,
-                border: iced::Border {
-                    radius: 3.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            }
-        })
-        .into()
-}
-
-pub(super) fn tracked_trade_toggle_button(
-    label: &'static str,
-    enabled: bool,
-    primary_when_enabled: bool,
-    message: Message,
-) -> Element<'static, Message> {
-    button(text(label).size(10))
-        .on_press(message)
-        .padding([2, 6])
-        .style(move |theme: &Theme, status| {
-            let bg = match status {
-                button::Status::Hovered => theme.extended_palette().background.strong.color,
-                _ => theme.extended_palette().background.weak.color,
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: if enabled {
-                    if primary_when_enabled {
-                        theme.palette().primary
-                    } else {
-                        theme.palette().success
-                    }
-                } else {
-                    theme.extended_palette().background.weak.text
-                },
                 border: iced::Border {
                     radius: 3.0.into(),
                     ..Default::default()

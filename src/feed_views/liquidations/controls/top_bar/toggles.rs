@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
+use crate::feed_views::controls::{feed_settings_dropdown, feed_toggle_button};
 use crate::message::Message;
-use iced::widget::container as container_style;
-use iced::widget::{button, container, row, text, tooltip};
+use iced::widget::{button, row, text, tooltip};
 use iced::{Color, Element, Theme};
 
 impl TradingTerminal {
@@ -95,7 +95,7 @@ impl TradingTerminal {
     pub(in crate::feed_views::liquidations::controls) fn view_liquidation_settings_dropdown(
         &self,
     ) -> Element<'static, Message> {
-        let alerts_btn = liquidation_toggle_button(
+        let alerts_btn = feed_toggle_button(
             if self.liquidation_alerts_enabled {
                 "Alerts: ON"
             } else {
@@ -104,9 +104,10 @@ impl TradingTerminal {
             self.liquidation_alerts_enabled,
             false,
             Message::ToggleLiquidationAlerts,
+            11.0,
         );
 
-        let chart_btn = liquidation_toggle_button(
+        let chart_btn = feed_toggle_button(
             if self.liquidation_chart_enabled {
                 "Chart: ON"
             } else {
@@ -115,9 +116,10 @@ impl TradingTerminal {
             self.liquidation_chart_enabled,
             false,
             Message::ToggleLiquidationChart,
+            11.0,
         );
 
-        let summary_btn = liquidation_toggle_button(
+        let summary_btn = feed_toggle_button(
             if self.liquidation_summary_enabled {
                 "Summary: ON"
             } else {
@@ -126,9 +128,10 @@ impl TradingTerminal {
             self.liquidation_summary_enabled,
             false,
             Message::ToggleLiquidationSummary,
+            11.0,
         );
 
-        let aggregation_btn = liquidation_toggle_button(
+        let aggregation_btn = feed_toggle_button(
             if self.liquidation_feed_aggregation_enabled {
                 "Rows: Positions"
             } else {
@@ -137,63 +140,15 @@ impl TradingTerminal {
             self.liquidation_feed_aggregation_enabled,
             true,
             Message::ToggleLiquidationFeedAggregation,
+            11.0,
         );
 
-        container(
+        feed_settings_dropdown(
             row![chart_btn, summary_btn, aggregation_btn, alerts_btn]
                 .spacing(8)
                 .align_y(iced::Alignment::Center)
                 .wrap()
                 .vertical_spacing(6),
         )
-        .padding([6, 8])
-        .style(|theme: &Theme| container_style::Style {
-            background: Some(theme.extended_palette().background.weak.color.into()),
-            border: iced::Border {
-                radius: 4.0.into(),
-                width: 1.0,
-                color: Color {
-                    a: 0.32,
-                    ..theme.extended_palette().background.strong.color
-                },
-            },
-            ..Default::default()
-        })
-        .into()
     }
-}
-
-fn liquidation_toggle_button(
-    label: &'static str,
-    enabled: bool,
-    primary_when_enabled: bool,
-    message: Message,
-) -> Element<'static, Message> {
-    button(text(label).size(11))
-        .on_press(message)
-        .padding([2, 6])
-        .style(move |theme: &Theme, status| {
-            let bg = match status {
-                button::Status::Hovered => theme.extended_palette().background.strong.color,
-                _ => theme.extended_palette().background.weak.color,
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: if enabled {
-                    if primary_when_enabled {
-                        theme.palette().primary
-                    } else {
-                        theme.palette().success
-                    }
-                } else {
-                    theme.extended_palette().background.weak.text
-                },
-                border: iced::Border {
-                    radius: 3.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            }
-        })
-        .into()
 }
