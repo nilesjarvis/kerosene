@@ -393,6 +393,12 @@ Lifecycle messages include:
 Websocket open-order/fill updates reconcile Chase progress. Terminal or removed
 Chase orders are archived into advanced order history.
 
+Book repricing and final modify dispatch share the ordered spot-market checks
+in `chase/lifecycle/reprice.rs`: captured identity, quote support, then live
+metadata verification. Each caller keeps its existing lifecycle, account, price,
+and cooldown gates around those checks. Failures cancel a known order or use the
+existing stop path. Placement retains its distinct prior-exposure recovery rules.
+
 Place, modify, and cancel result handlers read the order and its lifecycle from
 one lookup before accepting a result. Results for absent orders do nothing;
 stale place/cancel results retain their outcome-based refresh policy for the
