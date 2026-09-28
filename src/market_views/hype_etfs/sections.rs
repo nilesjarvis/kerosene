@@ -62,12 +62,12 @@ pub(super) fn summary_section(
     .into()
 }
 
-pub(super) fn fund_section(
+pub(super) fn fund_section<'a>(
     theme: &Theme,
-    fund: &HypeEtfFund,
+    fund: &'a HypeEtfFund,
     available_width: f32,
     denomination: &DisplayDenominationContext,
-) -> Element<'static, Message> {
+) -> Element<'a, Message> {
     let title = row![
         text(fund.ticker.label())
             .size(12)
@@ -76,13 +76,9 @@ pub(super) fn fund_section(
             .size(11)
             .color(theme.extended_palette().background.weak.text)
             .width(Fill),
-        text(
-            fund.as_of_date
-                .clone()
-                .unwrap_or_else(|| "date n/a".to_string()),
-        )
-        .size(10)
-        .color(theme.extended_palette().background.weak.text),
+        text(fund.as_of_date.as_deref().unwrap_or("date n/a"))
+            .size(10)
+            .color(theme.extended_palette().background.weak.text),
     ]
     .spacing(8)
     .align_y(iced::Alignment::Center);

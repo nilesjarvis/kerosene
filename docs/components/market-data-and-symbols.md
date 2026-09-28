@@ -606,6 +606,12 @@ Farside extraction locates the first BHYP chart marker once and uses it for both
 the cumulative data and preceding labels. It validates data before labels and
 derives daily flows only after the two arrays have matching lengths.
 
+ETF summaries reuse the selected fund list for totals and fund sections. Daily
+flows combine finite inputs by their literal date strings in source order, then
+sort by date for display. The chart borrows the latest 10, 18, or 30 aggregated
+flows at the existing width thresholds; metric cards consume their formatted
+values, while error, warning, and fund-date text borrow the retained state.
+
 Unstaking queue state supports window filters, amount filters, sorting, and
 mine-only filtering.
 

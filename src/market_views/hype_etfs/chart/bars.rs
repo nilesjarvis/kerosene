@@ -30,7 +30,7 @@ pub(super) fn flow_chart(
     };
 
     let mut bars = row![].spacing(FLOW_BAR_SPACING).width(Fill);
-    for (flow, cumulative) in flows.iter().cloned().zip(cumulative_values.iter().copied()) {
+    for (flow, cumulative) in flows.iter().zip(cumulative_values.iter().copied()) {
         let (top_spacer, positive_height, negative_height, bottom_spacer) =
             flow_bar_layout(flow.amount_usd, scale);
         let bar_color = if flow.amount_usd == 0.0 {

@@ -10,7 +10,7 @@ fn totals_sum_values_and_weight_percentages_by_assets() {
         warnings: Vec::new(),
     };
 
-    let totals = data.totals_for(HypeEtfView::All);
+    let totals = HypeEtfTotals::from_funds(&data.selected_funds(HypeEtfView::All));
 
     assert_eq!(totals.net_assets_usd, Some(4_000_000.0));
     assert_eq!(totals.hype_exposure, Some(80_000.0));
@@ -29,7 +29,7 @@ fn totals_ignore_nonfinite_values_and_invalid_weights() {
         warnings: Vec::new(),
     };
 
-    let totals = data.totals_for(HypeEtfView::All);
+    let totals = HypeEtfTotals::from_funds(&data.selected_funds(HypeEtfView::All));
 
     assert_eq!(totals.net_assets_usd, Some(1_000_000.0));
     assert_eq!(totals.hype_exposure, Some(20_000.0));

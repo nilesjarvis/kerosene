@@ -7,7 +7,7 @@ use iced::{Color, Element, Fill, Theme, color};
 // HYPE ETF Metric Cards
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) struct Metric {
     label: &'static str,
     value: String,
@@ -32,12 +32,13 @@ pub(super) fn metric_grid(metrics: Vec<Metric>, available_width: f32) -> Element
     };
 
     let mut grid = Column::new().spacing(6);
-    for chunk in metrics.chunks(columns) {
-        let mut line = row![].spacing(6).width(Fill);
-        for item in chunk {
-            line = line.push(metric_card(item.clone()));
-        }
-        grid = grid.push(line);
+    let mut metrics = metrics.into_iter();
+    while metrics.len() > 0 {
+        grid = grid.push(
+            row(metrics.by_ref().take(columns).map(metric_card))
+                .spacing(6)
+                .width(Fill),
+        );
     }
     grid.into()
 }
