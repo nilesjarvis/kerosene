@@ -135,6 +135,16 @@ Fetch-scope constructors borrow input, trim whitespace, and fold ASCII case when
 building owned DEX keys. Selecting a blank DEX falls back to the default
 all-markets scope.
 
+Hydromancer request orchestration lives in `account/data/bootstrap/hydromancer.rs`.
+Its `portfolio.rs` submodule owns single/batch response parsing, the redacted
+portfolio model, scoped conversion, native/DEX merging, and batch-size policy.
+Batch requests use that shared scope limit and serialize borrowed address slices
+while the public fetch task retains the owned list for result assembly.
+Owned response parsers move JSON fields, tuple payloads, and address strings into
+their outputs. Primary snake-case fields take precedence over camel-case aliases
+whenever present, including null or malformed values. Tests beside the model
+cover those distinctions, validation order, metadata selection, and redaction.
+
 ## User Data Stream
 
 `subscription_state/user_data.rs` creates `WsUserDataStreamParams` for:
