@@ -39,14 +39,11 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
         denomination,
         max_notional,
     } = context;
-    let actions_hovered = hovered_wallet_action_key
-        == Some(
-            format!(
-                "positioning-info:{instance_id}:positions:{}",
-                position.address
-            )
-            .as_str(),
-        );
+    let hover_key = format!(
+        "positioning-info:{instance_id}:positions:{}",
+        position.address
+    );
+    let actions_hovered = hovered_wallet_action_key == Some(hover_key.as_str());
     let side = position_side_label(position.size);
     let side_color = position_side_color(position.size, theme);
     let notional = positioning_live_notional(position, live_mark).unwrap_or(position.notional_size);
@@ -73,10 +70,7 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
             &position.address,
             wallet_display,
             columns.trader_width,
-            format!(
-                "positioning-info:{instance_id}:positions:{}",
-                position.address
-            ),
+            hover_key,
             hovered_wallet_action_key,
             theme,
         ))

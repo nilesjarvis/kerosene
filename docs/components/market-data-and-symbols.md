@@ -411,6 +411,14 @@ Key modules:
 Positioning requests use request keys for dedupe and stale-response protection.
 Asset-context streams update live mark/mid metadata for matching panes.
 
+The change-flow view composes the responsive canvas and trader-action overlay
+in `market_views/positioning_info/flow.rs`. Its `chart.rs` child owns prepared
+rows and hover animation; `chart/drawing.rs` holds layout and painting, and
+`chart/formatting.rs` prepares labels and tooltip values. Flow size labels reuse
+the positioning signed-size helper while retaining their own compact-money
+precision. Table cells consume formatted strings, and symbol controls borrow
+display text while keeping owned selection messages.
+
 `PositioningInfoInstance::from_config` restores saved filters and normalizes
 removed sort options. Startup and layout loading share
 `ensure_positioning_info_pane_instances` to populate missing pane state across

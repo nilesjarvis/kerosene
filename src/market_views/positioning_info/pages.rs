@@ -29,7 +29,7 @@ impl TradingTerminal {
         content = content.push(controls);
 
         if let Some(error) = &instance.error {
-            content = content.push(text(error.clone()).size(11).color(
+            content = content.push(text(error.as_str()).size(11).color(
                 if instance.data.is_some() {
                     theme.palette().warning
                 } else {
@@ -100,7 +100,7 @@ impl TradingTerminal {
         content = content.push(controls);
 
         if let Some(error) = &instance.change_error {
-            content = content.push(text(error.clone()).size(11).color(
+            content = content.push(text(error.as_str()).size(11).color(
                 if instance.change_data.is_some() {
                     theme.palette().warning
                 } else {

@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::config;
 use crate::message::Message;
 use crate::positioning_state::{PositioningInfoId, PositioningInfoSortField};
@@ -105,12 +107,12 @@ fn sort_header_button_style(theme: &Theme, status: button::Status) -> button::St
 }
 
 pub(super) fn value_cell(
-    value: impl ToString,
+    value: impl Into<Cow<'static, str>>,
     width: Length,
     color: Color,
     align_right: bool,
 ) -> Element<'static, Message> {
-    let cell = text(value.to_string())
+    let cell = text(value.into())
         .size(11)
         .font(crate::app_fonts::monospace_font())
         .color(color)
