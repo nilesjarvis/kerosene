@@ -451,6 +451,13 @@ Transport errors still follow the retry budget when their text mentions a closed
 order. TWAP account refresh applies its policy to the original order through one
 lookup; status and cancellation callbacks move their final-use client-order IDs.
 
+Status reconciliation shares matching-child updates for the returned order ID,
+child state, and exchange summary. Matching remains exact by client-order ID,
+and absent returned order IDs preserve each child's existing ID. Unknown statuses
+and transport failures share retry accounting while retaining distinct pause
+reasons and messages; missing-status exhaustion keeps its separate recovery rules.
+Requested stops and confirmed absence of fills share completion eligibility checks.
+
 ## Advanced Order History
 
 `advanced_order_history/` stores bounded snapshots of terminal advanced orders.
