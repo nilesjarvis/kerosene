@@ -206,6 +206,10 @@ request. Missing/error results use bounded exponential backoff; rate limits set
 a shared cooldown so multiple charts cannot create a per-chart retry storm. A
 live websocket context always wins a race with REST fallback data.
 
+Perpetual and spot chart contexts decode directly from borrowed response values.
+The resulting contexts own their fields; decoding preserves optional-string
+validation and each market family's existing lookup/fallback policy.
+
 Watchlist/context requests are request-scoped: malformed top-level spot data is
 rejected, missing unrelated universe rows do not poison requested results, and
 missing requested symbols are reported without presenting a partial response
@@ -268,6 +272,11 @@ order book pane opens
 The update path rejects websocket data that does not match the instance's
 symbol mode or canonical precision. Tick-size changes reuse cached book data
 when possible and refetch when precision changes require it.
+
+REST and websocket book parsers decode sides directly from borrowed JSON arrays,
+then retain positive finite levels in their received order. A malformed level
+rejects its side before filtering; REST reports the failing side while websocket
+parsing drops the snapshot. REST also checks error envelopes before levels.
 
 Pending fetch identity lives in `market_state/types/order_book/requests.rs`.
 Deduplication and response matching share the same symbol, tick-tolerance, and

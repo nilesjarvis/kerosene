@@ -71,3 +71,31 @@ fn returns_none_for_malformed_response() {
     assert!(parse_chart_asset_context(&json!({}), "BTC", None).is_none());
     assert!(parse_chart_asset_context(&json!([{}]), "BTC", None).is_none());
 }
+
+#[test]
+fn context_decoding_keeps_optional_strings_and_rejects_malformed_fields() {
+    let mut response = json!([
+        { "universe": [{ "name": "BTC" }, { "name": "BTC" }] },
+        [
+            { "midPx": null, "impactPxs": ["100", "101"], "ignored": { "nested": [true] } },
+            { "midPx": "102" }
+        ]
+    ]);
+    let context = parse_chart_asset_context(&response, "BTC", None).expect("optional fields");
+    assert!(context.mid_px.is_none());
+    assert!(context.funding.is_none());
+    assert_eq!(context.impact_pxs, Some(vec!["100".into(), "101".into()]));
+
+    for malformed in [
+        json!(null),
+        json!({ "midPx": 100 }),
+        json!({ "funding": true }),
+        json!({ "impactPxs": ["100", 101] }),
+    ] {
+        response[1][0] = malformed;
+        assert!(
+            parse_chart_asset_context(&response, "BTC", None).is_none(),
+            "a malformed first match must not fall back to another universe entry"
+        );
+    }
+}

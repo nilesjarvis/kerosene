@@ -1,4 +1,5 @@
 use crate::account::AssetContext;
+use serde::Deserialize;
 use serde_json::Value;
 mod spot;
 
@@ -80,7 +81,7 @@ pub(crate) fn parse_chart_asset_context(
             continue;
         }
         let ctx_val = ctxs.get(i)?;
-        return serde_json::from_value::<AssetContext>(ctx_val.clone()).ok();
+        return AssetContext::deserialize(ctx_val).ok();
     }
 
     None

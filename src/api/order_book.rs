@@ -52,7 +52,8 @@ impl OrderBook {
         }
     }
 
-    /// Mid price from the best bid and ask. Returns 0.0 if either side is empty.
+    /// Mid price from the best bid and ask, or the available side's best price.
+    /// Returns 0.0 if both sides are empty.
     pub fn mid_price(&self) -> f64 {
         match (self.bids.first(), self.asks.first()) {
             (Some(bid), Some(ask)) => (bid.px + ask.px) / 2.0,
@@ -78,12 +79,9 @@ pub async fn fetch_order_book(
     if let Some(m) = sigfigs.1 {
         payload_object.insert("mantissa".to_string(), serde_json::json!(m));
     }
-    let body = payload;
-
-    let client = CLIENT.clone();
-    let response = client
+    let response = CLIENT
         .post(API_URL)
-        .json(&body)
+        .json(&payload)
         .send_info()
         .await
         .map_err(|e| format!("l2Book request failed: {e}"))?;
@@ -108,7 +106,7 @@ pub fn parse_ws_book(data: &Value) -> Option<OrderBook> {
 }
 
 fn parse_book_side(value: &Value) -> Result<Vec<BookLevel>, serde_json::Error> {
-    let mut levels: Vec<BookLevel> = serde_json::from_value(value.clone())?;
+    let mut levels = Vec::<BookLevel>::deserialize(value)?;
     levels.retain(is_valid_book_level);
     Ok(levels)
 }

@@ -1,4 +1,5 @@
 use crate::account::AssetContext;
+use serde::Deserialize;
 use serde_json::Value;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -119,7 +120,7 @@ impl<'a> SpotContextLookup<'a> {
                     )
                 })
             })?;
-        serde_json::from_value::<AssetContext>(context.clone()).ok()
+        AssetContext::deserialize(context).ok()
     }
 }
 
