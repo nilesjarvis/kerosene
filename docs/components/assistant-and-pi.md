@@ -23,7 +23,7 @@ messages.
 | `src/agent_snapshot.rs`, `src/agent_snapshot/` | Snapshot assembly, limits, provenance, and shared sanitization; separate account, market, journal, workspace, and file modules for the read-only export. |
 | `src/agent_workspace.rs`, `src/agent_workspace/` | Request admission, active-turn authorization, and shared persistence coordination; separate indicator changes, staged drawing batches, and drawing request/style validation modules. |
 | `src/agent_runtime.rs`, `src/agent_runtime/` | Pi subprocess discovery, isolated environment, and command/event transport; separate redacted runtime types, JSONL RPC encoding/parsing, and bounded tool-summary modules with nearby tests. |
-| `src/llama_cpp.rs` | Loopback-only llama.cpp process/endpoint discovery, capability verification, and isolated Pi provider configuration. |
+| `src/llama_cpp.rs`, `src/llama_cpp/` | Local-server types, HTTP capability/model verification, and isolated Pi provider configuration; the discovery child owns loopback URL admission, candidate order, and platform process inspection. |
 | `src/chart_indicator.rs` | Shared typed registry for chart UI indicators and Assistant-visible indicator capabilities. |
 | `assets/agent/kerosene.ts` | Embedded Pi extension, typed snapshot/data tools, bounded indicator and drawing actions, deterministic calculations, and fixed-provider data adapters. |
 
@@ -55,8 +55,9 @@ The empty state and composer expose a P&L card action. Users can choose a PNG,
 JPEG, or WebP file, or drag one anywhere over the Assistant window on platforms
 where iced supports file-drop events. Kerosene decodes the image with strict
 file, dimension, and allocation limits, resizes it to at most 2000×2000, and
-normalizes it to an in-memory PNG. The preview and image bytes are transient and
-are never written to `assistant_sessions.json`.
+normalizes it to an in-memory PNG. The preview and prompt preparation share the
+same encoded byte buffer. The preview and image bytes are transient and are never
+written to `assistant_sessions.json`.
 
 Attaching a card requires the selected provider to advertise image input as
 well as tool calling. Pi receives the normalized image through its
