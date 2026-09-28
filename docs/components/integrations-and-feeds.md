@@ -122,6 +122,11 @@ Hydromancer state appears in:
 The Hydromancer key is secret-bearing. Key rotation should evict old websocket
 managers so stale key tasks do not keep running.
 
+The socket frame parser removes top-level `cursor` and `sessionId` fields before
+broadcasting the JSON. String values move directly into zeroizing resume fields;
+malformed values are removed and ignored. Control-message errors borrow their
+source text while applying the existing authentication labels and redaction.
+
 ## HyperDash
 
 HyperDash integration is GraphQL-based and covers:

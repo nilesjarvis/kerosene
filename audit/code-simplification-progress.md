@@ -25,8 +25,8 @@ candidates; it does not establish that every module has been reviewed.
 | Wallets and account state | Wallet detail and cluster read-result/websocket filters reviewed. Account picker/setup routes traced; unreachable legacy credential-editing handlers removed. Active Add Account, connection, and switching safety boundaries inspected and retained. Account user-stream handling and risk scrubbing inspected for copies but unchanged. Account refresh admission, rate-limit retries, and reconciliation flow inspected; the original fills snapshot is retained across terminal mutations. Account bootstrap, wallet detail/snapshot/order-count reads, and analytics HTTP ownership reviewed; helpers now share borrowed clients without changing request policy. Other account and portfolio flows remain. |
 | Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Snapshot models, planning, assembly, and metrics reviewed and separated; request bounds and history admission are shared. Snapshot update callers inspected, with freshness/admission policies retained. Journal cache persistence and tests reviewed; platform-specific replacement retained. Cockpit rendering/analytics reviewed and split by panel; per-asset aggregation copies coin names only for distinct output rows. Detail/chrome/list views, summary preparation/series/drawing, and small trade-card helpers reviewed; simplified series iteration and reused detail values. Snapshot canvas interaction/rendering reviewed and separated; the canvas borrows its snapshot. Account analytics HTTP fan-out, reserve/name/history parsing, income assembly, and portfolio data selection reviewed; token validation is centralized, recent-payment formatting is bounded to 12 valid rows, portfolio bucket construction is direct, and unused theme construction is removed. Portfolio/income panes, table variants, projection generation, chart layout/hover/tooltip, and PnL area rendering reviewed; daily histories and income labels now borrow data, hidden-chip preparation is skipped, and common table cells/status wrapping are shared. PnL-card state/metrics, privacy text, preview/export rendering, contrast, and output paths reviewed; digit masking is shared and position percentages are reused. Owned export snapshots and account binding remain intact. Account metric helpers reviewed and retained; portfolio/income refresh lifecycle now has one shared implementation with independent state per feature, while caller admission and result policies remain explicit. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Removed discarded theme constructions from order/Chase entry points after checking theme purity; request and lifecycle code is otherwise byte-identical. Substantive order execution, signing, and automation state-machine review remains. |
-| Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
-| Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Remaining integration stream internals still need review. |
+| Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Proxy URL normalization, redacted labels, deserialization/revalidation, settings commit order, and startup fallback inspected; existing security and persistence behavior retained. Remaining persistence/security code needs review. |
+| Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Proxy transport/admission reviewed and retained. Hydromancer frame/control parsing now moves resume strings out of JSON and borrows error text. Remaining integration stream internals still need review. |
 | Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing reviewed; data and label extraction now share one chart marker lookup. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling and reduced summary text copies. Shared-client request construction inspected across API, Hydromancer, HyperDash, and OpenRouter paths; unnecessary temporary client copies removed. Other integration and assistant internals still need substantive review. |
 | Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Theme construction and discarded theme calls in root update, notifications, chart helpers, and order helpers reviewed; the unused calls are removed. Notification delivery, sound entry points, toast retention/animation, and order-status alert policy reviewed; repeated delivery now shares one helper and copies messages only for desktop notifications. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
@@ -1655,10 +1655,52 @@ Validation (using the local ALSA prefix documented above):
   passed.
 - `cargo fmt -- --check` and `git diff --check`: passed.
 
+## 2026-09-28: simplify Hydromancer frame ownership and review proxy boundaries
+
+- Reviewed proxy URL parsing, validation on pool construction, route selection,
+  leases, cooldowns, bounded retries, request admission, cancellation, routing
+  isolation, settings commit order, and startup failure handling. Retained this
+  code: secret deserialization bypasses `ProxyUrl::parse`, so stored URLs must
+  be validated again when enabling a pool. Documented that requirement.
+- Inspected native/Hydromancer subscription reference counts, outbound command
+  handling, inbound frames, session updates, and control messages. Kept the
+  providers' different unsubscribe payloads, readiness/reconnect rules, and
+  redacted debug output in their existing modules.
+- Hydromancer frame parsing now removes `cursor` and `sessionId` from the owned
+  JSON object and moves string values directly into `Zeroizing<String>`, through
+  one small helper. This avoids copying each resume string before dropping its
+  original. Non-string values are still removed and ignored; other payload
+  fields and frame classification remain unchanged.
+- Control-message parsing borrows error text while applying the existing status
+  formatting/redaction, removing two temporary string copies. Error/message
+  precedence, fallback text, authentication labels, and retry delay are unchanged.
+- Added two regressions before production changes for malformed resume-field
+  types, retention of unrelated/nested data, and exact preservation of empty,
+  whitespace-containing, and Unicode resume strings. Existing tests cover
+  missing fields, session/cursor updates, redaction, and socket dispatch.
+- Source checks confirm control parsing differs only by the two eliminated
+  copies; proxy, read-budget, session, socket, and subscription policy code is
+  unchanged. Updated integration and proxy guides. No schema, dependencies,
+  messages, subscriptions, or trading behavior changed; no measured speedup is
+  claimed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene ws::hydromancer`:
+  **90 passed** before and after production changes, including the two new
+  parser regressions, session transitions, socket/control handling, reconnect
+  requests, and redacted diagnostics.
+- `cargo test --locked -j 2`: **4,376 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests). This includes existing proxy transport/settings/storage and
+  read-budget checks.
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- Source comparison, `cargo fmt -- --check`, and `git diff --check`: passed.
+
 ## Next candidates
 
-1. Review HTTP proxy routing/URL normalization and remaining integration stream
-   internals, including provider-specific socket commands and event parsing.
+1. Continue through remaining integration internals, including Hydromancer
+   lifecycle/socket setup, event conversion, and transport telemetry.
 2. Continue through account data, wallet model, and update ownership. Account
    state/persistence copies remain intentional where they protect a snapshot
    across terminal mutations.

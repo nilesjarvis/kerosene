@@ -59,3 +59,51 @@ fn text_frame_parser_preserves_unknown_typed_frames_as_other() {
     assert_eq!(frame.kind, HydromancerTextFrameKind::Other);
     assert_eq!(frame.json["type"], "userFills");
 }
+
+#[test]
+fn text_frame_parser_removes_non_string_resume_fields_without_touching_data() {
+    let payload = serde_json::json!({
+        "type": "userFills",
+        "data": {"cursor": "event-cursor", "sessionId": "event-session", "fills": []},
+    });
+    for value in [
+        serde_json::Value::Null,
+        serde_json::json!(true),
+        serde_json::json!(42),
+        serde_json::json!(["resume-field"]),
+        serde_json::json!({"value": "resume-field"}),
+    ] {
+        let mut input = payload.clone();
+        input["cursor"] = value.clone();
+        input["sessionId"] = value;
+
+        let frame = parse_hydromancer_text_frame(&input.to_string()).expect("typed frame");
+
+        assert_eq!(frame.kind, HydromancerTextFrameKind::Other);
+        assert!(frame.cursor.is_none());
+        assert!(frame.session_id.is_none());
+        assert_eq!(frame.json, payload);
+    }
+}
+
+#[test]
+fn text_frame_parser_preserves_empty_whitespace_and_unicode_resume_strings() {
+    for value in ["", "  resume field\n", "resume-雪-⚡"] {
+        let input = serde_json::json!({
+            "type": "ping",
+            "cursor": value,
+            "sessionId": value,
+            "timestamp": 42,
+        });
+
+        let frame = parse_hydromancer_text_frame(&input.to_string()).expect("ping frame");
+
+        assert_eq!(frame.kind, HydromancerTextFrameKind::Ping);
+        assert_eq!(frame.cursor.as_deref().map(String::as_str), Some(value));
+        assert_eq!(frame.session_id.as_deref().map(String::as_str), Some(value));
+        assert_eq!(
+            frame.json,
+            serde_json::json!({"type": "ping", "timestamp": 42})
+        );
+    }
+}
