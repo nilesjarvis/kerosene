@@ -61,17 +61,13 @@ impl TrackedTradeFeedRow {
     }
 
     pub(crate) fn can_merge(&self, trade: &TrackedTradeEvent) -> bool {
-        if self.oid.is_some() && self.oid == trade.oid {
-            return true;
-        }
-        if self.oid.is_none() && !self.hash.trim().is_empty() && self.hash == trade.hash {
-            return true;
-        }
-
-        self.first_time_ms
-            .min(trade.time_ms)
-            .abs_diff(self.last_time_ms.max(trade.time_ms))
-            <= TRACKED_TRADE_AGGREGATION_WINDOW_MS
+        can_merge_trade(
+            self.oid,
+            &self.hash,
+            self.first_time_ms,
+            self.last_time_ms,
+            trade,
+        )
     }
 
     pub(crate) fn add_event(&mut self, trade: &TrackedTradeEvent) {
@@ -86,13 +82,11 @@ impl TrackedTradeFeedRow {
         self.closed_pnl += trade.closed_pnl;
         self.fee += trade.fee;
         if self.fee_token != trade.fee_token {
-            self.fee_token = if self.fee_token.trim().is_empty() {
-                trade.fee_token.clone()
-            } else if trade.fee_token.trim().is_empty() {
-                self.fee_token.clone()
-            } else {
-                "mixed".to_string()
-            };
+            if self.fee_token.trim().is_empty() {
+                self.fee_token = trade.fee_token.clone();
+            } else if !trade.fee_token.trim().is_empty() {
+                self.fee_token = "mixed".to_string();
+            }
         }
         if self.dir != trade.dir {
             self.dir = "Mixed".to_string();
@@ -108,4 +102,25 @@ impl TrackedTradeFeedRow {
         let signed_size = if self.is_buy { self.size } else { -self.size };
         self.intent = TrackedTradeIntent::from_positions(self.start_position, signed_size);
     }
+}
+
+/// Check the merge range after the caller has matched aggregation keys.
+pub(in crate::feed_state::tracked_trades) fn can_merge_trade(
+    oid: Option<u64>,
+    hash: &str,
+    first_time_ms: u64,
+    last_time_ms: u64,
+    trade: &TrackedTradeEvent,
+) -> bool {
+    if oid.is_some() && oid == trade.oid {
+        return true;
+    }
+    if oid.is_none() && !hash.trim().is_empty() && hash == trade.hash {
+        return true;
+    }
+
+    first_time_ms
+        .min(trade.time_ms)
+        .abs_diff(last_time_ms.max(trade.time_ms))
+        <= TRACKED_TRADE_AGGREGATION_WINDOW_MS
 }

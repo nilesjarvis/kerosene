@@ -69,14 +69,11 @@ impl TradingTerminal {
                 continue;
             }
             let key = LiquidationAggregationKey::from_event(liq);
-            let existing_index = latest_by_key.get(&key).copied();
-
-            if let Some(index) = existing_index
-                && rows.get(index).is_some_and(|row| row.can_merge(liq))
+            if let Some(index) = latest_by_key.get(&key).copied()
+                && let Some(row) = rows.get_mut(index)
+                && row.can_merge(liq)
             {
-                if let Some(row) = rows.get_mut(index) {
-                    row.add_event(liq);
-                }
+                row.add_event(liq);
                 continue;
             }
 

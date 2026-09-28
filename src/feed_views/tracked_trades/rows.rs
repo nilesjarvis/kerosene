@@ -30,16 +30,6 @@ impl TradingTerminal {
                 theme.palette().danger
             };
             let side_str = formatting::tracked_trade_side_label(trade_row.is_buy);
-            let pnl_color = style::tracked_trade_pnl_color(&theme, trade_row.closed_pnl);
-            let fee_label =
-                formatting::tracked_trade_fee_label(trade_row.fee, &trade_row.fee_token);
-            let pnl_label =
-                formatting::tracked_trade_pnl_label(&denomination, trade_row.closed_pnl);
-            let intent_text = formatting::tracked_trade_intent_text(
-                trade_row.intent,
-                &trade_row.dir,
-                trade_row.fill_count,
-            );
 
             let mut row_ui = row![].spacing(ROW_SPACING).align_y(iced::Alignment::Center);
 
@@ -58,8 +48,8 @@ impl TradingTerminal {
             }
 
             row_ui = row_ui
-                .push(self.view_tracked_trade_wallet_cell(trade_row.address.clone()))
-                .push(self.view_tracked_trade_coin_cell(trade_row.coin.clone()));
+                .push(self.view_tracked_trade_wallet_cell(trade_row.address, &theme))
+                .push(self.view_tracked_trade_coin_cell(trade_row.coin, &theme));
 
             if row_layout.show_side {
                 row_ui = row_ui.push(
@@ -109,6 +99,9 @@ impl TradingTerminal {
             }
 
             if row_layout.show_pnl {
+                let pnl_color = style::tracked_trade_pnl_color(&theme, trade_row.closed_pnl);
+                let pnl_label =
+                    formatting::tracked_trade_pnl_label(&denomination, trade_row.closed_pnl);
                 row_ui = row_ui.push(
                     text(pnl_label)
                         .size(12)
@@ -120,6 +113,8 @@ impl TradingTerminal {
             }
 
             if row_layout.show_fee {
+                let fee_label =
+                    formatting::tracked_trade_fee_label(trade_row.fee, &trade_row.fee_token);
                 row_ui = row_ui.push(
                     text(fee_label)
                         .size(11)
@@ -131,6 +126,11 @@ impl TradingTerminal {
             }
 
             if row_layout.show_intent {
+                let intent_text = formatting::tracked_trade_intent_text(
+                    trade_row.intent,
+                    &trade_row.dir,
+                    trade_row.fill_count,
+                );
                 row_ui = row_ui.push(Space::new().width(Fill)).push(
                     text(intent_text)
                         .size(11)

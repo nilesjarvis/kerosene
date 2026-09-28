@@ -28,8 +28,8 @@ impl TradingTerminal {
         let side_str = if liq.is_buy { "BUY" } else { "SELL" };
         let method_label = self.liquidation_method_label(&liq);
         let display_coin = self.display_name_for_symbol(&liq.coin);
-        let coin = liq.coin.clone();
-        let liquidated_user = liq.liquidated_user.clone();
+        let coin = liq.coin;
+        let liquidated_user = liq.liquidated_user;
         let corner_radius = self.pane_corner_radius;
 
         let mut row_ui = row![

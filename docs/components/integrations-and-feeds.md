@@ -251,6 +251,12 @@ State includes:
 Tracked trade subscription addresses come from configured tracked wallets and
 related feed settings. Empty address sets should not open a stream.
 
+Row aggregation and alert suppression share the order/hash/time-span merge
+predicate. Suppressed alerts check borrowed event data before constructing an
+owned row. Each feed retains its own grouping keys, scan limits, and render
+limits. Tracked-trade cells reuse their row view's theme, and optional PnL, fee,
+and intent labels are formatted only for visible columns.
+
 ## Telegram Feed
 
 Telegram has two modes:
