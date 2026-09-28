@@ -14,7 +14,7 @@ streams.
 | Hyperliquid websocket | `src/ws.rs`, `src/ws/manager.rs`, `src/ws/market_streams/`, `src/ws/user_streams/` | Singleton exchange websocket, subscriptions, coalescing, routed market/user streams. |
 | Hydromancer | `src/hydromancer_api.rs`, `src/ws/hydromancer/`, `src/feed_update/connection.rs` | Funding history, authenticated liquidation/tracked-trade feeds, optional read-data provider. |
 | HyperDash | `src/hyperdash_api.rs`, `src/hyperdash_update/` | GraphQL liquidation heatmaps, liquidation levels, positioning info, liquidation distribution. |
-| OpenRouter | `src/openrouter_api.rs`, `src/openrouter_update.rs`, `src/agent_*` | AI completion foundation plus the Pi-backed Kerosene Assistant; key validation and default-model selection. |
+| OpenRouter | `src/openrouter_api.rs`, `src/openrouter_api/`, `src/openrouter_update.rs`, `src/agent_*` | AI completion foundation plus the Pi-backed Kerosene Assistant; key validation and default-model selection. |
 | Feeds | `src/feed_state/`, `src/feed_update/`, `src/feed_views/` | Liquidation feed, tracked trades, Telegram feed, aggregation, alerts, rendering. |
 | Telegram | `src/telegram_feed.rs`, `src/telegram_fast_feed.rs` | Public channel scraping and optional MTProto fast/private feed. |
 | Calendar and screener | `src/calendar_*`, `src/screener_*` | Economic calendar, market screener contexts/history. |
@@ -171,7 +171,7 @@ news summaries, and TradFi filing summaries). The user supplies an API key in Se
 persists the key through the selected secret storage backend and validates it
 against `GET /api/v1/key`, surfacing usage/limit status in the settings UI.
 
-`src/openrouter_api.rs` owns:
+`src/openrouter_api.rs` and its child modules provide:
 
 - a dedicated `reqwest::Client` with a long completion timeout (chat
   completions outlive the shared 15s client budget)
@@ -182,6 +182,12 @@ against `GET /api/v1/key`, surfacing usage/limit status in the settings UI.
   Assistant model picker, filtered to text-output models that advertise the
   `tools` parameter
 - typed error-envelope parsing with status-code hints (401/402/429/...)
+
+`models.rs` keeps catalog wire types, filtering, pricing, and model labels
+together. `key.rs` owns key-status responses. The root retains completion
+requests and shared observed HTTP transport; endpoint builders retain their
+own headers and timeout overrides. Public entry points remain available from
+`openrouter_api`.
 
 The Assistant footer model name opens a searchable model picker. Catalog rows
 show the OpenRouter name/slug, context window, and current prompt/completion
@@ -481,7 +487,7 @@ Use focused tests in:
 - `src/hydromancer_api/tests.rs`
 - `src/hyperdash_api/**/tests.rs`
 - `src/hyperdash_update/**/tests.rs`
-- `src/openrouter_api/tests.rs`
+- `src/openrouter_api/**/tests.rs`
 - `src/openrouter_update/tests.rs`
 - `src/feed_update/liquidations/tests.rs`
 - Telegram tests in `src/feed_update/` and `src/telegram_*`
