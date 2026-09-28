@@ -132,6 +132,68 @@ fn alfred_defaults_to_add_widget_commands() {
 }
 
 #[test]
+fn alfred_catalog_search_preserves_case_spacing_and_result_order() {
+    let mut terminal = TradingTerminal::boot_from_config(config::KeroseneConfig::default()).0;
+    terminal.canvases.clear();
+    let all_commands: Vec<_> = terminal
+        .alfred_filtered_commands()
+        .into_iter()
+        .map(|command| command.id)
+        .collect();
+    for query in ["", " \t\n", "\u{2003}"] {
+        terminal.alfred.query = query.into();
+        let ids: Vec<_> = terminal
+            .alfred_filtered_commands()
+            .into_iter()
+            .map(|command| command.id)
+            .collect();
+        assert_eq!(ids, all_commands, "{query:?}");
+    }
+    for (query, expected) in [
+        (
+            "  API\tWEBSOCKET ",
+            vec![AlfredCommandId::OpenConsoleWindow],
+        ),
+        (
+            "  coNfIG  hotKEYs ",
+            vec![AlfredCommandId::OpenSettingsWindow],
+        ),
+        ("CHAT OpenRouter", vec![AlfredCommandId::OpenAgentWindow]),
+        (
+            "wallet WINDOW",
+            vec![
+                AlfredCommandId::OpenWalletTrackerWindow,
+                AlfredCommandId::OpenCombinedPortfolioWindow,
+                AlfredCommandId::OpenWalletClustersWindow,
+            ],
+        ),
+        (
+            "\u{2003}settings\u{2003}",
+            vec![AlfredCommandId::OpenSettingsWindow],
+        ),
+        ("  OPEn Settings", vec![AlfredCommandId::OpenSettingsWindow]),
+        (
+            " ADD CHART",
+            vec![
+                AlfredCommandId::AddCandlestickChart,
+                AlfredCommandId::AddComparisonChart,
+                AlfredCommandId::AddPairRatioChart,
+            ],
+        ),
+        ("No_Such_Command", vec![]),
+        ("aDdWidget", vec![]),
+    ] {
+        terminal.alfred.query = query.into();
+        let ids: Vec<_> = terminal
+            .alfred_filtered_commands()
+            .into_iter()
+            .map(|command| command.id)
+            .collect();
+        assert_eq!(ids, expected, "{query:?}");
+    }
+}
+
+#[test]
 fn alfred_catalog_includes_session_data_widget() {
     let terminal = TradingTerminal::boot().0;
 

@@ -32,9 +32,10 @@ impl TradingTerminal {
             return vec![command];
         }
 
+        let query = query.to_ascii_lowercase();
         self.alfred_command_catalog()
             .into_iter()
-            .filter(|command| command.matches_query(query))
+            .filter(|command| command.matches_normalized_query(&query))
             .collect()
     }
 
