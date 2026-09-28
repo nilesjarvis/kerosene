@@ -7,29 +7,29 @@ use crate::helpers::parse_finite_number;
 #[cfg(test)]
 mod tests;
 
-pub(in crate::account_views::positions::table) struct PositionRowData {
-    pub(in crate::account_views::positions::table) ap: account::AssetPosition,
-    pub(in crate::account_views::positions::table) coin: String,
-    pub(in crate::account_views::positions::table) szi: Option<f64>,
-    pub(in crate::account_views::positions::table) entry_px: Option<f64>,
-    pub(in crate::account_views::positions::table) is_long: Option<bool>,
-    pub(in crate::account_views::positions::table) mark_px: Option<f64>,
-    pub(in crate::account_views::positions::table) position_value: Option<f64>,
-    pub(in crate::account_views::positions::table) upnl: Option<f64>,
-    pub(in crate::account_views::positions::table) liq_px: Option<f64>,
-    pub(in crate::account_views::positions::table) funding_since_open: Option<f64>,
-    pub(in crate::account_views::positions::table) spent_fees: Option<f64>,
-    pub(in crate::account_views::positions::table) total_pnl: Option<f64>,
-    pub(in crate::account_views::positions::table) leverage: u32,
+pub(super) struct PositionRowData<'a> {
+    pub(super) ap: &'a account::AssetPosition,
+    pub(super) coin: &'a str,
+    pub(super) szi: Option<f64>,
+    pub(super) entry_px: Option<f64>,
+    pub(super) is_long: Option<bool>,
+    pub(super) mark_px: Option<f64>,
+    pub(super) position_value: Option<f64>,
+    pub(super) upnl: Option<f64>,
+    pub(super) liq_px: Option<f64>,
+    pub(super) funding_since_open: Option<f64>,
+    pub(super) spent_fees: Option<f64>,
+    pub(super) total_pnl: Option<f64>,
+    pub(super) leverage: u32,
 }
 
 impl TradingTerminal {
-    pub(super) fn sorted_position_rows(
+    pub(super) fn sorted_position_rows<'a>(
         &self,
-        positions: &[account::AssetPosition],
-    ) -> Vec<PositionRowData> {
-        let mut row_data: Vec<PositionRowData> = positions
-            .iter()
+        positions: impl IntoIterator<Item = &'a account::AssetPosition>,
+    ) -> Vec<PositionRowData<'a>> {
+        let mut row_data: Vec<_> = positions
+            .into_iter()
             .map(|ap| self.position_row_data(ap))
             .collect();
 
@@ -40,9 +40,9 @@ impl TradingTerminal {
                 return b.spent_fees.is_some().cmp(&a.spent_fees.is_some());
             }
             let cmp = match self.positions_sort_column {
-                PositionsSortColumn::Symbol => a.coin.cmp(&b.coin),
+                PositionsSortColumn::Symbol => a.coin.cmp(b.coin),
                 PositionsSortColumn::Side => {
-                    a.is_long.cmp(&b.is_long).then_with(|| a.coin.cmp(&b.coin))
+                    a.is_long.cmp(&b.is_long).then_with(|| a.coin.cmp(b.coin))
                 }
                 PositionsSortColumn::Size => {
                     optional_numeric_cmp(a.szi.map(f64::abs), b.szi.map(f64::abs))
@@ -63,19 +63,19 @@ impl TradingTerminal {
             };
 
             if self.positions_sort_direction == config::SortDirection::Descending {
-                cmp.reverse().then_with(|| a.coin.cmp(&b.coin))
+                cmp.reverse().then_with(|| a.coin.cmp(b.coin))
             } else {
-                cmp.then_with(|| a.coin.cmp(&b.coin))
+                cmp.then_with(|| a.coin.cmp(b.coin))
             }
         });
 
         row_data
     }
 
-    pub(in crate::account_views::positions::table) fn position_row_data(
+    pub(super) fn position_row_data<'a>(
         &self,
-        ap: &account::AssetPosition,
-    ) -> PositionRowData {
+        ap: &'a account::AssetPosition,
+    ) -> PositionRowData<'a> {
         let pos = &ap.position;
         let szi = parse_position_row_number(&pos.szi);
         let entry_px = parse_position_row_number(&pos.entry_px);
@@ -114,8 +114,8 @@ impl TradingTerminal {
         let total_pnl = upnl.map(|upnl| funding_since_open.map_or(upnl, |funding| upnl + funding));
 
         PositionRowData {
-            ap: ap.clone(),
-            coin: pos.coin.clone(),
+            ap,
+            coin: &pos.coin,
             szi,
             entry_px,
             is_long: szi.map(|szi| szi >= 0.0),

@@ -2,6 +2,74 @@ use super::*;
 use crate::account::{position_notional_from_mark_or_wire, position_upnl_from_mark_or_wire};
 
 #[test]
+fn position_sort_columns_preserve_missing_values_ties_and_input_order() {
+    let mut terminal =
+        TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default()).0;
+    let positions: Vec<account::AssetPosition> = [
+        ("B", "-2", "20", "40", "2", "10", "-2", 2, "b"),
+        ("A", "1", "10", "10", "1", "5", "-1", 1, "first-a"),
+        ("C", "NaN", "NaN", "NaN", "NaN", "NaN", "NaN", 0, "c"),
+        ("A", "1", "10", "10", "1", "5", "-1", 1, "second-a"),
+    ]
+    .into_iter()
+    .map(
+        |(coin, size, entry, value, pnl, liq, funding, leverage, tag)| {
+            serde_json::from_value(serde_json::json!({"position": {
+                "coin": coin, "szi": size, "entryPx": entry, "positionValue": value,
+                "unrealizedPnl": pnl, "liquidationPx": liq, "marginUsed": tag,
+                "leverage": {"type": "cross", "value": leverage},
+                "cumFunding": {"allTime": "0", "sinceOpen": funding, "sinceChange": "0"}
+            }}))
+            .expect("position fixture")
+        },
+    )
+    .collect();
+    let ascending = ["first-a", "second-a", "b", "c"];
+    let descending = ["c", "b", "first-a", "second-a"];
+    for (column, expected_ascending, expected_descending) in [
+        (PositionsSortColumn::Symbol, ascending, descending),
+        (PositionsSortColumn::Side, descending, ascending),
+        (PositionsSortColumn::Size, ascending, descending),
+        (PositionsSortColumn::Entry, ascending, descending),
+        (PositionsSortColumn::Liquidation, ascending, descending),
+        (PositionsSortColumn::Mark, ascending, ascending),
+        (PositionsSortColumn::Value, ascending, descending),
+        (PositionsSortColumn::UnrealizedPnl, ascending, descending),
+        (PositionsSortColumn::Funding, ascending, descending),
+        (PositionsSortColumn::SpentFees, ascending, ascending),
+        (PositionsSortColumn::TotalPnl, ascending, descending),
+        (
+            PositionsSortColumn::Leverage,
+            ["c", "first-a", "second-a", "b"],
+            ["b", "first-a", "second-a", "c"],
+        ),
+    ] {
+        terminal.positions_sort_column = column;
+        for (direction, expected) in [
+            (config::SortDirection::Ascending, expected_ascending),
+            (config::SortDirection::Descending, expected_descending),
+        ] {
+            terminal.positions_sort_direction = direction;
+            let rows = terminal.sorted_position_rows(&positions);
+            assert_eq!(
+                rows.iter()
+                    .map(|row| row.ap.position.margin_used.as_str())
+                    .collect::<Vec<_>>(),
+                expected,
+                "{column:?} {direction:?}"
+            );
+        }
+    }
+    assert_eq!(
+        positions
+            .iter()
+            .map(|ap| ap.position.margin_used.as_str())
+            .collect::<Vec<_>>(),
+        ["b", "first-a", "c", "second-a"]
+    );
+}
+
+#[test]
 fn position_row_number_parser_rejects_invalid_or_nonfinite_values() {
     assert_eq!(parse_position_row_number(" 2.5 "), Some(2.5));
     assert_eq!(parse_position_row_number("-0.125"), Some(-0.125));
@@ -113,7 +181,7 @@ fn spent_fees_sort_numerically_with_missing_values_last_in_both_directions() {
     terminal.positions_sort_direction = PositionsSortColumn::SpentFees.default_direction();
     let rows = terminal.sorted_position_rows(&positions);
     assert_eq!(
-        rows.iter().map(|row| row.coin.as_str()).collect::<Vec<_>>(),
+        rows.iter().map(|row| row.coin).collect::<Vec<_>>(),
         ["ETH", "BTC", "SOL"]
     );
     assert_eq!(rows[0].spent_fees, Some(3.0));
@@ -122,7 +190,7 @@ fn spent_fees_sort_numerically_with_missing_values_last_in_both_directions() {
         terminal
             .sorted_position_rows(&positions)
             .iter()
-            .map(|row| row.coin.as_str())
+            .map(|row| row.coin)
             .collect::<Vec<_>>(),
         ["BTC", "ETH", "SOL"]
     );

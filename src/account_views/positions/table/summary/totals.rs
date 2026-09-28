@@ -16,14 +16,14 @@ pub(super) struct PositionSummaryTotals {
 }
 
 impl PositionSummaryTotals {
-    pub(super) fn from_rows(rows: impl IntoIterator<Item = PositionRowData>) -> Self {
+    pub(super) fn from_rows<'a>(rows: impl IntoIterator<Item = PositionRowData<'a>>) -> Self {
         rows.into_iter().fold(Self::default(), |mut totals, row| {
             totals.add_row(row);
             totals
         })
     }
 
-    fn add_row(&mut self, row: PositionRowData) {
+    fn add_row(&mut self, row: PositionRowData<'_>) {
         self.add_position(
             row.is_long,
             row.position_value,

@@ -203,6 +203,12 @@ Features include:
 Hidden positions are scoped by account and persisted. Hidden/muted exposure is
 a trading risk boundary and must be considered by close/NUKE/order automation.
 
+Position section lists and prepared display rows borrow their input positions.
+Sorting and summary accumulation prepare their metrics without copying the
+underlying wire fields or symbol strings. Rendered widgets and
+action messages own the values they need after row preparation; the upstream
+account projection and export snapshots retain their existing ownership.
+
 ## Open Orders
 
 Open orders are rendered by `account_views/orders/`. Rows can include:

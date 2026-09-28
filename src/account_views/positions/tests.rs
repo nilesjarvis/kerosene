@@ -1,5 +1,7 @@
 use super::*;
 
+mod rendering;
+
 #[test]
 fn position_columns_hide_one_group_at_a_time_as_width_shrinks() {
     assert_eq!(

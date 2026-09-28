@@ -30,13 +30,13 @@ use iced::{Element, Fill, Theme, color};
 impl TradingTerminal {
     pub(super) fn view_position_row<'a>(
         &'a self,
-        data: PositionRowData,
+        data: PositionRowData<'_>,
         can_close: bool,
         theme: &Theme,
         columns: PositionColumnVisibility,
         number_mode: PositionNumberMode,
     ) -> Element<'a, Message> {
-        let ap = &data.ap;
+        let ap = data.ap;
         let pos = &ap.position;
         let denomination = self.display_denomination_context();
         let is_spot_position = self.is_spot_coin(&pos.coin);

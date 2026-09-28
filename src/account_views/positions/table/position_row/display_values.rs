@@ -18,11 +18,11 @@ pub(super) struct PositionRowPnlDisplays {
 impl TradingTerminal {
     pub(super) fn position_row_pnl_displays(
         &self,
-        data: &PositionRowData,
+        data: &PositionRowData<'_>,
         denomination: &DisplayDenominationContext,
         number_mode: PositionNumberMode,
     ) -> PositionRowPnlDisplays {
-        let spot_like = self.is_spot_coin(&data.coin) || self.is_outcome_coin(&data.coin);
+        let spot_like = self.is_spot_coin(data.coin) || self.is_outcome_coin(data.coin);
         let spot_value_unavailable = spot_like && data.ap.position.position_value.trim().is_empty();
         let spot_pnl_unavailable = spot_like && data.ap.position.unrealized_pnl.trim().is_empty();
         if self.hide_pnl {

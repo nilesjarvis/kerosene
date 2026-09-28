@@ -370,7 +370,8 @@ fn spot_position_without_cost_basis_displays_unavailable_pnl() {
         "@142".to_string(),
         crate::app_state::TradingTerminal::now_ms(),
     );
-    let data = terminal.position_row_data(&spot_position_without_cost_basis("@142"));
+    let position = spot_position_without_cost_basis("@142");
+    let data = terminal.position_row_data(&position);
     let denomination = crate::denomination::DisplayDenominationContext::default();
 
     let displays =

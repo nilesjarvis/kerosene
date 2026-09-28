@@ -293,11 +293,11 @@ impl TradingTerminal {
         let mut outcome_positions = Vec::new();
         for position in positions {
             if self.is_outcome_coin(&position.position.coin) {
-                outcome_positions.push(position.clone());
+                outcome_positions.push(position);
             } else if self.is_spot_coin(&position.position.coin) {
-                spot_positions.push(position.clone());
+                spot_positions.push(position);
             } else {
-                perp_positions.push(position.clone());
+                perp_positions.push(position);
             }
         }
 
