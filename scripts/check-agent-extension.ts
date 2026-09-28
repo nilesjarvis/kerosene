@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import keroseneExtension from "../assets/agent/kerosene.ts";
+import { checkSessions } from "./agent-extension-checks/sessions.ts";
+import { checkWorkspaceActions } from "./agent-extension-checks/workspace.ts";
 
 const tools = new Map<string, any>();
 const hooks = new Map<string, any>();
@@ -78,6 +80,9 @@ try {
   assert.equal(journal.summary.overall.flats, 0);
   assert.equal(journal.summary.overall.win_rate_sample_count, 1);
   assert.equal(journal.summary.overall.metric_coverage.net_pnl.missing_rows, 1);
+
+  await checkWorkspaceActions(tools, snapshotPath);
+  await checkSessions(tools);
 
   const originalFetch = globalThis.fetch;
   const candidateAddress = "0x1111111111111111111111111111111111111111";

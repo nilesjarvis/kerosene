@@ -30,6 +30,22 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 Run `cargo fmt` after Rust code edits.
 
+## Assistant Extension Checks
+
+The embedded TypeScript tools have an offline behavior harness in
+`scripts/check-agent-extension.ts`, with workspace/session fixtures under
+`scripts/agent-extension-checks/`. Run it with Bun and TypeBox resolvable (for
+example, through an installed Pi package's `node_modules` on `NODE_PATH`):
+
+```sh
+bun --no-install scripts/check-agent-extension.ts
+```
+
+It mocks provider fetches and host acknowledgements and uses synthetic snapshots.
+Set `KEROSENE_AGENT_SESSION_CHECK_OUTPUT` to a temporary JSON path to capture the
+sixteen complete session results and requests for before/after comparison. Rust
+tests under `src/agent_runtime/` also check the embedded tool/prompt contracts.
+
 ## GUI Smoke Test
 
 Linux headless smoke test:

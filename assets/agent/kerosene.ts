@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { readFile } from "node:fs/promises";
 
@@ -66,6 +66,34 @@ function toolPayload(payload: unknown, details: JsonObject = {}, quality?: JsonO
     content: [{ type: "text" as const, text: JSON.stringify(body) }],
     details,
   };
+}
+
+async function requestWorkspaceAction(
+  request: JsonObject,
+  actionLabel: "chart-indicator" | "chart-drawing",
+  signal: AbortSignal | undefined,
+  ctx: ExtensionContext,
+): Promise<JsonObject> {
+  const responseText = await ctx.ui.input(
+    HOST_ACTION_RPC_TITLE,
+    JSON.stringify(request),
+    { signal, timeout: 15_000 },
+  );
+  if (!responseText) throw new Error(`Kerosene did not acknowledge the ${actionLabel} action`);
+
+  let response: JsonObject;
+  try {
+    response = JSON.parse(responseText);
+  } catch {
+    throw new Error(`Kerosene returned an invalid ${actionLabel} acknowledgement`);
+  }
+  if (response?.success !== true) {
+    const message = typeof response?.error?.message === "string"
+      ? response.error.message
+      : `Kerosene rejected the ${actionLabel} action`;
+    throw new Error(message);
+  }
+  return response;
 }
 
 function publicSnapshot(snapshot: JsonObject) {
@@ -889,17 +917,8 @@ function summarizeReturns(rows: Array<{ key: string; return_pct: number }>) {
   });
 }
 
-function dateParts(timestamp: number, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(timestamp));
+function dateParts(timestamp: number, formatter: Intl.DateTimeFormat) {
+  const parts = formatter.formatToParts(new Date(timestamp));
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return {
     year: Number(values.year),
@@ -917,12 +936,12 @@ function localTimeToUtc(
   day: number,
   hour: number,
   minute: number,
-  timeZone: string,
+  formatter: Intl.DateTimeFormat,
 ) {
   const desired = Date.UTC(year, month - 1, day, hour, minute);
   let guess = desired;
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const actual = dateParts(guess, timeZone);
+    const actual = dateParts(guess, formatter);
     const represented = Date.UTC(
       actual.year,
       actual.month - 1,
@@ -942,7 +961,19 @@ function sessionBoundaries(startMs: number, endMs: number) {
     { key: "London", timeZone: "Europe/London", hour: 8, minute: 0 },
     { key: "New York", timeZone: "America/New_York", hour: 9, minute: 30 },
     { key: "Overnight", timeZone: "America/New_York", hour: 16, minute: 0 },
-  ];
+  ].map((spec) => ({
+    ...spec,
+    formatter: new Intl.DateTimeFormat("en-US", {
+      timeZone: spec.timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }),
+  }));
   const boundaries: Array<{ key: string; timestamp: number }> = [];
   for (let cursor = startMs - 3 * 86_400_000; cursor <= endMs + 3 * 86_400_000; cursor += 86_400_000) {
     const utc = new Date(cursor);
@@ -952,7 +983,7 @@ function sessionBoundaries(startMs: number, endMs: number) {
     for (const spec of specs) {
       boundaries.push({
         key: spec.key,
-        timestamp: localTimeToUtc(year, month, day, spec.hour, spec.minute, spec.timeZone),
+        timestamp: localTimeToUtc(year, month, day, spec.hour, spec.minute, spec.formatter),
       });
     }
   }
@@ -1437,25 +1468,7 @@ export default function keroseneExtension(pi: ExtensionAPI) {
           changes: params.changes,
         },
       };
-      const responseText = await ctx.ui.input(
-        HOST_ACTION_RPC_TITLE,
-        JSON.stringify(request),
-        { signal, timeout: 15_000 },
-      );
-      if (!responseText) throw new Error("Kerosene did not acknowledge the chart-indicator action");
-
-      let response: JsonObject;
-      try {
-        response = JSON.parse(responseText);
-      } catch {
-        throw new Error("Kerosene returned an invalid chart-indicator acknowledgement");
-      }
-      if (response?.success !== true) {
-        const message = typeof response?.error?.message === "string"
-          ? response.error.message
-          : "Kerosene rejected the chart-indicator action";
-        throw new Error(message);
-      }
+      const response = await requestWorkspaceAction(request, "chart-indicator", signal, ctx);
       return toolPayload(response, {
         chart_count: params.chart_ids.length,
         indicator_change_count: params.changes.length,
@@ -1606,25 +1619,7 @@ export default function keroseneExtension(pi: ExtensionAPI) {
           operations: params.operations,
         },
       };
-      const responseText = await ctx.ui.input(
-        HOST_ACTION_RPC_TITLE,
-        JSON.stringify(request),
-        { signal, timeout: 15_000 },
-      );
-      if (!responseText) throw new Error("Kerosene did not acknowledge the chart-drawing action");
-
-      let response: JsonObject;
-      try {
-        response = JSON.parse(responseText);
-      } catch {
-        throw new Error("Kerosene returned an invalid chart-drawing acknowledgement");
-      }
-      if (response?.success !== true) {
-        const message = typeof response?.error?.message === "string"
-          ? response.error.message
-          : "Kerosene rejected the chart-drawing action";
-        throw new Error(message);
-      }
+      const response = await requestWorkspaceAction(request, "chart-drawing", signal, ctx);
       return toolPayload(response, { drawing_operation_count: params.operations.length });
     },
   });
