@@ -35,10 +35,12 @@ Each post shows:
 
 Ticker impact chips are parsed from the loaded Hyperliquid symbol universe,
 excluding spot markets.
-When a post is first seen, Kerosene stores the current live mid as that ticker's
-reference price. The chip then shows the live percentage move from that
-reference to the latest live mid. Clicking a chip selects that symbol and opens
-the primary chart when a chart pane is present.
+Kerosene anchors the reference price to a mid recorded at or before the post's
+publication time. If no sample exists, the current live mid is used only for
+posts at most 90 seconds old; otherwise the reference remains unavailable.
+Once captured, the reference survives later edits and mention refreshes. The
+chip shows the percentage move from that reference to the latest live mid.
+Clicking a chip selects that symbol and opens the primary chart when present.
 
 News keywords can also map to related markets. Mentions of `oil`, `Iran`, or
 `Hormuz` display `xyz:BRENTOIL` and `xyz:WTIOIL` when those markets are present

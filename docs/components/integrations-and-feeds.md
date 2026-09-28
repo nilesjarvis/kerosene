@@ -284,6 +284,17 @@ Fast-feed subscriptions require:
 Credentials used during login should not be persisted as plaintext input
 buffers.
 
+Feed updates borrow channel candidates and prior ticker mentions. Mention
+refreshes replace match metadata while retaining captured reference prices and
+their timestamps. Alert preparation keeps at most three formatted messages plus
+an overflow count, preserving arrival order even if those posts are later
+pruned from the rendered feed. Disabled alerts skip that preparation.
+
+Avatar updates merge cached state with one profile lookup; avatar and media
+request strings are copied only when a fetch is eligible. Media scheduling keeps
+its target snapshot and existing result guards. Update tests live under
+`feed_update/telegram/tests.rs`, with ownership regressions in `tests/ownership.rs`.
+
 ## X Feed
 
 X Feed uses local BYOK user-context access for the authenticated account's

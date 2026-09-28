@@ -422,7 +422,15 @@ impl TradingTerminal {
         self.tracked_trade_alerts_enabled = defaults.tracked_trade_alerts_enabled;
         self.tracked_trade_aggregation_enabled = defaults.tracked_trade_aggregation_enabled;
         self.liquidation_feed_aggregation_enabled = defaults.liquidation_feed_aggregation_enabled;
-        clear_telegram_fast_pending_auth();
+        {
+            // Config-clear tests share this registry with Telegram auth tests.
+            #[cfg(test)]
+            let _pending_auth_guard =
+                crate::telegram_fast_feed::telegram_fast_pending_auth_test_lock()
+                    .lock()
+                    .expect("pending auth test lock");
+            clear_telegram_fast_pending_auth();
+        }
         clear_all_fast_channel_cursors_best_effort();
         self.telegram_feed = TelegramFeedState::new(
             &defaults.telegram_feed_channels,
