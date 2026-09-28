@@ -1,5 +1,5 @@
+use super::hydromancer_status::apply_hydromancer_control_message;
 use crate::app_state::TradingTerminal;
-use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::ws;
 use iced::Task;
@@ -21,72 +21,39 @@ impl TradingTerminal {
                     return Task::none();
                 }
 
-                match message {
-                    ws::HydromancerWsMessage::Connecting => {
-                        self.tracked_trades_status = "Connecting".to_string();
+                apply_hydromancer_control_message(
+                    &message,
+                    &mut self.tracked_trades_status,
+                    &mut self.tracked_trades_last_rx_ms,
+                );
+
+                if let ws::HydromancerWsMessage::TrackedTrade(trade) = message {
+                    let trade = Self::normalize_tracked_trade_event(trade);
+                    if !current_tracked_addresses.contains(&trade.address) {
+                        return Task::none();
                     }
-                    ws::HydromancerWsMessage::Resuming => {
-                        self.tracked_trades_status = "Resuming session".to_string();
+                    if self.wallet_tracker.is_muted(&trade.address) {
+                        return Task::none();
                     }
-                    ws::HydromancerWsMessage::Connected => {
-                        self.tracked_trades_last_rx_ms = Some(Self::now_ms());
-                        self.tracked_trades_status = "Connected".to_string();
+                    if self.symbol_key_is_hidden(&trade.coin) {
+                        return Task::none();
                     }
-                    ws::HydromancerWsMessage::Reconnected => {
-                        self.tracked_trades_last_rx_ms = Some(Self::now_ms());
-                        self.tracked_trades_status = "Reconnected".to_string();
-                    }
-                    ws::HydromancerWsMessage::Heartbeat => {
-                        self.tracked_trades_last_rx_ms = Some(Self::now_ms());
-                    }
-                    ws::HydromancerWsMessage::Reconnecting {
-                        error,
-                        retry_delay_secs,
-                    } => {
-                        let error = redact_sensitive_response_text(&error);
-                        self.tracked_trades_status =
-                            format!("Reconnecting in {retry_delay_secs}s: {error}");
-                    }
-                    ws::HydromancerWsMessage::Disconnected(e) => {
-                        self.tracked_trades_last_rx_ms = None;
-                        let e = redact_sensitive_response_text(&e);
-                        self.tracked_trades_status = format!("Disconnected: {e}");
-                    }
-                    ws::HydromancerWsMessage::Lagged { skipped } => {
-                        self.tracked_trades_last_rx_ms = None;
-                        self.tracked_trades_status = format!(
-                            "Stream lagged; reconnecting after skipping {skipped} messages"
-                        );
-                    }
-                    ws::HydromancerWsMessage::TrackedTrade(trade) => {
-                        let trade = Self::normalize_tracked_trade_event(trade);
-                        if !current_tracked_addresses.contains(&trade.address) {
-                            return Task::none();
+                    self.tracked_trades_last_rx_ms = Some(Self::now_ms());
+                    self.tracked_trades_status = "Connected".to_string();
+                    if self.remember_tracked_trade_event(&trade) {
+                        let alert_row = self
+                            .tracked_trade_alerts_enabled
+                            .then(|| self.tracked_trade_alert_row_for_event(&trade))
+                            .flatten();
+                        self.tracked_trades.push_front(trade);
+                        if let Some(row) = alert_row {
+                            let alert = self.tracked_trade_alert_message_for_row(&row);
+                            self.push_tracked_trade_alert(alert);
                         }
-                        if self.wallet_tracker.is_muted(&trade.address) {
-                            return Task::none();
-                        }
-                        if self.symbol_key_is_hidden(&trade.coin) {
-                            return Task::none();
-                        }
-                        self.tracked_trades_last_rx_ms = Some(Self::now_ms());
-                        self.tracked_trades_status = "Connected".to_string();
-                        if self.remember_tracked_trade_event(&trade) {
-                            let alert_row = self
-                                .tracked_trade_alerts_enabled
-                                .then(|| self.tracked_trade_alert_row_for_event(&trade))
-                                .flatten();
-                            self.tracked_trades.push_front(trade);
-                            if let Some(row) = alert_row {
-                                let alert = self.tracked_trade_alert_message_for_row(&row);
-                                self.push_tracked_trade_alert(alert);
-                            }
-                            if self.tracked_trades.len() > 10000 {
-                                self.tracked_trades.truncate(10000);
-                            }
+                        if self.tracked_trades.len() > 10000 {
+                            self.tracked_trades.truncate(10000);
                         }
                     }
-                    ws::HydromancerWsMessage::Event(_) => {}
                 }
             }
             Message::ClearTrackedTrades => {
@@ -166,6 +133,27 @@ mod tests {
             oid: Some(10),
             tx_index: 1,
         }
+    }
+
+    #[test]
+    fn hidden_tracked_trade_does_not_refresh_status_or_create_rows() {
+        let mut terminal = TradingTerminal::boot().0;
+        add_tracked_address(&mut terminal);
+        terminal.muted_tickers.insert("HYPE".to_string());
+        terminal.tracked_trades_status = "Current".to_string();
+        terminal.tracked_trades_last_rx_ms = Some(123);
+        let message = scoped_tracked_trade_message(
+            &terminal,
+            HydromancerWsMessage::TrackedTrade(tracked_trade()),
+        );
+
+        let _ = terminal.update_tracked_trade_feed(message);
+
+        assert_eq!(terminal.tracked_trades_status, "Current");
+        assert_eq!(terminal.tracked_trades_last_rx_ms, Some(123));
+        assert!(terminal.tracked_trades.is_empty());
+        assert!(terminal.tracked_trade_seen_keys.is_empty());
+        assert!(terminal.toasts.is_empty());
     }
 
     #[test]

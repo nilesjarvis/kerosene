@@ -3,7 +3,7 @@ mod model;
 use crate::app_state::TradingTerminal;
 use crate::ws::LiquidationEvent;
 use iced::widget::Id;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use super::LIQUIDATION_FEED_RENDER_LIMIT;
 use model::LiquidationAggregationKey;
@@ -16,6 +16,26 @@ pub(crate) fn liquidation_feed_scroll_id() -> Id {
     Id::new(LIQUIDATION_SCROLL_ID)
 }
 
+/// Accumulate minute summaries and second chart buckets; callers manage retention.
+pub(crate) fn add_liquidation_to_buckets(
+    summary_buckets: &mut BTreeMap<u64, (f64, f64)>,
+    chart_buckets: &mut BTreeMap<u64, (f64, f64)>,
+    liquidation: &LiquidationEvent,
+) {
+    let notional = liquidation.size * liquidation.price;
+    for (buckets, bucket) in [
+        (summary_buckets, liquidation.time_ms / 60_000),
+        (chart_buckets, liquidation.time_ms / 1_000),
+    ] {
+        let entry = buckets.entry(bucket).or_insert((0.0, 0.0));
+        if liquidation.is_buy {
+            entry.1 += notional;
+        } else {
+            entry.0 += notional;
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Liquidation Feed State
 // ---------------------------------------------------------------------------
@@ -25,28 +45,11 @@ impl TradingTerminal {
         self.liquidation_summary_buckets.clear();
         self.liquidation_chart_buckets.clear();
         for liq in &self.liquidations {
-            let event_notional = liq.size * liq.price;
-            let bucket_ms = liq.time_ms / 60_000;
-            let summary_entry = self
-                .liquidation_summary_buckets
-                .entry(bucket_ms)
-                .or_insert((0.0, 0.0));
-            if liq.is_buy {
-                summary_entry.1 += event_notional;
-            } else {
-                summary_entry.0 += event_notional;
-            }
-
-            let chart_bucket_sec = liq.time_ms / 1000;
-            let chart_entry = self
-                .liquidation_chart_buckets
-                .entry(chart_bucket_sec)
-                .or_insert((0.0, 0.0));
-            if liq.is_buy {
-                chart_entry.1 += event_notional;
-            } else {
-                chart_entry.0 += event_notional;
-            }
+            add_liquidation_to_buckets(
+                &mut self.liquidation_summary_buckets,
+                &mut self.liquidation_chart_buckets,
+                liq,
+            );
         }
     }
 

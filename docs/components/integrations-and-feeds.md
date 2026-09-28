@@ -136,6 +136,12 @@ Fill parsing borrows the tuple's address; only tracked-trade events copy it into
 their owned output. Liquidation events still validate that address as a string
 before reading the separate liquidated-user field.
 
+Feed updates share control-message status and heartbeat transitions in
+`feed_update/hydromancer_status.rs`, after validating the stream generation and
+scope. Data-event filtering and freshness remain feed-specific: hidden
+liquidations refresh receipt time, while filtered tracked trades do not. Lag
+clears liquidation summary/chart buckets while retaining both feeds' rows.
+
 ## HyperDash
 
 HyperDash integration is GraphQL-based and covers:
@@ -223,6 +229,10 @@ Key modules:
 
 The feed is subscribed only when the pane is open and a Hydromancer key is
 available.
+
+Live updates and history rebuilding use the same minute/second bucket
+accumulation helper. Live updates prune old buckets and cap the event deque;
+rebuilding clears and replays all retained events without age pruning.
 
 ## Tracked Trades
 
