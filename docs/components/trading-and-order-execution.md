@@ -437,6 +437,11 @@ Lifecycle messages include:
 Terminal TWAPs are archived into advanced order history. Active TWAPs are
 runtime-only and are not resumed as live automation after restart.
 
+Slice planning borrows the cached order book and retry size. Retry plans remain
+in state through admission, price validation, and key checks, then move into
+dispatch. Skip handling takes only the retry's slice index. New-slice random sizing
+and retry accounting retain their existing order.
+
 Slice-result handling consumes a pending placement by ownership; a late result
 leaves pending cancellations intact and retains its existing account-refresh
 policy. Retry plans and final-use client-order IDs move into the next operation,

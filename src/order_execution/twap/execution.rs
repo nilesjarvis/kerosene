@@ -50,21 +50,11 @@ impl TradingTerminal {
             return self.stop_twap_with_reason(twap_id, "TWAP stopped: ticker was hidden", false);
         }
 
-        let Some((book, book_updated_at, is_buy, min_price, max_price, sz_decimals, is_spot)) =
-            self.twap_orders.get(&twap_id).and_then(|twap| {
-                twap.latest_book.as_ref().map(|snapshot| {
-                    (
-                        snapshot.book.clone(),
-                        snapshot.updated_at,
-                        twap.is_buy,
-                        twap.min_price,
-                        twap.max_price,
-                        twap.sz_decimals,
-                        twap.is_spot,
-                    )
-                })
-            })
-        else {
+        let Some((book_updated_at, is_spot)) = self.twap_orders.get(&twap_id).and_then(|twap| {
+            twap.latest_book
+                .as_ref()
+                .map(|snapshot| (snapshot.updated_at, twap.is_spot))
+        }) else {
             if let Some(twap) = self.twap_orders.get_mut(&twap_id)
                 && twap.status != TwapStatus::Paused
             {
@@ -149,16 +139,13 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let retry_slice = self
-            .twap_orders
-            .get(&twap_id)
-            .and_then(|twap| twap.retry_slice.clone());
-        let planned_size = if let Some(slice) = &retry_slice {
+        let Some(twap) = self.twap_orders.get_mut(&twap_id) else {
+            return Task::none();
+        };
+        let retry_slice_index = twap.retry_slice.as_ref().map(|slice| slice.index);
+        let planned_size = if let Some(slice) = &twap.retry_slice {
             slice.planned_size
         } else {
-            let Some(twap) = self.twap_orders.get_mut(&twap_id) else {
-                return Task::none();
-            };
             let Some(raw_size) = twap.next_slice_size() else {
                 self.finish_twap_attempt(twap_id, now);
                 return Task::none();
@@ -179,13 +166,16 @@ impl TradingTerminal {
             size
         };
 
+        let Some(snapshot) = &twap.latest_book else {
+            return Task::none();
+        };
         let limit_price = match validate_twap_planned_slice(
-            &book,
-            is_buy,
+            &snapshot.book,
+            twap.is_buy,
             planned_size,
-            min_price,
-            max_price,
-            sz_decimals,
+            twap.min_price,
+            twap.max_price,
+            twap.sz_decimals,
             is_spot,
         ) {
             Ok(limit_price) => limit_price,
@@ -193,7 +183,7 @@ impl TradingTerminal {
                 self.record_twap_slice_skip(
                     twap_id,
                     now,
-                    retry_slice.as_ref(),
+                    retry_slice_index,
                     skip.kind,
                     skip.message,
                     skip.is_error,
@@ -202,9 +192,6 @@ impl TradingTerminal {
             }
         };
 
-        let Some(twap) = self.twap_orders.get_mut(&twap_id) else {
-            return Task::none();
-        };
         let key = twap.agent_key.clone_for_task();
         if key.is_empty() {
             return self.stop_twap_with_reason(
@@ -214,9 +201,8 @@ impl TradingTerminal {
             );
         }
 
-        let pending_slice = if let Some(mut slice) = retry_slice {
+        let pending_slice = if let Some(mut slice) = twap.retry_slice.take() {
             slice.limit_price = limit_price;
-            twap.retry_slice = None;
             twap.pending_op = Some(TwapPendingOp::Place(slice.clone()));
             twap.status = TwapStatus::Running;
             twap.pause_reason = None;
@@ -298,7 +284,7 @@ impl TradingTerminal {
             surface: OrderSurface::Twap,
             symbol_key: twap.coin.clone(),
             asset,
-            is_buy,
+            is_buy: twap.is_buy,
             price: float_to_wire(limit_price),
             size: float_to_wire(planned_size),
             order_kind: ExchangeOrderKind::LimitIoc,
