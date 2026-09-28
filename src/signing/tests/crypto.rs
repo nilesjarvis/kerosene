@@ -1,4 +1,5 @@
 use crate::signing::crypto::{action_hash_bytes, sign_l1_action};
+use sha3::{Digest, Keccak256};
 
 const TEST_PRIVATE_KEY: &str = "0000000000000000000000000000000000000000000000000000000000000001";
 
@@ -105,5 +106,118 @@ fn master_and_subaccount_signatures_match_official_python_sdk_vectors() {
         assert_eq!(signature["r"], format!("0x{expected_r:0>64}"));
         assert_eq!(signature["s"], format!("0x{expected_s:0>64}"));
         assert_eq!(signature["v"], expected_v);
+    }
+}
+
+#[test]
+fn action_hash_matches_wire_preimages_across_block_boundaries() {
+    // Literal wire suffixes independently fix nonce endianness, target markers,
+    // optional address bytes, and expiry markers. All addresses are synthetic.
+    let cases = [
+        (None, 0, None, "000000000000000000"),
+        (None, 0, Some(0), "000000000000000000000000000000000000"),
+        (
+            None,
+            0x0102_0304_0506_0708,
+            Some(0x0011_2233_4455_6677),
+            "010203040506070800000011223344556677",
+        ),
+        (
+            None,
+            u64::MAX,
+            Some(u64::MAX),
+            "ffffffffffffffff0000ffffffffffffffff",
+        ),
+        (
+            Some("0x0000000000000000000000000000000000000000"),
+            0,
+            None,
+            "0000000000000000010000000000000000000000000000000000000000",
+        ),
+        (
+            Some("0xabababababababababababababababababababab"),
+            0x0102_0304_0506_0708,
+            None,
+            "010203040506070801abababababababababababababababababababab",
+        ),
+        (
+            Some("ABABABABABABABABABABABABABABABABABABABAB"),
+            0x0102_0304_0506_0708,
+            Some(0),
+            "010203040506070801abababababababababababababababababababab000000000000000000",
+        ),
+        (
+            Some("0xabababababababababababababababababababab"),
+            u64::MAX,
+            Some(u64::MAX),
+            "ffffffffffffffff01abababababababababababababababababababab00ffffffffffffffff",
+        ),
+    ];
+    // The four suffix lengths cross Keccak's 136-byte rate at different payload
+    // lengths. Include empty, single-byte, and multi-block binary payloads too.
+    for length in [
+        0, 1, 97, 98, 99, 106, 107, 108, 117, 118, 119, 126, 127, 128, 135, 136, 137, 271, 272,
+        273, 1024,
+    ] {
+        let packed: Vec<u8> = (0..length).map(|index| index as u8).collect();
+        for (target, nonce, expires_after, suffix_hex) in cases {
+            let suffix = hex::decode(suffix_hex).expect("literal wire suffix");
+            let preimage = [packed.as_slice(), suffix.as_slice()].concat();
+            let expected: [u8; 32] = Keccak256::digest(&preimage).into();
+
+            assert_eq!(
+                action_hash_bytes(&packed, target, nonce, expires_after).expect("valid action"),
+                expected,
+                "payload length {length}, suffix {suffix_hex}",
+            );
+        }
+    }
+}
+
+#[test]
+fn signing_preserves_vault_errors_and_private_key_validation_priority() {
+    let cases = [
+        (
+            "0x",
+            "Invalid vault address length: expected 20 bytes, got 0",
+        ),
+        (
+            "0x1234",
+            "Invalid vault address length: expected 20 bytes, got 2",
+        ),
+        ("0x0", "Invalid vault address hex: Odd number of digits"),
+        (
+            "0xgg",
+            "Invalid vault address hex: Invalid character 'g' at position 0",
+        ),
+        (
+            "0X00",
+            "Invalid vault address hex: Invalid character 'X' at position 1",
+        ),
+        (
+            " 000",
+            "Invalid vault address hex: Invalid character ' ' at position 0",
+        ),
+    ];
+    let invalid_key_error =
+        sign_l1_action("invalid-key", b"{}", None, 1, None).expect_err("invalid private key");
+    for (target, expected) in cases {
+        for expires_after in [None, Some(u64::MAX)] {
+            assert_eq!(
+                action_hash_bytes(b"{}", Some(target), 1, expires_after)
+                    .expect_err("invalid vault"),
+                expected,
+            );
+            assert_eq!(
+                sign_l1_action(TEST_PRIVATE_KEY, b"{}", Some(target), 1, expires_after)
+                    .expect_err("invalid vault"),
+                expected,
+            );
+            assert_eq!(
+                sign_l1_action("invalid-key", b"{}", Some(target), 1, expires_after)
+                    .expect_err("invalid key takes priority over invalid vault"),
+                invalid_key_error,
+            );
+        }
     }
 }

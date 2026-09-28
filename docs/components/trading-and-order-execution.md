@@ -228,6 +228,11 @@ Key files:
 - `signing/model.rs`: order kinds, Chase model, exchange response model.
 - `signing/numbers.rs`: wire number formatting and price rounding.
 
+Action hashing feeds the encoded action, nonce, vault target, and optional expiry
+directly into Keccak in wire order. EIP-712 hashes share a helper that streams
+their byte slices, avoiding concatenation buffers. The wire field order, marker
+bytes, validation errors, and signature format are preserved by signing tests.
+
 Exchange-response parsing borrows the retained JSON body while constructing
 owned typed fields; malformed bodies remain available for fallback handling.
 Response predicates share a borrowed status-list lookup while retaining their
