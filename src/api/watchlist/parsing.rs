@@ -1,7 +1,10 @@
 use super::model::WatchlistContext;
 use crate::helpers::parse_finite_json_number;
 use serde_json::{Map, Value};
-use std::collections::{HashMap, HashSet};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+};
 
 pub(super) fn insert_empty_context(map: &mut HashMap<String, WatchlistContext>, symbol: String) {
     map.insert(
@@ -14,6 +17,26 @@ pub(super) fn insert_empty_context(map: &mut HashMap<String, WatchlistContext>, 
             open_interest_notional: None,
         },
     );
+}
+
+fn context_arrays(resp: &Value) -> Result<(&[Value], &[Value]), String> {
+    let arr = resp
+        .as_array()
+        .ok_or_else(|| "expected [meta, contexts] array".to_string())?;
+    if arr.len() != 2 {
+        return Err("expected [meta, contexts] array with two entries".to_string());
+    }
+    let meta = arr[0]
+        .as_object()
+        .ok_or_else(|| "expected meta object".to_string())?;
+    let ctxs = arr[1]
+        .as_array()
+        .ok_or_else(|| "expected contexts array".to_string())?;
+    let universe = meta
+        .get("universe")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "expected meta.universe array".to_string())?;
+    Ok((universe, ctxs))
 }
 
 #[cfg(test)]
@@ -40,22 +63,7 @@ fn append_perp_contexts_impl(
     requested_symbols: Option<&HashSet<String>>,
     map: &mut HashMap<String, WatchlistContext>,
 ) -> Result<usize, String> {
-    let arr = resp
-        .as_array()
-        .ok_or_else(|| "expected [meta, contexts] array".to_string())?;
-    if arr.len() != 2 {
-        return Err("expected [meta, contexts] array with two entries".to_string());
-    }
-    let meta = arr[0]
-        .as_object()
-        .ok_or_else(|| "expected meta object".to_string())?;
-    let ctxs = arr[1]
-        .as_array()
-        .ok_or_else(|| "expected contexts array".to_string())?;
-    let universe = meta
-        .get("universe")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "expected meta.universe array".to_string())?;
+    let (universe, ctxs) = context_arrays(&resp)?;
     if requested_symbols.is_none() && ctxs.len() < universe.len() {
         return Err("contexts array shorter than universe".to_string());
     }
@@ -64,14 +72,14 @@ fn append_perp_contexts_impl(
     for (i, coin_meta) in universe.iter().enumerate() {
         if let Some(name) = coin_meta.get("name").and_then(|n| n.as_str()) {
             let canonical_key = if name.contains(':') {
-                name.to_string()
+                Cow::Borrowed(name)
             } else if let Some(dex) = dex {
-                format!("{dex}:{name}")
+                Cow::Owned(format!("{dex}:{name}"))
             } else {
-                name.to_string()
+                Cow::Borrowed(name)
             };
             if requested_symbols.is_some_and(|requested| {
-                !requested.contains(&canonical_key) && !requested.contains(name)
+                !requested.contains(canonical_key.as_ref()) && !requested.contains(name)
             }) {
                 continue;
             }
@@ -91,14 +99,18 @@ fn append_perp_contexts_impl(
                 day_vlm: parse_optional_f64(ctx, "dayNtlVlm"),
                 open_interest_notional: parse_open_interest_notional(ctx, mark_px),
             };
-            parsed.push((canonical_key, name.to_string(), context));
+            parsed.push((canonical_key, name, context));
         }
     }
 
     let appended = parsed.len();
     for (canonical_key, name, context) in parsed {
-        map.insert(canonical_key, context.clone());
-        map.entry(name).or_insert(context);
+        if canonical_key == name {
+            map.insert(canonical_key.into_owned(), context);
+        } else {
+            map.insert(canonical_key.into_owned(), context.clone());
+            map.entry(name.to_string()).or_insert(context);
+        }
     }
 
     Ok(appended)
@@ -125,22 +137,7 @@ fn append_spot_contexts_impl(
     requested_symbols: Option<&HashSet<String>>,
     map: &mut HashMap<String, WatchlistContext>,
 ) -> Result<usize, String> {
-    let arr = resp
-        .as_array()
-        .ok_or_else(|| "expected [meta, contexts] array".to_string())?;
-    if arr.len() != 2 {
-        return Err("expected [meta, contexts] array with two entries".to_string());
-    }
-    let meta = arr[0]
-        .as_object()
-        .ok_or_else(|| "expected meta object".to_string())?;
-    let ctxs = arr[1]
-        .as_array()
-        .ok_or_else(|| "expected contexts array".to_string())?;
-    let universe = meta
-        .get("universe")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "expected meta.universe array".to_string())?;
+    let (universe, ctxs) = context_arrays(&resp)?;
     if ctxs.len() < universe.len()
         && ctxs
             .iter()

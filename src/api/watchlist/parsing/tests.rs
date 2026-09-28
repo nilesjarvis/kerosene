@@ -1,6 +1,8 @@
 use super::*;
 use std::collections::{HashMap, HashSet};
 
+mod boundaries;
+
 #[test]
 fn watchlist_context_parser_accepts_finite_string_and_number_fields() {
     let raw = serde_json::json!([

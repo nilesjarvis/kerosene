@@ -219,7 +219,13 @@ missing requested symbols are reported without presenting a partial response
 as complete. Healthy requested market families are returned alongside explicit
 partial errors when another family fails.
 After a cache miss, request groups and local outcome contexts take ownership of
-the input symbol strings; request/result keys remain owned.
+the input symbol strings; request/result keys remain owned. Family labels are
+derived from their market/DEX identity when the family fetch starts. Perp and
+spot parsers share response-shape validation while retaining their distinct
+missing-row and lookup rules. Perp parsing borrows raw names and unmodified
+canonical keys until map insertion; only DEX-prefixed keys require earlier
+ownership. Staged results preserve atomic strict failures, canonical keys retain
+overwrite priority, and distinct raw aliases retain their first existing value.
 
 Sparse spot candle history is loaded but visibly marked stale when its tail is
 too old. A live jump beyond the normal contiguous window triggers a bounded
