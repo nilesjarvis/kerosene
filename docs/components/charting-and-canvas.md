@@ -292,6 +292,23 @@ and percentage sizing.
 Interaction messages should carry chart ID and surface ID so detached windows
 and inline panes do not fight over state.
 
+### Freehand pen
+
+The **Draw** toolbar includes a pen icon. Hold the left mouse button over the
+price plot, draw, and release to save a stroke. The pen stays active for further
+strokes; Escape or right-click cancels an unfinished stroke and exits drawing
+mode. Switching tools or losing window focus abandons an unfinished stroke.
+Select moves an entire stroke and exposes the usual color, width, line style,
+lock, and visibility controls; Eraser or Select + Delete removes it.
+
+Pen samples use timestamp/price coordinates, preserving their traversal order
+when the mouse doubles back. The existing annotation persistence stores them
+as `type: "pen"` with `anchors`. Older annotation formats are unchanged. Mouse
+jitter below two chart pixels is filtered and long strokes are decimated to a
+maximum of 4,096 samples. Rendering clips each segment to the price plot and
+uses the existing fisheye projection. Drawing captures chart clicks before
+order interactions and suppresses wheel zoom while the pen is held.
+
 ## Quick Trade Panel
 
 `Quick Trade` is a per-chart option in the indicator menu. When enabled it
@@ -381,8 +398,10 @@ persistence through the normal chart path.
 The Assistant drawing bridge uses the existing annotation model rather than
 simulating clicks in the drawing toolbar. `agent_snapshot.rs` exposes bounded
 annotation geometry, style, selection, and coverage; `agent_workspace.rs`
-accepts atomic create/remove operations for every persisted shape supported by
-`DrawingTool`. New shapes receive normal per-chart annotation IDs, are mirrored
+accepts atomic create operations for the catalogued geometric shapes and remove
+operations for persisted drawings. Pen creation is mouse-driven; snapshots expose
+up to 64 pen points with an explicit total and truncation flag. New shapes receive
+normal per-chart annotation IDs, are mirrored
 into the canvas, and follow the existing config-persistence path. Exact
 geometry/style retries are idempotent. Removal requires an exact current ID and
 respects the annotation lock. Geometry/style edits remain user-driven through

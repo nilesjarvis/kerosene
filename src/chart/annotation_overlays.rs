@@ -2,7 +2,7 @@ use super::drawing::{
     AxisBadgeStyle, SegmentedHLineStyle, stroke_projected_segmented_hline_with_offset,
     stroke_projected_styled_line, stroke_projected_vline,
 };
-use super::fisheye::ChartFisheye;
+use super::fisheye::{ChartFisheye, ProjectedPathPoint};
 use super::geometry::{LineExtension, extend_and_clip_line};
 use super::model::CandlestickChart;
 use super::price_badges::{
@@ -92,6 +92,7 @@ impl CandlestickChart {
         PriceToY: Fn(f64) -> f32,
     {
         match &ann.kind {
+            AnnotationKind::Pen { points } => self.draw_pen(ctx, points, &ann.style, selected),
             AnnotationKind::HorizontalLevel { price } => {
                 self.draw_horizontal_level(ctx, ann, *price, index, selected)
             }
@@ -115,6 +116,57 @@ impl CandlestickChart {
                 self.draw_fib(ctx, ann, *kind, points, selected)
             }
         }
+    }
+
+    // ---- Freehand pen -----------------------------------------------------
+
+    fn draw_pen<PriceToY>(
+        &self,
+        ctx: &mut AnnotationOverlayContext<'_, PriceToY>,
+        points: &[Anchor],
+        style: &AnnotationStyle,
+        selected: bool,
+    ) where
+        PriceToY: Fn(f64) -> f32,
+    {
+        let screen_points = points.iter().map(|&(time, price)| {
+            self.timestamp_to_x(time, ctx.state, ctx.chart_w)
+                .map(|x| Point::new(x, (ctx.price_to_y)(price)))
+        });
+        let path = clipped_pen_path(screen_points, ctx.chart_w, ctx.price_h);
+        if path.is_empty() {
+            return;
+        }
+        let stroke = canvas::Stroke::default()
+            .with_color(style.color)
+            .with_width(style.width)
+            .with_line_cap(canvas::LineCap::Round)
+            .with_line_join(canvas::LineJoin::Round);
+        if selected {
+            ctx.fisheye.stroke_projected_path_points(
+                ctx.frame,
+                &path,
+                stroke
+                    .with_color(self.selection_color(ctx))
+                    .with_width(style.width + 4.0),
+            );
+        }
+        let segments: &[f32] = match style.line_style {
+            LineStyle::Solid => &[],
+            LineStyle::Dashed => &[6.0, 4.0],
+            LineStyle::Dotted => &[1.5, 3.0],
+        };
+        ctx.fisheye.stroke_projected_path_points(
+            ctx.frame,
+            &path,
+            canvas::Stroke {
+                line_dash: canvas::LineDash {
+                    segments,
+                    offset: 0,
+                },
+                ..stroke
+            },
+        );
     }
 
     // ---- Horizontal level -------------------------------------------------
@@ -613,7 +665,19 @@ impl CandlestickChart {
         let Some(tool) = self.active_tool else {
             return;
         };
-        if !tool.is_shape() || ctx.state.draft_anchors.is_empty() {
+        if !tool.is_shape()
+            || ctx.state.draft_tool != Some(tool)
+            || ctx.state.draft_anchors.is_empty()
+        {
+            return;
+        }
+        if tool == DrawingTool::Pen {
+            self.draw_pen(
+                ctx,
+                &ctx.state.draft_anchors,
+                &AnnotationStyle::for_tool(tool),
+                false,
+            );
             return;
         }
         let Some(cursor) = ctx.state.cursor_position else {
@@ -714,11 +778,51 @@ fn draft_preview_kind(tool: DrawingTool, anchors: &[Anchor]) -> Option<Annotatio
                 two(|start, end| AnnotationKind::TrendLine { start, end })
             }
         }
-        DrawingTool::HorizontalLevel
+        DrawingTool::Pen
+        | DrawingTool::HorizontalLevel
         | DrawingTool::VerticalLine
         | DrawingTool::Select
         | DrawingTool::Eraser => None,
     }
+}
+
+/// Clip each leg separately, retaining disconnected subpaths when a stroke
+/// leaves the viewport. A single path keeps joins and dash patterns continuous.
+fn clipped_pen_path(
+    points: impl Iterator<Item = Option<Point>>,
+    width: f32,
+    height: f32,
+) -> Vec<ProjectedPathPoint> {
+    let mut path: Vec<ProjectedPathPoint> = Vec::new();
+    let mut previous: Option<Point> = None;
+    let mut connected = false;
+    for point in points {
+        if let (Some(a), Some(b)) = (previous, point)
+            && let Some((x0, y0, x1, y1)) =
+                extend_and_clip_line(a.x, a.y, b.x, b.y, width, height, LineExtension::Segment)
+        {
+            let start = Point::new(x0, y0);
+            if !connected
+                || path
+                    .last()
+                    .is_none_or(|last| last.point.distance(start) > 0.01)
+            {
+                path.push(ProjectedPathPoint {
+                    point: start,
+                    starts_segment: true,
+                });
+            }
+            path.push(ProjectedPathPoint {
+                point: Point::new(x1, y1),
+                starts_segment: false,
+            });
+            connected = true;
+        } else {
+            connected = false;
+        }
+        previous = point;
+    }
+    path
 }
 
 /// Draw a small filled label with text, anchored so the box hangs to the left of
@@ -767,5 +871,60 @@ fn format_compact_duration(ms: u64) -> String {
         format!("{}m", ms / MIN)
     } else {
         format!("{}s", ms / SEC)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pen_path_clips_crossings_and_does_not_join_offscreen_excursions() {
+        let points = [
+            Point::new(10.0, 20.0),
+            Point::new(120.0, 20.0),
+            Point::new(120.0, 80.0),
+            Point::new(10.0, 80.0),
+            Point::new(40.0, 50.0),
+        ];
+        let path = clipped_pen_path(points.into_iter().map(Some), 100.0, 100.0);
+        assert_eq!(path.len(), 5);
+        assert_eq!(path[1].point, Point::new(100.0, 20.0));
+        assert_eq!(path[2].point, Point::new(100.0, 80.0));
+        assert!(path[0].starts_segment);
+        assert!(path[2].starts_segment);
+        assert!(!path[4].starts_segment);
+        assert!(
+            path.iter()
+                .all(|p| (0.0..=100.0).contains(&p.point.x) && (0.0..=100.0).contains(&p.point.y))
+        );
+    }
+
+    #[test]
+    fn pen_path_keeps_connected_corners_and_breaks_at_missing_coordinates() {
+        let a = Point::new(10.0, 20.0);
+        let b = Point::new(40.0, 80.0);
+        let c = Point::new(20.0, 50.0);
+        let path = clipped_pen_path(
+            [Some(a), Some(b), Some(c), None, Some(a), Some(c)].into_iter(),
+            100.0,
+            100.0,
+        );
+        assert_eq!(path.iter().filter(|p| p.starts_segment).count(), 2);
+        assert_eq!(
+            path.iter().map(|p| p.point).collect::<Vec<_>>(),
+            vec![a, b, c, a, c]
+        );
+    }
+
+    #[test]
+    fn pen_path_keeps_fractional_corners_connected_after_clipping_roundoff() {
+        let points = [
+            Point::new(90.12345, 80.65432),
+            Point::new(0.12345, 0.65432),
+            Point::new(70.56789, 60.12345),
+        ];
+        let path = clipped_pen_path(points.into_iter().map(Some), 100.0, 100.0);
+        assert_eq!(path.iter().filter(|point| point.starts_segment).count(), 1);
     }
 }

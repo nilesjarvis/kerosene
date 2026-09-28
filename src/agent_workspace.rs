@@ -856,6 +856,7 @@ fn next_available_annotation_id(candidate: &mut DrawingChartCandidate) -> Option
 
 pub(crate) fn annotation_kind_key(kind: &AnnotationKind) -> &'static str {
     match kind {
+        AnnotationKind::Pen { .. } => "pen",
         AnnotationKind::HorizontalLevel { .. } => "horizontal_level",
         AnnotationKind::VerticalLine { .. } => "vertical_line",
         AnnotationKind::TrendLine { .. } => "trend_line",

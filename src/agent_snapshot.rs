@@ -16,6 +16,7 @@ const MAX_MARKETS: usize = 250;
 const MAX_WORKSPACE_CHARTS: usize = 32;
 const MAX_WORKSPACE_DRAWINGS: usize = 128;
 const MAX_WORKSPACE_DRAWING_LABEL_CHARS: usize = 160;
+const MAX_WORKSPACE_PEN_POINTS: usize = 64;
 const MAX_ACCOUNT_ROWS: usize = 100;
 const MAX_RECENT_ROWS: usize = 50;
 const MAX_TOOL_ACTIVITY_ROWS: usize = 2_000;
@@ -1221,6 +1222,11 @@ fn agent_drawing_snapshot(
     label: (Option<String>, bool),
 ) -> Value {
     let geometry = match &annotation.kind {
+        AnnotationKind::Pen { points } => json!({
+            "points": points.iter().take(MAX_WORKSPACE_PEN_POINTS).copied().map(agent_drawing_anchor).collect::<Vec<_>>(),
+            "total_points": points.len(),
+            "points_truncated": points.len() > MAX_WORKSPACE_PEN_POINTS,
+        }),
         AnnotationKind::HorizontalLevel { price } => json!({ "price": price }),
         AnnotationKind::VerticalLine { time } => json!({ "time_ms": time }),
         AnnotationKind::TrendLine { start, end }
@@ -1446,6 +1452,30 @@ mod tests {
     use crate::annotations::{AnnotationStyle, FibKind};
     use crate::chart_state::ChartInstance;
     use crate::timeframe::Timeframe;
+
+    #[test]
+    fn pen_snapshot_bounds_geometry_and_reports_truncation() {
+        let annotation = Annotation {
+            id: 7,
+            kind: AnnotationKind::Pen {
+                points: (0..100)
+                    .map(|index| (index, 100.0 + index as f64))
+                    .collect(),
+            },
+            style: AnnotationStyle::default(),
+        };
+        let snapshot = agent_drawing_snapshot(&annotation, true, (None, false));
+        assert_eq!(snapshot["type"], "pen");
+        assert_eq!(snapshot["geometry"]["total_points"], 100);
+        assert_eq!(snapshot["geometry"]["points_truncated"], true);
+        assert_eq!(
+            snapshot["geometry"]["points"]
+                .as_array()
+                .expect("points")
+                .len(),
+            MAX_WORKSPACE_PEN_POINTS
+        );
+    }
 
     #[test]
     fn pnl_card_match_authorization_is_private_and_scoped_to_the_request() {

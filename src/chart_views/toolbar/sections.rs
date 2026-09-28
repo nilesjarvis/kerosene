@@ -183,6 +183,7 @@ const DRAWING_TOOLS: &[(&str, &str, DrawingTool)] = &[
         "Select / move / edit drawings",
         DrawingTool::Select,
     ),
+    ("\u{270E}", "Pen (click and drag to draw)", DrawingTool::Pen),
     ("\u{2014}", "Horizontal level", DrawingTool::HorizontalLevel),
     ("\u{2502}", "Vertical line", DrawingTool::VerticalLine),
     ("\u{2571}", "Trend line", DrawingTool::TrendLine),

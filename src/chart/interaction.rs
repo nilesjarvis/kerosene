@@ -5,6 +5,7 @@ mod hud;
 mod press;
 mod zoom;
 
+use super::state::DragKind;
 use super::{CandlestickChart, ChartState, VOLUME_REGION_RATIO};
 use crate::chart::fisheye::ChartFisheye;
 use crate::message::Message;
@@ -109,7 +110,26 @@ impl CandlestickChart {
             return Some(canvas::Action::request_redraw());
         }
 
+        // A toolbar change or focus loss must not leave a held pen gesture alive.
+        if state.draft_tool.is_some() && state.draft_tool != self.active_tool {
+            state.draft_tool = None;
+            state.draft_anchors.clear();
+            if state.drag == Some(DragKind::DrawPen) {
+                state.drag = None;
+                state.drag_start = None;
+            }
+        }
+
         match event {
+            iced::Event::Window(iced::window::Event::Unfocused)
+                if state.drag == Some(DragKind::DrawPen) =>
+            {
+                state.draft_tool = None;
+                state.draft_anchors.clear();
+                state.drag = None;
+                state.drag_start = None;
+                Some(canvas::Action::request_redraw())
+            }
             iced::Event::Keyboard(keyboard::Event::ModifiersChanged(mods)) => {
                 let shift_next = mods.shift();
                 let ctrl_next = mods.control();
@@ -134,6 +154,9 @@ impl CandlestickChart {
                     self.handle_hud_key_pressed(state, key.as_ref(), text.as_deref(), *modifiers)
                 }),
             iced::Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
+                if state.drag == Some(DragKind::DrawPen) {
+                    return Some(canvas::Action::capture());
+                }
                 let cursor = projected_cursor?;
                 self.handle_wheel_scroll(state, bounds, cursor.source, chart_w, chart_h, delta)
             }
@@ -145,6 +168,17 @@ impl CandlestickChart {
                 needs_redraw_for_cursor.then(canvas::Action::request_redraw)
             }
             iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
+                if state.drag == Some(DragKind::DrawPen) {
+                    // Preserve capture/redraw instead of replacing the drawing
+                    // action with a trading-overlay hover message.
+                    return self.handle_cursor_moved(
+                        state,
+                        projected_cursor,
+                        fisheye,
+                        layout,
+                        needs_redraw_for_cursor,
+                    );
+                }
                 let was_dragging = state.drag.is_some();
                 let hovering_plot =
                     source_pos.is_some_and(|pos| pos.x < chart_w && pos.y < chart_h);
