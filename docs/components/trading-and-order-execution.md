@@ -385,6 +385,14 @@ Lifecycle messages include:
 Websocket open-order/fill updates reconcile Chase progress. Terminal or removed
 Chase orders are archived into advanced order history.
 
+Place, modify, and cancel result handlers read the order and its lifecycle from
+one lookup before accepting a result. Results for absent orders do nothing;
+stale place/cancel results retain their outcome-based refresh policy for the
+original account, while stale modify results do not refresh. Placement-status
+handling borrows the admitted order through its transition, releasing it before
+terminal-wide stop, removal, or refresh operations. Client-order ID verification
+retains the original account for refresh even when no client-order ID is available.
+
 ## TWAP Orders
 
 TWAP orders are client-side scheduled IOC slices. They are modeled in

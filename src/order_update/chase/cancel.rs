@@ -32,24 +32,11 @@ impl TradingTerminal {
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         let should_refresh = result_requires_account_refresh(&result);
-        if !self.chase_orders.contains_key(&chase_id) {
-            return Task::none();
-        }
-        let Some(chase_account_address) = self
-            .chase_orders
-            .get(&chase_id)
-            .map(|chase| chase.account_address.clone())
-        else {
+        let Some(chase) = self.chase_orders.get(&chase_id) else {
             return Task::none();
         };
-        let lifecycle = self
-            .chase_orders
-            .get(&chase_id)
-            .map(|chase| chase.lifecycle);
-        let Some(lifecycle) = lifecycle else {
-            return Task::none();
-        };
-        if !lifecycle.expects_cancel_result(oid) {
+        let chase_account_address = chase.account_address.clone();
+        if !chase.lifecycle.expects_cancel_result(oid) {
             return self.refresh_after_chase_result_for_order_account(
                 should_refresh,
                 &chase_account_address,

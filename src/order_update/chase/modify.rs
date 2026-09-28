@@ -38,26 +38,13 @@ impl TradingTerminal {
         oid: u64,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
-        if !self.chase_orders.contains_key(&chase_id) {
-            return Task::none();
-        }
-        let Some(chase_account_address) = self
-            .chase_orders
-            .get(&chase_id)
-            .map(|chase| chase.account_address.clone())
-        else {
+        let Some(chase) = self.chase_orders.get(&chase_id) else {
             return Task::none();
         };
-        let lifecycle = self
-            .chase_orders
-            .get(&chase_id)
-            .map(|chase| chase.lifecycle);
-        let Some(lifecycle) = lifecycle else {
-            return Task::none();
-        };
-        if !lifecycle.expects_modify_result(oid) {
+        if !chase.lifecycle.expects_modify_result(oid) {
             return Task::none();
         }
+        let chase_account_address = chase.account_address.clone();
 
         match result {
             Ok(resp) => {
