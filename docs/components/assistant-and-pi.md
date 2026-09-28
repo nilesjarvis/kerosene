@@ -17,7 +17,7 @@ messages.
 | File | Responsibility |
 | --- | --- |
 | `src/agent_pnl_card.rs` | Bounded image selection, validation, normalization, preview, and redacted transport types. |
-| `src/agent_state.rs` | Window, transcript, runtime status, answer/reasoning streaming, tool cards, and redacted prompt wrapper. |
+| `src/agent_state.rs`, `src/agent_state/` | Central state and runtime reset; separate chat/wire types, session storage/replay, and stream/tool presentation modules. |
 | `src/agent_update.rs` | Window lifecycle, prompt submission, snapshot/runtime orchestration, and stale-generation guards. |
 | `src/agent_views.rs` | Native chat window, composer, status, usage, empty state, and tool activity UI. |
 | `src/agent_snapshot.rs` | Versioned, bounded, sanitized read-only export of Kerosene state. |
