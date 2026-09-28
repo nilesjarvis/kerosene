@@ -1,4 +1,4 @@
-use crate::account_analytics::{fetch_income_data, fetch_portfolio_history};
+use crate::account_analytics::{IncomeSnapshot, fetch_income_data, fetch_portfolio_history};
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
@@ -57,19 +57,15 @@ impl TradingTerminal {
                     return Task::none();
                 }
                 let followup_pending = self.portfolio.refresh.take_followup();
-                if self.connected_address.as_deref() != Some(address.as_str()) {
-                    if followup_pending && let Some(addr) = self.connected_address.clone() {
-                        return self.start_portfolio_refresh_for_address(addr);
-                    }
-                    return Task::none();
-                }
-                match *result {
-                    Ok(data) => {
-                        self.portfolio.data = Some(data);
-                        self.portfolio.last_error = None;
-                    }
-                    Err(e) => {
-                        self.portfolio.last_error = Some(redact_sensitive_response_text(&e));
+                if self.connected_address.as_deref() == Some(address.as_str()) {
+                    match *result {
+                        Ok(data) => {
+                            self.portfolio.data = Some(data);
+                            self.portfolio.last_error = None;
+                        }
+                        Err(e) => {
+                            self.portfolio.last_error = Some(redact_sensitive_response_text(&e));
+                        }
                     }
                 }
                 if followup_pending && let Some(addr) = self.connected_address.clone() {
@@ -90,62 +86,12 @@ impl TradingTerminal {
                     return Task::none();
                 }
                 let followup_pending = self.income.refresh.take_followup();
-                if self.connected_address.as_deref() != Some(address.as_str()) {
-                    if followup_pending {
-                        let is_pm = self
-                            .connected_order_account_snapshot()
-                            .is_some_and(|(_, data)| data.is_portfolio_margin());
-                        if is_pm && let Some(addr) = self.connected_address.clone() {
-                            return self.start_income_refresh_for_address(addr);
+                if self.connected_address.as_deref() == Some(address.as_str()) {
+                    match *result {
+                        Ok(data) => self.apply_income_snapshot(data),
+                        Err(e) => {
+                            self.income.last_error = Some(redact_sensitive_response_text(&e));
                         }
-                    }
-                    return Task::none();
-                }
-                match *result {
-                    Ok(data) => {
-                        let latest_payment =
-                            data.recent_hourly_payments.iter().map(|p| p.time).max();
-                        if let Some(latest_time) = latest_payment {
-                            if let Some(last_seen) = self.last_income_alert_time
-                                && self.income_alerts_enabled
-                                && latest_time > last_seen
-                            {
-                                let mut token_count = 0_usize;
-                                let mut total_positive = 0.0_f64;
-                                for payment in &data.recent_hourly_payments {
-                                    if payment.time == latest_time && payment.net > 0.0 {
-                                        total_positive += payment.net;
-                                        token_count += 1;
-                                    }
-                                }
-
-                                if total_positive > 0.0 {
-                                    let time_label = i64::try_from(latest_time)
-                                        .ok()
-                                        .and_then(DateTime::<Utc>::from_timestamp_millis)
-                                        .map(|dt| dt.format("%m-%d %H:%M").to_string())
-                                        .unwrap_or_else(|| "latest hour".to_string());
-                                    let token_label = if token_count == 1 {
-                                        "1 token".to_string()
-                                    } else {
-                                        format!("{token_count} tokens")
-                                    };
-                                    let display_value =
-                                        self.format_display_signed_usd_value(total_positive);
-                                    let message = format!(
-                                        "Hourly interest received: {display_value} \
-                                        ({token_label}, {time_label} UTC)"
-                                    );
-                                    self.push_interest_alert(message);
-                                }
-                            }
-                            self.last_income_alert_time = Some(latest_time);
-                        }
-                        self.income.data = Some(data);
-                        self.income.last_error = None;
-                    }
-                    Err(e) => {
-                        self.income.last_error = Some(redact_sensitive_response_text(&e));
                     }
                 }
                 if followup_pending {
@@ -161,6 +107,47 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+
+    fn apply_income_snapshot(&mut self, data: IncomeSnapshot) {
+        let latest_payment = data.recent_hourly_payments.iter().map(|p| p.time).max();
+        if let Some(latest_time) = latest_payment {
+            if let Some(last_seen) = self.last_income_alert_time
+                && self.income_alerts_enabled
+                && latest_time > last_seen
+            {
+                let mut token_count = 0_usize;
+                let mut total_positive = 0.0_f64;
+                for payment in &data.recent_hourly_payments {
+                    if payment.time == latest_time && payment.net > 0.0 {
+                        total_positive += payment.net;
+                        token_count += 1;
+                    }
+                }
+
+                if total_positive > 0.0 {
+                    let time_label = i64::try_from(latest_time)
+                        .ok()
+                        .and_then(DateTime::<Utc>::from_timestamp_millis)
+                        .map(|dt| dt.format("%m-%d %H:%M").to_string())
+                        .unwrap_or_else(|| "latest hour".to_string());
+                    let token_label = if token_count == 1 {
+                        "1 token".to_string()
+                    } else {
+                        format!("{token_count} tokens")
+                    };
+                    let display_value = self.format_display_signed_usd_value(total_positive);
+                    let message = format!(
+                        "Hourly interest received: {display_value} \
+                        ({token_label}, {time_label} UTC)"
+                    );
+                    self.push_interest_alert(message);
+                }
+            }
+            self.last_income_alert_time = Some(latest_time);
+        }
+        self.income.data = Some(data);
+        self.income.last_error = None;
     }
 }
 

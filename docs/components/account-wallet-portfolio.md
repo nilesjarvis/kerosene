@@ -469,6 +469,12 @@ clearing loading state; invalidation advances the counter and clears pending
 refresh work. Account matching, income eligibility, result handling, and
 follow-up dispatch stay in `portfolio_update.rs`.
 
+Each completion handler applies a result only to the matching connected account,
+then uses one follow-up path for both current and previous-account responses.
+That path checks the current connection and, for income, its Portfolio Margin
+eligibility. Income snapshot application and interest alerts are handled together
+in `apply_income_snapshot` after the request and account checks pass.
+
 Income snapshot assembly validates each token's carrying values and annualized
 projection before adding it to the totals. Recent payments sort borrowed hourly
 entries by descending time and build the first 12 valid rows, keeping input order

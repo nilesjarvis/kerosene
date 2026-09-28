@@ -153,6 +153,52 @@ fn current_portfolio_result_for_previous_address_finishes_without_applying() {
 }
 
 #[test]
+fn portfolio_followup_after_account_change_uses_the_current_connection() {
+    let previous_address = "0xabc0000000000000000000000000000000000000";
+    let current_address = "0xdef0000000000000000000000000000000000000";
+    for connected_address in [Some(current_address), None] {
+        for result in [Ok(portfolio_history(1.0)), Err("Old request failed".into())] {
+            let mut terminal = TradingTerminal::boot().0;
+            terminal.connected_address = connected_address.map(str::to_string);
+            terminal.portfolio.data = Some(portfolio_history(10.0));
+            terminal.portfolio.last_error = Some("Current account error".into());
+            let request_id = terminal.portfolio.refresh.begin();
+            terminal.portfolio.refresh.queue_followup();
+
+            let task = terminal.update_portfolio_income(Message::PortfolioLoaded(
+                previous_address.to_string().into(),
+                request_id,
+                Box::new(result),
+            ));
+
+            let should_refresh = connected_address.is_some();
+            assert_eq!(task.units(), usize::from(should_refresh));
+            assert_eq!(terminal.portfolio.refresh.loading, should_refresh);
+            assert!(!terminal.portfolio.refresh.followup_pending);
+            assert_eq!(
+                terminal.portfolio.refresh.request_id,
+                request_id + 1 + u64::from(should_refresh)
+            );
+            assert_eq!(
+                terminal.portfolio.last_error.as_deref(),
+                Some("Current account error")
+            );
+            assert_eq!(
+                terminal
+                    .portfolio
+                    .data
+                    .as_ref()
+                    .expect("existing history")
+                    .buckets["day"]
+                    .account_value_history[0]
+                    .1,
+                10.0
+            );
+        }
+    }
+}
+
+#[test]
 fn portfolio_error_redacts_last_error() {
     let mut terminal = TradingTerminal::boot().0;
     let address = "0xabc0000000000000000000000000000000000000";
@@ -271,6 +317,104 @@ fn current_income_result_for_previous_address_finishes_without_applying() {
             .earned_total,
         10.0
     );
+}
+
+#[test]
+fn income_followup_after_account_change_rechecks_portfolio_margin_eligibility() {
+    let previous_address = "0xabc0000000000000000000000000000000000000";
+    let current_address = "0xdef0000000000000000000000000000000000000";
+    let cases = [
+        (Some(current_address), Some(current_address), true, true),
+        (Some(current_address), Some(current_address), false, false),
+        (Some(current_address), Some(previous_address), true, false),
+        (Some(current_address), None, true, false),
+        (None, Some(previous_address), true, false),
+    ];
+    for (connected_address, snapshot_address, is_pm, should_refresh) in cases {
+        for result in [
+            Ok(income_snapshot(20, 1.0)),
+            Err("Old request failed".into()),
+        ] {
+            let mut terminal = TradingTerminal::boot().0;
+            terminal.connected_address = connected_address.map(str::to_string);
+            if let Some(address) = snapshot_address {
+                let mut data = portfolio_margin_account_data();
+                data.spot.portfolio_margin_enabled = is_pm;
+                terminal.set_account_data_for_address_for_test(address, data);
+            }
+            terminal.income.data = Some(income_snapshot(10, 10.0));
+            terminal.income.last_error = Some("Current account error".into());
+            terminal.last_income_alert_time = Some(10);
+            terminal.income_alerts_enabled = true;
+            let request_id = terminal.income.refresh.begin();
+            terminal.income.refresh.queue_followup();
+
+            let task = terminal.update_portfolio_income(Message::IncomeLoaded(
+                previous_address.to_string().into(),
+                request_id,
+                Box::new(result),
+            ));
+
+            assert_eq!(task.units(), usize::from(should_refresh));
+            assert_eq!(terminal.income.refresh.loading, should_refresh);
+            assert!(!terminal.income.refresh.followup_pending);
+            assert_eq!(
+                terminal.income.refresh.request_id,
+                request_id + 1 + u64::from(should_refresh)
+            );
+            assert_eq!(
+                terminal.income.last_error.as_deref(),
+                Some("Current account error")
+            );
+            assert_eq!(
+                terminal
+                    .income
+                    .data
+                    .as_ref()
+                    .expect("existing income")
+                    .earned_total,
+                10.0
+            );
+            assert_eq!(terminal.last_income_alert_time, Some(10));
+            assert!(terminal.toasts.is_empty());
+        }
+    }
+}
+
+#[test]
+fn stale_analytics_results_leave_queued_followups_for_the_current_request() {
+    let mut terminal = TradingTerminal::boot().0;
+    let address = "0xabc0000000000000000000000000000000000000";
+    terminal.connected_address = Some(address.into());
+    let stale_portfolio_id = terminal.portfolio.refresh.begin();
+    let current_portfolio_id = terminal.portfolio.refresh.begin();
+    terminal.portfolio.refresh.queue_followup();
+    let stale_income_id = terminal.income.refresh.begin();
+    let current_income_id = terminal.income.refresh.begin();
+    terminal.income.refresh.queue_followup();
+
+    let portfolio_task = terminal.update_portfolio_income(Message::PortfolioLoaded(
+        address.to_string().into(),
+        stale_portfolio_id,
+        Box::new(Ok(portfolio_history(1.0))),
+    ));
+    let income_task = terminal.update_portfolio_income(Message::IncomeLoaded(
+        address.to_string().into(),
+        stale_income_id,
+        Box::new(Ok(income_snapshot(1, 1.0))),
+    ));
+
+    assert_eq!(portfolio_task.units(), 0);
+    assert_eq!(income_task.units(), 0);
+    assert!(terminal.portfolio.refresh.loading);
+    assert!(terminal.income.refresh.loading);
+    assert!(terminal.portfolio.refresh.followup_pending);
+    assert!(terminal.income.refresh.followup_pending);
+    assert_eq!(terminal.portfolio.refresh.request_id, current_portfolio_id);
+    assert_eq!(terminal.income.refresh.request_id, current_income_id);
+    assert!(terminal.portfolio.data.is_none());
+    assert!(terminal.income.data.is_none());
+    assert!(terminal.last_income_alert_time.is_none());
 }
 
 #[test]
