@@ -503,6 +503,13 @@ Key modules:
 Outcome markets force coin-size input for some order flows and should avoid
 incorrect USD-notional assumptions.
 
+Group preparation formats keys and titles once per admitted question or standalone
+outcome, retaining the first admitted symbol's metadata. Cards consume their
+prepared side lists; `groups/card/sides.rs` shares side-button preparation across
+row and column layouts, and `groups/card/volume.rs` owns volume aggregation and
+the shared header label. Venue choices borrow metadata until selection creates
+an owned message value.
+
 ### Skew / HIP-4 venues
 
 Skew markets are native Hyperliquid outcome markets, discovered through the

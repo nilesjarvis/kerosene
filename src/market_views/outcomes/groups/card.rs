@@ -1,4 +1,4 @@
-use crate::api::{ExchangeSymbol, OutcomeVolume24h};
+use crate::api::ExchangeSymbol;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
@@ -6,10 +6,10 @@ use super::OutcomeMarketSet;
 use iced::widget::container as container_style;
 use iced::widget::{Column, button, column, container, row, rule, text};
 use iced::{Color, Element, Fill, Theme};
-use std::collections::{BTreeMap, HashMap};
+use volume::{outcome_group_volume, outcome_market_set_volume, view_outcome_volume};
 
-#[cfg(test)]
-mod tests;
+mod sides;
+mod volume;
 
 impl TradingTerminal {
     pub(in crate::market_views::outcomes) fn view_outcome_market_set<'a>(
@@ -20,18 +20,18 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let now_ms = self.status_bar_now_ms;
         let collapsed = self.outcome_collapsed_market_groups.contains(&group.key);
+        let summary = outcome_market_set_summary(&group);
         let toggle_label = if collapsed { "+" } else { "-" };
         let toggle_button = button(text(toggle_label).size(12).center())
-            .on_press(Message::OutcomeMarketGroupToggled(group.key.clone()))
+            .on_press(Message::OutcomeMarketGroupToggled(group.key))
             .padding([2, 0])
             .width(24.0)
             .style(outcome_collapse_button_style);
 
-        let summary = outcome_market_set_summary(&group);
         let mut header = row![
             toggle_button,
             column![
-                text(group.title.clone())
+                text(group.title)
                     .size(13)
                     .color(theme.palette().text)
                     .width(Fill),
@@ -47,24 +47,12 @@ impl TradingTerminal {
         .align_y(iced::Alignment::Center)
         .width(Fill);
 
-        if let Some(volume) = outcome_market_set_volume(&group.outcomes, &self.outcome_volumes_24h)
-        {
-            header = header.push(
-                text(format!(
-                    "24h Vol {}",
-                    format_outcome_contract_volume(volume)
-                ))
-                .size(11)
-                .font(crate::app_fonts::monospace_font())
-                .color(theme.extended_palette().background.weak.text),
-            );
-        } else if self.outcome_volumes_loading {
-            header = header.push(
-                text("24h Vol ...")
-                    .size(11)
-                    .font(crate::app_fonts::monospace_font())
-                    .color(theme.extended_palette().background.weak.text),
-            );
+        if let Some(volume) = view_outcome_volume(
+            outcome_market_set_volume(&group.outcomes, &self.outcome_volumes_24h),
+            self.outcome_volumes_loading,
+            theme,
+        ) {
+            header = header.push(volume);
         }
 
         let mut content = column![header].spacing(8).width(Fill);
@@ -72,18 +60,14 @@ impl TradingTerminal {
             let nested = group.is_question_group;
             let mut outcomes = Column::new().spacing(6).width(Fill);
             let mut is_first = true;
-            for sides in group.outcomes.values() {
+            for sides in group.outcomes.into_values() {
                 if !is_first {
                     outcomes = outcomes.push(rule::horizontal(1));
                 }
                 is_first = false;
-                if let Some(outcome) = self.view_outcome_market_group(
-                    theme,
-                    sides.clone(),
-                    now_ms,
-                    available_width,
-                    nested,
-                ) {
+                if let Some(outcome) =
+                    self.view_outcome_market_group(theme, sides, now_ms, available_width, nested)
+                {
                     outcomes = outcomes.push(outcome);
                 }
             }
@@ -124,23 +108,12 @@ impl TradingTerminal {
         .spacing(6)
         .align_y(iced::Alignment::Center)
         .width(Fill);
-        if let Some(volume) = outcome_group_volume(&sides, &self.outcome_volumes_24h) {
-            market_header = market_header.push(
-                text(format!(
-                    "24h Vol {}",
-                    format_outcome_contract_volume(volume)
-                ))
-                .size(11)
-                .font(crate::app_fonts::monospace_font())
-                .color(theme.extended_palette().background.weak.text),
-            );
-        } else if self.outcome_volumes_loading {
-            market_header = market_header.push(
-                text("24h Vol ...")
-                    .size(11)
-                    .font(crate::app_fonts::monospace_font())
-                    .color(theme.extended_palette().background.weak.text),
-            );
+        if let Some(volume) = view_outcome_volume(
+            outcome_group_volume(&sides, &self.outcome_volumes_24h),
+            self.outcome_volumes_loading,
+            theme,
+        ) {
+            market_header = market_header.push(volume);
         }
 
         let probability_bar = self.view_outcome_group_probability(&sides, theme);
@@ -148,11 +121,7 @@ impl TradingTerminal {
 
         let mut group_content = column![market_header].spacing(6).width(Fill);
         if let Some(reason) = info.trading_block_reason(now_ms) {
-            group_content = group_content.push(
-                text(reason.to_string())
-                    .size(11)
-                    .color(theme.palette().danger),
-            );
+            group_content = group_content.push(text(reason).size(11).color(theme.palette().danger));
         }
         if let Some(deadline) = info.contract_deadline_label() {
             group_content = group_content.push(
@@ -189,92 +158,13 @@ impl TradingTerminal {
                 .padding([2, 0]),
             );
             if expanded {
-                group_content = group_content.push(text(rules.clone()).size(11).width(Fill));
+                group_content = group_content.push(text(rules.as_str()).size(11).width(Fill));
                 group_content =
                     group_content.push(text(info.fee_terms_label()).size(10).width(Fill));
             }
         }
 
         Some(container(group_content).width(Fill).padding([2, 0]).into())
-    }
-
-    fn view_outcome_group_probability<'a>(
-        &'a self,
-        sides: &[&ExchangeSymbol],
-        theme: &Theme,
-    ) -> Option<Element<'a, Message>> {
-        if sides.len() != 2 {
-            return None;
-        }
-
-        let first = sides[0];
-        let second = sides[1];
-        let (Some(first_info), Some(second_info)) =
-            (first.outcome.as_ref(), second.outcome.as_ref())
-        else {
-            return None;
-        };
-
-        if first_info.contract.scalar || second_info.contract.scalar {
-            return None;
-        }
-        let first_mid = self.resolve_mid_for_symbol_at(&first.key, self.status_bar_now_ms);
-        let second_mid = self.resolve_mid_for_symbol_at(&second.key, self.status_bar_now_ms);
-        let first_color =
-            Self::outcome_side_accent(theme, &first_info.side_name, first_info.side_index);
-        let second_color =
-            Self::outcome_side_accent(theme, &second_info.side_name, second_info.side_index);
-        Some(Self::view_outcome_probability_bar(
-            first_mid,
-            second_mid,
-            first_color,
-            second_color,
-        ))
-    }
-
-    fn view_outcome_group_sides<'a>(
-        &'a self,
-        sides: &[&'a ExchangeSymbol],
-        theme: &Theme,
-        available_width: f32,
-    ) -> Element<'a, Message> {
-        if sides.len() == 2 && available_width >= 380.0 {
-            let mut cards = row![].spacing(6).width(Fill);
-            for &sym in sides {
-                let Some(side_info) = &sym.outcome else {
-                    continue;
-                };
-                let mid = self.resolve_mid_for_symbol_at(&sym.key, self.status_bar_now_ms);
-                let accent =
-                    Self::outcome_side_accent(theme, &side_info.side_name, side_info.side_index);
-                cards = cards.push(self.view_outcome_side_button(
-                    theme,
-                    sym,
-                    accent,
-                    sym.key == self.active_symbol,
-                    mid,
-                ));
-            }
-            cards.into()
-        } else {
-            let mut cards = Column::new().spacing(4).width(Fill);
-            for &sym in sides {
-                let Some(side_info) = &sym.outcome else {
-                    continue;
-                };
-                let mid = self.resolve_mid_for_symbol_at(&sym.key, self.status_bar_now_ms);
-                let accent =
-                    Self::outcome_side_accent(theme, &side_info.side_name, side_info.side_index);
-                cards = cards.push(self.view_outcome_side_button(
-                    theme,
-                    sym,
-                    accent,
-                    sym.key == self.active_symbol,
-                    mid,
-                ));
-            }
-            cards.into()
-        }
     }
 }
 
@@ -313,47 +203,6 @@ fn outcome_market_title(info: &crate::api::OutcomeSymbolInfo, nested: bool, now_
     }
 
     info.market_label_with_countdown(now_ms)
-}
-
-fn outcome_market_set_volume(
-    outcomes: &BTreeMap<u32, Vec<&ExchangeSymbol>>,
-    volumes: &HashMap<String, OutcomeVolume24h>,
-) -> Option<f64> {
-    let mut total = 0.0;
-    let mut found = false;
-    for sides in outcomes.values() {
-        if let Some(volume) = outcome_group_volume(sides, volumes) {
-            total += volume;
-            found = true;
-        }
-    }
-    found.then_some(total)
-}
-
-fn outcome_group_volume(
-    sides: &[&ExchangeSymbol],
-    volumes: &HashMap<String, OutcomeVolume24h>,
-) -> Option<f64> {
-    sides
-        .iter()
-        .filter_map(|symbol| volumes.get(&symbol.key).map(|volume| volume.contract))
-        .filter(|volume| volume.is_finite() && *volume >= 0.0)
-        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-}
-
-fn format_outcome_contract_volume(value: f64) -> String {
-    let abs = value.abs();
-    if abs >= 1_000_000_000.0 {
-        format!("{:.1}B contracts", value / 1_000_000_000.0)
-    } else if abs >= 1_000_000.0 {
-        format!("{:.1}M contracts", value / 1_000_000.0)
-    } else if abs >= 1_000.0 {
-        format!("{:.1}K contracts", value / 1_000.0)
-    } else if abs >= 1.0 {
-        format!("{value:.0} contracts")
-    } else {
-        format!("{value:.2} contracts")
-    }
 }
 
 fn outcome_market_set_style(theme: &Theme) -> container_style::Style {

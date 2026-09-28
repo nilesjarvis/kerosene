@@ -7,7 +7,7 @@ mod card;
 pub(in crate::market_views::outcomes) struct OutcomeMarketSet<'a> {
     pub(in crate::market_views::outcomes) key: String,
     pub(in crate::market_views::outcomes) title: String,
-    pub(in crate::market_views::outcomes) quote_symbol: String,
+    pub(in crate::market_views::outcomes) quote_symbol: &'a str,
     pub(in crate::market_views::outcomes) is_question_group: bool,
     pub(in crate::market_views::outcomes) outcomes: BTreeMap<u32, Vec<&'a ExchangeSymbol>>,
     pub(in crate::market_views::outcomes) outcome_count: usize,
@@ -29,28 +29,32 @@ impl TradingTerminal {
                 && outcome_symbol_matches_search(sym, query)
         }) {
             if let Some(info) = &sym.outcome {
-                let (sort_key, key, title, is_question_group) = match info.question_id {
-                    Some(question_id) => (
-                        (0, question_id),
-                        format!("question:{question_id}"),
-                        outcome_question_title(info, now_ms),
-                        true,
-                    ),
-                    None => (
-                        (1, info.outcome_id),
-                        format!("outcome:{}", info.outcome_id),
-                        info.market_label_with_countdown(now_ms),
-                        false,
-                    ),
+                let sort_key = match info.question_id {
+                    Some(question_id) => (0, question_id),
+                    None => (1, info.outcome_id),
                 };
-                let entry = grouped.entry(sort_key).or_insert_with(|| OutcomeMarketSet {
-                    key,
-                    title,
-                    quote_symbol: info.quote_symbol.clone(),
-                    is_question_group,
-                    outcomes: BTreeMap::new(),
-                    outcome_count: 0,
-                    trade_coin_count: 0,
+                let entry = grouped.entry(sort_key).or_insert_with(|| {
+                    let (key, title, is_question_group) = match info.question_id {
+                        Some(question_id) => (
+                            format!("question:{question_id}"),
+                            outcome_question_title(info, now_ms),
+                            true,
+                        ),
+                        None => (
+                            format!("outcome:{}", info.outcome_id),
+                            info.market_label_with_countdown(now_ms),
+                            false,
+                        ),
+                    };
+                    OutcomeMarketSet {
+                        key,
+                        title,
+                        quote_symbol: &info.quote_symbol,
+                        is_question_group,
+                        outcomes: BTreeMap::new(),
+                        outcome_count: 0,
+                        trade_coin_count: 0,
+                    }
                 });
                 entry.outcomes.entry(info.outcome_id).or_default().push(sym);
             }

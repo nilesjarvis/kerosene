@@ -6,6 +6,7 @@ use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use iced::widget::{Column, column, container, responsive, scrollable, text};
 use iced::{Element, Fill};
+use std::borrow::Cow;
 
 // ---------------------------------------------------------------------------
 // Outcome Market Views
@@ -21,21 +22,24 @@ impl TradingTerminal {
         let grouped = self.grouped_outcome_markets();
         let searching = !self.outcome_search_query.trim().is_empty();
 
-        let status = if self.symbols_loading {
-            Some("Loading outcome metadata from Hyperliquid outcomeMeta".to_string())
+        let status: Option<Cow<'_, str>> = if self.symbols_loading {
+            Some("Loading outcome metadata from Hyperliquid outcomeMeta".into())
         } else if grouped.is_empty() && searching {
-            Some(format!(
-                "No outcome contracts match \"{}\"",
-                self.outcome_search_query.trim()
-            ))
+            Some(
+                format!(
+                    "No outcome contracts match \"{}\"",
+                    self.outcome_search_query.trim()
+                )
+                .into(),
+            )
         } else if grouped.is_empty() && self.outcome_venue_filter.is_some() {
-            Some("No outcome contracts available for this venue".to_string())
+            Some("No outcome contracts available for this venue".into())
         } else if grouped.is_empty() {
-            Some("No outcome contracts returned by Hyperliquid outcomeMeta".to_string())
+            Some("No outcome contracts returned by Hyperliquid outcomeMeta".into())
         } else if self.outcome_volumes_loading {
-            Some("Loading 24h volume".to_string())
+            Some("Loading 24h volume".into())
         } else if self.outcome_volumes_error.is_some() {
-            Some("24h volume unavailable".to_string())
+            Some("24h volume unavailable".into())
         } else {
             None
         };

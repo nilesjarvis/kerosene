@@ -3,6 +3,8 @@ use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
+mod rendering;
+
 fn outcome_symbol() -> ExchangeSymbol {
     outcome_symbol_with(101, 0, Some(19), "Below 4.3%")
 }
@@ -155,4 +157,55 @@ fn outcome_venue_filter_never_falls_back_to_another_venues_markets() {
     let _ = terminal.update_market(Message::OutcomeVenueFilterChanged(Some("skew".to_string())));
     assert!(terminal.grouped_outcome_markets().is_empty());
     assert_eq!(terminal.outcome_venue_filter.as_deref(), Some("skew"));
+}
+
+#[test]
+fn outcome_groups_keep_first_admitted_metadata_and_sorted_group_keys() {
+    let mut terminal =
+        TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default()).0;
+    let mut first = outcome_symbol_with(102, 1, Some(19), "First side");
+    let info = first.outcome.as_mut().expect("outcome");
+    info.question_name = Some("  First question  ".to_string());
+    info.quote_symbol = "USDH".to_string();
+    let mut fallback = outcome_symbol_with(100, 0, Some(19), "Fallback");
+    fallback
+        .outcome
+        .as_mut()
+        .expect("outcome")
+        .is_question_fallback = true;
+    let hidden = outcome_symbol_with(99, 0, Some(19), "Hidden");
+    terminal.muted_tickers.insert(hidden.key.clone());
+    terminal.exchange_symbols = vec![
+        outcome_symbol_with(95, 0, None, "Standalone"),
+        fallback,
+        hidden,
+        first,
+        outcome_symbol_with(101, 0, Some(19), "Later metadata"),
+        outcome_symbol_with(102, 0, Some(19), "Other side"),
+        outcome_symbol_with(90, 0, Some(2), "Earlier question"),
+    ];
+
+    let groups = terminal.grouped_outcome_markets();
+    assert_eq!(
+        groups
+            .iter()
+            .map(|group| group.key.as_str())
+            .collect::<Vec<_>>(),
+        ["question:2", "question:19", "outcome:95"]
+    );
+    let group = &groups[1];
+    assert_eq!(group.title, "  First question  ");
+    assert_eq!(group.quote_symbol, "USDH");
+    assert_eq!((group.outcome_count, group.trade_coin_count), (2, 3));
+    assert_eq!(
+        group.outcomes.keys().copied().collect::<Vec<_>>(),
+        [101, 102]
+    );
+    assert_eq!(
+        group.outcomes[&102]
+            .iter()
+            .map(|symbol| symbol.key.as_str())
+            .collect::<Vec<_>>(),
+        ["#1021", "#1020"]
+    );
 }
