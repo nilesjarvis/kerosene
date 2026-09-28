@@ -184,6 +184,57 @@ fn parses_full_position_close() {
 }
 
 #[test]
+fn close_previews_preserve_resolved_coin_side_and_error_priority() {
+    for (size, side) in [
+        (" 2 ", "long"),
+        ("-3", "short"),
+        ("0", "open"),
+        ("NaN", "open"),
+    ] {
+        let mut position = perp_position("xyz:GOLD");
+        position.position.szi = size.into();
+        let mut terminal = close_terminal(vec![position], Vec::new());
+        let mut metadata = perp_symbol("xyz:GOLD");
+        metadata.ticker = "GOLD".into();
+        terminal.exchange_symbols.push(metadata);
+        for query in ["close XYZ:gold 12.5%", "close gold 12.5%"] {
+            let draft = close_draft_or_panic(&terminal, query);
+            assert!(draft.can_submit(), "{query}");
+            assert_eq!(draft.coin.as_deref(), Some("xyz:GOLD"));
+            assert_eq!(draft.fraction, 0.125);
+            assert_eq!(draft.title, "CLOSE 12.50% XYZ:GOLD");
+            assert_eq!(
+                draft.detail,
+                format!("Market close 12.50% of {side} position")
+            );
+            assert_eq!(draft.tag, "Close");
+            assert_eq!(draft.error, None);
+        }
+        terminal.account_loading = true;
+        for (query, title, error) in [
+            (
+                "close gold",
+                "CLOSE 100% GOLD",
+                "Account refresh in progress",
+            ),
+            (
+                "close gold 125",
+                "CLOSE 100% GOLD",
+                "Use a close percentage from 1 to 100",
+            ),
+            ("close", "CLOSE 100% TICKER", "Add a ticker to close"),
+        ] {
+            let draft = close_draft_or_panic(&terminal, query);
+            assert!(!draft.can_submit());
+            assert_eq!(draft.coin, None);
+            assert_eq!(draft.title, title);
+            assert_eq!(draft.detail, error);
+            assert_eq!(draft.error.as_deref(), Some(error));
+        }
+    }
+}
+
+#[test]
 fn parses_fractional_position_close() {
     let intent = parse_close_position_intent("close hype 25").expect("close intent");
 

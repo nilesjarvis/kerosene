@@ -8,6 +8,9 @@ use iced::{Color, Element, Fill, Theme};
 
 mod rows;
 
+#[cfg(test)]
+mod tests;
+
 // ---------------------------------------------------------------------------
 // Alfred overlay
 // ---------------------------------------------------------------------------
@@ -23,6 +26,7 @@ impl TradingTerminal {
 
         let popup_scale = self.alfred_popup_scale;
         let commands = self.alfred_filtered_commands();
+        let commands_empty = commands.is_empty();
         let selected_index = self
             .alfred
             .selected_index
@@ -37,7 +41,7 @@ impl TradingTerminal {
             .style(text_input_style);
 
         let mut results = Column::new().spacing(2).width(Fill);
-        for (index, command) in commands.iter().take(ALFRED_MAX_RESULTS).enumerate() {
+        for (index, command) in commands.into_iter().take(ALFRED_MAX_RESULTS).enumerate() {
             results = results.push(alfred_result_row(
                 command,
                 index == selected_index,
@@ -46,7 +50,7 @@ impl TradingTerminal {
             ));
         }
 
-        if commands.is_empty() {
+        if commands_empty {
             results = results.push(
                 container(
                     text("No matches")

@@ -14,7 +14,7 @@ use iced::{Color, Element, Fill, Theme, color};
 mod tests;
 
 pub(super) fn alfred_result_row(
-    command: &AlfredCommand,
+    command: AlfredCommand,
     selected: bool,
     theme: &Theme,
     popup_scale: f32,
@@ -27,14 +27,15 @@ pub(super) fn alfred_result_row(
         theme.extended_palette().background.weak.text
     };
     let detail_color = theme.extended_palette().background.weak.text;
-    let tag = alfred_tag(&command.tag, theme, popup_scale);
-    let title = alfred_title(command, title_color, popup_scale);
-    let detail = alfred_visible_detail(
-        command.enabled,
-        &command.detail,
-        command.disabled_reason.as_deref(),
-    )
-    .to_string();
+    let tag = alfred_tag(command.tag, theme, popup_scale);
+    let title = alfred_title(
+        command.title,
+        command.icon_symbol.as_deref(),
+        command.icon_title_anchor.as_deref(),
+        title_color,
+        popup_scale,
+    );
+    let detail = alfred_visible_detail(command.enabled, command.detail, command.disabled_reason);
 
     button(
         row![
@@ -84,11 +85,7 @@ pub(super) fn alfred_result_row(
     .into()
 }
 
-fn alfred_visible_detail<'a>(
-    enabled: bool,
-    detail: &'a str,
-    disabled_reason: Option<&'a str>,
-) -> &'a str {
+fn alfred_visible_detail(enabled: bool, detail: String, disabled_reason: Option<String>) -> String {
     if enabled {
         detail
     } else {
@@ -97,31 +94,33 @@ fn alfred_visible_detail<'a>(
 }
 
 fn alfred_title(
-    command: &AlfredCommand,
+    title_text: String,
+    icon_symbol: Option<&str>,
+    icon_title_anchor: Option<&str>,
     title_color: Color,
     popup_scale: f32,
 ) -> Element<'static, Message> {
-    let Some(icon_symbol) = command.icon_symbol.as_deref() else {
-        return alfred_plain_title(&command.title, title_color, popup_scale);
+    let Some(icon_symbol) = icon_symbol else {
+        return alfred_plain_title(title_text, title_color, popup_scale);
     };
-    let Some(anchor) = command.icon_title_anchor.as_deref() else {
-        return alfred_plain_title(&command.title, title_color, popup_scale);
+    let Some(anchor) = icon_title_anchor else {
+        return alfred_plain_title(title_text, title_color, popup_scale);
     };
     let Some(icon) = helpers::symbol_icon(
         icon_symbol,
         scaled_text(14.0, popup_scale) as u16,
         title_color,
     ) else {
-        return alfred_plain_title(&command.title, title_color, popup_scale);
+        return alfred_plain_title(title_text, title_color, popup_scale);
     };
-    let Some(start) = command.title.rfind(anchor) else {
-        return alfred_plain_title(&command.title, title_color, popup_scale);
+    let Some(start) = title_text.rfind(anchor) else {
+        return alfred_plain_title(title_text, title_color, popup_scale);
     };
 
     let end = start + anchor.len();
-    let before = command.title[..start].trim_end();
-    let ticker = &command.title[start..end];
-    let after = command.title[end..].trim_start();
+    let before = title_text[..start].trim_end();
+    let ticker = &title_text[start..end];
+    let after = title_text[end..].trim_start();
 
     let mut title = row![].align_y(iced::Alignment::Center);
     if !before.is_empty() {
@@ -155,18 +154,18 @@ fn alfred_title(
 }
 
 fn alfred_plain_title(
-    title: &str,
+    title: String,
     title_color: Color,
     popup_scale: f32,
 ) -> Element<'static, Message> {
-    text(title.to_string())
+    text(title)
         .size(scaled_text(12.0, popup_scale))
         .color(title_color)
         .into()
 }
 
-fn alfred_tag(label: &str, theme: &Theme, popup_scale: f32) -> Element<'static, Message> {
-    let color = match label {
+fn alfred_tag(label: String, theme: &Theme, popup_scale: f32) -> Element<'static, Message> {
+    let color = match label.as_str() {
         "Open" => theme.palette().success,
         "Window" => theme.palette().primary,
         "Limit" | "Market" | "Trade" | "Chase" => theme.palette().primary,
@@ -175,22 +174,18 @@ fn alfred_tag(label: &str, theme: &Theme, popup_scale: f32) -> Element<'static, 
         _ => theme.extended_palette().background.weak.text,
     };
 
-    container(
-        text(label.to_string())
-            .size(scaled_text(9.0, popup_scale))
-            .color(color),
-    )
-    .padding([scaled_px(1.0, popup_scale), scaled_px(5.0, popup_scale)])
-    .style(move |_theme: &Theme| container_style::Style {
-        background: Some(Color { a: 0.12, ..color }.into()),
-        border: iced::Border {
-            radius: 3.0.into(),
-            width: 1.0,
-            color: Color { a: 0.45, ..color },
-        },
-        ..Default::default()
-    })
-    .into()
+    container(text(label).size(scaled_text(9.0, popup_scale)).color(color))
+        .padding([scaled_px(1.0, popup_scale), scaled_px(5.0, popup_scale)])
+        .style(move |_theme: &Theme| container_style::Style {
+            background: Some(Color { a: 0.12, ..color }.into()),
+            border: iced::Border {
+                radius: 3.0.into(),
+                width: 1.0,
+                color: Color { a: 0.45, ..color },
+            },
+            ..Default::default()
+        })
+        .into()
 }
 
 pub(super) fn scaled_text(size: f32, scale: f32) -> u32 {

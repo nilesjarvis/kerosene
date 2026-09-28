@@ -37,6 +37,12 @@ AlfredSubmit / AlfredCommandSelected
 
 Escape closes Alfred without action.
 
+Dynamic commands take ownership of their draft's display text after checking
+whether it can submit. Close-position previews borrow the resolved position and
+copy only the coin needed by the draft. Result rows consume the freshly built
+commands, moving their text into widgets. The overlay still shows at most seven
+results, and submission resolves the command again against current state.
+
 ## Command Catalog
 
 The catalog includes non-trading commands such as:
@@ -101,6 +107,8 @@ Use focused tests in:
 
 - `src/alfred_state/**/tests`
 - `src/alfred_views/rows/tests.rs`
+- `src/alfred_views/tests.rs` (synthetic rendering and enabled/disabled row clicks;
+  set `KEROSENE_ALFRED_PREVIEW_DIR` to export comparison PNGs)
 - `src/alfred_update.rs` tests where present
 - order execution tests for trading command behavior
 - risk-state tests for hidden symbol behavior
