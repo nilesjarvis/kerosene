@@ -61,11 +61,11 @@ fn muted_labeled_entries_stay_tracked_but_leave_tracked_trade_subscription() {
         &mut tracked_addresses,
         &address_book,
     );
-    let subscription_addresses =
-        TradingTerminal::tracked_trade_subscription_addresses_from_address_book(
-            &address_book,
-            &muted_addresses,
-        );
+    let mut terminal =
+        TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default()).0;
+    terminal.address_book = address_book;
+    terminal.wallet_tracker.muted_addresses = muted_addresses;
+    let subscription_addresses = terminal.tracked_trade_subscription_addresses();
 
     assert_eq!(added, vec![ADDRESS_A.to_string(), ADDRESS_B.to_string()]);
     assert_eq!(

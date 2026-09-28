@@ -356,6 +356,14 @@ Wallet tracker features:
 - open-order counts
 - HIP-3 and spot fallback handling
 
+Tracker config restoration normalizes and deduplicates addresses in first-seen
+order, taking the current list before legacy wallet entries. Muted addresses use
+the same normalization independently, including addresses absent from the tracked
+list. Address-book label lists share one collection/sort/deduplication path;
+combined local/remote labels are sorted once, then subscription selection filters
+muted addresses. Color or tags alone do not create a label subscription.
+Config Debug output uses the same count-only redaction as runtime wallet state.
+
 `wallet_state/tracker/selection.rs` gives queued requests FIFO precedence over
 automatic refreshes. Automatic core selection ranks borrowed addresses by age
 and copies only the selected batch; order selection copies only the chosen

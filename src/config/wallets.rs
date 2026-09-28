@@ -64,7 +64,7 @@ impl fmt::Debug for AddressBookEntryConfig {
                 &redact_wallet_address_debug_value(self.label.trim()),
             )
             .field("color", &self.color)
-            .field("tags", &RedactedWalletTags(self.tags.len()))
+            .field("tags", &format_args!("<{} redacted>", self.tags.len()))
             .finish()
     }
 }
@@ -122,11 +122,11 @@ impl fmt::Debug for WalletTrackerConfig {
         f.debug_struct("WalletTrackerConfig")
             .field(
                 "tracked_addresses",
-                &RedactedWalletAddressList(self.tracked_addresses.len()),
+                &format_args!("<{} redacted>", self.tracked_addresses.len()),
             )
             .field(
                 "muted_addresses",
-                &RedactedWalletAddressList(self.muted_addresses.len()),
+                &format_args!("<{} redacted>", self.muted_addresses.len()),
             )
             .field("wallets", &self.wallets)
             .field("open", &self.open)
@@ -266,7 +266,10 @@ impl fmt::Debug for WalletClusterConfig {
         f.debug_struct("WalletClusterConfig")
             .field("id", &"<redacted>")
             .field("name", &redact_wallet_address_debug_value(self.name.trim()))
-            .field("members", &RedactedWalletClusterMembers(self.members.len()))
+            .field(
+                "members",
+                &format_args!("<{} redacted>", self.members.len()),
+            )
             .finish()
     }
 }
@@ -309,7 +312,7 @@ impl fmt::Debug for WalletClustersConfig {
         f.debug_struct("WalletClustersConfig")
             .field(
                 "clusters",
-                &RedactedWalletClusterMembers(self.clusters.len()),
+                &format_args!("<{} redacted>", self.clusters.len()),
             )
             .field(
                 "selected_cluster_id",
@@ -336,40 +339,79 @@ pub fn default_wallet_clusters_height() -> f32 {
     760.0
 }
 
-struct RedactedWalletAddressList(usize);
-
-impl fmt::Debug for RedactedWalletAddressList {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "<{} redacted>", self.0)
-    }
-}
-
-struct RedactedWalletTags(usize);
-
-impl fmt::Debug for RedactedWalletTags {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "<{} redacted>", self.0)
-    }
-}
-
-struct RedactedWalletClusterMembers(usize);
-
-impl fmt::Debug for RedactedWalletClusterMembers {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "<{} redacted>", self.0)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         AddressBookEntryConfig, CombinedPortfolioConfig, TrackedWalletConfig,
-        WALLET_LABELS_EXPORT_SCHEMA, WalletClustersConfig, WalletLabelsExport, WalletTrackerConfig,
+        WALLET_LABELS_EXPORT_SCHEMA, WalletClusterConfig, WalletClusterMemberConfig,
+        WalletClustersConfig, WalletLabelsExport, WalletTrackerConfig,
     };
 
     const ADDRESS_A: &str = "0x1111111111111111111111111111111111111111";
     const ADDRESS_B: &str = "0x2222222222222222222222222222222222222222";
     const ADDRESS_C: &str = "0x3333333333333333333333333333333333333333";
+
+    #[test]
+    fn wallet_debug_counts_preserve_exact_redaction_and_pretty_output() {
+        for count in [0, 2] {
+            let entry = AddressBookEntryConfig {
+                address: ADDRESS_A.into(),
+                tags: vec!["private-tag".into(); count],
+                ..Default::default()
+            };
+            assert_eq!(
+                format!("{entry:?}"),
+                format!(
+                    "AddressBookEntryConfig {{ address: \"<redacted>\", label: \"\", color: None, tags: <{count} redacted> }}"
+                )
+            );
+            let tracker = WalletTrackerConfig {
+                tracked_addresses: vec![ADDRESS_A.into(); count],
+                muted_addresses: vec![ADDRESS_B.into(); count],
+                ..Default::default()
+            };
+            assert_eq!(
+                format!("{tracker:?}"),
+                format!(
+                    "WalletTrackerConfig {{ tracked_addresses: <{count} redacted>, muted_addresses: <{count} redacted>, wallets: [], open: false, width: 980.0, height: 680.0, x: None, y: None }}"
+                )
+            );
+            let cluster = WalletClusterConfig {
+                id: "private-cluster".into(),
+                name: "Desk".into(),
+                members: vec![
+                    WalletClusterMemberConfig {
+                        profile_secret_id: "private-profile".into(),
+                        weight: 2.0
+                    };
+                    count
+                ],
+            };
+            assert_eq!(
+                format!("{cluster:?}"),
+                format!(
+                    "WalletClusterConfig {{ id: \"<redacted>\", name: \"Desk\", members: <{count} redacted> }}"
+                )
+            );
+            assert_eq!(
+                format!("{cluster:#?}"),
+                format!(
+                    "WalletClusterConfig {{\n    id: \"<redacted>\",\n    name: \"Desk\",\n    members: <{count} redacted>,\n}}"
+                )
+            );
+            let clusters = WalletClustersConfig {
+                clusters: vec![cluster; count],
+                selected_cluster_id: Some("private-cluster".into()),
+                ..Default::default()
+            };
+            assert_eq!(
+                format!("{clusters:?}"),
+                format!(
+                    "WalletClustersConfig {{ clusters: <{count} redacted>, selected_cluster_id: Some(\"<redacted>\"), open: false, width: 1180.0, height: 760.0, x: None, y: None }}"
+                )
+            );
+        }
+    }
 
     #[test]
     fn wallet_config_debug_redacts_addresses() {
