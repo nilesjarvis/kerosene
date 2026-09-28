@@ -123,6 +123,33 @@ fn outcome_search_requires_each_search_term_to_match() {
 }
 
 #[test]
+fn outcome_search_keeps_ascii_case_rules_and_all_whitespace_separated_terms() {
+    let mut terminal =
+        TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default()).0;
+    let mut symbol = outcome_symbol();
+    symbol.keywords.push("ΩMEGA".to_string());
+    terminal.exchange_symbols = vec![symbol];
+    for (query, matched) in [
+        ("", true),
+        (" \t\n\u{2003}", true),
+        ("  CPI\tBELOW\nUSDC  ", true),
+        ("#1010\u{2003}PREDICTION", true),
+        ("CPI cpi BELOW", true),
+        ("Ωmega CPI", true),
+        ("ωmega CPI", false),
+        ("CPI BTC", false),
+        ("CPI\u{200b}BELOW", false),
+    ] {
+        terminal.outcome_search_query = query.to_string();
+        assert_eq!(
+            !terminal.grouped_outcome_markets().is_empty(),
+            matched,
+            "{query:?}"
+        );
+    }
+}
+
+#[test]
 fn outcome_venue_filter_routes_through_market_update_and_combines_with_search() {
     let mut terminal = TradingTerminal::boot().0;
     let mut skew_yes = outcome_symbol_with(95, 0, None, "BTC above 77,363");

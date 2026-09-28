@@ -296,6 +296,12 @@ limit; only the selection message needs an owned copy of each admitted key.
 filters by market type or HIP-3 dex, displays favourites, and can select the
 active symbol.
 
+The HIP-3 picker discovers its sorted, unique DEX prefixes once per view and
+borrows them until selection creates an owned message. Rows prepare one exchange
+label for both their group header and identity cell; static labels are borrowed.
+Empty and populated views share status styling while keeping their existing
+placement and padding.
+
 Important modules:
 
 - `market_views/watchlist.rs`
@@ -509,6 +515,12 @@ prepared side lists; `groups/card/sides.rs` shares side-button preparation acros
 row and column layouts, and `groups/card/volume.rs` owns volume aggregation and
 the shared header label. Venue choices borrow metadata until selection creates
 an owned message value.
+
+`groups/search.rs` owns the Outcomes search field list and term matching.
+Grouping ASCII-lowercases the query once, and each symbol's assembled search
+text is lowercased in place. All whitespace-separated terms must match. This
+remains separate from symbol search and live-watchlist autocomplete, which use
+Unicode lowercasing and whole-query substring matching with different field sets.
 
 ### Skew / HIP-4 venues
 

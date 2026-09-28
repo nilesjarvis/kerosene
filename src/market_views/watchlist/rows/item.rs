@@ -5,18 +5,19 @@ use crate::market_state::SymbolSearchSortMode;
 use crate::message::Message;
 use iced::widget::{Space, button, row, text};
 use iced::{Color, Element, Fill, Theme, color};
+use std::borrow::Cow;
 
 impl TradingTerminal {
     pub(super) fn view_symbol_search_row<'a>(
         &'a self,
         sym: &'a ExchangeSymbol,
+        exchange_label: Cow<'static, str>,
         is_fav: bool,
         active_sym: &str,
         theme: &Theme,
     ) -> Element<'a, Message> {
         let display = sym.display_name.as_deref().unwrap_or(&sym.ticker);
         let is_selected = sym.key == active_sym;
-        let exchange_label = Self::symbol_search_exchange_label(sym);
         let category_label = sym.category.to_uppercase();
 
         let star_key = sym.key.clone();

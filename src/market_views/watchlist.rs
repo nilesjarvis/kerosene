@@ -1,6 +1,9 @@
 mod controls;
 mod rows;
 
+#[cfg(test)]
+mod tests;
+
 use crate::app_state::TradingTerminal;
 use crate::market_state::SymbolSearchSortMode;
 use crate::message::Message;
@@ -11,6 +14,17 @@ impl TradingTerminal {
     pub(crate) fn view_watchlist(&self) -> Element<'_, Message> {
         let theme = self.theme();
         let mut header_content = self.view_symbol_search_controls();
+        let status: Option<Element<'_, Message>> =
+            self.symbol_search_status
+                .as_ref()
+                .map(|(status, is_error)| {
+                    let color = if *is_error {
+                        color!(0xff5555)
+                    } else {
+                        theme.extended_palette().background.weak.text
+                    };
+                    text(status).size(11).color(color).into()
+                });
 
         if self.exchange_symbols.is_empty() {
             let loading_row: Element<'_, Message> = if self.symbols_loading {
@@ -29,15 +43,8 @@ impl TradingTerminal {
                     .color(theme.extended_palette().background.weak.text)
                     .into()
             };
-            if let Some((status, is_error)) = &self.symbol_search_status {
-                let status_color = if *is_error {
-                    color!(0xff5555)
-                } else {
-                    theme.extended_palette().background.weak.text
-                };
-                header_content = header_content.push(text(status).size(11).color(status_color));
-            }
             let content = header_content
+                .extend(status)
                 .push(container(loading_row).padding([8, 0]))
                 .spacing(4);
 
@@ -64,15 +71,7 @@ impl TradingTerminal {
 
         let rows = self.view_symbol_search_rows(&filtered, &theme);
 
-        header_content = header_content.push(count_label);
-        if let Some((status, is_error)) = &self.symbol_search_status {
-            let status_color = if *is_error {
-                color!(0xff5555)
-            } else {
-                theme.extended_palette().background.weak.text
-            };
-            header_content = header_content.push(text(status).size(11).color(status_color));
-        }
+        header_content = header_content.push(count_label).extend(status);
 
         let rows_scroll = scrollable(container(rows).width(Fill).padding(iced::Padding {
             top: 0.0,
