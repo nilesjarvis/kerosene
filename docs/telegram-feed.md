@@ -270,7 +270,11 @@ Core implementation:
   and parser tests. Client tests include local HTTP fixtures for image response
   validation, error precedence, and both size limits.
 - `src/telegram_fast_feed.rs`: optional MTProto auth, session handling,
-  startup backfill, and live update streaming.
+  channel resolution, startup backfill, live update streaming, and cursor state.
+- `src/telegram_fast_feed/media.rs`: media classification, avatar/preview
+  downloads, and asynchronous media follow-up events.
+- `src/telegram_fast_feed/tests.rs`: auth cleanup, reconnect, shutdown, redaction,
+  channel identity, and cursor-generation regressions.
 - `src/feed_update/telegram.rs`: update routing, refreshes, channel edits, post
   merging, notifications, and avatar/media request state.
 - `src/feed_update/telegram/fast.rs`: fast-mode auth requests/results,
@@ -282,7 +286,8 @@ Core implementation:
   has a local status-helper test.
 - `src/feed_views/telegram.rs`: pane controls, channel chips, post cards,
   shared avatar rendering, and responsive layout. Views borrow feed records and
-  text while action messages and image widgets retain their required ownership.
+  text, including fixed sign-in options and labels, while action messages and
+  image widgets retain their required ownership.
 - `src/feed_views/telegram/styles.rs`: widget styles and padding/color helpers.
 - `src/feed_views/telegram/tests.rs`: impact labels/filtering, tooltip behavior,
   and view construction across sign-in/feed, media, and private-channel states.

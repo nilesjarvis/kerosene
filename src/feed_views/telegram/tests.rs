@@ -201,16 +201,21 @@ fn telegram_screens_build_across_states_and_widths() {
 
     // Connect + both widths of the phone step, including the advanced section.
     let _ = terminal.view_telegram_connect(colors);
-    let _ = terminal.view_telegram_sign_in_phone(colors, 440.0);
+    for country_code in ["+1", "+44", "+999"] {
+        terminal.telegram_feed.fast_country_code = country_code.to_string();
+        let _ = terminal.view_telegram_sign_in_phone(colors, 440.0);
+    }
     terminal.telegram_feed.fast_advanced_expanded = true;
     let _ = terminal.view_telegram_sign_in_phone(colors, 300.0);
 
     // Code step with a partial code, a running resend timer, and the 2FA branch.
-    terminal.telegram_feed.fast_code_input = "123".into();
     terminal.telegram_feed.fast_code_sent_at_ms = Some(now.saturating_sub(18_000));
     terminal.telegram_feed.fast_auth_stage =
         crate::telegram_feed::TelegramFastAuthStage::PasswordRequired;
-    let _ = terminal.view_telegram_sign_in_code(colors, now);
+    for code in ["", "1", "123", "12345", "123456", "é12"] {
+        terminal.telegram_feed.fast_code_input = code.into();
+        let _ = terminal.view_telegram_sign_in_code(colors, now);
+    }
 
     // Enough channels to make the chip list collapsible; render both states.
     terminal.telegram_feed.channels = vec![

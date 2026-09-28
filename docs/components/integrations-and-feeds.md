@@ -320,6 +320,17 @@ actions retain owned messages, image widgets retain cloned handles, and impact
 chips move their prepared ticker/symbol strings and sparkline buffers into the
 widgets after computing tooltip text. Styles and padding/color helpers live in
 `feed_views/telegram/styles.rs`; canvas geometry and layout values are unchanged.
+Sign-in views borrow the fixed dialing-code list, selected code, and informational
+text. The country-change message owns its selected string, and code cells iterate
+over characters without collecting a temporary vector.
+
+Fast-feed media classification, bounded downloads, and follow-up events live in
+`telegram_fast_feed/media.rs`. The root retains authentication, session lifecycle,
+channel resolution/backfill, and cursor generations; its tests live in
+`telegram_fast_feed/tests.rs`. Media helpers preserve their existing byte limits,
+thumbnail selection, timeout, semaphore admission, and failure events. Live
+delivery still records its cursor before scheduling a media follow-up, while
+backfill schedules its media jobs before recording the cursor.
 
 ## X Feed
 

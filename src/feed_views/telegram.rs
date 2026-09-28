@@ -289,14 +289,10 @@ impl TradingTerminal {
         .spacing(7)
         .width(Fill);
 
-        let country_options: Vec<String> = TELEGRAM_COUNTRY_CODES
-            .iter()
-            .map(|c| c.to_string())
-            .collect();
         let country = pick_list(
-            country_options,
-            Some(self.telegram_feed.fast_country_code.clone()),
-            Message::TelegramFastCountryCodeChanged,
+            TELEGRAM_COUNTRY_CODES,
+            Some(self.telegram_feed.fast_country_code.as_str()),
+            |code| Message::TelegramFastCountryCodeChanged(code.to_string()),
         )
         .text_size(13)
         .padding([10, 12])
@@ -514,12 +510,13 @@ impl TradingTerminal {
     /// invisible input on the bottom layer captures focus and keystrokes.
     fn view_telegram_code_cells(&self, colors: TelegramColors) -> Element<'_, Message> {
         let code = self.telegram_feed.fast_code_input.as_str();
-        let digits: Vec<char> = code.chars().collect();
+        let mut digits = code.chars();
+        let digit_count = digits.clone().count();
 
         let mut cells = row![].spacing(9).width(Fill);
         for index in 0..5usize {
-            let entered = digits.get(index).copied();
-            let is_active = digits.len() < 5 && index == digits.len();
+            let entered = digits.next();
+            let is_active = digit_count < 5 && index == digit_count;
             let inner: Element<'_, Message> = match entered {
                 Some(ch) => text(ch.to_string())
                     .size(22)
@@ -1203,12 +1200,12 @@ fn telegram_bundled_badge(colors: TelegramColors) -> Element<'static, Message> {
     .into()
 }
 
-fn telegram_info_card(
-    eyebrow: &str,
-    body: &str,
+fn telegram_info_card<'a>(
+    eyebrow: &'a str,
+    body: &'a str,
     accent: bool,
     colors: TelegramColors,
-) -> Element<'static, Message> {
+) -> Element<'a, Message> {
     let eyebrow_color = if accent {
         colors.orange_soft
     } else {
@@ -1216,11 +1213,11 @@ fn telegram_info_card(
     };
     container(
         column![
-            text(eyebrow.to_string())
+            text(eyebrow)
                 .size(10)
                 .font(crate::app_fonts::monospace_font())
                 .color(eyebrow_color),
-            text(body.to_string())
+            text(body)
                 .size(11)
                 .color(if accent { colors.muted } else { colors.dim }),
         ]
@@ -1233,48 +1230,43 @@ fn telegram_info_card(
     .into()
 }
 
-fn telegram_note_card(body: &str, colors: TelegramColors) -> Element<'static, Message> {
-    container(
-        text(body.to_string())
-            .size(11)
-            .color(colors.dim)
-            .width(Fill),
-    )
-    .width(Fill)
-    .padding([11, 12])
-    .style(move |_t: &Theme| container_style::Style {
-        background: Some(
-            Color {
-                a: 0.012,
-                ..colors.text
-            }
-            .into(),
-        ),
-        border: Border {
-            radius: 6.0.into(),
-            width: 1.0,
-            color: colors.border,
-        },
-        ..Default::default()
-    })
-    .into()
+fn telegram_note_card(body: &str, colors: TelegramColors) -> Element<'_, Message> {
+    container(text(body).size(11).color(colors.dim).width(Fill))
+        .width(Fill)
+        .padding([11, 12])
+        .style(move |_t: &Theme| container_style::Style {
+            background: Some(
+                Color {
+                    a: 0.012,
+                    ..colors.text
+                }
+                .into(),
+            ),
+            border: Border {
+                radius: 6.0.into(),
+                width: 1.0,
+                color: colors.border,
+            },
+            ..Default::default()
+        })
+        .into()
 }
 
 // ----------------------------------------------------------------------------
 // Status chip + channel chips
 // ----------------------------------------------------------------------------
 
-fn telegram_status_chip(
-    label: &str,
+fn telegram_status_chip<'a>(
+    label: &'a str,
     dot_color: Color,
     text_color: Color,
     border_color: Color,
     action: Option<(Message, &'static str)>,
-) -> Element<'static, Message> {
+) -> Element<'a, Message> {
     let content = row![
         container(Space::new().width(6.0).height(6.0))
             .style(move |_t: &Theme| telegram_dot_style(dot_color)),
-        text(label.to_string())
+        text(label)
             .size(10)
             .font(crate::app_fonts::monospace_font())
             .color(text_color),
