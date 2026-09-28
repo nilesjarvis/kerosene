@@ -145,15 +145,15 @@ fn market_usd_intent(
     }
 }
 
-fn move_modify_intent(symbol_key: &str) -> ModifyIntent {
+fn move_modify_intent(symbol_key: &str) -> ModifyIntent<'_> {
     ModifyIntent {
         surface: OrderSurface::Move,
-        symbol_key: symbol_key.to_string(),
+        symbol_key,
         oid: 42,
         is_buy: true,
         new_price: 101.0,
-        original_price: "100".to_string(),
-        size: "0.25".to_string(),
+        original_price: "100",
+        size: "0.25",
         invalid_size_message: "Move failed: open order has invalid size",
         reduce_only: Some(false),
         reduce_only_missing_message: concat!(

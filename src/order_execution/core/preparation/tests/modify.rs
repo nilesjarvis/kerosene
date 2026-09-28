@@ -79,14 +79,14 @@ fn prepare_move_modify_order_validates_size_price_and_reduce_only_metadata() {
         .insert("BTC".to_string(), TradingTerminal::now_ms());
 
     let mut invalid_size = move_modify_intent("BTC");
-    invalid_size.size = "0".to_string();
+    invalid_size.size = "0";
     assert_eq!(
         terminal.prepare_modify_order(invalid_size).unwrap_err(),
         "Move failed: open order has invalid size"
     );
 
     let mut invalid_price = move_modify_intent("BTC");
-    invalid_price.original_price = "0".to_string();
+    invalid_price.original_price = "0";
     assert_eq!(
         terminal.prepare_modify_order(invalid_price).unwrap_err(),
         "Move failed: open order has invalid price"
@@ -132,9 +132,9 @@ fn prepare_move_modify_order_keeps_outcome_contract_validation() {
         .all_mids_updated_at_ms
         .insert("#650".to_string(), TradingTerminal::now_ms());
     let mut intent = move_modify_intent("#650");
-    intent.original_price = "0.42".to_string();
+    intent.original_price = "0.42";
     intent.new_price = 0.43;
-    intent.size = "0.25".to_string();
+    intent.size = "0.25";
     intent.reduce_only = None;
 
     let error = terminal.prepare_modify_order(intent).unwrap_err();

@@ -12,6 +12,7 @@ use crate::order_execution::{
     ModifyIntent, OrderSurface, PreparedModifyOrderResult, modify_order_task,
     open_order_side_is_buy,
 };
+use crate::order_pending_indicators::PendingOrderIndicatorInput;
 
 use iced::Task;
 
@@ -111,18 +112,16 @@ impl TradingTerminal {
             .open_orders
             .iter()
             .find(|order| order.oid == oid && order.coin == move_key.coin())
-            .cloned()
         else {
             self.order_status = Some(("Order no longer exists".into(), true));
             return Task::none();
         };
 
-        let coin = order.coin.clone();
-        if let Err(message) = move_order_wire_is_supported(&order) {
+        if let Err(message) = move_order_wire_is_supported(order) {
             self.order_status = Some((message.into(), true));
             return Task::none();
         }
-        if self.symbol_key_is_hidden(&coin) {
+        if self.symbol_key_is_hidden(&order.coin) {
             self.order_status = Some(("Order ticker is hidden in Settings > Risk".into(), true));
             return Task::none();
         }
@@ -133,12 +132,12 @@ impl TradingTerminal {
 
         let prepared = match self.prepare_modify_order(ModifyIntent {
             surface: OrderSurface::Move,
-            symbol_key: coin.clone(),
+            symbol_key: &order.coin,
             oid,
             is_buy,
             new_price,
-            original_price: order.limit_px.clone(),
-            size: order.sz.clone(),
+            original_price: &order.limit_px,
+            size: &order.sz,
             invalid_size_message: "Move failed: open order has invalid size",
             reduce_only: order.reduce_only,
             reduce_only_missing_message: concat!(
@@ -157,7 +156,12 @@ impl TradingTerminal {
             }
         };
 
-        let display_coin = self.display_name_for_symbol(&coin);
+        let display_coin = self.display_name_for_symbol(&order.coin);
+        let pending_indicator = PendingOrderIndicatorInput::for_modification(
+            account_address.clone(),
+            order,
+            prepared.price.clone(),
+        );
         self.order_status = Some((
             format!("Moving {} order to ${}...", display_coin, prepared.price),
             false,
@@ -173,11 +177,8 @@ impl TradingTerminal {
                 return Task::none();
             }
         };
-        let pending_indicator_id = self.add_pending_order_modification_indicator(
-            account_address.clone(),
-            &order,
-            prepared.price.clone(),
-        );
+        let pending_indicator_id =
+            pending_indicator.and_then(|input| self.add_pending_order_indicator(input));
         self.pending_move_order_contexts
             .insert(move_key.clone(), context);
         self.sync_all_chart_orders();

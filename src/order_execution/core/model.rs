@@ -80,21 +80,21 @@ impl fmt::Debug for CancelIntent {
 }
 
 #[derive(Clone, PartialEq)]
-pub(crate) struct ModifyIntent {
+pub(crate) struct ModifyIntent<'a> {
     pub(crate) surface: OrderSurface,
-    pub(crate) symbol_key: String,
+    pub(crate) symbol_key: &'a str,
     pub(crate) oid: u64,
     pub(crate) is_buy: bool,
     pub(crate) new_price: f64,
-    pub(crate) original_price: String,
-    pub(crate) size: String,
+    pub(crate) original_price: &'a str,
+    pub(crate) size: &'a str,
     pub(crate) invalid_size_message: &'static str,
     pub(crate) reduce_only: Option<bool>,
     pub(crate) reduce_only_missing_message: &'static str,
     pub(crate) invalid_price_message: &'static str,
 }
 
-impl fmt::Debug for ModifyIntent {
+impl fmt::Debug for ModifyIntent<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ModifyIntent")
             .field("surface", &self.surface)

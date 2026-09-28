@@ -1,7 +1,9 @@
 use crate::account::{OpenOrder, UserFill};
 use crate::app_state::TradingTerminal;
 use crate::helpers::{parse_positive_finite_number, values_match_approx};
-use crate::order_execution::{PreparedExchangeOrder, order_account_addresses_match};
+use crate::order_execution::{
+    PreparedExchangeOrder, open_order_side_is_buy, order_account_addresses_match,
+};
 
 use std::fmt;
 
@@ -46,7 +48,7 @@ impl fmt::Debug for PendingOrderIndicator {
     }
 }
 
-struct PendingOrderIndicatorInput {
+pub(crate) struct PendingOrderIndicatorInput {
     account_address: String,
     symbol: String,
     oid: Option<u64>,
@@ -54,6 +56,27 @@ struct PendingOrderIndicatorInput {
     size: String,
     price: String,
     kind: PendingOrderIndicatorKind,
+}
+
+impl PendingOrderIndicatorInput {
+    /// Keep the account order's raw identity and size independently of the
+    /// canonical symbol and normalized size used by the exchange request.
+    pub(crate) fn for_modification(
+        account_address: String,
+        order: &OpenOrder,
+        new_price: String,
+    ) -> Option<Self> {
+        let is_buy = open_order_side_is_buy(&order.side)?;
+        Some(Self {
+            account_address,
+            symbol: order.coin.clone(),
+            oid: Some(order.oid),
+            is_buy,
+            size: order.sz.clone(),
+            price: new_price,
+            kind: PendingOrderIndicatorKind::Modifying,
+        })
+    }
 }
 
 /// In-flight decoration for an Orders-tab row, derived from the pending
@@ -136,7 +159,10 @@ impl TradingTerminal {
         })
     }
 
-    fn add_pending_order_indicator(&mut self, input: PendingOrderIndicatorInput) -> Option<u64> {
+    pub(crate) fn add_pending_order_indicator(
+        &mut self,
+        input: PendingOrderIndicatorInput,
+    ) -> Option<u64> {
         match input.kind {
             // Placements render provisional rows/lines from these values, so
             // both must be well-formed.
@@ -180,7 +206,7 @@ impl TradingTerminal {
         account_address: String,
         order: &OpenOrder,
     ) -> Option<u64> {
-        let is_buy = open_order_is_buy(&order.side)?;
+        let is_buy = open_order_side_is_buy(&order.side)?;
         self.add_pending_order_indicator(PendingOrderIndicatorInput {
             account_address,
             symbol: order.coin.clone(),
@@ -192,22 +218,18 @@ impl TradingTerminal {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn add_pending_order_modification_indicator(
         &mut self,
         account_address: String,
         order: &OpenOrder,
         new_price: String,
     ) -> Option<u64> {
-        let is_buy = open_order_is_buy(&order.side)?;
-        self.add_pending_order_indicator(PendingOrderIndicatorInput {
+        self.add_pending_order_indicator(PendingOrderIndicatorInput::for_modification(
             account_address,
-            symbol: order.coin.clone(),
-            oid: Some(order.oid),
-            is_buy,
-            size: order.sz.clone(),
-            price: new_price,
-            kind: PendingOrderIndicatorKind::Modifying,
-        })
+            order,
+            new_price,
+        )?)
     }
 
     // ---- Optimistic table projections (Settings > Risk, default off) ----
@@ -546,7 +568,7 @@ fn placing_indicator_matches_confirmed_order(
     };
     open_orders.iter().any(|order| {
         order.coin == indicator.symbol
-            && open_order_is_buy(&order.side) == Some(indicator.is_buy)
+            && open_order_side_is_buy(&order.side) == Some(indicator.is_buy)
             && order
                 .limit_px
                 .parse::<f64>()
@@ -564,14 +586,6 @@ fn placing_indicator_matches_confirmed_order(
 /// consumption until the REST ack clears the indicator.
 fn fill_time_covers_indicator(fill_time_ms: u64, created_at_ms: u64) -> bool {
     fill_time_ms.saturating_add(2_000) >= created_at_ms
-}
-
-fn open_order_is_buy(side: &str) -> Option<bool> {
-    match side {
-        "B" => Some(true),
-        "A" => Some(false),
-        _ => None,
-    }
 }
 
 fn indicator_is_fresh(created_at_ms: u64, now_ms: u64) -> bool {

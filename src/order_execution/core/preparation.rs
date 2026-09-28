@@ -88,12 +88,12 @@ impl TradingTerminal {
 
     pub(crate) fn prepare_modify_order(
         &self,
-        intent: ModifyIntent,
+        intent: ModifyIntent<'_>,
     ) -> Result<PreparedModifyOrderResult, String> {
-        let Some(sym) = self.exchange_symbol_for_key(&intent.symbol_key) else {
+        let Some(sym) = self.exchange_symbol_for_key(intent.symbol_key) else {
             return Err(intent
                 .surface
-                .symbol_not_found_status_text(&intent.symbol_key));
+                .symbol_not_found_status_text(intent.symbol_key));
         };
         self.validate_exchange_symbol_orderable(sym, intent.surface.orderability_context_label())?;
         self.validate_spot_quantity_denomination(&sym.key, false)?;

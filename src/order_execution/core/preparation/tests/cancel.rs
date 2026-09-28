@@ -114,12 +114,12 @@ fn non_usd_quoted_spot_can_be_cancelled_but_not_modified() {
     let modify_error = terminal
         .prepare_modify_order(ModifyIntent {
             surface: OrderSurface::Move,
-            symbol_key: "@55".to_string(),
+            symbol_key: "@55",
             oid: 42,
             is_buy: true,
             new_price: 0.051,
-            original_price: "0.05".to_string(),
-            size: "1".to_string(),
+            original_price: "0.05",
+            size: "1",
             invalid_size_message: "Invalid size",
             reduce_only: None,
             reduce_only_missing_message: "Missing reduce-only",

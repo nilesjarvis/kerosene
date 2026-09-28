@@ -31,19 +31,19 @@ state implementations live beside their responsibilities:
   invalidation, reconciliation guards, and committed signing-key capture.
 - `order_execution/pending.rs`: pending action, NUKE, and leverage models;
   shared trading-request guards and the HUD concurrency limit.
-- `order_execution/identities.rs`: captured spot metadata for Chase/TWAP and
-  open-order identity checks for Chase.
+- `order_execution/identities.rs`: captured spot metadata for Chase/TWAP,
+  open-order identity checks for Chase, and shared open-order side decoding.
 - `order_execution/exchange_errors.rs`: shared closed-order cancellation error
   matching for ordinary orders, Chase, and TWAP, plus retryable error matching for
   Chase and TWAP; callers retain their own reconciliation policies and precedence.
 - `order_execution/quick_order/model.rs`: quick-order form, recovery, and
   percentage provenance, including redacted formatting.
 - `order_execution/quick_order/move_order/context.rs`: captured move-order
-  identity, replacement-key validation, and pending-move cleanup.
+  identity, task-key validation, and pending-move cleanup.
 
 Account snapshot matching ignores case and surrounding whitespace. Move-order
-replacement preserves its stricter policy: the trimmed current account must
-exactly match the captured account. Standard pending-request guards and HUD
+task-key validation preserves its stricter policy: the trimmed current account
+must exactly match the captured account. Standard pending-request guards and HUD
 placement guards remain separate because HUD limit placements can overlap their
 own tracking, indicators, and status checks while other requests still block.
 
@@ -294,16 +294,20 @@ CancelOrder { coin, oid }
   -> confirmed local removal or account refresh/status feedback
 ```
 
-Move-order flow captures the original trading identity:
+Move-order admission borrows the account order through validation. `ModifyIntent`
+borrows its symbol, original price, and size; preparation produces owned wire
+values and returns early when the rounded price is unchanged. The pending
+indicator retains the original symbol and size text, including legacy spot
+aliases, while the exchange request uses the resolved symbol and normalized size.
 
-- `PendingMoveOrderContext` stores account address and agent key when the move
-  starts.
-- The original order is canceled.
-- Replacement placement uses the captured key only if the active account still
-  matches.
+`PendingMoveOrderContext` captures the account address and agent key. After key
+validation, admission records the indicator and context, synchronizes chart
+orders, invalidates spot balances where applicable, and dispatches a signed
+modify request. Indicator timestamps and IDs are assigned at insertion.
 
-This prevents an account switch from silently placing the replacement order on a
-different account after canceling the original order.
+Results must match the pending context and current account. A confirmed modify
+patches the local price and adopts any returned order ID. An ambiguous result or
+transport failure starts order-status verification and refreshes account data.
 
 ## Close Position
 
@@ -397,8 +401,8 @@ Resting-order adoption borrows the open order and symbol metadata through
 validation. Once admitted, it captures only the existing spot identity fields
 and moves the requested symbol into Chase state. Gate order, account refresh,
 rounding, fill cutoffs, and immediate task behavior are unchanged. Adoption,
-order movement, and Chase identity checks share the strict `A`/`B` side parser
-in `order_execution/identities.rs`.
+order movement, Chase identity checks, and pending indicators share the strict
+`A`/`B` side parser in `order_execution/identities.rs`.
 
 Live and historical fill aggregation check borrowed known IDs plus the current
 OID. Live totals retain coin, side, and adoption-cutoff filtering; history keeps
@@ -555,7 +559,7 @@ Do not assume all market symbols are main-dex perpetuals.
 - Agent keys are secret-bearing and zeroized.
 - Signing happens only in `signing/`.
 - Config snapshots intentionally blank agent/API key fields.
-- Pending move-order replacement cannot switch accounts.
+- Move-order dispatch and result handling remain bound to the captured account.
 - Stale account data should block close/NUKE and high-risk automation.
 - Hidden-symbol and market-universe filters must be honored by automation.
 - Do not log exchange payloads that contain signatures or key material.
