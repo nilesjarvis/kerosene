@@ -162,6 +162,12 @@ Key properties:
 - Stale read timeouts force reconnects to recover from half-open sockets.
 - `SubscriptionGuard` unsubscribes topics when a stream is dropped.
 
+`ws/telemetry.rs` keeps independent API-probe state for Hyperliquid and
+Hydromancer, using shared attempt/success/failure updates. Starting another
+attempt or recording a failure retains the previous successful measurement;
+separate success and in-flight flags determine how the status bar presents it.
+The public telemetry snapshot retains its provider-specific fields.
+
 Both providers share the snapshot pacing implementation in `ws/coalescer.rs`.
 Provider adapters retain their own channel, coin, and echoed precision rules,
 including Hydromancer batch splitting. The first snapshot emits immediately;

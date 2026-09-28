@@ -40,16 +40,36 @@ struct WsTelemetry {
     ws_ping_start_ms: AtomicU64,
     ws_latency_ms: AtomicU64,
     ws_latency_last_success_ms: AtomicU64,
-    api_latency_ms: AtomicU64,
-    api_last_attempt_ms: AtomicU64,
-    api_last_success_ms: AtomicU64,
-    api_last_attempt_succeeded: AtomicBool,
-    api_probe_in_flight: AtomicBool,
-    hydromancer_api_latency_ms: AtomicU64,
-    hydromancer_api_last_attempt_ms: AtomicU64,
-    hydromancer_api_last_success_ms: AtomicU64,
-    hydromancer_api_last_attempt_succeeded: AtomicBool,
-    hydromancer_api_probe_in_flight: AtomicBool,
+    api: ApiProbeTelemetry,
+    hydromancer_api: ApiProbeTelemetry,
+}
+
+#[derive(Debug, Default)]
+struct ApiProbeTelemetry {
+    latency_ms: AtomicU64,
+    last_attempt_ms: AtomicU64,
+    last_success_ms: AtomicU64,
+    last_attempt_succeeded: AtomicBool,
+    probe_in_flight: AtomicBool,
+}
+
+impl ApiProbeTelemetry {
+    fn mark_attempt(&self, now_ms: u64) {
+        self.last_attempt_ms.store(now_ms, Ordering::Relaxed);
+        self.probe_in_flight.store(true, Ordering::Relaxed);
+    }
+
+    fn record_success(&self, latency: u64, now_ms: u64) {
+        self.latency_ms.store(latency, Ordering::Relaxed);
+        self.last_success_ms.store(now_ms, Ordering::Relaxed);
+        self.last_attempt_succeeded.store(true, Ordering::Relaxed);
+        self.probe_in_flight.store(false, Ordering::Relaxed);
+    }
+
+    fn record_failure(&self) {
+        self.last_attempt_succeeded.store(false, Ordering::Relaxed);
+        self.probe_in_flight.store(false, Ordering::Relaxed);
+    }
 }
 
 static WS_TELEMETRY: OnceLock<WsTelemetry> = OnceLock::new();
@@ -159,72 +179,32 @@ pub(super) fn telemetry_update_ws_latency_from_ping_start() {
 
 #[cfg(not(test))]
 pub(super) fn telemetry_mark_api_attempt() {
-    ws_telemetry()
-        .api_last_attempt_ms
-        .store(now_ms(), Ordering::Relaxed);
-    ws_telemetry()
-        .api_probe_in_flight
-        .store(true, Ordering::Relaxed);
+    ws_telemetry().api.mark_attempt(now_ms());
 }
 
 pub(super) fn telemetry_update_api_latency(latency: u64) {
     let now_ms = now_ms();
-    ws_telemetry()
-        .api_latency_ms
-        .store(latency, Ordering::Relaxed);
-    ws_telemetry()
-        .api_last_success_ms
-        .store(now_ms, Ordering::Relaxed);
-    ws_telemetry()
-        .api_last_attempt_succeeded
-        .store(true, Ordering::Relaxed);
-    ws_telemetry()
-        .api_probe_in_flight
-        .store(false, Ordering::Relaxed);
+    ws_telemetry().api.record_success(latency, now_ms);
 }
 
 #[cfg(not(test))]
 pub(super) fn telemetry_record_api_failure() {
-    ws_telemetry()
-        .api_last_attempt_succeeded
-        .store(false, Ordering::Relaxed);
-    ws_telemetry()
-        .api_probe_in_flight
-        .store(false, Ordering::Relaxed);
+    ws_telemetry().api.record_failure();
 }
 
 pub(super) fn telemetry_mark_hydromancer_api_attempt() {
-    ws_telemetry()
-        .hydromancer_api_last_attempt_ms
-        .store(now_ms(), Ordering::Relaxed);
-    ws_telemetry()
-        .hydromancer_api_probe_in_flight
-        .store(true, Ordering::Relaxed);
+    ws_telemetry().hydromancer_api.mark_attempt(now_ms());
 }
 
 pub(super) fn telemetry_update_hydromancer_api_latency(latency: u64) {
     let now_ms = now_ms();
     ws_telemetry()
-        .hydromancer_api_latency_ms
-        .store(latency, Ordering::Relaxed);
-    ws_telemetry()
-        .hydromancer_api_last_success_ms
-        .store(now_ms, Ordering::Relaxed);
-    ws_telemetry()
-        .hydromancer_api_last_attempt_succeeded
-        .store(true, Ordering::Relaxed);
-    ws_telemetry()
-        .hydromancer_api_probe_in_flight
-        .store(false, Ordering::Relaxed);
+        .hydromancer_api
+        .record_success(latency, now_ms);
 }
 
 pub(super) fn telemetry_record_hydromancer_api_failure() {
-    ws_telemetry()
-        .hydromancer_api_last_attempt_succeeded
-        .store(false, Ordering::Relaxed);
-    ws_telemetry()
-        .hydromancer_api_probe_in_flight
-        .store(false, Ordering::Relaxed);
+    ws_telemetry().hydromancer_api.record_failure();
 }
 
 pub fn telemetry_snapshot() -> WsTelemetrySnapshot {
@@ -242,24 +222,79 @@ pub fn telemetry_snapshot() -> WsTelemetrySnapshot {
         hydromancer_last_rx_ms,
         ws_latency_ms: t.ws_latency_ms.load(Ordering::Relaxed),
         ws_latency_last_success_ms: t.ws_latency_last_success_ms.load(Ordering::Relaxed),
-        api_latency_ms: t.api_latency_ms.load(Ordering::Relaxed),
-        api_last_attempt_ms: t.api_last_attempt_ms.load(Ordering::Relaxed),
-        api_last_success_ms: t.api_last_success_ms.load(Ordering::Relaxed),
-        api_last_attempt_succeeded: t.api_last_attempt_succeeded.load(Ordering::Relaxed),
-        api_probe_in_flight: t.api_probe_in_flight.load(Ordering::Relaxed),
-        hydromancer_api_latency_ms: t.hydromancer_api_latency_ms.load(Ordering::Relaxed),
-        hydromancer_api_last_attempt_ms: t.hydromancer_api_last_attempt_ms.load(Ordering::Relaxed),
-        hydromancer_api_last_success_ms: t.hydromancer_api_last_success_ms.load(Ordering::Relaxed),
+        api_latency_ms: t.api.latency_ms.load(Ordering::Relaxed),
+        api_last_attempt_ms: t.api.last_attempt_ms.load(Ordering::Relaxed),
+        api_last_success_ms: t.api.last_success_ms.load(Ordering::Relaxed),
+        api_last_attempt_succeeded: t.api.last_attempt_succeeded.load(Ordering::Relaxed),
+        api_probe_in_flight: t.api.probe_in_flight.load(Ordering::Relaxed),
+        hydromancer_api_latency_ms: t.hydromancer_api.latency_ms.load(Ordering::Relaxed),
+        hydromancer_api_last_attempt_ms: t.hydromancer_api.last_attempt_ms.load(Ordering::Relaxed),
+        hydromancer_api_last_success_ms: t.hydromancer_api.last_success_ms.load(Ordering::Relaxed),
         hydromancer_api_last_attempt_succeeded: t
-            .hydromancer_api_last_attempt_succeeded
+            .hydromancer_api
+            .last_attempt_succeeded
             .load(Ordering::Relaxed),
-        hydromancer_api_probe_in_flight: t.hydromancer_api_probe_in_flight.load(Ordering::Relaxed),
+        hydromancer_api_probe_in_flight: t.hydromancer_api.probe_in_flight.load(Ordering::Relaxed),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn api_probe_attempt_and_failure_preserve_previous_measurements() {
+        let probe = ApiProbeTelemetry::default();
+        probe.record_success(42, 1_000);
+        probe.mark_attempt(2_000);
+
+        assert_eq!(probe.latency_ms.load(Ordering::Relaxed), 42);
+        assert_eq!(probe.last_attempt_ms.load(Ordering::Relaxed), 2_000);
+        assert_eq!(probe.last_success_ms.load(Ordering::Relaxed), 1_000);
+        assert!(probe.last_attempt_succeeded.load(Ordering::Relaxed));
+        assert!(probe.probe_in_flight.load(Ordering::Relaxed));
+
+        probe.record_failure();
+
+        assert_eq!(probe.latency_ms.load(Ordering::Relaxed), 42);
+        assert_eq!(probe.last_attempt_ms.load(Ordering::Relaxed), 2_000);
+        assert_eq!(probe.last_success_ms.load(Ordering::Relaxed), 1_000);
+        assert!(!probe.last_attempt_succeeded.load(Ordering::Relaxed));
+        assert!(!probe.probe_in_flight.load(Ordering::Relaxed));
+
+        probe.mark_attempt(3_000);
+        assert!(!probe.last_attempt_succeeded.load(Ordering::Relaxed));
+        assert!(probe.probe_in_flight.load(Ordering::Relaxed));
+        probe.record_success(17, 3_020);
+
+        assert_eq!(probe.latency_ms.load(Ordering::Relaxed), 17);
+        assert_eq!(probe.last_attempt_ms.load(Ordering::Relaxed), 3_000);
+        assert_eq!(probe.last_success_ms.load(Ordering::Relaxed), 3_020);
+        assert!(probe.last_attempt_succeeded.load(Ordering::Relaxed));
+        assert!(!probe.probe_in_flight.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn api_probe_providers_keep_independent_history() {
+        let telemetry = WsTelemetry::default();
+        telemetry.api.mark_attempt(1_000);
+        telemetry.api.record_success(23, 1_023);
+        telemetry.hydromancer_api.mark_attempt(2_000);
+        telemetry.hydromancer_api.record_failure();
+
+        assert_eq!(telemetry.api.latency_ms.load(Ordering::Relaxed), 23);
+        assert_eq!(telemetry.api.last_attempt_ms.load(Ordering::Relaxed), 1_000);
+        assert_eq!(telemetry.api.last_success_ms.load(Ordering::Relaxed), 1_023);
+        assert!(telemetry.api.last_attempt_succeeded.load(Ordering::Relaxed));
+        assert!(!telemetry.api.probe_in_flight.load(Ordering::Relaxed));
+
+        let hydromancer = &telemetry.hydromancer_api;
+        assert_eq!(hydromancer.latency_ms.load(Ordering::Relaxed), 0);
+        assert_eq!(hydromancer.last_attempt_ms.load(Ordering::Relaxed), 2_000);
+        assert_eq!(hydromancer.last_success_ms.load(Ordering::Relaxed), 0);
+        assert!(!hydromancer.last_attempt_succeeded.load(Ordering::Relaxed));
+        assert!(!hydromancer.probe_in_flight.load(Ordering::Relaxed));
+    }
 
     #[test]
     fn disconnect_counter_does_not_underflow() {
