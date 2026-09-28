@@ -327,6 +327,15 @@ Wallet tracker features:
 - open-order counts
 - HIP-3 and spot fallback handling
 
+`wallet_state/tracker/selection.rs` gives queued requests FIFO precedence over
+automatic refreshes. Automatic core selection ranks borrowed addresses by age
+and copies only the selected batch; order selection copies only the chosen
+address. Timestamp ties retain tracked-list order. Core and order loading/retry
+checks remain independent, and automatic order refresh requires a core snapshot.
+Refresh-all rebuilds the core queue directly from tracked addresses, copying only
+eligible, nonduplicate entries and reusing queue capacity.
+Tracker tests cover these policies and request-context setup before tasks run.
+
 Portfolio-margin headline equity and available balance are spot-state values,
 not the values reported by an individual perpetual clearinghouse. Tracker
 refreshes therefore inspect spot state even when the perp response is positive,

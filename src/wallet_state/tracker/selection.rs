@@ -55,13 +55,13 @@ impl TradingTerminal {
                 continue;
             }
 
-            selected.push((last_updated, address.clone()));
+            selected.push((last_updated, address));
         }
         selected.sort_by_key(|(last_updated, _)| *last_updated);
         selected
             .into_iter()
             .take(max_count)
-            .map(|(_, address)| address)
+            .map(|(_, address)| address.clone())
             .collect()
     }
 
@@ -89,7 +89,7 @@ impl TradingTerminal {
             return Some(address);
         }
 
-        let mut selected: Option<(u64, String)> = None;
+        let mut selected: Option<(u64, &String)> = None;
         for address in &self.wallet_tracker.tracked_addresses {
             let Some(row) = self.wallet_tracker.rows.get(address) else {
                 continue;
@@ -112,9 +112,9 @@ impl TradingTerminal {
                 .as_ref()
                 .is_none_or(|(selected_at, _)| last_updated < *selected_at)
             {
-                selected = Some((last_updated, address.clone()));
+                selected = Some((last_updated, address));
             }
         }
-        selected.map(|(_, address)| address)
+        selected.map(|(_, address)| address.clone())
     }
 }

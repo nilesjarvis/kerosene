@@ -2,44 +2,37 @@ use crate::app_state::TradingTerminal;
 
 impl TradingTerminal {
     pub(crate) fn queue_wallet_tracker_core_refresh(&mut self, address: String) {
-        if self.wallet_tracker.tracked_addresses.contains(&address)
-            && !self
-                .wallet_tracker
-                .rows
-                .get(&address)
-                .is_some_and(|row| row.loading)
-            && !self
-                .wallet_tracker
-                .core_refresh_queue
-                .iter()
-                .any(|queued| queued == &address)
+        let tracker = &mut self.wallet_tracker;
+        if tracker.tracked_addresses.contains(&address)
+            && !tracker.rows.get(&address).is_some_and(|row| row.loading)
+            && !tracker.core_refresh_queue.contains(&address)
         {
-            self.wallet_tracker.core_refresh_queue.push(address);
+            tracker.core_refresh_queue.push(address);
         }
     }
 
     pub(crate) fn queue_wallet_tracker_core_refresh_all(&mut self) {
-        self.wallet_tracker.core_refresh_queue.clear();
-        let addresses = self.wallet_tracker.tracked_addresses.clone();
-        for address in addresses {
-            self.queue_wallet_tracker_core_refresh(address);
+        let tracker = &mut self.wallet_tracker;
+        tracker.core_refresh_queue.clear();
+        for address in &tracker.tracked_addresses {
+            if !tracker.rows.get(address).is_some_and(|row| row.loading)
+                && !tracker.core_refresh_queue.contains(address)
+            {
+                tracker.core_refresh_queue.push(address.clone());
+            }
         }
     }
 
     pub(crate) fn queue_wallet_tracker_order_refresh(&mut self, address: String) {
-        if self.wallet_tracker.tracked_addresses.contains(&address)
-            && !self
-                .wallet_tracker
+        let tracker = &mut self.wallet_tracker;
+        if tracker.tracked_addresses.contains(&address)
+            && !tracker
                 .rows
                 .get(&address)
                 .is_some_and(|row| row.order_loading)
-            && !self
-                .wallet_tracker
-                .order_refresh_queue
-                .iter()
-                .any(|queued| queued == &address)
+            && !tracker.order_refresh_queue.contains(&address)
         {
-            self.wallet_tracker.order_refresh_queue.push(address);
+            tracker.order_refresh_queue.push(address);
         }
     }
 }
