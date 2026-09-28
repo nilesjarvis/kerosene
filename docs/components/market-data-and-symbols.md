@@ -427,14 +427,23 @@ before replacing instances.
 
 ## Session Data
 
-Session data panes are keyed by `SessionDataId`. They fetch daily candles for a
-selected symbol and lookback window to display session-level behavior.
+Session data panes are keyed by `SessionDataId`. They fetch daily and chunked
+30-minute candles for a selected symbol and lookback window to summarize
+completed UTC days and market-session bands.
 
 Key modules:
 
 - `session_data_state.rs`
 - `market_update/session_data.rs`
 - `market_views/session_data.rs`
+
+`session_data_state.rs` exposes the feature types and statistics. Its child
+modules separate models (`model.rs`), history and refresh state (`instance.rs`),
+candle returns and bucket rates (`returns.rs`), and aggregate statistics/verdicts
+(`statistics.rs`). Daily and intraday summaries share average/win-rate division
+while retaining their own validation, grouping, and accumulation order. Verdict
+labels use the static weekday/session names. Tests for returns and statistics
+live under `session_data_state/tests/`.
 
 Session data instances are persisted in layout/widget configs.
 

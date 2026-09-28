@@ -300,9 +300,7 @@ impl TradingTerminal {
             instance.bars.len(),
         );
         let best_key: Option<(SessionGroup, &str)> = match &verdict {
-            SessionVerdict::Edge { strongest, .. } => {
-                Some((strongest.group, strongest.label.as_str()))
-            }
+            SessionVerdict::Edge { strongest, .. } => Some((strongest.group, strongest.label)),
             SessionVerdict::Insufficient { .. } => None,
         };
 
@@ -417,9 +415,7 @@ fn view_verdict_line(
             let mut line = row![
                 accent,
                 text("Strongest").size(11).color(weak),
-                text(strongest.label.clone())
-                    .size(11)
-                    .color(theme.palette().text),
+                text(strongest.label).size(11).color(theme.palette().text),
                 text(helpers::format_signed_percent_value(
                     strongest.average_return_pct
                 ))
@@ -447,11 +443,7 @@ fn view_verdict_line(
                 line = line
                     .push(Space::new().width(Fill))
                     .push(text("Weakest").size(11).color(weak))
-                    .push(
-                        text(weakest.label.clone())
-                            .size(11)
-                            .color(theme.palette().text),
-                    )
+                    .push(text(weakest.label).size(11).color(theme.palette().text))
                     .push(
                         text(helpers::format_signed_percent_value(
                             weakest.average_return_pct,
