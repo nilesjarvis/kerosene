@@ -143,12 +143,11 @@ async fn fetch_wallet_details_scoped_hydromancer(
     let (clearinghouse, clearinghouses_by_dex, _) = portfolio.clearinghouses_for_scope(&scope)?;
     let spot = portfolio.spot_clearinghouse()?;
     let mut positions = Vec::new();
-    for (dex, clearinghouse) in &clearinghouses_by_dex {
+    for (dex, clearinghouse) in clearinghouses_by_dex {
         positions.extend(
             clearinghouse
                 .asset_positions
-                .iter()
-                .cloned()
+                .into_iter()
                 .map(|asset_position| WalletPositionDetail {
                     dex: dex.clone(),
                     asset_position,
@@ -167,8 +166,7 @@ async fn fetch_wallet_details_scoped_hydromancer(
     };
 
     let open_orders = orders
-        .iter()
-        .cloned()
+        .into_iter()
         .map(|order| WalletOpenOrderDetail {
             dex: order_detail_dex(&order),
             order,
@@ -190,7 +188,7 @@ fn order_detail_dex(order: &OpenOrder) -> String {
     let Some((dex, _)) = order.coin.split_once(':') else {
         return String::new();
     };
-    if HIP3_DEXES.iter().any(|known| known == &dex) {
+    if HIP3_DEXES.contains(&dex) {
         dex.to_string()
     } else {
         String::new()
@@ -276,6 +274,31 @@ mod tests {
             hold: "0".to_string(),
             entry_ntl: entry_ntl.to_string(),
             supplied: None,
+        }
+    }
+
+    #[test]
+    fn wallet_order_dex_uses_only_exact_known_prefixes() {
+        for (coin, expected) in [
+            ("BTC", ""),
+            ("", ""),
+            ("@1", ""),
+            ("+650", ""),
+            ("xyz:MSFT", "xyz"),
+            ("flx:GOLD", "flx"),
+            ("xyz:", "xyz"),
+            ("xyz:one:two", "xyz"),
+            ("XYZ:MSFT", ""),
+            (" xyz:MSFT", ""),
+            ("unknown:BTC", ""),
+            (":BTC", ""),
+        ] {
+            let order: OpenOrder = serde_json::from_value(serde_json::json!({
+                "coin": coin, "side": "B", "limitPx": "10", "sz": "1", "oid": 1, "timestamp": 2
+            }))
+            .expect("valid order fixture");
+            assert_eq!(order_detail_dex(&order), expected);
+            assert_eq!(order.coin, coin);
         }
     }
 

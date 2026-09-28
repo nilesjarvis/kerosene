@@ -153,6 +153,8 @@ JSON by reference into owned models. Getters preserve independent results on
 repeated calls; bootstrap errors can still preview the original redacted JSON.
 Wallet snapshot conversion moves parsed positions into aggregation while keeping
 equity and withdrawable parsing independent of position-schema errors.
+Hydromancer wallet-detail conversion also consumes temporary DEX states and order
+vectors, preserving the independently returned native clearinghouse snapshot.
 
 ## User Data Stream
 
@@ -378,6 +380,10 @@ checks remain independent, and automatic order refresh requires a core snapshot.
 Refresh-all rebuilds the core queue directly from tracked addresses, copying only
 eligible, nonduplicate entries and reusing queue capacity.
 Tracker tests cover these policies and request-context setup before tasks run.
+Adding a wallet and restoring a muted wallet share input clearing, deferred
+persistence, and refresh dispatch. Restored rows retain their data and remote
+label protection; new rows start from defaults. Subscription refresh conditions
+remain specific to each path.
 
 Portfolio-margin headline equity and available balance are spot-state values,
 not the values reported by an individual perpetual clearinghouse. Tracker
