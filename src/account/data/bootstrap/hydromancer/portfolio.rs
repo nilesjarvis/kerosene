@@ -81,11 +81,11 @@ impl HydromancerPortfolioState {
 
         let mut hip3_states = Vec::new();
         for dex in scope.hip3_dexes(HIP3_DEXES) {
-            let Some(raw) = states.get(&dex) else {
+            let Some(raw) = states.get(dex) else {
                 continue;
             };
-            let state = parse_clearinghouse_state(&dex, raw)?;
-            clearinghouses_by_dex.insert(dex, state.clone());
+            let state = parse_clearinghouse_state(dex, raw)?;
+            clearinghouses_by_dex.insert(dex.to_string(), state.clone());
             hip3_states.push(state);
         }
 

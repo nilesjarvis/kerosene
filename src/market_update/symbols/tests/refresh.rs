@@ -331,7 +331,7 @@ fn registry_only_refresh_adds_and_removes_dexes_even_when_symbols_are_unchanged(
         terminal
             .account_data_fetch_scope()
             .hip3_dexes(&[])
-            .contains(&"empty".to_string())
+            .contains(&"empty")
     );
 
     terminal.market_universe = empty.clone();

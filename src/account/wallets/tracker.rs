@@ -232,7 +232,7 @@ pub async fn fetch_wallet_tracker_open_order_count_scoped_with_provider(
         return fetch_wallet_tracker_open_order_count_scoped(address, scope).await;
     }
 
-    match fetch_hydromancer_frontend_open_orders_scoped(address.clone(), scope.clone(), api_key).await
+    match fetch_hydromancer_frontend_open_orders_scoped(&address, &scope, api_key.as_str()).await
     {
         Ok(orders) => Ok(orders.into_iter().filter(order_has_size).count()),
         Err(hydromancer_error) => fetch_wallet_tracker_open_order_count_scoped(address, scope)

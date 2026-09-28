@@ -135,13 +135,9 @@ async fn fetch_wallet_details_scoped_hydromancer(
     scope: AccountDataFetchScope,
     api_key: Zeroizing<String>,
 ) -> Result<WalletDetailsData, String> {
-    let portfolio_fut =
-        fetch_hydromancer_portfolio_state(address.clone(), scope.clone(), api_key.clone());
-    let orders_fut = fetch_hydromancer_frontend_open_orders_scoped(
-        address.clone(),
-        scope.clone(),
-        api_key.clone(),
-    );
+    let portfolio_fut = fetch_hydromancer_portfolio_state(&address, &scope, api_key.as_str());
+    let orders_fut =
+        fetch_hydromancer_frontend_open_orders_scoped(&address, &scope, api_key.as_str());
     let (portfolio, orders_result) = futures::future::join(portfolio_fut, orders_fut).await;
     let portfolio = portfolio?;
     let (clearinghouse, clearinghouses_by_dex, _) = portfolio.clearinghouses_for_scope(&scope)?;

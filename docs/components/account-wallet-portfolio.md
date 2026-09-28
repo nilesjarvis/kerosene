@@ -133,13 +133,17 @@ actionability; marking them degraded preserves the existing actionability flag.
 
 Fetch-scope constructors borrow input, trim whitespace, and fold ASCII case when
 building owned DEX keys. Selecting a blank DEX falls back to the default
-all-markets scope.
+all-markets scope. Reading a scope borrows DEX names in their stored order and
+uses the caller's fallback only for an empty all-markets list.
 
 Hydromancer request orchestration lives in `account/data/bootstrap/hydromancer.rs`.
 Its `portfolio.rs` submodule owns single/batch response parsing, the redacted
 portfolio model, scoped conversion, native/DEX merging, and batch-size policy.
 Batch requests use that shared scope limit and serialize borrowed address slices
 while the public fetch task retains the owned list for result assembly.
+Joined portfolio and order helpers borrow addresses, scopes, and API keys from
+the enclosing task; the task retains its `Zeroizing` key through the requests.
+DEX names become owned strings when stored in returned account or wallet data.
 Owned response parsers move JSON fields, tuple payloads, and address strings into
 their outputs. Primary snake-case fields take precedence over camel-case aliases
 whenever present, including null or malformed values. Tests beside the model

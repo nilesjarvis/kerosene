@@ -44,6 +44,38 @@ fn portfolio_state_all_dexes_parses_and_normalizes_dex_positions() {
 }
 
 #[test]
+fn portfolio_scope_retains_dex_result_order_and_repeated_entries() {
+    let portfolio = parse_portfolio_state(serde_json::json!({
+        "clearinghouseState": {
+            "native": clearinghouse_state_json("BTC"),
+            "xyz": clearinghouse_state_json("MSFT"),
+            "flx": clearinghouse_state_json("GOLD")
+        },
+        "spotClearinghouseState": {"balances": []}
+    }))
+    .expect("portfolio parses");
+    let scope = AccountDataFetchScope::AllMarkets {
+        hip3_dexes: ["xyz", "missing", "flx", "xyz"]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+    };
+    let (native, by_dex, hip3) = portfolio
+        .clearinghouses_for_scope(&scope)
+        .expect("selected DEX states parse");
+    assert_eq!(native.asset_positions[0].position.coin, "BTC");
+    assert_eq!(by_dex.len(), 3);
+    assert_eq!(by_dex["xyz"].asset_positions[0].position.coin, "xyz:MSFT");
+    assert_eq!(by_dex["flx"].asset_positions[0].position.coin, "flx:GOLD");
+    assert_eq!(
+        hip3.iter()
+            .map(|state| state.asset_positions[0].position.coin.as_str())
+            .collect::<Vec<_>>(),
+        ["xyz:MSFT", "flx:GOLD", "xyz:MSFT"]
+    );
+}
+
+#[test]
 fn portfolio_state_direct_clearinghouse_shape_parses_native_state() {
     let raw = serde_json::json!({
         "clearinghouseState": clearinghouse_state_json("ETH"),

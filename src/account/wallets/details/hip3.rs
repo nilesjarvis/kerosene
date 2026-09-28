@@ -7,18 +7,18 @@ use crate::api::proxy::HyperliquidRequestExt;
 
 use serde_json::Value;
 
-type Hip3ResponseResults = Vec<(String, Result<reqwest::Response, String>)>;
+type Hip3ResponseResults<'a> = Vec<(&'a str, Result<reqwest::Response, String>)>;
 
-pub(super) async fn fetch_hip3_wallet_details(
+pub(super) async fn fetch_hip3_wallet_details<'a>(
     client: &reqwest::Client,
     address: String,
-    scope: &AccountDataFetchScope,
-) -> (Hip3ResponseResults, Hip3ResponseResults) {
+    scope: &'a AccountDataFetchScope,
+) -> (Hip3ResponseResults<'a>, Hip3ResponseResults<'a>) {
     let mut hip3_ch_futs = Vec::new();
     let mut hip3_order_futs = Vec::new();
     for dex in scope.hip3_dexes(HIP3_DEXES) {
         hip3_ch_futs.push((
-            dex.clone(),
+            dex,
             client
                 .post(API_URL)
                 .json(&serde_json::json!({
@@ -29,7 +29,7 @@ pub(super) async fn fetch_hip3_wallet_details(
                 .send_info(),
         ));
         hip3_order_futs.push((
-            dex.clone(),
+            dex,
             client
                 .post(API_URL)
                 .json(&serde_json::json!({
@@ -57,7 +57,7 @@ pub(super) async fn fetch_hip3_wallet_details(
 }
 
 pub(super) async fn append_hip3_positions(
-    hip3_ch_results: Hip3ResponseResults,
+    hip3_ch_results: Hip3ResponseResults<'_>,
     positions: &mut Vec<WalletPositionDetail>,
     warnings: &mut Vec<String>,
 ) {
@@ -67,10 +67,10 @@ pub(super) async fn append_hip3_positions(
                 match response.json::<Value>().await {
                     Ok(raw) => match serde_json::from_value::<ClearinghouseState>(raw) {
                         Ok(mut ch) => {
-                            normalize_dex_asset_position_coins(&dex, &mut ch.asset_positions);
+                            normalize_dex_asset_position_coins(dex, &mut ch.asset_positions);
                             positions.extend(ch.asset_positions.into_iter().map(
                                 |asset_position| WalletPositionDetail {
-                                    dex: dex.clone(),
+                                    dex: dex.to_string(),
                                     asset_position,
                                 },
                             ));
@@ -94,7 +94,7 @@ pub(super) async fn append_hip3_positions(
 }
 
 pub(super) async fn append_hip3_open_orders(
-    hip3_order_results: Hip3ResponseResults,
+    hip3_order_results: Hip3ResponseResults<'_>,
     open_orders: &mut Vec<WalletOpenOrderDetail>,
     warnings: &mut Vec<String>,
 ) {
@@ -103,9 +103,9 @@ pub(super) async fn append_hip3_open_orders(
             Ok(response) if response.status().is_success() => {
                 match response.json::<Vec<OpenOrder>>().await {
                     Ok(mut orders) => {
-                        normalize_dex_open_order_coins(&dex, &mut orders);
+                        normalize_dex_open_order_coins(dex, &mut orders);
                         open_orders.extend(orders.into_iter().map(|order| WalletOpenOrderDetail {
-                            dex: dex.clone(),
+                            dex: dex.to_string(),
                             order,
                         }));
                     }

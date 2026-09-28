@@ -75,16 +75,14 @@ async fn fetch_account_data_scoped_hydromancer(
     api_key: Zeroizing<String>,
 ) -> Result<AccountData, String> {
     let request_weight_estimate = scope.estimated_info_weight();
-    let portfolio_fut =
-        fetch_hydromancer_portfolio_state(address.clone(), scope.clone(), api_key.clone());
+    let portfolio_fut = fetch_hydromancer_portfolio_state(&address, &scope, api_key.as_str());
 
     let fetch_main_orders = scope.fetches_main_open_orders();
-    let main_orders_address = address.clone();
     let main_orders_fut = async {
         if fetch_main_orders {
             Some(
                 send_hydromancer_info(
-                    frontend_open_orders_payload(&main_orders_address, None),
+                    frontend_open_orders_payload(&address, None),
                     api_key.as_str(),
                 )
                 .await,
@@ -97,31 +95,22 @@ async fn fetch_account_data_scoped_hydromancer(
     let funding_fut = send_hydromancer_info(
         serde_json::json!({
             "type": "userFunding",
-            "user": address.clone(),
+            "user": address,
             "startTime": funding_history_start_ms()
         }),
         api_key.as_str(),
     );
     let fees_fut = send_hydromancer_info(
-        serde_json::json!({"type": "userFees", "user": address.clone()}),
+        serde_json::json!({"type": "userFees", "user": address}),
         api_key.as_str(),
     );
 
-    let hip3_dexes = scope.hip3_dexes(HIP3_DEXES);
-    let hip3_order_futs = hip3_dexes.iter().map(|dex| {
-        let api_key = api_key.clone();
-        let address = address.clone();
-        let dex = dex.clone();
-        async move {
-            (
-                dex.clone(),
-                send_hydromancer_info(
-                    frontend_open_orders_payload(&address, Some(&dex)),
-                    api_key.as_str(),
-                )
-                .await,
-            )
-        }
+    let hip3_order_futs = scope.hip3_dexes(HIP3_DEXES).into_iter().map(|dex| {
+        let request = send_hydromancer_info(
+            frontend_open_orders_payload(&address, Some(dex)),
+            api_key.as_str(),
+        );
+        async move { (dex, request.await) }
     });
 
     let main_fut = futures::future::join5(
@@ -166,8 +155,8 @@ async fn fetch_account_data_scoped_hydromancer(
     let mut hip3_order_sets = Vec::new();
     let mut hip3_open_orders_fetched = Vec::new();
     for (dex, resp) in hip3_order_results {
-        if let Some(orders) = hip3_open_orders_from_response(&dex, resp, &mut completeness).await {
-            hip3_open_orders_fetched.push(dex);
+        if let Some(orders) = hip3_open_orders_from_response(dex, resp, &mut completeness).await {
+            hip3_open_orders_fetched.push(dex.to_string());
             hip3_order_sets.push(orders);
         }
     }
@@ -199,9 +188,9 @@ async fn fetch_account_data_scoped_hydromancer(
 }
 
 pub(crate) async fn fetch_hydromancer_portfolio_state(
-    address: String,
-    scope: AccountDataFetchScope,
-    api_key: Zeroizing<String>,
+    address: &str,
+    scope: &AccountDataFetchScope,
+    api_key: &str,
 ) -> Result<HydromancerPortfolioState, String> {
     match scope {
         AccountDataFetchScope::AllMarkets { .. } => {
@@ -212,32 +201,31 @@ pub(crate) async fn fetch_hydromancer_portfolio_state(
                     "user": address,
                     "dex": "ALL_DEXES"
                 }),
-                api_key.as_str(),
+                api_key,
             )
             .await?;
             parse_portfolio_state(raw)
         }
         AccountDataFetchScope::Hip3Dex { dex } => {
-            let dex_payload = dex.clone();
             let native_fut = post_hydromancer_value(
                 "portfolioState",
                 serde_json::json!({
                     "type": "portfolioState",
                     "user": address,
                 }),
-                api_key.as_str(),
+                api_key,
             );
             let dex_fut = post_hydromancer_value(
                 "portfolioState",
                 serde_json::json!({
                     "type": "portfolioState",
                     "user": address,
-                    "dex": dex_payload,
+                    "dex": dex,
                 }),
-                api_key.as_str(),
+                api_key,
             );
             let (native_raw, dex_raw) = futures::future::join(native_fut, dex_fut).await;
-            merge_native_and_dex_portfolio_states(native_raw?, dex_raw?, &dex)
+            merge_native_and_dex_portfolio_states(native_raw?, dex_raw?, dex)
         }
     }
 }
@@ -313,31 +301,29 @@ pub(crate) async fn fetch_hydromancer_portfolio_states(
 }
 
 pub(crate) async fn fetch_hydromancer_frontend_open_orders_scoped(
-    address: String,
-    scope: AccountDataFetchScope,
-    api_key: Zeroizing<String>,
+    address: &str,
+    scope: &AccountDataFetchScope,
+    api_key: &str,
 ) -> Result<Vec<OpenOrder>, String> {
     let mut order_futs = Vec::new();
     if scope.fetches_main_open_orders() {
-        let order_address = address.clone();
         order_futs.push((
-            String::new(),
+            "",
             post_hydromancer_vec::<OpenOrder>(
                 "frontendOpenOrders",
-                frontend_open_orders_payload(&order_address, None),
-                api_key.clone(),
+                frontend_open_orders_payload(address, None),
+                api_key,
             ),
         ));
     }
 
     for dex in scope.hip3_dexes(HIP3_DEXES) {
-        let order_address = address.clone();
         order_futs.push((
-            dex.clone(),
+            dex,
             post_hydromancer_vec::<OpenOrder>(
                 "frontendOpenOrders",
-                frontend_open_orders_payload(&order_address, Some(&dex)),
-                api_key.clone(),
+                frontend_open_orders_payload(address, Some(dex)),
+                api_key,
             ),
         ));
     }
@@ -353,7 +339,7 @@ pub(crate) async fn fetch_hydromancer_frontend_open_orders_scoped(
     {
         match result {
             Ok(mut dex_orders) => {
-                normalize_dex_open_order_coins(&dex, &mut dex_orders);
+                normalize_dex_open_order_coins(dex, &mut dex_orders);
                 orders.extend(dex_orders);
             }
             Err(error) => failures.push(if dex.is_empty() {
@@ -378,7 +364,7 @@ pub(crate) async fn fetch_hydromancer_user_fills(
     address: String,
     api_key: Zeroizing<String>,
 ) -> Result<Vec<UserFill>, String> {
-    post_hydromancer_vec("userFills", user_fills_payload(&address), api_key).await
+    post_hydromancer_vec("userFills", user_fills_payload(&address), api_key.as_str()).await
 }
 
 async fn send_hydromancer_info(
@@ -421,12 +407,12 @@ async fn post_hydromancer_value(
 async fn post_hydromancer_vec<T>(
     label: &'static str,
     payload: Value,
-    api_key: Zeroizing<String>,
+    api_key: &str,
 ) -> Result<Vec<T>, String>
 where
     T: for<'de> Deserialize<'de>,
 {
-    let value = post_hydromancer_value(label, payload, api_key.as_str()).await?;
+    let value = post_hydromancer_value(label, payload, api_key).await?;
     serde_json::from_value(value).map_err(|e| format!("{label} parse failed: {e}"))
 }
 
