@@ -384,6 +384,13 @@ candle cache on release so the next frame restores full heatmap detail. Annotati
 previews copy their original snapshot only after coordinate inputs are available;
 selecting a locked annotation leaves its drag snapshots untouched.
 
+Right-click handling shares the quick-order action builder for opening and
+replacing a card. The caller retains click priority and falls through when price
+inputs are unavailable. HUD size editing shares character insertion after its
+digit/decimal checks; filtering, replacement, and length limits remain in that
+order. HUD tests live in `chart/interaction/hud/tests.rs` and its `tests/`
+subdirectory.
+
 ## Liquidations And Heatmap
 
 Chart liquidation data comes from HyperDash update modules:
