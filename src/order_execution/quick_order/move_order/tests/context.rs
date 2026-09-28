@@ -38,6 +38,10 @@ fn pending_move_context_rejects_replacement_after_account_change() {
         context.replacement_agent_key(Some("   ")),
         Err(MoveOrderContextError::AccountChanged)
     );
+    assert_eq!(
+        context.replacement_agent_key(Some("0xABC0000000000000000000000000000000000000")),
+        Err(MoveOrderContextError::AccountChanged)
+    );
 }
 
 #[test]

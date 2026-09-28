@@ -1,9 +1,15 @@
+mod context;
+
+pub(crate) use context::{MoveOrderKey, PendingMoveOrderContext};
+
+#[cfg(test)]
+pub(crate) use context::MoveOrderContextError;
+
 use crate::app_state::TradingTerminal;
 use crate::helpers::parse_positive_finite_number;
 use crate::message::Message;
 use crate::order_execution::{
-    ModifyIntent, MoveOrderKey, OrderSurface, PendingMoveOrderContext, PreparedModifyOrderResult,
-    modify_order_task,
+    ModifyIntent, OrderSurface, PreparedModifyOrderResult, modify_order_task,
 };
 
 use iced::Task;

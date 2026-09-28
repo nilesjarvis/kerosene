@@ -24,6 +24,26 @@ reduce-only semantics, and order-status verification.
 | Market symbol helpers | `src/order_execution/symbols/` | Market lookup, outcome handling, fees, display labels, orderability. |
 | Risk filters | `src/risk_state/` | Hidden-symbol and market-universe checks that affect routing and order eligibility. |
 
+`order_execution.rs` re-exports shared types and helpers. Its account and pending
+state implementations live beside their responsibilities:
+
+- `order_execution/account_context.rs`: account-bound snapshots, spot-balance
+  invalidation, reconciliation guards, and committed signing-key capture.
+- `order_execution/pending.rs`: pending action, NUKE, and leverage models;
+  shared trading-request guards and the HUD concurrency limit.
+- `order_execution/identities.rs`: captured spot metadata for Chase/TWAP and
+  open-order identity checks for Chase.
+- `order_execution/quick_order/model.rs`: quick-order form, recovery, and
+  percentage provenance, including redacted formatting.
+- `order_execution/quick_order/move_order/context.rs`: captured move-order
+  identity, replacement-key validation, and pending-move cleanup.
+
+Account snapshot matching ignores case and surrounding whitespace. Move-order
+replacement preserves its stricter policy: the trimmed current account must
+exactly match the captured account. Standard pending-request guards and HUD
+placement guards remain separate because HUD limit placements can overlap their
+own tracking, indicators, and status checks while other requests still block.
+
 ## Order Surfaces
 
 Orders can originate from several surfaces:
