@@ -669,10 +669,11 @@ impl XFeedState {
         if !self.has_refresh_credentials() {
             return false;
         }
-        match self.access_token_expires_at_ms {
-            Some(expires_at_ms) => expires_at_ms.saturating_sub(now_ms) <= 60_000,
-            None => true,
-        }
+        !self.has_access_token()
+            || match self.access_token_expires_at_ms {
+                Some(expires_at_ms) => expires_at_ms.saturating_sub(now_ms) <= 60_000,
+                None => true,
+            }
     }
 
     pub(crate) fn clear_access_token(&mut self) {

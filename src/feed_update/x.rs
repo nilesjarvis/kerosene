@@ -104,15 +104,10 @@ impl TradingTerminal {
 
     pub(crate) fn request_x_feed_auth_refresh(&mut self) -> Task<Message> {
         let now_ms = Self::now_ms();
-        if self.x_feed.access_token_refresh_due(now_ms)
-            || (!self.x_feed.has_access_token() && self.x_feed.has_refresh_credentials())
-        {
+        if self.x_feed.access_token_refresh_due(now_ms) {
             return self.request_x_access_token_refresh();
         }
-        if !self.x_feed.has_access_token() {
-            return Task::none();
-        }
-        if self.x_feed.connecting {
+        if !self.x_feed.has_access_token() || self.x_feed.connecting {
             return Task::none();
         }
         let token = self.x_feed.access_token_for_task();
@@ -120,10 +115,7 @@ impl TradingTerminal {
     }
 
     fn request_x_access_token_refresh(&mut self) -> Task<Message> {
-        if !self.x_feed.has_refresh_credentials() {
-            return Task::none();
-        }
-        if self.x_feed.token_refreshing {
+        if !self.x_feed.has_refresh_credentials() || self.x_feed.token_refreshing {
             return Task::none();
         }
         let client_id = self.x_feed.oauth_client_id_for_task();
@@ -174,9 +166,7 @@ impl TradingTerminal {
                             self.x_feed.refresh_token_for_task(),
                         )
                     });
-                let refresh_token = refresh.refresh_token.unwrap_or_else(|| {
-                    zeroize::Zeroizing::new(fallback_refresh_token.as_str().to_string())
-                });
+                let refresh_token = refresh.refresh_token.unwrap_or(fallback_refresh_token);
                 let expires_at_ms = refresh
                     .expires_in_secs
                     .map(|secs| Self::now_ms().saturating_add(secs.saturating_mul(1_000)));
@@ -230,15 +220,14 @@ impl TradingTerminal {
                     self.persist_config();
                 }
                 self.x_feed.clear_pending_oauth_credentials();
-                let username = user.username.clone();
+                let username = &user.username;
                 let list_count = outcome.lists.len();
                 let status_suffix = outcome.status_suffix();
+                let status =
+                    format!("Connected @{username}; {list_count} Lists available{status_suffix}");
                 self.x_feed.auth_user = Some(user);
                 self.x_feed.lists = outcome.lists;
-                self.x_feed.status = Some((
-                    format!("Connected @{username}; {list_count} Lists available{status_suffix}"),
-                    false,
-                ));
+                self.x_feed.status = Some((status, false));
                 self.request_x_feed_open_refresh(true)
             }
             Err(err) => {
@@ -251,9 +240,7 @@ impl TradingTerminal {
 
     fn request_x_feed_lists_refresh(&mut self) -> Task<Message> {
         let now_ms = Self::now_ms();
-        if self.x_feed.access_token_refresh_due(now_ms)
-            || (!self.x_feed.has_access_token() && self.x_feed.has_refresh_credentials())
-        {
+        if self.x_feed.access_token_refresh_due(now_ms) {
             return self.request_x_access_token_refresh();
         }
         let Some(user_id) = self.x_feed.auth_user.as_ref().map(|user| user.id.clone()) else {
@@ -306,16 +293,13 @@ impl TradingTerminal {
             .collect::<Vec<_>>();
         let tasks = open_ids
             .into_iter()
-            .map(|id| self.request_x_feed_refresh(id, visible))
-            .collect::<Vec<_>>();
+            .map(|id| self.request_x_feed_refresh(id, visible));
         Task::batch(tasks)
     }
 
     pub(crate) fn request_x_feed_refresh(&mut self, id: XFeedId, visible: bool) -> Task<Message> {
         let now_ms = Self::now_ms();
-        if self.x_feed.access_token_refresh_due(now_ms)
-            || (!self.x_feed.has_access_token() && self.x_feed.has_refresh_credentials())
-        {
+        if self.x_feed.access_token_refresh_due(now_ms) {
             return self.request_x_access_token_refresh();
         }
         if !self.x_feed.has_access_token() {
@@ -325,16 +309,10 @@ impl TradingTerminal {
             return Task::none();
         }
         let Some(user_id) = self.x_feed.auth_user.as_ref().map(|user| user.id.clone()) else {
-            if self.x_feed.has_access_token() {
-                if visible && let Some(instance) = self.x_feed.instances.get_mut(&id) {
-                    instance.last_error = None;
-                }
-                return self.request_x_feed_auth_refresh();
-            }
             if visible && let Some(instance) = self.x_feed.instances.get_mut(&id) {
-                instance.last_error = Some("Connect X before refreshing".to_string());
+                instance.last_error = None;
             }
-            return Task::none();
+            return self.request_x_feed_auth_refresh();
         };
         let Some(instance) = self.x_feed.instances.get(&id) else {
             return Task::none();

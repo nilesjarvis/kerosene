@@ -299,6 +299,11 @@ while retaining its unconditional request invalidation. Candidate validation
 borrows the input until it is accepted; task and persistence snapshots own
 zeroizing buffers independently of runtime state.
 
+Auth, list, and timeline requests use the same token-refresh decision. Complete
+refresh credentials are required; a missing access token, unknown expiry, or
+expiry within 60 seconds triggers refresh. Pending refreshes are suppressed,
+and token results are persisted before runtime credentials are committed.
+
 Author profiles update in place through one map-entry path. Posts without an
 image URL still refresh author metadata while preserving cached or pending
 images. A changed URL invalidates the old image request; unchanged URLs retain

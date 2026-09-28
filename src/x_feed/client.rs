@@ -21,7 +21,7 @@ const X_PROFILE_IMAGE_MAX_BODY_BYTES: usize = 512 * 1024;
 pub(crate) async fn fetch_x_auth_context(
     access_token: Zeroizing<String>,
 ) -> Result<(XAuthenticatedUser, XListsFetchOutcome), String> {
-    let user = fetch_x_me(access_token.clone()).await?;
+    let user = fetch_x_me(&access_token).await?;
     let lists = fetch_x_lists(access_token, user.id.clone()).await?;
     Ok((user, lists))
 }
@@ -186,7 +186,7 @@ fn is_supported_x_profile_image(bytes: &[u8]) -> bool {
         || bytes.starts_with(b"BM")
 }
 
-async fn fetch_x_me(access_token: Zeroizing<String>) -> Result<XAuthenticatedUser, String> {
+async fn fetch_x_me(access_token: &Zeroizing<String>) -> Result<XAuthenticatedUser, String> {
     let response = CLIENT
         .get(format!("{X_API_BASE}/users/me"))
         .bearer_auth(access_token.as_str())

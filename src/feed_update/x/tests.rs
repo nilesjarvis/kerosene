@@ -1,6 +1,313 @@
 use super::*;
-use crate::config::KeroseneConfig;
-use crate::x_feed::XFeedPost;
+use crate::config::{CredentialStorageMode, KeroseneConfig, decrypt_secrets};
+use crate::x_feed::{XFeedPost, XFeedState, XListOwnerKind, XListSummary};
+
+fn test_user() -> XAuthenticatedUser {
+    XAuthenticatedUser {
+        id: "42".to_string(),
+        username: "alice".to_string(),
+        name: "Alice".to_string(),
+    }
+}
+
+fn terminal_with_x_credentials(access: &str, client: &str, refresh: &str) -> TradingTerminal {
+    let (mut terminal, _) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+    terminal.x_feed = XFeedState::new(&[], access, client, refresh);
+    terminal.secret_storage_mode = CredentialStorageMode::EncryptedConfig;
+    terminal
+}
+
+#[test]
+fn refresh_entrypoints_share_token_admission_and_suppress_pending_refreshes() {
+    let refreshers: [fn(&mut TradingTerminal) -> Task<Message>; 3] = [
+        TradingTerminal::request_x_feed_auth_refresh,
+        TradingTerminal::request_x_feed_lists_refresh,
+        |terminal| terminal.request_x_feed_refresh(17, true),
+    ];
+    for request_refresh in refreshers {
+        for (access, client, refresh, expires_at, should_refresh) in [
+            ("access", "client", "refresh", None, true),
+            ("access", "client", "refresh", Some(0), true),
+            ("access", "client", "refresh", Some(u64::MAX), false),
+            ("", "client", "refresh", Some(u64::MAX), true),
+            ("access", "", "refresh", None, false),
+            ("access", "client", "", None, false),
+            ("", "client", "", None, false),
+            ("", "", "refresh", None, false),
+        ] {
+            let mut terminal = terminal_with_x_credentials(access, client, refresh);
+            terminal
+                .x_feed
+                .set_oauth_credentials_from_secret(access, client, refresh, expires_at);
+            terminal.x_feed.auth_user = Some(test_user());
+            terminal
+                .x_feed
+                .instances
+                .insert(17, XFeedInstance::new(17, XFeedSource::Following));
+
+            let task = request_refresh(&mut terminal);
+
+            assert_eq!(terminal.x_feed.token_refreshing, should_refresh);
+            assert_eq!(
+                terminal.x_feed.token_refresh_request_id,
+                u64::from(should_refresh)
+            );
+            assert_eq!(
+                task.units(),
+                usize::from(should_refresh || !access.is_empty())
+            );
+            if should_refresh {
+                assert_eq!(request_refresh(&mut terminal).units(), 0);
+                assert_eq!(terminal.x_feed.token_refresh_request_id, 1);
+                assert!(!terminal.x_feed.connecting);
+                assert!(!terminal.x_feed.lists_loading);
+                assert!(
+                    !terminal
+                        .x_feed
+                        .source_refresh_in_flight(&XFeedSource::Following)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn feed_auth_fallback_clears_only_visible_errors_and_preserves_pending_connect() {
+    for visible in [false, true] {
+        for connecting in [false, true] {
+            let mut terminal = terminal_with_x_credentials("access", "", "");
+            terminal.x_feed.connecting = connecting;
+            let mut instance = XFeedInstance::new(17, XFeedSource::Following);
+            instance.last_error = Some("prior error".to_string());
+            terminal.x_feed.instances.insert(17, instance);
+
+            let task = terminal.request_x_feed_refresh(17, visible);
+
+            assert_eq!(task.units(), usize::from(!connecting));
+            assert!(terminal.x_feed.connecting);
+            assert_eq!(terminal.x_feed.connect_request_id, u64::from(!connecting));
+            assert_eq!(
+                terminal.x_feed.instances[&17].last_error.as_deref(),
+                if visible { None } else { Some("prior error") }
+            );
+        }
+    }
+}
+
+#[test]
+fn open_refresh_batches_each_source_once_across_canvas_instances() {
+    let mut terminal = terminal_with_x_credentials("access", "", "");
+    terminal.x_feed.auth_user = Some(test_user());
+    let list = XFeedSource::List {
+        id: "10".to_string(),
+        name: "Markets".to_string(),
+        private: false,
+    };
+    for (pane_id, id, source) in [
+        (7, 17, XFeedSource::Following),
+        (8, 18, XFeedSource::Following),
+        (9, 19, list.clone()),
+    ] {
+        terminal
+            .x_feed
+            .instances
+            .insert(id, XFeedInstance::new(id, source));
+        terminal.insert_test_canvas_pane(pane_id, PaneKind::XFeed(id));
+    }
+
+    assert_eq!(terminal.request_x_feed_open_refresh(true).units(), 2);
+    assert!(
+        terminal
+            .x_feed
+            .source_refresh_in_flight(&XFeedSource::Following)
+    );
+    assert!(terminal.x_feed.source_refresh_in_flight(&list));
+    assert_eq!(terminal.x_feed.refresh_request_id, 2);
+    assert_eq!(terminal.request_x_feed_open_refresh(false).units(), 0);
+    assert_eq!(terminal.x_feed.refresh_request_id, 2);
+}
+
+#[test]
+fn refreshed_tokens_persist_rotated_or_fallback_credentials_before_authentication() {
+    for pending in [false, true] {
+        for rotated in [false, true] {
+            let mut terminal =
+                terminal_with_x_credentials("saved-access", "saved-client", "saved-refresh");
+            terminal.encrypted_secret_password = "test-password".into();
+            if pending {
+                terminal.x_feed.oauth_client_id_input = "pending-client".into();
+                terminal.x_feed.refresh_token_input = "pending-refresh".into();
+                assert!(
+                    terminal
+                        .x_feed
+                        .refresh_credentials_candidate_from_input()
+                        .is_some()
+                );
+            }
+            let request_id = terminal.x_feed.next_token_refresh_request_id();
+            terminal.x_feed.token_refreshing = true;
+            let result = XOAuthTokenRefresh {
+                access_token: zeroize::Zeroizing::new("new-access".to_string()),
+                refresh_token: rotated
+                    .then(|| zeroize::Zeroizing::new("rotated-refresh".to_string())),
+                expires_in_secs: Some(3_600),
+            };
+
+            assert_eq!(
+                terminal
+                    .handle_x_access_token_refreshed(request_id, Ok(result))
+                    .units(),
+                1
+            );
+
+            let expected_client = if pending {
+                "pending-client"
+            } else {
+                "saved-client"
+            };
+            let expected_refresh = if rotated {
+                "rotated-refresh"
+            } else if pending {
+                "pending-refresh"
+            } else {
+                "saved-refresh"
+            };
+            let (access, client, refresh) = terminal.x_feed.oauth_credentials_for_secret();
+            assert_eq!(access.as_str(), "new-access");
+            assert_eq!(client.as_str(), expected_client);
+            assert_eq!(refresh.as_str(), expected_refresh);
+            let persisted = decrypt_secrets(
+                terminal
+                    .encrypted_secrets
+                    .as_ref()
+                    .expect("persisted encrypted credentials"),
+                "test-password",
+            )
+            .expect("test credentials decrypt");
+            assert_eq!(persisted.global_x_access_token(), "new-access");
+            assert_eq!(persisted.global_x_oauth_client_id(), expected_client);
+            assert_eq!(persisted.global_x_refresh_token(), expected_refresh);
+            assert!(
+                terminal
+                    .x_feed
+                    .pending_oauth_credentials_for_secret()
+                    .is_none()
+            );
+            assert!(!terminal.x_feed.token_refreshing);
+            assert!(terminal.x_feed.connecting);
+        }
+    }
+}
+
+#[test]
+fn stale_refresh_results_and_failed_saves_preserve_saved_credentials() {
+    let mut terminal = terminal_with_x_credentials("saved-access", "saved-client", "saved-refresh");
+    terminal.x_feed.oauth_client_id_input = "pending-client".into();
+    terminal.x_feed.refresh_token_input = "pending-refresh".into();
+    assert!(
+        terminal
+            .x_feed
+            .refresh_credentials_candidate_from_input()
+            .is_some()
+    );
+    let request_id = terminal.x_feed.next_token_refresh_request_id();
+    terminal.x_feed.token_refreshing = true;
+    let result = XOAuthTokenRefresh {
+        access_token: zeroize::Zeroizing::new("new-access".to_string()),
+        refresh_token: None,
+        expires_in_secs: None,
+    };
+    assert_eq!(
+        terminal
+            .handle_x_access_token_refreshed(request_id - 1, Ok(result.clone()))
+            .units(),
+        0
+    );
+    assert_eq!(
+        terminal
+            .handle_x_access_token_refreshed(request_id - 1, Err("stale error".to_string()))
+            .units(),
+        0
+    );
+    assert!(terminal.x_feed.token_refreshing);
+    assert!(
+        terminal
+            .x_feed
+            .pending_oauth_credentials_for_secret()
+            .is_some()
+    );
+    assert!(terminal.x_feed.status.is_none());
+
+    // No encryption password: the current result cannot be committed.
+    assert_eq!(
+        terminal
+            .handle_x_access_token_refreshed(request_id, Ok(result))
+            .units(),
+        0
+    );
+    let (access, client, refresh) = terminal.x_feed.oauth_credentials_for_secret();
+    assert_eq!(access.as_str(), "saved-access");
+    assert_eq!(client.as_str(), "saved-client");
+    assert_eq!(refresh.as_str(), "saved-refresh");
+    assert!(
+        terminal
+            .x_feed
+            .pending_oauth_credentials_for_secret()
+            .is_none()
+    );
+    assert!(!terminal.x_feed.token_refreshing);
+    assert!(!terminal.x_feed.connecting);
+    assert!(terminal.encrypted_secrets.is_none());
+    assert_eq!(terminal.x_feed.status, terminal.secret_store_status);
+    assert!(
+        terminal
+            .x_feed
+            .status
+            .as_ref()
+            .is_some_and(|(_, error)| *error)
+    );
+}
+
+#[test]
+fn authentication_result_retains_user_lists_and_partial_source_status() {
+    let mut terminal = terminal_with_x_credentials("access", "", "");
+    let user = test_user();
+    let lists = vec![XListSummary {
+        id: "10".to_string(),
+        name: "Markets".to_string(),
+        private: false,
+        owner: XListOwnerKind::Owned,
+    }];
+    let request_id = terminal.x_feed.next_connect_request_id();
+    terminal.x_feed.connecting = true;
+
+    assert_eq!(
+        terminal
+            .handle_x_feed_auth_loaded(
+                request_id,
+                Ok((
+                    user.clone(),
+                    XListsFetchOutcome {
+                        lists: lists.clone(),
+                        unavailable_sources: vec![XListOwnerKind::Followed]
+                    }
+                ))
+            )
+            .units(),
+        0
+    );
+
+    assert_eq!(terminal.x_feed.auth_user, Some(user));
+    assert_eq!(terminal.x_feed.lists, lists);
+    assert!(!terminal.x_feed.connecting);
+    assert_eq!(
+        terminal.x_feed.status,
+        Some((
+            "Connected @alice; 1 Lists available; followed List source unavailable".to_string(),
+            false
+        ))
+    );
+}
 
 fn test_post(author_id: &str, image_url: Option<&str>) -> XFeedPost {
     XFeedPost {
