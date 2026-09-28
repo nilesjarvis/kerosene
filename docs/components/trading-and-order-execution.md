@@ -231,7 +231,7 @@ print payloads containing keys, or serialize keys into plaintext config.
 ## Result Handling And Verification
 
 Exchange acknowledgements can be confirmed, rejected, or ambiguous. Result
-handlers in `order_update/results.rs` and advanced-order modules decide whether
+handlers in `order_update/results/` and advanced-order modules decide whether
 to:
 
 - show confirmed success
@@ -239,6 +239,24 @@ to:
 - refresh account data
 - query `orderStatus` by CLOID or OID
 - mark a pending indicator uncertain until a later update
+
+`order_update/results.rs` exposes the shared result types and classifier. Its
+implementations are split by responsibility:
+
+- `classification.rs`: execution outcomes, error redaction, and refresh policy.
+- `pending.rs`: captured placement/cancel/move status requests and refresh cleanup.
+- `one_shot.rs`: serialized placement completion and client-order ID reconciliation.
+- `cancel.rs`: cancellation completion, order-ID verification, and local removal.
+- `nuke.rs`: child-result reconciliation and aggregate completion.
+
+Ticket, close-position, and Quick Trade results share serialized completion.
+Quick-order recovery and concurrent HUD tracking retain their own cleanup
+before applying the common placement outcome. Unknown cancellation results and
+possibly completed cancellations share status verification while preserving
+their distinct messages. Task callbacks own the captured placement context.
+
+Close-menu toggling and workspace transient cleanup live in
+`order_update/transient_ui.rs`, with tests for docked and detached windows.
 
 Pending order indicators are keyed and shown in UI/account surfaces so users
 can see in-flight actions. The app should not assume an order succeeded merely

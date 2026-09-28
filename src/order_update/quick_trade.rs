@@ -6,7 +6,6 @@ use crate::order_execution::{
     PriceSource, QuantityDenomination, QuantitySource, QuickTradeOrderRequest, ReduceOnlySource,
     place_order_task,
 };
-use crate::order_update::results::classify_execution_result;
 use crate::signing::{ExchangeOrderKind, ExchangeResponse};
 
 use iced::Task;
@@ -116,10 +115,7 @@ impl TradingTerminal {
         context: OneShotPlacementContext,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
-        self.pending_order_action = None;
-        self.clear_pending_order_indicator(pending_indicator_id);
-        let outcome = classify_execution_result(result);
-        self.apply_one_shot_placement_outcome(context, outcome)
+        self.handle_order_result(pending_indicator_id, context, result)
     }
 
     fn reject_quick_trade(&mut self, message: impl Into<String>) -> Task<Message> {
