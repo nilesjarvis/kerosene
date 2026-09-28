@@ -25,7 +25,7 @@ pub(crate) use core::{
     cancel_order_by_cloid_task, cancel_order_task, modify_order_task, place_order_task,
     validate_surface_market_type,
 };
-pub(crate) use exchange_errors::cancel_error_indicates_closed_order;
+pub(crate) use exchange_errors::{cancel_error_indicates_closed_order, retryable_exchange_error};
 pub(crate) use hud::{
     HudOrderRequest, HudOrderSide, HudOrderType, HudPlacementTracker, MAX_INFLIGHT_HUD_PLACEMENTS,
 };

@@ -101,6 +101,74 @@ fn retryable_slice_error_pauses_active_twap_for_retry() {
 }
 
 #[test]
+fn twap_exchange_error_classification_preserves_priority_and_matching() {
+    for phrase in [
+        "rate limit",
+        "ratelimit",
+        "too many requests",
+        "429",
+        "temporarily",
+        "unavailable",
+        "overloaded",
+        "try again",
+    ] {
+        for summary in [
+            phrase.to_string(),
+            phrase.to_ascii_uppercase(),
+            format!("prefix{phrase}suffix"),
+            format!("Invalid signature; insufficient margin; {phrase}"),
+        ] {
+            assert_eq!(
+                classify_twap_exchange_error(&summary),
+                TwapExchangeErrorAction::Retry(TwapPauseReason::RateLimited),
+                "{summary}"
+            );
+        }
+    }
+    for phrase in [
+        "signature",
+        "agent",
+        "unauthorized",
+        "not approved",
+        "minimum",
+        "min trade",
+        "notional",
+        "tick",
+        "insufficient",
+        "margin",
+        "balance",
+        "reduce only",
+        "reduce-only",
+        "open interest",
+        "oracle",
+        "delist",
+        "max position",
+    ] {
+        assert_eq!(
+            classify_twap_exchange_error(&phrase.to_ascii_uppercase()),
+            TwapExchangeErrorAction::Terminal,
+            "{phrase}"
+        );
+    }
+    for summary in [
+        "",
+        "timeout",
+        "order could not immediately match",
+        "rate  limit",
+        "too many\nrequests",
+        "try-again",
+        "temporarİly",
+        "overloaⅾed",
+    ] {
+        assert_eq!(
+            classify_twap_exchange_error(summary),
+            TwapExchangeErrorAction::ConsumeSlice,
+            "{summary}"
+        );
+    }
+}
+
+#[test]
 fn stopped_in_flight_twap_does_not_retry_after_retryable_slice_error() {
     let now = Instant::now();
     let mut terminal = TradingTerminal::boot().0;

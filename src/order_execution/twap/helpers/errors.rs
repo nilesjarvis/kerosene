@@ -1,3 +1,4 @@
+use crate::order_execution::exchange_errors::retryable_exchange_error_lowercase;
 use crate::twap_state::TwapPauseReason;
 
 // ---------------------------------------------------------------------------
@@ -15,15 +16,7 @@ pub(in crate::order_execution::twap) fn classify_twap_exchange_error(
     summary: &str,
 ) -> TwapExchangeErrorAction {
     let summary = summary.to_ascii_lowercase();
-    if summary.contains("rate limit")
-        || summary.contains("ratelimit")
-        || summary.contains("too many requests")
-        || summary.contains("429")
-        || summary.contains("temporarily")
-        || summary.contains("unavailable")
-        || summary.contains("overloaded")
-        || summary.contains("try again")
-    {
+    if retryable_exchange_error_lowercase(&summary) {
         return TwapExchangeErrorAction::Retry(TwapPauseReason::RateLimited);
     }
 

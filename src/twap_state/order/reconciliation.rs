@@ -64,15 +64,10 @@ impl TwapOrder {
                     child.status = TwapChildStatus::Filled;
                 }
             }
-        }
-
-        if confirm_no_fill_absence {
-            for child in &mut self.child_orders {
-                if child.status == TwapChildStatus::AwaitingNoFillConfirmation
-                    && child.oid.is_some()
-                {
-                    child.status = TwapChildStatus::NoFill;
-                }
+            if confirm_no_fill_absence
+                && child.status == TwapChildStatus::AwaitingNoFillConfirmation
+            {
+                child.status = TwapChildStatus::NoFill;
             }
         }
 

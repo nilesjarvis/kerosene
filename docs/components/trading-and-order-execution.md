@@ -34,8 +34,8 @@ state implementations live beside their responsibilities:
 - `order_execution/identities.rs`: captured spot metadata for Chase/TWAP and
   open-order identity checks for Chase.
 - `order_execution/exchange_errors.rs`: shared closed-order cancellation error
-  matching for ordinary orders, Chase, and TWAP; callers retain their own
-  reconciliation policies.
+  matching for ordinary orders, Chase, and TWAP, plus retryable error matching for
+  Chase and TWAP; callers retain their own reconciliation policies and precedence.
 - `order_execution/quick_order/model.rs`: quick-order form, recovery, and
   percentage provenance, including redacted formatting.
 - `order_execution/quick_order/move_order/context.rs`: captured move-order
@@ -399,6 +399,10 @@ ID is available. OID status-request setup and failed status responses share
 `ChaseLifecycle::verifying_order_status`, which preserves stop and missing-order
 intent while selecting the next verification state.
 
+Chase modify errors check closed-order text before retryable text. TWAP checks
+retryable text before its terminal-error classification. Both use the same retry
+predicate; TWAP reuses its normalized summary for further classification.
+
 ## TWAP Orders
 
 TWAP orders are client-side scheduled IOC slices. They are modeled in
@@ -462,6 +466,9 @@ and absent returned order IDs preserve each child's existing ID. Unknown statuse
 and transport failures share retry accounting while retaining distinct pause
 reasons and messages; missing-status exhaustion keeps its separate recovery rules.
 Requested stops and confirmed absence of fills share completion eligibility checks.
+Fill reconciliation confirms no-fill children in the same pass that applies late
+fills. Only children with an exchange order ID can be confirmed absent, and a
+matching fill takes precedence over no-fill confirmation.
 
 ## Advanced Order History
 

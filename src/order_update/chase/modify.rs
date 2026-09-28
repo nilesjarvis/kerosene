@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
-use crate::order_execution::cancel_error_indicates_closed_order;
+use crate::order_execution::{cancel_error_indicates_closed_order, retryable_exchange_error};
 use crate::signing::{
     CHASE_RETRY_COOLDOWN, ChaseLifecycle, ChaseQueuedAction, ChaseVerificationReason,
     ExchangeResponse, MIN_CHASE_REPRICE_INTERVAL,
@@ -13,18 +13,6 @@ use std::time::Instant;
 
 #[cfg(test)]
 mod tests;
-
-fn chase_retryable_exchange_error(summary: &str) -> bool {
-    let summary = summary.to_ascii_lowercase();
-    summary.contains("rate limit")
-        || summary.contains("ratelimit")
-        || summary.contains("too many requests")
-        || summary.contains("429")
-        || summary.contains("temporarily")
-        || summary.contains("unavailable")
-        || summary.contains("overloaded")
-        || summary.contains("try again")
-}
 
 fn cooldown_marker(now: Instant, gate: std::time::Duration) -> Instant {
     now + CHASE_RETRY_COOLDOWN.saturating_sub(gate)
@@ -116,7 +104,7 @@ impl TradingTerminal {
         let now = Instant::now();
         let mut apply_global_cooldown = false;
         let stop_status = if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
-            if chase_retryable_exchange_error(&summary) {
+            if retryable_exchange_error(&summary) {
                 let was_stopping = chase.lifecycle.is_stopping();
                 chase.last_reprice_at = Some(cooldown_marker(now, MIN_CHASE_REPRICE_INTERVAL));
                 if was_stopping {

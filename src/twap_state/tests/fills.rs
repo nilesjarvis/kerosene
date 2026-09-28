@@ -2,8 +2,115 @@ use super::{
     TwapChildOrder, TwapChildStatus, TwapStatus, exchange_response_from_value, test_twap_order,
     twap_response_fill_summary, user_fill, user_fill_for,
 };
+use crate::twap_state::TwapPauseReason;
 
 use std::time::Instant;
+
+#[test]
+fn twap_no_fill_confirmation_preserves_late_fills_and_unresolved_children() {
+    for confirm_no_fill in [false, true] {
+        let now = Instant::now();
+        let mut twap = test_twap_order(now, 2.0, false, 2);
+        twap.status = TwapStatus::Paused;
+        twap.pause_reason = Some(TwapPauseReason::StatusUnknown);
+        twap.paused_until = Some(now);
+        twap.status_check_retries = 3;
+        for (index, (oid, status, filled_size)) in [
+            (Some(42), TwapChildStatus::AwaitingNoFillConfirmation, 0.0),
+            (Some(43), TwapChildStatus::AwaitingNoFillConfirmation, 0.0),
+            (None, TwapChildStatus::AwaitingNoFillConfirmation, 0.0),
+            (Some(44), TwapChildStatus::Rejected, 0.0),
+            (Some(45), TwapChildStatus::AwaitingReconciliation, 0.0),
+            (Some(46), TwapChildStatus::StatusUnknown, 0.0),
+            (Some(47), TwapChildStatus::AwaitingNoFillConfirmation, 0.0),
+            (Some(48), TwapChildStatus::AwaitingNoFillConfirmation, 0.0),
+            (Some(49), TwapChildStatus::NoFill, 0.0),
+            (None, TwapChildStatus::Filled, 0.5),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            twap.child_orders.push(TwapChildOrder {
+                index: index as u32 + 1,
+                requested_at: now,
+                planned_size: 0.5,
+                limit_price: 100.0,
+                oid,
+                cloid: Some(format!("child-{index}")),
+                status,
+                exchange_summary: "retained summary".to_string(),
+                filled_size,
+                avg_price: None,
+                fee: 0.0,
+                retry_count: 2,
+            });
+        }
+        let fills = [
+            user_fill(43, "0.25", "100"),
+            user_fill(44, "0.25", "100"),
+            user_fill(46, "invalid", "100"),
+            user_fill_for("ETH", "B", 47, "1.0", "100"),
+            user_fill_for("BTC", "A", 47, "1.0", "100"),
+            user_fill(48, "0.5", "NaN"),
+            user_fill(49, "0.25", "100"),
+        ];
+        if confirm_no_fill {
+            twap.reconcile_fills_confirming_no_fill(&fills);
+        } else {
+            twap.reconcile_fills(&fills);
+        }
+
+        let no_fill_status = if confirm_no_fill {
+            TwapChildStatus::NoFill
+        } else {
+            TwapChildStatus::AwaitingNoFillConfirmation
+        };
+        for (index, expected_status) in [
+            no_fill_status,
+            TwapChildStatus::Filled,
+            TwapChildStatus::AwaitingNoFillConfirmation,
+            TwapChildStatus::Rejected,
+            TwapChildStatus::AwaitingReconciliation,
+            TwapChildStatus::StatusUnknown,
+            no_fill_status,
+            no_fill_status,
+            TwapChildStatus::Filled,
+            TwapChildStatus::Filled,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let child = &twap.child_orders[index];
+            assert_eq!(
+                child.status, expected_status,
+                "child {index}, confirm: {confirm_no_fill}"
+            );
+            let matched = matches!(index, 1 | 3 | 8);
+            assert_eq!(
+                child.filled_size,
+                if matched {
+                    0.25
+                } else if index == 9 {
+                    0.5
+                } else {
+                    0.0
+                }
+            );
+            assert_eq!(child.avg_price, matched.then_some(100.0));
+            assert_eq!(child.fee, if matched { 0.01 } else { 0.0 });
+            assert_eq!(child.exchange_summary, "retained summary");
+            assert_eq!(child.requested_at, now);
+            assert_eq!(child.retry_count, 2);
+        }
+        assert_eq!(twap.filled_size, 1.25);
+        assert_eq!(twap.remaining_size, 0.75);
+        assert_eq!(twap.status, TwapStatus::Paused);
+        assert_eq!(twap.pause_reason, Some(TwapPauseReason::StatusUnknown));
+        assert_eq!(twap.paused_until, Some(now));
+        assert_eq!(twap.status_check_retries, 3);
+        assert_eq!(twap.events.len(), 1);
+    }
+}
 
 #[test]
 fn twap_fill_summary_converts_base_token_fees_to_usd() {
