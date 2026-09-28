@@ -2,6 +2,9 @@ use super::super::{CandlestickChart, ChartStatus};
 use crate::api::{Candle, is_valid_candle, normalize_candles};
 use crate::chart::model::SecondarySeries;
 
+#[cfg(test)]
+mod tests;
+
 // ---------------------------------------------------------------------------
 // Candle Data Lifecycle
 // ---------------------------------------------------------------------------
@@ -55,21 +58,7 @@ impl CandlestickChart {
         if !is_valid_candle(&candle) {
             return CandlePushResult::RejectedInvalid;
         }
-        let result = if let Some(last) = self.candles.last_mut() {
-            if last.open_time == candle.open_time {
-                *last = candle;
-                CandlePushResult::Updated
-            } else if candle.open_time < last.open_time {
-                CandlePushResult::RejectedOutOfOrder
-            } else {
-                self.candles.push(candle);
-                trim_to_max_chart_candles(&mut self.candles);
-                CandlePushResult::Appended
-            }
-        } else {
-            self.candles.push(candle);
-            CandlePushResult::Appended
-        };
+        let result = push_valid_candle_into_series(&mut self.candles, candle);
         if result.applied() {
             self.candle_cache.clear();
         }
@@ -125,21 +114,7 @@ impl CandlestickChart {
         let Some(series) = self.secondary_series.as_mut() else {
             return CandlePushResult::RejectedInvalid;
         };
-        let result = if let Some(last) = series.candles.last_mut() {
-            if last.open_time == candle.open_time {
-                *last = candle;
-                CandlePushResult::Updated
-            } else if candle.open_time < last.open_time {
-                CandlePushResult::RejectedOutOfOrder
-            } else {
-                series.candles.push(candle);
-                trim_to_max_chart_candles(&mut series.candles);
-                CandlePushResult::Appended
-            }
-        } else {
-            series.candles.push(candle);
-            CandlePushResult::Appended
-        };
+        let result = push_valid_candle_into_series(&mut series.candles, candle);
         if result.applied() {
             self.candle_cache.clear();
         }
@@ -157,6 +132,25 @@ impl CandlestickChart {
         self.weekly_candles.clear();
         self.monthly_candles.clear();
         self.candle_cache.clear();
+    }
+}
+
+/// Update a validated candle at the series tail; only an append trims history.
+fn push_valid_candle_into_series(candles: &mut Vec<Candle>, candle: Candle) -> CandlePushResult {
+    if let Some(last) = candles.last_mut() {
+        if last.open_time == candle.open_time {
+            *last = candle;
+            CandlePushResult::Updated
+        } else if candle.open_time < last.open_time {
+            CandlePushResult::RejectedOutOfOrder
+        } else {
+            candles.push(candle);
+            trim_to_max_chart_candles(candles);
+            CandlePushResult::Appended
+        }
+    } else {
+        candles.push(candle);
+        CandlePushResult::Appended
     }
 }
 

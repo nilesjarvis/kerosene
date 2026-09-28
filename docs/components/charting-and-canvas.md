@@ -167,6 +167,13 @@ update applies to every matching chart instance, triggers price flashes,
 invalidates render caches, and can schedule funding refreshes when macro panels
 need them.
 
+Primary and secondary series share the tail-update routine in
+`chart/data/candles.rs`: a valid candle replaces the same timestamp or appends a
+newer bucket, while an older timestamp is rejected. Appending trims the oldest
+history to the chart limit; replacement leaves history length unchanged. Only
+applied updates clear the render cache, and a missing secondary series rejects
+the update. The callers retain chart status and websocket reconciliation policy.
+
 Backward, skipped, or misaligned buckets on continuous markets are not blindly
 appended; they trigger a network-only reconciliation. Naturally sparse markets
 reconcile once and then use a short backoff to avoid reload churn, while
