@@ -20,7 +20,7 @@ messages.
 | `src/agent_state.rs`, `src/agent_state/` | Central state and runtime reset; separate chat/wire types, session storage/replay, and stream/tool presentation modules. |
 | `src/agent_update.rs`, `src/agent_update/` | Message dispatch and window opening; separate prompt/attachment/snapshot, provider, runtime-event/presentation, session/cleanup, and system-link modules with the existing generation guards. |
 | `src/agent_views.rs` | Native chat window, composer, status, usage, empty state, and tool activity UI. |
-| `src/agent_snapshot.rs` | Versioned, bounded, sanitized read-only export of Kerosene state. |
+| `src/agent_snapshot.rs`, `src/agent_snapshot/` | Snapshot assembly, limits, provenance, and shared sanitization; separate account, market, journal, workspace, and file modules for the read-only export. |
 | `src/agent_workspace.rs` | Strict host-action contract, active-turn authorization, all-or-nothing validation, idempotent chart mutations, and acknowledgements. |
 | `src/agent_runtime.rs`, `src/agent_runtime/` | Pi subprocess discovery, isolated environment, and command/event transport; separate redacted runtime types, JSONL RPC encoding/parsing, and bounded tool-summary modules with nearby tests. |
 | `src/llama_cpp.rs` | Loopback-only llama.cpp process/endpoint discovery, capability verification, and isolated Pi provider configuration. |
@@ -247,6 +247,11 @@ symbol, favourites, and account-relevant symbols before applying the 250-row
 public cap. The private market index retains every sanitized Kerosene mid and
 its canonical/display metadata for targeted lookup. Raw `@N` and `#N` values
 are documented as exchange identifiers, not privacy redaction.
+
+Snapshot assembly builds market rows once; public selection sorts references to
+those rows while the private index keeps its original order. Public and private
+activity lists share fill/funding serializers with separate row limits. Journal
+sections share a status helper without rebuilding the public section for tools.
 
 Snapshot generation time and source observation time are separate. The root
 `generated_at_ms` records serialization time; section provenance keeps
