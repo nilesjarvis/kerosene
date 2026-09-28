@@ -124,7 +124,6 @@ async fn fetch_funding_history_page(
     };
 
     let response = CLIENT
-        .clone()
         .post(HYDROMANCER_API_URL)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .bearer_auth(api_key.trim())

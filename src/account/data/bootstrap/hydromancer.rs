@@ -392,7 +392,6 @@ async fn send_hydromancer_info(
     api_key: &str,
 ) -> Result<reqwest::Response, reqwest::Error> {
     CLIENT
-        .clone()
         .post(HYDROMANCER_API_URL)
         .bearer_auth(api_key.trim())
         .json(&payload)

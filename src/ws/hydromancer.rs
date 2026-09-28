@@ -111,7 +111,6 @@ async fn update_hydromancer_api_latency_once(api_key: Zeroizing<String>) {
     let payload = hydromancer_api_latency_probe_payload();
     telemetry_mark_hydromancer_api_attempt();
     match CLIENT
-        .clone()
         .post(HYDROMANCER_API_URL)
         .bearer_auth(api_key.trim())
         .json(&payload)

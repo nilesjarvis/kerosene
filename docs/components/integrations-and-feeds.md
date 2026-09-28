@@ -44,6 +44,9 @@ schema, permissions, polling behavior, bounds, and local/remote precedence.
 - request/connect/idle timeouts
 - `API_URL = https://api.hyperliquid.xyz/info`
 
+Build requests directly from the shared client; reqwest's request builder retains
+its own client handle. OpenRouter keeps its separate client and longer timeout.
+
 Submodules cover:
 
 - candles and chart backfill

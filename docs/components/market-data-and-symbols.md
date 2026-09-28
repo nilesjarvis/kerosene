@@ -571,6 +571,10 @@ HYPE-specific market widgets live in:
 - `api/hype_unstaking_queue.rs`
 
 HYPE ETFs combine THYP, BHYP, and Farside BHYP flow data where available.
+Farside extraction locates the first BHYP chart marker once and uses it for both
+the cumulative data and preceding labels. It validates data before labels and
+derives daily flows only after the two arrays have matching lengths.
+
 Unstaking queue state supports window filters, amount filters, sorting, and
 mine-only filtering.
 

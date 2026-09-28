@@ -20,7 +20,6 @@ pub struct CalendarEvent {
 pub async fn fetch_economic_calendar() -> Result<Vec<CalendarEvent>, String> {
     let url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json";
     let response = CLIENT
-        .clone()
         .get(url)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .send_observed()

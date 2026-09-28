@@ -15,7 +15,6 @@ where
     T: for<'de> Deserialize<'de>,
 {
     let response = CLIENT
-        .clone()
         .get(url)
         .send_observed()
         .await

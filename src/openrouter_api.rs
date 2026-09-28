@@ -185,7 +185,6 @@ pub(crate) async fn chat_completion(
     }
 
     let response = OPENROUTER_CLIENT
-        .clone()
         .post(format!("{OPENROUTER_API_URL}/chat/completions"))
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .header(OPENROUTER_APP_TITLE_HEADER, OPENROUTER_APP_TITLE)
@@ -392,7 +391,6 @@ pub(crate) async fn fetch_tool_models(
     }
 
     let response = OPENROUTER_CLIENT
-        .clone()
         .get(format!("{OPENROUTER_API_URL}/models"))
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .header(OPENROUTER_APP_TITLE_HEADER, OPENROUTER_APP_TITLE)
@@ -561,7 +559,6 @@ pub(crate) async fn fetch_key_status(
     }
 
     let response = OPENROUTER_CLIENT
-        .clone()
         .get(format!("{OPENROUTER_API_URL}/key"))
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .bearer_auth(api_key.trim())

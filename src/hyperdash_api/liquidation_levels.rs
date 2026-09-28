@@ -70,7 +70,6 @@ pub async fn fetch_liquidation_levels_at(
     });
 
     let response = CLIENT
-        .clone()
         .post(HYPERDASH_API_URL)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .bearer_auth(api_key.as_str())
