@@ -39,7 +39,7 @@ impl ExchangeResponse {
 
     /// Extract the order OID from the response.
     pub fn order_oid(&self) -> Option<u64> {
-        let st = self.response.as_ref()?.data.as_ref()?.statuses.first()?;
+        let st = self.statuses()?.first()?;
         if let Some(resting) = st.get("resting")
             && let Some(oid) = resting.get("oid").and_then(|v| v.as_u64())
         {
@@ -55,12 +55,7 @@ impl ExchangeResponse {
 
     /// Whether the order was immediately and fully filled.
     pub fn is_fully_filled(&self) -> bool {
-        let Some(statuses) = self
-            .response
-            .as_ref()
-            .and_then(|r| r.data.as_ref())
-            .map(|d| d.statuses.as_slice())
-        else {
+        let Some(statuses) = self.statuses() else {
             return false;
         };
         !statuses.is_empty()
@@ -74,12 +69,7 @@ impl ExchangeResponse {
     /// order id, even if the exchange omitted the fill size. Automation must
     /// reconcile the size before counting the fill as complete.
     pub fn reports_filled(&self) -> bool {
-        let Some(statuses) = self
-            .response
-            .as_ref()
-            .and_then(|r| r.data.as_ref())
-            .map(|d| d.statuses.as_slice())
-        else {
+        let Some(statuses) = self.statuses() else {
             return false;
         };
         !statuses.is_empty()
@@ -96,30 +86,17 @@ impl ExchangeResponse {
     }
 
     pub fn filled_total_size(&self) -> Option<f64> {
-        let statuses = self
-            .response
-            .as_ref()
-            .and_then(|r| r.data.as_ref())
-            .map(|d| d.statuses.as_slice())?;
+        let statuses = self.statuses()?;
         let total = statuses.iter().filter_map(filled_status_size).sum();
         positive_finite_value(total)
     }
 
     /// Whether the response indicates an error.
     pub fn is_error(&self) -> bool {
-        if self.status != "ok" {
-            return true;
-        }
-        if let Some(inner) = &self.response
-            && let Some(data) = &inner.data
-            && !data.statuses.is_empty()
-        {
-            return data
-                .statuses
-                .iter()
-                .any(|status| status.get("error").is_some());
-        }
-        false
+        self.status != "ok"
+            || self
+                .statuses()
+                .is_some_and(|statuses| statuses.iter().any(|status| status.get("error").is_some()))
     }
 
     /// Whether any status may have committed exchange state even if another
@@ -147,12 +124,7 @@ impl ExchangeResponse {
         if self.raw_response.is_some() {
             return true;
         }
-        let Some(statuses) = self
-            .response
-            .as_ref()
-            .and_then(|inner| inner.data.as_ref())
-            .map(|data| data.statuses.as_slice())
-        else {
+        let Some(statuses) = self.statuses() else {
             return true;
         };
         if statuses.is_empty() {
@@ -212,32 +184,29 @@ impl ExchangeResponse {
     /// Hyperliquid reports this for IOC orders that were marketable from the
     /// client's last book snapshot but found no resting liquidity at match time.
     pub fn is_ioc_no_match(&self) -> bool {
-        self.error_messages().iter().any(|message| {
-            message
-                .to_ascii_lowercase()
-                .contains("could not immediately match against any resting orders")
-        })
+        if self.status != "ok" && is_ioc_no_match_message(&self.status) {
+            return true;
+        }
+        if self
+            .raw_response
+            .as_ref()
+            .is_some_and(|raw| is_ioc_no_match_message(&raw_exchange_response_summary(raw)))
+        {
+            return true;
+        }
+        self.statuses()
+            .into_iter()
+            .flatten()
+            .filter_map(|status| status.get("error").and_then(Value::as_str))
+            .any(is_ioc_no_match_message)
     }
 
-    fn error_messages(&self) -> Vec<String> {
-        let mut messages = Vec::new();
-        if self.status != "ok" {
-            messages.push(self.status.clone());
-        }
-        if let Some(raw) = &self.raw_response {
-            messages.push(raw_exchange_response_summary(raw));
-        }
-        if let Some(inner) = &self.response
-            && let Some(data) = &inner.data
-        {
-            messages.extend(data.statuses.iter().filter_map(|status| {
-                status
-                    .get("error")
-                    .and_then(|error| error.as_str())
-                    .map(ToString::to_string)
-            }));
-        }
-        messages
+    fn statuses(&self) -> Option<&[Value]> {
+        self.response
+            .as_ref()?
+            .data
+            .as_ref()
+            .map(|data| data.statuses.as_slice())
     }
 }
 
@@ -247,11 +216,7 @@ impl fmt::Debug for ExchangeResponse {
             .response
             .as_ref()
             .map(|response| response.response_type.as_str());
-        let status_count = self
-            .response
-            .as_ref()
-            .and_then(|response| response.data.as_ref())
-            .map(|data| data.statuses.len());
+        let status_count = self.statuses().map(|statuses| statuses.len());
 
         f.debug_struct("ExchangeResponse")
             .field(
@@ -264,6 +229,12 @@ impl fmt::Debug for ExchangeResponse {
             .field("has_raw_response", &self.raw_response.is_some())
             .finish()
     }
+}
+
+fn is_ioc_no_match_message(message: &str) -> bool {
+    message
+        .to_ascii_lowercase()
+        .contains("could not immediately match against any resting orders")
 }
 
 fn ambiguous_order_status(status: &Value) -> bool {
@@ -327,11 +298,10 @@ fn filled_status_size(status: &Value) -> Option<f64> {
 }
 
 fn raw_exchange_response_summary(value: &Value) -> String {
-    let summary = value
-        .as_str()
-        .map(ToString::to_string)
-        .unwrap_or_else(|| value.to_string());
-    redact_sensitive_response_text(&summary)
+    match value.as_str() {
+        Some(summary) => redact_sensitive_response_text(summary),
+        None => redact_sensitive_response_text(&value.to_string()),
+    }
 }
 
 fn status_summary(st: &Value, response_type: &str) -> String {

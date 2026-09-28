@@ -225,6 +225,12 @@ Key files:
 - `signing/model.rs`: order kinds, Chase model, exchange response model.
 - `signing/numbers.rs`: wire number formatting and price rounding.
 
+Exchange-response parsing borrows the retained JSON body while constructing
+owned typed fields; malformed bodies remain available for fallback handling.
+Response predicates share a borrowed status-list lookup while retaining their
+separate confirmation rules. IOC no-match detection scans messages directly,
+including the existing redacted raw-body summary, without collecting copies.
+
 Signing uses agent private keys held in zeroizing strings. Do not log keys,
 print payloads containing keys, or serialize keys into plaintext config.
 

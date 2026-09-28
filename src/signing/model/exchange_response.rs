@@ -3,6 +3,9 @@ use serde_json::Value;
 
 mod analysis;
 
+#[cfg(test)]
+mod tests;
+
 // ---------------------------------------------------------------------------
 // Exchange Response Model
 // ---------------------------------------------------------------------------
@@ -43,7 +46,7 @@ impl<'de> Deserialize<'de> for ExchangeResponse {
         let mut raw_response = None;
 
         if let Some(raw) = wire.response {
-            match serde_json::from_value::<ExchangeResponseInner>(raw.clone()) {
+            match ExchangeResponseInner::deserialize(&raw) {
                 Ok(inner) => response = Some(inner),
                 Err(_) => raw_response = Some(raw),
             }
