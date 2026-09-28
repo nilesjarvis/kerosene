@@ -1,6 +1,8 @@
 use crate::account;
 use crate::app_state::TradingTerminal;
 
+use std::borrow::Cow;
+
 mod numbers;
 
 use numbers::PositionCardNumbers;
@@ -114,7 +116,7 @@ impl TradingTerminal {
 
     pub(super) fn visible_pnl_card_positions(
         &self,
-    ) -> impl Iterator<Item = account::AssetPosition> + '_ {
+    ) -> impl Iterator<Item = Cow<'_, account::AssetPosition>> + '_ {
         self.account_positions_with_outcomes()
             .into_iter()
             .filter(|ap| {
@@ -123,7 +125,10 @@ impl TradingTerminal {
             })
     }
 
-    pub(super) fn pnl_card_position_for_coin(&self, coin: &str) -> Option<account::AssetPosition> {
+    pub(super) fn pnl_card_position_for_coin(
+        &self,
+        coin: &str,
+    ) -> Option<Cow<'_, account::AssetPosition>> {
         self.account_positions_with_outcomes()
             .into_iter()
             .find(|ap| ap.position.coin == coin)

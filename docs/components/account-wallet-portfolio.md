@@ -203,11 +203,16 @@ Features include:
 Hidden positions are scoped by account and persisted. Hidden/muted exposure is
 a trading risk boundary and must be considered by close/NUKE/order automation.
 
-Position section lists and prepared display rows borrow their input positions.
-Sorting and summary accumulation prepare their metrics without copying the
-underlying wire fields or symbol strings. Rendered widgets and
-action messages own the values they need after row preparation; the upstream
-account projection and export snapshots retain their existing ownership.
+Account projection in `account_positions.rs` borrows native positions from the
+connected account snapshot and eagerly appends owned outcome and spot rows, in
+that order. Table filtering, section lists, summary accumulation, chart overlays,
+tab counts, and PnL-card metrics consume these rows without copying native wire
+fields. Rendered widgets, action messages, and export snapshots own their outputs.
+
+Spot-pair selection collects borrowed USD-quoted candidates once and stably sorts
+them by asset index. It prefers a fill-reconciled pair, then the most recent fill
+(the last candidate wins a timestamp tie), then the first live mark, then the
+first candidate. Only an owned synthesized position copies the selected key.
 
 ## Open Orders
 

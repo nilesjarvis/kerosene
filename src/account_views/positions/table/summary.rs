@@ -22,7 +22,7 @@ use totals::*;
 impl TradingTerminal {
     pub(in crate::account_views::positions) fn view_position_summary_bar(
         &self,
-        positions: &[account::AssetPosition],
+        positions: &[&account::AssetPosition],
         theme: &Theme,
         number_mode: PositionNumberMode,
     ) -> Element<'static, Message> {

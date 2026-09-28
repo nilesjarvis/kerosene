@@ -57,7 +57,7 @@ async fn position_sections_preserve_grouping_and_own_action_messages() {
             .collect();
             terminal
                 .view_position_sections(
-                    &positions,
+                    &positions.iter().collect::<Vec<_>>(),
                     can_close,
                     &theme,
                     PositionColumnVisibility::for_width(width),
