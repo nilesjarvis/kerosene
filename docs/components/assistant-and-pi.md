@@ -19,7 +19,7 @@ messages.
 | `src/agent_pnl_card.rs` | Bounded image selection, validation, normalization, preview, and redacted transport types. |
 | `src/agent_state.rs`, `src/agent_state/` | Central state and runtime reset; separate chat/wire types, session storage/replay, and stream/tool presentation modules. |
 | `src/agent_update.rs`, `src/agent_update/` | Message dispatch and window opening; separate prompt/attachment/snapshot, provider, runtime-event/presentation, session/cleanup, and system-link modules with the existing generation guards. |
-| `src/agent_views.rs` | Native chat window, composer, status, usage, empty state, and tool activity UI. |
+| `src/agent_views.rs`, `src/agent_views/` | Chat window and welcome screen; separate composer/attachment/status, session sidebar, model/provider picker, conversation/tool trace, streaming Markdown, and shared style modules with nearby tests. |
 | `src/agent_snapshot.rs`, `src/agent_snapshot/` | Snapshot assembly, limits, provenance, and shared sanitization; separate account, market, journal, workspace, and file modules for the read-only export. |
 | `src/agent_workspace.rs`, `src/agent_workspace/` | Request admission, active-turn authorization, and shared persistence coordination; separate indicator changes, staged drawing batches, and drawing request/style validation modules. |
 | `src/agent_runtime.rs`, `src/agent_runtime/` | Pi subprocess discovery, isolated environment, and command/event transport; separate redacted runtime types, JSONL RPC encoding/parsing, and bounded tool-summary modules with nearby tests. |

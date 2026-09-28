@@ -19,8 +19,10 @@ runtime cannot write into another session.
   coordinates create/switch actions, runtime/file cleanup, and session saves;
   `runtime.rs` handles Pi events, context updates, and response presentation.
   Closing the window uses the same runtime invalidation path as provider changes.
-- `src/agent_views.rs` renders the collapsible session navigation, persistence
-  status, prompt-bar model selector, and active session context footer.
+- `src/agent_views.rs` composes the Assistant window. Its `sessions.rs` child
+  renders collapsible navigation and persistence status; `composer.rs` renders
+  the prompt bar and active session context footer, with the provider/model
+  picker in `models.rs`.
 - `src/agent_persistence.rs` loads and atomically saves the side-file.
 
 Pi continues to run with `--no-session`. After an app restart, runtime exit, or
