@@ -8,21 +8,20 @@ use iced::{Element, Theme};
 
 pub(super) fn wallet_identity_cell(
     address: String,
-    label_value: String,
     display: WalletDisplay,
     is_remote: bool,
     hovered_wallet_action_key: Option<&str>,
     theme: &Theme,
 ) -> Element<'static, Message> {
-    let address_text = if display.has_label {
-        display.secondary.clone()
-    } else {
-        display.primary.clone()
-    };
     let tooltip_label = if display.has_label {
         format!("{} ({address})", display.primary)
     } else {
         format!("Copy {address}")
+    };
+    let (label_value, address_text) = if display.has_label {
+        (display.primary, display.secondary)
+    } else {
+        (String::new(), display.primary)
     };
     let secondary_text = theme.extended_palette().background.weak.text;
 

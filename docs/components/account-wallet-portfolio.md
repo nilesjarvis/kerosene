@@ -364,6 +364,12 @@ combined local/remote labels are sorted once, then subscription selection filter
 muted addresses. Color or tags alone do not create a label subscription.
 Config Debug output uses the same count-only redaction as runtime wallet state.
 
+Wallet label and display helpers normalize addresses once and share the lookup
+for the first nonblank label, checking the remote book before the local book.
+Invalid addresses retain their raw display text and never use a stored label.
+Tracker rows borrow loaded row state, reuse remote status, and consume prepared
+display strings for label controls and address text.
+
 `wallet_state/tracker/selection.rs` gives queued requests FIFO precedence over
 automatic refreshes. Automatic core selection ranks borrowed addresses by age
 and copies only the selected batch; order selection copies only the chosen

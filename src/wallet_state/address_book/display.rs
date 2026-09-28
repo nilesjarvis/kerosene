@@ -1,31 +1,39 @@
-use super::{AddressBookEntry, WalletDisplay};
+use super::WalletDisplay;
 use crate::app_state::TradingTerminal;
-use std::collections::HashMap;
+
+#[cfg(test)]
+mod tests;
 
 // ---------------------------------------------------------------------------
 // Wallet Display Helpers
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(crate) fn wallet_label_from_address_book<'a>(
-        address_book: &'a HashMap<String, AddressBookEntry>,
-        address: &str,
-    ) -> Option<&'a str> {
+    pub(crate) fn wallet_label(&self, address: &str) -> Option<&str> {
         let address = Self::normalize_wallet_address(address)?;
-        address_book
-            .get(&address)
-            .map(|entry| entry.label.trim())
-            .filter(|label| !label.is_empty())
+        self.wallet_label_for_normalized_address(&address)
     }
 
-    pub(crate) fn wallet_display_from_address_book(
-        address_book: &HashMap<String, AddressBookEntry>,
-        address: &str,
-    ) -> WalletDisplay {
-        let normalized =
-            Self::normalize_wallet_address(address).unwrap_or_else(|| address.to_string());
+    /// Looks up an already normalized address, preferring a nonblank remote label.
+    fn wallet_label_for_normalized_address(&self, address: &str) -> Option<&str> {
+        [
+            &self.wallet_tracker.remote_database.entries,
+            &self.address_book,
+        ]
+        .into_iter()
+        .filter_map(|book| book.get(address))
+        .map(|entry| entry.label.trim())
+        .find(|label| !label.is_empty())
+    }
+
+    pub(crate) fn wallet_display(&self, address: &str) -> WalletDisplay {
+        let normalized = Self::normalize_wallet_address(address);
+        let label = normalized
+            .as_deref()
+            .and_then(|address| self.wallet_label_for_normalized_address(address));
+        let normalized = normalized.unwrap_or_else(|| address.to_string());
         let short = Self::short_address(&normalized);
-        if let Some(label) = Self::wallet_label_from_address_book(address_book, &normalized) {
+        if let Some(label) = label {
             WalletDisplay {
                 primary: label.to_string(),
                 secondary: short,
@@ -33,16 +41,11 @@ impl TradingTerminal {
             }
         } else {
             WalletDisplay {
-                primary: short.clone(),
+                primary: short,
                 secondary: normalized,
                 has_label: false,
             }
         }
-    }
-
-    pub(crate) fn wallet_label(&self, address: &str) -> Option<&str> {
-        Self::wallet_label_from_address_book(&self.wallet_tracker.remote_database.entries, address)
-            .or_else(|| Self::wallet_label_from_address_book(&self.address_book, address))
     }
 
     pub(crate) fn wallet_is_remote(&self, address: &str) -> bool {
@@ -52,22 +55,6 @@ impl TradingTerminal {
                 .entries
                 .contains_key(&address)
         })
-    }
-
-    pub(crate) fn wallet_display(&self, address: &str) -> WalletDisplay {
-        if Self::wallet_label_from_address_book(
-            &self.wallet_tracker.remote_database.entries,
-            address,
-        )
-        .is_some()
-        {
-            Self::wallet_display_from_address_book(
-                &self.wallet_tracker.remote_database.entries,
-                address,
-            )
-        } else {
-            Self::wallet_display_from_address_book(&self.address_book, address)
-        }
     }
 
     pub(crate) fn wallet_detail_symbol(dex: &str, coin: &str) -> String {
