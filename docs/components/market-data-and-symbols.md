@@ -445,6 +445,13 @@ while retaining their own validation, grouping, and accumulation order. Verdict
 labels use the static weekday/session names. Tests for returns and statistics
 live under `session_data_state/tests/`.
 
+`market_views/session_data.rs` composes the pane and prepares its lane rows.
+Child modules own the header/symbol controls (`controls.rs`), verdict and KPI
+widgets (`summary.rs`), shared tooltip presentation (`tooltips.rs`), and lane
+interaction (`lane.rs`). Lane geometry and painting live in `lane/drawing.rs`.
+The six KPI tiles use a fixed array; fixed KPI and lane labels borrow static
+text. Drawing order, responsive thresholds, and hover behavior are preserved.
+
 Session data instances are persisted in layout/widget configs.
 
 ## Outcomes
