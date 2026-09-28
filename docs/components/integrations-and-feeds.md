@@ -337,6 +337,12 @@ Alerts can use:
 - sounds through `sound.rs`
 - desktop notifications through `notify-rust`
 
+`notification_state.rs` shares toast, sound, and desktop delivery for trade,
+error, interest, tracked-trade, and Telegram feed alerts. Each alert keeps its
+own desktop title and sound kind; the global sound and desktop toggles are
+independent. Toasts are queued first, with errors retained ahead of informational
+toasts, and only desktop delivery needs a second copy of the message.
+
 Feed-related alert toggles include:
 
 - income alerts

@@ -28,7 +28,7 @@ candidates; it does not establish that every module has been reviewed.
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Remaining integration stream internals still need review. |
 | Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing inspected. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling and reduced summary text copies. Other integration and assistant internals still need substantive review. |
-| Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Theme construction and discarded theme calls in root update, notifications, chart helpers, and order helpers reviewed; the unused calls are removed. Substantive review of other surfaces remains. |
+| Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Theme construction and discarded theme calls in root update, notifications, chart helpers, and order helpers reviewed; the unused calls are removed. Notification delivery, sound entry points, toast retention/animation, and order-status alert policy reviewed; repeated delivery now shares one helper and copies messages only for desktop notifications. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
 
 ## 2026-09-27: chart restoration
@@ -1500,11 +1500,50 @@ Validation (using the local ALSA prefix documented above):
   after 20 seconds, with no panic markers. In-memory test mode kept personal
   configuration out of the run. Logs: `/tmp/kerosene-refresh-smoke.16bN3a`.
 
+## 2026-09-28: consolidate alert delivery
+
+- Reviewed notification delivery, desktop transport, sound entry points, toast
+  retention/animation, and interest/tracked-trade/Telegram alert callers. Kept
+  caller eligibility, order-status policy, and platform transport in place.
+- Shared the toast, sound, and desktop sequence through a private `push_alert`
+  helper. Error, trade, interest, tracked-trade, and Telegram alerts retain their
+  existing severity, desktop title, and sound kind. Sound and desktop delivery
+  still use independent global toggles and follow toast insertion/pruning.
+- Clone the message only when desktop notifications are enabled. The toast takes
+  ownership of the original message. External delivery still occurs if the toast
+  queue immediately prunes a new informational alert to retain existing errors.
+- Replaced three one-line sound forwarding functions with calls to the existing
+  `sound::play(SoundKind)` entry point. Audio synthesis, queueing, volume, and
+  fallback behavior remain unchanged.
+- Added two regressions before production changes: all alert entry points retain
+  their toast content, severity, IDs, and existing order status with both external
+  channels disabled; feed alerts preserve a full error queue while consuming IDs,
+  and the next error evicts the oldest error.
+- Source comparison confirms desktop transport, toast animation/retention, and
+  order-status methods are unchanged; `sound.rs` only loses the three forwarding
+  wrappers. Updated the integration component guide. No config, message,
+  subscription, dependency, asset, or trading behavior changed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene notification_state`:
+  **7 passed** before and after production changes, including both new regressions.
+- `cargo test --locked -j 2`: **4,369 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+- Physical audio and OS notification delivery were not exercised; their transport
+  implementations are unchanged.
+- `cargo build --locked -j 2`: passed. Headless startup smoke opened the 1600x960
+  Kerosene window under Xvfb, confirmed by `xwininfo`; expected timeout exit 124
+  after 20 seconds with no panic markers. In-memory `--test` mode kept personal
+  configuration out of the run. Logs: `/tmp/kerosene-notification-smoke.ARxS8q`.
+
 ## Next candidates
 
-1. Consolidate notification delivery after checking sound/desktop routing and
-   toast retention; inspect remaining portfolio/income follow-up branches and
-   account refresh ownership. Account state/persistence copies remain intentional.
+1. Inspect remaining portfolio/income follow-up branches and account refresh
+   ownership. Account state/persistence copies remain intentional.
    Farside's repeated chart-marker lookup remains a smaller candidate.
 2. Continue reviewing the remaining API request and symbol-lifecycle modules and
    integration stream internals, including provider-specific socket commands and
