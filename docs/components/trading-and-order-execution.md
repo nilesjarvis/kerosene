@@ -393,6 +393,12 @@ Lifecycle messages include:
 Websocket open-order/fill updates reconcile Chase progress. Terminal or removed
 Chase orders are archived into advanced order history.
 
+Live and historical fill aggregation check borrowed known IDs plus the current
+OID. Live totals retain coin, side, and adoption-cutoff filtering; history keeps
+its separate fee/P&L rules. Completion formats the totals already computed for
+reconciliation, preserving matched-fill amounts even when recorded progress is
+ahead of that snapshot.
+
 Book repricing and final modify dispatch share the ordered spot-market checks
 in `chase/lifecycle/reprice.rs`: captured identity, quote support, then live
 metadata verification. Each caller keeps its existing lifecycle, account, price,

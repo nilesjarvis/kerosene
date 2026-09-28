@@ -87,44 +87,33 @@ pub(super) struct ChaseFillTotals {
 
 #[cfg(test)]
 pub(super) fn chase_fill_totals(fills: &[UserFill], oids: &[u64]) -> Option<ChaseFillTotals> {
-    chase_fill_totals_with_cutoff(fills, oids, |_| None)
+    chase_fill_totals_with_filter(fills, oids, None, None, |_| None)
 }
 
 pub(super) fn chase_fill_totals_for_chase(
     fills: &[UserFill],
     chase: &ChaseOrder,
 ) -> Option<ChaseFillTotals> {
-    let oids = chase.known_oids_with_current();
     chase_fill_totals_with_filter(
         fills,
-        &oids,
+        &chase.known_oids,
+        chase.current_oid,
         Some((chase.coin.as_str(), chase.is_buy)),
         |oid| chase.fill_cutoff_ms_for_oid(oid),
     )
 }
 
-#[cfg(test)]
-fn chase_fill_totals_with_cutoff<F>(
-    fills: &[UserFill],
-    oids: &[u64],
-    fill_cutoff_ms_for_oid: F,
-) -> Option<ChaseFillTotals>
-where
-    F: Fn(u64) -> Option<u64>,
-{
-    chase_fill_totals_with_filter(fills, oids, None, fill_cutoff_ms_for_oid)
-}
-
 fn chase_fill_totals_with_filter<F>(
     fills: &[UserFill],
     oids: &[u64],
+    current_oid: Option<u64>,
     expected_order: Option<(&str, bool)>,
     fill_cutoff_ms_for_oid: F,
 ) -> Option<ChaseFillTotals>
 where
     F: Fn(u64) -> Option<u64>,
 {
-    if oids.is_empty() {
+    if oids.is_empty() && current_oid.is_none() {
         return None;
     }
 
@@ -137,7 +126,7 @@ where
         let Some(oid) = fill.oid else {
             continue;
         };
-        if !oids.contains(&oid) {
+        if current_oid != Some(oid) && !oids.contains(&oid) {
             continue;
         }
         if let Some((expected_coin, expected_is_buy)) = expected_order
@@ -229,18 +218,16 @@ pub(super) fn chase_fill_summary(fills: &[UserFill], oid: u64) -> Option<String>
 }
 
 pub(super) fn chase_completed_summary(
-    fills: &[UserFill],
-    chase: &ChaseOrder,
-    filled_size: f64,
+    totals: &ChaseFillTotals,
+    target_size: f64,
     display_coin: &str,
 ) -> String {
-    let summary = chase_fill_summary_for_chase(fills, chase, display_coin)
-        .unwrap_or_else(|| "Chase completed: target size filled".to_string());
-    if chase.target_size.is_finite()
-        && chase.target_size > 0.0
-        && filled_size > chase.target_size + f64::EPSILON
+    let summary = chase_fill_summary_text(totals, display_coin);
+    if target_size.is_finite()
+        && target_size > 0.0
+        && totals.filled_size > target_size + f64::EPSILON
     {
-        let overfill = filled_size - chase.target_size;
+        let overfill = totals.filled_size - target_size;
         format!(
             "{summary}; over target by {}",
             format_chase_fill_number(overfill)

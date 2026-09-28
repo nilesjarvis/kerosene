@@ -87,16 +87,6 @@ impl ChaseOrder {
             .find_map(|(cutoff_oid, cutoff_ms)| (*cutoff_oid == oid).then_some(*cutoff_ms))
     }
 
-    pub fn known_oids_with_current(&self) -> Vec<u64> {
-        let mut oids = self.known_oids.clone();
-        if let Some(oid) = self.current_oid
-            && !oids.contains(&oid)
-        {
-            oids.push(oid);
-        }
-        oids
-    }
-
     pub fn tracks_oid(&self, oid: u64) -> bool {
         self.current_oid == Some(oid) || self.known_oids.contains(&oid)
     }

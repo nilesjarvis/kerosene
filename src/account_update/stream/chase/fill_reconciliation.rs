@@ -47,13 +47,13 @@ impl TradingTerminal {
                 .chase_orders
                 .get(&chase_id)
                 .filter(|chase| chase.account_address == snapshot_account_address)
-                .map(|chase| chase.coin.clone())
+                .map(|chase| chase.coin.as_str())
             else {
                 continue;
             };
             // Resolved before the mutable chase borrow: spot fills report the
             // raw "@{index}" key, which reads as noise in summaries.
-            let display_coin = self.display_coin_for_journal(&coin);
+            let display_coin = self.display_coin_for_journal(coin);
             let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
                 continue;
             };
@@ -70,8 +70,7 @@ impl TradingTerminal {
                     // reconcile pass closes the chase out.
                     continue;
                 }
-                let summary =
-                    chase_completed_summary(fills, chase, totals.filled_size, &display_coin);
+                let summary = chase_completed_summary(&totals, chase.target_size, &display_coin);
                 let is_error = chase.target_size.is_finite()
                     && chase.target_size > 0.0
                     && totals.filled_size > chase.target_size + f64::EPSILON;
@@ -85,7 +84,7 @@ impl TradingTerminal {
                             chase.lifecycle = ChaseLifecycle::Verifying {
                                 reason: ChaseVerificationReason::MissingOrder,
                             };
-                            chase.stop_reason = Some((summary.clone(), is_error));
+                            chase.stop_reason = Some((summary, is_error));
                             needs_open_order_refresh = true;
                             self.set_order_status_toast_on_error(
                                 "Chase target filled; refreshing open orders before closing".into(),
@@ -97,7 +96,7 @@ impl TradingTerminal {
                         chase.lifecycle = ChaseLifecycle::Verifying {
                             reason: ChaseVerificationReason::MissingOrder,
                         };
-                        chase.stop_reason = Some((summary.clone(), is_error));
+                        chase.stop_reason = Some((summary, is_error));
                         needs_open_order_refresh = true;
                         self.set_order_status_toast_on_error(
                             "Chase target filled; verifying open orders before closing".into(),
