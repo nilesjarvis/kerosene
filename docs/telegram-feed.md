@@ -1,18 +1,15 @@
 # Telegram Feed
 
-Telegram Feed is a pane widget that shows recent posts from public Telegram
-channels. It is designed for market-news monitoring inside Kerosene without
-requiring Telegram login credentials, API keys, or private-channel access.
-
-The implementation fetches Telegram's public web preview pages at
-`https://t.me/s/<channel>`. It does not use MTProto, a bot token, a user
-session, or push delivery.
+Telegram Feed is a pane widget for monitoring channel posts inside Kerosene.
+Public mode fetches Telegram's web preview pages at `https://t.me/s/<channel>`
+without login credentials. Optional fast mode uses an authenticated MTProto
+session for live updates and selected private channels.
 
 ## User-facing behavior
 
-Open Telegram Feed from the add-widget menu or Alfred. The pane starts with the
-default `@marketfeed` channel unless the user has persisted a different channel
-list.
+Open Telegram Feed from the add-widget menu or Alfred. First-run onboarding
+offers public mode or Telegram sign-in. The default public channel is
+`@marketfeed` unless the user has persisted a different channel list.
 
 The controls provide:
 
@@ -21,6 +18,8 @@ The controls provide:
 - Alert toggle for new-message notifications.
 - Manual refresh button.
 - Channel chips with channel avatars or initials and a remove action.
+- A private-channel picker when signed in to fast mode.
+- An outcome-market toggle for ticker impact chips.
 
 Each post shows:
 
@@ -52,7 +51,7 @@ quiet and does not fire alerts.
 
 ## Channel rules
 
-Only public username channels are supported. Accepted inputs include:
+The public-channel input accepts usernames and public links, including:
 
 - `marketfeed`
 - `@marketfeed`
@@ -65,7 +64,10 @@ Private invite links and internal Telegram paths are rejected. Usernames must:
 - Be 5 to 32 characters long.
 - Contain only ASCII letters, numbers, and `_`.
 
-The channel list is normalized to lowercase and deduplicated.
+The public channel list is normalized to lowercase and deduplicated. Private
+channels are added separately from the signed-in account's channel scan. The
+scan offers private channels already accessible to that account;
+pasting an invite link does not join a channel.
 
 ## Loading and refresh flow
 
@@ -95,13 +97,16 @@ eligible for alerting.
 
 ## Polling and latency
 
-Telegram Feed uses polling. It is not real-time push.
+Public mode uses polling. Fast mode receives MTProto updates and uses public
+polling as a fallback for public channels.
 
 The background poll interval is `TELEGRAM_FEED_REFRESH_INTERVAL_SECS`, currently
-15 seconds, and only runs while the Telegram Feed pane is open and no Telegram
-feed refresh is already in flight.
+15 seconds while the Telegram Feed pane is open. The tick skips public fetching
+while fast mode is connected and fresh, or a public refresh is already in
+flight. A fast connection with no event for more than 90 seconds is marked
+stale, restarted, and allowed to fall back to public fetching.
 
-Expected delivery latency is:
+Expected public-mode delivery latency is:
 
 ```text
 time until next poll + Telegram public page availability + HTTP request time
@@ -120,13 +125,15 @@ timestamp is millisecond precision.
 
 Telegram Feed also has an optional fast mode that signs in through Telegram's
 MTProto user API and listens for Telegram updates while preserving the public
-HTML polling path as a fallback. Users can toggle fast mode in the feed widget.
+HTML polling path as a fallback. Users enter fast mode through the feed's
+Connect flow and can return to public mode.
 
 Fast mode requires a Telegram session. If the app is built with
 `KEROSENE_TELEGRAM_API_ID` and `KEROSENE_TELEGRAM_API_HASH`, users only need to
-enter their phone number and Telegram login code. Otherwise, the widget also
-accepts a user-provided Telegram developer API ID and hash. The API hash is not
-persisted in `config.json`.
+enter their phone number and Telegram login code, plus a 2FA password if their
+account requires one. Otherwise, the widget also accepts a user-provided
+Telegram developer API ID and hash. The API hash is not persisted in
+`config.json`.
 
 Release builders should treat `KEROSENE_TELEGRAM_API_HASH` as embedded binary
 credential material. Do not set it for public distributable builds unless the
@@ -139,19 +146,25 @@ The MTProto session is stored separately in the Kerosene config directory as
 Signing out from the widget clears that session file family.
 
 Fast updates are additive: new MTProto posts go through the same `(channel,
-message_id)` merge and dedupe path as public-page refreshes. Public polling
-continues to run so existing no-login behavior remains available.
+message_id)` merge and dedupe path as public-page refreshes. The timer remains
+active to detect stale fast connections; background public fetching resumes
+when fast mode is disconnected or stale. Manual refresh still uses the public
+path. Private channels require fast mode and have no public-page fallback.
 
 Telegram only pushes channel updates to the signed-in account for channels it
 receives updates for. For channels outside the account's update stream, the
-public HTML polling path remains the fallback source.
+public HTML path is available through manual refresh and the background
+fallback conditions above.
 
 ## Persistence
 
 The persisted configuration stores:
 
 - `telegram_feed_channels`
+- `telegram_feed_private_channels` (selected peer IDs and titles)
 - `telegram_feed_notifications_enabled`
+- `telegram_feed_include_outcome_markets`
+- `telegram_feed_onboarding_dismissed`
 - `telegram_feed_fast_mode_enabled`
 - `telegram_feed_fast_api_id`
 
@@ -226,17 +239,22 @@ replace a working feed with an error unless the feed has no posts yet. Removed
 channels ignore late post and avatar responses.
 
 If Telegram changes the public `t.me/s` HTML structure, parsing can fail or lose
-metadata until the parser is updated. This is the main tradeoff of avoiding a
-Telegram-authenticated MTProto client.
+metadata until the parser is updated. This limitation applies to the public
+fetching path.
 
 ## Security and privacy
 
-Telegram Feed does not collect or store Telegram credentials. It only fetches
-public `t.me/s` pages for configured public usernames.
+Public mode fetches public `t.me/s` pages without Telegram credentials. Fast
+mode uses runtime login inputs and stores a local session separately from
+`config.json`. Treat that session as credential material. API hashes, login
+codes, and 2FA passwords use zeroizing buffers; debug output redacts sensitive
+inputs and private feed content.
 
-The feature intentionally rejects private invite links and private channel
-identifiers. Supporting private channels would require a separate authenticated
-Telegram integration and secret/session storage.
+Private-channel selection persists peer IDs and titles in configuration. It
+does not persist loaded posts or channel avatars. Sign-out attempts remote
+revocation and removes the local session file family. If local removal fails,
+the widget reports an error instead of marking the session signed out; if only
+remote sign-out fails, it reports a warning after local cleanup succeeds.
 
 ## Code map
 
@@ -246,9 +264,15 @@ Core implementation:
   HTTP fetches, timing labels, avatar validation, and parser tests.
 - `src/telegram_fast_feed.rs`: optional MTProto auth, session handling,
   startup backfill, and live update streaming.
-- `src/feed_update/telegram.rs`: update routing for refreshes, channel edits,
-  fast-mode auth events, post merging, notifications, avatar request state, and
-  update tests.
+- `src/feed_update/telegram.rs`: update routing, refreshes, channel edits, post
+  merging, notifications, and avatar/media request state.
+- `src/feed_update/telegram/fast.rs`: fast-mode auth requests/results,
+  onboarding transitions, stream events, and sanitized status messages.
+  Auth requests share generation, pending-state, and completion-message setup;
+  each caller retains its validation and input cleanup order.
+- `src/feed_update/telegram/tests.rs` and its child modules: update regressions,
+  including auth request admission and ownership behavior. The fast module also
+  has a local status-helper test.
 - `src/feed_views/telegram.rs`: pane controls, channel chips, post cards,
   avatar rendering, heat styling, and responsive layout.
 
@@ -258,8 +282,10 @@ Application wiring:
 - `src/feed_update.rs`: feed update dispatch.
 - `src/feed_views.rs`: feed view dispatch.
 - `src/subscription_state/timers/app.rs`: background polling timer.
+- `src/subscription_state/telegram.rs`: fast-feed subscription identity and
+  admission.
 - `src/config/schema.rs` and config persistence modules: persisted channels and
-  notification toggle.
+  feed preferences.
 - `src/pane_state.rs`, `src/pane_update.rs`, `src/main_view/panes.rs`, and
   layout conversion modules: pane creation and layout persistence.
 - `src/alfred_state/catalog/widgets.rs`: Alfred widget entry.

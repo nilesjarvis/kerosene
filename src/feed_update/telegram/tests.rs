@@ -1,13 +1,19 @@
 use super::*;
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::config::KeroseneConfig;
+use crate::message::TelegramFastAuthMessageResult;
 use crate::telegram_fast_feed::{
-    fast_channel_cursor_message_id_for_test, fast_channel_cursor_test_lock,
-    set_fast_channel_cursor_for_test, set_telegram_fast_pending_auth_placeholders_for_test,
+    TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED, TELEGRAM_FAST_SESSION_CLEAR_FAILED,
+    clear_telegram_fast_pending_auth, fast_channel_cursor_message_id_for_test,
+    fast_channel_cursor_test_lock, set_fast_channel_cursor_for_test,
+    set_telegram_fast_pending_auth_placeholders_for_test,
     telegram_fast_pending_auth_request_ids_for_test, telegram_fast_pending_auth_test_lock,
 };
-use crate::telegram_feed::TelegramMediaKind;
+use crate::telegram_feed::{
+    TelegramFastAuthOutcome, TelegramFastAuthStage, TelegramFastFeedEvent, TelegramMediaKind,
+};
 
+mod auth_requests;
 mod ownership;
 
 fn exchange_symbol(key: &str, ticker: &str) -> ExchangeSymbol {
@@ -945,16 +951,6 @@ fn fast_auth_signed_out_warning_clears_local_runtime_state() {
     assert_eq!(
         terminal.telegram_feed.fast_status,
         Some((TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED.to_string(), true))
-    );
-}
-
-#[test]
-fn fast_auth_signed_out_warning_status_is_sanitized() {
-    assert_eq!(
-        telegram_fast_signed_out_status(Some(
-            "remote sign-out failed: auth_token=token-secret".to_string()
-        )),
-        ("Telegram fast session signed out".to_string(), false)
     );
 }
 

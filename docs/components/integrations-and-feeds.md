@@ -284,6 +284,14 @@ Fast-feed subscriptions require:
 Credentials used during login should not be persisted as plaintext input
 buffers.
 
+Fast-mode update handlers live in `feed_update/telegram/fast.rs`. Code requests,
+code/password submissions, and sign-out share generation, pending-state, status,
+and completion-message setup. Their validation and credential cleanup stay at
+the call sites; code/password submissions capture the existing challenge ID
+before allocating the next result ID. Auth results and stream events retain
+their separate request/reconnect generation guards. Login and private-channel
+scan admission reuse the state's `signed_in()` predicate.
+
 Feed updates borrow channel candidates and prior ticker mentions. Mention
 refreshes replace match metadata while retaining captured reference prices and
 their timestamps. Alert preparation keeps at most three formatted messages plus
