@@ -447,6 +447,13 @@ geometry/style retries are idempotent. Removal requires an exact current ID and
 respects the annotation lock. Geometry/style edits remain user-driven through
 Select mode, which keeps the first mutation surface small and deterministic.
 
+Annotation drawing and hit testing iterate `AnnotationKind::anchor_points`
+without allocating a handle list; fixed pairs are copied values and Fibonacci
+anchors borrow their stored slice. Rendering also borrows selected/live annotations
+and computes Fibonacci bounds directly. Hit testing checks topmost annotations
+first and each annotation's handles before its body. Locked annotations remain
+selectable, while the editing handlers enforce their locks.
+
 ## Detached Charts
 
 Detached charts are opened from chart controls and rendered by

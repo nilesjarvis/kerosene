@@ -18,6 +18,9 @@ use crate::helpers::format_price;
 use iced::widget::canvas;
 use iced::{Color, Point, Size, Theme, alignment};
 
+#[cfg(test)]
+mod tests;
+
 // ---------------------------------------------------------------------------
 // Annotation Overlays
 // ---------------------------------------------------------------------------
@@ -74,8 +77,8 @@ impl CandlestickChart {
 
         // In-progress drag copy is rendered at its live position and treated as
         // selected so the handles track the cursor.
-        if let Some(live) = ctx.state.drag_annotation.clone() {
-            self.render_annotation(ctx, &live, None, true);
+        if let Some(live) = ctx.state.drag_annotation.as_ref() {
+            self.render_annotation(ctx, live, None, true);
         }
 
         self.draw_annotation_handles(ctx);
@@ -469,18 +472,14 @@ impl CandlestickChart {
         }
 
         // Horizontal extent: from the leftmost anchor to the right edge.
-        let mut anchor_xs = Vec::with_capacity(points.len());
+        let mut x_left = f32::INFINITY;
         for point in points {
             let Some(x) = self.timestamp_to_x(point.0, ctx.state, ctx.chart_w) else {
                 return;
             };
-            anchor_xs.push(x);
+            x_left = x_left.min(x);
         }
-        let x_left = anchor_xs
-            .iter()
-            .cloned()
-            .fold(f32::INFINITY, f32::min)
-            .max(0.0);
+        let x_left = x_left.max(0.0);
         if x_left > ctx.chart_w {
             return;
         }
@@ -571,13 +570,13 @@ impl CandlestickChart {
     where
         PriceToY: Fn(f64) -> f32,
     {
-        let target = ctx.state.drag_annotation.clone().or_else(|| {
+        let target = ctx.state.drag_annotation.as_ref().or_else(|| {
             if self.active_tool != Some(DrawingTool::Select) {
                 return None;
             }
             ctx.state
                 .selected_annotation
-                .and_then(|id| self.annotations.iter().find(|ann| ann.id == id).cloned())
+                .and_then(|id| self.annotations.iter().find(|ann| ann.id == id))
         });
         let Some(target) = target else {
             return;

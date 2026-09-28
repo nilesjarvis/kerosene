@@ -1,5 +1,7 @@
 use super::*;
 
+mod anchors;
+
 fn level_config(price: f64) -> AnnotationConfig {
     AnnotationConfig {
         kind: "level".into(),
