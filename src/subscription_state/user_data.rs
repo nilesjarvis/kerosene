@@ -134,6 +134,8 @@ mod tests {
 
     #[test]
     fn config_clear_removes_wallet_detail_stream_params() {
+        let _cursor_guard =
+            crate::telegram_fast_feed::fast_channel_cursor_test_lock().blocking_lock();
         let mut terminal = TradingTerminal::boot().0;
         terminal.connected_address = Some(CONNECTED.to_string());
         terminal.wallet_detail_windows.insert(

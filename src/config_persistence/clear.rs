@@ -840,6 +840,7 @@ mod tests {
 
     #[test]
     fn clear_result_preserves_runtime_when_trading_request_becomes_pending() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
@@ -876,6 +877,7 @@ mod tests {
 
     #[test]
     fn clear_result_preserves_runtime_when_active_chase_appears_after_clear_started() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
@@ -914,6 +916,7 @@ mod tests {
 
     #[test]
     fn clearing_configs_clears_in_flight_order_decorations() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
         let pending_id = terminal.add_pending_market_order_placement_indicator(
@@ -974,6 +977,7 @@ mod tests {
 
     #[test]
     fn clearing_configs_clears_pending_keychain_profile_deletions_after_runtime_reset() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal
             .pending_keychain_profile_deletions
@@ -997,6 +1001,7 @@ mod tests {
 
     #[test]
     fn clearing_configs_clears_wallet_detail_advanced_history_and_twap_runtime_state() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.wallet_tracker.compact_selections.insert(
             7,
@@ -1063,6 +1068,7 @@ mod tests {
 
     #[test]
     fn clearing_configs_replaces_stale_hydromancer_chart_request() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.chart_backfill_source = ChartBackfillSource::Hydromancer;
         terminal.hydromancer_api_key = sensitive_string("old-hydro");
@@ -1225,6 +1231,7 @@ mod tests {
 
     #[test]
     fn config_file_cleanup_failure_does_not_reset_runtime() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();
@@ -1259,6 +1266,7 @@ mod tests {
 
     #[test]
     fn config_file_cleanup_failure_status_redacts_warning_details() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
 
@@ -1283,6 +1291,7 @@ mod tests {
 
     #[test]
     fn config_clear_error_status_redacts_sensitive_text() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
 
@@ -1303,6 +1312,7 @@ mod tests {
 
     #[test]
     fn sensitive_side_file_cleanup_failure_after_config_removal_resets_runtime() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();
@@ -1377,6 +1387,7 @@ mod tests {
 
     #[test]
     fn keychain_cleanup_failure_without_config_removal_keeps_config_and_runtime() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();
@@ -1423,6 +1434,7 @@ mod tests {
 
     #[test]
     fn keychain_cleanup_failure_after_config_removal_pauses_persistence_without_runtime_reset() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.config_save_due_at = Some(Instant::now());
@@ -1471,6 +1483,7 @@ mod tests {
 
     #[test]
     fn ancillary_config_cleanup_warning_still_resets_runtime() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();

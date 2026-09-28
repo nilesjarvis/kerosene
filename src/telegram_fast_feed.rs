@@ -165,6 +165,7 @@ pub(crate) async fn fast_channel_cursor_message_id_for_test(channel: &str) -> u6
 }
 
 #[cfg(test)]
+/// Serializes cursor fixtures with channel add/remove and runtime config-clear tests.
 pub(crate) fn fast_channel_cursor_test_lock() -> &'static tokio::sync::Mutex<()> {
     static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| tokio::sync::Mutex::new(()))

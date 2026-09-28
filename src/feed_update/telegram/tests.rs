@@ -256,6 +256,7 @@ fn sample_page_with_avatar(
 
 #[test]
 fn loaded_removed_channel_is_ignored() {
+    let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
     let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
     terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
     terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
@@ -293,6 +294,7 @@ fn loaded_removed_channel_is_ignored() {
 
 #[test]
 fn stale_public_channel_success_after_remove_and_readd_is_ignored() {
+    let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
     let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
     terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
     terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
@@ -329,6 +331,7 @@ fn stale_public_channel_success_after_remove_and_readd_is_ignored() {
 
 #[test]
 fn stale_public_channel_error_after_remove_and_readd_is_ignored() {
+    let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
     let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
     terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
     terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
@@ -380,6 +383,7 @@ fn current_public_channel_error_redacts_last_error() {
 
 #[test]
 fn current_public_channel_success_after_remove_and_readd_is_applied() {
+    let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
     let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
     terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
     terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
@@ -1088,6 +1092,7 @@ fn stale_fast_feed_status_after_reconnect_is_ignored() {
 
 #[test]
 fn adding_public_channel_invalidates_stale_fast_status() {
+    let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
     let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
     terminal.telegram_feed.fast_mode_enabled = true;
     terminal.telegram_feed.fast_connected = true;
@@ -1130,6 +1135,7 @@ fn adding_public_channel_invalidates_stale_fast_status() {
 
 #[test]
 fn removing_public_channel_allows_background_refresh_after_fast_status_invalidated() {
+    let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
     let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
     terminal.telegram_feed.channels = vec!["marketfeed".to_string(), "otherfeed".to_string()];
     terminal.telegram_feed.fast_mode_enabled = true;
@@ -1528,6 +1534,7 @@ async fn removing_channel_clears_cached_profile_and_fast_cursor() {
 
 #[test]
 fn adding_private_channel_uses_scanned_candidate_and_reconnects_fast_feed() {
+    let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
     let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
     terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
     terminal.telegram_feed.private_channel_candidates.push(
@@ -1765,6 +1772,7 @@ fn avatar_failure_sets_backoff_and_suppresses_immediate_refetch() {
 
 #[test]
 fn adding_channel_below_public_limit_is_allowed() {
+    let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
     let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
     terminal.telegram_feed.channels = (0..TELEGRAM_FEED_MAX_PUBLIC_CHANNELS - 1)
         .map(|index| format!("channel_{index}"))
@@ -1794,6 +1802,7 @@ fn adding_channel_below_public_limit_is_allowed() {
 
 #[test]
 fn adding_channel_at_public_limit_is_rejected() {
+    let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
     let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
     terminal.telegram_feed.channels = (0..TELEGRAM_FEED_MAX_PUBLIC_CHANNELS)
         .map(|index| format!("channel_{index}"))
