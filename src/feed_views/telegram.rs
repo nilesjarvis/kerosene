@@ -1,6 +1,8 @@
+mod styles;
+
+use self::styles::*;
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
-use crate::helpers;
 use crate::message::Message;
 use crate::symbol_mentions::SymbolAliasSource;
 use crate::telegram_feed::{
@@ -17,9 +19,10 @@ use iced::widget::{
     stack, text, text_input, tooltip,
 };
 use iced::{
-    Alignment, Background, Border, Color, ContentFit, Element, Fill, Length, Point, Rectangle,
-    Renderer, Size, Theme,
+    Alignment, Border, Color, ContentFit, Element, Fill, Length, Point, Rectangle, Renderer, Size,
+    Theme,
 };
+use std::borrow::Cow;
 
 // ---- Layout constants ----
 const TELEGRAM_COMPACT_CONTROLS_WIDTH: f32 = 360.0;
@@ -640,13 +643,7 @@ impl TradingTerminal {
         if !is_error {
             return None;
         }
-        Some(
-            text(message.clone())
-                .size(11)
-                .color(colors.down)
-                .width(Fill)
-                .into(),
-        )
+        Some(text(message).size(11).color(colors.down).width(Fill).into())
     }
 
     // ------------------------------------------------------------------------
@@ -666,7 +663,7 @@ impl TradingTerminal {
         .spacing(9)
         .width(Fill);
         if let Some(error) = &self.telegram_feed.last_error {
-            header = header.push(text(error.clone()).size(11).color(colors.down).width(Fill));
+            header = header.push(text(error).size(11).color(colors.down).width(Fill));
         }
         let header = container(header)
             .width(Fill)
@@ -805,20 +802,25 @@ impl TradingTerminal {
                 .any(|loading| loading == channel);
             chips = chips.push(telegram_channel_chip(
                 channel.clone(),
-                format!("@{channel}"),
+                format!("@{channel}").into(),
                 active,
-                self.telegram_feed.channel_profiles.get(channel).cloned(),
+                self.telegram_feed.channel_profiles.get(channel),
                 colors,
             ));
         }
         for channel in &self.telegram_feed.private_channels {
             let key = channel.key();
-            let profile = self.telegram_feed.channel_profiles.get(&key).cloned();
+            let profile = self.telegram_feed.channel_profiles.get(&key);
             let label = profile
-                .as_ref()
-                .map(|profile| profile.title.clone())
-                .unwrap_or_else(|| channel.title.clone());
-            chips = chips.push(telegram_channel_chip(key, label, false, profile, colors));
+                .map(|profile| profile.title.as_str())
+                .unwrap_or(&channel.title);
+            chips = chips.push(telegram_channel_chip(
+                key,
+                label.into(),
+                false,
+                profile,
+                colors,
+            ));
         }
         // Trailing dashed "+ add" affordance (the live input above performs the
         // actual add; this is a visual cue that the row is editable).
@@ -902,7 +904,7 @@ impl TradingTerminal {
         let scan_status = self.telegram_private_scan_status(colors);
         if candidates.is_empty() && scan_status.is_none() {
             // Still expose a scan trigger so private channels remain reachable.
-            let scan = self.view_telegram_private_scan_button(colors)?;
+            let scan = self.view_telegram_private_scan_button(colors);
             return Some(
                 container(scan)
                     .width(Fill)
@@ -912,10 +914,9 @@ impl TradingTerminal {
             );
         }
 
-        let mut content = column![].spacing(7).width(Fill);
-        if let Some(scan) = self.view_telegram_private_scan_button(colors) {
-            content = content.push(scan);
-        }
+        let mut content = column![self.view_telegram_private_scan_button(colors)]
+            .spacing(7)
+            .width(Fill);
         if let Some(status) = scan_status {
             content = content.push(status);
         }
@@ -935,10 +936,7 @@ impl TradingTerminal {
         )
     }
 
-    fn view_telegram_private_scan_button(
-        &self,
-        colors: TelegramColors,
-    ) -> Option<Element<'_, Message>> {
+    fn view_telegram_private_scan_button(&self, colors: TelegramColors) -> Element<'_, Message> {
         let signed_in = self.telegram_feed.signed_in();
         let content: Element<'_, Message> = if self.telegram_feed.private_channel_candidates_loading
         {
@@ -967,13 +965,10 @@ impl TradingTerminal {
         if signed_in && !self.telegram_feed.private_channel_candidates_loading {
             scan = scan.on_press(Message::TelegramPrivateChannelsRefresh);
         }
-        Some(scan.into())
+        scan.into()
     }
 
-    fn telegram_private_scan_status(
-        &self,
-        colors: TelegramColors,
-    ) -> Option<Element<'static, Message>> {
+    fn telegram_private_scan_status(&self, colors: TelegramColors) -> Option<Element<'_, Message>> {
         let (message, is_error) = self.telegram_feed.fast_status.as_ref()?;
         let scan_related = self.telegram_feed.private_channel_candidates_loading
             || message == "Scanning Telegram channels"
@@ -984,13 +979,7 @@ impl TradingTerminal {
             return None;
         }
         let color = if *is_error { colors.down } else { colors.muted };
-        Some(
-            text(message.clone())
-                .size(11)
-                .color(color)
-                .width(Fill)
-                .into(),
-        )
+        Some(text(message).size(11).color(color).width(Fill).into())
     }
 
     fn view_telegram_feed_body(&self, colors: TelegramColors, now_ms: u64) -> Element<'_, Message> {
@@ -1015,11 +1004,7 @@ impl TradingTerminal {
             .iter()
             .enumerate()
             .fold(column![].width(Fill), |rows, (index, post)| {
-                let profile = self
-                    .telegram_feed
-                    .channel_profiles
-                    .get(&post.channel)
-                    .cloned();
+                let profile = self.telegram_feed.channel_profiles.get(&post.channel);
                 let impacts = self.telegram_ticker_impact_cards(post);
                 let mut rows = rows;
                 if index > 0 {
@@ -1027,13 +1012,7 @@ impl TradingTerminal {
                         rule::horizontal(1).style(move |_t: &Theme| telegram_rule_style(colors)),
                     );
                 }
-                rows.push(telegram_post_card(
-                    post.clone(),
-                    profile,
-                    impacts,
-                    now_ms,
-                    colors,
-                ))
+                rows.push(telegram_post_card(post, profile, impacts, now_ms, colors))
             });
 
         scrollable(rows)
@@ -1334,15 +1313,15 @@ fn telegram_status_chip(
     }
 }
 
-fn telegram_channel_chip(
+fn telegram_channel_chip<'a>(
     channel: String,
-    label: String,
+    label: Cow<'a, str>,
     active: bool,
-    profile: Option<TelegramChannelProfile>,
+    profile: Option<&'a TelegramChannelProfile>,
     colors: TelegramColors,
-) -> Element<'static, Message> {
+) -> Element<'a, Message> {
     let label_color = if active { colors.primary } else { colors.text };
-    let avatar = telegram_channel_avatar(profile.as_ref(), &channel, 17.0, colors);
+    let avatar = telegram_channel_avatar(profile, &channel, 17.0, colors);
     let remove = button(
         text("✕")
             .size(9)
@@ -1400,10 +1379,10 @@ fn telegram_channels_collapse_header(
 }
 
 fn telegram_private_candidate_selector(
-    candidates: Vec<TelegramPrivateChannelCandidate>,
+    candidates: Vec<&TelegramPrivateChannelCandidate>,
     expanded: bool,
     colors: TelegramColors,
-) -> Element<'static, Message> {
+) -> Element<'_, Message> {
     let count = candidates.len();
     let toggle_label = if expanded { "Hide" } else { "Show" };
     let header = container(
@@ -1448,12 +1427,12 @@ fn telegram_private_candidate_selector(
 }
 
 fn telegram_private_candidate_chip(
-    candidate: TelegramPrivateChannelCandidate,
+    candidate: &TelegramPrivateChannelCandidate,
     colors: TelegramColors,
-) -> Element<'static, Message> {
+) -> Element<'_, Message> {
     let peer_id = candidate.peer_id;
-    let title = candidate.title;
-    let avatar = telegram_private_candidate_avatar(candidate.avatar_handle, &title, 18.0, colors);
+    let title = &candidate.title;
+    let avatar = telegram_avatar(candidate.avatar_handle.as_ref(), None, title, 18.0, colors);
     container(
         row![
             avatar,
@@ -1473,35 +1452,29 @@ fn telegram_private_candidate_chip(
     .into()
 }
 
-fn telegram_private_candidate_avatar(
-    avatar_handle: Option<ImageHandle>,
-    title: &str,
-    size: f32,
-    colors: TelegramColors,
-) -> Element<'static, Message> {
-    if let Some(handle) = avatar_handle {
-        return container(
-            image(handle)
-                .width(size)
-                .height(size)
-                .content_fit(ContentFit::Cover)
-                .border_radius(size / 2.0),
-        )
-        .width(size)
-        .height(size)
-        .clip(true)
-        .into();
-    }
-    telegram_channel_avatar(None, title, size, colors)
-}
-
-fn telegram_channel_avatar(
-    profile: Option<&TelegramChannelProfile>,
+fn telegram_channel_avatar<'a>(
+    profile: Option<&'a TelegramChannelProfile>,
     channel: &str,
     size: f32,
     colors: TelegramColors,
-) -> Element<'static, Message> {
-    if let Some(handle) = profile.and_then(|profile| profile.avatar_handle.as_ref()) {
+) -> Element<'a, Message> {
+    telegram_avatar(
+        profile.and_then(|profile| profile.avatar_handle.as_ref()),
+        profile.map(|profile| profile.initials.as_str()),
+        channel,
+        size,
+        colors,
+    )
+}
+
+fn telegram_avatar<'a>(
+    avatar_handle: Option<&ImageHandle>,
+    initials: Option<&'a str>,
+    fallback: &str,
+    size: f32,
+    colors: TelegramColors,
+) -> Element<'a, Message> {
+    if let Some(handle) = avatar_handle {
         return container(
             image(handle.clone())
                 .width(size)
@@ -1514,10 +1487,10 @@ fn telegram_channel_avatar(
         .clip(true)
         .into();
     }
-    let initials = profile
-        .map(|profile| profile.initials.clone())
+    let initials = initials
         .filter(|initials| !initials.trim().is_empty())
-        .unwrap_or_else(|| channel.chars().take(2).collect::<String>().to_uppercase());
+        .map(Cow::Borrowed)
+        .unwrap_or_else(|| Cow::Owned(fallback.chars().take(2).collect::<String>().to_uppercase()));
     container(
         text(initials)
             .size(size * 0.42)
@@ -1534,30 +1507,24 @@ fn telegram_channel_avatar(
 // Message card
 // ----------------------------------------------------------------------------
 
-fn telegram_post_card(
-    post: TelegramFeedPost,
-    profile: Option<TelegramChannelProfile>,
+fn telegram_post_card<'a>(
+    post: &'a TelegramFeedPost,
+    profile: Option<&'a TelegramChannelProfile>,
     impacts: Vec<TelegramTickerImpactCard>,
     now_ms: u64,
     colors: TelegramColors,
-) -> Element<'static, Message> {
+) -> Element<'a, Message> {
     let channel = format!("@{}", post.channel);
     let title = profile
-        .as_ref()
-        .map(|profile| profile.title.clone())
+        .map(|profile| Cow::Borrowed(profile.title.as_str()))
         .filter(|title| !title.trim().is_empty())
-        .unwrap_or_else(|| channel.clone());
+        .unwrap_or_else(|| Cow::Owned(channel.clone()));
     let age = telegram_age_countdown_label(post.timestamp_ms, now_ms);
-    let latency = telegram_arrival_latency_label(&post);
+    let latency = telegram_arrival_latency_label(post);
     let heat = telegram_new_message_heat(post.first_seen_ms, now_ms);
     let url = post.url.clone();
 
-    let avatar = telegram_channel_avatar(
-        profile.as_ref(),
-        &post.channel,
-        TELEGRAM_AVATAR_SIZE,
-        colors,
-    );
+    let avatar = telegram_channel_avatar(profile, &post.channel, TELEGRAM_AVATAR_SIZE, colors);
 
     let mut name_row = row![text(title).size(13).color(colors.orange_soft)]
         .spacing(7)
@@ -1607,14 +1574,13 @@ fn telegram_post_card(
     let mut content = column![header].spacing(8).width(Fill);
     if !post.text.trim().is_empty() {
         content = content.push(
-            container(text(post.text).size(13).color(colors.text).width(Fill))
+            container(text(&post.text).size(13).color(colors.text).width(Fill))
                 .padding(left_pad(42.0)),
         );
     }
-    if let Some(media) = post.media {
+    if let Some(media) = post.media.as_ref() {
         content = content.push(
-            container(telegram_post_media_view(media, post.url.clone(), colors))
-                .padding(left_pad(42.0)),
+            container(telegram_post_media_view(media, &post.url, colors)).padding(left_pad(42.0)),
         );
     }
     if !impacts.is_empty() {
@@ -1649,14 +1615,14 @@ fn telegram_new_badge(colors: TelegramColors) -> Element<'static, Message> {
 }
 
 fn telegram_post_media_view(
-    media: TelegramPostMedia,
-    post_url: String,
+    media: &TelegramPostMedia,
+    post_url: &str,
     colors: TelegramColors,
 ) -> Element<'static, Message> {
-    if let Some(handle) = media.handle {
+    if let Some(handle) = media.handle.as_ref() {
         return button(
             container(
-                image(handle)
+                image(handle.clone())
                     .width(Fill)
                     .height(TELEGRAM_MEDIA_MAX_HEIGHT)
                     .content_fit(ContentFit::Contain)
@@ -1665,7 +1631,7 @@ fn telegram_post_media_view(
             .width(Fill)
             .clip(true),
         )
-        .on_press(Message::CopyToClipboard(post_url.into()))
+        .on_press(Message::CopyToClipboard(post_url.to_string().into()))
         .padding(0)
         .width(Fill)
         .style(telegram_media_button)
@@ -1714,7 +1680,8 @@ fn telegram_impact_chip(
     impact: TelegramTickerImpactCard,
     colors: TelegramColors,
 ) -> Element<'static, Message> {
-    let symbol = impact.symbol.clone();
+    let match_tooltip = telegram_ticker_match_tooltip(&impact);
+    let symbol = impact.symbol;
     let pct = impact.impact_pct;
     let sign_color = match pct {
         Some(value) if value >= 0.0 => colors.up,
@@ -1739,7 +1706,7 @@ fn telegram_impact_chip(
     let mut chip_row = row![
         container(Space::new().width(7.0).height(7.0))
             .style(move |_t: &Theme| telegram_dot_style(sign_color)),
-        text(impact.ticker.clone())
+        text(impact.ticker)
             .size(11)
             .font(crate::app_fonts::monospace_font())
             .color(ticker_color),
@@ -1754,7 +1721,7 @@ fn telegram_impact_chip(
     if pct.is_some() && impact.sparkline.len() >= 2 {
         chip_row = chip_row.push(
             canvas(TelegramImpactSparkline {
-                values: impact.sparkline.clone(),
+                values: impact.sparkline,
                 color: sign_color,
             })
             .width(Length::Fixed(TELEGRAM_SPARKLINE_WIDTH))
@@ -1767,7 +1734,7 @@ fn telegram_impact_chip(
         .padding([3, 9])
         .style(move |_t: &Theme, status| telegram_impact_chip_button(colors, status));
 
-    if let Some(label) = telegram_ticker_match_tooltip(&impact) {
+    if let Some(label) = match_tooltip {
         tooltip(chip, text(label).size(10), tooltip::Position::Top).into()
     } else {
         chip.into()
@@ -1928,513 +1895,6 @@ impl canvas::Program<Message> for TelegramZapIcon {
             );
         }
         vec![frame.into_geometry()]
-    }
-}
-
-// ----------------------------------------------------------------------------
-// Helpers
-// ----------------------------------------------------------------------------
-
-/// Left-only padding to indent card body content under the 32px avatar gutter
-/// (iced `Padding` has no `[_; 4]` array conversion).
-fn left_pad(left: f32) -> iced::Padding {
-    iced::Padding {
-        top: 0.0,
-        right: 0.0,
-        bottom: 0.0,
-        left,
-    }
-}
-
-fn theme_on_orange(colors: TelegramColors) -> Color {
-    // Dark ink that reads on the flame-orange fill.
-    blend_color(colors.primary, Color::BLACK, 0.82)
-}
-
-fn blend_color(base: Color, accent: Color, amount: f32) -> Color {
-    let amount = amount.clamp(0.0, 1.0);
-    Color {
-        r: base.r + (accent.r - base.r) * amount,
-        g: base.g + (accent.g - base.g) * amount,
-        b: base.b + (accent.b - base.b) * amount,
-        a: base.a + (accent.a - base.a) * amount,
-    }
-}
-
-// ----------------------------------------------------------------------------
-// Styles
-// ----------------------------------------------------------------------------
-
-fn telegram_primary_button(colors: TelegramColors, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-    let background = if hovered {
-        blend_color(colors.primary, Color::WHITE, 0.08)
-    } else {
-        colors.primary
-    };
-    button::Style {
-        background: Some(background.into()),
-        text_color: theme_on_orange(colors),
-        border: Border {
-            radius: 5.0.into(),
-            width: 1.0,
-            color: colors.border_orange,
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_quiet_button(colors: TelegramColors, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-    button::Style {
-        background: Some(
-            if hovered {
-                Color {
-                    a: 0.06,
-                    ..colors.text
-                }
-            } else {
-                Color::TRANSPARENT
-            }
-            .into(),
-        ),
-        text_color: colors.muted,
-        border: Border {
-            radius: 5.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_accent_button(colors: TelegramColors, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-    button::Style {
-        background: Some(
-            Color {
-                a: if hovered { 0.16 } else { 0.09 },
-                ..colors.primary
-            }
-            .into(),
-        ),
-        text_color: colors.orange_soft,
-        border: Border {
-            radius: 5.0.into(),
-            width: 1.0,
-            color: colors.border_orange,
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_icon_button(colors: TelegramColors, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-    button::Style {
-        background: Some(
-            Color {
-                a: if hovered { 0.06 } else { 0.035 },
-                ..colors.text
-            }
-            .into(),
-        ),
-        text_color: colors.muted,
-        border: Border {
-            radius: 4.0.into(),
-            width: 1.0,
-            color: colors.border,
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_chip_toggle_button(
-    colors: TelegramColors,
-    status: button::Status,
-    active: bool,
-) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-    let background = match (active, hovered) {
-        (true, true) => Color {
-            a: 0.18,
-            ..colors.primary
-        },
-        (true, false) => Color {
-            a: 0.1,
-            ..colors.primary
-        },
-        (false, true) => Color {
-            a: 0.06,
-            ..colors.text
-        },
-        (false, false) => Color {
-            a: 0.035,
-            ..colors.text
-        },
-    };
-    button::Style {
-        background: Some(background.into()),
-        text_color: if active {
-            colors.orange_soft
-        } else {
-            colors.muted
-        },
-        border: Border {
-            radius: 4.0.into(),
-            width: 1.0,
-            color: if active {
-                colors.border_orange
-            } else {
-                colors.border
-            },
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_link_button(_theme: &Theme, _status: button::Status) -> button::Style {
-    button::Style {
-        background: Some(Color::TRANSPARENT.into()),
-        border: Border {
-            radius: 3.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_status_chip_button(border_color: Color, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-    button::Style {
-        background: Some(
-            Color {
-                a: if hovered { 0.08 } else { 0.03 },
-                ..Color::WHITE
-            }
-            .into(),
-        ),
-        border: Border {
-            radius: 3.0.into(),
-            width: 1.0,
-            color: border_color,
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_sunken_button(colors: TelegramColors, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-    button::Style {
-        background: Some(
-            if hovered {
-                Color {
-                    a: 0.04,
-                    ..colors.text
-                }
-            } else {
-                Color::TRANSPARENT
-            }
-            .into(),
-        ),
-        text_color: colors.text,
-        border: Border {
-            radius: 6.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_impact_chip_button(colors: TelegramColors, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-    button::Style {
-        background: Some(colors.sunken.into()),
-        text_color: colors.text,
-        border: Border {
-            radius: 4.0.into(),
-            width: 1.0,
-            color: if hovered {
-                colors.border_orange
-            } else {
-                colors.border
-            },
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_media_button(_theme: &Theme, status: button::Status) -> button::Style {
-    let overlay = match status {
-        button::Status::Hovered | button::Status::Pressed => Color {
-            a: 0.06,
-            ..Color::BLACK
-        },
-        _ => Color::TRANSPARENT,
-    };
-    button::Style {
-        background: Some(overlay.into()),
-        border: Border {
-            radius: 6.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_focus_input_style(theme: &Theme, status: text_input::Status) -> text_input::Style {
-    let base = helpers::text_input_style(theme, status);
-    match status {
-        text_input::Status::Focused { .. } => text_input::Style {
-            border: Border {
-                color: theme.palette().primary,
-                width: 1.0,
-                radius: 4.0.into(),
-            },
-            ..base
-        },
-        _ => base,
-    }
-}
-
-fn telegram_transparent_field_style(
-    theme: &Theme,
-    _status: text_input::Status,
-) -> text_input::Style {
-    text_input::Style {
-        background: Background::Color(Color::TRANSPARENT),
-        border: Border {
-            color: Color::TRANSPARENT,
-            width: 0.0,
-            radius: 0.0.into(),
-        },
-        icon: theme.extended_palette().background.weak.text,
-        placeholder: theme.extended_palette().background.weak.text,
-        value: theme.palette().text,
-        selection: theme.extended_palette().primary.weak.color,
-    }
-}
-
-fn telegram_transparent_input_style(
-    _theme: &Theme,
-    _status: text_input::Status,
-) -> text_input::Style {
-    text_input::Style {
-        background: Background::Color(Color::TRANSPARENT),
-        border: Border {
-            color: Color::TRANSPARENT,
-            width: 0.0,
-            radius: 0.0.into(),
-        },
-        icon: Color::TRANSPARENT,
-        placeholder: Color::TRANSPARENT,
-        value: Color::TRANSPARENT,
-        selection: Color::TRANSPARENT,
-    }
-}
-
-fn telegram_dot_style(color: Color) -> container_style::Style {
-    container_style::Style {
-        background: Some(color.into()),
-        border: Border {
-            radius: 999.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_pill_style(colors: TelegramColors) -> container_style::Style {
-    container_style::Style {
-        background: Some(
-            Color {
-                a: 0.025,
-                ..colors.text
-            }
-            .into(),
-        ),
-        border: Border {
-            radius: 999.0.into(),
-            width: 1.0,
-            color: colors.border,
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_add_pill_style(colors: TelegramColors) -> container_style::Style {
-    container_style::Style {
-        background: Some(Color::TRANSPARENT.into()),
-        border: Border {
-            radius: 999.0.into(),
-            width: 1.0,
-            color: Color {
-                a: 0.2,
-                ..colors.muted
-            },
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_well_style(colors: TelegramColors) -> container_style::Style {
-    container_style::Style {
-        background: Some(colors.sunken.into()),
-        border: Border {
-            radius: 4.0.into(),
-            width: 1.0,
-            color: colors.border,
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_code_cell_style(colors: TelegramColors, active: bool) -> container_style::Style {
-    container_style::Style {
-        background: Some(colors.sunken.into()),
-        border: Border {
-            radius: 5.0.into(),
-            width: 1.0,
-            color: if active {
-                colors.border_orange
-            } else {
-                colors.border
-            },
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_icon_tile_style(colors: TelegramColors) -> container_style::Style {
-    container_style::Style {
-        background: Some(
-            Color {
-                a: 0.1,
-                ..colors.primary
-            }
-            .into(),
-        ),
-        border: Border {
-            radius: 12.0.into(),
-            width: 1.0,
-            color: colors.border_orange,
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_info_card_style(colors: TelegramColors, accent: bool) -> container_style::Style {
-    container_style::Style {
-        background: Some(
-            if accent {
-                Color {
-                    a: 0.05,
-                    ..colors.primary
-                }
-            } else {
-                colors.panel
-            }
-            .into(),
-        ),
-        border: Border {
-            radius: 6.0.into(),
-            width: 1.0,
-            color: if accent {
-                colors.border_orange
-            } else {
-                colors.border
-            },
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_sunken_outline_style(colors: TelegramColors) -> container_style::Style {
-    container_style::Style {
-        background: Some(colors.sunken.into()),
-        border: Border {
-            radius: 6.0.into(),
-            width: 1.0,
-            color: colors.border,
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_rule_style(colors: TelegramColors) -> rule::Style {
-    rule::Style {
-        color: colors.border,
-        radius: 0.0.into(),
-        fill_mode: rule::FillMode::Full,
-        snap: true,
-    }
-}
-
-fn telegram_section_divider_style(colors: TelegramColors) -> container_style::Style {
-    container_style::Style {
-        background: Some(
-            Color {
-                a: 0.008,
-                ..colors.text
-            }
-            .into(),
-        ),
-        border: Border {
-            color: colors.border,
-            width: 0.0,
-            radius: 0.0.into(),
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_media_placeholder_style(colors: TelegramColors) -> container_style::Style {
-    container_style::Style {
-        background: Some(colors.sunken.into()),
-        border: Border {
-            radius: 6.0.into(),
-            width: 1.0,
-            color: Color {
-                a: 0.18,
-                ..colors.muted
-            },
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_avatar_placeholder_style(colors: TelegramColors) -> container_style::Style {
-    container_style::Style {
-        background: Some(
-            Color {
-                a: 0.1,
-                ..colors.muted
-            }
-            .into(),
-        ),
-        border: Border {
-            radius: 999.0.into(),
-            width: 1.0,
-            color: Color {
-                a: 0.22,
-                ..colors.muted
-            },
-        },
-        ..Default::default()
-    }
-}
-
-fn telegram_post_row_style(colors: TelegramColors, heat: f32) -> container_style::Style {
-    let clamped = heat.clamp(0.0, 1.0);
-    let background = blend_color(Color::TRANSPARENT, colors.primary, 0.06 * clamped);
-    container_style::Style {
-        background: Some(background.into()),
-        border: Border {
-            // Hairline divider between cards (bottom edge only is not expressible,
-            // so a faint full border reads as a separator on the flat surface).
-            color: colors.border,
-            width: 0.0,
-            radius: 0.0.into(),
-        },
-        ..Default::default()
     }
 }
 

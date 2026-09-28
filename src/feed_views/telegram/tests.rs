@@ -250,3 +250,105 @@ fn telegram_ticker_impact_cards_drop_unorderable_and_spot_mentions() {
     let cards = terminal.telegram_ticker_impact_cards(&post_with_mention("@1", "PURR"));
     assert!(cards.is_empty());
 }
+
+#[test]
+fn ticker_match_tooltips_preserve_alias_labels_and_suppress_plain_tickers() {
+    for (source, matched, ticker, expected) in [
+        (SymbolAliasSource::Ticker, " hYpE ", "HYPE", None),
+        (SymbolAliasSource::Keyword, "  ", "HYPE", None),
+        (
+            SymbolAliasSource::Keyword,
+            " hype news ",
+            "HYPE",
+            Some("Matched \"hype news\" as keyword · confidence 74%"),
+        ),
+        (
+            SymbolAliasSource::Ticker,
+            "OUT95-YES",
+            "YES: Will BTC close green?",
+            Some("Matched \"OUT95-YES\" as ticker · confidence 74%"),
+        ),
+    ] {
+        let impact = TelegramTickerImpactCard {
+            symbol: "HYPE".to_string(),
+            ticker: ticker.to_string(),
+            matched_text: matched.to_string(),
+            source,
+            confidence: 74,
+            impact_pct: Some(10.0),
+            is_outcome: false,
+            sparkline: vec![100.0, 110.0],
+        };
+        assert_eq!(telegram_ticker_match_tooltip(&impact).as_deref(), expected);
+        // Consuming the card must keep its tooltip and sparkline branches buildable.
+        let _ = telegram_impact_chip(impact, TelegramColors::from_theme(&Theme::Dark));
+    }
+}
+
+#[test]
+fn private_channels_and_media_build_across_loaded_placeholder_and_collapsed_states() {
+    let mut terminal = TradingTerminal::boot().0;
+    let now = TradingTerminal::now_ms();
+    let colors = TelegramColors::from_theme(&terminal.theme());
+    let handle = ImageHandle::from_rgba(1, 1, vec![255, 255, 255, 255]);
+    let channel = crate::telegram_feed::TelegramFeedPrivateChannelConfig {
+        peer_id: 42,
+        title: "Synthetic private channel".to_string(),
+    };
+    terminal
+        .telegram_feed
+        .private_channels
+        .push(channel.clone());
+    terminal.telegram_feed.channels_expanded = true;
+    terminal.telegram_feed.fast_mode_enabled = true;
+    terminal.telegram_feed.fast_connected = true;
+    terminal.telegram_feed.private_channel_candidates = vec![
+        TelegramPrivateChannelCandidate {
+            peer_id: 42,
+            title: channel.title.clone(),
+            avatar_handle: None,
+        },
+        TelegramPrivateChannelCandidate {
+            peer_id: 43,
+            title: "Image candidate".to_string(),
+            avatar_handle: Some(handle.clone()),
+        },
+        TelegramPrivateChannelCandidate {
+            peer_id: 44,
+            title: "Initials candidate".to_string(),
+            avatar_handle: None,
+        },
+    ];
+    let mut profile = crate::telegram_feed::telegram_channel_profile_from_title(
+        &channel.key(),
+        Some(&channel.title),
+    );
+    for avatar in [Some(handle.clone()), None] {
+        profile.avatar_handle = avatar;
+        terminal
+            .telegram_feed
+            .channel_profiles
+            .insert(channel.key(), profile.clone());
+        for expanded in [false, true] {
+            terminal.telegram_feed.private_channel_candidates_expanded = expanded;
+            let _ = terminal.view_telegram_channel_chips(colors);
+            assert!(terminal.view_telegram_private_section(colors).is_some());
+        }
+    }
+
+    for (image, failed) in [(Some(handle), None), (None, None), (None, Some(now))] {
+        let mut post = post_with_mention("UNKNOWN", "UNKNOWN");
+        post.channel = channel.key();
+        post.url = "https://t.me/c/42/1".to_string();
+        post.media = Some(TelegramPostMedia {
+            kind: crate::telegram_feed::TelegramMediaKind::Photo,
+            handle: image,
+            failed_at_ms: failed,
+            ..TelegramPostMedia::placeholder(crate::telegram_feed::TelegramMediaKind::Photo)
+        });
+        terminal.telegram_feed.posts = vec![post];
+        let _ = terminal.view_telegram_feed_body(colors, now);
+        terminal.telegram_feed.posts[0].text.clear();
+        let _ = terminal.view_telegram_feed_body(colors, now);
+    }
+}

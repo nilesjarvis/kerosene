@@ -811,11 +811,10 @@ impl TelegramFeedState {
 
     pub(crate) fn available_private_channel_candidates(
         &self,
-    ) -> Vec<TelegramPrivateChannelCandidate> {
+    ) -> Vec<&TelegramPrivateChannelCandidate> {
         self.private_channel_candidates
             .iter()
             .filter(|candidate| !self.private_channel_selected(candidate.peer_id))
-            .cloned()
             .collect()
     }
 

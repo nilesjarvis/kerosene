@@ -1,6 +1,41 @@
 use super::*;
 
 #[test]
+fn available_private_candidates_preserve_scan_order_and_exclude_selected_peers() {
+    let mut state = TelegramFeedState::new(&[], &[], false, true, Some(12345), true, false);
+    state.private_channel_candidates = [42, 7, 9, 7]
+        .into_iter()
+        .map(|peer_id| TelegramPrivateChannelCandidate {
+            peer_id,
+            title: format!("Synthetic channel {peer_id}"),
+            avatar_handle: None,
+        })
+        .collect();
+    for (selected, expected) in [
+        (vec![], vec![42, 7, 9, 7]),
+        (vec![7], vec![42, 9]),
+        (vec![7, 9, 42], vec![]),
+        (vec![999], vec![42, 7, 9, 7]),
+    ] {
+        state.private_channels = selected
+            .into_iter()
+            .map(|peer_id| TelegramFeedPrivateChannelConfig {
+                peer_id,
+                title: "Selected channel".to_string(),
+            })
+            .collect();
+        assert_eq!(
+            state
+                .available_private_channel_candidates()
+                .iter()
+                .map(|candidate| candidate.peer_id)
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+}
+
+#[test]
 fn telegram_feed_state_debug_redacts_fast_credentials() {
     let mut state = TelegramFeedState::new(&[], &[], false, false, Some(12345), true, false);
     state.fast_api_hash_input = "hash-secret".to_string().into();

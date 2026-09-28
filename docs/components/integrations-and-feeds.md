@@ -312,6 +312,15 @@ request strings are copied only when a fetch is eligible. Media scheduling keeps
 its target snapshot and existing result guards. Update tests live under
 `feed_update/telegram/tests.rs`, with ownership regressions in `tests/ownership.rs`.
 
+Telegram views borrow posts, profiles, candidate records, titles, and status text
+from feed state. Private candidate selection retains scan order and excludes
+selected peers; collapsed lists do not clone candidate strings or image handles.
+Avatar rendering shares the loaded-image/initials path. Clipboard and channel
+actions retain owned messages, image widgets retain cloned handles, and impact
+chips move their prepared ticker/symbol strings and sparkline buffers into the
+widgets after computing tooltip text. Styles and padding/color helpers live in
+`feed_views/telegram/styles.rs`; canvas geometry and layout values are unchanged.
+
 ## X Feed
 
 X Feed uses local BYOK user-context access for the authenticated account's

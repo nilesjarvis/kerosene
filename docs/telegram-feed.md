@@ -281,7 +281,11 @@ Core implementation:
   including auth request admission and ownership behavior. The fast module also
   has a local status-helper test.
 - `src/feed_views/telegram.rs`: pane controls, channel chips, post cards,
-  avatar rendering, heat styling, and responsive layout.
+  shared avatar rendering, and responsive layout. Views borrow feed records and
+  text while action messages and image widgets retain their required ownership.
+- `src/feed_views/telegram/styles.rs`: widget styles and padding/color helpers.
+- `src/feed_views/telegram/tests.rs`: impact labels/filtering, tooltip behavior,
+  and view construction across sign-in/feed, media, and private-channel states.
 
 Application wiring:
 
