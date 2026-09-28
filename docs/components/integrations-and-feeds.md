@@ -96,6 +96,12 @@ JSON into typed data:
 - fills
 - account/user data
 
+Typed decoding borrows the routed JSON directly and creates owned results.
+Private array events keep whole-payload validation; clearinghouse events can
+skip malformed entries and retain the last valid state per DEX. Position lists
+still include every accepted entry in order. Only the main clearinghouse state
+needs a second owned copy for its separate result field.
+
 Subscriptions are added from `subscription_state/`, not from views.
 
 ## Hydromancer
@@ -135,6 +141,10 @@ source text while applying the existing authentication labels and redaction.
 Fill parsing borrows the tuple's address; only tracked-trade events copy it into
 their owned output. Liquidation events still validate that address as a string
 before reading the separate liquidated-user field.
+
+Market streams borrow direct, wrapped, or batched items from the frame before
+decoding candles and asset contexts. Symbol/channel checks, candle validation,
+watchdogs, and provider fallback rules stay in their existing stream handlers.
 
 Feed updates share control-message status and heartbeat transitions in
 `feed_update/hydromancer_status.rs`, after validating the stream generation and

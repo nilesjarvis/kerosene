@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 // Market streams accept a direct item, a wrapped item, or a data batch.
-// Return slices into the frame so consumers can filter before cloning to parse.
+// Return slices into the frame so consumers can filter before decoding.
 fn direct_or_batched_items<'a>(value: &'a Value, fields: [&str; 2]) -> Option<&'a [Value]> {
     let is_item = |item: &Value| fields.iter().all(|field| item.get(*field).is_some());
     if is_item(value) {

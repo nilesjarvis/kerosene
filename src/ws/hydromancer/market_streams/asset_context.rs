@@ -9,6 +9,7 @@ use crate::account::AssetContext;
 use crate::ws::market_streams::is_active_asset_ctx_channel;
 use crate::ws::{KeyedAssetContextStreamEvent, SymbolAssetContextStreamEvent, WsStream};
 use futures::{SinkExt as _, StreamExt as _};
+use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::broadcast;
 
@@ -135,7 +136,7 @@ fn hydromancer_asset_ctx_stream(
                         let Some(ctx_val) = item.get("ctx") else {
                             continue;
                         };
-                        if let Ok(ctx) = serde_json::from_value::<AssetContext>(ctx_val.clone())
+                        if let Ok(ctx) = AssetContext::deserialize(ctx_val)
                             && output
                                 .send(HydromancerAssetCtxStreamEvent::Item(
                                     coin.clone(),

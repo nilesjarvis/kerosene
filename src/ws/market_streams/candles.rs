@@ -3,6 +3,7 @@ use crate::ws::{SubscriptionGuard, WsCommand, WsStream, get_manager};
 
 use super::{KeyedCandleStreamEvent, SpaghettiCandleStreamEvent};
 use futures::SinkExt as _;
+use serde::Deserialize;
 use tokio::sync::broadcast;
 
 // ---------------------------------------------------------------------------
@@ -82,7 +83,7 @@ fn ws_candle_stream(params: &(String, String)) -> WsStream<CandleStreamEvent> {
                     if msg.channel == "candle"
                         && msg.data.get("s").and_then(|v| v.as_str()) == Some(&coin)
                         && msg.data.get("i").and_then(|v| v.as_str()) == Some(&interval)
-                        && let Ok(candle) = serde_json::from_value::<Candle>((*msg.data).clone())
+                        && let Ok(candle) = Candle::deserialize(msg.data.as_ref())
                         && crate::api::is_valid_candle(&candle)
                     {
                         watchdog.mark_valid();

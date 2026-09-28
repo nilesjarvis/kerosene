@@ -114,6 +114,59 @@ where
 #[cfg(test)]
 mod tests {
     use super::Candle;
+    use serde::Deserialize;
+    use serde_json::json;
+
+    #[test]
+    fn owned_and_borrowed_candle_values_preserve_numeric_forms_and_errors() {
+        let original = json!({
+            "t": 10, "T": 20, "o": 1, "h": 2, "l": 0.5, "c": 1.5, "v": 12,
+            "unknown": { "nested": [null, true] }
+        });
+        for (index, field) in ["o", "h", "l", "c", "v"].into_iter().enumerate() {
+            for (value, expected) in [
+                (json!(42), 42.0),
+                (json!(-42), -42.0),
+                (json!(u64::MAX), u64::MAX as f64),
+                (json!(1.25), 1.25),
+                (json!("1.25e2"), 125.0),
+                (json!("-0"), -0.0),
+                (json!("NaN"), f64::NAN),
+                (json!("inf"), f64::INFINITY),
+            ] {
+                let mut data = original.clone();
+                data[field] = value;
+                let mut expected_fields = [1.0_f64, 2.0, 0.5, 1.5, 12.0];
+                expected_fields[index] = expected;
+                for candle in [
+                    serde_json::from_value::<Candle>(data.clone()).expect("owned candle"),
+                    Candle::deserialize(&data).expect("borrowed candle"),
+                ] {
+                    assert_eq!((candle.open_time, candle.close_time), (10, 20));
+                    assert_eq!(
+                        [
+                            candle.open,
+                            candle.high,
+                            candle.low,
+                            candle.close,
+                            candle.volume
+                        ]
+                        .map(f64::to_bits),
+                        expected_fields.map(f64::to_bits)
+                    );
+                }
+            }
+            for malformed in [json!(null), json!(true), json!({}), json!([]), json!("bad")] {
+                let mut data = original.clone();
+                data[field] = malformed;
+                let owned = serde_json::from_value::<Candle>(data.clone())
+                    .expect_err("invalid owned numeric field");
+                let borrowed =
+                    Candle::deserialize(&data).expect_err("invalid borrowed numeric field");
+                assert_eq!(owned.to_string(), borrowed.to_string());
+            }
+        }
+    }
 
     #[test]
     fn candle_debug_redacts_ohlcv_payload() {

@@ -8,6 +8,7 @@ use super::payloads::candle_items;
 use crate::api::Candle;
 use crate::ws::{KeyedCandleStreamEvent, SpaghettiCandleStreamEvent, WsStream};
 use futures::{SinkExt as _, StreamExt as _};
+use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::broadcast;
 
@@ -233,7 +234,7 @@ fn hydromancer_candle_stream(
                         {
                             continue;
                         }
-                        if let Ok(candle) = serde_json::from_value::<Candle>(item.clone())
+                        if let Ok(candle) = Candle::deserialize(item)
                             && crate::api::is_valid_candle(&candle)
                         {
                             watchdog.mark_valid();
