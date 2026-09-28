@@ -284,3 +284,63 @@ fn ignores_non_close_queries() {
     assert_eq!(parse_close_position_intent("buy HYPE"), None);
     assert_eq!(parse_close_position_intent("nuke"), None);
 }
+
+#[test]
+fn close_tokens_preserve_punctuation_and_error_precedence() {
+    let invalid = Some("Use a close percentage from 1 to 100");
+    let duplicate = Some("Use one close percentage");
+    let extra_symbol = Some("Use one ticker to close");
+    for (query, symbol, fraction, error) in [
+        (
+            "[CLOSE]\u{2003}; () (HYPE), [12.5%]",
+            Some("HYPE"),
+            Some(0.125),
+            None,
+        ),
+        ("close of position PCT 25", None, Some(0.25), None),
+        ("close 25 50 HYPE", Some("HYPE"), Some(0.25), duplicate),
+        ("close NaN HYPE 25", Some("HYPE"), Some(0.25), invalid),
+        ("close HYPE BTC 25 50", Some("HYPE"), Some(0.25), duplicate),
+        ("close HYPE 25 BTC", Some("HYPE"), Some(0.25), extra_symbol),
+        ("close HYPE NaN BTC", Some("HYPE"), None, invalid),
+        ("close HYPE 12.5%%", Some("HYPE"), Some(0.125), None),
+        ("close $ 25 HYPE", Some("$"), Some(0.25), extra_symbol),
+        ("close xyz:gold", Some("xyz:gold"), None, None),
+        ("close @107", Some("@107"), None, None),
+        ("close ,", None, None, None),
+    ] {
+        assert_eq!(
+            parse_close_position_intent(query),
+            Some(ParsedClosePositionIntent {
+                symbol: symbol.map(str::to_owned),
+                fraction,
+                error: error.map(str::to_owned),
+            }),
+            "{query}",
+        );
+    }
+    for query in ["", " [] , ; {} ", "closed HYPE", "buy close HYPE"] {
+        assert_eq!(parse_close_position_intent(query), None, "{query}");
+    }
+}
+
+#[test]
+fn normalizes_alfred_symbols_without_rewriting_indexed_keys() {
+    for (raw, expected) in [
+        ("", ""),
+        ("hype", "HYPE"),
+        ("HYPE/Usdc", "HYPE/USDC"),
+        ("XYZ:gold", "xyz:GOLD"),
+        ("XYZ:gold:usd", "xyz:GOLD:USD"),
+        (":gold", ":GOLD"),
+        ("XYZ:", "xyz:"),
+        ("@Index", "@Index"),
+        ("#Index:token", "#Index:token"),
+        ("+Index", "+Index"),
+        ("Éth", "ÉTH"),
+        ("éTH", "éTH"),
+        ("ÉX:gold", "Éx:GOLD"),
+    ] {
+        assert_eq!(normalize_symbol_input(raw), expected, "{raw}");
+    }
+}

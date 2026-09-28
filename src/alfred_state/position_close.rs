@@ -1,3 +1,4 @@
+use super::parsing::normalize_symbol_input;
 use crate::account::Position;
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
@@ -101,7 +102,7 @@ impl TradingTerminal {
             .1
             .clearinghouse
             .asset_positions;
-        let normalized = normalize_close_symbol_input(raw_symbol);
+        let normalized = normalize_symbol_input(raw_symbol);
         let resolved_key = self
             .resolve_exchange_symbol_by_key_or_ticker(raw_symbol)
             .map(|symbol| symbol.key.as_str())
@@ -153,7 +154,7 @@ impl TradingTerminal {
     /// "hype" and "HYPE/USDC" resolve to "HYPE", and a raw pair key like
     /// "@107" resolves through its spot market entry.
     fn close_symbol_spot_ticker(&self, raw_symbol: &str) -> Option<String> {
-        let normalized = normalize_close_symbol_input(raw_symbol);
+        let normalized = normalize_symbol_input(raw_symbol);
         let base = normalized.split('/').next().unwrap_or(&normalized);
         if base.starts_with('@') {
             return self
@@ -163,22 +164,6 @@ impl TradingTerminal {
                 .map(|symbol| symbol.ticker.clone());
         }
         Some(base.to_string())
-    }
-}
-
-fn normalize_close_symbol_input(symbol: &str) -> String {
-    if symbol.starts_with('@') || symbol.starts_with('#') || symbol.starts_with('+') {
-        return symbol.to_string();
-    }
-
-    if let Some((dex, ticker)) = symbol.split_once(':') {
-        format!(
-            "{}:{}",
-            dex.to_ascii_lowercase(),
-            ticker.to_ascii_uppercase()
-        )
-    } else {
-        symbol.to_ascii_uppercase()
     }
 }
 

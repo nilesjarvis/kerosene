@@ -1,3 +1,4 @@
+use super::parsing::normalize_symbol_input;
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::helpers::format_price;
@@ -7,7 +8,7 @@ mod display;
 mod parse;
 
 use display::{plain_amount, trade_amount_label, trade_detail, trade_title};
-use parse::*;
+use parse::{ParsedTradeIntent, parse_trade_intent};
 
 // ---------------------------------------------------------------------------
 // Natural Language Trading
@@ -73,7 +74,7 @@ impl TradingTerminal {
 
     fn resolve_trade_draft(&self, intent: ParsedTradeIntent) -> AlfredTradeDraft {
         let order_kind = intent.order_kind();
-        let mut error = intent.error.clone();
+        let mut error = intent.error;
 
         let resolved_symbol = match intent.symbol.as_deref() {
             Some(_symbol) if self.exchange_symbols.is_empty() && error.is_none() => {

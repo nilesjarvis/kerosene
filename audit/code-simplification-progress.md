@@ -28,7 +28,7 @@ candidates; it does not establish that every module has been reviewed.
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Proxy URL normalization, redacted labels, deserialization/revalidation, settings commit order, and startup fallback inspected; existing security and persistence behavior retained. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Proxy transport/admission reviewed and retained. Hydromancer frame/control parsing now moves resume strings out of JSON and borrows error text. Both API probes now share telemetry state/update code with independent provider state; snapshot fields and atomic ordering remain unchanged. Hydromancer connection/retry/idle-wait handling reviewed; connect errors and timeouts share one retry path. Fill tuple parsing borrows addresses and feed subscriptions move their final topic use; event formats, dedupe policy, and command cancellation are retained. Liquidation/tracked-trade subscription, receive, dedupe, recovery, and cleanup now share one handler; feature payloads/parsers and separate history limits remain explicit. Remaining integration stream internals still need review. |
 | Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing reviewed; data and label extraction now share one chart marker lookup. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling and reduced summary text copies. Shared-client request construction inspected across API, Hydromancer, HyperDash, and OpenRouter paths; unnecessary temporary client copies removed. Liquidation/tracked-trade update admission, control status, lag handling, and bucket accumulation reviewed; control transitions and liquidation accumulation are shared, while filtering/freshness, alerts, and retention remain feed-specific. Feed aggregation keys, intent, row models, alert eligibility, and row views reviewed; merge checks share one predicate, suppressed alerts defer row construction, and views reuse themes/owned strings and skip hidden-column formatting. Remaining feed controls, headers, responsive thresholds, footer charts/summaries, and connection presentation reviewed; identical controls are shared and wallet counts reused, while chart math and per-feed presentation differences remain intact. X feed state/update/rendering and REST helpers inspected; author profiles now update in place through one path, source options sort borrowed lists with cached keys, and newest-post selection borrows IDs until request creation. X credential staging/commit/clear paths now share cleanup and borrowed validation, with request-generation regressions; the unchanged HTTP client is separated from state. X refresh admission and token/auth results reviewed; the shared refresh decision covers absent/expiring access tokens, dead guards are removed, and owned credentials/tasks avoid extra copies. Telegram channel, post-merge, avatar, media, and reference-price paths reviewed: alert preparation is bounded to formatted messages, mention updates borrow history and share construction, avatar merging uses one lookup, and input/media copies are deferred. Existing auth-test registry races are isolated with the shared test lock. Telegram fast-mode update handlers are separated from post merging; auth requests share generation/status/result setup, login and private-channel scans reuse the signed-in predicate, and request admission/cleanup order has focused regressions. The feature guide now reflects optional fast/private mode and actual polling/session behavior. Telegram public HTTP/parsing is separated from feed state; avatar/media downloads share request/validation code and HTML extraction borrows source slices. Model/redaction, normalization, fetch timing, ordering, and size policies are preserved, with local HTTP and parser regressions. Telegram live views now borrow posts, profiles, candidates, and status/title text; shared avatar rendering preserves image/initials behavior and impact widgets consume prepared buffers. Styles are separated with unchanged bodies, and private scan controls no longer wrap an always-present widget in Option. Telegram sign-in controls now borrow fixed options/text and iterate code characters directly. Fast-feed lifecycle, resolution/backfill, and cursor sequencing were traced and preserved; media helpers are separated from the root, with unchanged classification, limits, and follow-up behavior. Fast-feed authentication/challenge ownership and session/client cleanup are separated into focused modules with nearby tests, preserving their function bodies and platform policies. Private-channel scans cache sort keys with stable ordering and adjacent deduplication, and session-file paths use a fixed array. Pending-auth removal and restoration now share an explicit guard, removing a verified nested-lock deadlock on wrong-stage submissions while retaining the original challenge and error text; a deadline-bounded subprocess regression covers restoration and unrelated request/session ownership. Assistant internals remain. |
-| Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Theme construction and discarded theme calls in root update, notifications, chart helpers, and order helpers reviewed; the unused calls are removed. Notification delivery, sound entry points, toast retention/animation, and order-status alert policy reviewed; repeated delivery now shares one helper and copies messages only for desktop notifications. Alfred command construction, model, catalog, overlay/result rows, keyboard/lifecycle selection, and submit paths inspected. Dynamic commands and result rows now consume owned display text; close previews borrow positions. Submit-time revalidation, disabled messages, icon fallbacks, result limits, and styling are preserved with click/preview regressions and identical rendered scenes. Trade/close tokenization and symbol resolution inspected; duplicate trimming/normalization and temporary token copies remain candidates. Other app surfaces remain to be reviewed. |
+| Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Theme construction and discarded theme calls in root update, notifications, chart helpers, and order helpers reviewed; the unused calls are removed. Notification delivery, sound entry points, toast retention/animation, and order-status alert policy reviewed; repeated delivery now shares one helper and copies messages only for desktop notifications. Alfred command construction, model, catalog, overlay/result rows, keyboard/lifecycle selection, and submit paths inspected. Dynamic commands and result rows now consume owned display text; close previews borrow positions. Submit-time revalidation, disabled messages, icon fallbacks, result limits, and styling are preserved with click/preview regressions and identical rendered scenes. Trade/close tokenization now shares punctuation trimming and symbol normalization. Close parsing streams borrowed tokens, and trade parsing owns only joined dollar tokens until choosing its symbol; recognition and error precedence match the baseline corpus. Submit organization/ownership and catalog search normalization remain candidates. Other app surfaces remain to be reviewed. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
 
 ## 2026-09-27: chart restoration
@@ -4099,12 +4099,60 @@ Validation (using the local ALSA prefix documented above):
 - Headless GUI smoke: the newly built binary opened its 1600x960 test-mode window
   under Xvfb; expected 20-second timeout (exit 124), no panic markers.
 
+## 2026-09-28: shared Alfred parsing rules and borrowed tokens
+
+- Trade and close parsing duplicated identical punctuation trimming and symbol
+  normalization. Added `alfred_state/parsing.rs` with the shared borrowed-token
+  iterator and normalizer. The trim/normalization bodies are unchanged; indexed
+  keys, ASCII casing, colon splitting, and non-ASCII characters retain their
+  existing behavior. Trading and close symbol-resolution policies stay separate.
+- Close parsing consumes the token iterator directly, removing its temporary
+  vector and per-token strings. It owns only the selected symbol and errors.
+- Trade parsing retains one `Vec<Cow<str>>` for its existing multiple passes.
+  Ordinary tokens borrow the query; a standalone dollar token consumes and joins
+  exactly the next trimmed, nonempty token. This removes the intermediate raw
+  vector, duplicate strings, and manual index increments. The final symbol pass
+  consumes the vector and moves an already-owned joined token when applicable.
+- Draft resolution moves the parsed error after computing order kind. Modifier
+  recognition, compact-number parsing, consumed-token tracking, quantity/price
+  selection, error precedence, and submit-time checks remain unchanged.
+- Added four baseline regressions for dollar joining (including repeated and
+  trailing dollars), punctuation-only input, Unicode whitespace/tickers, indexed
+  keys, modifier precedence, first unconsumed symbols, close percentage/error
+  precedence, and normalization. Updated the Alfred guide and coverage table.
+- Inspected catalog search and submission ownership. Query normalization repeats
+  for each catalog entry; submit methods clone queries used only for resolution.
+  The roughly 1,000-line submission file combines dispatch, trade/Chase preflight,
+  close/NUKE handling, and inline tests. These are further consolidation and
+  organization candidates; no submission code changed in this batch.
+- No command routes, config schemas, subscriptions, signing requests, dependencies,
+  or assets changed. No measured speedup claimed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene alfred`:
+  **81 passed, 0 failed, 0 ignored** before and after production changes.
+- A temporary Rust driver compiled the actual before/after parser source with
+  minimal enum definitions and ran **148,240 synthetic queries through both
+  parsers** (296,480 results per version). Complete debug outputs, including
+  recognition, every intent field, and errors, are byte-for-byte identical.
+  The corpus combines zero-to-three tokens with four command prefixes; committed
+  regressions cover additional whitespace and longer command cases. This compares
+  parser behavior, not external order execution.
+- `cargo test --locked -j 2`: **4,546 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`,
+  `cargo fmt -- --check`, and `git diff --check`: passed.
+- Complete-source comparison verifies all six production files against the
+  reviewed helper moves, iterator/ownership changes, and imports after rustfmt.
+  Both original trim helpers and normalizers had identical function bodies.
+
 ## Next candidates
 
-1. Consolidate identical Alfred trade/close symbol normalization and punctuation
-   trimming. Inspect token ownership, especially the two trade-token vectors
-   and standalone-dollar joining, with baseline parser cases before changing
-   them. Preserve recognition, error priority, and market-resolution rules.
+1. Organize Alfred submission by responsibility and review its remaining query,
+   metadata, and sizing copies. Preserve preflight ordering, account freshness,
+   two-press NUKE arming, command revalidation, and failed-submit UI state. Catalog
+   search also repeats normalization of the same query for each command.
 2. Continue across the unreviewed areas in the coverage table, including remaining
    automation internals and app surfaces. Resting-order admission copies are an
    additional ownership candidate; do not merge distinct recovery policies.

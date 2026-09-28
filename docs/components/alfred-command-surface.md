@@ -56,6 +56,13 @@ a pane should go through the same pane update path as the add-widget menu.
 
 ## Trading Parser
 
+Trade and close intents share token trimming and symbol normalization in
+`src/alfred_state/parsing.rs`. Close parsing streams borrowed tokens; trade
+parsing retains borrowed tokens for its multiple passes and owns only joined
+dollar amounts such as `$ 1k`. Each parser keeps its own recognition, modifiers,
+and error precedence. Symbol resolution still applies each command's market
+selection rules.
+
 Trading-style queries can parse into a single preview row. Examples include:
 
 - market buy/sell

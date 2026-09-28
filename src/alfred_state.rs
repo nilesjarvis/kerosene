@@ -5,6 +5,7 @@ use crate::order_execution::NukePlan;
 
 mod catalog;
 mod model;
+mod parsing;
 mod position_close;
 mod trading;
 pub(crate) use model::{

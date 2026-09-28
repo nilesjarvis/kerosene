@@ -1,3 +1,5 @@
+use crate::alfred_state::parsing::command_tokens;
+
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct ParsedClosePositionIntent {
     pub(super) symbol: Option<String>,
@@ -6,8 +8,8 @@ pub(super) struct ParsedClosePositionIntent {
 }
 
 pub(super) fn parse_close_position_intent(query: &str) -> Option<ParsedClosePositionIntent> {
-    let tokens = close_tokens(query);
-    let close = tokens.first()?;
+    let mut tokens = command_tokens(query);
+    let close = tokens.next()?;
     if !close.eq_ignore_ascii_case("close") {
         return None;
     }
@@ -16,7 +18,7 @@ pub(super) fn parse_close_position_intent(query: &str) -> Option<ParsedClosePosi
     let mut fraction = None;
     let mut error = None;
 
-    for token in tokens.iter().skip(1) {
+    for token in tokens {
         if is_close_filler(token) || is_close_percent_label(token) {
             continue;
         }
@@ -34,7 +36,7 @@ pub(super) fn parse_close_position_intent(query: &str) -> Option<ParsedClosePosi
         }
 
         if symbol.is_none() {
-            symbol = Some(token.clone());
+            symbol = Some(token.to_string());
         } else if error.is_none() {
             error = Some("Use one ticker to close".to_string());
         }
@@ -44,24 +46,6 @@ pub(super) fn parse_close_position_intent(query: &str) -> Option<ParsedClosePosi
         symbol,
         fraction,
         error,
-    })
-}
-
-fn close_tokens(query: &str) -> Vec<String> {
-    query
-        .split_whitespace()
-        .map(trim_close_token)
-        .filter(|token| !token.is_empty())
-        .map(ToString::to_string)
-        .collect()
-}
-
-fn trim_close_token(token: &str) -> &str {
-    token.trim_matches(|ch: char| {
-        matches!(
-            ch,
-            '\'' | '"' | '(' | ')' | '[' | ']' | '{' | '}' | ';' | ','
-        )
     })
 }
 
