@@ -289,8 +289,15 @@ buffers.
 X Feed uses local BYOK user-context access for the authenticated account's
 following timeline and Lists. Users can provide a user access token directly or
 provide a Client ID plus refresh token so Kerosene can refresh the access token
-locally. Runtime state lives in `x_feed.rs`, update logic in `feed_update/x.rs`,
-and rendering in `feed_views/x.rs`.
+locally. Runtime state lives in `x_feed.rs`, REST requests and response parsing
+in `x_feed/client.rs`, update logic in `feed_update/x.rs`, and rendering in
+`feed_views/x.rs`.
+
+Direct-token and OAuth commits share credential replacement and input cleanup.
+Clearing credentials uses the same cleanup for editable and pending inputs,
+while retaining its unconditional request invalidation. Candidate validation
+borrows the input until it is accepted; task and persistence snapshots own
+zeroizing buffers independently of runtime state.
 
 Author profiles update in place through one map-entry path. Posts without an
 image URL still refresh author metadata while preserving cached or pending

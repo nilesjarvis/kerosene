@@ -28,9 +28,10 @@ printing real wallet addresses in tests/docs unless explicitly anonymized.
 `app_state.rs` defines:
 
 ```rust
-pub(crate) type SensitiveString = Zeroizing<String>;
+pub(crate) struct SensitiveString(Zeroizing<String>);
 ```
 
+`SensitiveString` wraps a zeroizing buffer and redacts its `Debug` output.
 Secret buffers and payloads use `Zeroizing<String>` so memory is cleared on
 drop where practical.
 
