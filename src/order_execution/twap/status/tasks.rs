@@ -16,21 +16,14 @@ impl TradingTerminal {
         policy: TwapAccountRefresh,
         twap_id: u64,
     ) -> Task<Message> {
-        match policy {
-            TwapAccountRefresh::Immediate => {
-                let Some(addr) = self.twap_origin_address(twap_id) else {
-                    return Task::none();
-                };
-                self.refresh_account_data_for_twap_reconciliation(addr)
-            }
-            _ if self.twap_refresh_policy_needs_refresh(policy, twap_id) => {
-                let Some(addr) = self.twap_origin_address(twap_id) else {
-                    return Task::none();
-                };
-                self.refresh_account_data_for_twap_reconciliation(addr)
-            }
-            _ => Task::none(),
+        let Some(twap) = self.twap_orders.get(&twap_id) else {
+            return Task::none();
+        };
+        if !policy.should_refresh(twap.status.is_terminal()) {
+            return Task::none();
         }
+        let address = twap.account_address.clone();
+        self.refresh_account_data_for_twap_reconciliation(address)
     }
 
     pub(in crate::order_execution::twap) fn twap_origin_address(
@@ -55,7 +48,7 @@ impl TradingTerminal {
             fetch_order_status_by_cloid(address, request_cloid),
             move |result| Message::TwapOrderStatusLoaded {
                 twap_id,
-                cloid: cloid.clone(),
+                cloid,
                 result: Box::new(result),
             },
         )
@@ -78,7 +71,7 @@ impl TradingTerminal {
             },
             move |result| Message::TwapOrderStatusLoaded {
                 twap_id,
-                cloid: cloid.clone(),
+                cloid,
                 result: Box::new(result),
             },
         )

@@ -33,6 +33,9 @@ state implementations live beside their responsibilities:
   shared trading-request guards and the HUD concurrency limit.
 - `order_execution/identities.rs`: captured spot metadata for Chase/TWAP and
   open-order identity checks for Chase.
+- `order_execution/exchange_errors.rs`: shared closed-order cancellation error
+  matching for ordinary orders, Chase, and TWAP; callers retain their own
+  reconciliation policies.
 - `order_execution/quick_order/model.rs`: quick-order form, recovery, and
   percentage provenance, including redacted formatting.
 - `order_execution/quick_order/move_order/context.rs`: captured move-order
@@ -440,6 +443,13 @@ policy. Retry plans and final-use client-order IDs move into the next operation,
 while child history, reconciliation state, and independent tasks retain their
 own copies. Response classification, retry limits, and fill accounting stay in
 the slice-result handler.
+
+Unexpected-child cancellation shares completion cleanup and retry accounting
+while preserving distinct events for confirmed, rejected, and transport-unknown
+results. It prepares the exchange summary once and updates only matching children.
+Transport errors still follow the retry budget when their text mentions a closed
+order. TWAP account refresh applies its policy to the original order through one
+lookup; status and cancellation callbacks move their final-use client-order IDs.
 
 ## Advanced Order History
 

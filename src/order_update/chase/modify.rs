@@ -1,6 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
+use crate::order_execution::cancel_error_indicates_closed_order;
 use crate::signing::{
     CHASE_RETRY_COOLDOWN, ChaseLifecycle, ChaseQueuedAction, ChaseVerificationReason,
     ExchangeResponse, MIN_CHASE_REPRICE_INTERVAL,
@@ -9,8 +10,6 @@ use crate::twap_state::ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL;
 
 use iced::Task;
 use std::time::Instant;
-
-use super::cancel::chase_terminal_cancel_error;
 
 #[cfg(test)]
 mod tests;
@@ -103,7 +102,7 @@ impl TradingTerminal {
         summary: String,
     ) -> Task<Message> {
         let summary = redact_sensitive_response_text(&summary);
-        if chase_terminal_cancel_error(&summary) {
+        if cancel_error_indicates_closed_order(&summary) {
             return self.check_chase_order_status(
                 chase_id,
                 oid,

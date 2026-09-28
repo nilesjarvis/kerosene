@@ -3,8 +3,6 @@ mod modify;
 mod resting;
 mod result;
 
-pub(super) use cancel::chase_terminal_cancel_error;
-
 use crate::api::fetch_order_status_by_oid;
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;

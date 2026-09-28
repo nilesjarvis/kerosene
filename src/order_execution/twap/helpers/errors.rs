@@ -50,16 +50,3 @@ pub(in crate::order_execution::twap) fn classify_twap_exchange_error(
 
     TwapExchangeErrorAction::ConsumeSlice
 }
-
-pub(in crate::order_execution::twap) fn twap_terminal_cancel_error(summary: &str) -> bool {
-    let summary = summary.to_ascii_lowercase();
-    summary.contains("filled")
-        || summary.contains("canceled")
-        || summary.contains("cancelled")
-        || summary.contains("cancled")
-        || summary.contains("never placed")
-        || summary.contains("not found")
-        || summary.contains("does not exist")
-        || summary.contains("no open order")
-        || summary.contains("no longer open")
-}

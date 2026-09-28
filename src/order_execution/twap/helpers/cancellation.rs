@@ -53,7 +53,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
             move |result| Message::TwapUnexpectedCancelResult {
                 twap_id,
                 oid,
-                cloid: cloid.clone(),
+                cloid,
                 result: Box::new(result),
             },
         );
@@ -65,7 +65,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
             Message::TwapUnexpectedCancelResult {
                 twap_id,
                 oid: None,
-                cloid: Some(cloid.clone()),
+                cloid: Some(cloid),
                 result: Box::new(result),
             }
         });

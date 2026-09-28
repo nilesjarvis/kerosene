@@ -3,7 +3,7 @@ use crate::api::{OrderStatusResult, fetch_order_status_by_oid};
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
-use crate::order_update::chase::chase_terminal_cancel_error;
+use crate::order_execution::cancel_error_indicates_closed_order;
 use crate::signing::ExchangeResponse;
 use iced::Task;
 
@@ -69,7 +69,7 @@ impl TradingTerminal {
         ) {
             Some("Cancel status unknown")
         } else if outcome.kind == ExecutionOutcomeKind::Rejected
-            && chase_terminal_cancel_error(&outcome.status)
+            && cancel_error_indicates_closed_order(&outcome.status)
         {
             Some("Cancel may have already resolved")
         } else {

@@ -1,10 +1,11 @@
 use super::helpers::{
     TwapAccountRefresh, twap_cancel_child_task, twap_cancel_label, twap_cancel_target_matches,
-    twap_child_matches_cancel_target, twap_terminal_cancel_error,
+    twap_child_matches_cancel_target,
 };
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
+use crate::order_execution::cancel_error_indicates_closed_order;
 use crate::signing::ExchangeResponse;
 use crate::twap_state::{
     TWAP_MAX_UNEXPECTED_CANCEL_RETRIES, TwapChildStatus, TwapEventKind, TwapOrder, TwapPauseReason,
@@ -62,156 +63,122 @@ impl TradingTerminal {
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         let now = Instant::now();
-        let mut retry_cancel = None;
-        let mut finish_attempt = false;
-        let mut matched_cancel_target = false;
-        if let Some(twap) = self.twap_orders.get_mut(&twap_id)
-            && matches!(
-                &twap.pending_op,
-                Some(TwapPendingOp::CancelUnexpectedResting {
-                    oid: pending_oid,
-                    cloid: pending_cloid,
-                }) if twap_cancel_target_matches(
-                    *pending_oid,
-                    pending_cloid.as_deref(),
-                    oid,
-                    cloid.as_deref(),
-                )
+        let Some(twap) = self.twap_orders.get_mut(&twap_id) else {
+            return Task::none();
+        };
+        if !matches!(
+            &twap.pending_op,
+            Some(TwapPendingOp::CancelUnexpectedResting {
+                oid: pending_oid,
+                cloid: pending_cloid,
+            }) if twap_cancel_target_matches(
+                *pending_oid,
+                pending_cloid.as_deref(),
+                oid,
+                cloid.as_deref(),
             )
-        {
-            matched_cancel_target = true;
-            let exchange_summary = match &result {
-                Ok(response) => response.summary(),
-                Err(error) => redact_sensitive_response_text(error),
-            };
+        ) {
+            return Task::none();
+        }
+
+        let summary = match &result {
+            Ok(response) => response.summary(),
+            Err(error) => redact_sensitive_response_text(error),
+        };
+        twap.update_child_orders_matching(
+            |child| twap_child_matches_cancel_target(child, oid, cloid.as_deref()),
+            |child| {
+                child.exchange_summary = summary.clone();
+            },
+        );
+        let confirmed = result
+            .as_ref()
+            .is_ok_and(|response| response.is_confirmed_cancel_result());
+        let finish_attempt =
+            confirmed || result.is_ok() && cancel_error_indicates_closed_order(&summary);
+        let mut retry_cancel = None;
+        if finish_attempt {
+            twap.pending_op = None;
+            twap.cancel_retries = 0;
             twap.update_child_orders_matching(
                 |child| twap_child_matches_cancel_target(child, oid, cloid.as_deref()),
                 |child| {
-                    child.exchange_summary = exchange_summary.clone();
+                    child.status = TwapChildStatus::UnexpectedRestingCancelled;
                 },
             );
-            match result {
-                Ok(response) if response.is_confirmed_cancel_result() => {
-                    finish_attempt = true;
-                    twap.pending_op = None;
-                    twap.cancel_retries = 0;
-                    twap.update_child_orders_matching(
-                        |child| twap_child_matches_cancel_target(child, oid, cloid.as_deref()),
-                        |child| {
-                            child.status = TwapChildStatus::UnexpectedRestingCancelled;
-                        },
-                    );
-                    twap.clear_pause();
-                    twap.push_event(
-                        TwapEventKind::Reconciled,
-                        format!(
-                            "Canceled unexpected resting child {}",
-                            twap_cancel_label(oid, cloid.as_deref())
+            twap.clear_pause();
+            let message = if confirmed {
+                format!(
+                    "Canceled unexpected resting child {}",
+                    twap_cancel_label(oid, cloid.as_deref())
+                )
+            } else {
+                format!(
+                    "Unexpected resting child {} is no longer open: {summary}",
+                    twap_cancel_label(oid, cloid.as_deref())
+                )
+            };
+            twap.push_event(TwapEventKind::Reconciled, message, !confirmed);
+        } else {
+            let transport_unknown = result.is_err();
+            twap.cancel_retries = twap.cancel_retries.saturating_add(1);
+            if twap.cancel_retries >= TWAP_MAX_UNEXPECTED_CANCEL_RETRIES {
+                twap.pending_op = None;
+                twap.status = TwapStatus::Error;
+                let message = if transport_unknown {
+                    format!(
+                        concat!(
+                            "Cancel status unknown for unexpected child {} after ",
+                            "{} attempts: {}"
                         ),
-                        false,
-                    );
-                }
-                Ok(response) => {
-                    let summary = response.summary();
-                    if twap_terminal_cancel_error(&summary) {
-                        finish_attempt = true;
-                        twap.pending_op = None;
-                        twap.cancel_retries = 0;
-                        twap.update_child_orders_matching(
-                            |child| twap_child_matches_cancel_target(child, oid, cloid.as_deref()),
-                            |child| {
-                                child.status = TwapChildStatus::UnexpectedRestingCancelled;
-                            },
-                        );
-                        twap.clear_pause();
-                        twap.push_event(
-                            TwapEventKind::Reconciled,
-                            format!(
-                                "Unexpected resting child {} is no longer open: {summary}",
-                                twap_cancel_label(oid, cloid.as_deref())
-                            ),
-                            true,
-                        );
-                    } else {
-                        finish_attempt = false;
-                        twap.cancel_retries = twap.cancel_retries.saturating_add(1);
-                        if twap.cancel_retries >= TWAP_MAX_UNEXPECTED_CANCEL_RETRIES {
-                            twap.pending_op = None;
-                            twap.status = TwapStatus::Error;
-                            twap.push_event(
-                                TwapEventKind::Error,
-                                format!(
-                                    concat!(
-                                        "Failed to cancel unexpected resting child {} after ",
-                                        "{} attempts: {}"
-                                    ),
-                                    twap_cancel_label(oid, cloid.as_deref()),
-                                    TWAP_MAX_UNEXPECTED_CANCEL_RETRIES,
-                                    summary
-                                ),
-                                true,
-                            );
-                        } else {
-                            let delay = TwapOrder::retry_delay(twap.cancel_retries);
-                            twap.pause(
-                                TwapPauseReason::UnexpectedResting,
-                                Some(now + delay),
-                                format!(
-                                    concat!(
-                                        "Cancel retry {}/{} for unexpected resting child {} ",
-                                        "in about {}s"
-                                    ),
-                                    twap.cancel_retries,
-                                    TWAP_MAX_UNEXPECTED_CANCEL_RETRIES,
-                                    twap_cancel_label(oid, cloid.as_deref()),
-                                    delay.as_secs()
-                                ),
-                                true,
-                            );
-                            retry_cancel = Some((oid, cloid.clone(), twap.cancel_retries, delay));
-                        }
-                    }
-                }
-                Err(error) => {
-                    let error = redact_sensitive_response_text(&error);
-                    finish_attempt = false;
-                    twap.cancel_retries = twap.cancel_retries.saturating_add(1);
-                    if twap.cancel_retries >= TWAP_MAX_UNEXPECTED_CANCEL_RETRIES {
-                        twap.pending_op = None;
-                        twap.status = TwapStatus::Error;
-                        twap.push_event(
-                            TwapEventKind::Error,
-                            format!(
-                                concat!(
-                                    "Cancel status unknown for unexpected child {} after ",
-                                    "{} attempts: {}"
-                                ),
-                                twap_cancel_label(oid, cloid.as_deref()),
-                                TWAP_MAX_UNEXPECTED_CANCEL_RETRIES,
-                                error
-                            ),
-                            true,
-                        );
-                    } else {
-                        let delay = TwapOrder::retry_delay(twap.cancel_retries);
-                        twap.pause(
-                            TwapPauseReason::UnexpectedResting,
-                            Some(now + delay),
-                            format!(
-                                concat!(
-                                    "Cancel status unknown for unexpected child {}; ",
-                                    "retry {}/{} in about {}s"
-                                ),
-                                twap_cancel_label(oid, cloid.as_deref()),
-                                twap.cancel_retries,
-                                TWAP_MAX_UNEXPECTED_CANCEL_RETRIES,
-                                delay.as_secs()
-                            ),
-                            true,
-                        );
-                        retry_cancel = Some((oid, cloid.clone(), twap.cancel_retries, delay));
-                    }
-                }
+                        twap_cancel_label(oid, cloid.as_deref()),
+                        TWAP_MAX_UNEXPECTED_CANCEL_RETRIES,
+                        summary
+                    )
+                } else {
+                    format!(
+                        concat!(
+                            "Failed to cancel unexpected resting child {} after ",
+                            "{} attempts: {}"
+                        ),
+                        twap_cancel_label(oid, cloid.as_deref()),
+                        TWAP_MAX_UNEXPECTED_CANCEL_RETRIES,
+                        summary
+                    )
+                };
+                twap.push_event(TwapEventKind::Error, message, true);
+            } else {
+                let delay = TwapOrder::retry_delay(twap.cancel_retries);
+                let message = if transport_unknown {
+                    format!(
+                        concat!(
+                            "Cancel status unknown for unexpected child {}; ",
+                            "retry {}/{} in about {}s"
+                        ),
+                        twap_cancel_label(oid, cloid.as_deref()),
+                        twap.cancel_retries,
+                        TWAP_MAX_UNEXPECTED_CANCEL_RETRIES,
+                        delay.as_secs()
+                    )
+                } else {
+                    format!(
+                        concat!(
+                            "Cancel retry {}/{} for unexpected resting child {} ",
+                            "in about {}s"
+                        ),
+                        twap.cancel_retries,
+                        TWAP_MAX_UNEXPECTED_CANCEL_RETRIES,
+                        twap_cancel_label(oid, cloid.as_deref()),
+                        delay.as_secs()
+                    )
+                };
+                twap.pause(
+                    TwapPauseReason::UnexpectedResting,
+                    Some(now + delay),
+                    message,
+                    true,
+                );
+                retry_cancel = Some((oid, cloid, twap.cancel_retries, delay));
             }
         }
 
@@ -220,9 +187,6 @@ impl TradingTerminal {
                 twap_unexpected_cancel_retry_due_task(twap_id, oid, cloid, attempt, delay),
                 self.refresh_after_twap_result(TwapAccountRefresh::Immediate, twap_id),
             ]);
-        }
-        if !matched_cancel_target {
-            return Task::none();
         }
         if finish_attempt {
             self.finish_twap_attempt(twap_id, now);
