@@ -1,7 +1,7 @@
 use crate::account::{OpenOrder, UserFill};
 use crate::app_state::TradingTerminal;
 use crate::helpers::{parse_positive_finite_number, values_match_approx};
-use crate::order_execution::order_account_addresses_match;
+use crate::order_execution::{PreparedExchangeOrder, order_account_addresses_match};
 
 use std::fmt;
 
@@ -73,6 +73,30 @@ pub(crate) struct ProjectedPositionDelta {
 }
 
 impl TradingTerminal {
+    /// The submission surface chooses the projection policy: IOC limit orders,
+    /// for example, use market indicators because they never rest.
+    pub(crate) fn add_prepared_order_placement_indicator(
+        &mut self,
+        account_address: &str,
+        prepared: &PreparedExchangeOrder,
+        use_market_indicator: bool,
+    ) -> Option<u64> {
+        self.add_pending_order_indicator(PendingOrderIndicatorInput {
+            account_address: account_address.to_string(),
+            symbol: prepared.symbol_key.clone(),
+            oid: None,
+            is_buy: prepared.is_buy,
+            size: prepared.size.clone(),
+            price: prepared.price.clone(),
+            kind: if use_market_indicator {
+                PendingOrderIndicatorKind::MarketPlacing
+            } else {
+                PendingOrderIndicatorKind::Placing
+            },
+        })
+    }
+
+    #[cfg(test)]
     pub(crate) fn add_pending_order_placement_indicator(
         &mut self,
         account_address: String,
@@ -92,6 +116,7 @@ impl TradingTerminal {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn add_pending_market_order_placement_indicator(
         &mut self,
         account_address: String,

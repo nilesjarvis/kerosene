@@ -181,23 +181,8 @@ impl TradingTerminal {
         ));
         self.pending_order_action = Some(PendingOrderAction::ClosePosition);
 
-        let pending_indicator_id = if use_market {
-            self.add_pending_market_order_placement_indicator(
-                account_address.clone(),
-                prepared.symbol_key.clone(),
-                prepared.is_buy,
-                prepared.size.clone(),
-                prepared.price.clone(),
-            )
-        } else {
-            self.add_pending_order_placement_indicator(
-                account_address.clone(),
-                prepared.symbol_key.clone(),
-                prepared.is_buy,
-                prepared.size.clone(),
-                prepared.price.clone(),
-            )
-        };
+        let pending_indicator_id =
+            self.add_prepared_order_placement_indicator(&account_address, &prepared, use_market);
 
         let (request, context) = prepared.place_request_with_context(&account_address);
         place_order_task(key, request, move |r| Message::ClosePositionResult {

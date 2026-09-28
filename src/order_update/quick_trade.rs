@@ -95,13 +95,8 @@ impl TradingTerminal {
             PendingOrderAction::Sell
         });
 
-        let pending_indicator_id = self.add_pending_market_order_placement_indicator(
-            account_address.clone(),
-            prepared.symbol_key.clone(),
-            prepared.is_buy,
-            prepared.size.clone(),
-            prepared.price.clone(),
-        );
+        let pending_indicator_id =
+            self.add_prepared_order_placement_indicator(&account_address, &prepared, true);
         let market_type = prepared.market_type;
         let (place_request, context) = prepared.place_request_with_context(&account_address);
         self.invalidate_spot_balances_after_exchange_dispatch(&account_address, market_type);
@@ -137,10 +132,85 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::{ExchangeSymbol, MarketType};
+    use crate::app_state::sensitive_string;
     use crate::chart_state::{ChartInstance, ChartSurfaceId};
-    use crate::config::{QuickTradeActionConfig, QuickTradeSide};
+    use crate::config::{AccountProfile, QuickTradeActionConfig, QuickTradeSide};
     use crate::order_execution::QuickTradeOrderRequest;
+    use crate::order_pending_indicators::PendingOrderIndicatorKind;
     use crate::timeframe::Timeframe;
+
+    #[test]
+    fn valid_quick_trade_captures_market_indicator_fields_for_both_sides() {
+        let account = "0xabc0000000000000000000000000000000000000";
+        for (side, expected_price) in [(QuickTradeSide::Buy, "101"), (QuickTradeSide::Sell, "99")] {
+            let mut terminal = TradingTerminal::boot().0;
+            terminal.connected_address = Some(account.to_string());
+            terminal.wallet_address_input = account.to_string();
+            terminal.accounts = vec![AccountProfile {
+                master_address: None,
+                secret_id: "fixture-account".to_string(),
+                name: "Fixture".to_string(),
+                wallet_address: account.to_string(),
+                agent_key: sensitive_string("fixture-key").into_zeroizing(),
+                hydromancer_api_key: sensitive_string("").into_zeroizing(),
+            }];
+            terminal.active_account_index = 0;
+            terminal.market_slippage_pct = 1.0;
+            terminal.exchange_symbols = vec![ExchangeSymbol {
+                key: "BTC".to_string(),
+                ticker: "BTC".to_string(),
+                category: "crypto".to_string(),
+                display_name: None,
+                keywords: Vec::new(),
+                asset_index: 7,
+                collateral_token: None,
+                sz_decimals: 4,
+                max_leverage: 50,
+                only_isolated: false,
+                growth_mode: false,
+                market_type: MarketType::Perp,
+                outcome: None,
+            }];
+            terminal.all_mids.insert("BTC".to_string(), 100.0);
+            terminal
+                .all_mids_updated_at_ms
+                .insert("BTC".to_string(), TradingTerminal::now_ms());
+            let surface_id = ChartSurfaceId::Docked(7);
+            let action = QuickTradeActionConfig {
+                side,
+                quantity: 1.25,
+                denomination: QuickTradeDenomination::Coin,
+            };
+            let mut instance = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+            instance.chart.set_surface_id(surface_id);
+            instance.quick_trade_actions.push(action.clone());
+            terminal.charts.insert(7, instance);
+
+            let task = terminal.handle_submit_quick_trade_order(QuickTradeOrderRequest {
+                chart_id: 7,
+                surface_id,
+                symbol_key: "BTC".to_string(),
+                action_index: 0,
+                action,
+            });
+
+            assert_eq!(task.units(), 1);
+            assert_eq!(terminal.pending_order_indicators.len(), 1);
+            let indicator = terminal
+                .pending_order_indicators
+                .values()
+                .next()
+                .expect("indicator");
+            assert_eq!(indicator.kind, PendingOrderIndicatorKind::MarketPlacing);
+            assert_eq!(indicator.account_address, account);
+            assert_eq!(indicator.symbol, "BTC");
+            assert_eq!(indicator.oid, None);
+            assert_eq!(indicator.is_buy, side.is_buy());
+            assert_eq!(indicator.size, "1.25");
+            assert_eq!(indicator.price, expected_price);
+        }
+    }
 
     #[test]
     fn quantity_labels_match_action_denomination() {

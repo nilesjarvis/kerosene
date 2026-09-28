@@ -244,6 +244,13 @@ Pending order indicators are keyed and shown in UI/account surfaces so users
 can see in-flight actions. The app should not assume an order succeeded merely
 because an HTTP request returned.
 
+Ticket, quick-order, close-position, HUD, and Quick Trade submission share
+`add_prepared_order_placement_indicator` in `order_pending_indicators.rs` to
+copy prepared wire fields into independently owned indicators. Each submission
+path chooses the projection kind: ticket and quick-order IOC limits project
+like market orders. Indicator validation, ID allocation, and chart sync use the
+same insertion path as other pending indicators.
+
 ## Cancel And Move Order
 
 Cancel flow:
