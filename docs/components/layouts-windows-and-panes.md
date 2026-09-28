@@ -342,6 +342,11 @@ Detach/close behavior must keep these maps consistent:
 ## Custom Window Chrome
 
 `window_chrome.rs` and `main_view/title_bar.rs` handle platform-aware chrome.
+The title-bar module owns main/auxiliary framing and control placement, with
+separate `controls`, `icons`, and `resize` modules. Linux and macOS share content
+selection and framing; only Linux adds the existing edge/corner resize overlay.
+Onboarding layout lives in `main_view/onboarding.rs`, with its canvas programs
+and drawing helpers in `main_view/onboarding/animation.rs`.
 Settings can enable custom chrome where supported. The setting may require
 a restart before all windows use the new decorations. Platform-specific
 behavior:
