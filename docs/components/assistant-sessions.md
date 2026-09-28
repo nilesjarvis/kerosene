@@ -15,8 +15,10 @@ runtime cannot write into another session.
   context metrics, and replay. `model.rs` contains chat and persisted wire types
   with their existing redaction; `stream.rs` handles response, reasoning, and
   tool presentation. Tests live beside each child module.
-- `src/agent_update.rs` coordinates create/switch actions, stops the previous Pi
-  process, requests Pi context metrics, and schedules session saves.
+- `src/agent_update.rs` dispatches Assistant actions. Its `sessions.rs` child
+  coordinates create/switch actions, runtime/file cleanup, and session saves;
+  `runtime.rs` handles Pi events, context updates, and response presentation.
+  Closing the window uses the same runtime invalidation path as provider changes.
 - `src/agent_views.rs` renders the collapsible session navigation, persistence
   status, prompt-bar model selector, and active session context footer.
 - `src/agent_persistence.rs` loads and atomically saves the side-file.
