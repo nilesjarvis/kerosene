@@ -26,7 +26,7 @@ candidates; it does not establish that every module has been reviewed.
 | Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Snapshot models, planning, assembly, and metrics reviewed and separated; request bounds and history admission are shared. Snapshot update callers inspected, with freshness/admission policies retained. Journal cache persistence and tests reviewed; platform-specific replacement retained. Cockpit rendering/analytics reviewed and split by panel; per-asset aggregation copies coin names only for distinct output rows. Detail/chrome/list views, summary preparation/series/drawing, and small trade-card helpers reviewed; simplified series iteration and reused detail values. Snapshot canvas interaction/rendering reviewed and separated; the canvas borrows its snapshot. Account analytics HTTP fan-out, reserve/name/history parsing, income assembly, and portfolio data selection reviewed; token validation is centralized, recent-payment formatting is bounded to 12 valid rows, portfolio bucket construction is direct, and unused theme construction is removed. Portfolio/income panes, table variants, projection generation, chart layout/hover/tooltip, and PnL area rendering reviewed; daily histories and income labels now borrow data, hidden-chip preparation is skipped, and common table cells/status wrapping are shared. PnL-card state/metrics, privacy text, preview/export rendering, contrast, and output paths reviewed; digit masking is shared and position percentages are reused. Owned export snapshots and account binding remain intact. Account metric helpers reviewed and retained; portfolio/income refresh lifecycle now has one shared implementation with independent state per feature, while caller admission and result policies remain explicit. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Removed discarded theme constructions from order/Chase entry points after checking theme purity; request and lifecycle code is otherwise byte-identical. Substantive order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Proxy URL normalization, redacted labels, deserialization/revalidation, settings commit order, and startup fallback inspected; existing security and persistence behavior retained. Remaining persistence/security code needs review. |
-| Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Proxy transport/admission reviewed and retained. Hydromancer frame/control parsing now moves resume strings out of JSON and borrows error text. Both API probes now share telemetry state/update code with independent provider state; snapshot fields and atomic ordering remain unchanged. Hydromancer connection/retry/idle-wait handling reviewed; connect errors and timeouts share one retry path. Fill tuple parsing borrows addresses and feed subscriptions move their final topic use; event formats, dedupe policy, and command cancellation are retained. Remaining integration stream internals still need review. |
+| Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Proxy transport/admission reviewed and retained. Hydromancer frame/control parsing now moves resume strings out of JSON and borrows error text. Both API probes now share telemetry state/update code with independent provider state; snapshot fields and atomic ordering remain unchanged. Hydromancer connection/retry/idle-wait handling reviewed; connect errors and timeouts share one retry path. Fill tuple parsing borrows addresses and feed subscriptions move their final topic use; event formats, dedupe policy, and command cancellation are retained. Liquidation/tracked-trade subscription, receive, dedupe, recovery, and cleanup now share one handler; feature payloads/parsers and separate history limits remain explicit. Remaining integration stream internals still need review. |
 | Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing reviewed; data and label extraction now share one chart marker lookup. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling and reduced summary text copies. Shared-client request construction inspected across API, Hydromancer, HyperDash, and OpenRouter paths; unnecessary temporary client copies removed. Other integration and assistant internals still need substantive review. |
 | Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Theme construction and discarded theme calls in root update, notifications, chart helpers, and order helpers reviewed; the unused calls are removed. Notification delivery, sound entry points, toast retention/animation, and order-status alert policy reviewed; repeated delivery now shares one helper and copies messages only for desktop notifications. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
@@ -1773,11 +1773,52 @@ Validation (using the local ALSA prefix documented above):
 - Source comparison, existing-test preservation checks, `cargo fmt -- --check`,
   and `git diff --check`: passed.
 
+## 2026-09-28: share Hydromancer fill-stream lifecycle
+
+- Consolidated the liquidation and tracked-trade subscription/receive loops in
+  `ws/hydromancer/fill_stream.rs`. Each adapter still creates its original
+  subscription payload, keeps its stream identity and 10,000-message output
+  buffer, and acquires the manager at the same point. Empty tracked-address
+  lists still return before manager acquisition.
+- A private two-variant feed type pairs each channel with its existing parser,
+  dedupe key, output variant, and history limit (20,000/50,000). The shared
+  handler forwards controls before fills, preserves live/replay filtering and
+  duplicate history across reconnect messages, requests recovery before lag
+  delivery, and retains the two-second pause after successful recovery/delivery.
+- Subscription guards now have one creation/cleanup path. Failed subscribe,
+  failed downstream delivery, closed broadcasts, and future cancellation keep
+  their existing termination behavior. The common handler accepts a sink so
+  channel-driven tests can exercise it without network access or manager-registry
+  test hooks.
+- Added six tests, each exercising both feeds: mixed control/live/replay data
+  and malformed/nonmatching input; failed control/fill delivery; reconnect
+  before failed lag notification; pause after successful lag notification;
+  cancellation while waiting; and failed subscription. They assert command
+  ordering and exact unsubscribe payloads where applicable.
+- Source comparison matches both original stream bodies to the shared one after
+  the explicit feed-configuration/event-wrapping substitutions and rustfmt
+  differences. Subscription builders, channel sizes, parsing helpers, history
+  implementation, reconnect gate, and manager code retain their behavior.
+- Updated the subscription architecture guide. No config, public messages,
+  subscription identities, dependencies, assets, or trading behavior changed.
+
+Validation (using the local ALSA prefix documented above):
+
+- Baseline `cargo test --locked -j 2 --package kerosene --bin kerosene
+  ws::hydromancer`: **92 passed**.
+- New `ws::hydromancer::fill_stream` tests: **6 passed**; the complete
+  Hydromancer target after extraction: **98 passed**.
+- `cargo test --locked -j 2`: **4,386 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- Original-loop source comparison, `cargo fmt -- --check`, and
+  `git diff --check`: passed.
+
 ## Next candidates
 
-1. Review consolidation of liquidation/tracked-trade receive loops, preserving
-   control forwarding, dedupe capacities, lag reconnect ordering, subscription
-   guards, and downstream cancellation; continue through feed state/update code.
+1. Continue through liquidation/tracked-trade state, aggregation, status, and
+   update paths, preserving feed-specific filtering, history, and alert policy.
 2. Continue through account data, wallet model, and update ownership. Account
    state/persistence copies remain intentional where they protect a snapshot
    across terminal mutations.

@@ -198,6 +198,15 @@ Hydromancer covers:
 - tracked trades
 - alternative candle/book/asset-context streams
 
+Liquidations and tracked trades share `ws/hydromancer/fill_stream.rs` for
+subscription cleanup, control forwarding, live/replay parsing, duplicate
+filtering, and lag recovery. Each adapter retains its subscription payload and
+stream identity; the shared handler retains separate feed parsers and history
+limits (20,000 liquidation keys and 50,000 tracked-trade keys). Lag recovery
+requests reconnect before notifying the consumer, then pauses for two seconds
+only if both succeed. The subscription guard releases the topic on stream
+completion or cancellation.
+
 Market adapters are split by feature under `ws/hydromancer/market_streams/`.
 Their shared payload selectors return borrowed slices for direct items, wrapped
 items, and batches; each adapter filters its symbol and other routing fields

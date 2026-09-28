@@ -1,5 +1,6 @@
 use super::recovery::emit_after_reconnect;
 use crate::network_activity::HttpRequestExt as _;
+mod fill_stream;
 mod liquidations;
 mod manager;
 mod market_streams;
