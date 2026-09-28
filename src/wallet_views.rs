@@ -54,7 +54,7 @@ impl TradingTerminal {
 
         if let Some(error) = state.error.as_ref() {
             content = content.push(
-                container(text(error.clone()).size(12).color(theme.palette().danger))
+                container(text(error).size(12).color(theme.palette().danger))
                     .padding([6, 8])
                     .width(Fill),
             );

@@ -3,13 +3,14 @@ mod row;
 mod tests;
 
 use self::row::{wallet_order_row, wallet_orders_header};
+use super::style::wallet_detail_table;
 
 use crate::account::WalletOpenOrderDetail;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::widget::container as container_style;
-use iced::widget::{Column, container, rule, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::Element;
+use iced::widget::{Column, rule, text};
+
 use std::cmp::Reverse;
 
 // ---------------------------------------------------------------------------
@@ -68,24 +69,6 @@ impl TradingTerminal {
             }
         }
 
-        container(orders_table)
-            .padding([8, 8])
-            .width(Fill)
-            .style(|theme: &Theme| container_style::Style {
-                background: Some(
-                    Color {
-                        a: 0.22,
-                        ..theme.extended_palette().background.weak.color
-                    }
-                    .into(),
-                ),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 1.0,
-                    color: theme.extended_palette().background.strong.color,
-                },
-                ..Default::default()
-            })
-            .into()
+        wallet_detail_table(orders_table)
     }
 }

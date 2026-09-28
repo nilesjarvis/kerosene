@@ -1,11 +1,12 @@
 use crate::account::{WalletDetailsData, WalletPositionDetail};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::widget::container as container_style;
-use iced::widget::{Column, container, row, rule, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::Element;
+use iced::widget::{Column, row, rule, text};
+use std::borrow::Cow;
 
 use super::numbers::wallet_has_visible_nonzero;
+use super::style::wallet_detail_table;
 
 mod position_row;
 
@@ -14,16 +15,20 @@ mod position_row;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(crate) fn wallet_position_details_with_spot(
+    /// Borrow stored rows and append owned spot rows, synthesizing them before
+    /// callers iterate.
+    pub(super) fn wallet_position_details_with_spot<'a>(
         &self,
-        data: &WalletDetailsData,
-    ) -> Vec<WalletPositionDetail> {
-        let mut positions = data.positions.clone();
+        data: &'a WalletDetailsData,
+    ) -> Vec<Cow<'a, WalletPositionDetail>> {
+        let mut positions: Vec<_> = data.positions.iter().map(Cow::Borrowed).collect();
         positions.extend(data.spot.balances.iter().filter_map(|balance| {
             self.spot_asset_position_for_balance(balance, &data.fills)
-                .map(|asset_position| WalletPositionDetail {
-                    dex: String::new(),
-                    asset_position,
+                .map(|asset_position| {
+                    Cow::Owned(WalletPositionDetail {
+                        dex: String::new(),
+                        asset_position,
+                    })
                 })
         }));
         positions
@@ -44,21 +49,16 @@ impl TradingTerminal {
         data: &'a WalletDetailsData,
     ) -> Element<'a, Message> {
         let theme = self.theme();
-        let mut position_rows: Vec<WalletPositionDetail> = self
-            .wallet_position_details_with_spot(data)
-            .into_iter()
-            .filter(|detail| {
-                let pos = &detail.asset_position.position;
-                wallet_has_visible_nonzero(&pos.szi)
-                    && self
-                        .visible_wallet_detail_symbol(&detail.dex, &pos.coin)
-                        .is_some()
-            })
-            .collect();
-        position_rows.sort_by(|a, b| {
-            let a_symbol = Self::wallet_detail_symbol(&a.dex, &a.asset_position.position.coin);
-            let b_symbol = Self::wallet_detail_symbol(&b.dex, &b.asset_position.position.coin);
-            a_symbol.cmp(&b_symbol)
+        let mut position_rows = self.wallet_position_details_with_spot(data);
+        position_rows.retain(|detail| {
+            let pos = &detail.asset_position.position;
+            wallet_has_visible_nonzero(&pos.szi)
+                && self
+                    .visible_wallet_detail_symbol(&detail.dex, &pos.coin)
+                    .is_some()
+        });
+        position_rows.sort_by_cached_key(|detail| {
+            Self::wallet_detail_symbol(&detail.dex, &detail.asset_position.position.coin)
         });
 
         let positions_header = row![
@@ -98,24 +98,6 @@ impl TradingTerminal {
             }
         }
 
-        container(positions_table)
-            .padding([8, 8])
-            .width(Fill)
-            .style(|theme: &Theme| container_style::Style {
-                background: Some(
-                    Color {
-                        a: 0.22,
-                        ..theme.extended_palette().background.weak.color
-                    }
-                    .into(),
-                ),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 1.0,
-                    color: theme.extended_palette().background.strong.color,
-                },
-                ..Default::default()
-            })
-            .into()
+        wallet_detail_table(positions_table)
     }
 }

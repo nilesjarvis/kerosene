@@ -453,6 +453,13 @@ grid. They can subscribe to user-data streams for their own address and show:
 The detail window should not mutate the connected trading account unless a
 message explicitly targets account profile state.
 
+Summary and table preparation borrow stored position rows and append owned spot
+rows through `wallet_position_details_with_spot`. Spot synthesis remains eager;
+the table filters its row buffer in place and caches symbol sort keys, preserving
+source order for equal symbols. Positions, orders, and spot balances share the
+table container in `wallet_views/style.rs`. Error and warning text borrow their
+window snapshot; outgoing messages continue to own their values.
+
 `wallet_state/details.rs` shares window selection and snapshot timestamps across
 position, order, balance, and fill stream events. Matching windows clear their
 error and record a refresh even while awaiting an initial snapshot; stream

@@ -1,7 +1,7 @@
 use crate::message::Message;
 
-use iced::widget::{button, text};
-use iced::{Color, Element, Length, Theme};
+use iced::widget::{Column, button, container, text};
+use iced::{Color, Element, Fill, Length, Theme};
 
 #[cfg(test)]
 mod tests;
@@ -42,4 +42,26 @@ pub(in crate::wallet_views) fn wallet_symbol_button(
         ..Default::default()
     })
     .into()
+}
+
+pub(super) fn wallet_detail_table(content: Column<'_, Message>) -> Element<'_, Message> {
+    container(content)
+        .padding([8, 8])
+        .width(Fill)
+        .style(|theme: &Theme| container::Style {
+            background: Some(
+                Color {
+                    a: 0.22,
+                    ..theme.extended_palette().background.weak.color
+                }
+                .into(),
+            ),
+            border: iced::Border {
+                radius: 4.0.into(),
+                width: 1.0,
+                color: theme.extended_palette().background.strong.color,
+            },
+            ..Default::default()
+        })
+        .into()
 }
