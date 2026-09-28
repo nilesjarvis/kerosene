@@ -6,6 +6,7 @@ use super::super::{
 use crate::api::API_URL;
 use crate::api::proxy::HyperliquidRequestExt;
 
+use serde::Deserialize;
 use serde_json::Value;
 use zeroize::Zeroizing;
 
@@ -58,14 +59,13 @@ pub async fn fetch_wallet_tracker_snapshot_scoped(
         return Err(format!("clearinghouseState error: {err}"));
     }
 
-    let main_clearinghouse = serde_json::from_value::<ClearinghouseState>(raw.clone()).ok();
-    let mut asset_positions = main_clearinghouse
-        .as_ref()
-        .map(|ch| ch.asset_positions.clone())
-        .unwrap_or_default();
+    let main_clearinghouse = ClearinghouseState::deserialize(&raw).ok();
     let mut margin_used = main_clearinghouse
         .as_ref()
         .and_then(|ch| parse_tracker_number(&ch.margin_summary.total_margin_used));
+    let mut asset_positions = main_clearinghouse
+        .map(|ch| ch.asset_positions)
+        .unwrap_or_default();
 
     let mut equity = raw
         .get("marginSummary")

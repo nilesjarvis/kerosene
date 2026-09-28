@@ -144,6 +144,11 @@ Owned response parsers move JSON fields, tuple payloads, and address strings int
 their outputs. Primary snake-case fields take precedence over camel-case aliases
 whenever present, including null or malformed values. Tests beside the model
 cover those distinctions, validation order, metadata selection, and redaction.
+Portfolio getters and native bootstrap/wallet conversion deserialize retained
+JSON by reference into owned models. Getters preserve independent results on
+repeated calls; bootstrap errors can still preview the original redacted JSON.
+Wallet snapshot conversion moves parsed positions into aggregation while keeping
+equity and withdrawable parsing independent of position-schema errors.
 
 ## User Data Stream
 

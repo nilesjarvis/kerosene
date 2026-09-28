@@ -366,6 +366,222 @@ fn batch_tuple_errors_preserve_validation_order_and_reject_partial_results() {
     }
 }
 
+#[test]
+fn clearinghouse_getters_preserve_native_precedence_and_scope_filtering() {
+    for (raw, expected) in [
+        (
+            Value::Null,
+            "portfolioState clearinghouseState was not an object",
+        ),
+        (
+            serde_json::json!([]),
+            "portfolioState clearinghouseState was not an object",
+        ),
+        (
+            serde_json::json!({}),
+            "portfolioState missing native clearinghouseState",
+        ),
+        (
+            serde_json::json!({"native": null, "": clearinghouse_state_json("ETH")}),
+            " clearinghouseState deserialize failed: invalid type: null, expected struct ClearinghouseState",
+        ),
+        (
+            serde_json::json!({"marginSummary": null, "native": clearinghouse_state_json("BTC")}),
+            " clearinghouseState deserialize failed: invalid type: null, expected struct MarginSummary",
+        ),
+    ] {
+        let portfolio = parse_portfolio_state(serde_json::json!({
+            "clearinghouseState": raw,
+            "spotClearinghouseState": {"balances": []}
+        }))
+        .expect("portfolio fields are present");
+        assert_eq!(
+            portfolio
+                .clearinghouses_for_scope(&AccountDataFetchScope::hip3_dex("xyz"))
+                .err()
+                .as_deref(),
+            Some(expected)
+        );
+    }
+
+    let portfolio = parse_portfolio_state(serde_json::json!({
+        "clearinghouseState": {"": clearinghouse_state_json("ETH"), "xyz": null},
+        "spotClearinghouseState": {"balances": []}
+    }))
+    .expect("portfolio parses");
+    let (native, by_dex, hip3) = portfolio
+        .clearinghouses_for_scope(&AccountDataFetchScope::hip3_dex("flx"))
+        .expect("missing selected DEX is skipped, malformed unselected DEX is ignored");
+    assert_eq!(native.asset_positions[0].position.coin, "ETH");
+    assert_eq!(by_dex.len(), 1);
+    assert!(hip3.is_empty());
+    assert_eq!(
+        portfolio
+            .clearinghouses_for_scope(&AccountDataFetchScope::hip3_dex("xyz"))
+            .err()
+            .as_deref(),
+        Some(
+            "xyz clearinghouseState deserialize failed: invalid type: null, expected struct ClearinghouseState"
+        )
+    );
+}
+
+#[test]
+fn clearinghouse_getter_preserves_nested_deserialization_errors() {
+    for (pointer, value, expected) in [
+        (
+            "/marginSummary/accountValue",
+            serde_json::json!(100),
+            "invalid type: integer `100`, expected a string",
+        ),
+        (
+            "/assetPositions",
+            Value::Null,
+            "invalid type: null, expected a sequence",
+        ),
+        (
+            "/assetPositions/0/position/leverage/value",
+            serde_json::json!(-1),
+            "invalid value: integer `-1`, expected u32",
+        ),
+        (
+            "/assetPositions/0/position/leverage/value",
+            serde_json::json!(4294967296_u64),
+            "invalid value: integer `4294967296`, expected u32",
+        ),
+        (
+            "/assetPositions/0/position/leverage/value",
+            serde_json::json!(3.5),
+            "invalid type: floating point `3.5`, expected u32",
+        ),
+        (
+            "/assetPositions/0/position/liquidationPx",
+            serde_json::json!(false),
+            "invalid type: boolean `false`, expected a string",
+        ),
+    ] {
+        let mut clearinghouse = clearinghouse_state_json("BTC");
+        *clearinghouse
+            .pointer_mut(pointer)
+            .expect("fixture field exists") = value;
+        let portfolio = parse_portfolio_state(serde_json::json!({
+            "clearinghouseState": clearinghouse,
+            "spotClearinghouseState": {"balances": []}
+        }))
+        .expect("portfolio fields are present");
+        assert_eq!(
+            portfolio
+                .clearinghouses_for_scope(&AccountDataFetchScope::default())
+                .err(),
+            Some(format!(
+                " clearinghouseState deserialize failed: {expected}"
+            ))
+        );
+    }
+}
+
+#[test]
+fn spot_getter_preserves_deserialization_errors() {
+    for (raw, expected) in [
+        (
+            Value::Null,
+            "invalid type: null, expected struct SpotClearinghouseState",
+        ),
+        (serde_json::json!({}), "missing field `balances`"),
+        (
+            serde_json::json!({"balances": null}),
+            "invalid type: null, expected a sequence",
+        ),
+        (
+            serde_json::json!({"balances": [], "portfolioMarginEnabled": null}),
+            "invalid type: null, expected a boolean",
+        ),
+        (
+            serde_json::json!({"balances": [], "tokenToAvailableAfterMaintenance": [[0]]}),
+            "invalid length 1, expected a tuple of size 2",
+        ),
+        (
+            serde_json::json!({"balances": [], "tokenToAvailableAfterMaintenance": [[0, "5", "extra"]]}),
+            "invalid length 3, expected fewer elements in array",
+        ),
+        (
+            serde_json::json!({"balances": [], "tokenToAvailableAfterMaintenance": [[-1, "5"]]}),
+            "invalid value: integer `-1`, expected u32",
+        ),
+    ] {
+        let portfolio = parse_portfolio_state(serde_json::json!({
+            "clearinghouseState": null,
+            "spotClearinghouseState": raw
+        }))
+        .expect("portfolio fields are present");
+        assert_eq!(
+            portfolio.spot_clearinghouse().err(),
+            Some(format!(
+                "spotClearinghouseState deserialize failed: {expected}"
+            ))
+        );
+    }
+}
+
+#[test]
+fn portfolio_getters_preserve_defaults_and_independent_owned_results() {
+    let mut native_raw = clearinghouse_state_json("BTC");
+    let native_object = native_raw.as_object_mut().expect("fixture is an object");
+    native_object.remove("crossMarginSummary");
+    native_object.remove("crossMaintenanceMarginUsed");
+    native_raw["assetPositions"][0]["position"]
+        .as_object_mut()
+        .expect("position is an object")
+        .remove("marginUsed");
+    let portfolio = parse_portfolio_state(serde_json::json!({
+        "clearinghouseState": {"native": native_raw, "xyz": clearinghouse_state_json("MSFT")},
+        "spotClearinghouseState": {"balances": [{"coin": "USDC", "total": "10", "hold": "2", "entryNtl": "1"}]}
+    })).expect("portfolio parses");
+    let scope = AccountDataFetchScope::hip3_dex("xyz");
+    let (mut native, mut by_dex, mut hip3) = portfolio
+        .clearinghouses_for_scope(&scope)
+        .expect("states parse");
+    assert!(native.cross_margin_summary.is_none());
+    assert!(native.cross_maintenance_margin_used.is_none());
+    let position = &native.asset_positions[0];
+    assert!(position.liquidation_px.is_none());
+    assert!(position.position.margin_used.is_empty());
+    assert!(position.position.cum_funding.is_none());
+    assert_eq!(native.margin_summary.account_value, "100");
+    assert_eq!(native.margin_summary.total_margin_used, "5");
+    assert_eq!(native.withdrawable, "95");
+    native.asset_positions.clear();
+    hip3[0].asset_positions.clear();
+    assert_eq!(by_dex[""].asset_positions[0].position.coin, "BTC");
+    assert_eq!(by_dex["xyz"].asset_positions[0].position.coin, "xyz:MSFT");
+    by_dex.clear();
+    let (native, by_dex, hip3) = portfolio
+        .clearinghouses_for_scope(&scope)
+        .expect("repeated access succeeds");
+    assert_eq!(native.asset_positions[0].position.coin, "BTC");
+    assert_eq!(by_dex.len(), 2);
+    assert_eq!(hip3[0].asset_positions[0].position.coin, "xyz:MSFT");
+
+    let mut spot = portfolio.spot_clearinghouse().expect("spot parses");
+    assert!(!spot.portfolio_margin_enabled);
+    assert!(spot.portfolio_margin_ratio.is_none());
+    assert!(spot.token_to_available_after_maintenance.is_none());
+    assert!(spot.balances[0].token.is_none());
+    assert!(spot.balances[0].supplied.is_none());
+    assert_eq!(spot.balances[0].total, "10");
+    assert_eq!(spot.balances[0].hold, "2");
+    assert_eq!(spot.balances[0].entry_ntl, "1");
+    spot.balances.clear();
+    assert_eq!(
+        portfolio
+            .spot_clearinghouse()
+            .expect("repeated spot access succeeds")
+            .balances[0]
+            .coin,
+        "USDC"
+    );
+}
+
 fn clearinghouse_state_json(coin: &str) -> Value {
     serde_json::json!({
         "marginSummary": {

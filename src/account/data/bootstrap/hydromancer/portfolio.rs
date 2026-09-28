@@ -2,6 +2,7 @@ use crate::account::{
     AccountAbstractionMode, AccountDataFetchScope, ClearinghouseState, HIP3_DEXES,
     SpotClearinghouseState, normalize_dex_asset_position_coins,
 };
+use serde::Deserialize;
 use serde_json::Value;
 use std::{collections::HashMap, fmt};
 
@@ -51,7 +52,7 @@ impl HydromancerPortfolioState {
     }
 
     pub(crate) fn spot_clearinghouse(&self) -> Result<SpotClearinghouseState, String> {
-        serde_json::from_value(self.spot_clearinghouse_state.clone())
+        SpotClearinghouseState::deserialize(&self.spot_clearinghouse_state)
             .map_err(|e| format!("spotClearinghouseState deserialize failed: {e}"))
     }
 
@@ -60,7 +61,7 @@ impl HydromancerPortfolioState {
         scope: &AccountDataFetchScope,
     ) -> Result<PortfolioClearinghouses, String> {
         if self.clearinghouse_state.get("marginSummary").is_some() {
-            let clearinghouse = parse_clearinghouse_state("", self.clearinghouse_state.clone())?;
+            let clearinghouse = parse_clearinghouse_state("", &self.clearinghouse_state)?;
             let mut clearinghouses_by_dex = HashMap::new();
             clearinghouses_by_dex.insert(String::new(), clearinghouse.clone());
             return Ok((clearinghouse, clearinghouses_by_dex, Vec::new()));
@@ -74,7 +75,7 @@ impl HydromancerPortfolioState {
             .get("native")
             .or_else(|| states.get(""))
             .ok_or_else(|| "portfolioState missing native clearinghouseState".to_string())?;
-        let native = parse_clearinghouse_state("", native_raw.clone())?;
+        let native = parse_clearinghouse_state("", native_raw)?;
         let mut clearinghouses_by_dex = HashMap::new();
         clearinghouses_by_dex.insert(String::new(), native.clone());
 
@@ -83,7 +84,7 @@ impl HydromancerPortfolioState {
             let Some(raw) = states.get(&dex) else {
                 continue;
             };
-            let state = parse_clearinghouse_state(&dex, raw.clone())?;
+            let state = parse_clearinghouse_state(&dex, raw)?;
             clearinghouses_by_dex.insert(dex, state.clone());
             hip3_states.push(state);
         }
@@ -126,8 +127,8 @@ pub(super) fn merge_native_and_dex_portfolio_states(
     })
 }
 
-fn parse_clearinghouse_state(dex: &str, raw: Value) -> Result<ClearinghouseState, String> {
-    let mut clearinghouse = serde_json::from_value::<ClearinghouseState>(raw)
+fn parse_clearinghouse_state(dex: &str, raw: &Value) -> Result<ClearinghouseState, String> {
+    let mut clearinghouse = ClearinghouseState::deserialize(raw)
         .map_err(|e| format!("{dex} clearinghouseState deserialize failed: {e}"))?;
     normalize_dex_asset_position_coins(dex, &mut clearinghouse.asset_positions);
     Ok(clearinghouse)
