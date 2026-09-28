@@ -237,7 +237,7 @@ Order books support:
 - configurable tick grouping
 - center-on-mid behavior
 - reverse-side layout
-- regular depth rows or DOM ladder display
+- regular depth rows, DOM ladder, or depth chart display
 - optional spread chart
 - user open-order overlays
 
@@ -268,6 +268,13 @@ order book pane opens
 The update path rejects websocket data that does not match the instance's
 symbol mode or canonical precision. Tick-size changes reuse cached book data
 when possible and refetch when precision changes require it.
+
+Empty and populated books share the pane's title, settings, tick controls, and
+header composition. Empty books keep the spread chart hidden. Centered depth
+lists move their prepared rows into responsive closures; depth and DOM views
+also consume the freshly built user-order markers. Cached DOM rows and depth
+chart levels still require owned copies because their cache guards cannot
+outlive view construction.
 
 ## Symbol Search And Watchlist
 

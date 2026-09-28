@@ -3,6 +3,8 @@ use crate::account::OpenOrder;
 use crate::app_state::TradingTerminal;
 use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
 
+mod rendering;
+
 fn open_order(coin: &str, side: &str, limit_px: &str, oid: u64) -> OpenOrder {
     OpenOrder {
         coin: coin.to_string(),

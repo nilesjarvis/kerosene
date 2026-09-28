@@ -19,7 +19,7 @@ pub(super) fn view_order_book_dom_ladder(
     inst: &OrderBookInstance,
     tick: f64,
     spread_widget: Element<'static, Message>,
-    user_order_levels: &UserOrderBookLevels,
+    user_order_levels: UserOrderBookLevels,
     whole_contracts: bool,
 ) -> Element<'static, Message> {
     let rows = inst.dom_ladder_rows(tick, DOM_SIDE_ROWS);
@@ -39,7 +39,7 @@ pub(super) fn view_order_book_dom_ladder(
         let centered_asks = rows.asks.clone();
         let centered_bids = rows.bids.clone();
         let centered_ask_orders = user_order_levels.clone();
-        let centered_bid_orders = user_order_levels.clone();
+        let centered_bid_orders = user_order_levels;
         // Keep both sides at an identical row count so the ladder stays
         // symmetric about the spread rather than listing more depth on one
         // side than the other.
@@ -83,8 +83,8 @@ pub(super) fn view_order_book_dom_ladder(
             .into();
     }
 
-    let asks = dom_rows_column(&rows.asks, row_context, user_order_levels);
-    let bids = dom_rows_column(&rows.bids, row_context, user_order_levels);
+    let asks = dom_rows_column(&rows.asks, row_context, &user_order_levels);
+    let bids = dom_rows_column(&rows.bids, row_context, &user_order_levels);
     let ladder = iced::widget::column![asks, spread_widget, bids].spacing(2);
 
     scrollable(
