@@ -1,6 +1,8 @@
 use super::*;
 use crate::account::{ClearinghouseState, MarginSummary, SpotClearinghouseState};
 
+mod refresh;
+
 const ADDRESS: &str = "0x1111111111111111111111111111111111111111";
 
 fn empty_details() -> WalletDetailsData {

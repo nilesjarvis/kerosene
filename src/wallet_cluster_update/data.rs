@@ -6,7 +6,7 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::read_data_provider::ReadDataRequestContext;
-use crate::wallet_cluster_state::{WalletCluster, WalletClusterMemberData};
+use crate::wallet_cluster_state::WalletClusterMemberData;
 use crate::ws::WsUserData;
 use iced::Task;
 
@@ -41,57 +41,49 @@ impl TradingTerminal {
     }
 
     pub(crate) fn refresh_selected_wallet_cluster(&mut self) -> Task<Message> {
-        let Some(cluster) = self.wallet_clusters.selected_cluster().cloned() else {
-            return Task::none();
-        };
-        self.refresh_wallet_cluster_members(cluster)
+        self.refresh_wallet_cluster_members(None)
     }
 
     pub(super) fn refresh_wallet_cluster_member(
         &mut self,
         profile_secret_id: String,
     ) -> Task<Message> {
-        let Some(cluster) = self.wallet_clusters.selected_cluster().cloned() else {
-            return Task::none();
-        };
-        if !cluster
-            .members
-            .iter()
-            .any(|member| member.profile_secret_id == profile_secret_id)
-        {
-            return Task::none();
-        }
-        self.refresh_wallet_cluster_members(WalletCluster {
-            members: cluster
-                .members
-                .into_iter()
-                .filter(|member| member.profile_secret_id == profile_secret_id)
-                .collect(),
-            ..cluster
-        })
+        self.refresh_wallet_cluster_members(Some(&profile_secret_id))
     }
 
-    fn refresh_wallet_cluster_members(&mut self, cluster: WalletCluster) -> Task<Message> {
+    fn refresh_wallet_cluster_members(&mut self, only_profile_id: Option<&str>) -> Task<Message> {
+        let Some(cluster) = self.wallet_clusters.selected_cluster() else {
+            return Task::none();
+        };
+        let member_ids: Vec<_> = cluster
+            .members
+            .iter()
+            .filter(|member| only_profile_id.is_none_or(|id| member.profile_secret_id == id))
+            .map(|member| member.profile_secret_id.clone())
+            .collect();
+        if only_profile_id.is_some() && member_ids.is_empty() {
+            return Task::none();
+        }
+        let cluster_id = cluster.id.clone();
+
         let read_context = self.read_data_request_context();
         let scope = self.account_data_fetch_scope();
         let mut tasks = Vec::new();
         let mut missing = 0usize;
 
-        for member in cluster.members {
+        for profile_secret_id in member_ids {
             let Some(profile) = self
                 .accounts
                 .iter()
-                .find(|profile| profile.secret_id == member.profile_secret_id)
+                .find(|profile| profile.secret_id == profile_secret_id)
             else {
-                self.wallet_clusters
-                    .member_data
-                    .remove(&member.profile_secret_id);
+                self.wallet_clusters.member_data.remove(&profile_secret_id);
                 missing += 1;
                 continue;
             };
             let Some(address) = Self::normalize_wallet_address(&profile.wallet_address) else {
                 self.wallet_clusters.member_data.insert(
-                    member.profile_secret_id.clone(),
+                    profile_secret_id,
                     WalletClusterMemberData {
                         error: Some("Profile is missing a valid wallet address".to_string()),
                         ..WalletClusterMemberData::default()
@@ -102,7 +94,7 @@ impl TradingTerminal {
             let state = self
                 .wallet_clusters
                 .member_data
-                .entry(member.profile_secret_id.clone())
+                .entry(profile_secret_id.clone())
                 .or_default();
             state.address = address.clone();
             state.loading = true;
@@ -110,8 +102,8 @@ impl TradingTerminal {
             state.error = None;
             state.stale = false;
             tasks.push(self.wallet_cluster_member_fetch_task(
-                cluster.id.clone(),
-                member.profile_secret_id,
+                cluster_id.clone(),
+                profile_secret_id,
                 address,
                 scope.clone(),
                 read_context,

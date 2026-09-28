@@ -517,6 +517,13 @@ Key behavior:
 Cluster close actions require fresh member snapshots and route through the
 shared order preparation boundary with `OrderSurface::ClusterClose`.
 
+Full-cluster and single-member refreshes share selection in `data.rs`. They copy
+the selected cluster ID and matching profile IDs before updating state, preserving
+member order and repeated entries without cloning names, weights, or input drafts.
+Read refreshes include zero-weight members and preserve cached snapshots and
+position timestamps while loading. Missing profiles remove cached rows; invalid
+addresses replace their rows with the existing validation error.
+
 ## Portfolio And Income
 
 Portfolio state lives in `portfolio_state/` and is updated by
