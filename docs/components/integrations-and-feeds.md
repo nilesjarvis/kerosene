@@ -292,6 +292,13 @@ provide a Client ID plus refresh token so Kerosene can refresh the access token
 locally. Runtime state lives in `x_feed.rs`, update logic in `feed_update/x.rs`,
 and rendering in `feed_views/x.rs`.
 
+Author profiles update in place through one map-entry path. Posts without an
+image URL still refresh author metadata while preserving cached or pending
+images. A changed URL invalidates the old image request; unchanged URLs retain
+the existing cache and retry backoff. Source options sort borrowed lists using
+cached ASCII-folded names, and timeline refreshes copy only the selected newest
+post ID into the request.
+
 The pane is multi-instance through `PaneKind::XFeed(XFeedId)`. Persisted layout
 config stores widget IDs and selected non-secret sources in `x_feeds`. Raw X
 access tokens, Client IDs, and refresh tokens are stored only in the selected

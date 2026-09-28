@@ -778,18 +778,13 @@ impl XFeedState {
     pub(crate) fn source_options(&self) -> Vec<XFeedSourceOption> {
         let mut options = vec![XFeedSourceOption::new(XFeedSource::Following)];
         let mut seen_lists = HashSet::new();
-        let mut lists = self.lists.clone();
-        lists.sort_by(|a, b| {
-            a.name
-                .to_ascii_lowercase()
-                .cmp(&b.name.to_ascii_lowercase())
-                .then_with(|| a.id.cmp(&b.id))
-        });
+        let mut lists = self.lists.iter().collect::<Vec<_>>();
+        lists.sort_by_cached_key(|list| (list.name.to_ascii_lowercase(), list.id.as_str()));
         for list in lists {
-            if seen_lists.insert(list.id.clone()) {
+            if seen_lists.insert(list.id.as_str()) {
                 options.push(XFeedSourceOption::new(XFeedSource::List {
-                    id: list.id,
-                    name: list.name,
+                    id: list.id.clone(),
+                    name: list.name.clone(),
                     private: list.private,
                 }));
             }
@@ -838,10 +833,10 @@ impl XFeedInstance {
         self.last_error = None;
     }
 
-    pub(crate) fn newest_seen_id(&self) -> Option<String> {
+    pub(crate) fn newest_seen_id(&self) -> Option<&str> {
         self.posts
             .iter()
-            .filter_map(|post| post.id.parse::<u64>().ok().map(|id| (id, post.id.clone())))
+            .filter_map(|post| post.id.parse::<u64>().ok().map(|id| (id, post.id.as_str())))
             .max_by_key(|(id, _)| *id)
             .map(|(_, id)| id)
     }
@@ -1393,7 +1388,7 @@ mod tests {
 
         assert_eq!(instance.posts.len(), 2);
         assert_eq!(instance.posts[0].id, "2");
-        assert_eq!(instance.newest_seen_id().as_deref(), Some("2"));
+        assert_eq!(instance.newest_seen_id(), Some("2"));
     }
 
     #[test]
@@ -1419,6 +1414,58 @@ mod tests {
         assert_eq!(options.len(), 2);
         assert!(matches!(options[0].source, XFeedSource::Following));
         assert_eq!(options[1].source.key(), "list:10");
+    }
+
+    #[test]
+    fn newest_seen_id_preserves_numeric_order_invalid_filtering_and_last_tie() {
+        let mut instance = XFeedInstance::new(0, XFeedSource::Following);
+        for id in ["invalid", "18446744073709551616", "-1", " 9"] {
+            instance.posts.push(test_post(id, 1_000));
+        }
+        assert!(instance.newest_seen_id().is_none());
+        for id in ["9", "10", "010"] {
+            instance.posts.push(test_post(id, 1_000));
+        }
+        assert_eq!(instance.newest_seen_id(), Some("010"));
+        instance.posts.push(test_post("18446744073709551615", 0));
+        assert_eq!(instance.newest_seen_id(), Some("18446744073709551615"));
+    }
+
+    #[test]
+    fn source_options_keep_ascii_name_order_id_ties_and_first_sorted_duplicate() {
+        let mut state = XFeedState::new(&[], "", "", "");
+        state.lists = [
+            ("2", "ALPHA", true),
+            ("10", "alpha", false),
+            ("2", "Alpha", false),
+            ("4", "zulu", false),
+            ("5", "Älpha", false),
+            ("4", "Beta", true),
+        ]
+        .into_iter()
+        .map(|(id, name, private)| XListSummary {
+            id: id.to_string(),
+            name: name.to_string(),
+            private,
+            owner: XListOwnerKind::Owned,
+        })
+        .collect();
+        let original = state.lists.clone();
+
+        let options = state.source_options();
+
+        assert!(matches!(options[0].source, XFeedSource::Following));
+        let sources = options[1..]
+            .iter()
+            .map(|option| &option.source)
+            .collect::<Vec<_>>();
+        let expected = [1, 0, 5, 4].map(|index| XFeedSource::List {
+            id: original[index].id.clone(),
+            name: original[index].name.clone(),
+            private: original[index].private,
+        });
+        assert_eq!(sources, expected.iter().collect::<Vec<_>>());
+        assert_eq!(state.lists, original);
     }
 
     #[test]

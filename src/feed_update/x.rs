@@ -6,7 +6,7 @@ use crate::message::{
 use crate::pane_state::PaneKind;
 use crate::x_feed::{
     X_PROFILE_IMAGE_RETRY_BACKOFF_MS, XAuthenticatedUser, XAuthorProfile, XFeedId, XFeedInstance,
-    XFeedPage, XFeedPost, XFeedRequestError, XFeedSource, XListsFetchOutcome, XOAuthTokenRefresh,
+    XFeedPage, XFeedRequestError, XFeedSource, XListsFetchOutcome, XOAuthTokenRefresh,
     fetch_x_auth_context, fetch_x_feed_page, fetch_x_lists, fetch_x_profile_image_bytes,
     refresh_x_access_token,
 };
@@ -366,7 +366,7 @@ impl TradingTerminal {
                     .filter_map(XFeedInstance::newest_seen_id)
                     .filter_map(|id| id.parse::<u64>().ok().map(|parsed| (parsed, id)))
                     .max_by_key(|(parsed, _)| *parsed)
-                    .map(|(_, id)| id)
+                    .map(|(_, id)| id.to_string())
             })
             .flatten();
         let token = self.x_feed.access_token_for_task();
@@ -440,21 +440,21 @@ impl TradingTerminal {
         let mut tasks = Vec::new();
 
         for post in &page.posts {
-            let Some(image_url) = post.author_profile_image_url.clone() else {
-                self.store_x_author_profile_metadata(post);
-                continue;
-            };
-            let key = post.author_profile_key();
-            let mut profile = self
+            let profile = self
                 .x_feed
                 .author_profiles
-                .remove(&key)
-                .unwrap_or_else(|| XAuthorProfile::from_post(post));
+                .entry(post.author_profile_key())
+                .and_modify(|profile| {
+                    profile.author_id.clone_from(&post.author_id);
+                    profile.username.clone_from(&post.author_username);
+                    profile.name.clone_from(&post.author_name);
+                    profile.initials = post.author_initials();
+                })
+                .or_insert_with(|| XAuthorProfile::from_post(post));
 
-            profile.author_id = post.author_id.clone();
-            profile.username = post.author_username.clone();
-            profile.name = post.author_name.clone();
-            profile.initials = post.author_initials();
+            let Some(image_url) = &post.author_profile_image_url else {
+                continue;
+            };
             if profile.profile_image_url.as_deref() != Some(image_url.as_str()) {
                 profile.profile_image_url = Some(image_url.clone());
                 profile.image_handle = None;
@@ -476,7 +476,7 @@ impl TradingTerminal {
                 profile.image_failed_at_ms = None;
                 let request_id = profile.image_request_id;
                 tasks.push(Task::perform(
-                    fetch_x_profile_image_bytes(image_url),
+                    fetch_x_profile_image_bytes(image_url.clone()),
                     move |result| {
                         Message::XProfileImageLoaded(
                             request_id,
@@ -485,24 +485,9 @@ impl TradingTerminal {
                     },
                 ));
             }
-
-            self.x_feed.author_profiles.insert(key, profile);
         }
 
         Task::batch(tasks)
-    }
-
-    fn store_x_author_profile_metadata(&mut self, post: &XFeedPost) {
-        let key = post.author_profile_key();
-        let profile = self
-            .x_feed
-            .author_profiles
-            .entry(key)
-            .or_insert_with(|| XAuthorProfile::from_post(post));
-        profile.author_id = post.author_id.clone();
-        profile.username = post.author_username.clone();
-        profile.name = post.author_name.clone();
-        profile.initials = post.author_initials();
     }
 
     fn handle_x_profile_image_loaded(&mut self, request_id: u64, result: Result<Vec<u8>, String>) {
@@ -536,25 +521,4 @@ impl TradingTerminal {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn open_refresh_includes_canvas_x_feed_instances() {
-        let (mut terminal, _) =
-            TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default());
-        let id = 17;
-        terminal
-            .x_feed
-            .instances
-            .insert(id, XFeedInstance::new(id, XFeedSource::Following));
-        terminal.insert_test_canvas_pane(7, PaneKind::XFeed(id));
-
-        let _task = terminal.request_x_feed_open_refresh(true);
-
-        assert_eq!(
-            terminal.x_feed.instances[&id].last_error.as_deref(),
-            Some("Paste an X OAuth 2.0 user access token")
-        );
-    }
-}
+mod tests;
