@@ -68,6 +68,102 @@ fn malformed_or_absent_metadata_never_falls_back_to_generic_follow_ups() {
 }
 
 #[test]
+fn follow_up_section_boundaries_preserve_the_original_visible_prefix() {
+    let valid = format!("{FOLLOW_UP_SECTION_START}[\" Next   question? \"]{FOLLOW_UP_SECTION_END}");
+    let cases = [
+        ("Plain answer  ".to_string(), None, None),
+        (String::new(), None, None),
+        (
+            format!("Réponse λ\u{a0}\n{valid}\t"),
+            Some("Réponse λ"),
+            Some(vec!["Next question?"]),
+        ),
+        (valid.clone(), Some(""), Some(vec!["Next question?"])),
+        (format!("Answer{valid}"), None, None),
+        (format!("Answer\n{valid}\nVisible suffix"), None, None),
+        (
+            format!("Answer\n{FOLLOW_UP_SECTION_START}not-json"),
+            Some("Answer"),
+            Some(vec![]),
+        ),
+        (
+            format!("Answer\n{FOLLOW_UP_SECTION_START}not-json{FOLLOW_UP_SECTION_END}"),
+            Some("Answer"),
+            Some(vec![]),
+        ),
+        (
+            format!("Answer\n{FOLLOW_UP_SECTION_START}[42]{FOLLOW_UP_SECTION_END}"),
+            Some("Answer"),
+            Some(vec![]),
+        ),
+        (
+            format!("Answer\n{valid}word{FOLLOW_UP_SECTION_START}"),
+            None,
+            None,
+        ),
+    ];
+
+    for (response, expected_prefix, expected_follow_ups) in cases {
+        let (visible, follow_ups) = split_assistant_follow_ups(&response);
+        assert_eq!(visible, expected_prefix.unwrap_or(&response));
+        assert_eq!(
+            follow_ups,
+            expected_follow_ups
+                .map(|questions| questions.into_iter().map(str::to_string).collect())
+        );
+    }
+
+    let first_section = format!("Answer\n{valid}");
+    let response = format!("{first_section}\n{valid}");
+    let (visible, follow_ups) = split_assistant_follow_ups(&response);
+    assert_eq!(visible, first_section);
+    assert_eq!(follow_ups, Some(vec!["Next question?".to_string()]));
+}
+
+#[test]
+fn metadata_finalization_preserves_streamed_markdown_at_each_reveal_boundary() {
+    for answer in ["", "## Résumé λ\n\n**BTC** → ETH"] {
+        let response = format!(
+            "{answer}\n\n{FOLLOW_UP_SECTION_START}[\"Next question?\"]{FOLLOW_UP_SECTION_END}"
+        );
+        let partial = answer.char_indices().nth(5).map_or(0, |(index, _)| index);
+        for revealed in [0, partial, answer.len(), response.len()] {
+            let mut state = AgentState::default();
+            state.append_assistant_delta(&response[..revealed]);
+            state.flush_assistant_stream();
+            state.append_assistant_delta(&response[revealed..]);
+
+            assert_eq!(
+                state.finalize_assistant_response_metadata(),
+                !answer.is_empty()
+            );
+            assert_eq!(state.stream.pending, answer[revealed.min(answer.len())..]);
+            state.finish_assistant_presentation();
+
+            let [
+                AgentChatEntry::Message {
+                    text,
+                    markdown: Some(markdown),
+                    follow_ups,
+                    ..
+                },
+            ] = state.entries.as_slice()
+            else {
+                panic!("expected one finalized assistant response");
+            };
+            assert_eq!(text, answer);
+            assert_eq!(follow_ups, &["Next question?".to_string()]);
+            assert_eq!(
+                format!("{:?}", markdown.items()),
+                format!("{:?}", markdown::Content::parse(answer).items())
+            );
+            assert!(state.stream.pending.is_empty());
+            assert_eq!(state.current_turn_has_text, !answer.is_empty());
+        }
+    }
+}
+
+#[test]
 fn follow_up_metadata_is_normalized_deduplicated_and_bounded() {
     let long_question = format!("{}?", "x".repeat(MAX_FOLLOW_UP_CHARS + 40));
     let response = format!(

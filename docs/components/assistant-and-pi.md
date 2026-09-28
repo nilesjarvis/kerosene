@@ -22,7 +22,7 @@ messages.
 | `src/agent_views.rs` | Native chat window, composer, status, usage, empty state, and tool activity UI. |
 | `src/agent_snapshot.rs` | Versioned, bounded, sanitized read-only export of Kerosene state. |
 | `src/agent_workspace.rs` | Strict host-action contract, active-turn authorization, all-or-nothing validation, idempotent chart mutations, and acknowledgements. |
-| `src/agent_runtime.rs` | Pi subprocess discovery, isolated environment, JSONL RPC transport, correlated extension UI responses, and event parsing. |
+| `src/agent_runtime.rs`, `src/agent_runtime/` | Pi subprocess discovery, isolated environment, and command/event transport; separate redacted runtime types, JSONL RPC encoding/parsing, and bounded tool-summary modules with nearby tests. |
 | `src/llama_cpp.rs` | Loopback-only llama.cpp process/endpoint discovery, capability verification, and isolated Pi provider configuration. |
 | `src/chart_indicator.rs` | Shared typed registry for chart UI indicators and Assistant-visible indicator capabilities. |
 | `assets/agent/kerosene.ts` | Embedded Pi extension, typed snapshot/data tools, bounded indicator and drawing actions, deterministic calculations, and fixed-provider data adapters. |

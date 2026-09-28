@@ -15,6 +15,54 @@ fn submit_requires_an_openrouter_key() {
 }
 
 #[test]
+fn text_submission_preserves_unicode_requests_and_session_replay() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    terminal.assistant_provider = AssistantProvider::LlamaCpp;
+    for replay in [false, true] {
+        terminal.agent = AgentState {
+            input: "  Compare BTC → ETH\navec le résumé précédent.  ".to_string(),
+            needs_context_replay: replay,
+            entries: vec![AgentChatEntry::Message {
+                role: AgentChatRole::Assistant,
+                text: "Earlier answer".to_string(),
+                markdown: None,
+                follow_ups: Vec::new(),
+            }],
+            local_server: Some(crate::llama_cpp::LlamaCppServer {
+                base_url: "http://127.0.0.1:35677/v1".to_string(),
+                models: vec![crate::llama_cpp::LlamaCppModel {
+                    id: "local-model.gguf".to_string(),
+                    context_window: Some(32_768),
+                }],
+                supports_tools: true,
+                supports_vision: false,
+                supports_reasoning: true,
+            }),
+            ..AgentState::default()
+        };
+        let expected_prompt = terminal.agent.runtime_prompt(terminal.agent.input.trim());
+
+        let _ = terminal.update_agent(Message::AgentSubmit);
+
+        assert_eq!(terminal.agent.status, AgentStatus::Preparing);
+        assert!(terminal.agent.input.is_empty());
+        assert!(!terminal.agent.workspace_actions_allowed);
+        let prompt = terminal
+            .agent
+            .pending_prompt
+            .as_ref()
+            .expect("prepared prompt");
+        assert_eq!(prompt.as_str(), expected_prompt.as_str());
+        assert!(prompt.images().is_empty());
+        assert!(matches!(
+            terminal.agent.entries.last(),
+            Some(AgentChatEntry::Message { role: AgentChatRole::User, text, .. })
+                if text == "Compare BTC → ETH\navec le résumé précédent."
+        ));
+    }
+}
+
+#[test]
 fn model_picker_reports_missing_key_without_starting_a_catalog_request() {
     let (mut terminal, _) = TradingTerminal::boot();
     terminal.openrouter_api_key.clear();

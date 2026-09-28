@@ -219,8 +219,8 @@ impl AgentState {
 
         let visible_len = text.len().saturating_sub(pending_len);
         let (visible_answer, parsed_follow_ups) = split_assistant_follow_ups(text);
-        if visible_answer != *text {
-            *text = visible_answer;
+        if visible_answer.len() != text.len() {
+            text.truncate(visible_answer.len());
             if visible_len <= text.len() && text.is_char_boundary(visible_len) {
                 self.stream.pending = text[visible_len..].to_string();
             } else {
@@ -515,9 +515,10 @@ fn reveal_prefix_len(text: &str, max_units: usize, settled: bool) -> usize {
     }
 }
 
-fn split_assistant_follow_ups(response: &str) -> (String, Option<Vec<String>>) {
+/// The visible answer is always a UTF-8 prefix of the original response.
+fn split_assistant_follow_ups(response: &str) -> (&str, Option<Vec<String>>) {
     let Some(section_start) = response.rfind(FOLLOW_UP_SECTION_START) else {
-        return (response.to_string(), None);
+        return (response, None);
     };
     if section_start > 0
         && !response[..section_start]
@@ -525,10 +526,10 @@ fn split_assistant_follow_ups(response: &str) -> (String, Option<Vec<String>>) {
             .next_back()
             .is_some_and(char::is_whitespace)
     {
-        return (response.to_string(), None);
+        return (response, None);
     }
 
-    let visible_answer = response[..section_start].trim_end().to_string();
+    let visible_answer = response[..section_start].trim_end();
     let metadata = &response[section_start + FOLLOW_UP_SECTION_START.len()..];
     let Some(section_end) = metadata.find(FOLLOW_UP_SECTION_END) else {
         return (visible_answer, Some(Vec::new()));
@@ -537,7 +538,7 @@ fn split_assistant_follow_ups(response: &str) -> (String, Option<Vec<String>>) {
         .trim()
         .is_empty()
     {
-        return (response.to_string(), None);
+        return (response, None);
     }
 
     let payload = metadata[..section_end].trim();
