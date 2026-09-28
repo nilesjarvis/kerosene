@@ -6,10 +6,11 @@ use iced::{Color, Theme};
 use super::components::{ticker_tape_bar_style, ticker_tape_divider_style};
 use super::formatting::{
     TickerTapeItem, exchange_stat_usd_label, percent_change, percent_label, price_label,
-    ticker_tape_item_width,
 };
 use super::track::ticker_tape_segment_origins;
 use super::{TICKER_TAPE_ITEM_MAX_WIDTH, TICKER_TAPE_ITEM_MIN_WIDTH};
+
+mod rendering;
 
 // ---------------------------------------------------------------------------
 // Ticker Tape Formatting Tests
@@ -160,13 +161,38 @@ fn ticker_tape_item_width_stays_within_layout_bounds() {
     };
 
     assert_eq!(
-        ticker_tape_item_width(&narrow_item, &denomination),
+        narrow_item.prepare(&denomination).width,
         TICKER_TAPE_ITEM_MIN_WIDTH
     );
     assert_eq!(
-        ticker_tape_item_width(&wide_item, &denomination),
+        wide_item.prepare(&denomination).width,
         TICKER_TAPE_ITEM_MAX_WIDTH
     );
+}
+
+#[test]
+fn ticker_tape_width_counts_unicode_characters_and_converted_labels() {
+    let denomination = DisplayDenominationContext::usd();
+    let item = TickerTapeItem {
+        symbol: "synthetic".to_string(),
+        ticker: "Ω界é".to_string(),
+        price: Some(12.5),
+        pct_24h: Some(1.2),
+    };
+    assert_eq!(item.clone().prepare(&denomination).width, 153.0);
+    let btc = DisplayDenominationContext::from_mids(
+        crate::config::DisplayDenominationConfig::btc(),
+        &std::collections::HashMap::from([("BTC".to_string(), 50_000.0)]),
+        &std::collections::HashMap::from([("BTC".to_string(), 1)]),
+        1,
+    );
+    let item = TickerTapeItem {
+        ticker: "Ω界éABC".to_string(),
+        price: Some(50_000.0),
+        ..item
+    };
+    assert_eq!(price_label(item.price, &btc), "1.00");
+    assert_eq!(item.prepare(&btc).width, 167.0);
 }
 
 #[test]

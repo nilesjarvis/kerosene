@@ -10,7 +10,7 @@ use components::{
     ticker_tape_bar_style, ticker_tape_exchange_stats, ticker_tape_item,
     ticker_tape_section_separator, ticker_tape_separator,
 };
-use formatting::{TickerTapeItem, percent_change, ticker_tape_item_width};
+use formatting::{TickerTapeItem, percent_change};
 use iced::widget::{container, responsive, row, text};
 use iced::{Element, Fill, Length, Theme};
 use track::TickerTapeTrack;
@@ -73,13 +73,13 @@ impl TradingTerminal {
             .center_y(Length::Fixed(TICKER_TAPE_HEIGHT))
             .into()
         } else {
-            let item_widths: Vec<f32> = items
-                .iter()
-                .map(|item| ticker_tape_item_width(item, &denomination))
+            let items: Vec<_> = items
+                .into_iter()
+                .map(|item| item.prepare(&denomination))
                 .collect();
-            let sequence_width: f32 = item_widths
+            let sequence_width: f32 = items
                 .iter()
-                .map(|width| width + TICKER_TAPE_SEPARATOR_WIDTH)
+                .map(|item| item.width + TICKER_TAPE_SEPARATOR_WIDTH)
                 .sum();
             let should_scroll = sequence_width > tape_available_width;
             let offset = if should_scroll {
@@ -90,20 +90,23 @@ impl TradingTerminal {
             };
             let repetitions = if should_scroll { 2 } else { 1 };
             let mut segments = Vec::with_capacity(items.len() * repetitions);
-            for _ in 0..repetitions {
-                for (item, item_width) in items.iter().zip(item_widths.iter().copied()) {
-                    let segment_width = item_width + TICKER_TAPE_SEPARATOR_WIDTH;
-                    let segment = row![
-                        ticker_tape_item(item, &denomination, &theme, item_width),
-                        ticker_tape_separator(dividers_enabled),
-                    ]
-                    .spacing(0)
-                    .width(Length::Fixed(segment_width))
-                    .height(Length::Fixed(TICKER_TAPE_HEIGHT))
-                    .align_y(iced::Alignment::Center)
-                    .into();
-                    segments.push((segment, segment_width));
-                }
+            let repeated_items = if should_scroll {
+                items.clone()
+            } else {
+                Vec::new()
+            };
+            for item in items.into_iter().chain(repeated_items) {
+                let segment_width = item.width + TICKER_TAPE_SEPARATOR_WIDTH;
+                let segment = row![
+                    ticker_tape_item(item, &theme),
+                    ticker_tape_separator(dividers_enabled),
+                ]
+                .spacing(0)
+                .width(Length::Fixed(segment_width))
+                .height(Length::Fixed(TICKER_TAPE_HEIGHT))
+                .align_y(iced::Alignment::Center)
+                .into();
+                segments.push((segment, segment_width));
             }
 
             container(TickerTapeTrack::new(segments, offset))

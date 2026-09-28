@@ -420,6 +420,12 @@ changing one surface does not disturb the other. Exchange stats refresh every
 minute while the ticker tape is visible; incomplete API snapshots leave the
 last complete value in place.
 
+The view prepares price/percentage labels and their widths once after collecting
+the market values and display denomination. Widgets consume those prepared items;
+a second owned sequence is created only when scrolling needs it. Both separator
+styles share one builder, while the track retains its layout, clipping, and
+selection behavior.
+
 ## Positioning Info
 
 Positioning info panes are keyed by `PositioningInfoId` and backed by

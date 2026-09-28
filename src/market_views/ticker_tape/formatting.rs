@@ -20,13 +20,38 @@ pub(super) struct TickerTapeItem {
     pub(super) pct_24h: Option<f64>,
 }
 
-pub(super) fn ticker_tape_item_width(
-    item: &TickerTapeItem,
-    denomination: &DisplayDenominationContext,
-) -> f32 {
-    let text_chars = item.ticker.chars().count()
-        + price_label(item.price, denomination).chars().count()
-        + percent_label(item.pct_24h).chars().count();
+#[derive(Debug, Clone)]
+pub(super) struct PreparedTickerTapeItem {
+    pub(super) symbol: String,
+    pub(super) ticker: String,
+    pub(super) price_label: String,
+    pub(super) percent_label: String,
+    pub(super) pct_24h: Option<f64>,
+    pub(super) width: f32,
+}
+
+impl TickerTapeItem {
+    pub(super) fn prepare(
+        self,
+        denomination: &DisplayDenominationContext,
+    ) -> PreparedTickerTapeItem {
+        let price_label = price_label(self.price, denomination);
+        let percent_label = percent_label(self.pct_24h);
+        let width = ticker_tape_item_width(&self.ticker, &price_label, &percent_label);
+        PreparedTickerTapeItem {
+            symbol: self.symbol,
+            ticker: self.ticker,
+            price_label,
+            percent_label,
+            pct_24h: self.pct_24h,
+            width,
+        }
+    }
+}
+
+fn ticker_tape_item_width(ticker: &str, price_label: &str, percent_label: &str) -> f32 {
+    let text_chars =
+        ticker.chars().count() + price_label.chars().count() + percent_label.chars().count();
     let text_width = text_chars as f32 * TICKER_TAPE_TEXT_CHAR_WIDTH;
     let padding = f32::from(TICKER_TAPE_ITEM_HORIZONTAL_PADDING) * 2.0;
     let spacing = TICKER_TAPE_ITEM_SPACING as f32 * 3.0;
