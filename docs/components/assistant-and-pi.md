@@ -21,7 +21,7 @@ messages.
 | `src/agent_update.rs`, `src/agent_update/` | Message dispatch and window opening; separate prompt/attachment/snapshot, provider, runtime-event/presentation, session/cleanup, and system-link modules with the existing generation guards. |
 | `src/agent_views.rs` | Native chat window, composer, status, usage, empty state, and tool activity UI. |
 | `src/agent_snapshot.rs`, `src/agent_snapshot/` | Snapshot assembly, limits, provenance, and shared sanitization; separate account, market, journal, workspace, and file modules for the read-only export. |
-| `src/agent_workspace.rs` | Strict host-action contract, active-turn authorization, all-or-nothing validation, idempotent chart mutations, and acknowledgements. |
+| `src/agent_workspace.rs`, `src/agent_workspace/` | Request admission, active-turn authorization, and shared persistence coordination; separate indicator changes, staged drawing batches, and drawing request/style validation modules. |
 | `src/agent_runtime.rs`, `src/agent_runtime/` | Pi subprocess discovery, isolated environment, and command/event transport; separate redacted runtime types, JSONL RPC encoding/parsing, and bounded tool-summary modules with nearby tests. |
 | `src/llama_cpp.rs` | Loopback-only llama.cpp process/endpoint discovery, capability verification, and isolated Pi provider configuration. |
 | `src/chart_indicator.rs` | Shared typed registry for chart UI indicators and Assistant-visible indicator capabilities. |
