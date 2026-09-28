@@ -26,7 +26,7 @@ candidates; it does not establish that every module has been reviewed.
 | Journal and analytics | Fill API pagination, identity, normalization, merging, and same-timestamp chain ordering reviewed; normalization deduplicates adjacent identities and avoids copying single-fill groups. Aggregation orchestration, position reconciliation, and journal view preparation reviewed. Identical non-perp classification and fee arithmetic now live in the journal domain. Note lookup/editing and account-scoped state reviewed; note lookup borrows entries and duplicate reset paths share one implementation. Snapshot models, planning, assembly, and metrics reviewed and separated; request bounds and history admission are shared. Snapshot update callers inspected, with freshness/admission policies retained. Journal cache persistence and tests reviewed; platform-specific replacement retained. Cockpit rendering/analytics reviewed and split by panel; per-asset aggregation copies coin names only for distinct output rows. Detail/chrome/list views, summary preparation/series/drawing, and small trade-card helpers reviewed; simplified series iteration and reused detail values. Snapshot canvas interaction/rendering reviewed and separated; the canvas borrows its snapshot. Account analytics HTTP fan-out, reserve/name/history parsing, income assembly, and portfolio data selection reviewed; token validation is centralized, recent-payment formatting is bounded to 12 valid rows, portfolio bucket construction is direct, and unused theme construction is removed. Portfolio/income panes, table variants, projection generation, chart layout/hover/tooltip, and PnL area rendering reviewed; daily histories and income labels now borrow data, hidden-chip preparation is skipped, and common table cells/status wrapping are shared. PnL-card state/metrics, privacy text, preview/export rendering, contrast, and output paths reviewed; digit masking is shared and position percentages are reused. Owned export snapshots and account binding remain intact. Account metric helpers reviewed and retained; portfolio/income refresh lifecycle now has one shared implementation with independent state per feature, while caller admission and result policies remain explicit. |
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Removed discarded theme constructions from order/Chase entry points after checking theme purity; request and lifecycle code is otherwise byte-identical. Substantive order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Proxy URL normalization, redacted labels, deserialization/revalidation, settings commit order, and startup fallback inspected; existing security and persistence behavior retained. Remaining persistence/security code needs review. |
-| Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Proxy transport/admission reviewed and retained. Hydromancer frame/control parsing now moves resume strings out of JSON and borrows error text. Both API probes now share telemetry state/update code with independent provider state; snapshot fields and atomic ordering remain unchanged. Hydromancer connection/retry/idle-wait handling inspected; duplicated connection-failure handling remains a candidate. Remaining integration stream internals still need review. |
+| Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Proxy transport/admission reviewed and retained. Hydromancer frame/control parsing now moves resume strings out of JSON and borrows error text. Both API probes now share telemetry state/update code with independent provider state; snapshot fields and atomic ordering remain unchanged. Hydromancer connection/retry/idle-wait handling reviewed; connect errors and timeouts share one retry path. Fill tuple parsing borrows addresses and feed subscriptions move their final topic use; event formats, dedupe policy, and command cancellation are retained. Remaining integration stream internals still need review. |
 | Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing reviewed; data and label extraction now share one chart marker lookup. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling and reduced summary text copies. Shared-client request construction inspected across API, Hydromancer, HyperDash, and OpenRouter paths; unnecessary temporary client copies removed. Other integration and assistant internals still need substantive review. |
 | Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Theme construction and discarded theme calls in root update, notifications, chart helpers, and order helpers reviewed; the unused calls are removed. Notification delivery, sound entry points, toast retention/animation, and order-status alert policy reviewed; repeated delivery now shares one helper and copies messages only for desktop notifications. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
@@ -1733,11 +1733,51 @@ Validation (using the local ALSA prefix documented above):
   passed.
 - Source comparisons, `cargo fmt -- --check`, and `git diff --check`: passed.
 
+## 2026-09-28: consolidate Hydromancer connection failures and borrow fill addresses
+
+- Hydromancer connect errors and timeouts now normalize to a result before one
+  failure-handling path. Kept redacted error text, timeout labels, failure
+  telemetry, reconnect broadcasts, interruptible sleeps, exponential backoff,
+  and successful-connection reset behavior. The connecting command select and
+  connected read/write loop are unchanged.
+- Added a loopback handshake-rejection test before production changes. It
+  verifies HTTP failure reporting, one- then two-second advertised retry delays,
+  an actual second connection attempt, and prompt shutdown during the retry
+  wait. Existing timeout and cancellation tests cover the other branch.
+- Reviewed live/replay fill selection, liquidation/tracked-trade conversion,
+  dedupe keys/capacity, and subscription guards. The tuple helper now borrows its
+  address instead of allocating a string discarded by liquidation parsing;
+  tracked-trade output still owns the exact address. Added a regression for
+  required string validation, including null/numeric rejection and acceptance
+  of an empty string. Numeric parsing and event/dedupe formats are unchanged.
+- Removed two final-use topic clones in feed subscription commands. Retained
+  the independent copies needed by unsubscribe guards.
+- Inspected idle/retry waits, session readiness/resume handling, connected
+  commands, and key-rotation persistence ordering; retained their policies.
+  The two fill-stream receive loops are still a consolidation candidate.
+- Source checks verified both original retry sequences match the retained one,
+  all other manager code is unchanged, and ownership edits are exact. Updated
+  the integration guide. No schemas, messages, subscriptions, dependencies,
+  assets, or trading behavior changed; no measured speedup is claimed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene ws::hydromancer`:
+  **92 passed** before and after production changes, including the two new
+  regressions, timeout/cancellation, socket routing, session, and redaction
+  checks. The final loopback fixture sends a plain HTTP 403 response.
+- `cargo test --locked -j 2`: **4,380 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- Source comparison, existing-test preservation checks, `cargo fmt -- --check`,
+  and `git diff --check`: passed.
+
 ## Next candidates
 
-1. Simplify duplicated Hydromancer connection-error/timeout handling, preserving
-   redaction, retry timing, and command cancellation; continue through remaining
-   integration internals and event conversion.
+1. Review consolidation of liquidation/tracked-trade receive loops, preserving
+   control forwarding, dedupe capacities, lag reconnect ordering, subscription
+   guards, and downstream cancellation; continue through feed state/update code.
 2. Continue through account data, wallet model, and update ownership. Account
    state/persistence copies remain intentional where they protect a snapshot
    across terminal mutations.

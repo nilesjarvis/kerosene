@@ -122,10 +122,19 @@ Hydromancer state appears in:
 The Hydromancer key is secret-bearing. Key rotation should evict old websocket
 managers so stale key tasks do not keep running.
 
+Connection errors and connect timeouts share the manager's retry path: record
+the failure, broadcast the redacted error or timeout label, then wait while
+processing commands. Failed attempts double the delay from one second up to
+30 seconds; a successful connection resets it. Shutdown can interrupt both
+connection attempts and retry waits.
+
 The socket frame parser removes top-level `cursor` and `sessionId` fields before
 broadcasting the JSON. String values move directly into zeroizing resume fields;
 malformed values are removed and ignored. Control-message errors borrow their
 source text while applying the existing authentication labels and redaction.
+Fill parsing borrows the tuple's address; only tracked-trade events copy it into
+their owned output. Liquidation events still validate that address as a string
+before reading the separate liquidated-user field.
 
 ## HyperDash
 

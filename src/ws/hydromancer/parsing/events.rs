@@ -39,7 +39,7 @@ pub(in crate::ws::hydromancer) fn parse_tracked_trade_event(
     let (address, details) = fill_address_and_details(fill_tuple)?;
 
     Some(TrackedTradeEvent {
-        address,
+        address: address.to_string(),
         coin: details
             .get("coin")
             .and_then(|v| v.as_str())

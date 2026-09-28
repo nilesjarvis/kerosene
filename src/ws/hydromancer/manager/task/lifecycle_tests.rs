@@ -1,5 +1,6 @@
 use super::*;
 use serde_json::json;
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::TcpListener;
 use zeroize::Zeroizing;
 
@@ -166,6 +167,67 @@ async fn hanging_connect_emits_reconnecting_after_connect_timeout() {
     let _ = cmd_tx.send(HydromancerCommand::Shutdown);
     let _ = server.shutdown_tx.send(());
     let _ = tokio::time::timeout(Duration::from_secs(1), manager).await;
+}
+
+#[tokio::test]
+async fn rejected_connect_retries_with_backoff_and_stops_on_shutdown() {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("loopback listener should bind");
+    let address = listener
+        .local_addr()
+        .expect("listener should have an address");
+    let server = tokio::spawn(async move {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().await.expect("client should connect");
+            let mut request = Vec::new();
+            while !request.ends_with(b"\r\n\r\n") {
+                let read = stream
+                    .read_buf(&mut request)
+                    .await
+                    .expect("handshake request should be readable");
+                assert_ne!(read, 0, "client should send complete request headers");
+            }
+            stream
+                .write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+                .await
+                .expect("handshake rejection should be sent");
+        }
+    });
+    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+    let (msg_tx, mut msg_rx) = broadcast::channel(16);
+    let manager = tokio::spawn(hydromancer_manager_task_with_options(
+        Zeroizing::new("hydro-secret".to_string()),
+        cmd_rx,
+        msg_tx,
+        Duration::from_secs(5),
+        Some(format!("ws://{address}/?token=hydro-secret")),
+        HydromancerReconnectGate::default(),
+    ));
+    assert!(cmd_tx.send(subscribe_cmd("liquidations")).is_ok());
+
+    for retry_delay in [1, 2] {
+        let reconnecting = wait_for_hydromancer_message(
+            &mut msg_rx,
+            |message| message.msg_type == "reconnecting",
+            Duration::from_secs(3),
+        )
+        .await
+        .expect("rejected connection should emit a reconnecting message");
+        let error = reconnecting.data["error"]
+            .as_str()
+            .expect("reconnecting message should include an error");
+        assert!(error.contains("403"));
+        assert!(!error.contains("hydro-secret"));
+        assert_eq!(reconnecting.data["retryDelaySecs"], retry_delay);
+    }
+
+    assert!(cmd_tx.send(HydromancerCommand::Shutdown).is_ok());
+    tokio::time::timeout(Duration::from_millis(500), manager)
+        .await
+        .expect("shutdown should interrupt the retry delay")
+        .expect("manager task should not panic");
+    server.await.expect("rejection server should not panic");
 }
 
 #[tokio::test]

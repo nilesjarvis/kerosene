@@ -40,10 +40,7 @@ pub fn ws_hydromancer_liquidations(
         let subscription = (topic.clone(), payload.clone());
 
         if cmd_tx
-            .send(HydromancerCommand::Subscribe {
-                topic: topic.clone(),
-                payload,
-            })
+            .send(HydromancerCommand::Subscribe { topic, payload })
             .is_err()
         {
             return;

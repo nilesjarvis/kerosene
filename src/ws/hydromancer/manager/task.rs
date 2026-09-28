@@ -142,36 +142,19 @@ async fn hydromancer_manager_task_with_options(
             }
         };
 
-        let ws_stream = match connect_result {
-            ConnectAttempt::Finished(Ok((ws, _))) => ws,
-            ConnectAttempt::Finished(Err(e)) => {
-                record_ws_lifecycle(Provider::Hydromancer, ActivityKind::WsFailed);
-                let _ = broadcast_hydromancer_reconnecting(
-                    &msg_tx,
-                    redact_hydromancer_error(e, &api_key),
-                    retry_delay,
-                );
-                if hydromancer_sleep_or_shutdown(
-                    &mut cmd_rx,
-                    &mut active_subs,
-                    Duration::from_secs(retry_delay),
-                    &reconnect_gate,
-                )
-                .await
-                    == HydromancerTaskControlFlow::Shutdown
-                {
-                    return;
-                }
-                retry_delay = (retry_delay * 2).min(HYDROMANCER_MAX_CONNECT_RETRY_SECS);
-                continue 'manager;
+        let connect_result = match connect_result {
+            ConnectAttempt::Finished(result) => {
+                result.map_err(|error| redact_hydromancer_error(error, &api_key))
             }
-            ConnectAttempt::TimedOut => {
+            ConnectAttempt::TimedOut => Err(format!(
+                "connect timeout after {HYDROMANCER_CONNECT_TIMEOUT_SECS}s"
+            )),
+        };
+        let ws_stream = match connect_result {
+            Ok((ws, _)) => ws,
+            Err(error) => {
                 record_ws_lifecycle(Provider::Hydromancer, ActivityKind::WsFailed);
-                let _ = broadcast_hydromancer_reconnecting(
-                    &msg_tx,
-                    format!("connect timeout after {HYDROMANCER_CONNECT_TIMEOUT_SECS}s"),
-                    retry_delay,
-                );
+                let _ = broadcast_hydromancer_reconnecting(&msg_tx, error, retry_delay);
                 if hydromancer_sleep_or_shutdown(
                     &mut cmd_rx,
                     &mut active_subs,
