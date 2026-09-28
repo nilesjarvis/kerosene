@@ -13,7 +13,7 @@ views.
 | Account runtime | `src/account_state.rs`, `src/account_update/` | Active profile, connect/disconnect, account refresh, user stream application, profile picker. |
 | Account views | `src/account_views/` | Summary bar, positions, open orders, balances, history, account picker, income. |
 | Wallet tracker | `src/wallet_state/`, `src/wallet_update/`, `src/wallet_views/` | Watch-only tracked wallets, address book, detail windows, snapshot refreshes. |
-| Wallet clusters | `src/wallet_cluster_state.rs`, `src/wallet_cluster_update.rs`, `src/wallet_cluster_update/`, `src/wallet_cluster_views.rs` | Saved groups of trading profiles, aggregate positions, and split order submission. |
+| Wallet clusters | `src/wallet_cluster_state.rs`, `src/wallet_cluster_update.rs`, `src/wallet_cluster_update/`, `src/wallet_cluster_views.rs`, `src/wallet_cluster_views/` | Saved groups of trading profiles, aggregate positions, and split order submission. |
 | Portfolio | `src/portfolio_state/`, `src/portfolio_update.rs` | Portfolio history, PnL charts, income state and refreshes. |
 | Combined portfolio | `src/combined_portfolio.rs`, `src/combined_portfolio_update.rs`, `src/combined_portfolio_views.rs` | Watch-only multi-wallet portfolio history, aggregate PnL, and its standalone window. |
 | Analytics and metrics | `src/account_analytics/`, `src/account_metrics.rs`, `src/pnl_card/` | Portfolio/income HTTP fetches, position metrics, exportable PnL cards. |
@@ -510,7 +510,11 @@ Key behavior:
   reconciliation (`execution.rs`), and position aggregation/close sizing
   (`positions.rs`). Focused tests live beside each module.
 - `wallet_cluster_views.rs` renders the auxiliary window opened from the add
-  widget menu.
+  widget menu. Its `members.rs`, `ticket.rs`, `positions.rs`, and `executions.rs`
+  children own each section. The members section receives the already-selected
+  cluster, display text borrows state where possible, and event messages retain
+  owned IDs. Disabled close buttons do not copy symbols, and the ticket builds
+  the price input only when visible.
 - Cluster member streams are generated in
   `subscription_state/user_data.rs` for the selected cluster only.
 
