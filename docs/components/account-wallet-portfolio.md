@@ -453,6 +453,15 @@ grid. They can subscribe to user-data streams for their own address and show:
 The detail window should not mutate the connected trading account unless a
 message explicitly targets account profile state.
 
+`wallet_state/details.rs` shares window selection and snapshot timestamps across
+position, order, balance, and fill stream events. Matching windows clear their
+error and record a refresh even while awaiting an initial snapshot; stream
+events leave REST loading/context state intact. Each loaded window retains an
+independent snapshot. Event-specific hidden-symbol filters, DEX order replacement,
+and fill deduplication remain separate. Lag recovery preserves pending requests
+and starts refreshes only for idle matching windows. Cluster position freshness
+uses its own trading-specific rules.
+
 For portfolio-margin wallets, detail-window equity is recomputed from spot
 balances and token-0 maintenance availability. If any material held balance
 cannot be priced, the headline value is unavailable instead of showing a

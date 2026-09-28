@@ -2,7 +2,7 @@ use super::model::{
     WALLET_DETAILS_DEFAULT_HEIGHT, WALLET_DETAILS_DEFAULT_WIDTH, WalletDetailsWindowState,
 };
 use crate::account::{
-    AccountDataFetchScope, UserFill, WalletOpenOrderDetail,
+    AccountDataFetchScope, UserFill, WalletDetailsData, WalletOpenOrderDetail,
     fetch_wallet_details_scoped_with_provider, normalize_dex_open_order_coins,
 };
 use crate::app_state::TradingTerminal;
@@ -11,6 +11,7 @@ use crate::read_data_provider::ReadDataRequestContext;
 use crate::ws::WsUserData;
 
 use iced::{Size, Task, window};
+use std::collections::HashMap;
 
 impl TradingTerminal {
     pub(crate) fn wallet_details_fetch_task(
@@ -30,12 +31,7 @@ impl TradingTerminal {
                 hydromancer_key,
             ),
             move |r| {
-                Message::WalletDetailsLoaded(
-                    window_id,
-                    address.clone().into(),
-                    read_context,
-                    Box::new(r),
-                )
+                Message::WalletDetailsLoaded(window_id, address.into(), read_context, Box::new(r))
             },
         )
     }
@@ -126,12 +122,11 @@ impl TradingTerminal {
                     .into_iter()
                     .filter(|position| !is_hidden(&position.asset_position.position.coin))
                     .collect();
-                for state in self
-                    .wallet_detail_windows
-                    .values_mut()
-                    .filter(|state| state.address == address)
-                {
-                    if let Some(details) = state.data.as_mut() {
+                update_wallet_detail_snapshots(
+                    &mut self.wallet_detail_windows,
+                    &address,
+                    now_ms,
+                    |details| {
                         details.clearinghouse.margin_summary = main_state.margin_summary.clone();
                         details.clearinghouse.withdrawable = main_state.withdrawable.clone();
                         details.clearinghouse.cross_margin_summary =
@@ -140,11 +135,8 @@ impl TradingTerminal {
                             main_state.cross_maintenance_margin_used.clone();
                         details.clearinghouse.asset_positions = all_positions.clone();
                         details.positions = position_details.clone();
-                        details.fetched_at_ms = now_ms;
-                    }
-                    state.last_refresh_ms = Some(now_ms);
-                    state.error = None;
-                }
+                    },
+                );
             }
             WsUserData::OpenOrders { dex, orders } => {
                 let mut orders = orders;
@@ -153,12 +145,11 @@ impl TradingTerminal {
                     .into_iter()
                     .filter(|order| !is_hidden(&order.coin))
                     .collect();
-                for state in self
-                    .wallet_detail_windows
-                    .values_mut()
-                    .filter(|state| state.address == address)
-                {
-                    if let Some(details) = state.data.as_mut() {
+                update_wallet_detail_snapshots(
+                    &mut self.wallet_detail_windows,
+                    &address,
+                    now_ms,
+                    |details| {
                         details
                             .open_orders
                             .retain(|order| order.dex != dex && !is_hidden(&order.order.coin));
@@ -168,46 +159,35 @@ impl TradingTerminal {
                                 dex: dex.clone(),
                                 order,
                             }));
-                        details.fetched_at_ms = now_ms;
-                    }
-                    state.last_refresh_ms = Some(now_ms);
-                    state.error = None;
-                }
+                    },
+                );
             }
             WsUserData::SpotBalances(balances) => {
                 let balances: Vec<_> = balances
                     .into_iter()
                     .filter(|balance| !is_hidden(&balance.coin))
                     .collect();
-                for state in self
-                    .wallet_detail_windows
-                    .values_mut()
-                    .filter(|state| state.address == address)
-                {
-                    if let Some(details) = state.data.as_mut() {
+                update_wallet_detail_snapshots(
+                    &mut self.wallet_detail_windows,
+                    &address,
+                    now_ms,
+                    |details| {
                         details.spot.balances = balances.clone();
-                        details.fetched_at_ms = now_ms;
-                    }
-                    state.last_refresh_ms = Some(now_ms);
-                    state.error = None;
-                }
+                    },
+                );
             }
             WsUserData::AllMids(mids) => {
                 return self.handle_mids_update(mids);
             }
             WsUserData::Fills { fills, is_snapshot } => {
-                for state in self
-                    .wallet_detail_windows
-                    .values_mut()
-                    .filter(|state| state.address == address)
-                {
-                    if let Some(details) = state.data.as_mut() {
+                update_wallet_detail_snapshots(
+                    &mut self.wallet_detail_windows,
+                    &address,
+                    now_ms,
+                    |details| {
                         merge_wallet_detail_fills(&mut details.fills, &fills, is_snapshot);
-                        details.fetched_at_ms = now_ms;
-                    }
-                    state.last_refresh_ms = Some(now_ms);
-                    state.error = None;
-                }
+                    },
+                );
             }
             WsUserData::Lagged { skipped } => {
                 let mut refreshes = Vec::new();
@@ -230,22 +210,40 @@ impl TradingTerminal {
 
                 if !refreshes.is_empty() {
                     let scope = self.account_data_fetch_scope();
-                    let tasks: Vec<_> = refreshes
-                        .into_iter()
-                        .map(|(window_id, address)| {
-                            self.wallet_details_fetch_task(
-                                window_id,
-                                address,
-                                scope.clone(),
-                                read_context,
-                            )
-                        })
-                        .collect();
+                    let tasks = refreshes.into_iter().map(|(window_id, address)| {
+                        self.wallet_details_fetch_task(
+                            window_id,
+                            address,
+                            scope.clone(),
+                            read_context,
+                        )
+                    });
                     return Task::batch(tasks);
                 }
             }
         }
         Task::none()
+    }
+}
+
+// A stream event also marks windows without an initial snapshot as refreshed.
+// It does not complete or invalidate an in-flight REST request.
+fn update_wallet_detail_snapshots(
+    windows: &mut HashMap<window::Id, WalletDetailsWindowState>,
+    address: &str,
+    now_ms: u64,
+    mut update: impl FnMut(&mut WalletDetailsData),
+) {
+    for state in windows
+        .values_mut()
+        .filter(|state| state.address == address)
+    {
+        if let Some(details) = state.data.as_mut() {
+            update(details);
+            details.fetched_at_ms = now_ms;
+        }
+        state.last_refresh_ms = Some(now_ms);
+        state.error = None;
     }
 }
 
@@ -267,45 +265,4 @@ fn merge_wallet_detail_fills(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn wallet_detail_fill_snapshot_replaces_existing_fills() {
-        let mut existing = vec![fill(1)];
-
-        merge_wallet_detail_fills(&mut existing, &[fill(2)], true);
-
-        assert_eq!(existing.len(), 1);
-        assert_eq!(existing[0].tid, Some(2));
-    }
-
-    #[test]
-    fn wallet_detail_incremental_fills_are_deduplicated() {
-        let mut existing = vec![fill(1)];
-
-        merge_wallet_detail_fills(&mut existing, &[fill(1), fill(2)], false);
-
-        assert_eq!(existing.len(), 2);
-        assert_eq!(existing[0].tid, Some(1));
-        assert_eq!(existing[1].tid, Some(2));
-    }
-
-    fn fill(tid: u64) -> UserFill {
-        UserFill {
-            coin: "BTC".to_string(),
-            px: "100".to_string(),
-            sz: "0.1".to_string(),
-            side: "B".to_string(),
-            time: tid,
-            hash: None,
-            tid: Some(tid),
-            oid: Some(tid),
-            dir: "Open Long".to_string(),
-            closed_pnl: "0".to_string(),
-            fee: "0".to_string(),
-            fee_token: None,
-            start_position: None,
-        }
-    }
-}
+mod tests;
