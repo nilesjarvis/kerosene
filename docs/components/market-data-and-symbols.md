@@ -454,6 +454,13 @@ text. Drawing order, responsive thresholds, and hover behavior are preserved.
 
 Session data instances are persisted in layout/widget configs.
 
+`market_update/session_data.rs` routes messages and handles pane/lookback changes.
+Its `requests.rs` child owns refresh admission, pending-result matching, and
+chunked fetching; `symbols.rs` owns selection, reconciliation, and resolution.
+Symbol checks borrow the catalog key through the shared key-or-ticker resolver,
+with owned keys created for stored selections and requests. Lookup precedence,
+empty-catalog fallback, hidden/muted policies, and refresh coalescing are unchanged.
+
 ## Outcomes
 
 Outcome markets use `#`-style symbols and have special display and trading
