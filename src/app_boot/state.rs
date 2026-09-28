@@ -94,6 +94,7 @@ impl TradingTerminal {
             watchlist_presets: cfg.watchlist_presets.clone(),
             live_watchlist_ctxs: HashMap::new(),
             live_watchlist_history: HashMap::new(),
+            live_watchlist_ema: Default::default(),
             live_watchlist_contexts_loading: false,
             live_watchlist_history_loading: false,
             live_watchlist_contexts_request_id: 0,

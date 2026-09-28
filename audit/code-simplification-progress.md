@@ -5697,3 +5697,42 @@ code. Remaining areas include portions of API families, market widgets,
 automation state machines, startup, app surfaces, tooling, and packaging.
 These are recorded for future work only; the ongoing review is closed at the
 user's request.
+
+## 2026-09-28: PR integration with current main
+
+- Created `agent/code-simplification-goal` from the completed goal head,
+  `0dd18ea3`, retaining all 131 original commits since `bb07d8a7`.
+- Merged `origin/main` at `a71560da` to preserve three concurrently landed
+  features: the animated startup gradient, per-widget watchlist EMA distance,
+  and freehand chart drawing. Conflict resolution keeps the feature additions
+  within the goal's extracted modules and shared initialization paths.
+- Restored EMA defaults in the shared watchlist constructor and moved the new
+  settings regressions into the existing test module. Pen snapshot handling and
+  its bounded-geometry regression now live in the workspace snapshot module;
+  pen render tests join the extracted overlay tests. Freehand strokes retain
+  their upstream release path and expose no draggable anchor handles through
+  the refactored iterator.
+- Preserved the new startup layout, animation timing, and gradient drawing.
+  Source comparison confirms the layout/phase/style bodies and extracted
+  canvas match current main apart from module visibility and formatting.
+
+Validation of the merged implementation:
+
+- `cargo test --locked -j 2 live_watchlist`: **75 passed**.
+- `cargo test --locked -j 2 pen_`: **149 passed** (this filter also matches
+  existing open-order and open-window test names).
+- `cargo test --locked -j 2 main_view::`: **8 passed**, with **40 synthetic
+  shell previews**. The 24 title-bar and auxiliary-frame images match the
+  completed goal head byte for byte. Main-window previews incorporate the
+  upstream startup design and Pen toolbar control; representative images were
+  visually inspected. Previews: `/tmp/kerosene-pr-shell-previews`.
+- `cargo test --locked -j 2`: **4,665 passed, 0 failed, 6 ignored**; doc-tests
+  passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`,
+  `cargo fmt -- --check`, and `git diff --cached --check`: passed.
+- `cargo build --locked -j 2`: passed. The fresh binary opened a 1600x960
+  Kerosene window under Xvfb with `--test`, exited at the expected 20-second
+  timeout (124), and produced no panic markers. Logs:
+  `/tmp/kerosene-pr-smoke`.
+- Build/runtime validation remains Linux-only. No native macOS or Windows
+  build/runtime validation was added during PR integration.

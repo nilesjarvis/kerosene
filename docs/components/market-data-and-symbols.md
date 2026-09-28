@@ -410,6 +410,35 @@ Default instances are created in `market_update/live_watchlist/panes.rs`.
 Startup and layout loading use its `ensure_live_watchlist_pane_instances`
 helper; Add Widget uses the same preset selection and visibility filtering.
 
+The optional **EMA distance** column is enabled in the watchlist settings menu.
+Each widget saves its own `ema: { period, timeframe }` in `LiveWatchlistConfig`,
+independent of its shared symbol preset. Defaults are 20 periods / 1h, with the
+column hidden for both new widgets and legacy layouts. The period accepts
+1–1000 candles (Apply or Enter); the timeframe picker offers Hyperliquid candle
+intervals from 1m through 1M. The column header identifies the EMA and sorts its
+signed percentage: `(current mid − EMA) / EMA × 100`. Positive values use the
+buy color, negative values the sell color, and unavailable values sort last.
+
+`api/watchlist/ema.rs` reuses the chart's SMA-seeded close-price EMA, requesting
+up to five periods of warmup (at most 5000 candles). While the newest candle is
+forming, mid updates replace its close in the EMA without counting multiple
+price ticks as new candles. When that candle closes, the value waits for a fresh
+snapshot so an unfinished close cannot be treated as a completed candle.
+`market_state/live_watchlist/ema.rs` shares requests across matching
+symbol/period/timeframe keys, limits concurrent reads to four, and refreshes on
+the existing watchlist timer once per minute per key, or at the next 15-second
+tick after a candle closes (with a 15-second minimum retry interval). Only open widgets
+with the column enabled request EMA data; hidden symbols are excluded. Reads
+use Hyperliquid's public candle endpoint and require no credentials.
+
+`LiveWatchlistEmaPeriodInputChanged`, `LiveWatchlistEmaPeriodApplied`,
+`LiveWatchlistEmaTimeframeChanged`, and `LiveWatchlistEmaLoaded` route through the
+market update module. Request IDs reject late/duplicate responses; keys keep
+settings and symbols isolated across widgets and layout changes. Missing,
+insufficient, failed, or stale history displays a dash with a status tooltip;
+snapshots older than two minutes are suppressed. Runtime samples and pending
+requests are not persisted.
+
 ## Ticker Tape
 
 The ticker tape is an optional full-width strip below the top bar. It displays

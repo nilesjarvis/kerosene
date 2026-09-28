@@ -10,6 +10,8 @@ mod export;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum DragKind {
+    /// Collecting a freehand pen stroke until the left button is released.
+    DrawPen,
     /// Dragging on the main chart area -- pans the X axis.
     PanX,
     /// Dragging on the price axis -- scales / pans the Y axis.

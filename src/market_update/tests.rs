@@ -58,3 +58,22 @@ fn live_watchlist_market_dispatch_includes_settings_toggle() {
         &Message::ToggleLiveWatchlistSettings(7)
     ));
 }
+
+#[test]
+fn live_watchlist_dispatch_includes_ema_settings_and_results() {
+    for message in [
+        Message::LiveWatchlistEmaPeriodInputChanged(7, "50".to_string()),
+        Message::LiveWatchlistEmaPeriodApplied(7),
+        Message::LiveWatchlistEmaTimeframeChanged(7, "4h".to_string()),
+        Message::LiveWatchlistEmaLoaded(
+            crate::market_state::LiveWatchlistEmaKey {
+                symbol: "BTC".to_string(),
+                settings: Default::default(),
+            },
+            1,
+            Err("unavailable".to_string()),
+        ),
+    ] {
+        assert!(is_live_watchlist_market_message(&message));
+    }
+}

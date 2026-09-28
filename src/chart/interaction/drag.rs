@@ -28,6 +28,10 @@ impl CandlestickChart {
         let pos = cursor.map(|cursor| cursor.source);
         if let (Some(kind), Some(start), Some(pos)) = (state.drag, state.drag_start, pos) {
             match kind {
+                DragKind::DrawPen => {
+                    self.sample_pen_point(state, pos, layout.chart_w, layout.chart_h, false);
+                    return Some(canvas::Action::request_redraw().and_capture());
+                }
                 DragKind::PanX => {
                     let step = state.candle_width * (1.0 + CANDLE_GAP_RATIO);
                     let dx = pos.x - start.x;
@@ -203,6 +207,11 @@ impl CandlestickChart {
         state: &mut ChartState,
         bounds: Rectangle,
     ) -> Option<canvas::Action<Message>> {
+        if state.drag == Some(DragKind::DrawPen) {
+            let chart_w = bounds.width - self.price_axis_width();
+            let (chart_h, _, _) = self.chart_area_heights(bounds.height);
+            return self.finish_pen_stroke(state, chart_w, chart_h);
+        }
         let kind = state.drag.take()?;
         state.drag_start = None;
         match kind {

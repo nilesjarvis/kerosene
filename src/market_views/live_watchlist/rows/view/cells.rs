@@ -22,6 +22,7 @@ pub(super) fn live_watchlist_column_value(
                     theme.extended_palette().background.weak.text,
                 )
             }),
+        config::LiveWatchlistColumn::EmaDistance => format_pct(data.ema_distance, theme),
         config::LiveWatchlistColumn::Change5m => format_pct(data.pct_5m, theme),
         config::LiveWatchlistColumn::Change30m => format_pct(data.pct_30m, theme),
         config::LiveWatchlistColumn::Change1h => format_pct(data.pct_1h, theme),

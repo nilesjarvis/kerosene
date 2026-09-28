@@ -18,6 +18,7 @@ const MAX_MARKETS: usize = 250;
 const MAX_WORKSPACE_CHARTS: usize = 32;
 const MAX_WORKSPACE_DRAWINGS: usize = 128;
 const MAX_WORKSPACE_DRAWING_LABEL_CHARS: usize = 160;
+const MAX_WORKSPACE_PEN_POINTS: usize = 64;
 const MAX_ACCOUNT_ROWS: usize = 100;
 const MAX_RECENT_ROWS: usize = 50;
 const MAX_TOOL_ACTIVITY_ROWS: usize = 2_000;

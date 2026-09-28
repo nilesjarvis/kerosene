@@ -678,6 +678,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) next_session_data_id: SessionDataId,
 
     pub(crate) live_watchlist_ctxs: HashMap<String, crate::api::WatchlistContext>,
+    pub(crate) live_watchlist_ema: crate::market_state::LiveWatchlistEmaState,
     pub(crate) live_watchlist_history: HashMap<String, (f64, f64, f64)>,
     pub(crate) live_watchlist_contexts_loading: bool,
     pub(crate) live_watchlist_history_loading: bool,
@@ -693,8 +694,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) journal: journal::JournalState,
     // Shared loading spinner phase
     pub(crate) spinner_phase: f32,
-    // First-run onboarding animation phase; advances continuously (does not wrap
-    // at TAU like spinner_phase) so the looping welcome visuals stay seamless.
+    // First-run gradient phase; advances slowly and wraps seamlessly at TAU.
     pub(crate) onboarding_phase: f32,
     // Last status bar tick timestamp, used by render code that displays wall-clock state.
     pub(crate) status_bar_now_ms: u64,

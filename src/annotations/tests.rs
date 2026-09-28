@@ -188,6 +188,9 @@ fn full_style_round_trips() {
 fn new_kinds_round_trip() {
     let style = AnnotationStyle::default();
     let cases = vec![
+        AnnotationKind::Pen {
+            points: vec![(1_000, 5.0), (2_000, 7.0), (1_500, 6.0)],
+        },
         AnnotationKind::Ray {
             start: (1, 5.0),
             end: (2, 6.0),
@@ -318,4 +321,41 @@ fn anchor_count_matches_tools() {
     assert_eq!(DrawingTool::Eraser.anchor_count(), 0);
     assert!(DrawingTool::TrendLine.is_shape());
     assert!(!DrawingTool::Select.is_shape());
+}
+
+#[test]
+fn pen_validation_and_translation_preserve_traversal_order() {
+    let mut annotation = Annotation {
+        id: 7,
+        kind: AnnotationKind::Pen {
+            points: vec![(1_000, 10.0), (2_000, 12.0), (1_500, 11.0)],
+        },
+        style: sample_style(),
+    };
+    assert!(annotation.is_valid());
+    assert!(annotation.kind.anchor_points().next().is_none());
+    annotation.kind.translate(500, 2.0);
+    assert_eq!(
+        annotation.kind,
+        AnnotationKind::Pen {
+            points: vec![(1_500, 12.0), (2_500, 14.0), (2_000, 13.0)],
+        }
+    );
+    let restored = Annotation::from_config(7, &annotation.to_config()).expect("pen reloads");
+    assert_eq!(restored.kind, annotation.kind);
+    assert_eq!(restored.style, annotation.style);
+    assert!(DrawingTool::Pen.is_shape());
+    assert_eq!(DrawingTool::Pen.anchor_count(), 0);
+
+    for points in [
+        vec![],
+        vec![(1, 10.0)],
+        vec![(1, f64::NAN), (2, 10.0)],
+        vec![(1, 0.0), (2, 10.0)],
+        vec![(1, 10.0); MAX_PEN_POINTS + 1],
+    ] {
+        annotation.kind = AnnotationKind::Pen { points };
+        assert!(!annotation.is_valid());
+        assert!(Annotation::from_config(7, &annotation.to_config()).is_none());
+    }
 }

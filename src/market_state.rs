@@ -1,6 +1,7 @@
 mod dom_ladder;
 pub(crate) mod listings;
 mod live_watchlist;
+pub(crate) use live_watchlist::ema::{LiveWatchlistEmaKey, LiveWatchlistEmaState};
 mod mids;
 mod symbol_search;
 mod types;

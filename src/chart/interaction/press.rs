@@ -290,6 +290,12 @@ impl CandlestickChart {
         }
 
         if self.active_tool.is_some() && visual_pos.x < chart_w && visual_pos.y < chart_h {
+            state.draft_tool = None;
+            state.draft_anchors.clear();
+            if state.drag == Some(DragKind::DrawPen) {
+                state.drag = None;
+                state.drag_start = None;
+            }
             return Some(
                 canvas::Action::publish(Message::ClearDrawingTool(self.id, self.surface_id))
                     .and_capture(),

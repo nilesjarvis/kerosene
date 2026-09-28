@@ -27,6 +27,18 @@ fn chart_with(annotations: Vec<AnnotationConfig>) -> ChartConfig {
 fn mixed_annotation_kinds_round_trip_through_config() {
     let annotations = vec![
         AnnotationConfig {
+            kind: "pen".to_string(),
+            color: [0.4, 0.5, 0.6],
+            anchors: vec![
+                AnchorConfig { t: 1, p: 5.0 },
+                AnchorConfig { t: 3, p: 7.0 },
+                AnchorConfig { t: 2, p: 6.0 },
+            ],
+            width: 2.5,
+            line_style: LineStyleConfig::Dotted,
+            ..AnnotationConfig::default()
+        },
+        AnnotationConfig {
             kind: "level".to_string(),
             color: [0.4, 0.5, 0.6],
             price: Some(100.0),

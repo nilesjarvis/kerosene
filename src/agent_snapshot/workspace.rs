@@ -1,6 +1,6 @@
 use super::{
     MAX_WORKSPACE_CHARTS, MAX_WORKSPACE_DRAWING_LABEL_CHARS, MAX_WORKSPACE_DRAWINGS,
-    section_provenance,
+    MAX_WORKSPACE_PEN_POINTS, section_provenance,
 };
 use crate::agent_workspace::{ASSISTANT_DRAWING_CATALOG, annotation_kind_key};
 use crate::annotations::{Annotation, AnnotationKind, LineStyle};
@@ -184,6 +184,11 @@ fn agent_drawing_snapshot(
     label: (Option<String>, bool),
 ) -> Value {
     let geometry = match &annotation.kind {
+        AnnotationKind::Pen { points } => json!({
+            "points": points.iter().take(MAX_WORKSPACE_PEN_POINTS).copied().map(agent_drawing_anchor).collect::<Vec<_>>(),
+            "total_points": points.len(),
+            "points_truncated": points.len() > MAX_WORKSPACE_PEN_POINTS,
+        }),
         AnnotationKind::HorizontalLevel { price } => json!({ "price": price }),
         AnnotationKind::VerticalLine { time } => json!({ "time_ms": time }),
         AnnotationKind::TrendLine { start, end }

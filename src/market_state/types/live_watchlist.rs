@@ -16,6 +16,8 @@ pub(crate) struct LiveWatchlistRowData {
     pub(crate) pct_1h: Option<f64>,
     pub(crate) pct_24h: Option<f64>,
     pub(crate) funding: Option<f64>,
+    pub(crate) ema_distance: Option<f64>,
+    pub(crate) ema_status: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -27,5 +29,7 @@ pub struct LiveWatchlistInstance {
     pub sort_column: config::LiveWatchlistSortColumn,
     pub sort_direction: config::SortDirection,
     pub visible_columns: Vec<config::LiveWatchlistColumn>,
+    pub ema: config::LiveWatchlistEmaConfig,
+    pub ema_period_input: String,
     pub(crate) row_cache: Vec<LiveWatchlistRowData>,
 }

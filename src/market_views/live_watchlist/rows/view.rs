@@ -7,7 +7,7 @@ use crate::market_state::{LiveWatchlistId, LiveWatchlistRowData};
 use crate::message::Message;
 
 use super::super::symbol_cell::view_live_watchlist_symbol_cell;
-use iced::widget::row;
+use iced::widget::{row, text, tooltip};
 use iced::{Element, Fill, Theme};
 
 impl TradingTerminal {
@@ -35,7 +35,18 @@ impl TradingTerminal {
         for column in display_columns {
             let (value, color) =
                 cells::live_watchlist_column_value(column, data, &denomination, price_color, theme);
-            row_content = row_content.push(cells::live_watchlist_column_cell(column, value, color));
+            let cell = cells::live_watchlist_column_cell(column, value, color);
+            row_content = if *column == config::LiveWatchlistColumn::EmaDistance
+                && let Some(status) = &data.ema_status
+            {
+                row_content.push(tooltip(
+                    cell,
+                    text(status.clone()).size(10),
+                    tooltip::Position::Top,
+                ))
+            } else {
+                row_content.push(cell)
+            };
         }
         row_content = row_content
             .push(cells::live_watchlist_remove_button(

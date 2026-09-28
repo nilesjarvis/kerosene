@@ -16,6 +16,8 @@ pub type Anchor = (u64, f64);
 /// Drawing tool the user can activate via toolbar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DrawingTool {
+    /// Press-and-drag freehand stroke, committed on release.
+    Pen,
     /// One-click horizontal price level spanning the full chart width.
     HorizontalLevel,
     /// Two-click line segment between two anchors.
@@ -42,7 +44,7 @@ pub enum DrawingTool {
 
 impl DrawingTool {
     /// Number of anchor clicks the tool collects before it commits a shape.
-    /// Zero for the non-drawing tools (Select / Eraser).
+    /// Zero for Pen (commits on release), Select, and Eraser.
     pub fn anchor_count(self) -> usize {
         match self {
             Self::HorizontalLevel | Self::VerticalLine => 1,
@@ -53,13 +55,13 @@ impl DrawingTool {
             | Self::Measure
             | Self::FibRetracement => 2,
             Self::FibExtension => 3,
-            Self::Select | Self::Eraser => 0,
+            Self::Pen | Self::Select | Self::Eraser => 0,
         }
     }
 
     /// True for tools that place a shape (i.e. collect anchors).
     pub fn is_shape(self) -> bool {
-        self.anchor_count() > 0
+        self == Self::Pen || self.anchor_count() > 0
     }
 }
 
@@ -125,6 +127,8 @@ impl AnnotationStyle {
 /// A user-drawn annotation on a chart.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnnotationKind {
+    /// A freehand stroke stored in mouse traversal order (time need not increase).
+    Pen { points: Vec<Anchor> },
     /// A horizontal price level line spanning the full chart width.
     HorizontalLevel { price: f64 },
     /// A trend line between two (timestamp_ms, price) anchor points.
@@ -154,6 +158,8 @@ pub struct Annotation {
 pub const DEFAULT_LEVEL_COLOR: Color = Color::from_rgb(0.478, 0.635, 0.969);
 /// Default color for trend lines and most shapes (yellow).
 pub const DEFAULT_LINE_COLOR: Color = Color::from_rgb(0.945, 0.980, 0.549);
+/// Bound freehand geometry and persisted stroke size.
+pub const MAX_PEN_POINTS: usize = 4096;
 /// Default color for the measure tool (teal).
 pub const DEFAULT_MEASURE_COLOR: Color = Color::from_rgb(0.4, 0.85, 0.78);
 
@@ -255,7 +261,7 @@ impl From<LineStyleConfig> for LineStyle {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AnnotationConfig {
     /// "level", "trendline", "ray", "extended", "vline", "rect", "measure",
-    /// "fib_retracement", "fib_extension".
+    /// "fib_retracement", "fib_extension", "pen".
     #[serde(rename = "type")]
     pub kind: String,
     /// RGB color as [r, g, b] in 0.0..1.0 (legacy field; alpha stored separately).
@@ -280,7 +286,7 @@ pub struct AnnotationConfig {
     /// Timestamp (for vertical lines).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time: Option<u64>,
-    /// Generic multi-point anchors (rectangles, Fibonacci grids).
+    /// Generic multi-point anchors (rectangles, Fibonacci grids, pen strokes).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub anchors: Vec<AnchorConfig>,
     /// Color alpha (defaults to fully opaque).
@@ -385,6 +391,9 @@ fn anchors_finite(points: &[Anchor]) -> bool {
 impl AnnotationKind {
     fn is_valid(&self) -> bool {
         match self {
+            Self::Pen { points } => {
+                (2..=MAX_PEN_POINTS).contains(&points.len()) && anchors_finite(points)
+            }
             Self::HorizontalLevel { price } => valid_annotation_price(*price),
             Self::TrendLine { start, end }
             | Self::Ray { start, end }
@@ -405,11 +414,13 @@ impl AnnotationKind {
     }
 
     /// Anchor points exposed as draggable handles (in placement order).
-    /// Single-axis shapes (horizontal level, vertical line) expose none;
+    /// Single-axis shapes and freehand strokes expose none;
     /// they move by body drag.
     pub fn anchor_points(&self) -> impl Iterator<Item = Anchor> + '_ {
         let (pair, points): (Option<[Anchor; 2]>, &[Anchor]) = match self {
-            Self::HorizontalLevel { .. } | Self::VerticalLine { .. } => (None, &[]),
+            Self::HorizontalLevel { .. } | Self::VerticalLine { .. } | Self::Pen { .. } => {
+                (None, &[])
+            }
             Self::TrendLine { start, end }
             | Self::Ray { start, end }
             | Self::ExtendedLine { start, end }
@@ -423,6 +434,7 @@ impl AnnotationKind {
     /// Replace the anchor at `index` (no-op if out of range / unsupported kind).
     pub fn set_anchor(&mut self, index: usize, anchor: Anchor) {
         match self {
+            Self::Pen { .. } => {}
             Self::HorizontalLevel { price } => {
                 if index == 0 {
                     *price = anchor.1;
@@ -476,7 +488,7 @@ impl AnnotationKind {
                 shift(a);
                 shift(b);
             }
-            Self::Fib { points, .. } => points.iter_mut().for_each(shift),
+            Self::Fib { points, .. } | Self::Pen { points } => points.iter_mut().for_each(shift),
         }
     }
 }
@@ -508,6 +520,10 @@ impl Annotation {
     pub fn to_config(&self) -> AnnotationConfig {
         let mut cfg = self.config_base();
         match &self.kind {
+            AnnotationKind::Pen { points } => {
+                cfg.kind = "pen".to_string();
+                cfg.anchors = points.iter().copied().map(AnchorConfig::from).collect();
+            }
             AnnotationKind::HorizontalLevel { price } => {
                 cfg.kind = "level".to_string();
                 cfg.price = Some(*price);
@@ -564,6 +580,14 @@ impl Annotation {
             visible: cfg.visible,
         };
         let kind = match cfg.kind.as_str() {
+            "pen" => {
+                if !(2..=MAX_PEN_POINTS).contains(&cfg.anchors.len()) {
+                    return None;
+                }
+                AnnotationKind::Pen {
+                    points: cfg.anchors.iter().map(|a| a.to_anchor()).collect(),
+                }
+            }
             "level" => AnnotationKind::HorizontalLevel { price: cfg.price? },
             "trendline" => {
                 two_anchor_kind(cfg, |start, end| AnnotationKind::TrendLine { start, end })?

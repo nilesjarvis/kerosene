@@ -122,6 +122,9 @@ impl CandlestickChart {
             }
 
             let body = match &ann.kind {
+                AnnotationKind::Pen { points } => points
+                    .windows(2)
+                    .any(|pair| seg_hit(pair[0], pair[1], LineExtension::Segment)),
                 AnnotationKind::HorizontalLevel { price } => {
                     pos.x >= 0.0 && pos.x <= chart_w && (pos.y - price_to_y(*price)).abs() <= tol
                 }

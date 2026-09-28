@@ -5,6 +5,7 @@ mod symbols;
 
 use super::context_results::scope_context_response;
 use crate::app_state::TradingTerminal;
+use crate::config;
 use crate::message::Message;
 use iced::Task;
 use std::collections::{HashMap, HashSet};
@@ -30,7 +31,43 @@ impl TradingTerminal {
                 }
                 self.refresh_live_watchlist_row_cache(id);
                 self.persist_config();
+                self.request_live_watchlist_ema_refresh()
+            }
+            Message::LiveWatchlistEmaPeriodInputChanged(id, input) => {
+                if input.len() <= 4
+                    && input.bytes().all(|byte| byte.is_ascii_digit())
+                    && let Some(watchlist) = self.live_watchlists.get_mut(&id)
+                {
+                    watchlist.ema_period_input = input;
+                }
                 Task::none()
+            }
+            Message::LiveWatchlistEmaPeriodApplied(id) => {
+                if let Some(watchlist) = self.live_watchlists.get_mut(&id) {
+                    if let Ok(period) = watchlist.ema_period_input.parse::<usize>()
+                        && (1..=config::LiveWatchlistEmaConfig::MAX_PERIOD).contains(&period)
+                    {
+                        watchlist.ema.period = period;
+                    }
+                    watchlist.ema_period_input = watchlist.ema.period.to_string();
+                }
+                self.refresh_live_watchlist_row_cache(id);
+                self.persist_config();
+                self.request_live_watchlist_ema_refresh()
+            }
+            Message::LiveWatchlistEmaTimeframeChanged(id, timeframe) => {
+                if !config::LiveWatchlistEmaConfig::TIMEFRAMES.contains(&timeframe.as_str()) {
+                    return Task::none();
+                }
+                if let Some(watchlist) = self.live_watchlists.get_mut(&id) {
+                    watchlist.ema.timeframe = timeframe;
+                }
+                self.refresh_live_watchlist_row_cache(id);
+                self.persist_config();
+                self.request_live_watchlist_ema_refresh()
+            }
+            Message::LiveWatchlistEmaLoaded(key, request_id, result) => {
+                self.apply_live_watchlist_ema_loaded(key, request_id, result)
             }
             Message::ToggleLiveWatchlistSettings(id) => {
                 let opening = self.live_watchlist_settings_menu_open != Some(id);
@@ -108,7 +145,11 @@ impl TradingTerminal {
                 self.rename_watchlist_preset(preset_id, name)
             }
             Message::WatchlistPresetDelete(preset_id) => self.delete_watchlist_preset(preset_id),
-            Message::LiveWatchlistRefreshTick => self.request_live_watchlist_refresh(false),
+            Message::LiveWatchlistRefreshTick => {
+                let task = self.request_live_watchlist_refresh(false);
+                self.refresh_live_watchlist_row_caches();
+                task
+            }
             Message::LiveWatchlistContextsLoaded(
                 request_id,
                 requested_symbols,

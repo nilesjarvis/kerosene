@@ -12,6 +12,8 @@ fn watchlist() -> LiveWatchlistInstance {
         sort_column: LiveWatchlistSortColumn::Symbol,
         sort_direction: SortDirection::Ascending,
         visible_columns: vec![LiveWatchlistColumn::Price],
+        ema: Default::default(),
+        ema_period_input: "20".to_string(),
         row_cache: Vec::new(),
     }
 }

@@ -2,7 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::market_state::{LiveWatchlistId, LiveWatchlistInstance};
 use crate::message::Message;
-use iced::widget::{Space, button, row, text};
+use iced::widget::{Space, button, row, text, tooltip};
 use iced::{Element, Theme};
 
 impl TradingTerminal {
@@ -15,7 +15,7 @@ impl TradingTerminal {
         let theme = self.theme();
         let sort_column = wl.sort_column;
         let sort_direction = wl.sort_direction;
-        let sort_btn = |label: &'static str, col: config::LiveWatchlistSortColumn, width: f32| {
+        let sort_btn = |label: String, col: config::LiveWatchlistSortColumn, width: f32| {
             let mut row_content = row![
                 text(label)
                     .size(10)
@@ -48,16 +48,26 @@ impl TradingTerminal {
         };
 
         let mut header = row![sort_btn(
-            "Symbol",
+            "Symbol".to_string(),
             config::LiveWatchlistSortColumn::Symbol,
             0.0
         )];
         for column in display_columns {
-            header = header.push(sort_btn(
-                column.label(),
-                column.sort_column(),
-                column.width(),
-            ));
+            let label = if *column == config::LiveWatchlistColumn::EmaDistance {
+                format!("EMA {} {}", wl.ema.period, wl.ema.timeframe)
+            } else {
+                column.label().to_string()
+            };
+            let button = sort_btn(label, column.sort_column(), column.width());
+            if *column == config::LiveWatchlistColumn::EmaDistance {
+                header = header.push(tooltip(
+                    button,
+                    text("(Price − EMA) / EMA × 100%; close-price EMA").size(10),
+                    tooltip::Position::Top,
+                ));
+            } else {
+                header = header.push(button);
+            }
         }
         header
             .push(Space::new().width(20))

@@ -1,27 +1,20 @@
-mod animation;
-
 use crate::app_state::TradingTerminal;
 use crate::helpers::text_color_for_bg;
 use crate::message::Message;
-use animation::{
-    ONBOARDING_PHASE_PERIOD, ONBOARDING_PHASE_STEP, OnboardingBackdrop, OnboardingGraphic,
-};
 use iced::widget::container as container_style;
-use iced::widget::{Space, button, column, container, row, stack, text};
-use iced::{Alignment, Color, Element, Fill, Length, Theme};
+use iced::widget::{Space, button, column, container, stack, text};
+use iced::{Alignment, Color, Element, Fill, Theme};
+
+mod animation;
+use animation::{ONBOARDING_PHASE_PERIOD, ONBOARDING_PHASE_STEP, OnboardingBackdrop};
 
 // ---------------------------------------------------------------------------
 // App Onboarding
 // ---------------------------------------------------------------------------
 
-const ONBOARDING_CONTENT_WIDTH: f32 = 720.0;
-const ONBOARDING_GRAPHIC_WIDTH: f32 = 260.0;
-const ONBOARDING_GRAPHIC_HEIGHT: f32 = 176.0;
-
+const ONBOARDING_CONTENT_WIDTH: f32 = 480.0;
 impl TradingTerminal {
-    /// Advance the first-run onboarding animation. Unlike `spinner_phase` (an
-    /// angle wrapped at TAU), this accumulates and wraps at `ONBOARDING_PHASE_PERIOD`
-    /// so the looping welcome visuals never jump when the phase resets.
+    /// Keep the slow gradient motion bounded and seamless across each cycle.
     pub(crate) fn advance_onboarding_phase(&mut self) {
         self.onboarding_phase =
             (self.onboarding_phase + ONBOARDING_PHASE_STEP).rem_euclid(ONBOARDING_PHASE_PERIOD);
@@ -49,29 +42,29 @@ impl TradingTerminal {
         .width(Fill)
         .height(Fill);
 
+        let theme = self.theme();
         let content = column![
-            iced::widget::canvas(OnboardingGraphic {
-                phase: self.onboarding_phase,
-            })
-            .width(Length::Fixed(ONBOARDING_GRAPHIC_WIDTH))
-            .height(Length::Fixed(ONBOARDING_GRAPHIC_HEIGHT)),
-            text("Kerosene").size(44).center(),
-            text("A GPU-accelerated desktop trading terminal for Hyperliquid.")
-                .size(15)
-                .center(),
-            row![
-                market_chip("Live markets", |theme| theme.palette().primary),
-                market_chip("Charting", |theme| theme.palette().success),
-                market_chip("Automation", |theme| theme.palette().danger),
+            column![
+                text("Kerosene").size(44).center(),
+                text("Your Hyperliquid trading terminal.")
+                    .size(14)
+                    .color(mix_color(
+                        theme.palette().text,
+                        theme.palette().background,
+                        0.35
+                    ))
+                    .center(),
             ]
-            .spacing(8)
-            .align_y(Alignment::Center),
-            button(text("Enter Terminal").size(14).center())
+            .spacing(12)
+            .align_x(Alignment::Center),
+            Space::new().height(16),
+            button(text("Start").size(14).center())
                 .on_press(Message::EnterApplication)
-                .padding([11, 24])
+                .width(160)
+                .padding([13, 24])
                 .style(onboarding_button_style)
         ]
-        .spacing(18)
+        .spacing(16)
         .width(Fill)
         .align_x(Alignment::Center);
 
@@ -106,53 +99,11 @@ impl TradingTerminal {
     }
 }
 
-fn market_chip<'a>(label: &'static str, color: fn(&Theme) -> Color) -> Element<'a, Message> {
-    container(
-        row![chip_dot(color), text(label).size(11)]
-            .spacing(7)
-            .align_y(Alignment::Center),
-    )
-    .padding([5, 9])
-    .style(move |theme: &Theme| {
-        let accent = color(theme);
-        container_style::Style {
-            background: Some(Color { a: 0.13, ..accent }.into()),
-            text_color: Some(Color {
-                a: 0.92,
-                ..theme.palette().text
-            }),
-            border: iced::Border {
-                radius: 4.0.into(),
-                width: 1.0,
-                color: Color { a: 0.26, ..accent },
-            },
-            ..Default::default()
-        }
-    })
-    .into()
-}
-
-fn chip_dot<'a>(color: fn(&Theme) -> Color) -> Element<'a, Message> {
-    container(Space::new().width(7).height(7))
-        .style(move |theme: &Theme| {
-            let accent = color(theme);
-            container_style::Style {
-                background: Some(Color { a: 0.8, ..accent }.into()),
-                border: iced::Border {
-                    radius: 2.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            }
-        })
-        .into()
-}
-
 fn onboarding_button_style(theme: &Theme, status: button::Status) -> button::Style {
     let base = theme.palette().primary;
     let bg = match status {
-        button::Status::Hovered => mix_color(base, theme.palette().success, 0.18),
-        button::Status::Pressed => mix_color(base, theme.palette().text, 0.10),
+        button::Status::Hovered => mix_color(base, theme.palette().text, 0.12),
+        button::Status::Pressed => mix_color(base, theme.palette().background, 0.12),
         button::Status::Disabled => Color { a: 0.35, ..base },
         button::Status::Active => base,
     };
@@ -161,12 +112,8 @@ fn onboarding_button_style(theme: &Theme, status: button::Status) -> button::Sty
         background: Some(bg.into()),
         text_color: text_color_for_bg(bg),
         border: iced::Border {
-            radius: 4.0.into(),
-            width: 1.0,
-            color: Color {
-                a: 0.42,
-                ..theme.palette().text
-            },
+            radius: 8.0.into(),
+            ..Default::default()
         },
         ..Default::default()
     }

@@ -160,3 +160,27 @@ fn workspace_snapshot_is_bounded_and_keeps_the_selected_chart() {
     assert_eq!(workspace["coverage"]["truncated"], true);
     assert_eq!(workspace["coverage"]["complete_for_current_state"], false);
 }
+
+#[test]
+fn pen_snapshot_bounds_geometry_and_reports_truncation() {
+    let annotation = Annotation {
+        id: 7,
+        kind: AnnotationKind::Pen {
+            points: (0..100)
+                .map(|index| (index, 100.0 + index as f64))
+                .collect(),
+        },
+        style: AnnotationStyle::default(),
+    };
+    let snapshot = agent_drawing_snapshot(&annotation, true, (None, false));
+    assert_eq!(snapshot["type"], "pen");
+    assert_eq!(snapshot["geometry"]["total_points"], 100);
+    assert_eq!(snapshot["geometry"]["points_truncated"], true);
+    assert_eq!(
+        snapshot["geometry"]["points"]
+            .as_array()
+            .expect("points")
+            .len(),
+        MAX_WORKSPACE_PEN_POINTS
+    );
+}

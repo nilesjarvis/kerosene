@@ -58,6 +58,7 @@ impl CandlestickChart {
                 .is_some();
 
         match state.drag {
+            Some(DragKind::DrawPen) => mouse::Interaction::Hidden,
             Some(DragKind::PanX) => mouse::Interaction::Grabbing,
             Some(DragKind::PanY) => mouse::Interaction::ResizingVertically,
             Some(DragKind::PanFundingY) => mouse::Interaction::ResizingVertically,

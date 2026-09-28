@@ -6,6 +6,7 @@ use iced::Point;
 mod drag;
 mod drawing;
 mod left_click;
+mod pen;
 mod right_click;
 
 const CHART_W: f32 = 400.0;

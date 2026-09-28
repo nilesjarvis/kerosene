@@ -161,3 +161,53 @@ async fn selected_and_live_annotations_render_with_their_original_handles() {
         }
     }
 }
+
+#[test]
+fn pen_path_clips_crossings_and_does_not_join_offscreen_excursions() {
+    let points = [
+        Point::new(10.0, 20.0),
+        Point::new(120.0, 20.0),
+        Point::new(120.0, 80.0),
+        Point::new(10.0, 80.0),
+        Point::new(40.0, 50.0),
+    ];
+    let path = clipped_pen_path(points.into_iter().map(Some), 100.0, 100.0);
+    assert_eq!(path.len(), 5);
+    assert_eq!(path[1].point, Point::new(100.0, 20.0));
+    assert_eq!(path[2].point, Point::new(100.0, 80.0));
+    assert!(path[0].starts_segment);
+    assert!(path[2].starts_segment);
+    assert!(!path[4].starts_segment);
+    assert!(
+        path.iter()
+            .all(|p| (0.0..=100.0).contains(&p.point.x) && (0.0..=100.0).contains(&p.point.y))
+    );
+}
+
+#[test]
+fn pen_path_keeps_connected_corners_and_breaks_at_missing_coordinates() {
+    let a = Point::new(10.0, 20.0);
+    let b = Point::new(40.0, 80.0);
+    let c = Point::new(20.0, 50.0);
+    let path = clipped_pen_path(
+        [Some(a), Some(b), Some(c), None, Some(a), Some(c)].into_iter(),
+        100.0,
+        100.0,
+    );
+    assert_eq!(path.iter().filter(|p| p.starts_segment).count(), 2);
+    assert_eq!(
+        path.iter().map(|p| p.point).collect::<Vec<_>>(),
+        vec![a, b, c, a, c]
+    );
+}
+
+#[test]
+fn pen_path_keeps_fractional_corners_connected_after_clipping_roundoff() {
+    let points = [
+        Point::new(90.12345, 80.65432),
+        Point::new(0.12345, 0.65432),
+        Point::new(70.56789, 60.12345),
+    ];
+    let path = clipped_pen_path(points.into_iter().map(Some), 100.0, 100.0);
+    assert_eq!(path.iter().filter(|point| point.starts_segment).count(), 1);
+}

@@ -251,6 +251,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ExchangeSymbolsRefreshTick
         | Message::LiveWatchlistSortChanged(_, _)
         | Message::LiveWatchlistColumnToggled(_, _, _)
+        | Message::LiveWatchlistEmaPeriodInputChanged(_, _)
+        | Message::LiveWatchlistEmaPeriodApplied(_)
+        | Message::LiveWatchlistEmaTimeframeChanged(_, _)
+        | Message::LiveWatchlistEmaLoaded(_, _, _)
         | Message::ToggleLiveWatchlistSettings(_)
         | Message::AddOrderBookPane
         | Message::AddLiveWatchlistPane

@@ -1105,6 +1105,7 @@ fn migrates_inline_watchlists_to_shared_named_presets() {
             symbols: vec!["BTC".to_string(), "ETH".to_string(), "BTC".to_string()],
             sort_column: Default::default(),
             sort_direction: Default::default(),
+            ema: Default::default(),
             visible_columns: crate::config::default_live_watchlist_columns(),
         }],
         ..KeroseneConfig::default()

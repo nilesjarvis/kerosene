@@ -59,6 +59,8 @@ fn watchlist(symbols: &[&str]) -> LiveWatchlistInstance {
         sort_column: config::LiveWatchlistSortColumn::Symbol,
         sort_direction: config::SortDirection::Ascending,
         visible_columns: Vec::new(),
+        ema: Default::default(),
+        ema_period_input: "20".to_string(),
         row_cache: Vec::new(),
     }
 }
@@ -97,6 +99,8 @@ fn row(symbol: &str, display: &str, mid_px: Option<f64>) -> LiveWatchlistRowData
         pct_1h: None,
         pct_24h: None,
         funding: None,
+        ema_distance: None,
+        ema_status: None,
     }
 }
 
@@ -342,4 +346,44 @@ fn refresh_uses_current_metadata_and_visibility_only_for_selected_panes() {
     terminal.refresh_live_watchlist_row_caches();
     terminal.refresh_live_watchlist_row_cache(1);
     assert!(terminal.live_watchlists.is_empty());
+}
+
+#[test]
+fn ema_distance_sort_is_signed_and_keeps_unavailable_values_last() {
+    let rows: Vec<_> = [
+        ("above", Some(12.5)),
+        ("below", Some(-4.0)),
+        ("on", Some(0.0)),
+        ("missing", None),
+    ]
+    .into_iter()
+    .map(|(symbol, distance)| {
+        let mut data = row(symbol, symbol, Some(100.0));
+        data.ema_distance = distance;
+        data
+    })
+    .collect();
+    for (direction, expected) in [
+        (
+            config::SortDirection::Ascending,
+            ["below", "on", "above", "missing"],
+        ),
+        (
+            config::SortDirection::Descending,
+            ["above", "on", "below", "missing"],
+        ),
+    ] {
+        let sorted = sort_live_watchlist_rows(
+            rows.clone(),
+            config::LiveWatchlistSortColumn::EmaDistance,
+            direction,
+        );
+        assert_eq!(
+            sorted
+                .iter()
+                .map(|row| row.sym_key.as_str())
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
 }
