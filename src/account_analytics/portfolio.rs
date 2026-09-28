@@ -7,16 +7,16 @@ use serde_json::Value;
 
 /// Fetch user portfolio history buckets from the `portfolio` info endpoint.
 pub async fn fetch_portfolio_history(address: String) -> Result<PortfolioHistory, String> {
-    fetch_portfolio_history_from_url(CLIENT.clone(), API_URL, address).await
+    fetch_portfolio_history_from_url(&CLIENT, API_URL, address).await
 }
 
 async fn fetch_portfolio_history_from_url(
-    client: reqwest::Client,
+    client: &reqwest::Client,
     url: &str,
     address: String,
 ) -> Result<PortfolioHistory, String> {
     let raw: Value = post_info_json(
-        &client,
+        client,
         url,
         "portfolio",
         serde_json::json!({"type": "portfolio", "user": address}),

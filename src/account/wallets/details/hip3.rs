@@ -10,7 +10,7 @@ use serde_json::Value;
 type Hip3ResponseResults = Vec<(String, Result<reqwest::Response, String>)>;
 
 pub(super) async fn fetch_hip3_wallet_details(
-    client: reqwest::Client,
+    client: &reqwest::Client,
     address: String,
     scope: &AccountDataFetchScope,
 ) -> (Hip3ResponseResults, Hip3ResponseResults) {

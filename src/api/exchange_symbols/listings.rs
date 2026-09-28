@@ -7,8 +7,8 @@ use std::collections::HashSet;
 /// Two public metadata requests; no account data or third-party credentials.
 pub(crate) async fn fetch_listings_snapshot() -> ListingsSnapshot {
     let (perps, spot) = futures::join!(
-        post_info_value(CLIENT.clone(), "allPerpMetas"),
-        post_info_value(CLIENT.clone(), "spotMeta"),
+        post_info_value(&CLIENT, "allPerpMetas"),
+        post_info_value(&CLIENT, "spotMeta"),
     );
     ListingsSnapshot {
         perps: perps.and_then(parse_perps),

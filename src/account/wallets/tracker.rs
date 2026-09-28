@@ -33,7 +33,7 @@ pub async fn fetch_wallet_tracker_snapshot_scoped(
     address: String,
     scope: AccountDataFetchScope,
 ) -> Result<WalletTrackerSnapshot, String> {
-    let client = crate::api::CLIENT.clone();
+    let client = &*crate::api::CLIENT;
 
     let response = client
         .post(API_URL)
@@ -81,9 +81,9 @@ pub async fn fetch_wallet_tracker_snapshot_scoped(
     // Best-effort like the HIP-3 pass below: a transient failure of the
     // auxiliary spot request must not discard the perp snapshot in hand.
     let valuation_warning =
-        apply_spot_equity_fallback(&client, &address, &mut equity, &mut withdrawable).await;
+        apply_spot_equity_fallback(client, &address, &mut equity, &mut withdrawable).await;
     append_hip3_margin_and_positions(
-        &client,
+        client,
         &address,
         &scope,
         &mut margin_used,
@@ -175,7 +175,7 @@ pub async fn fetch_wallet_tracker_snapshots_scoped_with_provider(
             .is_ok_and(|values| values.spot_fallback.is_some())
     });
     let mids = if needs_mids {
-        fetch_spot_fallback_mids(&crate::api::CLIENT.clone()).await
+        fetch_spot_fallback_mids(&crate::api::CLIENT).await
     } else {
         Err("no portfolio-margin wallets in batch".to_string())
     };

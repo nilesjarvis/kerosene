@@ -57,22 +57,22 @@ pub async fn fetch_account_data_scoped(
     address: String,
     scope: AccountDataFetchScope,
 ) -> Result<AccountData, String> {
-    let client = crate::api::CLIENT.clone();
+    let client = &*crate::api::CLIENT;
     let request_weight_estimate = scope.estimated_info_weight();
 
     // Main dex: clearinghouse, spot, orders, fills, funding
     let ch_fut = post_info_json_with_retries(
-        client.clone(),
+        client,
         "clearinghouseState",
         serde_json::json!({"type": "clearinghouseState", "user": address}),
     );
     let spot_fut = post_info_json_with_retries(
-        client.clone(),
+        client,
         "spotClearinghouseState",
         serde_json::json!({"type": "spotClearinghouseState", "user": address}),
     );
     let abstraction_fut = post_info_json_with_retries(
-        client.clone(),
+        client,
         "userAbstraction",
         serde_json::json!({"type": "userAbstraction", "user": address}),
     );

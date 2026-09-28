@@ -10,11 +10,12 @@ async fn income_required_endpoint_reports_http_status_before_json_parse() {
     );
     let url = income_server(responses).await;
 
-    let err =
-        match fetch_income_data_from_url(reqwest::Client::new(), &url, "0xabc".to_string()).await {
-            Ok(_) => panic!("required endpoint HTTP failure should fail income fetch"),
-            Err(err) => err,
-        };
+    let err = match fetch_income_data_from_url(&reqwest::Client::new(), &url, "0xabc".to_string())
+        .await
+    {
+        Ok(_) => panic!("required endpoint HTTP failure should fail income fetch"),
+        Err(err) => err,
+    };
 
     assert!(err.contains("borrowLendUserState request failed with HTTP 503 Service Unavailable"));
     assert!(err.contains("maintenance"));
@@ -30,11 +31,12 @@ async fn income_empty_reserve_unicode_preview_does_not_panic() {
     );
     let url = income_server(responses).await;
 
-    let err =
-        match fetch_income_data_from_url(reqwest::Client::new(), &url, "0xabc".to_string()).await {
-            Ok(_) => panic!("unparseable reserve response should fail income fetch"),
-            Err(err) => err,
-        };
+    let err = match fetch_income_data_from_url(&reqwest::Client::new(), &url, "0xabc".to_string())
+        .await
+    {
+        Ok(_) => panic!("unparseable reserve response should fail income fetch"),
+        Err(err) => err,
+    };
 
     assert!(err.contains("allBorrowLendReserveStates response had no parseable reserve entries"));
 }
@@ -53,11 +55,12 @@ async fn income_reserve_error_redacts_sensitive_values() {
     );
     let url = income_server(responses).await;
 
-    let err =
-        match fetch_income_data_from_url(reqwest::Client::new(), &url, "0xabc".to_string()).await {
-            Ok(_) => panic!("reserve error response should fail income fetch"),
-            Err(err) => err,
-        };
+    let err = match fetch_income_data_from_url(&reqwest::Client::new(), &url, "0xabc".to_string())
+        .await
+    {
+        Ok(_) => panic!("reserve error response should fail income fetch"),
+        Err(err) => err,
+    };
 
     assert!(err.contains("allBorrowLendReserveStates error:"));
     assert!(err.contains("Authorization: Bearer <redacted>"));

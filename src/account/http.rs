@@ -11,7 +11,7 @@ use serde_json::Value;
 const ACCOUNT_HTTP_ERROR_PREVIEW_CHARS: usize = 160;
 
 pub(super) async fn post_info_json_with_retries(
-    client: reqwest::Client,
+    client: &reqwest::Client,
     label: &'static str,
     payload: Value,
 ) -> Result<Value, String> {

@@ -20,7 +20,7 @@ pub async fn fetch_user_fills(
     let current_start = request.start_time;
     let end_time = request.end_time.unwrap_or_else(now_ms);
 
-    let client = CLIENT.clone();
+    let client = &*CLIENT;
     let body = serde_json::json!({
         "type": "userFillsByTime",
         "user": address,

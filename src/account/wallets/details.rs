@@ -22,15 +22,15 @@ pub async fn fetch_wallet_details_scoped(
     address: String,
     scope: AccountDataFetchScope,
 ) -> Result<WalletDetailsData, String> {
-    let client = crate::api::CLIENT.clone();
+    let client = &*crate::api::CLIENT;
 
     let ch_fut = post_info_json_with_retries(
-        client.clone(),
+        client,
         "clearinghouseState",
         serde_json::json!({"type": "clearinghouseState", "user": address}),
     );
     let spot_fut = post_info_json_with_retries(
-        client.clone(),
+        client,
         "spotClearinghouseState",
         serde_json::json!({"type": "spotClearinghouseState", "user": address}),
     );
@@ -85,7 +85,7 @@ pub async fn fetch_wallet_details_scoped(
     let fills = fetch_wallet_user_fills_if_needed(&address, &spot, &mut warnings).await;
 
     let (hip3_ch_results, hip3_order_results) =
-        fetch_hip3_wallet_details(client.clone(), address, &scope).await;
+        fetch_hip3_wallet_details(client, address, &scope).await;
 
     append_hip3_positions(hip3_ch_results, &mut positions, &mut warnings).await;
     append_hip3_open_orders(hip3_order_results, &mut open_orders, &mut warnings).await;

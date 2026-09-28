@@ -34,7 +34,7 @@ async fn one_shot_info_result(status_line: &str, body: &str) -> Result<Portfolio
     });
 
     let result = fetch_portfolio_history_from_url(
-        reqwest::Client::new(),
+        &reqwest::Client::new(),
         &format!("http://{addr}/info"),
         "0xabc".to_string(),
     )

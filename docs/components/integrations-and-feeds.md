@@ -46,6 +46,9 @@ schema, permissions, polling behavior, bounds, and local/remote precedence.
 
 Build requests directly from the shared client; reqwest's request builder retains
 its own client handle. OpenRouter keeps its separate client and longer timeout.
+Account, wallet, analytics, and symbol read helpers borrow the client while their
+caller awaits them, including concurrent request groups. Public fetch tasks still
+own their account and request inputs.
 
 Submodules cover:
 
