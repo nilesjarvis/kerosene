@@ -135,26 +135,23 @@ fn resting_chase_ignores_spot_reduce_only_metadata() {
 fn resting_chase_rejects_unsupported_wire_order_types() {
     let mut trigger_order = open_order(42);
     trigger_order.is_trigger = Some(true);
-    assert!(
-        chase_resting_order_wire_is_supported(&trigger_order)
-            .expect_err("trigger order should be rejected")
-            .contains("trigger orders")
+    assert_eq!(
+        chase_resting_order_wire_is_supported(&trigger_order),
+        Err("Cannot chase order: trigger orders cannot be chased safely yet")
     );
 
     let mut ioc_order = open_order(42);
     ioc_order.tif = Some("Ioc".to_string());
-    assert!(
-        chase_resting_order_wire_is_supported(&ioc_order)
-            .expect_err("IOC order should be rejected")
-            .contains("non-GTC")
+    assert_eq!(
+        chase_resting_order_wire_is_supported(&ioc_order),
+        Err("Cannot chase order: non-GTC orders cannot be chased safely yet")
     );
 
     let mut market_order = open_order(42);
     market_order.order_type = Some("Market".to_string());
-    assert!(
-        chase_resting_order_wire_is_supported(&market_order)
-            .expect_err("non-limit order should be rejected")
-            .contains("order type")
+    assert_eq!(
+        chase_resting_order_wire_is_supported(&market_order),
+        Err("Cannot chase order: order type cannot be chased safely yet")
     );
 }
 

@@ -1,9 +1,12 @@
 use crate::account::OpenOrder;
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
-use crate::helpers::{parse_positive_finite_number, positive_finite_value};
+use crate::helpers::positive_finite_value;
 use crate::message::Message;
-use crate::order_execution::{SpotAutomationSymbolIdentity, open_order_side_is_buy};
+use crate::order_execution::{
+    RestingOrderWireError, SpotAutomationSymbolIdentity, open_order_side_is_buy,
+    validate_resting_order_wire,
+};
 use crate::signing::{ChaseLifecycle, ChaseOrder, float_to_wire, round_price};
 use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
 
@@ -25,30 +28,17 @@ fn chase_resting_reduce_only(
 }
 
 fn chase_resting_order_wire_is_supported(order: &OpenOrder) -> Result<(), &'static str> {
-    if order.is_trigger == Some(true)
-        || order
-            .trigger_px
-            .as_deref()
-            .and_then(parse_positive_finite_number)
-            .is_some()
-    {
-        return Err("Cannot chase order: trigger orders cannot be chased safely yet");
-    }
-    if order
-        .order_type
-        .as_deref()
-        .is_some_and(|kind| !kind.eq_ignore_ascii_case("limit"))
-    {
-        return Err("Cannot chase order: order type cannot be chased safely yet");
-    }
-    if order
-        .tif
-        .as_deref()
-        .is_some_and(|tif| !tif.eq_ignore_ascii_case("Gtc"))
-    {
-        return Err("Cannot chase order: non-GTC orders cannot be chased safely yet");
-    }
-    Ok(())
+    validate_resting_order_wire(order).map_err(|error| match error {
+        RestingOrderWireError::Trigger => {
+            "Cannot chase order: trigger orders cannot be chased safely yet"
+        }
+        RestingOrderWireError::NonLimit => {
+            "Cannot chase order: order type cannot be chased safely yet"
+        }
+        RestingOrderWireError::NonGtc => {
+            "Cannot chase order: non-GTC orders cannot be chased safely yet"
+        }
+    })
 }
 
 impl TradingTerminal {

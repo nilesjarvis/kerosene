@@ -33,6 +33,8 @@ state implementations live beside their responsibilities:
   shared trading-request guards and the HUD concurrency limit.
 - `order_execution/identities.rs`: captured spot metadata for Chase/TWAP,
   open-order identity checks for Chase, and shared open-order side decoding.
+- `order_execution/resting_order.rs`: shared wire-metadata admission for moving
+  and adopting resting orders, with caller-specific status messages.
 - `order_execution/exchange_errors.rs`: shared closed-order cancellation error
   matching for ordinary orders, Chase, and TWAP, plus retryable error matching for
   Chase and TWAP; callers retain their own reconciliation policies and precedence.
@@ -307,7 +309,8 @@ modify request. Indicator timestamps and IDs are assigned at insertion.
 
 Results must match the pending context and current account. A confirmed modify
 patches the local price and adopts any returned order ID. An ambiguous result or
-transport failure starts order-status verification and refreshes account data.
+transport failure uses the same recovery branch to start order-status verification
+and refresh account data. Move-result tests live in `order_update/move_order/tests.rs`.
 
 ## Close Position
 
@@ -403,6 +406,13 @@ and moves the requested symbol into Chase state. Gate order, account refresh,
 rounding, fill cutoffs, and immediate task behavior are unchanged. Adoption,
 order movement, Chase identity checks, and pending indicators share the strict
 `A`/`B` side parser in `order_execution/identities.rs`.
+
+Resting Chase adoption and order movement also share wire-metadata validation in
+`order_execution/resting_order.rs`. Rejection priority is trigger orders, known
+non-limit order types, then known non-GTC time-in-force values. Missing type and
+time-in-force fields remain admissible. A positive finite trigger price marks a
+trigger order even when the trigger flag is absent or false. Each caller retains
+its status text, surrounding checks, and recovery behavior.
 
 Live and historical fill aggregation check borrowed known IDs plus the current
 OID. Live totals retain coin, side, and adoption-cutoff filtering; history keeps

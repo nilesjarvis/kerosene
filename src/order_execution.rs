@@ -11,6 +11,7 @@ mod position_actions;
 pub(crate) mod pricing;
 mod quick_order;
 mod quick_trade;
+mod resting_order;
 mod sizing;
 mod submit;
 mod symbols;
@@ -42,6 +43,7 @@ pub(crate) use quick_order::{
     QuickOrderRecovery, QuickOrderSubmissionSnapshot,
 };
 pub(crate) use quick_trade::QuickTradeOrderRequest;
+pub(crate) use resting_order::{RestingOrderWireError, validate_resting_order_wire};
 pub(crate) use sizing::order_size_from_quantity_input;
 pub(crate) use submit::{TicketOrderPlaceIntent, TicketOrderSubmissionSnapshot};
 

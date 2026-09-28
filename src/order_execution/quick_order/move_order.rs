@@ -6,11 +6,10 @@ pub(crate) use context::{MoveOrderKey, PendingMoveOrderContext};
 pub(crate) use context::MoveOrderContextError;
 
 use crate::app_state::TradingTerminal;
-use crate::helpers::parse_positive_finite_number;
 use crate::message::Message;
 use crate::order_execution::{
-    ModifyIntent, OrderSurface, PreparedModifyOrderResult, modify_order_task,
-    open_order_side_is_buy,
+    ModifyIntent, OrderSurface, PreparedModifyOrderResult, RestingOrderWireError,
+    modify_order_task, open_order_side_is_buy, validate_resting_order_wire,
 };
 use crate::order_pending_indicators::PendingOrderIndicatorInput;
 
@@ -20,30 +19,11 @@ use iced::Task;
 mod tests;
 
 fn move_order_wire_is_supported(order: &crate::account::OpenOrder) -> Result<(), &'static str> {
-    if order.is_trigger == Some(true)
-        || order
-            .trigger_px
-            .as_deref()
-            .and_then(parse_positive_finite_number)
-            .is_some()
-    {
-        return Err("Move failed: trigger orders cannot be moved safely yet");
-    }
-    if order
-        .order_type
-        .as_deref()
-        .is_some_and(|kind| !kind.eq_ignore_ascii_case("limit"))
-    {
-        return Err("Move failed: order type cannot be moved safely yet");
-    }
-    if order
-        .tif
-        .as_deref()
-        .is_some_and(|tif| !tif.eq_ignore_ascii_case("Gtc"))
-    {
-        return Err("Move failed: non-GTC orders cannot be moved safely yet");
-    }
-    Ok(())
+    validate_resting_order_wire(order).map_err(|error| match error {
+        RestingOrderWireError::Trigger => "Move failed: trigger orders cannot be moved safely yet",
+        RestingOrderWireError::NonLimit => "Move failed: order type cannot be moved safely yet",
+        RestingOrderWireError::NonGtc => "Move failed: non-GTC orders cannot be moved safely yet",
+    })
 }
 
 impl TradingTerminal {
