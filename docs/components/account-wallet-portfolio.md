@@ -462,6 +462,13 @@ Portfolio state lives in `portfolio_state/` and is updated by
 The state is read-only analytics; trading actions should not depend on it for
 order-critical validation.
 
+Portfolio and income each own an independent `AnalyticsRefreshState` from
+`portfolio_state/refresh.rs`. It holds the loading flag, saturating request
+counter, and one queued follow-up flag. Completion checks the request ID before
+clearing loading state; invalidation advances the counter and clears pending
+refresh work. Account matching, income eligibility, result handling, and
+follow-up dispatch stay in `portfolio_update.rs`.
+
 Income snapshot assembly validates each token's carrying values and annualized
 projection before adding it to the totals. Recent payments sort borrowed hourly
 entries by descending time and build the first 12 valid rows, keeping input order

@@ -520,7 +520,7 @@ impl TradingTerminal {
                 generated_at_ms,
                 None,
             ),
-            "loading": self.portfolio.loading,
+            "loading": self.portfolio.refresh.loading,
             "error_present": self.portfolio.last_error.is_some(),
             "selected_scope": match self.portfolio.scope {
                 crate::portfolio_state::PortfolioScope::All => "all",
@@ -528,7 +528,7 @@ impl TradingTerminal {
             },
             "selected_window": self.portfolio.window.label(),
             "history": history,
-            "income_loading": self.income.loading,
+            "income_loading": self.income.refresh.loading,
             "income_error_present": self.income.last_error.is_some(),
             "income": income,
             "coverage": {

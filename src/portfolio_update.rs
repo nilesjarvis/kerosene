@@ -7,24 +7,24 @@ use iced::Task;
 
 impl TradingTerminal {
     pub(crate) fn start_portfolio_refresh_for_address(&mut self, address: String) -> Task<Message> {
-        if self.portfolio.loading {
-            self.portfolio.queue_refresh_followup();
+        if self.portfolio.refresh.loading {
+            self.portfolio.refresh.queue_followup();
             return Task::none();
         }
         let requested_addr = address.clone();
-        let request_id = self.portfolio.begin_refresh();
+        let request_id = self.portfolio.refresh.begin();
         Task::perform(fetch_portfolio_history(address), move |r| {
             Message::PortfolioLoaded(requested_addr.clone().into(), request_id, Box::new(r))
         })
     }
 
     pub(crate) fn start_income_refresh_for_address(&mut self, address: String) -> Task<Message> {
-        if self.income.loading {
-            self.income.queue_refresh_followup();
+        if self.income.refresh.loading {
+            self.income.refresh.queue_followup();
             return Task::none();
         }
         let requested_addr = address.clone();
-        let request_id = self.income.begin_refresh();
+        let request_id = self.income.refresh.begin();
         Task::perform(fetch_income_data(address), move |r| {
             Message::IncomeLoaded(requested_addr.clone().into(), request_id, Box::new(r))
         })
@@ -53,10 +53,10 @@ impl TradingTerminal {
             }
             Message::PortfolioLoaded(address, request_id, result) => {
                 let address = address.into_string();
-                if !self.portfolio.finish_refresh(request_id) {
+                if !self.portfolio.refresh.finish(request_id) {
                     return Task::none();
                 }
-                let followup_pending = self.portfolio.take_refresh_followup();
+                let followup_pending = self.portfolio.refresh.take_followup();
                 if self.connected_address.as_deref() != Some(address.as_str()) {
                     if followup_pending && let Some(addr) = self.connected_address.clone() {
                         return self.start_portfolio_refresh_for_address(addr);
@@ -86,10 +86,10 @@ impl TradingTerminal {
             }
             Message::IncomeLoaded(address, request_id, result) => {
                 let address = address.into_string();
-                if !self.income.finish_refresh(request_id) {
+                if !self.income.refresh.finish(request_id) {
                     return Task::none();
                 }
-                let followup_pending = self.income.take_refresh_followup();
+                let followup_pending = self.income.refresh.take_followup();
                 if self.connected_address.as_deref() != Some(address.as_str()) {
                     if followup_pending {
                         let is_pm = self

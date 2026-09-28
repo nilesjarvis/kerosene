@@ -1,6 +1,7 @@
 mod charts;
 mod data;
 mod model;
+mod refresh;
 
 pub(crate) use charts::{IncomeProjectionChart, PnlValueDisplayMode, PortfolioPnlChart};
 pub(crate) use model::{

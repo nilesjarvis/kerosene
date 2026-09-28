@@ -777,9 +777,9 @@ mod tests {
         terminal.account_refresh_retry_due_ms = terminal.account_refresh_backoff_until_ms;
         terminal.account_error = Some("old account error".to_string());
         let account_context = terminal.current_account_data_request_context();
-        let portfolio_request_id = terminal.portfolio.begin_refresh();
+        let portfolio_request_id = terminal.portfolio.refresh.begin();
         terminal.portfolio.last_error = Some("old portfolio error".to_string());
-        let income_request_id = terminal.income.begin_refresh();
+        let income_request_id = terminal.income.refresh.begin();
         terminal.income.last_error = Some("old income error".to_string());
         terminal.last_income_alert_time = Some(123);
         seed_account_scoped_chart_state(&mut terminal);
@@ -799,11 +799,11 @@ mod tests {
             terminal.account_error.as_deref(),
             Some("Invalid wallet address")
         );
-        assert_ne!(terminal.portfolio.refresh_request_id, portfolio_request_id);
-        assert!(!terminal.portfolio.loading);
+        assert_ne!(terminal.portfolio.refresh.request_id, portfolio_request_id);
+        assert!(!terminal.portfolio.refresh.loading);
         assert!(terminal.portfolio.last_error.is_none());
-        assert_ne!(terminal.income.refresh_request_id, income_request_id);
-        assert!(!terminal.income.loading);
+        assert_ne!(terminal.income.refresh.request_id, income_request_id);
+        assert!(!terminal.income.refresh.loading);
         assert!(terminal.income.last_error.is_none());
         assert!(terminal.last_income_alert_time.is_none());
         assert_account_scoped_chart_state_cleared(&terminal);
@@ -1516,9 +1516,9 @@ mod tests {
         terminal.account_refresh_retry_due_ms = terminal.account_refresh_backoff_until_ms;
         terminal.account_error = Some("old account error".to_string());
         let account_context = terminal.current_account_data_request_context();
-        let portfolio_request_id = terminal.portfolio.begin_refresh();
+        let portfolio_request_id = terminal.portfolio.refresh.begin();
         terminal.portfolio.last_error = Some("old portfolio error".to_string());
-        let income_request_id = terminal.income.begin_refresh();
+        let income_request_id = terminal.income.refresh.begin();
         terminal.income.last_error = Some("old income error".to_string());
         terminal.last_income_alert_time = Some(123);
         seed_account_scoped_chart_state(&mut terminal);
@@ -1535,11 +1535,11 @@ mod tests {
         assert!(terminal.account_refresh_backoff_until_ms.is_none());
         assert!(terminal.account_refresh_retry_due_ms.is_none());
         assert!(terminal.account_error.is_none());
-        assert_ne!(terminal.portfolio.refresh_request_id, portfolio_request_id);
-        assert!(!terminal.portfolio.loading);
+        assert_ne!(terminal.portfolio.refresh.request_id, portfolio_request_id);
+        assert!(!terminal.portfolio.refresh.loading);
         assert!(terminal.portfolio.last_error.is_none());
-        assert_ne!(terminal.income.refresh_request_id, income_request_id);
-        assert!(!terminal.income.loading);
+        assert_ne!(terminal.income.refresh.request_id, income_request_id);
+        assert!(!terminal.income.refresh.loading);
         assert!(terminal.income.last_error.is_none());
         assert!(terminal.last_income_alert_time.is_none());
         assert_account_scoped_chart_state_cleared(&terminal);

@@ -56,8 +56,8 @@ fn stale_portfolio_result_after_newer_same_address_request_is_ignored() {
     let mut terminal = TradingTerminal::boot().0;
     let address = "0xabc0000000000000000000000000000000000000";
     terminal.connected_address = Some(address.to_string());
-    let stale_request_id = terminal.portfolio.begin_refresh();
-    let current_request_id = terminal.portfolio.begin_refresh();
+    let stale_request_id = terminal.portfolio.refresh.begin();
+    let current_request_id = terminal.portfolio.refresh.begin();
 
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
         address.to_string().into(),
@@ -65,7 +65,7 @@ fn stale_portfolio_result_after_newer_same_address_request_is_ignored() {
         Box::new(Ok(portfolio_history(1.0))),
     ));
 
-    assert!(terminal.portfolio.loading);
+    assert!(terminal.portfolio.refresh.loading);
     assert!(terminal.portfolio.data.is_none());
 
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
@@ -74,7 +74,7 @@ fn stale_portfolio_result_after_newer_same_address_request_is_ignored() {
         Box::new(Ok(portfolio_history(2.0))),
     ));
 
-    assert!(!terminal.portfolio.loading);
+    assert!(!terminal.portfolio.refresh.loading);
     let history = terminal
         .portfolio
         .data
@@ -90,14 +90,14 @@ fn refresh_portfolio_is_coalesced_while_request_is_in_flight() {
     terminal.connected_address = Some(address.to_string());
 
     let _ = terminal.update_portfolio_income(Message::RefreshPortfolio);
-    assert!(terminal.portfolio.loading);
-    let request_id = terminal.portfolio.refresh_request_id;
+    assert!(terminal.portfolio.refresh.loading);
+    let request_id = terminal.portfolio.refresh.request_id;
 
     let _ = terminal.update_portfolio_income(Message::RefreshPortfolio);
 
-    assert!(terminal.portfolio.loading);
-    assert_eq!(terminal.portfolio.refresh_request_id, request_id);
-    assert!(terminal.portfolio.refresh_followup_pending);
+    assert!(terminal.portfolio.refresh.loading);
+    assert_eq!(terminal.portfolio.refresh.request_id, request_id);
+    assert!(terminal.portfolio.refresh.followup_pending);
 
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
         address.to_string().into(),
@@ -105,10 +105,10 @@ fn refresh_portfolio_is_coalesced_while_request_is_in_flight() {
         Box::new(Ok(portfolio_history(2.0))),
     ));
 
-    assert!(terminal.portfolio.loading);
-    assert!(!terminal.portfolio.refresh_followup_pending);
+    assert!(terminal.portfolio.refresh.loading);
+    assert!(!terminal.portfolio.refresh.followup_pending);
     assert_eq!(
-        terminal.portfolio.refresh_request_id,
+        terminal.portfolio.refresh.request_id,
         request_id.saturating_add(2)
     );
     assert_eq!(
@@ -130,7 +130,7 @@ fn current_portfolio_result_for_previous_address_finishes_without_applying() {
     let previous_address = "0xabc0000000000000000000000000000000000000";
     terminal.connected_address = Some("0xdef0000000000000000000000000000000000000".to_string());
     terminal.portfolio.data = Some(portfolio_history(10.0));
-    let request_id = terminal.portfolio.begin_refresh();
+    let request_id = terminal.portfolio.refresh.begin();
 
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
         previous_address.to_string().into(),
@@ -138,7 +138,7 @@ fn current_portfolio_result_for_previous_address_finishes_without_applying() {
         Box::new(Ok(portfolio_history(1.0))),
     ));
 
-    assert!(!terminal.portfolio.loading);
+    assert!(!terminal.portfolio.refresh.loading);
     assert_eq!(
         terminal
             .portfolio
@@ -157,7 +157,7 @@ fn portfolio_error_redacts_last_error() {
     let mut terminal = TradingTerminal::boot().0;
     let address = "0xabc0000000000000000000000000000000000000";
     terminal.connected_address = Some(address.to_string());
-    let request_id = terminal.portfolio.begin_refresh();
+    let request_id = terminal.portfolio.refresh.begin();
 
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
         address.to_string().into(),
@@ -179,8 +179,8 @@ fn stale_income_result_after_newer_same_address_request_is_ignored() {
     let mut terminal = TradingTerminal::boot().0;
     let address = "0xabc0000000000000000000000000000000000000";
     terminal.connected_address = Some(address.to_string());
-    let stale_request_id = terminal.income.begin_refresh();
-    let current_request_id = terminal.income.begin_refresh();
+    let stale_request_id = terminal.income.refresh.begin();
+    let current_request_id = terminal.income.refresh.begin();
 
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
         address.to_string().into(),
@@ -188,7 +188,7 @@ fn stale_income_result_after_newer_same_address_request_is_ignored() {
         Box::new(Ok(income_snapshot(1, 1.0))),
     ));
 
-    assert!(terminal.income.loading);
+    assert!(terminal.income.refresh.loading);
     assert!(terminal.income.data.is_none());
 
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
@@ -197,7 +197,7 @@ fn stale_income_result_after_newer_same_address_request_is_ignored() {
         Box::new(Ok(income_snapshot(2, 2.0))),
     ));
 
-    assert!(!terminal.income.loading);
+    assert!(!terminal.income.refresh.loading);
     let income = terminal
         .income
         .data
@@ -215,14 +215,14 @@ fn refresh_income_is_coalesced_while_request_is_in_flight() {
     terminal.set_account_data_for_address_for_test(address, portfolio_margin_account_data());
 
     let _ = terminal.update_portfolio_income(Message::RefreshIncome);
-    assert!(terminal.income.loading);
-    let request_id = terminal.income.refresh_request_id;
+    assert!(terminal.income.refresh.loading);
+    let request_id = terminal.income.refresh.request_id;
 
     let _ = terminal.update_portfolio_income(Message::RefreshIncome);
 
-    assert!(terminal.income.loading);
-    assert_eq!(terminal.income.refresh_request_id, request_id);
-    assert!(terminal.income.refresh_followup_pending);
+    assert!(terminal.income.refresh.loading);
+    assert_eq!(terminal.income.refresh.request_id, request_id);
+    assert!(terminal.income.refresh.followup_pending);
 
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
         address.to_string().into(),
@@ -230,10 +230,10 @@ fn refresh_income_is_coalesced_while_request_is_in_flight() {
         Box::new(Ok(income_snapshot(2, 2.0))),
     ));
 
-    assert!(terminal.income.loading);
-    assert!(!terminal.income.refresh_followup_pending);
+    assert!(terminal.income.refresh.loading);
+    assert!(!terminal.income.refresh.followup_pending);
     assert_eq!(
-        terminal.income.refresh_request_id,
+        terminal.income.refresh.request_id,
         request_id.saturating_add(2)
     );
     assert_eq!(
@@ -253,7 +253,7 @@ fn current_income_result_for_previous_address_finishes_without_applying() {
     let previous_address = "0xabc0000000000000000000000000000000000000";
     terminal.connected_address = Some("0xdef0000000000000000000000000000000000000".to_string());
     terminal.income.data = Some(income_snapshot(10, 10.0));
-    let request_id = terminal.income.begin_refresh();
+    let request_id = terminal.income.refresh.begin();
 
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
         previous_address.to_string().into(),
@@ -261,7 +261,7 @@ fn current_income_result_for_previous_address_finishes_without_applying() {
         Box::new(Ok(income_snapshot(1, 1.0))),
     ));
 
-    assert!(!terminal.income.loading);
+    assert!(!terminal.income.refresh.loading);
     assert_eq!(
         terminal
             .income
@@ -278,7 +278,7 @@ fn income_error_redacts_last_error() {
     let mut terminal = TradingTerminal::boot().0;
     let address = "0xabc0000000000000000000000000000000000000";
     terminal.connected_address = Some(address.to_string());
-    let request_id = terminal.income.begin_refresh();
+    let request_id = terminal.income.refresh.begin();
 
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
         address.to_string().into(),
@@ -299,8 +299,8 @@ fn provider_change_invalidates_in_flight_portfolio_and_income_results() {
     terminal.read_data_provider = ReadDataProvider::Hyperliquid;
     terminal.portfolio.data = Some(portfolio_history(10.0));
     terminal.income.data = Some(income_snapshot(10, 10.0));
-    let portfolio_request_id = terminal.portfolio.begin_refresh();
-    let income_request_id = terminal.income.begin_refresh();
+    let portfolio_request_id = terminal.portfolio.refresh.begin();
+    let income_request_id = terminal.income.refresh.begin();
 
     let _ = terminal.update_preferences(Message::ReadDataProviderChanged(
         ReadDataProvider::Hydromancer,
@@ -316,8 +316,8 @@ fn provider_change_invalidates_in_flight_portfolio_and_income_results() {
         Box::new(Ok(income_snapshot(1, 1.0))),
     ));
 
-    assert!(!terminal.portfolio.loading);
-    assert!(!terminal.income.loading);
+    assert!(!terminal.portfolio.refresh.loading);
+    assert!(!terminal.income.refresh.loading);
     assert_eq!(
         terminal
             .portfolio
@@ -347,8 +347,8 @@ fn hydromancer_key_generation_change_invalidates_in_flight_portfolio_and_income_
     terminal.connected_address = Some(address.to_string());
     terminal.portfolio.data = Some(portfolio_history(10.0));
     terminal.income.data = Some(income_snapshot(10, 10.0));
-    let portfolio_request_id = terminal.portfolio.begin_refresh();
-    let income_request_id = terminal.income.begin_refresh();
+    let portfolio_request_id = terminal.portfolio.refresh.begin();
+    let income_request_id = terminal.income.refresh.begin();
 
     terminal.bump_hydromancer_key_generation();
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
@@ -362,8 +362,8 @@ fn hydromancer_key_generation_change_invalidates_in_flight_portfolio_and_income_
         Box::new(Ok(income_snapshot(1, 1.0))),
     ));
 
-    assert!(!terminal.portfolio.loading);
-    assert!(!terminal.income.loading);
+    assert!(!terminal.portfolio.refresh.loading);
+    assert!(!terminal.income.refresh.loading);
     assert_eq!(
         terminal
             .portfolio

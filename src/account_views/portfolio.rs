@@ -85,7 +85,7 @@ impl TradingTerminal {
             .width(Fill)
             .height(CHART_HEIGHT)
             .into()
-        } else if self.portfolio.loading {
+        } else if self.portfolio.refresh.loading {
             container(self.loading_overlay("Loading portfolio..."))
                 .width(Fill)
                 .height(CHART_HEIGHT)

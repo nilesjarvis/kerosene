@@ -60,8 +60,8 @@ impl TradingTerminal {
             || self.symbols_loading
             || self.order_books.values().any(|b| b.book_loading)
             || self.account_loading
-            || self.portfolio.loading
-            || self.income.loading
+            || self.portfolio.refresh.loading
+            || self.income.refresh.loading
             || self.calendar_loading
             || self.hype_etfs.loading
             || self.hype_unstaking_queue.loading

@@ -207,8 +207,8 @@ fn account_switch_clears_old_connected_snapshot_before_connect_task() {
     terminal.account_error = Some("old account error".to_string());
     terminal.portfolio.last_error = Some("old portfolio error".to_string());
     terminal.income.last_error = Some("old income error".to_string());
-    let portfolio_request_id = terminal.portfolio.begin_refresh();
-    let income_request_id = terminal.income.begin_refresh();
+    let portfolio_request_id = terminal.portfolio.refresh.begin();
+    let income_request_id = terminal.income.refresh.begin();
 
     let _task = terminal.switch_account_task(1);
 
@@ -223,14 +223,14 @@ fn account_switch_clears_old_connected_snapshot_before_connect_task() {
     assert!(!terminal.account_loading);
     assert!(!terminal.account_reconciliation_required);
     assert_eq!(terminal.account_error, None);
-    assert!(!terminal.portfolio.loading);
+    assert!(!terminal.portfolio.refresh.loading);
     assert!(terminal.portfolio.data.is_none());
     assert_eq!(terminal.portfolio.last_error, None);
-    assert_ne!(terminal.portfolio.refresh_request_id, portfolio_request_id);
-    assert!(!terminal.income.loading);
+    assert_ne!(terminal.portfolio.refresh.request_id, portfolio_request_id);
+    assert!(!terminal.income.refresh.loading);
     assert!(terminal.income.data.is_none());
     assert_eq!(terminal.income.last_error, None);
-    assert_ne!(terminal.income.refresh_request_id, income_request_id);
+    assert_ne!(terminal.income.refresh.request_id, income_request_id);
 }
 
 #[test]

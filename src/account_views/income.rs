@@ -21,7 +21,7 @@ impl TradingTerminal {
 
         let content = if !is_pm {
             self.view_income_unavailable().into()
-        } else if self.income.loading && self.income.data.is_none() {
+        } else if self.income.refresh.loading && self.income.data.is_none() {
             self.view_income_loading().into()
         } else if let Some(data) = &self.income.data {
             self.view_income_data(data)
