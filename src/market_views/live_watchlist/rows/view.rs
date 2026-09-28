@@ -6,25 +6,26 @@ use crate::config;
 use crate::market_state::{LiveWatchlistId, LiveWatchlistRowData};
 use crate::message::Message;
 
+use super::super::symbol_cell::view_live_watchlist_symbol_cell;
 use iced::widget::row;
 use iced::{Element, Fill, Theme};
 
 impl TradingTerminal {
-    pub(in crate::market_views::live_watchlist) fn view_live_watchlist_row(
+    pub(in crate::market_views::live_watchlist) fn view_live_watchlist_row<'a>(
         &self,
         id: LiveWatchlistId,
-        data: &LiveWatchlistRowData,
+        data: &'a LiveWatchlistRowData,
         display_columns: &[config::LiveWatchlistColumn],
         now_ms: u64,
         theme: &Theme,
-    ) -> Element<'static, Message> {
+    ) -> Element<'a, Message> {
         let price_color = self.live_watchlist_price_color(&data.sym_key, now_ms, theme);
         let denomination = self.display_denomination_context();
 
         let mut row_content = row![
-            cells::live_watchlist_symbol_cell(
+            view_live_watchlist_symbol_cell(
                 &data.sym_key,
-                data.display.clone(),
+                &data.display,
                 self.exchange_symbol_for_key(&data.sym_key)
                     .is_some_and(|symbol| symbol.growth_mode),
                 theme,

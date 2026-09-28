@@ -364,6 +364,13 @@ Row-cache refresh builds one borrowed symbol-metadata index for all affected
 panes. The index lives only for that refresh; each pane still applies its own
 symbol list and sorting, using current visibility, prices, history, and contexts.
 
+Row views borrow display labels from their cached rows, and the preset picker
+borrows its options and selected preset. `live_watchlist/symbol_cell.rs` shares
+the icon, label, and growth indicator between rows and autocomplete entries.
+Selection/removal messages retain owned keys or numeric IDs. The pane only
+prepares autocomplete while its settings menu is closed; matching and scrolling
+remain in the autocomplete component.
+
 Live-watchlist and ticker-tape context results share scope reconciliation in
 `market_update/context_results.rs`. Callers reject stale IDs and mismatched
 request symbols before reconciliation. Incoming values must be both requested

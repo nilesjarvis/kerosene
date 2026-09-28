@@ -11,8 +11,8 @@ impl TradingTerminal {
         id: LiveWatchlistId,
         preset_id: Option<crate::config::WatchlistPresetId>,
     ) -> Element<'_, Message> {
-        let selected = preset_id.and_then(|preset_id| self.watchlist_preset(preset_id).cloned());
-        pick_list(self.watchlist_presets.clone(), selected, move |preset| {
+        let selected = preset_id.and_then(|preset_id| self.watchlist_preset(preset_id));
+        pick_list(self.watchlist_presets.as_slice(), selected, move |preset| {
             Message::LiveWatchlistPresetSelected(id, preset.id)
         })
         .placeholder("Select watchlist")
