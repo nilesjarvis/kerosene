@@ -262,3 +262,22 @@ fn remote_wallet_database_messages_route_to_wallet_tracker() {
         assert_route(message, UpdateRoute::WalletTracker);
     }
 }
+
+#[test]
+fn live_watchlist_ema_messages_route_to_market() {
+    for message in [
+        Message::LiveWatchlistEmaPeriodInputChanged(7, "50".to_string()),
+        Message::LiveWatchlistEmaPeriodApplied(7),
+        Message::LiveWatchlistEmaTimeframeChanged(7, "4h".to_string()),
+        Message::LiveWatchlistEmaLoaded(
+            crate::market_state::LiveWatchlistEmaKey {
+                symbol: "BTC".to_string(),
+                settings: Default::default(),
+            },
+            1,
+            Err("unavailable".to_string()),
+        ),
+    ] {
+        assert_route(message, UpdateRoute::Market);
+    }
+}

@@ -43,8 +43,8 @@ pub use layouts::{
     prune_unsupported_pane_layout,
 };
 pub use live_watchlist::{
-    LiveWatchlistColumn, LiveWatchlistConfig, LiveWatchlistSortColumn, SortDirection,
-    WatchlistPresetConfig, WatchlistPresetId, default_live_watchlist_columns,
+    LiveWatchlistColumn, LiveWatchlistConfig, LiveWatchlistEmaConfig, LiveWatchlistSortColumn,
+    SortDirection, WatchlistPresetConfig, WatchlistPresetId, default_live_watchlist_columns,
 };
 pub use order_presets::{OrderPreset, OrderPresetsConfig};
 pub use panes::{

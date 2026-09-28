@@ -88,6 +88,10 @@ fn is_live_watchlist_market_message(message: &Message) -> bool {
         message,
         Message::LiveWatchlistSortChanged(_, _)
             | Message::LiveWatchlistColumnToggled(_, _, _)
+            | Message::LiveWatchlistEmaPeriodInputChanged(_, _)
+            | Message::LiveWatchlistEmaPeriodApplied(_)
+            | Message::LiveWatchlistEmaTimeframeChanged(_, _)
+            | Message::LiveWatchlistEmaLoaded(_, _, _)
             | Message::ToggleLiveWatchlistSettings(_)
             | Message::AddLiveWatchlistPane
             | Message::LiveWatchlistSearchChanged(_, _)

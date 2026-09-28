@@ -42,6 +42,7 @@ impl TradingTerminal {
             .map(|symbol| (symbol.key.as_str(), symbol))
             .collect();
         let mut rows = Vec::with_capacity(watchlist.symbols.len());
+        let now_ms = Self::now_ms();
 
         for sym_key in &watchlist.symbols {
             if self.symbol_key_is_hidden(sym_key) {
@@ -71,6 +72,21 @@ impl TradingTerminal {
                 .map(|(px_5m, px_30m, px_1h)| (Some(px_5m), Some(px_30m), Some(px_1h)))
                 .unwrap_or((None, None, None));
 
+            let (ema_distance, ema_status) = if watchlist
+                .visible_columns
+                .contains(&config::LiveWatchlistColumn::EmaDistance)
+            {
+                self.live_watchlist_ema.value(
+                    &crate::market_state::LiveWatchlistEmaKey {
+                        symbol: sym_key.clone(),
+                        settings: watchlist.ema.clone(),
+                    },
+                    mid_px,
+                    now_ms,
+                )
+            } else {
+                (None, None)
+            };
             rows.push(LiveWatchlistRowData {
                 sym_key: sym_key.clone(),
                 display,
@@ -80,6 +96,8 @@ impl TradingTerminal {
                 pct_1h: percent_change(mid_px, px_1h),
                 pct_24h: prev_px.and_then(|px| percent_change(mid_px, Some(px))),
                 funding,
+                ema_distance,
+                ema_status,
             });
         }
 
@@ -106,6 +124,9 @@ fn sort_live_watchlist_rows(
         config::LiveWatchlistSortColumn::Change1h => sortable_cmp(a.pct_1h, b.pct_1h, descending),
         config::LiveWatchlistSortColumn::Change24h => {
             sortable_cmp(a.pct_24h, b.pct_24h, descending)
+        }
+        config::LiveWatchlistSortColumn::EmaDistance => {
+            sortable_cmp(a.ema_distance, b.ema_distance, descending)
         }
         config::LiveWatchlistSortColumn::Funding => sortable_cmp(a.funding, b.funding, descending),
     });

@@ -1,4 +1,5 @@
 mod columns;
+pub(crate) mod ema;
 mod refresh;
 mod rows;
 mod symbols;
@@ -26,6 +27,7 @@ impl TradingTerminal {
     }
 
     pub(crate) fn request_live_watchlist_refresh(&mut self, force: bool) -> Task<Message> {
+        let ema_task = self.request_live_watchlist_ema_refresh();
         let mut symbols = self.watched_live_watchlist_symbols();
         if self.symbols_loading {
             // The canonical key for the legacy `@0` pair is only known after
@@ -43,7 +45,7 @@ impl TradingTerminal {
             history_loading: false,
         });
         if !plan.has_requests() {
-            return Task::none();
+            return ema_task;
         }
 
         let mut tasks = Vec::new();
@@ -107,6 +109,7 @@ impl TradingTerminal {
         if !tasks.is_empty() {
             self.live_watchlist_status = None;
         }
+        tasks.push(ema_task);
         Task::batch(tasks)
     }
 }

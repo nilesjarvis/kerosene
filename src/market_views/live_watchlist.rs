@@ -76,11 +76,7 @@ impl TradingTerminal {
             let dropdown_layer = float(
                 row![
                     Space::new().width(Fill),
-                    self.view_live_watchlist_settings_dropdown(
-                        id,
-                        wl.preset_id,
-                        &wl.visible_columns,
-                    ),
+                    self.view_live_watchlist_settings_dropdown(id, wl,),
                 ]
                 .width(Fill)
                 .align_y(iced::Alignment::Center),

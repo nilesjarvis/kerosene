@@ -1,10 +1,13 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::helpers;
-use crate::market_state::LiveWatchlistId;
+use crate::market_state::{LiveWatchlistId, LiveWatchlistInstance};
 use crate::message::Message;
 use iced::widget::container as container_style;
-use iced::widget::{button, checkbox, column, container, row, rule, text, text_input, tooltip};
+use iced::widget::{
+    button, checkbox, column, container, pick_list, row, rule, scrollable, text, text_input,
+    tooltip,
+};
 use iced::{Color, Element, Fill, Length, Theme};
 
 impl TradingTerminal {
@@ -49,12 +52,13 @@ impl TradingTerminal {
         .into()
     }
 
-    pub(in crate::market_views::live_watchlist) fn view_live_watchlist_settings_dropdown(
-        &self,
+    pub(in crate::market_views::live_watchlist) fn view_live_watchlist_settings_dropdown<'a>(
+        &'a self,
         id: LiveWatchlistId,
-        preset_id: Option<config::WatchlistPresetId>,
-        visible_columns: &[config::LiveWatchlistColumn],
-    ) -> Element<'_, Message> {
+        watchlist: &'a LiveWatchlistInstance,
+    ) -> Element<'a, Message> {
+        let preset_id = watchlist.preset_id;
+        let visible_columns = &watchlist.visible_columns;
         let theme = self.theme();
         let mut column_controls = column![].spacing(6).padding(6).width(Fill);
         if let Some(preset) = preset_id.and_then(|preset_id| self.watchlist_preset(preset_id)) {
@@ -111,7 +115,50 @@ impl TradingTerminal {
             );
         }
 
-        container(column_controls)
+        if visible_columns.contains(&config::LiveWatchlistColumn::EmaDistance) {
+            let valid_period = watchlist
+                .ema_period_input
+                .parse::<usize>()
+                .ok()
+                .filter(|period| (1..=config::LiveWatchlistEmaConfig::MAX_PERIOD).contains(period));
+            column_controls = column_controls
+                .push(rule::horizontal(1))
+                .push(text("EMA period (1–1000)").size(10))
+                .push(
+                    row![
+                        text_input("20", &watchlist.ema_period_input)
+                            .on_input(move |input| Message::LiveWatchlistEmaPeriodInputChanged(
+                                id, input
+                            ))
+                            .on_submit(Message::LiveWatchlistEmaPeriodApplied(id))
+                            .style(helpers::text_input_style)
+                            .size(11)
+                            .padding([4, 7]),
+                        button(text("Apply").size(10))
+                            .on_press_maybe(
+                                valid_period.map(|_| Message::LiveWatchlistEmaPeriodApplied(id))
+                            )
+                            .padding([4, 7]),
+                    ]
+                    .spacing(6),
+                )
+                .push(text("EMA timeframe").size(10))
+                .push(
+                    pick_list(
+                        config::LiveWatchlistEmaConfig::TIMEFRAMES,
+                        Some(watchlist.ema.timeframe.as_str()),
+                        move |timeframe| {
+                            Message::LiveWatchlistEmaTimeframeChanged(id, timeframe.to_string())
+                        },
+                    )
+                    .text_size(11)
+                    .padding([4, 7])
+                    .width(Fill),
+                );
+        }
+
+        container(scrollable(column_controls).height(Length::Shrink))
+            .max_height(460)
             .width(Length::Fixed(210.0))
             .style(|theme: &Theme| container_style::Style {
                 background: Some(theme.extended_palette().background.strong.color.into()),

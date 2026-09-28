@@ -677,6 +677,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) next_session_data_id: SessionDataId,
 
     pub(crate) live_watchlist_ctxs: HashMap<String, crate::api::WatchlistContext>,
+    pub(crate) live_watchlist_ema: crate::market_state::LiveWatchlistEmaState,
     pub(crate) live_watchlist_history: HashMap<String, (f64, f64, f64)>,
     pub(crate) live_watchlist_contexts_loading: bool,
     pub(crate) live_watchlist_history_loading: bool,

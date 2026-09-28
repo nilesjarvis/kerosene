@@ -1,5 +1,7 @@
 mod contexts;
+mod ema;
 mod history;
+pub(crate) use ema::{WatchlistEmaSample, fetch_watchlist_ema};
 mod model;
 mod parsing;
 

@@ -10,6 +10,7 @@ pub enum LiveWatchlistSortColumn {
     Change1h,
     Change24h,
     Funding,
+    EmaDistance,
 }
 
 impl LiveWatchlistSortColumn {
@@ -22,6 +23,7 @@ impl LiveWatchlistSortColumn {
             "Change1h" => Some(Self::Change1h),
             "Change24h" => Some(Self::Change24h),
             "Funding" => Some(Self::Funding),
+            "EmaDistance" => Some(Self::EmaDistance),
             _ => None,
         }
     }
@@ -35,6 +37,7 @@ impl LiveWatchlistSortColumn {
             Self::Change1h => "Change1h",
             Self::Change24h => "Change24h",
             Self::Funding => "Funding",
+            Self::EmaDistance => "EmaDistance",
         }
     }
 }
@@ -65,11 +68,13 @@ pub enum LiveWatchlistColumn {
     Change1h,
     Change24h,
     Funding,
+    EmaDistance,
 }
 
 impl LiveWatchlistColumn {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Price,
+        Self::EmaDistance,
         Self::Change5m,
         Self::Change30m,
         Self::Change1h,
@@ -85,6 +90,7 @@ impl LiveWatchlistColumn {
             "Change1h" => Some(Self::Change1h),
             "Change24h" => Some(Self::Change24h),
             "Funding" => Some(Self::Funding),
+            "EmaDistance" => Some(Self::EmaDistance),
             _ => None,
         }
     }
@@ -97,6 +103,7 @@ impl LiveWatchlistColumn {
             Self::Change1h => "1h",
             Self::Change24h => "24h",
             Self::Funding => "Funding",
+            Self::EmaDistance => "EMA distance",
         }
     }
 
@@ -108,12 +115,14 @@ impl LiveWatchlistColumn {
             Self::Change1h => LiveWatchlistSortColumn::Change1h,
             Self::Change24h => LiveWatchlistSortColumn::Change24h,
             Self::Funding => LiveWatchlistSortColumn::Funding,
+            Self::EmaDistance => LiveWatchlistSortColumn::EmaDistance,
         }
     }
 
     pub fn width(self) -> f32 {
         match self {
             Self::Price => 70.0,
+            Self::EmaDistance => 88.0,
             Self::Change5m | Self::Change30m | Self::Change1h => 50.0,
             Self::Change24h | Self::Funding => 60.0,
         }
@@ -121,7 +130,10 @@ impl LiveWatchlistColumn {
 }
 
 pub fn default_live_watchlist_columns() -> Vec<LiveWatchlistColumn> {
-    LiveWatchlistColumn::ALL.to_vec()
+    LiveWatchlistColumn::ALL
+        .into_iter()
+        .filter(|column| *column != LiveWatchlistColumn::EmaDistance)
+        .collect()
 }
 
 pub type WatchlistPresetId = u64;
@@ -239,4 +251,54 @@ pub struct LiveWatchlistConfig {
         deserialize_with = "deserialize_visible_columns"
     )]
     pub visible_columns: Vec<LiveWatchlistColumn>,
+    #[serde(default)]
+    pub ema: LiveWatchlistEmaConfig,
+}
+
+/// Close-price EMA used by one live watchlist. Candle intervals use API notation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(default)]
+pub struct LiveWatchlistEmaConfig {
+    #[serde(deserialize_with = "deserialize_ema_period")]
+    pub period: usize,
+    #[serde(deserialize_with = "deserialize_ema_timeframe")]
+    pub timeframe: String,
+}
+
+impl Default for LiveWatchlistEmaConfig {
+    fn default() -> Self {
+        Self {
+            period: 20,
+            timeframe: "1h".to_string(),
+        }
+    }
+}
+
+impl LiveWatchlistEmaConfig {
+    pub const MAX_PERIOD: usize = 1_000;
+    pub const TIMEFRAMES: [&'static str; 14] = [
+        "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "8h", "12h", "1d", "3d", "1w", "1M",
+    ];
+
+    pub(crate) fn interval(&self) -> crate::timeframe::Timeframe {
+        crate::timeframe::Timeframe::from_api_str_opt(&self.timeframe)
+            .unwrap_or(crate::timeframe::Timeframe::H1)
+    }
+}
+
+fn deserialize_ema_period<'de, D: Deserializer<'de>>(deserializer: D) -> Result<usize, D::Error> {
+    usize::deserialize(deserializer)
+        .map(|period| period.clamp(1, LiveWatchlistEmaConfig::MAX_PERIOD))
+}
+
+fn deserialize_ema_timeframe<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<String, D::Error> {
+    String::deserialize(deserializer).map(|timeframe| {
+        if LiveWatchlistEmaConfig::TIMEFRAMES.contains(&timeframe.as_str()) {
+            timeframe
+        } else {
+            LiveWatchlistEmaConfig::default().timeframe
+        }
+    })
 }

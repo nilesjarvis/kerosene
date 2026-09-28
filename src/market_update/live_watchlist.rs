@@ -32,7 +32,43 @@ impl TradingTerminal {
                 }
                 self.refresh_live_watchlist_row_cache(id);
                 self.persist_config();
+                self.request_live_watchlist_ema_refresh()
+            }
+            Message::LiveWatchlistEmaPeriodInputChanged(id, input) => {
+                if input.len() <= 4
+                    && input.bytes().all(|byte| byte.is_ascii_digit())
+                    && let Some(watchlist) = self.live_watchlists.get_mut(&id)
+                {
+                    watchlist.ema_period_input = input;
+                }
                 Task::none()
+            }
+            Message::LiveWatchlistEmaPeriodApplied(id) => {
+                if let Some(watchlist) = self.live_watchlists.get_mut(&id) {
+                    if let Ok(period) = watchlist.ema_period_input.parse::<usize>()
+                        && (1..=config::LiveWatchlistEmaConfig::MAX_PERIOD).contains(&period)
+                    {
+                        watchlist.ema.period = period;
+                    }
+                    watchlist.ema_period_input = watchlist.ema.period.to_string();
+                }
+                self.refresh_live_watchlist_row_cache(id);
+                self.persist_config();
+                self.request_live_watchlist_ema_refresh()
+            }
+            Message::LiveWatchlistEmaTimeframeChanged(id, timeframe) => {
+                if !config::LiveWatchlistEmaConfig::TIMEFRAMES.contains(&timeframe.as_str()) {
+                    return Task::none();
+                }
+                if let Some(watchlist) = self.live_watchlists.get_mut(&id) {
+                    watchlist.ema.timeframe = timeframe;
+                }
+                self.refresh_live_watchlist_row_cache(id);
+                self.persist_config();
+                self.request_live_watchlist_ema_refresh()
+            }
+            Message::LiveWatchlistEmaLoaded(key, request_id, result) => {
+                self.apply_live_watchlist_ema_loaded(key, request_id, result)
             }
             Message::ToggleLiveWatchlistSettings(id) => {
                 let opening = self.live_watchlist_settings_menu_open != Some(id);
@@ -78,6 +114,8 @@ impl TradingTerminal {
                         sort_column: Default::default(),
                         sort_direction: Default::default(),
                         visible_columns: config::default_live_watchlist_columns(),
+                        ema: Default::default(),
+                        ema_period_input: "20".to_string(),
                         row_cache: Vec::new(),
                     },
                 );
@@ -160,7 +198,11 @@ impl TradingTerminal {
                 self.rename_watchlist_preset(preset_id, name)
             }
             Message::WatchlistPresetDelete(preset_id) => self.delete_watchlist_preset(preset_id),
-            Message::LiveWatchlistRefreshTick => self.request_live_watchlist_refresh(false),
+            Message::LiveWatchlistRefreshTick => {
+                let task = self.request_live_watchlist_refresh(false);
+                self.refresh_live_watchlist_row_caches();
+                task
+            }
             Message::LiveWatchlistContextsLoaded(
                 request_id,
                 requested_symbols,
@@ -362,6 +404,8 @@ mod tests {
                 sort_column: Default::default(),
                 sort_direction: Default::default(),
                 visible_columns: config::default_live_watchlist_columns(),
+                ema: Default::default(),
+                ema_period_input: "20".to_string(),
                 row_cache: Vec::new(),
             },
         );
@@ -668,6 +712,77 @@ mod tests {
                 .as_ref()
                 .map(|(message, is_error)| (message.as_str(), *is_error)),
             Some(("Watchlist context refresh failed: network", true))
+        );
+    }
+    #[test]
+    fn ema_settings_are_applied_per_widget_and_persisted() {
+        let mut terminal = terminal_with_live_watchlist(&["BTC"]);
+        let mut second = terminal.live_watchlists[&1].clone();
+        second.id = 2;
+        terminal.live_watchlists.insert(2, second);
+        let _ = terminal.update_live_watchlist_market(Message::LiveWatchlistEmaPeriodInputChanged(
+            1,
+            "200".to_string(),
+        ));
+        assert_eq!(terminal.live_watchlists[&1].ema.period, 20);
+        let _ = terminal.update_live_watchlist_market(Message::LiveWatchlistEmaPeriodApplied(1));
+        let _ = terminal.update_live_watchlist_market(Message::LiveWatchlistEmaTimeframeChanged(
+            1,
+            "4h".to_string(),
+        ));
+        assert_eq!(terminal.live_watchlists[&1].ema.period, 200);
+        assert_eq!(terminal.live_watchlists[&1].ema.timeframe, "4h");
+        assert_eq!(
+            terminal.live_watchlists[&2].ema,
+            config::LiveWatchlistEmaConfig::default()
+        );
+        let configs = terminal.live_watchlist_configs_snapshot();
+        assert_eq!(
+            configs
+                .iter()
+                .find(|config| config.id == 1)
+                .expect("saved config")
+                .ema,
+            terminal.live_watchlists[&1].ema
+        );
+        for invalid in ["", "0", "1001"] {
+            let _ = terminal.update_live_watchlist_market(
+                Message::LiveWatchlistEmaPeriodInputChanged(1, invalid.to_string()),
+            );
+            let _ =
+                terminal.update_live_watchlist_market(Message::LiveWatchlistEmaPeriodApplied(1));
+            assert_eq!(terminal.live_watchlists[&1].ema.period, 200);
+            assert_eq!(terminal.live_watchlists[&1].ema_period_input, "200");
+        }
+        let _ = terminal.update_live_watchlist_market(Message::LiveWatchlistEmaTimeframeChanged(
+            1,
+            "1s".to_string(),
+        ));
+        assert_eq!(terminal.live_watchlists[&1].ema.timeframe, "4h");
+    }
+
+    #[test]
+    fn disabling_ema_column_resets_ema_sort_and_removes_row_value() {
+        let mut terminal = terminal_with_live_watchlist(&["BTC"]);
+        let watchlist = terminal.live_watchlists.get_mut(&1).expect("watchlist");
+        watchlist
+            .visible_columns
+            .push(config::LiveWatchlistColumn::EmaDistance);
+        watchlist.sort_column = config::LiveWatchlistSortColumn::EmaDistance;
+        let _ = terminal.update_live_watchlist_market(Message::LiveWatchlistColumnToggled(
+            1,
+            config::LiveWatchlistColumn::EmaDistance,
+            false,
+        ));
+        assert_eq!(
+            terminal.live_watchlists[&1].sort_column,
+            config::LiveWatchlistSortColumn::Symbol
+        );
+        assert!(
+            terminal.live_watchlists[&1]
+                .row_cache
+                .iter()
+                .all(|row| row.ema_distance.is_none() && row.ema_status.is_none())
         );
     }
 }

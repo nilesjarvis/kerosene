@@ -1146,6 +1146,8 @@ mod tests {
                 sort_column: crate::config::LiveWatchlistSortColumn::default(),
                 sort_direction: crate::config::SortDirection::default(),
                 visible_columns: crate::config::default_live_watchlist_columns(),
+                ema: Default::default(),
+                ema_period_input: "20".to_string(),
                 row_cache: Vec::new(),
             },
         );

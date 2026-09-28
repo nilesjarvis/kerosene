@@ -24,7 +24,7 @@ fn ordered_columns_use_canonical_config_order() {
 
 #[test]
 fn columns_for_width_drops_trailing_columns_until_the_row_fits() {
-    let columns = LiveWatchlistColumn::ALL.to_vec();
+    let columns = crate::config::default_live_watchlist_columns();
 
     let visible = TradingTerminal::live_watchlist_columns_for_width(&columns, 300.0);
 
@@ -50,4 +50,13 @@ fn columns_for_width_uses_default_width_for_invalid_values() {
     let visible = TradingTerminal::live_watchlist_columns_for_width(&columns, f32::NAN);
 
     assert_eq!(visible, columns);
+}
+
+#[test]
+fn enabled_ema_stays_next_to_price_when_later_columns_do_not_fit() {
+    let columns = LiveWatchlistColumn::ALL.to_vec();
+    assert_eq!(
+        TradingTerminal::live_watchlist_columns_for_width(&columns, 350.0),
+        vec![LiveWatchlistColumn::Price, LiveWatchlistColumn::EmaDistance]
+    );
 }

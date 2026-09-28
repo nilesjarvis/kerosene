@@ -1,9 +1,9 @@
 use super::super::config_warning_guard;
 use super::{default_config_value, json_string, object_mut, value_from_json, value_from_str};
 use crate::config::{
-    KeroseneConfig, LiveWatchlistColumn, LiveWatchlistConfig, LiveWatchlistSortColumn, SavedLayout,
-    SortDirection, SpaghettiChartConfig, WatchlistPresetConfig, default_live_watchlist_columns,
-    take_config_warnings,
+    KeroseneConfig, LiveWatchlistColumn, LiveWatchlistConfig, LiveWatchlistEmaConfig,
+    LiveWatchlistSortColumn, SavedLayout, SortDirection, SpaghettiChartConfig,
+    WatchlistPresetConfig, default_live_watchlist_columns, take_config_warnings,
 };
 
 #[test]
@@ -13,9 +13,17 @@ fn live_watchlists_round_trip() {
             id: 42,
             preset_id: Some(9),
             symbols: vec!["BTC".to_string(), "xyz:NVDA".to_string()],
-            sort_column: LiveWatchlistSortColumn::Change24h,
+            sort_column: LiveWatchlistSortColumn::EmaDistance,
             sort_direction: SortDirection::Descending,
-            visible_columns: vec![LiveWatchlistColumn::Price, LiveWatchlistColumn::Funding],
+            ema: crate::config::LiveWatchlistEmaConfig {
+                period: 200,
+                timeframe: "4h".to_string(),
+            },
+            visible_columns: vec![
+                LiveWatchlistColumn::Price,
+                LiveWatchlistColumn::EmaDistance,
+                LiveWatchlistColumn::Funding,
+            ],
         }],
         watchlist_presets: vec![WatchlistPresetConfig {
             id: 9,
@@ -164,4 +172,53 @@ fn live_watchlists_default_or_drop_unknown_persisted_enum_values() {
             .any(|warning| warning
                 .contains("Unknown live watchlist visible column \"FutureColumn\""))
     );
+}
+
+#[test]
+fn live_watchlist_ema_defaults_preserve_legacy_columns_and_normalize_settings() {
+    let legacy: LiveWatchlistConfig =
+        value_from_json(serde_json::json!({"id": 1}), "legacy config");
+    assert_eq!(legacy.ema, LiveWatchlistEmaConfig::default());
+    assert_eq!(legacy.visible_columns.len(), 6);
+    assert!(
+        !legacy
+            .visible_columns
+            .contains(&LiveWatchlistColumn::EmaDistance)
+    );
+    for (raw, period, timeframe) in [
+        (serde_json::json!({}), 20, "1h"),
+        (
+            serde_json::json!({"period": 0, "timeframe": "tick"}),
+            1,
+            "1h",
+        ),
+        (
+            serde_json::json!({"period": 999999, "timeframe": "1s"}),
+            1000,
+            "1h",
+        ),
+        (
+            serde_json::json!({"period": 50, "timeframe": "1M"}),
+            50,
+            "1M",
+        ),
+    ] {
+        let parsed: LiveWatchlistEmaConfig = value_from_json(raw, "EMA settings");
+        assert_eq!(parsed.period, period);
+        assert_eq!(parsed.timeframe, timeframe);
+    }
+}
+
+#[test]
+fn live_watchlist_ema_saved_layout_round_trip() {
+    let layout: SavedLayout = value_from_json(
+        serde_json::json!({
+            "name": "EMA", "live_watchlists": [{"id": 1,
+            "ema": {"period": 50, "timeframe": "1d"},
+            "visible_columns": ["Price", "EmaDistance"], "sort_column": "EmaDistance"}]
+        }),
+        "layout",
+    );
+    let decoded: SavedLayout = value_from_str(&json_string(&layout, "serialize"), "deserialize");
+    assert_eq!(decoded.live_watchlists, layout.live_watchlists);
 }

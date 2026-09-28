@@ -53,6 +53,7 @@ impl TradingTerminal {
                 sort_column: watchlist.sort_column,
                 sort_direction: watchlist.sort_direction,
                 visible_columns: watchlist.visible_columns.clone(),
+                ema: watchlist.ema.clone(),
             })
             .collect()
     }

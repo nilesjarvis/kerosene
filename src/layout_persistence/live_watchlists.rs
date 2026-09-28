@@ -36,6 +36,8 @@ impl TradingTerminal {
                         sort_column: watchlist_config.sort_column,
                         sort_direction: watchlist_config.sort_direction,
                         visible_columns: watchlist_config.visible_columns,
+                        ema_period_input: watchlist_config.ema.period.to_string(),
+                        ema: watchlist_config.ema,
                         row_cache: Vec::new(),
                     },
                 )
@@ -75,10 +77,42 @@ impl TradingTerminal {
                     sort_column: Default::default(),
                     sort_direction: Default::default(),
                     visible_columns: config::default_live_watchlist_columns(),
+                    ema: Default::default(),
+                    ema_period_input: "20".to_string(),
                     row_cache: Vec::new(),
                 },
             );
         }
         self.refresh_live_watchlist_row_caches();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn live_watchlist_ema_restores_layout_settings_and_period_input() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let layout: config::SavedLayout = serde_json::from_value(serde_json::json!({
+            "name": "EMA", "live_watchlists": [{"id": 42, "symbols": ["BTC"],
+            "visible_columns": ["Price", "EmaDistance"],
+            "sort_column": "EmaDistance", "ema": {"period": 200, "timeframe": "4h"}}]
+        }))
+        .expect("layout");
+        terminal.restore_layout_live_watchlists(&layout);
+        let watchlist = &terminal.live_watchlists[&42];
+        assert_eq!(watchlist.ema.period, 200);
+        assert_eq!(watchlist.ema.timeframe, "4h");
+        assert_eq!(watchlist.ema_period_input, "200");
+        assert_eq!(
+            watchlist.sort_column,
+            config::LiveWatchlistSortColumn::EmaDistance
+        );
+        assert!(
+            watchlist
+                .visible_columns
+                .contains(&config::LiveWatchlistColumn::EmaDistance)
+        );
     }
 }
