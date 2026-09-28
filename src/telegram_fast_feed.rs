@@ -1,34 +1,49 @@
+mod auth;
 mod media;
+mod session;
+
+pub(crate) use self::auth::{
+    TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED, TELEGRAM_FAST_SESSION_CLEAR_FAILED,
+    bundled_telegram_api_hash, bundled_telegram_api_id, clear_telegram_fast_pending_auth,
+    clear_telegram_fast_pending_auth_except_request, clear_telegram_fast_pending_auth_for_request,
+    request_telegram_fast_login_code, sign_out_telegram_fast, submit_telegram_fast_login_code,
+    submit_telegram_fast_password,
+};
+#[cfg(test)]
+pub(crate) use self::auth::{
+    set_telegram_fast_pending_auth_placeholders_for_test,
+    telegram_fast_pending_auth_request_ids_for_test, telegram_fast_pending_auth_test_lock,
+};
+pub(crate) use self::session::{clear_telegram_fast_session_files_at, telegram_fast_session_path};
 
 use self::media::{
     download_private_channel_avatar_handle, fast_media_kind, spawn_fast_media_download,
 };
 
+use self::session::{
+    open_telegram_session, prepare_session_path, tighten_session_permissions, with_telegram_client,
+};
+
 use crate::app_time::now_ms;
 use crate::telegram_feed::{
     TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS, TELEGRAM_FEED_FETCH_LIMIT, TelegramChannelProfile,
-    TelegramFastAuthOutcome, TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost,
-    TelegramFeedPostSource, TelegramFeedPrivateChannelConfig, TelegramPostMedia,
-    TelegramPrivateChannelCandidate, normalize_private_channel_title,
-    normalize_public_channel_input, normalize_telegram_plain_text,
+    TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost, TelegramFeedPostSource,
+    TelegramFeedPrivateChannelConfig, TelegramPostMedia, TelegramPrivateChannelCandidate,
+    normalize_private_channel_title, normalize_public_channel_input, normalize_telegram_plain_text,
     telegram_channel_profile_from_title, telegram_private_channel_peer_id_from_key,
 };
 use futures::{SinkExt as _, channel::mpsc};
-use grammers_client::client::{LoginToken, PasswordToken, UpdatesConfiguration};
+use grammers_client::client::UpdatesConfiguration;
 use grammers_client::peer::Peer;
-use grammers_client::session::storages::SqliteSession;
 use grammers_client::update::Update;
-use grammers_client::{Client, SenderPool, SignInError};
+use grammers_client::{Client, SenderPool};
 use grammers_session::types::{PeerId, PeerKind, PeerRef};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::future::Future;
-use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::sync::{RwLock, Semaphore};
-use zeroize::Zeroizing;
 
 const TELEGRAM_FAST_UPDATE_QUEUE_LIMIT: usize = 2_000;
 // Cap concurrent in-flight media downloads per session so a burst of media-heavy
@@ -42,13 +57,6 @@ const TELEGRAM_FAST_HEALTH_CHECK_INTERVAL: Duration =
 const TELEGRAM_PRIVATE_SCAN_TIMEOUT: Duration = Duration::from_secs(45);
 const TELEGRAM_FAST_RESOLVE_RETRY_ATTEMPTS: usize = 2;
 const TELEGRAM_FAST_RESOLVE_RETRY_DELAY: Duration = Duration::from_secs(10);
-const TELEGRAM_SESSION_OPEN_RETRY_ATTEMPTS: usize = 3;
-const TELEGRAM_SESSION_OPEN_RETRY_DELAY: Duration = Duration::from_millis(250);
-const TELEGRAM_POOL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
-pub(crate) const TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED: &str =
-    "Telegram fast local session was removed, but remote sign-out could not be confirmed";
-pub(crate) const TELEGRAM_FAST_SESSION_CLEAR_FAILED: &str =
-    "Telegram fast session sign-out could not remove the local session files";
 type ChannelIdMap = Arc<RwLock<HashMap<PeerId, FastChannelIdentity>>>;
 type ChannelCursorMap = Arc<RwLock<HashMap<String, FastChannelCursor>>>;
 
@@ -121,13 +129,6 @@ fn advance_all_fast_cursor_generations() {
     generations.channels.clear();
 }
 
-// Serializes short-lived client operations (auth, private channel scans)
-// against each other; they share one session file with the live feed stream.
-fn telegram_client_op_lock() -> &'static tokio::sync::Mutex<()> {
-    static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
-}
-
 // Best-effort: a removed channel must not keep its cursor, or re-adding it
 // would skip the initial history backfill. Contention is rare and losing the
 // race only degrades to the old behavior.
@@ -167,35 +168,6 @@ pub(crate) async fn fast_channel_cursor_message_id_for_test(channel: &str) -> u6
 pub(crate) fn fast_channel_cursor_test_lock() -> &'static tokio::sync::Mutex<()> {
     static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
-}
-
-#[cfg(test)]
-pub(crate) fn telegram_fast_pending_auth_test_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
-
-#[cfg(test)]
-pub(crate) fn set_telegram_fast_pending_auth_placeholders_for_test(entries: &[(&str, u64)]) {
-    if let Ok(mut pending) = pending_auths().lock() {
-        pending.clear();
-        pending.extend(entries.iter().map(|(path, request_id)| {
-            ((PathBuf::from(path), *request_id), PendingAuth::Placeholder)
-        }));
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn telegram_fast_pending_auth_request_ids_for_test() -> Vec<u64> {
-    let Ok(pending) = pending_auths().lock() else {
-        return Vec::new();
-    };
-    let mut ids = pending
-        .keys()
-        .map(|(_, request_id)| *request_id)
-        .collect::<Vec<_>>();
-    ids.sort_unstable();
-    ids
 }
 
 async fn clear_all_fast_channel_cursors() {
@@ -313,230 +285,10 @@ impl fmt::Debug for FastChannelTarget {
     }
 }
 
-enum PendingAuth {
-    Login(LoginToken),
-    Password(Box<PasswordToken>),
-    #[cfg(test)]
-    Placeholder,
-}
-type PendingAuthKey = (PathBuf, u64);
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FastFeedSessionExit {
     Retry,
     Stop,
-}
-
-fn pending_auths() -> &'static Mutex<HashMap<PendingAuthKey, PendingAuth>> {
-    static PENDING: OnceLock<Mutex<HashMap<PendingAuthKey, PendingAuth>>> = OnceLock::new();
-    PENDING.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-pub(crate) fn telegram_fast_session_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|dir| dir.join("kerosene").join("telegram_fast.session"))
-}
-
-pub(crate) fn bundled_telegram_api_id() -> Option<i32> {
-    option_env!("KEROSENE_TELEGRAM_API_ID").and_then(|value| value.parse::<i32>().ok())
-}
-
-pub(crate) fn bundled_telegram_api_hash() -> Option<&'static str> {
-    option_env!("KEROSENE_TELEGRAM_API_HASH").filter(|value| !value.trim().is_empty())
-}
-
-pub(crate) async fn request_telegram_fast_login_code(
-    api_id: i32,
-    request_id: u64,
-    api_hash: Zeroizing<String>,
-    phone: Zeroizing<String>,
-) -> Result<TelegramFastAuthOutcome, String> {
-    let api_hash = Zeroizing::new(api_hash.trim().to_string());
-    let phone = Zeroizing::new(phone.trim().to_string());
-    if api_hash.is_empty() {
-        return Err("Enter a Telegram API hash".to_string());
-    }
-    if phone.is_empty() {
-        return Err("Enter a Telegram phone number".to_string());
-    }
-
-    let session_path = telegram_fast_session_path()
-        .ok_or_else(|| "Could not resolve Kerosene config directory".to_string())?;
-    with_telegram_client(api_id, |client| async move {
-        if client
-            .is_authorized()
-            .await
-            .map_err(|_| "Telegram authorization check failed".to_string())?
-        {
-            return Ok(TelegramFastAuthOutcome::SignedIn {
-                display_name: "Telegram".to_string(),
-            });
-        }
-
-        let token = client
-            .request_login_code(&phone, &api_hash)
-            .await
-            .map_err(|_| "Telegram login code request failed".to_string())?;
-        if let Ok(mut pending) = pending_auths().lock() {
-            pending.insert(
-                (session_path.clone(), request_id),
-                PendingAuth::Login(token),
-            );
-        }
-        Ok(TelegramFastAuthOutcome::CodeSent)
-    })
-    .await
-}
-
-pub(crate) async fn submit_telegram_fast_login_code(
-    api_id: i32,
-    challenge_request_id: u64,
-    result_request_id: u64,
-    code: Zeroizing<String>,
-) -> Result<TelegramFastAuthOutcome, String> {
-    let code = Zeroizing::new(code.trim().to_string());
-    if code.is_empty() {
-        return Err("Enter the Telegram login code".to_string());
-    }
-
-    let session_path = telegram_fast_session_path()
-        .ok_or_else(|| "Could not resolve Kerosene config directory".to_string())?;
-    let token = match pending_auths()
-        .lock()
-        .map_err(|_| "Telegram login state is unavailable".to_string())?
-        .remove(&(session_path.clone(), challenge_request_id))
-    {
-        Some(PendingAuth::Login(token)) => token,
-        Some(PendingAuth::Password(password)) => {
-            if let Ok(mut pending) = pending_auths().lock() {
-                pending.insert(
-                    (session_path, challenge_request_id),
-                    PendingAuth::Password(password),
-                );
-            }
-            return Err("Enter the Telegram 2FA password".to_string());
-        }
-        #[cfg(test)]
-        Some(PendingAuth::Placeholder) => {
-            return Err("Request a Telegram login code first".to_string());
-        }
-        None => return Err("Request a Telegram login code first".to_string()),
-    };
-
-    with_telegram_client(api_id, |client| async move {
-        match client.sign_in(&token, &code).await {
-            Ok(user) => Ok(TelegramFastAuthOutcome::SignedIn {
-                display_name: user.first_name().unwrap_or("Telegram").to_string(),
-            }),
-            Err(SignInError::PasswordRequired(password)) => {
-                let hint = password.hint().map(str::to_string);
-                if let Some(session_path) = telegram_fast_session_path()
-                    && let Ok(mut pending) = pending_auths().lock()
-                {
-                    pending.insert(
-                        (session_path, result_request_id),
-                        PendingAuth::Password(Box::new(password)),
-                    );
-                }
-                Ok(TelegramFastAuthOutcome::PasswordRequired { hint })
-            }
-            Err(_) => Err("Telegram sign-in failed".to_string()),
-        }
-    })
-    .await
-}
-
-pub(crate) async fn submit_telegram_fast_password(
-    api_id: i32,
-    challenge_request_id: u64,
-    result_request_id: u64,
-    password: Zeroizing<String>,
-) -> Result<TelegramFastAuthOutcome, String> {
-    if password.trim().is_empty() {
-        return Err("Enter the Telegram 2FA password".to_string());
-    }
-
-    let session_path = telegram_fast_session_path()
-        .ok_or_else(|| "Could not resolve Kerosene config directory".to_string())?;
-    let token = match pending_auths()
-        .lock()
-        .map_err(|_| "Telegram login state is unavailable".to_string())?
-        .remove(&(session_path.clone(), challenge_request_id))
-    {
-        Some(PendingAuth::Password(token)) => *token,
-        Some(PendingAuth::Login(login)) => {
-            if let Ok(mut pending) = pending_auths().lock() {
-                pending.insert(
-                    (session_path, challenge_request_id),
-                    PendingAuth::Login(login),
-                );
-            }
-            return Err("Submit the Telegram login code first".to_string());
-        }
-        #[cfg(test)]
-        Some(PendingAuth::Placeholder) => {
-            return Err("No Telegram 2FA challenge is pending".to_string());
-        }
-        None => return Err("No Telegram 2FA challenge is pending".to_string()),
-    };
-
-    with_telegram_client(api_id, |client| async move {
-        match client.check_password(token, password.as_bytes()).await {
-            Ok(user) => Ok(TelegramFastAuthOutcome::SignedIn {
-                display_name: user.first_name().unwrap_or("Telegram").to_string(),
-            }),
-            Err(SignInError::InvalidPassword(token)) => {
-                if let Some(session_path) = telegram_fast_session_path()
-                    && let Ok(mut pending) = pending_auths().lock()
-                {
-                    pending.insert(
-                        (session_path, result_request_id),
-                        PendingAuth::Password(Box::new(token)),
-                    );
-                }
-                Err("Telegram 2FA password was invalid".to_string())
-            }
-            Err(_) => Err("Telegram 2FA sign-in failed".to_string()),
-        }
-    })
-    .await
-}
-
-pub(crate) async fn sign_out_telegram_fast(api_id: i32) -> Result<TelegramFastAuthOutcome, String> {
-    let remote_result = with_telegram_client(api_id, |client| async move {
-        if client
-            .is_authorized()
-            .await
-            .map_err(|_| "Telegram authorization check failed".to_string())?
-        {
-            client
-                .sign_out()
-                .await
-                .map_err(|_| "Telegram remote sign-out failed".to_string())?;
-        }
-        Ok(())
-    })
-    .await;
-    clear_telegram_fast_pending_auth();
-    let result = telegram_fast_sign_out_outcome(remote_result, clear_telegram_fast_session_files());
-    if result.is_ok() {
-        clear_all_fast_channel_cursors().await;
-    }
-    result
-}
-
-fn telegram_fast_sign_out_outcome(
-    remote_result: Result<(), String>,
-    session_clear_result: Result<usize, String>,
-) -> Result<TelegramFastAuthOutcome, String> {
-    if let Err(error) = session_clear_result {
-        return Err(format!("{TELEGRAM_FAST_SESSION_CLEAR_FAILED}: {error}"));
-    }
-
-    Ok(TelegramFastAuthOutcome::SignedOut {
-        warning: remote_result
-            .err()
-            .map(|_| TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED.to_string()),
-    })
 }
 
 pub(crate) async fn list_telegram_private_channel_candidates(
@@ -577,19 +329,21 @@ pub(crate) async fn list_telegram_private_channel_candidates(
                 });
             }
 
-            candidates.sort_by(|left, right| {
-                left.title
-                    .to_ascii_lowercase()
-                    .cmp(&right.title.to_ascii_lowercase())
-                    .then_with(|| left.peer_id.cmp(&right.peer_id))
-            });
-            candidates.dedup_by_key(|candidate| candidate.peer_id);
+            sort_and_dedup_private_channel_candidates(&mut candidates);
             Ok(candidates)
         })
         .await
         .unwrap_or_else(|_| Err("Telegram private channel scan timed out".to_string()))
     })
     .await
+}
+
+fn sort_and_dedup_private_channel_candidates(
+    candidates: &mut Vec<TelegramPrivateChannelCandidate>,
+) {
+    candidates
+        .sort_by_cached_key(|candidate| (candidate.title.to_ascii_lowercase(), candidate.peer_id));
+    candidates.dedup_by_key(|candidate| candidate.peer_id);
 }
 
 pub(crate) fn telegram_fast_feed_stream(
@@ -906,204 +660,11 @@ fn fast_retry_delay_after_session(current: Duration, session_connected: bool) ->
     }
 }
 
-pub(crate) fn clear_telegram_fast_pending_auth() -> usize {
-    if let Ok(mut pending) = pending_auths().lock() {
-        clear_pending_auth_map(&mut pending)
-    } else {
-        0
-    }
-}
-
-pub(crate) fn clear_telegram_fast_pending_auth_for_request(request_id: u64) -> usize {
-    if let Ok(mut pending) = pending_auths().lock() {
-        clear_pending_auth_map_for_request(&mut pending, request_id)
-    } else {
-        0
-    }
-}
-
-pub(crate) fn clear_telegram_fast_pending_auth_except_request(request_id: u64) -> usize {
-    if let Ok(mut pending) = pending_auths().lock() {
-        clear_pending_auth_map_except_request(&mut pending, request_id)
-    } else {
-        0
-    }
-}
-
-fn clear_pending_auth_map(pending: &mut HashMap<PendingAuthKey, PendingAuth>) -> usize {
-    let cleared = pending.len();
-    pending.clear();
-    cleared
-}
-
-fn clear_pending_auth_map_for_request(
-    pending: &mut HashMap<PendingAuthKey, PendingAuth>,
-    request_id: u64,
-) -> usize {
-    let original_len = pending.len();
-    pending.retain(|(_, pending_request_id), _| *pending_request_id != request_id);
-    original_len.saturating_sub(pending.len())
-}
-
-fn clear_pending_auth_map_except_request(
-    pending: &mut HashMap<PendingAuthKey, PendingAuth>,
-    request_id: u64,
-) -> usize {
-    let original_len = pending.len();
-    pending.retain(|(_, pending_request_id), _| *pending_request_id == request_id);
-    original_len.saturating_sub(pending.len())
-}
-
 fn live_first_updates_configuration() -> UpdatesConfiguration {
     UpdatesConfiguration {
         catch_up: false,
         update_queue_limit: Some(TELEGRAM_FAST_UPDATE_QUEUE_LIMIT),
     }
-}
-
-async fn with_telegram_client<T, F, Fut>(api_id: i32, f: F) -> Result<T, String>
-where
-    F: FnOnce(Client) -> Fut,
-    Fut: Future<Output = Result<T, String>>,
-{
-    let _op_guard = telegram_client_op_lock().lock().await;
-    let session_path = telegram_fast_session_path()
-        .ok_or_else(|| "Could not resolve Kerosene config directory".to_string())?;
-    prepare_session_path(&session_path).await?;
-    let session = Arc::new(open_telegram_session(&session_path).await?);
-    tighten_session_permissions(&session_path);
-
-    let SenderPool {
-        runner,
-        updates: _,
-        handle,
-    } = SenderPool::new(session, api_id);
-    let client = Client::new(handle.clone());
-    let pool_task = tokio::spawn(runner.run());
-    let result = f(client).await;
-    handle.quit();
-    let _ = shutdown_telegram_pool_task(pool_task, TELEGRAM_POOL_SHUTDOWN_TIMEOUT).await;
-    tighten_session_permissions(&session_path);
-    result
-}
-
-async fn shutdown_telegram_pool_task(
-    mut pool_task: tokio::task::JoinHandle<()>,
-    timeout: Duration,
-) -> bool {
-    if tokio::time::timeout(timeout, &mut pool_task).await.is_ok() {
-        return false;
-    }
-
-    pool_task.abort();
-    let _ = pool_task.await;
-    true
-}
-
-// The session file is shared with the live feed stream; transient SQLite lock
-// contention is expected, so retry briefly before reporting failure.
-async fn open_telegram_session(path: &Path) -> Result<SqliteSession, String> {
-    let mut attempt = 1;
-    loop {
-        match SqliteSession::open(path).await {
-            Ok(session) => return Ok(session),
-            Err(err) => {
-                if attempt >= TELEGRAM_SESSION_OPEN_RETRY_ATTEMPTS {
-                    return Err(format!("Telegram session open failed: {err}"));
-                }
-                attempt += 1;
-                tokio::time::sleep(TELEGRAM_SESSION_OPEN_RETRY_DELAY).await;
-            }
-        }
-    }
-}
-
-async fn prepare_session_path(path: &Path) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Could not create Telegram session directory: {e}"))?;
-        tighten_directory_permissions(parent);
-    }
-    Ok(())
-}
-
-#[cfg(unix)]
-fn tighten_directory_permissions(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
-}
-
-#[cfg(target_os = "windows")]
-fn tighten_directory_permissions(path: &Path) {
-    let _ = crate::helpers::restrict_path_to_owner(path);
-}
-
-#[cfg(not(any(unix, target_os = "windows")))]
-fn tighten_directory_permissions(_path: &Path) {}
-
-#[cfg(unix)]
-fn tighten_session_permissions(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    for candidate in session_file_family(path) {
-        if candidate.exists() {
-            let _ = std::fs::set_permissions(candidate, std::fs::Permissions::from_mode(0o600));
-        }
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn tighten_session_permissions(path: &Path) {
-    for candidate in session_file_family(path) {
-        if candidate.exists() {
-            let _ = crate::helpers::restrict_path_to_owner(&candidate);
-        }
-    }
-}
-
-#[cfg(not(any(unix, target_os = "windows")))]
-fn tighten_session_permissions(_path: &Path) {}
-
-pub(crate) fn clear_telegram_fast_session_files() -> Result<usize, String> {
-    let Some(path) = telegram_fast_session_path() else {
-        return Ok(0);
-    };
-    clear_telegram_fast_session_files_at(&path)
-}
-
-pub(crate) fn clear_telegram_fast_session_files_at(path: &Path) -> Result<usize, String> {
-    let mut removed = 0;
-    let mut errors = Vec::new();
-    for candidate in session_file_family(path) {
-        match std::fs::remove_file(&candidate) {
-            Ok(()) => removed += 1,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => errors.push(format!(
-                "remove {} failed: {e}",
-                redacted_session_file_display(&candidate)
-            )),
-        }
-    }
-
-    if errors.is_empty() {
-        Ok(removed)
-    } else {
-        Err(errors.join("; "))
-    }
-}
-
-fn session_file_family(path: &Path) -> Vec<PathBuf> {
-    vec![
-        path.to_path_buf(),
-        path.with_extension("session-shm"),
-        path.with_extension("session-wal"),
-        path.with_extension("session-journal"),
-    ]
-}
-
-fn redacted_session_file_display(path: &Path) -> String {
-    path.file_name()
-        .map(|name| format!("<config-dir>/{}", name.to_string_lossy()))
-        .unwrap_or_else(|| "<config-dir>/<session-file>".to_string())
 }
 
 async fn warm_dialog_update_state(client: &Client) {

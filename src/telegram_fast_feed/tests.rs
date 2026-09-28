@@ -1,13 +1,4 @@
 use super::*;
-use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::oneshot;
-
-fn placeholder_pending_auths(entries: &[(&str, u64)]) -> HashMap<PendingAuthKey, PendingAuth> {
-    entries
-        .iter()
-        .map(|(path, request_id)| ((PathBuf::from(path), *request_id), PendingAuth::Placeholder))
-        .collect()
-}
 
 #[test]
 fn connected_session_resets_reconnect_backoff() {
@@ -25,78 +16,6 @@ fn connected_session_resets_reconnect_backoff() {
 }
 
 #[test]
-fn clear_pending_auth_drops_abandoned_challenges() {
-    let mut pending = placeholder_pending_auths(&[
-        ("/tmp/kerosene-telegram-a.session", 1),
-        ("/tmp/kerosene-telegram-b.session", 2),
-    ]);
-
-    assert_eq!(clear_pending_auth_map(&mut pending), 2);
-    assert_eq!(clear_pending_auth_map(&mut pending), 0);
-}
-
-#[test]
-fn clear_pending_auth_for_request_drops_only_matching_challenges() {
-    let mut pending = placeholder_pending_auths(&[
-        ("/tmp/kerosene-telegram-a.session", 1),
-        ("/tmp/kerosene-telegram-b.session", 2),
-    ]);
-
-    assert_eq!(clear_pending_auth_map_for_request(&mut pending, 1), 1);
-    assert!(pending.contains_key(&(PathBuf::from("/tmp/kerosene-telegram-b.session"), 2)));
-    assert_eq!(clear_pending_auth_map(&mut pending), 1);
-}
-
-#[test]
-fn clear_pending_auth_except_request_drops_abandoned_challenges() {
-    let mut pending = placeholder_pending_auths(&[
-        ("/tmp/kerosene-telegram-a.session", 1),
-        ("/tmp/kerosene-telegram-a.session", 2),
-        ("/tmp/kerosene-telegram-b.session", 3),
-    ]);
-
-    assert_eq!(clear_pending_auth_map_except_request(&mut pending, 2), 2);
-    assert_eq!(pending.len(), 1);
-    assert!(pending.contains_key(&(PathBuf::from("/tmp/kerosene-telegram-a.session"), 2)));
-    assert_eq!(clear_pending_auth_map_except_request(&mut pending, 2), 0);
-}
-
-#[test]
-fn sign_out_outcome_fails_when_local_session_clear_fails() {
-    let result = telegram_fast_sign_out_outcome(
-        Ok(()),
-        Err("remove <config-dir>/telegram_fast.session failed: denied".to_string()),
-    );
-
-    let error = result.expect_err("local session clear failure should fail sign-out");
-    assert!(error.starts_with(TELEGRAM_FAST_SESSION_CLEAR_FAILED));
-    assert!(error.contains("denied"));
-}
-
-#[test]
-fn session_file_error_display_redacts_parent_path() {
-    let rendered = redacted_session_file_display(Path::new(
-        "/home/alice/.config/kerosene/telegram_fast.session-wal",
-    ));
-
-    assert_eq!(rendered, "<config-dir>/telegram_fast.session-wal");
-    assert!(!rendered.contains("/home/alice"));
-}
-
-#[test]
-fn sign_out_outcome_warns_when_remote_sign_out_fails_but_local_session_clears() {
-    let result = telegram_fast_sign_out_outcome(Err("network unavailable".to_string()), Ok(1))
-        .expect("local session clear should complete sign-out");
-
-    assert_eq!(
-        result,
-        TelegramFastAuthOutcome::SignedOut {
-            warning: Some(TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED.to_string())
-        }
-    );
-}
-
-#[test]
 fn fast_updates_are_configured_live_first() {
     let config = live_first_updates_configuration();
 
@@ -107,33 +26,40 @@ fn fast_updates_are_configured_live_first() {
     );
 }
 
-#[tokio::test]
-async fn telegram_pool_shutdown_returns_without_abort_when_task_completes() {
-    let task = tokio::spawn(async {});
+#[test]
+fn private_channel_candidates_keep_title_order_and_first_adjacent_duplicate() {
+    let mut candidates = [
+        (4, "beta"),
+        (7, "ALPHA"),
+        (7, "alpha"),
+        (3, "Alpha"),
+        (9, "Älpha"),
+        (8, "älpha"),
+        (7, "Gamma"),
+        (4, "BETA"),
+        (6, "beta"),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(
+        |(index, (peer_id, title))| TelegramPrivateChannelCandidate {
+            peer_id,
+            title: title.to_string(),
+            avatar_handle: Some(iced::widget::image::Handle::from_rgba(
+                1,
+                1,
+                vec![index as u8, 0, 0, 255],
+            )),
+        },
+    )
+    .collect::<Vec<_>>();
+    // Case-folded title ties use peer IDs, then retain input order. Deduplication
+    // removes adjacent peer IDs only, so the later Gamma entry remains.
+    let expected = [3, 1, 0, 8, 6, 4, 5].map(|index| candidates[index].clone());
 
-    let aborted = shutdown_telegram_pool_task(task, Duration::from_secs(1)).await;
+    sort_and_dedup_private_channel_candidates(&mut candidates);
 
-    assert!(!aborted);
-}
-
-#[tokio::test]
-async fn telegram_pool_shutdown_aborts_after_timeout() {
-    let (started_tx, started_rx) = oneshot::channel();
-    let aborted = Arc::new(AtomicBool::new(false));
-    let aborted_for_task = Arc::clone(&aborted);
-    let task = tokio::spawn(async move {
-        let _guard = DropGuard::new(move || {
-            aborted_for_task.store(true, Ordering::SeqCst);
-        });
-        let _ = started_tx.send(());
-        futures::future::pending::<()>().await;
-    });
-    started_rx.await.expect("task should start");
-
-    let did_abort = shutdown_telegram_pool_task(task, Duration::from_millis(1)).await;
-
-    assert!(did_abort);
-    assert!(aborted.load(Ordering::SeqCst));
+    assert_eq!(candidates, expected);
 }
 
 #[test]

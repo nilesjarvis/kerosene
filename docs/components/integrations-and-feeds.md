@@ -324,13 +324,19 @@ Sign-in views borrow the fixed dialing-code list, selected code, and information
 text. The country-change message owns its selected string, and code cells iterate
 over characters without collecting a temporary vector.
 
-Fast-feed media classification, bounded downloads, and follow-up events live in
-`telegram_fast_feed/media.rs`. The root retains authentication, session lifecycle,
-channel resolution/backfill, and cursor generations; its tests live in
-`telegram_fast_feed/tests.rs`. Media helpers preserve their existing byte limits,
-thumbnail selection, timeout, semaphore admission, and failure events. Live
-delivery still records its cursor before scheduling a media follow-up, while
-backfill schedules its media jobs before recording the cursor.
+Fast-feed authentication and pending challenges live in `telegram_fast_feed/auth.rs`;
+session files, permissions, client-operation serialization, and pool shutdown live
+in `telegram_fast_feed/session.rs`. Each module keeps its focused tests nearby.
+The root retains private-channel scans, stream orchestration, channel
+resolution/backfill, and cursor generations. Scans cache the ASCII-folded title
+and peer ID for sorting while retaining stable order and adjacent-peer deduplication.
+The four session file paths use a fixed array with the same cleanup order.
+
+Media classification, bounded downloads, and follow-up events live in
+`telegram_fast_feed/media.rs`, preserving byte limits, thumbnail selection,
+timeout, semaphore admission, and failure events. Live delivery still records its
+cursor before scheduling a media follow-up, while backfill schedules its media
+jobs before recording the cursor.
 
 ## X Feed
 

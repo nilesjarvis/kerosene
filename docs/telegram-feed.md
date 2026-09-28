@@ -269,11 +269,20 @@ Core implementation:
 - `src/telegram_feed/tests.rs` and `src/telegram_feed/client/tests.rs`: model
   and parser tests. Client tests include local HTTP fixtures for image response
   validation, error precedence, and both size limits.
-- `src/telegram_fast_feed.rs`: optional MTProto auth, session handling,
-  channel resolution, startup backfill, live update streaming, and cursor state.
+- `src/telegram_fast_feed.rs`: private-channel scans, channel resolution,
+  startup backfill, live update streaming, and cursor state. Candidate sorting
+  caches ASCII-folded titles and peer IDs, preserving stable order and the
+  existing adjacent-peer deduplication policy.
+- `src/telegram_fast_feed/auth.rs`: optional MTProto sign-in/sign-out, bundled
+  credentials, and request-owned pending challenges. Its tests cover challenge
+  cleanup and sign-out outcomes.
+- `src/telegram_fast_feed/session.rs`: session paths, permissions, SQLite open
+  retries, serialized short-lived clients, pool shutdown, and session-file
+  cleanup. Its tests cover path redaction and graceful/timed-out shutdown;
+  config cleanup tests cover file removal and failure handling.
 - `src/telegram_fast_feed/media.rs`: media classification, avatar/preview
   downloads, and asynchronous media follow-up events.
-- `src/telegram_fast_feed/tests.rs`: auth cleanup, reconnect, shutdown, redaction,
+- `src/telegram_fast_feed/tests.rs`: reconnect, redaction, candidate ordering,
   channel identity, and cursor-generation regressions.
 - `src/feed_update/telegram.rs`: update routing, refreshes, channel edits, post
   merging, notifications, and avatar/media request state.
