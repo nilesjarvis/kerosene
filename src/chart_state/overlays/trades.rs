@@ -11,8 +11,8 @@ pub(super) fn trade_markers_for_symbol(fills: &[UserFill], symbol: &str) -> Vec<
         .iter()
         .filter(|fill| fill.coin == symbol)
         .filter_map(|fill| {
-            let price = parse_positive_f64(&fill.px)?;
-            let size = parse_positive_f64(&fill.sz)?;
+            let price = parse_positive_finite_number(&fill.px)?;
+            let size = parse_positive_finite_number(&fill.sz)?;
             let is_buy = match fill.side.as_str() {
                 "B" => true,
                 "A" => false,
@@ -27,10 +27,6 @@ pub(super) fn trade_markers_for_symbol(fills: &[UserFill], symbol: &str) -> Vec<
             })
         })
         .collect()
-}
-
-fn parse_positive_f64(raw: &str) -> Option<f64> {
-    parse_positive_finite_number(raw)
 }
 
 #[cfg(test)]

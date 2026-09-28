@@ -357,6 +357,14 @@ updates, order result handling, and candle loads. Order actions still route
 through `order_update` and `order_execution`; chart overlays do not place
 orders directly.
 
+`chart_state/overlays.rs` coordinates position, trade-marker, and reference-price
+updates. Order-line assembly lives in `chart_state/overlays/orders.rs`, and
+fill-to-marker mapping lives in `chart_state/overlays/trades.rs`. Synchronization
+borrows chart symbols and pending indicators, and iterates Chase overlays without
+an intermediate vector. Overlay rows still own the strings they need.
+Confirmed orders, Chase replacements, and pending decorations retain their order
+and distinct account/numeric matching rules; trade markers retain stable time order.
+
 ## Liquidations And Heatmap
 
 Chart liquidation data comes from HyperDash update modules:

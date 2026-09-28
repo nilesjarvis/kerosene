@@ -446,19 +446,18 @@ impl TradingTerminal {
         changed
     }
 
-    pub(crate) fn pending_order_indicators_for_symbol(
-        &self,
-        symbol: &str,
-    ) -> Vec<(u64, PendingOrderIndicator)> {
-        let account_address = self.connected_order_account_address();
+    pub(crate) fn pending_order_indicators_for_symbol<'a>(
+        &'a self,
+        symbol: &'a str,
+    ) -> impl Iterator<Item = (u64, &'a PendingOrderIndicator)> {
+        let account_address = self.connected_address.as_deref();
         self.pending_order_indicators
             .iter()
-            .filter_map(|(pending_id, indicator)| {
-                (pending_indicator_is_for_connected_account(indicator, account_address.as_deref())
+            .filter_map(move |(pending_id, indicator)| {
+                (pending_indicator_is_for_connected_account(indicator, account_address)
                     && indicator.symbol == symbol)
-                    .then_some((*pending_id, indicator.clone()))
+                    .then_some((*pending_id, indicator))
             })
-            .collect()
     }
 
     fn next_pending_order_indicator_id(&self, created_at_ms: u64) -> u64 {
@@ -834,7 +833,8 @@ mod tests {
         assert!(
             terminal
                 .pending_order_indicators_for_symbol("BTC")
-                .is_empty()
+                .next()
+                .is_none()
         );
         assert!(
             terminal
@@ -1107,8 +1107,60 @@ mod tests {
         assert!(cancel_id.is_some());
 
         assert!(terminal.has_pending_cancel_indicator(42));
-        assert_eq!(terminal.pending_order_indicators_for_symbol("BTC").len(), 2);
+        assert_eq!(
+            terminal.pending_order_indicators_for_symbol("BTC").count(),
+            2
+        );
         assert_eq!(terminal.optimistic_position_deltas().len(), 1);
+    }
+
+    #[test]
+    fn pending_indicator_selection_preserves_id_order_and_account_symbol_matching() {
+        let mut terminal = terminal_with_chart();
+        terminal.pending_order_indicators.clear();
+        for (id, account, symbol) in [
+            (7, TEST_ACCOUNT.to_string(), "BTC"),
+            (2, format!(" {} ", TEST_ACCOUNT.to_ascii_uppercase()), "BTC"),
+            (5, TEST_ACCOUNT.to_string(), "ETH"),
+            (3, "another-account".to_string(), "BTC"),
+            (1, TEST_ACCOUNT.to_string(), "btc"),
+        ] {
+            terminal.pending_order_indicators.insert(
+                id,
+                PendingOrderIndicator {
+                    account_address: account,
+                    symbol: symbol.to_string(),
+                    oid: None,
+                    is_buy: true,
+                    size: "1".to_string(),
+                    price: "100".to_string(),
+                    kind: PendingOrderIndicatorKind::Placing,
+                    created_at_ms: 1,
+                },
+            );
+        }
+        for (account, expected_btc, expected_eth) in [
+            (Some(TEST_ACCOUNT.to_string()), vec![2, 7], vec![5]),
+            (
+                Some(format!(" {} ", TEST_ACCOUNT.to_ascii_uppercase())),
+                vec![2, 7],
+                vec![5],
+            ),
+            (Some("another-account".to_string()), vec![3], vec![]),
+            (Some("  ".to_string()), vec![], vec![]),
+            (None, vec![], vec![]),
+        ] {
+            terminal.connected_address = account;
+            for (symbol, expected) in [("BTC", expected_btc), ("ETH", expected_eth)] {
+                let mut selected = Vec::new();
+                for (id, indicator) in terminal.pending_order_indicators_for_symbol(symbol) {
+                    selected.push(id);
+                    assert_eq!(indicator.symbol, symbol);
+                    assert_eq!(indicator.price, "100");
+                }
+                assert_eq!(selected, expected);
+            }
+        }
     }
 
     #[test]
@@ -1125,7 +1177,10 @@ mod tests {
         assert!(cancel_id.is_some());
 
         assert!(terminal.has_pending_cancel_indicator(42));
-        assert_eq!(terminal.pending_order_indicators_for_symbol("BTC").len(), 2);
+        assert_eq!(
+            terminal.pending_order_indicators_for_symbol("BTC").count(),
+            2
+        );
         assert_eq!(terminal.optimistic_position_deltas().len(), 1);
     }
 
@@ -1152,7 +1207,8 @@ mod tests {
         assert!(
             terminal
                 .pending_order_indicators_for_symbol("BTC")
-                .is_empty()
+                .next()
+                .is_none()
         );
         assert!(terminal.optimistic_position_deltas().is_empty());
         assert!(terminal.optimistic_open_order_rows().is_empty());
