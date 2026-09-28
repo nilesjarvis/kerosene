@@ -1,5 +1,7 @@
 use super::*;
 
+mod transitions;
+
 #[test]
 fn chase_oid_status_error_keeps_chase_uncertain_for_reconciliation() {
     let mut chase = chase();

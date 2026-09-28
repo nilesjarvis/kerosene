@@ -8,6 +8,8 @@ use crate::signing::ExchangeResponse;
 use crate::twap_state::{TwapChildStatus, TwapPauseReason, TwapStatus};
 use std::time::Instant;
 
+mod ownership;
+
 #[test]
 fn twap_place_refresh_policy_reconciles_only_unknown_or_terminal_results() {
     let unknown: Result<ExchangeResponse, String> =

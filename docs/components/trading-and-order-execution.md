@@ -388,10 +388,13 @@ Chase orders are archived into advanced order history.
 Place, modify, and cancel result handlers read the order and its lifecycle from
 one lookup before accepting a result. Results for absent orders do nothing;
 stale place/cancel results retain their outcome-based refresh policy for the
-original account, while stale modify results do not refresh. Placement-status
-handling borrows the admitted order through its transition, releasing it before
-terminal-wide stop, removal, or refresh operations. Client-order ID verification
-retains the original account for refresh even when no client-order ID is available.
+original account, while stale modify results do not refresh. Placement- and
+OID-status handling borrow the admitted order through its transition, releasing
+it before terminal-wide stop, removal, or refresh operations. Client-order ID
+verification retains the original account for refresh even when no client-order
+ID is available. OID status-request setup and failed status responses share
+`ChaseLifecycle::verifying_order_status`, which preserves stop and missing-order
+intent while selecting the next verification state.
 
 ## TWAP Orders
 
@@ -430,6 +433,13 @@ Lifecycle messages include:
 
 Terminal TWAPs are archived into advanced order history. Active TWAPs are
 runtime-only and are not resumed as live automation after restart.
+
+Slice-result handling consumes a pending placement by ownership; a late result
+leaves pending cancellations intact and retains its existing account-refresh
+policy. Retry plans and final-use client-order IDs move into the next operation,
+while child history, reconciliation state, and independent tasks retain their
+own copies. Response classification, retry limits, and fill accounting stay in
+the slice-result handler.
 
 ## Advanced Order History
 
