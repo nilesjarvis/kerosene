@@ -162,6 +162,13 @@ Requests use keys and pending maps for dedupe/stale protection. Saving a new
 HyperDash key clears relevant pending/cached overlay state and refreshes enabled
 views.
 
+Chart invalidation updates matching heatmaps directly and clears liquidation
+waiters while retaining displayed liquidation data. Distribution responses take
+ownership of their pending request only after generation and key matching;
+unmatched results preserve current state. Key and distribution regression tests
+live in `hyperdash_update/key/tests.rs` and
+`hyperdash_update/liquidations_distribution/tests.rs`.
+
 The HyperDash key is secret-bearing.
 
 ## OpenRouter
