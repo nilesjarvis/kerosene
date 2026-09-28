@@ -10,20 +10,13 @@ use crate::helpers::parse_positive_finite_number;
 use crate::message::Message;
 use crate::order_execution::{
     ModifyIntent, OrderSurface, PreparedModifyOrderResult, modify_order_task,
+    open_order_side_is_buy,
 };
 
 use iced::Task;
 
 #[cfg(test)]
 mod tests;
-
-fn moved_order_is_buy(side: &str) -> Option<bool> {
-    match side {
-        "B" => Some(true),
-        "A" => Some(false),
-        _ => None,
-    }
-}
 
 fn move_order_wire_is_supported(order: &crate::account::OpenOrder) -> Result<(), &'static str> {
     if order.is_trigger == Some(true)
@@ -133,7 +126,7 @@ impl TradingTerminal {
             self.order_status = Some(("Order ticker is hidden in Settings > Risk".into(), true));
             return Task::none();
         }
-        let Some(is_buy) = moved_order_is_buy(&order.side) else {
+        let Some(is_buy) = open_order_side_is_buy(&order.side) else {
             self.order_status = Some(("Move failed: open order has invalid side".into(), true));
             return Task::none();
         };

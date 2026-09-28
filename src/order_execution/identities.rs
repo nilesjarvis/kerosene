@@ -14,7 +14,8 @@ pub(crate) struct SpotAutomationSymbolIdentity {
 }
 
 impl SpotAutomationSymbolIdentity {
-    fn from_symbol(symbol: &crate::api::ExchangeSymbol) -> Option<Self> {
+    /// Capture the metadata that must remain stable during spot automation.
+    pub(crate) fn from_symbol(symbol: &crate::api::ExchangeSymbol) -> Option<Self> {
         (symbol.market_type == MarketType::Spot).then(|| Self {
             key: symbol.key.clone(),
             ticker: symbol.ticker.clone(),
@@ -36,7 +37,8 @@ impl SpotAutomationSymbolIdentity {
     }
 }
 
-fn chase_open_order_side_is_buy(side: &str) -> Option<bool> {
+/// Decode the exchange's case-sensitive open-order side markers.
+pub(crate) fn open_order_side_is_buy(side: &str) -> Option<bool> {
     match side {
         "B" => Some(true),
         "A" => Some(false),
@@ -47,7 +49,7 @@ fn chase_open_order_side_is_buy(side: &str) -> Option<bool> {
 pub(crate) fn open_order_matches_chase_identity(chase: &ChaseOrder, order: &OpenOrder) -> bool {
     chase.tracks_oid(order.oid)
         && order.coin == chase.coin
-        && chase_open_order_side_is_buy(&order.side) == Some(chase.is_buy)
+        && open_order_side_is_buy(&order.side) == Some(chase.is_buy)
         && (chase.is_spot || order.reduce_only == Some(chase.reduce_only))
 }
 
@@ -92,5 +94,19 @@ impl TradingTerminal {
             .get(&twap_id)
             .zip(self.exchange_symbol_for_key(symbol_key))
             .is_some_and(|(identity, symbol)| identity.matches(symbol))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::open_order_side_is_buy;
+
+    #[test]
+    fn open_order_side_accepts_only_exchange_bid_or_ask_markers() {
+        assert_eq!(open_order_side_is_buy("B"), Some(true));
+        assert_eq!(open_order_side_is_buy("A"), Some(false));
+        for invalid in ["b", "a", "buy", "bad", "", " B", "A "] {
+            assert_eq!(open_order_side_is_buy(invalid), None);
+        }
     }
 }

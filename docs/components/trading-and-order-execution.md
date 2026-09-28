@@ -393,6 +393,13 @@ Lifecycle messages include:
 Websocket open-order/fill updates reconcile Chase progress. Terminal or removed
 Chase orders are archived into advanced order history.
 
+Resting-order adoption borrows the open order and symbol metadata through
+validation. Once admitted, it captures only the existing spot identity fields
+and moves the requested symbol into Chase state. Gate order, account refresh,
+rounding, fill cutoffs, and immediate task behavior are unchanged. Adoption,
+order movement, and Chase identity checks share the strict `A`/`B` side parser
+in `order_execution/identities.rs`.
+
 Live and historical fill aggregation check borrowed known IDs plus the current
 OID. Live totals retain coin, side, and adoption-cutoff filtering; history keeps
 its separate fee/P&L rules. Completion formats the totals already computed for

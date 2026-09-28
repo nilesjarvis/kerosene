@@ -1,6 +1,4 @@
-use super::{
-    chase_resting_order_is_buy, chase_resting_order_wire_is_supported, chase_resting_reduce_only,
-};
+use super::{chase_resting_order_wire_is_supported, chase_resting_reduce_only};
 use crate::account::{
     AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary, OpenOrder,
     SpotClearinghouseState, UserFeeRates,
@@ -9,6 +7,8 @@ use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::config::AccountProfile;
 use crate::order_execution::PendingOrderAction;
+
+mod admission;
 
 const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
 
@@ -129,13 +129,6 @@ fn resting_chase_ignores_spot_reduce_only_metadata() {
         chase_resting_reduce_only(MarketType::Spot, Some(true)),
         Ok(false)
     );
-}
-
-#[test]
-fn resting_chase_side_parser_accepts_only_exchange_sides() {
-    assert_eq!(chase_resting_order_is_buy("B"), Some(true));
-    assert_eq!(chase_resting_order_is_buy("A"), Some(false));
-    assert_eq!(chase_resting_order_is_buy("bad"), None);
 }
 
 #[test]

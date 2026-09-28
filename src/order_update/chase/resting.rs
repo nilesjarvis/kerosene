@@ -3,6 +3,7 @@ use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers::{parse_positive_finite_number, positive_finite_value};
 use crate::message::Message;
+use crate::order_execution::{SpotAutomationSymbolIdentity, open_order_side_is_buy};
 use crate::signing::{ChaseLifecycle, ChaseOrder, float_to_wire, round_price};
 use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
 
@@ -21,14 +22,6 @@ fn chase_resting_reduce_only(
     reduce_only.ok_or(
         "Cannot chase order: reduce-only metadata is unavailable; refresh account data first",
     )
-}
-
-fn chase_resting_order_is_buy(side: &str) -> Option<bool> {
-    match side {
-        "B" => Some(true),
-        "A" => Some(false),
-        _ => None,
-    }
 }
 
 fn chase_resting_order_wire_is_supported(order: &OpenOrder) -> Result<(), &'static str> {
@@ -124,7 +117,6 @@ impl TradingTerminal {
                 .open_orders
                 .iter()
                 .find(|order| order.oid == oid && order.coin == coin)
-                .cloned()
             else {
                 self.set_order_status("Order no longer exists".into(), true);
                 return Task::none();
@@ -153,11 +145,11 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        if let Err(message) = chase_resting_order_wire_is_supported(&order) {
+        if let Err(message) = chase_resting_order_wire_is_supported(order) {
             self.set_order_status(message.into(), true);
             return Task::none();
         }
-        let Some(is_buy) = chase_resting_order_is_buy(&order.side) else {
+        let Some(is_buy) = open_order_side_is_buy(&order.side) else {
             self.set_order_status(
                 "Cannot chase order: open order has invalid side".into(),
                 true,
@@ -178,12 +170,7 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        let symbol = self
-            .exchange_symbols
-            .iter()
-            .find(|s| s.key == coin)
-            .cloned();
-        let Some(symbol) = symbol else {
+        let Some(symbol) = self.exchange_symbols.iter().find(|s| s.key == coin) else {
             self.set_order_status(format!("Symbol '{coin}' not found"), true);
             return Task::none();
         };
@@ -220,6 +207,7 @@ impl TradingTerminal {
             self.set_order_status("Cannot chase order with invalid price".into(), true);
             return Task::none();
         };
+        let spot_identity = SpotAutomationSymbolIdentity::from_symbol(symbol);
         let chase_id = self.next_chase_id();
         let started_at = std::time::Instant::now();
         let started_at_ms = Self::now_ms();
@@ -228,7 +216,7 @@ impl TradingTerminal {
             chase_id,
             ChaseOrder {
                 id: chase_id,
-                coin: coin.clone(),
+                coin,
                 account_address,
                 agent_key: key,
                 is_buy,
@@ -260,8 +248,8 @@ impl TradingTerminal {
                 cancel_retries: 0,
             },
         );
-        if is_spot {
-            self.record_chase_spot_symbol_identity(chase_id, &symbol);
+        if let Some(identity) = spot_identity {
+            self.chase_spot_symbol_identities.insert(chase_id, identity);
         }
         self.selected_chase_id = Some(chase_id);
 

@@ -29,7 +29,9 @@ pub(crate) use exchange_errors::{cancel_error_indicates_closed_order, retryable_
 pub(crate) use hud::{
     HudOrderRequest, HudOrderSide, HudOrderType, HudPlacementTracker, MAX_INFLIGHT_HUD_PLACEMENTS,
 };
-pub(crate) use identities::{SpotAutomationSymbolIdentity, open_order_matches_chase_identity};
+pub(crate) use identities::{
+    SpotAutomationSymbolIdentity, open_order_matches_chase_identity, open_order_side_is_buy,
+};
 pub(crate) use pending::{
     OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext, PendingNukeExecution,
     PendingOrderAction,
