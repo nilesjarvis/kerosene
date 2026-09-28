@@ -378,6 +378,12 @@ label, including reserved-region avoidance and crowded-edge adjustments.
 Right-axis badges retain their separate variable-height and fixed-position rules;
 each band sorts its anchors once before packing.
 
+`chart/interaction/drag.rs` ends each active gesture through a shared drag reset,
+then performs gesture-specific payload cleanup and publication. Panning clears the
+candle cache on release so the next frame restores full heatmap detail. Annotation
+previews copy their original snapshot only after coordinate inputs are available;
+selecting a locked annotation leaves its drag snapshots untouched.
+
 ## Liquidations And Heatmap
 
 Chart liquidation data comes from HyperDash update modules:

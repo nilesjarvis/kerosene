@@ -1,4 +1,5 @@
 use super::super::state::DragKind;
+use super::super::viewport::annotations::AnnotationHitPart;
 use super::super::{CandlestickChart, ChartState, VOLUME_REGION_RATIO};
 use super::{InteractionLayout, ProjectedCursor};
 use crate::chart::fisheye::ChartFisheye;
@@ -377,8 +378,6 @@ impl CandlestickChart {
         chart_w: f32,
         chart_h: f32,
     ) -> Option<canvas::Action<Message>> {
-        use super::super::viewport::annotations::AnnotationHitPart;
-
         if let Some(hit) = self.hit_test_annotation(state, pos, chart_w, chart_h) {
             state.selected_annotation = Some(hit.id);
             // Locked drawings can be selected (to restyle / unlock) but not
@@ -387,8 +386,8 @@ impl CandlestickChart {
                 .annotations
                 .iter()
                 .find(|ann| ann.id == hit.id)
-                .cloned()
                 .filter(|ann| !ann.style.locked)
+                .cloned()
             {
                 state.drag_annotation_base = Some(base.clone());
                 state.drag_annotation = Some(base);
