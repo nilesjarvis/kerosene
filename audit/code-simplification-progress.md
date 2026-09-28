@@ -27,7 +27,7 @@ candidates; it does not establish that every module has been reviewed.
 | Orders, signing, Chase, TWAP | Chase/TWAP market-subscription assembly reviewed and shared with order-book panes; lifecycle eligibility filters and event mappings retained. Removed discarded theme constructions from order/Chase entry points after checking theme purity; request and lifecycle code is otherwise byte-identical. Substantive order execution, signing, and automation state-machine review remains. |
 | Config, persistence, secrets | Chart snapshot/config boundaries reviewed, schema unchanged. Proxy URL normalization, redacted labels, deserialization/revalidation, settings commit order, and startup fallback inspected; existing security and persistence behavior retained. Remaining persistence/security code needs review. |
 | Subscriptions and transport | Subscription assembly reviewed across market, user data, Hydromancer, Telegram, timer/input, and window families. Shared selected-provider book setup and reduced symbol copies; remaining eligibility/identity differences retained. Market adapters and user-data routing/dispatch inspected. Shared reconnect-before-notify behavior and snapshot timing, split Hydromancer adapters, and reduced owned payload copies. Native manager lifecycle/commands, both managers' subscription reference counts/coalescers, and Hydromancer registry/session state inspected; provider-specific lifecycle and routing retained. Proxy transport/admission reviewed and retained. Hydromancer frame/control parsing now moves resume strings out of JSON and borrows error text. Both API probes now share telemetry state/update code with independent provider state; snapshot fields and atomic ordering remain unchanged. Hydromancer connection/retry/idle-wait handling reviewed; connect errors and timeouts share one retry path. Fill tuple parsing borrows addresses and feed subscriptions move their final topic use; event formats, dedupe policy, and command cancellation are retained. Liquidation/tracked-trade subscription, receive, dedupe, recovery, and cleanup now share one handler; feature payloads/parsers and separate history limits remain explicit. Remaining integration stream internals still need review. |
-| Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing reviewed; data and label extraction now share one chart marker lookup. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling and reduced summary text copies. Shared-client request construction inspected across API, Hydromancer, HyperDash, and OpenRouter paths; unnecessary temporary client copies removed. Liquidation/tracked-trade update admission, control status, lag handling, and bucket accumulation reviewed; control transitions and liquidation accumulation are shared, while filtering/freshness, alerts, and retention remain feed-specific. Feed aggregation keys, intent, row models, alert eligibility, and row views reviewed; merge checks share one predicate, suppressed alerts defer row construction, and views reuse themes/owned strings and skip hidden-column formatting. Remaining feed controls, headers, responsive thresholds, footer charts/summaries, and connection presentation reviewed; identical controls are shared and wallet counts reused, while chart math and per-feed presentation differences remain intact. X feed state/update/rendering and REST helpers inspected; author profiles now update in place through one path, source options sort borrowed lists with cached keys, and newest-post selection borrows IDs until request creation. X credential staging/commit/clear paths now share cleanup and borrowed validation, with request-generation regressions; the unchanged HTTP client is separated from state. X refresh admission and token/auth results reviewed; the shared refresh decision covers absent/expiring access tokens, dead guards are removed, and owned credentials/tasks avoid extra copies. Telegram channel, post-merge, avatar, media, and reference-price paths reviewed: alert preparation is bounded to formatted messages, mention updates borrow history and share construction, avatar merging uses one lookup, and input/media copies are deferred. Existing auth-test registry races are isolated with the shared test lock. Telegram fast-mode update handlers are separated from post merging; auth requests share generation/status/result setup, login and private-channel scans reuse the signed-in predicate, and request admission/cleanup order has focused regressions. The feature guide now reflects optional fast/private mode and actual polling/session behavior. Telegram state/parsing, stream internals, views, and assistant internals still need substantive follow-up. |
+| Feeds, integrations, assistant | Calendar fetch/refresh, filters, summary, and row views reviewed; date parsing is shared within each view and cached during API sorting. Farside ETF flow parsing reviewed; data and label extraction now share one chart marker lookup. SEC API requests, submissions, structured earnings, document selection, and text summaries reviewed and split by responsibility; shared HTTP request/status handling and reduced summary text copies. Shared-client request construction inspected across API, Hydromancer, HyperDash, and OpenRouter paths; unnecessary temporary client copies removed. Liquidation/tracked-trade update admission, control status, lag handling, and bucket accumulation reviewed; control transitions and liquidation accumulation are shared, while filtering/freshness, alerts, and retention remain feed-specific. Feed aggregation keys, intent, row models, alert eligibility, and row views reviewed; merge checks share one predicate, suppressed alerts defer row construction, and views reuse themes/owned strings and skip hidden-column formatting. Remaining feed controls, headers, responsive thresholds, footer charts/summaries, and connection presentation reviewed; identical controls are shared and wallet counts reused, while chart math and per-feed presentation differences remain intact. X feed state/update/rendering and REST helpers inspected; author profiles now update in place through one path, source options sort borrowed lists with cached keys, and newest-post selection borrows IDs until request creation. X credential staging/commit/clear paths now share cleanup and borrowed validation, with request-generation regressions; the unchanged HTTP client is separated from state. X refresh admission and token/auth results reviewed; the shared refresh decision covers absent/expiring access tokens, dead guards are removed, and owned credentials/tasks avoid extra copies. Telegram channel, post-merge, avatar, media, and reference-price paths reviewed: alert preparation is bounded to formatted messages, mention updates borrow history and share construction, avatar merging uses one lookup, and input/media copies are deferred. Existing auth-test registry races are isolated with the shared test lock. Telegram fast-mode update handlers are separated from post merging; auth requests share generation/status/result setup, login and private-channel scans reuse the signed-in predicate, and request admission/cleanup order has focused regressions. The feature guide now reflects optional fast/private mode and actual polling/session behavior. Telegram public HTTP/parsing is separated from feed state; avatar/media downloads share request/validation code and HTML extraction borrows source slices. Model/redaction, normalization, fetch timing, ordering, and size policies are preserved, with local HTTP and parser regressions. Telegram stream internals, views, and assistant internals still need substantive follow-up. |
 | Views, settings, commands, app shell | Architecture mapped; default live-watchlist Add Widget creation reviewed and shared with restoration. Account/layout-picker selection styles reviewed and consolidated. Theme construction and discarded theme calls in root update, notifications, chart helpers, and order helpers reviewed; the unused calls are removed. Notification delivery, sound entry points, toast retention/animation, and order-status alert policy reviewed; repeated delivery now shares one helper and copies messages only for desktop notifications. Substantive review of other surfaces remains. |
 | Tests, scripts, packaging, assets | Validation documentation read; remaining source/tooling review remains. |
 
@@ -2173,11 +2173,57 @@ Validation (using the local ALSA prefix documented above):
   reviewed separately for validation, credential, and generation ordering.
 - `cargo fmt -- --check` and `git diff --check`: passed.
 
+## 2026-09-28: separate Telegram public client and consolidate image fetching
+
+- Reviewed public HTTP requests, response bounds, image validation, HTML/profile
+  parsing, channel/text normalization, and their model/update/view callers.
+  Moved public requests and HTML parsing into `telegram_feed/client.rs`, keeping
+  the three existing fetch paths available through root re-exports. Feed state,
+  redacted debug output, shared text/image helpers, and normalization remain in
+  the root. Model and client tests now live beside their respective modules.
+- Avatar and media downloads share one request/status/body/signature path. The
+  callers still normalize channels first and retain separate 512 KiB/2 MiB
+  limits and exact error context. Request headers, timeout, observed transport,
+  status-before-body precedence, declared/chunked body checks, and signature-based
+  image acceptance are unchanged. Missing content-type errors use a borrowed
+  fallback string.
+- HTML attribute and inner-fragment extraction now return borrowed slices.
+  Normalization still creates owned model strings, while IDs, timestamps, and
+  source fragments avoid temporary copies. Kept parsing, media precedence,
+  entity decoding, stable ordering, and latest-post selection unchanged. The
+  existing limit operation still releases excess vector capacity.
+- Added five regressions before the download/parser simplifications: three local
+  HTTP tests cover both fetchers' GET/user-agent behavior, image signatures versus
+  declared content type, missing headers, channel/URL/status/read error ordering,
+  exact size limits, and declared/chunked overflow. Two parser tests cover equal
+  sort keys, limit edges, pre-epoch timestamps, channel normalization, Unicode
+  profile metadata, entities, and missing/invalid metadata fallbacks. Live
+  Telegram tests remain ignored; all new HTTP traffic stays on loopback.
+- Inspected candidate/chip/post rendering and noted unnecessary owned candidate,
+  profile, post, and sparkline copies for the next batch. Updated the feature and
+  integration guides. No schemas, message routes, subscriptions, dependencies,
+  assets, session behavior, or view layouts changed; no measured speedup claimed.
+
+Validation (using the local ALSA prefix documented above):
+
+- `cargo test --locked -j 2 --package kerosene --bin kerosene telegram_feed::`:
+  **35 passed, 0 failed, 2 ignored** before and after client simplification.
+- `cargo test --locked -j 2`: **4,419 passed, 0 failed, 6 ignored** on the final
+  Rust changes; doc-tests passed (0 tests).
+- `cargo clippy --locked -j 2 --all-targets --all-features -- -D warnings`:
+  passed.
+- Source comparison verified all 74 named production function bodies before
+  simplification and 68 untouched bodies afterward, including public feed fetch,
+  bounded reads, sorting/limiting, normalization, and raster validation. All
+  redacted debug implementations and existing raw HTML fixtures match exactly;
+  existing test bodies match apart from indentation.
+- `cargo fmt -- --check` and `git diff --check`: passed.
+
 ## Next candidates
 
-1. Continue through Telegram feed state/parsing, stream internals, and views.
-   Look for clear model/client boundaries and avoidable candidate/render copies;
-   retain session, cursor, and request-generation safeguards.
+1. Continue through Telegram views and stream internals. Review candidate,
+   profile, post, and sparkline ownership during rendering, preserving layout
+   and interaction behavior; retain session/cursor safeguards in the stream.
 2. Continue through account data, wallet model, and update ownership. Account
    state/persistence copies remain intentional where they protect a snapshot
    across terminal mutations.

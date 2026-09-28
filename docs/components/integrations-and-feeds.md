@@ -266,13 +266,22 @@ empty-state checks and passed through responsive rendering to the top bar.
 
 Telegram has two modes:
 
-- Public web fetch through `telegram_feed.rs`.
+- Public web fetch and HTML parsing through `telegram_feed/client.rs`, with
+  fetch functions re-exported from `telegram_feed.rs`.
 - Fast/private feed through `telegram_fast_feed.rs` using `grammers`.
 
 Public mode fetches `https://t.me/s/<channel>` pages and does not require a
 secret. Fast mode can use Telegram API ID/hash, code, password, and session
 storage. Session files are stored under the platform config directory with
 restricted permissions where supported.
+
+The public client shares avatar/media request, status, size, and raster-signature
+checks while retaining separate size limits and error labels. HTML extraction
+borrows attributes and text fragments until normalization constructs owned
+model fields. Feed state, redacted debug output, channel normalization, and
+shared plain-text/image helpers remain in `telegram_feed.rs`. Model tests live
+in `telegram_feed/tests.rs`; parser tests and local HTTP regressions live under
+`telegram_feed/client/tests.rs`.
 
 Fast-feed subscriptions require:
 

@@ -260,8 +260,15 @@ remote sign-out fails, it reports a warning after local cleanup succeeds.
 
 Core implementation:
 
-- `src/telegram_feed.rs`: state model, channel normalization, HTML parsing,
-  HTTP fetches, timing labels, avatar validation, and parser tests.
+- `src/telegram_feed.rs`: state model, redacted debug output, channel
+  normalization, timing labels, and shared plain-text/image helpers. Public
+  fetch functions are re-exported here for existing callers.
+- `src/telegram_feed/client.rs`: public HTTP requests, bounded response reading,
+  shared avatar/media fetching, and HTML parsing. Parser helpers borrow slices
+  of the HTML before constructing owned model fields.
+- `src/telegram_feed/tests.rs` and `src/telegram_feed/client/tests.rs`: model
+  and parser tests. Client tests include local HTTP fixtures for image response
+  validation, error precedence, and both size limits.
 - `src/telegram_fast_feed.rs`: optional MTProto auth, session handling,
   startup backfill, and live update streaming.
 - `src/feed_update/telegram.rs`: update routing, refreshes, channel edits, post
