@@ -7,6 +7,32 @@ use iced::{Color, Element, Fill, Theme};
 // Shared Buttons
 // ---------------------------------------------------------------------------
 
+pub fn selected_row_button_style(
+    theme: &Theme,
+    status: button::Status,
+    selected: bool,
+) -> button::Style {
+    let bg = match status {
+        button::Status::Hovered => theme.extended_palette().background.strong.color,
+        _ if selected => theme.extended_palette().background.weak.color,
+        _ => Color::TRANSPARENT,
+    };
+    button::Style {
+        background: Some(bg.into()),
+        text_color: theme.palette().text,
+        border: iced::Border {
+            radius: 4.0.into(),
+            width: if selected { 1.0 } else { 0.0 },
+            color: if selected {
+                theme.palette().primary
+            } else {
+                Color::TRANSPARENT
+            },
+        },
+        ..Default::default()
+    }
+}
+
 pub fn order_type_button(label: &str, active: bool, msg: Message) -> Element<'_, Message> {
     let btn = button(
         text(label)

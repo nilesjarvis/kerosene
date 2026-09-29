@@ -144,8 +144,8 @@ impl AlfredCommand {
         self
     }
 
-    pub(super) fn matches_query(&self, query: &str) -> bool {
-        let query = query.trim().to_ascii_lowercase();
+    /// Matches the trimmed, ASCII-lowercased catalog query.
+    pub(super) fn matches_normalized_query(&self, query: &str) -> bool {
         if query.is_empty() {
             return self.kind != AlfredCommandKind::Trading;
         }

@@ -8,6 +8,8 @@ use crate::twap_state::{TwapPauseReason, TwapPendingOp};
 
 use std::time::Instant;
 
+mod outcomes;
+
 #[test]
 fn filled_status_check_arms_reconciliation_deadline() {
     let now = Instant::now();

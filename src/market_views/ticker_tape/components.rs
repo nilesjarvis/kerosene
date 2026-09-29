@@ -1,10 +1,7 @@
-use crate::denomination::DisplayDenominationContext;
 use crate::helpers;
 use crate::message::Message;
 
-use super::formatting::{
-    TickerTapeItem, exchange_stat_usd_label, pct_color, percent_label, price_label,
-};
+use super::formatting::{PreparedTickerTapeItem, exchange_stat_usd_label, pct_color};
 use super::{
     TICKER_TAPE_HEIGHT, TICKER_TAPE_ICON_SIZE, TICKER_TAPE_ITEM_HORIZONTAL_PADDING,
     TICKER_TAPE_ITEM_SPACING, TICKER_TAPE_SECTION_SEPARATOR_WIDTH, TICKER_TAPE_SEPARATOR_WIDTH,
@@ -18,10 +15,8 @@ use iced::{Color, Element, Fill, Length, Theme};
 // ---------------------------------------------------------------------------
 
 pub(super) fn ticker_tape_item(
-    item: &TickerTapeItem,
-    denomination: &DisplayDenominationContext,
+    item: PreparedTickerTapeItem,
     theme: &Theme,
-    item_width: f32,
 ) -> Element<'static, Message> {
     let icon = helpers::symbol_icon(
         &item.symbol,
@@ -31,17 +26,17 @@ pub(super) fn ticker_tape_item(
     .map(Element::from)
     .unwrap_or_else(|| fallback_ticker_logo(&item.ticker, theme));
     let pct_color = pct_color(item.pct_24h, theme);
-    let symbol = item.symbol.clone();
+    let symbol = item.symbol;
 
     let content = row![
         icon,
-        text(item.ticker.clone())
+        text(item.ticker)
             .size(12)
             .font(crate::app_fonts::monospace_font()),
-        text(price_label(item.price, denomination))
+        text(item.price_label)
             .size(12)
             .font(crate::app_fonts::monospace_font()),
-        text(percent_label(item.pct_24h))
+        text(item.percent_label)
             .size(12)
             .font(crate::app_fonts::monospace_font())
             .color(pct_color),
@@ -62,30 +57,38 @@ pub(super) fn ticker_tape_item(
             .padding([0, TICKER_TAPE_ITEM_HORIZONTAL_PADDING])
             .style(|theme: &Theme, status| ticker_tape_item_button_style(theme, status)),
     )
-    .width(Length::Fixed(item_width))
+    .width(Length::Fixed(item.width))
     .center_y(Length::Fixed(TICKER_TAPE_HEIGHT))
     .clip(true)
     .into()
 }
 
 pub(super) fn ticker_tape_separator(dividers_enabled: bool) -> Element<'static, Message> {
-    container(
-        rule::vertical(1)
-            .style(move |theme: &Theme| ticker_tape_divider_style(theme, 0.10, dividers_enabled)),
-    )
-    .width(Length::Fixed(TICKER_TAPE_SEPARATOR_WIDTH))
-    .height(18)
-    .center_y(Length::Fixed(TICKER_TAPE_HEIGHT))
-    .into()
+    view_separator(dividers_enabled, TICKER_TAPE_SEPARATOR_WIDTH, 18.0, 0.10)
 }
 
 pub(super) fn ticker_tape_section_separator(dividers_enabled: bool) -> Element<'static, Message> {
-    container(
-        rule::vertical(1)
-            .style(move |theme: &Theme| ticker_tape_divider_style(theme, 0.28, dividers_enabled)),
+    view_separator(
+        dividers_enabled,
+        TICKER_TAPE_SECTION_SEPARATOR_WIDTH,
+        22.0,
+        0.28,
     )
-    .width(Length::Fixed(TICKER_TAPE_SECTION_SEPARATOR_WIDTH))
-    .height(22)
+}
+
+fn view_separator(
+    dividers_enabled: bool,
+    width: f32,
+    height: f32,
+    opacity: f32,
+) -> Element<'static, Message> {
+    container(
+        rule::vertical(1).style(move |theme: &Theme| {
+            ticker_tape_divider_style(theme, opacity, dividers_enabled)
+        }),
+    )
+    .width(Length::Fixed(width))
+    .height(height)
     .center_y(Length::Fixed(TICKER_TAPE_HEIGHT))
     .into()
 }

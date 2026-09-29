@@ -5,6 +5,7 @@ use crate::order_execution::NukePlan;
 
 mod catalog;
 mod model;
+mod parsing;
 mod position_close;
 mod trading;
 pub(crate) use model::{
@@ -31,9 +32,10 @@ impl TradingTerminal {
             return vec![command];
         }
 
+        let query = query.to_ascii_lowercase();
         self.alfred_command_catalog()
             .into_iter()
-            .filter(|command| command.matches_query(query))
+            .filter(|command| command.matches_normalized_query(&query))
             .collect()
     }
 
@@ -55,6 +57,7 @@ impl TradingTerminal {
 
     fn alfred_close_position_command(&self, query: &str) -> Option<AlfredCommand> {
         let draft = self.alfred_close_position_draft(query)?;
+        let can_submit = draft.can_submit();
         let mut command = AlfredCommand::new(
             AlfredCommandId::ClosePosition,
             "Close Position",
@@ -64,9 +67,9 @@ impl TradingTerminal {
             None,
             &["close", "flatten", "position", "market"],
         )
-        .with_dynamic_text(draft.title.clone(), draft.detail.clone(), draft.tag.clone());
+        .with_dynamic_text(draft.title, draft.detail, draft.tag);
 
-        if draft.can_submit() {
+        if can_submit {
             command.message = Some(Message::AlfredSubmit);
         } else if let Some(error) = draft.error {
             command = command.disabled_with_message(error);
@@ -167,6 +170,7 @@ impl TradingTerminal {
 
     fn alfred_trade_command(&self, query: &str) -> Option<AlfredCommand> {
         let draft = self.alfred_trade_draft(query)?;
+        let can_submit = draft.can_submit();
         let mut command = AlfredCommand::new(
             AlfredCommandId::NaturalLanguageTrading,
             "Natural Language Trading",
@@ -178,13 +182,12 @@ impl TradingTerminal {
                 "buy", "sell", "long", "short", "trade", "order", "market", "limit",
             ],
         )
-        .with_dynamic_text(draft.title.clone(), draft.detail.clone(), draft.tag.clone());
-        command =
-            command.with_title_icon(draft.icon_symbol.clone(), draft.icon_title_anchor.clone());
+        .with_dynamic_text(draft.title, draft.detail, draft.tag);
+        command = command.with_title_icon(draft.icon_symbol, draft.icon_title_anchor);
 
-        if draft.can_submit() {
+        if can_submit {
             command.message = Some(Message::AlfredSubmit);
-        } else if let Some(error) = draft.error.clone() {
+        } else if let Some(error) = draft.error {
             command = command.disabled_with_message(error);
         } else {
             command = command.disabled("Complete the trade before submitting");

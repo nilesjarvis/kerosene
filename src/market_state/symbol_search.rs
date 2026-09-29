@@ -18,9 +18,10 @@ use self::symbols::context_symbol_keys;
 use self::volume::{format_symbol_search_volume, symbol_search_volume};
 
 use iced::Task;
+use std::borrow::Cow;
 
 impl TradingTerminal {
-    pub(crate) fn symbol_search_hip3_dexes(&self) -> Vec<String> {
+    pub(crate) fn symbol_search_hip3_dexes(&self) -> Vec<&str> {
         symbol_search_hip3_dexes(&self.exchange_symbols)
     }
 
@@ -107,7 +108,7 @@ impl TradingTerminal {
         })
     }
 
-    pub(crate) fn symbol_search_exchange_label(symbol: &ExchangeSymbol) -> String {
+    pub(crate) fn symbol_search_exchange_label(symbol: &ExchangeSymbol) -> Cow<'static, str> {
         symbol_search_exchange_label(symbol)
     }
 

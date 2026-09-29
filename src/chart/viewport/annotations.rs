@@ -6,6 +6,9 @@ use crate::annotations::{
 use crate::chart::{CandlestickChart, ChartState};
 use iced::Point;
 
+#[cfg(test)]
+mod tests;
+
 // ---------------------------------------------------------------------------
 // Annotation Hit Testing
 // ---------------------------------------------------------------------------
@@ -26,9 +29,9 @@ pub(in crate::chart) struct AnnotationHit {
 }
 
 impl CandlestickChart {
-    /// Hit-test annotations against a click position. Anchors take priority over
-    /// bodies, and later (topmost) annotations take priority over earlier ones.
-    /// Hidden and locked annotations are not hittable.
+    /// Hit-test later (topmost) annotations first, checking each annotation's
+    /// anchors before its body. Hidden annotations are skipped; locked annotations
+    /// remain selectable, with callers responsible for gating edits.
     pub(in crate::chart) fn hit_test_annotation(
         &self,
         state: &ChartState,
@@ -106,7 +109,7 @@ impl CandlestickChart {
             }
 
             // Anchor handles take priority so endpoints stay grabbable.
-            for (index, (ts, price)) in ann.kind.anchor_points().into_iter().enumerate() {
+            for (index, (ts, price)) in ann.kind.anchor_points().enumerate() {
                 if let Some(x) = tx(ts) {
                     let y = price_to_y(price);
                     if ((pos.x - x).powi(2) + (pos.y - y).powi(2)).sqrt() <= tol + 2.0 {
@@ -125,15 +128,13 @@ impl CandlestickChart {
                 AnnotationKind::HorizontalLevel { price } => {
                     pos.x >= 0.0 && pos.x <= chart_w && (pos.y - price_to_y(*price)).abs() <= tol
                 }
-                AnnotationKind::TrendLine { start, end } => {
+                AnnotationKind::TrendLine { start, end }
+                | AnnotationKind::Measure { start, end } => {
                     seg_hit(*start, *end, LineExtension::Segment)
                 }
                 AnnotationKind::Ray { start, end } => seg_hit(*start, *end, LineExtension::Forward),
                 AnnotationKind::ExtendedLine { start, end } => {
                     seg_hit(*start, *end, LineExtension::Both)
-                }
-                AnnotationKind::Measure { start, end } => {
-                    seg_hit(*start, *end, LineExtension::Segment)
                 }
                 AnnotationKind::VerticalLine { time } => tx(*time)
                     .is_some_and(|x| pos.y >= 0.0 && pos.y <= price_h && (pos.x - x).abs() <= tol),

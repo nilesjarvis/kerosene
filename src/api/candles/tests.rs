@@ -2,6 +2,7 @@ use super::{
     Candle, candle_interval_ms, fill_zero_volume_candle_gaps, interval_requires_hydromancer,
     interval_uses_orderbook_ticks, normalize_candles,
 };
+use std::collections::BTreeMap;
 
 #[test]
 fn candle_normalization_sorts_and_keeps_latest_duplicate() {
@@ -33,6 +34,65 @@ fn candle_normalization_drops_malformed_candles() {
 
     assert_eq!(normalized.len(), 1);
     assert_eq!(normalized[0].open_time, 1_000);
+}
+
+#[test]
+fn candle_normalization_preserves_last_valid_payload_for_every_duplicate_order() {
+    let mut invalid = Candle::test_price(1_000, 99.0);
+    invalid.volume = -1.0;
+    let fixtures = [
+        (
+            Candle::test_ohlcv(1_000, 1_100, [10.0, 15.0, 5.0, 12.0], 1.0),
+            true,
+        ),
+        (
+            Candle::test_ohlcv(1_000, 1_200, [20.0, 25.0, 15.0, 22.0], 2.0),
+            true,
+        ),
+        (Candle::test_price(2_000, 30.0), true),
+        (invalid, false),
+        (
+            Candle::test_ohlcv(3_000, 3_100, [-2.0, 0.0, -3.0, -1.0], -0.0),
+            true,
+        ),
+    ];
+    let fingerprint = |candle: &Candle| {
+        (
+            candle.open_time,
+            candle.close_time,
+            [
+                candle.open,
+                candle.high,
+                candle.low,
+                candle.close,
+                candle.volume,
+            ]
+            .map(f64::to_bits),
+        )
+    };
+
+    // A timestamp map is an independent oracle for the last valid input per key.
+    // Enumerate all 3,906 sequences up to five entries, including empty/invalid-only
+    // inputs, interleaved groups, and repeated updates to the same timestamp.
+    for length in 0..=5 {
+        for mut permutation in 0..fixtures.len().pow(length) {
+            let mut candles = Vec::new();
+            let mut expected = BTreeMap::new();
+            for _ in 0..length {
+                let (candle, valid) = &fixtures[permutation % fixtures.len()];
+                permutation /= fixtures.len();
+                candles.push(candle.clone());
+                if *valid {
+                    expected.insert(candle.open_time, fingerprint(candle));
+                }
+            }
+            let normalized = normalize_candles(candles);
+            assert_eq!(
+                normalized.iter().map(fingerprint).collect::<Vec<_>>(),
+                expected.into_values().collect::<Vec<_>>()
+            );
+        }
+    }
 }
 
 #[test]

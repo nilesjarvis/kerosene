@@ -34,45 +34,45 @@ fn date_or_panic(raw: &str) -> String {
 }
 
 #[test]
-fn extract_bhyp_cumulative_parses_float_array() {
+fn extract_chart_data_parses_cumulative_values() {
     let html = mock_farside_html(
         "0,0.7,2,4,9.7",
         r#""12 May 2026","13 May 2026","14 May 2026","15 May 2026","18 May 2026""#,
     );
-    let result = extract_bhyp_cumulative(&html).unwrap();
+    let (result, _) = extract_chart_data(&html).expect("valid chart data");
     assert_eq!(result, vec![0.0, 0.7, 2.0, 4.0, 9.7]);
 }
 
 #[test]
-fn extract_bhyp_cumulative_rejects_malformed_numeric_array() {
+fn extract_chart_data_rejects_malformed_numeric_array() {
     let html = mock_farside_html(
         "0,not-a-number,2",
         r#""12 May 2026","13 May 2026","14 May 2026""#,
     );
-    let result = extract_bhyp_cumulative(&html);
+    let result = extract_chart_data(&html);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("data array parse failed"));
 }
 
 #[test]
-fn extract_bhyp_cumulative_returns_error_when_marker_missing() {
+fn extract_chart_data_returns_error_when_marker_missing() {
     let html = "<script>new Chart(ctx, { data: { datasets: [] } });</script>";
-    let result = extract_bhyp_cumulative(html);
+    let result = extract_chart_data(html);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("chart marker not found"));
 }
 
 #[test]
-fn extract_bhyp_cumulative_returns_error_when_data_array_missing() {
+fn extract_chart_data_returns_error_when_data_array_missing() {
     let html = r#"<script>"Bitwise (BHYP)"</script>"#;
-    let result = extract_bhyp_cumulative(html);
+    let result = extract_chart_data(html);
     assert!(result.is_err());
 }
 
 #[test]
-fn extract_labels_parses_string_array() {
+fn extract_chart_data_parses_labels() {
     let html = mock_farside_html("0,0.7", r#""12 May 2026","13 May 2026""#);
-    let result = extract_labels(&html).unwrap();
+    let (_, result) = extract_chart_data(&html).expect("valid chart labels");
     assert_eq!(result, vec!["12 May 2026", "13 May 2026"]);
 }
 
@@ -98,10 +98,31 @@ new Chart(ctx, {{
 }
 
 #[test]
-fn extract_labels_returns_error_when_missing() {
-    let html = "<script>empty</script>";
-    let result = extract_labels(html);
-    assert!(result.is_err());
+fn extract_chart_data_returns_error_when_labels_missing() {
+    let html = r#"<script>{"label":"Bitwise (BHYP)","data":[0]}</script>"#;
+    let error = extract_chart_data(html).expect_err("missing labels");
+    assert_eq!(error, "Farside BHYP: labels array not found before marker");
+}
+
+#[test]
+fn extract_chart_data_uses_the_first_bhyp_chart() {
+    let first = mock_farside_html("0,0.7", r#""12 May 2026","13 May 2026""#);
+    let second = mock_farside_html("4,9", r#""14 May 2026","15 May 2026""#);
+    let (cumulative, labels) =
+        extract_chart_data(&format!("{first}\n{second}")).expect("first chart should be selected");
+
+    assert_eq!(cumulative, vec![0.0, 0.7]);
+    assert_eq!(labels, vec!["12 May 2026", "13 May 2026"]);
+}
+
+#[test]
+fn extract_chart_data_reports_data_errors_before_label_errors() {
+    let invalid = mock_farside_html("not-a-number", "not-a-label");
+    let valid = mock_farside_html("0", r#""12 May 2026""#);
+    let error = extract_chart_data(&format!("{invalid}\n{valid}"))
+        .expect_err("invalid first chart must not be skipped");
+
+    assert!(error.starts_with("Farside BHYP: data array parse failed:"));
 }
 
 #[test]

@@ -6,7 +6,7 @@ pub async fn fetch_wallet_tracker_open_order_count_scoped(
     address: String,
     scope: AccountDataFetchScope,
 ) -> Result<usize, String> {
-    let client = crate::api::CLIENT.clone();
+    let client = &*crate::api::CLIENT;
     let mut order_futs = Vec::new();
     if scope.fetches_main_open_orders() {
         order_futs.push(

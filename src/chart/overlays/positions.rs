@@ -41,21 +41,14 @@ impl CandlestickChart {
             let entry_y = (ctx.price_to_y)(pos_overlay.entry_px);
             if entry_y >= -10.0 && entry_y <= ctx.price_h + 10.0 {
                 let is_long = pos_overlay.szi > 0.0;
-                let pos_color = if is_long {
-                    Color {
-                        a: 0.50,
-                        ..ctx.theme.palette().success
-                    }
-                } else {
-                    Color {
-                        a: 0.50,
-                        ..ctx.theme.palette().danger
-                    }
-                };
                 let pos_color_solid = if is_long {
                     ctx.theme.palette().success
                 } else {
                     ctx.theme.palette().danger
+                };
+                let pos_color = Color {
+                    a: 0.50,
+                    ..pos_color_solid
                 };
                 let badge_kind = RightAxisBadgeKind::PositionEntry;
                 let line_end_x =
@@ -125,18 +118,19 @@ impl CandlestickChart {
                     let line_end_x =
                         right_axis_line_end_x(ctx.right_axis_badges, badge_kind, ctx.chart_w);
 
+                    let line_style = SegmentedHLineStyle {
+                        segment_len: 2.0,
+                        gap_len: 3.0,
+                        offset: 0.0,
+                        color: liq_color_dim,
+                        width: 1.0,
+                    };
                     stroke_projected_segmented_hline_with_offset(
                         ctx.frame,
                         ctx.fisheye,
                         line_end_x,
                         liq_y,
-                        SegmentedHLineStyle {
-                            segment_len: 2.0,
-                            gap_len: 3.0,
-                            offset: 0.0,
-                            color: liq_color_dim,
-                            width: 1.0,
-                        },
+                        line_style,
                     );
                     draw_stacked_right_axis_badge(
                         ctx.frame,
@@ -153,15 +147,7 @@ impl CandlestickChart {
                             text_size: 8.5,
                             text_color: Color::BLACK,
                         },
-                        RightAxisBadgeConnectorStyle::Segmented {
-                            style: SegmentedHLineStyle {
-                                segment_len: 2.0,
-                                gap_len: 3.0,
-                                offset: 0.0,
-                                color: liq_color_dim,
-                                width: 1.0,
-                            },
-                        },
+                        RightAxisBadgeConnectorStyle::Segmented { style: line_style },
                         ctx.fisheye,
                     );
                 }

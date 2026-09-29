@@ -4,6 +4,7 @@ use crate::account::{
 };
 use crate::helpers::positive_finite_value;
 
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -47,21 +48,19 @@ fn parse_all_dex_positions(data: &Value, target_addr: Option<&str>) -> Option<Ke
             && arr.len() >= 2
         {
             let dex_name = arr[0].as_str().unwrap_or("");
-            if let Ok(mut clearinghouse) =
-                serde_json::from_value::<ClearinghouseState>(arr[1].clone())
-            {
+            if let Ok(mut clearinghouse) = ClearinghouseState::deserialize(&arr[1]) {
                 normalize_dex_asset_position_coins(dex_name, &mut clearinghouse.asset_positions);
-                all_positions.extend(clearinghouse.asset_positions.clone());
+                all_positions.extend(clearinghouse.asset_positions.iter().cloned());
                 position_details.extend(clearinghouse.asset_positions.iter().cloned().map(
                     |asset_position| WalletPositionDetail {
                         dex: dex_name.to_string(),
                         asset_position,
                     },
                 ));
-                states_by_dex.insert(dex_name.to_string(), clearinghouse.clone());
                 if dex_name.is_empty() {
-                    main_state = Some(clearinghouse);
+                    main_state = Some(clearinghouse.clone());
                 }
+                states_by_dex.insert(dex_name.to_string(), clearinghouse);
             }
         }
     }
@@ -87,7 +86,7 @@ fn parse_open_orders(data: &Value, target_addr: Option<&str>) -> Option<KeyedUse
         .unwrap_or("")
         .to_string();
     let orders_val = data.get("orders")?;
-    let orders = serde_json::from_value::<Vec<OpenOrder>>(orders_val.clone()).ok()?;
+    let orders = Vec::<OpenOrder>::deserialize(orders_val).ok()?;
     Some((Some(source_addr), WsUserData::OpenOrders { dex, orders }))
 }
 
@@ -98,7 +97,7 @@ fn parse_user_fills(data: &Value, target_addr: Option<&str>) -> Option<KeyedUser
         .and_then(|value| value.as_bool())
         .unwrap_or(false);
     let fills_val = data.get("fills")?;
-    let fills = serde_json::from_value::<Vec<UserFill>>(fills_val.clone()).ok()?;
+    let fills = Vec::<UserFill>::deserialize(fills_val).ok()?;
     Some((Some(source_addr), WsUserData::Fills { fills, is_snapshot }))
 }
 
@@ -106,13 +105,13 @@ fn parse_spot_balances(data: &Value, target_addr: Option<&str>) -> Option<KeyedU
     let source_addr = matching_user_payload_address(data, target_addr)?;
     let spot_state = data.get("spotState")?;
     let balances_val = spot_state.get("balances")?;
-    let balances = serde_json::from_value::<Vec<SpotBalance>>(balances_val.clone()).ok()?;
+    let balances = Vec::<SpotBalance>::deserialize(balances_val).ok()?;
     Some((Some(source_addr), WsUserData::SpotBalances(balances)))
 }
 
 fn parse_all_mids(data: &Value, source_addr: Option<String>) -> Option<KeyedUserData> {
     let mids_val = data.get("mids")?;
-    let mids_str = serde_json::from_value::<HashMap<String, String>>(mids_val.clone()).ok()?;
+    let mids_str = HashMap::<String, String>::deserialize(mids_val).ok()?;
     let mids = mids_str
         .into_iter()
         .filter_map(|(symbol, price)| {

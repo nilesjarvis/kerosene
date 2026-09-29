@@ -89,21 +89,6 @@ pub(super) struct SoundRequest {
     pub(super) volume: f32,
 }
 
-/// Play a fill notification sound.
-pub fn play_fill() {
-    play(SoundKind::Fill);
-}
-
-/// Play an error notification sound.
-pub fn play_error() {
-    play(SoundKind::Error);
-}
-
-/// Play an interest notification sound.
-pub fn play_interest() {
-    play(SoundKind::Interest);
-}
-
 pub fn play_hud_order(sound: ChartHudOrderSound, custom_path: Option<PathBuf>, volume: f32) {
     let volume = normalized_volume(volume);
     match sound {

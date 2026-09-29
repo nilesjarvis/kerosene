@@ -13,7 +13,6 @@ const HYPURRSCAN_UNSTAKING_QUEUE_URL: &str = "https://api.hypurrscan.io/unstakin
 
 pub(crate) async fn fetch_hype_unstaking_queue() -> Result<HypeUnstakingQueueData, String> {
     let response = CLIENT
-        .clone()
         .get(HYPURRSCAN_UNSTAKING_QUEUE_URL)
         .send_observed()
         .await

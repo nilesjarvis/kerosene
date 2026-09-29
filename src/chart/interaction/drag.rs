@@ -82,7 +82,7 @@ impl CandlestickChart {
                 }
                 DragKind::MoveAnnotation { .. } => {
                     if let (Some(base), Some(drag_start), Some((price_hi, price_range, price_h))) = (
-                        state.drag_annotation_base.clone(),
+                        state.drag_annotation_base.as_ref(),
                         state.drag_start,
                         self.visible_price_params(state, layout.chart_w, layout.chart_h),
                     ) {
@@ -104,7 +104,7 @@ impl CandlestickChart {
                         let ts_now = self
                             .x_to_timestamp(pos.x, state, layout.chart_w)
                             .unwrap_or(0);
-                        let mut live = base;
+                        let mut live = base.clone();
                         live.kind
                             .translate(ts_now as i64 - ts_start as i64, price_now - price_start);
                         state.drag_annotation = Some(live);
@@ -112,7 +112,7 @@ impl CandlestickChart {
                 }
                 DragKind::MoveAnnotationAnchor { anchor_index, .. } => {
                     if let (Some(base), Some((price_hi, price_range, price_h))) = (
-                        state.drag_annotation_base.clone(),
+                        state.drag_annotation_base.as_ref(),
                         self.visible_price_params(state, layout.chart_w, layout.chart_h),
                     ) {
                         let price = self.y_to_price_with(
@@ -124,7 +124,7 @@ impl CandlestickChart {
                         let ts = self
                             .x_to_timestamp(pos.x, state, layout.chart_w)
                             .unwrap_or(0);
-                        let mut live = base;
+                        let mut live = base.clone();
                         live.kind.set_anchor(anchor_index, (ts, price));
                         state.drag_annotation = Some(live);
                     }
@@ -212,91 +212,83 @@ impl CandlestickChart {
             let (chart_h, _, _) = self.chart_area_heights(bounds.height);
             return self.finish_pen_stroke(state, chart_w, chart_h);
         }
-        if let Some(DragKind::MoveOrder { oid }) = state.drag {
-            let coin = state.drag_order_coin.take();
-            let new_price = state.drag_order_new_price.take();
-            state.drag = None;
-            state.drag_start = None;
-            if let (Some(coin), Some(price)) = (coin, new_price) {
-                return Some(
-                    canvas::Action::publish(Message::MoveOrder {
-                        coin,
-                        oid,
-                        new_price: price,
-                    })
-                    .and_capture(),
-                );
-            }
-            return Some(canvas::Action::request_redraw());
-        }
-        if matches!(
-            state.drag,
-            Some(DragKind::MoveAnnotation { .. } | DragKind::MoveAnnotationAnchor { .. })
-        ) {
-            let live = state.drag_annotation.take();
-            state.drag_annotation_base = None;
-            state.drag = None;
-            state.drag_start = None;
-            if let Some(annotation) = live
-                && annotation.is_valid()
-            {
-                return Some(
-                    canvas::Action::publish(Message::UpdateAnnotation(self.id, annotation))
+        let kind = state.drag.take()?;
+        state.drag_start = None;
+        match kind {
+            DragKind::MoveOrder { oid } => {
+                let coin = state.drag_order_coin.take();
+                let new_price = state.drag_order_new_price.take();
+                if let (Some(coin), Some(price)) = (coin, new_price) {
+                    return Some(
+                        canvas::Action::publish(Message::MoveOrder {
+                            coin,
+                            oid,
+                            new_price: price,
+                        })
                         .and_capture(),
-                );
+                    );
+                }
             }
-            return Some(canvas::Action::request_redraw());
+            DragKind::MoveAnnotation { .. } | DragKind::MoveAnnotationAnchor { .. } => {
+                let live = state.drag_annotation.take();
+                state.drag_annotation_base = None;
+                if let Some(annotation) = live
+                    && annotation.is_valid()
+                {
+                    return Some(
+                        canvas::Action::publish(Message::UpdateAnnotation(self.id, annotation))
+                            .and_capture(),
+                    );
+                }
+            }
+            _ => {
+                let funding_height = state.drag_funding_panel_height.take();
+                let session_height = state.drag_session_panel_height.take();
+                if matches!(
+                    kind,
+                    DragKind::PanX | DragKind::PanY | DragKind::PanFundingY
+                ) {
+                    // Drag frames tessellate the heatmap at the reduced panning
+                    // budget; redraw once at full fidelity now the gesture ended.
+                    self.candle_cache.clear();
+                }
+                if matches!(kind, DragKind::ResizeFundingPanel) {
+                    let height = funding_height
+                        .unwrap_or(self.funding_panel_height)
+                        .round()
+                        .clamp(
+                            super::super::MIN_FUNDING_PANEL_HEIGHT,
+                            super::super::MAX_FUNDING_PANEL_HEIGHT,
+                        ) as u16;
+                    return Some(
+                        canvas::Action::publish(Message::ChartFundingPanelHeightChanged(
+                            self.id, height, true,
+                        ))
+                        .and_capture(),
+                    );
+                }
+                if matches!(kind, DragKind::ResizeSessionPanel) {
+                    let height = session_height
+                        .unwrap_or(self.session_panel_height)
+                        .round()
+                        .clamp(
+                            super::super::MIN_SESSION_PANEL_HEIGHT,
+                            super::super::MAX_SESSION_PANEL_HEIGHT,
+                        ) as u16;
+                    return Some(
+                        canvas::Action::publish(Message::ChartSessionPanelHeightChanged(
+                            self.id, height, true,
+                        ))
+                        .and_capture(),
+                    );
+                }
+                if matches!(kind, DragKind::PanX | DragKind::PanY)
+                    && let Some(action) = self.viewport_action(state, bounds)
+                {
+                    return Some(action);
+                }
+            }
         }
-        if let Some(kind) = state.drag {
-            let funding_height = state.drag_funding_panel_height.take();
-            let session_height = state.drag_session_panel_height.take();
-            state.drag = None;
-            state.drag_start = None;
-            if matches!(
-                kind,
-                DragKind::PanX | DragKind::PanY | DragKind::PanFundingY
-            ) {
-                // Drag frames tessellate the heatmap at the reduced panning
-                // budget; redraw once at full fidelity now the gesture ended.
-                self.candle_cache.clear();
-            }
-            if matches!(kind, DragKind::ResizeFundingPanel) {
-                let height = funding_height
-                    .unwrap_or(self.funding_panel_height)
-                    .round()
-                    .clamp(
-                        super::super::MIN_FUNDING_PANEL_HEIGHT,
-                        super::super::MAX_FUNDING_PANEL_HEIGHT,
-                    ) as u16;
-                return Some(
-                    canvas::Action::publish(Message::ChartFundingPanelHeightChanged(
-                        self.id, height, true,
-                    ))
-                    .and_capture(),
-                );
-            }
-            if matches!(kind, DragKind::ResizeSessionPanel) {
-                let height = session_height
-                    .unwrap_or(self.session_panel_height)
-                    .round()
-                    .clamp(
-                        super::super::MIN_SESSION_PANEL_HEIGHT,
-                        super::super::MAX_SESSION_PANEL_HEIGHT,
-                    ) as u16;
-                return Some(
-                    canvas::Action::publish(Message::ChartSessionPanelHeightChanged(
-                        self.id, height, true,
-                    ))
-                    .and_capture(),
-                );
-            }
-            if matches!(kind, DragKind::PanX | DragKind::PanY)
-                && let Some(action) = self.viewport_action(state, bounds)
-            {
-                return Some(action);
-            }
-            return Some(canvas::Action::request_redraw());
-        }
-        None
+        Some(canvas::Action::request_redraw())
     }
 }

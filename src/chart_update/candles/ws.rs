@@ -72,7 +72,6 @@ impl TradingTerminal {
             return Task::none();
         }
         let now_ms = Self::now_ms();
-        let should_flash = is_valid_candle(&candle);
         let symbol_is_spot = self.is_spot_coin(&symbol) || is_spot_asset_context_symbol(&symbol);
         let symbol_allows_sparse_intervals =
             symbol_is_spot || self.is_outcome_coin(&symbol) || interval == Timeframe::Mo1.api_str();
@@ -134,9 +133,7 @@ impl TradingTerminal {
                         {
                             instance.candle_fetch_error = None;
                         }
-                        if should_flash {
-                            instance.track_last_price_update(previous_close, next_close, now_ms);
-                        }
+                        instance.track_last_price_update(previous_close, next_close, now_ms);
                         if instance.macro_indicators.show_funding_rate {
                             refresh_funding_ids.push(*chart_id);
                         }

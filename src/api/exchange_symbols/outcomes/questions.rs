@@ -5,7 +5,6 @@ use crate::api::OutcomeContract;
 
 use std::collections::HashMap;
 
-#[derive(Clone)]
 pub(super) struct OutcomeQuestionInfo {
     pub(super) contract: OutcomeContract,
     pub(super) template_id: Option<String>,
@@ -23,8 +22,8 @@ pub(super) struct OutcomeQuestionInfo {
 }
 
 impl OutcomeQuestionInfo {
-    fn from_entry(entry: &OutcomeQuestionEntry, templates: &[OutcomeTemplate]) -> Self {
-        let description_parts = parse_outcome_description(&entry.description);
+    pub(super) fn from_entry(entry: OutcomeQuestionEntry, templates: &[OutcomeTemplate]) -> Self {
+        let mut description_parts = parse_outcome_description(&entry.description);
         let price_thresholds = description_parts
             .get("priceThresholds")
             .map(|value| {
@@ -59,29 +58,27 @@ impl OutcomeQuestionInfo {
         };
         Self {
             question_id: entry.question,
-            name: contract.title.clone().unwrap_or_else(|| entry.name.clone()),
+            name: contract.title.clone().unwrap_or(entry.name),
             contract,
             template_id,
-            description: entry.description.clone(),
-            class: description_parts.get("class").cloned(),
-            underlying: description_parts.get("underlying").cloned(),
-            expiry: description_parts.get("expiry").cloned(),
+            description: entry.description,
+            class: description_parts.remove("class"),
+            underlying: description_parts.remove("underlying"),
+            expiry: description_parts.remove("expiry"),
             price_thresholds,
-            period: description_parts.get("period").cloned(),
-            named_outcomes: entry.named_outcomes.clone(),
-            settled_named_outcomes: entry.settled_named_outcomes.clone(),
+            period: description_parts.remove("period"),
+            named_outcomes: entry.named_outcomes,
+            settled_named_outcomes: entry.settled_named_outcomes,
             fallback_outcome: entry.fallback_outcome,
         }
     }
 }
 
 pub(super) fn questions_by_outcome(
-    questions: &[OutcomeQuestionEntry],
-    templates: &[OutcomeTemplate],
-) -> HashMap<u32, OutcomeQuestionInfo> {
+    questions: &[OutcomeQuestionInfo],
+) -> HashMap<u32, &OutcomeQuestionInfo> {
     let mut questions_by_outcome = HashMap::new();
     for question in questions {
-        let info = OutcomeQuestionInfo::from_entry(question, templates);
         for outcome_id in question
             .named_outcomes
             .iter()
@@ -89,9 +86,7 @@ pub(super) fn questions_by_outcome(
             .copied()
             .chain(question.fallback_outcome)
         {
-            questions_by_outcome
-                .entry(outcome_id)
-                .or_insert_with(|| info.clone());
+            questions_by_outcome.entry(outcome_id).or_insert(question);
         }
     }
     questions_by_outcome

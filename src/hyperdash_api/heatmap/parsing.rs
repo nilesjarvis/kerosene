@@ -75,7 +75,7 @@ pub(super) fn parse_heatmap_response(text: &str) -> Result<LiquidationHeatmap, S
             }
         }
     }
-    let bucket_duration_ms = infer_heatmap_bucket_duration_ms(&timestamps_ms);
+    let bucket_duration_ms = infer_heatmap_bucket_duration_ms(&mut timestamps_ms);
 
     let mut rects = Vec::new();
     for band in &lev.bands {
@@ -148,16 +148,14 @@ pub(super) fn parse_heatmap_timestamp(s: &str) -> Option<u64> {
     Some(epoch_secs * 1000)
 }
 
-pub(super) fn infer_heatmap_bucket_duration_ms(timestamps_ms: &[u64]) -> u64 {
+pub(super) fn infer_heatmap_bucket_duration_ms(timestamps_ms: &mut [u64]) -> u64 {
     let default_ms = HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS * 1000;
     if timestamps_ms.len() < 2 {
         return default_ms;
     }
 
-    let mut sorted = timestamps_ms.to_vec();
-    sorted.sort_unstable();
-    sorted.dedup();
-    sorted
+    timestamps_ms.sort_unstable();
+    timestamps_ms
         .windows(2)
         .filter_map(|pair| {
             let gap = pair[1].saturating_sub(pair[0]);

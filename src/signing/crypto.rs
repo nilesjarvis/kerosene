@@ -30,21 +30,21 @@ fn signing_key_from_hex(private_key_hex: &str) -> Result<SigningKey, String> {
     SigningKey::from_bytes(key_bytes.as_slice().into()).map_err(|e| format!("Invalid key: {e}"))
 }
 
-/// Compute the action hash: keccak256(msgpack(action) ++ nonce_be_bytes ++ vault_flag
-/// [++ expires_after_marker ++ expires_after_be_bytes]).
+/// Hash msgpack(action), the big-endian nonce, and the vault flag plus optional
+/// address, followed by the optional expiry marker and big-endian expiry.
 pub(super) fn action_hash_bytes(
     packed: &[u8],
     vault_address: Option<&str>,
     nonce: u64,
     expires_after: Option<u64>,
 ) -> Result<[u8; 32], String> {
-    let mut data = Vec::with_capacity(packed.len() + 18);
-    data.extend_from_slice(packed);
-    data.extend_from_slice(&nonce.to_be_bytes());
+    let mut hasher = Keccak256::new();
+    hasher.update(packed);
+    hasher.update(nonce.to_be_bytes());
     match vault_address {
-        None => data.push(0x00),
+        None => hasher.update([0x00]),
         Some(addr) => {
-            data.push(0x01);
+            hasher.update([0x01]);
             let addr_bytes = hex::decode(addr.strip_prefix("0x").unwrap_or(addr))
                 .map_err(|e| format!("Invalid vault address hex: {e}"))?;
             if addr_bytes.len() != 20 {
@@ -53,14 +53,14 @@ pub(super) fn action_hash_bytes(
                     addr_bytes.len()
                 ));
             }
-            data.extend_from_slice(&addr_bytes);
+            hasher.update(&addr_bytes);
         }
     }
     if let Some(expires_after) = expires_after {
-        data.push(0x00);
-        data.extend_from_slice(&expires_after.to_be_bytes());
+        hasher.update([0x00]);
+        hasher.update(expires_after.to_be_bytes());
     }
-    Ok(keccak256(&data))
+    Ok(hasher.finalize().into())
 }
 
 /// Construct the EIP-712 typed data hash for the "Agent" phantom type.
@@ -70,7 +70,7 @@ fn eip712_hash(phantom_agent_source: &str, connection_id: &[u8; 32]) -> [u8; 32]
     let domain_type_hash = keccak256(
         b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
     );
-    let domain_sep = keccak256_abi(&[
+    let domain_sep = keccak256_parts(&[
         &domain_type_hash,
         &keccak256(b"Exchange"),
         &keccak256(b"1"),
@@ -79,31 +79,25 @@ fn eip712_hash(phantom_agent_source: &str, connection_id: &[u8; 32]) -> [u8; 32]
     ]);
 
     let agent_type_hash = keccak256(b"Agent(string source,bytes32 connectionId)");
-    let struct_hash = keccak256_abi(&[
+    let struct_hash = keccak256_parts(&[
         &agent_type_hash,
         &keccak256(phantom_agent_source.as_bytes()),
         connection_id,
     ]);
 
-    let mut final_data = Vec::with_capacity(66);
-    final_data.extend_from_slice(b"\x19\x01");
-    final_data.extend_from_slice(&domain_sep);
-    final_data.extend_from_slice(&struct_hash);
-    keccak256(&final_data)
+    keccak256_parts(&[b"\x19\x01", &domain_sep, &struct_hash])
 }
 
 fn keccak256(data: &[u8]) -> [u8; 32] {
-    let mut hasher = Keccak256::new();
-    hasher.update(data);
-    hasher.finalize().into()
+    Keccak256::digest(data).into()
 }
 
-fn keccak256_abi(parts: &[&[u8; 32]]) -> [u8; 32] {
-    let mut data = Vec::with_capacity(parts.len() * 32);
-    for p in parts {
-        data.extend_from_slice(*p);
+fn keccak256_parts(parts: &[&[u8]]) -> [u8; 32] {
+    let mut hasher = Keccak256::new();
+    for part in parts {
+        hasher.update(part);
     }
-    keccak256(&data)
+    hasher.finalize().into()
 }
 
 fn uint256_bytes(val: u64) -> [u8; 32] {
@@ -136,8 +130,9 @@ pub(super) fn sign_l1_action(
         .sign_prehash(&digest)
         .map_err(|e| format!("Signing failed: {e}"))?;
 
-    let r = hex::encode(&signature.to_bytes()[..32]);
-    let s = hex::encode(&signature.to_bytes()[32..64]);
+    let signature_bytes = signature.to_bytes();
+    let r = hex::encode(&signature_bytes[..32]);
+    let s = hex::encode(&signature_bytes[32..]);
     let v = recovery_id.to_byte() + 27;
 
     Ok(serde_json::json!({

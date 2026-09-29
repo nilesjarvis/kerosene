@@ -21,8 +21,7 @@ impl AdvancedOrderHistoryEntry {
         fills: &[UserFill],
         chase: &ChaseOrder,
     ) -> Option<ChaseHistoryFillMetrics> {
-        let oids = chase.known_oids_with_current();
-        if oids.is_empty() {
+        if chase.known_oids.is_empty() && chase.current_oid.is_none() {
             return None;
         }
 
@@ -33,7 +32,7 @@ impl AdvancedOrderHistoryEntry {
             let Some(oid) = fill.oid else {
                 continue;
             };
-            if !oids.contains(&oid) {
+            if !chase.tracks_oid(oid) {
                 continue;
             }
             if !seen.insert(fill.dedup_key()) {

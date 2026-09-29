@@ -127,29 +127,12 @@ pub(crate) struct WalletTrackerState {
 
 impl WalletTrackerState {
     pub(crate) fn from_config(cfg: &WalletTrackerConfig) -> Self {
-        let mut tracked_addresses = Vec::new();
-        for address in &cfg.tracked_addresses {
-            if let Some(address) = normalize_wallet_address_value(address)
-                && !tracked_addresses.contains(&address)
-            {
-                tracked_addresses.push(address);
-            }
-        }
-        for wallet in &cfg.wallets {
-            if let Some(address) = normalize_wallet_address_value(&wallet.address)
-                && !tracked_addresses.contains(&address)
-            {
-                tracked_addresses.push(address);
-            }
-        }
-        let mut muted_addresses = Vec::new();
-        for address in &cfg.muted_addresses {
-            if let Some(address) = normalize_wallet_address_value(address)
-                && !muted_addresses.contains(&address)
-            {
-                muted_addresses.push(address);
-            }
-        }
+        let tracked_addresses = normalized_unique_addresses(
+            cfg.tracked_addresses
+                .iter()
+                .chain(cfg.wallets.iter().map(|wallet| &wallet.address)),
+        );
+        let muted_addresses = normalized_unique_addresses(cfg.muted_addresses.iter());
 
         Self {
             remote_database: Default::default(),
@@ -231,15 +214,70 @@ impl WalletTrackerState {
     }
 }
 
+fn normalized_unique_addresses<'a>(addresses: impl Iterator<Item = &'a String>) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for address in addresses.filter_map(|address| normalize_wallet_address_value(address)) {
+        if !normalized.contains(&address) {
+            normalized.push(address);
+        }
+    }
+    normalized
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{WalletDetailsWindowState, WalletTrackerRow};
+    use super::{WalletDetailsWindowState, WalletTrackerRow, WalletTrackerState};
     use crate::account::{
         ClearinghouseState, MarginSummary, SpotClearinghouseState, WalletDetailsData,
         WalletTrackerSnapshot,
     };
 
     const TEST_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+
+    #[test]
+    fn tracker_config_normalizes_lists_in_first_seen_order_without_cross_filtering() {
+        let a = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let b = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let c = "0xcccccccccccccccccccccccccccccccccccccccc";
+        let d = "0xdddddddddddddddddddddddddddddddddddddddd";
+        let cfg = crate::config::WalletTrackerConfig {
+            tracked_addresses: vec![
+                c.to_uppercase(),
+                format!(" {a}\n"),
+                c.into(),
+                "invalid".into(),
+            ],
+            wallets: [b, a, "", "0xnot-an-address"]
+                .into_iter()
+                .map(|address| crate::config::TrackedWalletConfig {
+                    address: address.into(),
+                    label: String::new(),
+                })
+                .collect(),
+            muted_addresses: vec![
+                d.to_uppercase(),
+                a.into(),
+                format!("\t{d} "),
+                "invalid".into(),
+            ],
+            open: true,
+            width: 1234.0,
+            height: 567.0,
+            x: Some(-20.0),
+            y: Some(30.0),
+        };
+        let tracker = WalletTrackerState::from_config(&cfg);
+        assert_eq!(tracker.tracked_addresses, [c, a, b]);
+        assert_eq!(tracker.muted_addresses, [d, a]);
+        assert!(tracker.open);
+        assert_eq!((tracker.width, tracker.height), (1234.0, 567.0));
+        assert_eq!((tracker.x, tracker.y), (Some(-20.0), Some(30.0)));
+        assert!(tracker.rows.is_empty());
+        assert!(tracker.core_refresh_queue.is_empty());
+        assert!(tracker.order_refresh_queue.is_empty());
+        assert!(tracker.remote_database.entries.is_empty());
+        assert!(tracker.compact_selections.is_empty());
+    }
 
     #[test]
     fn wallet_details_window_state_debug_redacts_address() {

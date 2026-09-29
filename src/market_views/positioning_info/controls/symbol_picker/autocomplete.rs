@@ -52,14 +52,10 @@ impl TradingTerminal {
         symbol: &'a ExchangeSymbol,
         theme: &Theme,
     ) -> Element<'a, Message> {
-        let sym_key = symbol.key.clone();
-        let display = symbol
-            .display_name
-            .as_deref()
-            .unwrap_or(&symbol.ticker)
-            .to_string();
+        let sym_key = &symbol.key;
+        let display = symbol.display_name.as_deref().unwrap_or(&symbol.ticker);
         let mut coin_content = Row::new().spacing(6).align_y(Alignment::Center);
-        if let Some(icon) = helpers::symbol_icon(&sym_key, 14, theme.palette().text) {
+        if let Some(icon) = helpers::symbol_icon(sym_key, 14, theme.palette().text) {
             coin_content = coin_content.push(icon);
         }
         coin_content = coin_content.push(
@@ -68,9 +64,9 @@ impl TradingTerminal {
                 .color(theme.palette().text)
                 .width(Fill),
         );
-        if let Some(dex) = helpers::hip3_dex(&sym_key) {
+        if let Some(dex) = helpers::hip3_dex(sym_key) {
             coin_content = coin_content.push(
-                text(dex.to_string())
+                text(dex)
                     .size(10)
                     .color(theme.extended_palette().background.weak.text),
             );
@@ -85,7 +81,7 @@ impl TradingTerminal {
         );
 
         button(coin_content)
-            .on_press(Message::PositioningInfoSymbolSelected(id, sym_key))
+            .on_press(Message::PositioningInfoSymbolSelected(id, sym_key.clone()))
             .padding([4, 8])
             .style(|theme: &Theme, status| {
                 let bg = match status {

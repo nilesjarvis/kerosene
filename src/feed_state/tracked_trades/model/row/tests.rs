@@ -45,6 +45,33 @@ fn row_rejects_different_hash_outside_time_window() {
 }
 
 #[test]
+fn row_fee_tokens_preserve_blank_and_nonblank_values() {
+    for (current, incoming, expected) in [
+        ("USDC", "USDC", "USDC"),
+        ("USDC", "", "USDC"),
+        ("USDC", "  ", "USDC"),
+        ("", "USDC", "USDC"),
+        ("  ", "USDC", "USDC"),
+        ("  ", "", ""),
+        ("", "  ", "  "),
+        ("USDC", "HYPE", "mixed"),
+        ("mixed", "", "mixed"),
+    ] {
+        let mut first = event();
+        first.fee_token = current.to_string();
+        let mut next = event();
+        next.fee_token = incoming.to_string();
+        let mut row = TrackedTradeFeedRow::from_event(&first);
+
+        row.add_event(&next);
+
+        assert_eq!(row.fee_token, expected);
+        assert_eq!(row.fee, 0.02);
+        assert_eq!(row.fill_count, 2);
+    }
+}
+
+#[test]
 fn row_add_event_tracks_mixed_fee_token_direction_and_earlier_start() {
     let mut row = TrackedTradeFeedRow::from_event(&event());
     let mut earlier = event();

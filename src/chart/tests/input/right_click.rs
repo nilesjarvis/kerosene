@@ -6,6 +6,8 @@ use super::{
 use crate::chart::ChartState;
 use crate::message::Message;
 
+mod priority;
+
 #[test]
 fn quick_order_open_right_click_in_chart_area_publishes_replacement_open_message() {
     let chart = quick_order_chart();

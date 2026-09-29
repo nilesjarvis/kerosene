@@ -4,6 +4,8 @@ use crate::config::ReadDataProvider;
 use crate::read_data_provider::MarketDataSourceContext;
 use crate::timeframe::Timeframe;
 
+mod admission;
+
 fn spot_symbol(key: &str) -> crate::api::ExchangeSymbol {
     crate::api::ExchangeSymbol {
         key: key.to_string(),

@@ -4,6 +4,7 @@ use crate::api::Candle;
 use chrono::TimeZone;
 use iced::Color;
 
+mod rendering;
 mod series;
 mod sessions;
 mod time_window;

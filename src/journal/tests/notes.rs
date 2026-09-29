@@ -1,8 +1,7 @@
-use super::fill;
-use crate::journal::note_key_for_trade;
+use super::{fill, note};
 use crate::journal::{
-    JournalNote, aggregate_trades_with_diagnostics, journal_tags_input, note_for_trade,
-    parse_journal_tags,
+    JournalNote, aggregate_trades_with_diagnostics, journal_tags_input, note_entry_for_trade,
+    note_for_trade, parse_journal_tags,
 };
 use std::collections::HashMap;
 
@@ -22,11 +21,58 @@ fn note_lookup_keeps_legacy_time_based_keys_working() {
     );
 
     assert_ne!(trade.id, legacy_key);
-    assert_eq!(note_key_for_trade(&entries, trade), Some(legacy_key));
+    assert_eq!(
+        note_entry_for_trade(&entries, trade).map(|(key, _)| key),
+        Some(legacy_key.as_str())
+    );
     assert_eq!(
         note_for_trade(&entries, trade).map(|note| note.open.as_str()),
         Some("legacy note")
     );
+}
+
+#[test]
+fn note_lookup_prefers_current_id_even_when_its_note_is_empty() {
+    let result = aggregate_trades_with_diagnostics(vec![fill(1, 10, "BTC")]);
+    let trade = &result.trades[0];
+    let entries = HashMap::from([
+        (trade.id.clone(), JournalNote::default()),
+        ("BTC_1".to_string(), note("legacy note")),
+    ]);
+
+    assert_eq!(
+        note_entry_for_trade(&entries, trade).map(|(key, _)| key),
+        Some(trade.id.as_str())
+    );
+    assert!(note_for_trade(&entries, trade).is_some_and(JournalNote::is_empty));
+}
+
+#[test]
+fn note_lookup_uses_first_exact_legacy_match_and_returns_none_when_missing() {
+    let mut result = aggregate_trades_with_diagnostics(vec![fill(1, 10, "BTC")]);
+    let trade = &mut result.trades[0];
+    trade.legacy_note_ids = ["missing", "BTC_2", "BTC_1", "BTC_2"]
+        .map(str::to_string)
+        .to_vec();
+    let mut entries = HashMap::from([
+        ("BTC_1".to_string(), note("later alias")),
+        ("BTC_2".to_string(), note("first alias")),
+        ("btc_2".to_string(), note("different case")),
+    ]);
+
+    for (expected_key, expected_text) in [("BTC_2", "first alias"), ("BTC_1", "later alias")] {
+        assert_eq!(
+            note_entry_for_trade(&entries, trade).map(|(key, _)| key),
+            Some(expected_key)
+        );
+        let selected = note_for_trade(&entries, trade).expect("matching legacy note");
+        assert_eq!(selected.open, expected_text);
+        assert!(std::ptr::eq(selected, &entries[expected_key]));
+        entries.remove(expected_key);
+    }
+
+    assert!(note_entry_for_trade(&entries, trade).is_none());
+    assert!(note_for_trade(&entries, trade).is_none());
 }
 
 #[test]

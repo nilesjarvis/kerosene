@@ -40,7 +40,6 @@ async fn fetch_order_status(
         "oid": oid,
     });
     let response = CLIENT
-        .clone()
         .post(API_URL)
         .json(&body)
         .send_info()

@@ -1,11 +1,10 @@
 use crate::app_state::TradingTerminal;
 use crate::config::{self, KeroseneConfig};
-use crate::market_state::{OrderBookDisplayMode, OrderBookInstance, OrderBookSymbolMode};
+use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
 use crate::message::Message;
-use crate::pane_state::PaneKind;
 
 use iced::Task;
-use std::collections::{HashSet, hash_map::Entry};
+use std::collections::HashSet;
 
 impl TradingTerminal {
     pub(super) fn boot_order_book_instances(
@@ -24,44 +23,16 @@ impl TradingTerminal {
                     }
                 }
             };
-            let mut inst = OrderBookInstance::new(
-                ob_cfg.id,
+            let inst = OrderBookInstance::from_config(
+                ob_cfg,
                 mode,
                 Self::normalized_order_book_tick_size(ob_cfg.tick_size, cfg.book_tick_size),
             );
-            inst.display_mode = match ob_cfg.display_mode {
-                config::OrderBookDisplayModeConfig::DepthList => OrderBookDisplayMode::DepthList,
-                config::OrderBookDisplayModeConfig::DomLadder => OrderBookDisplayMode::DomLadder,
-                config::OrderBookDisplayModeConfig::DepthChart => OrderBookDisplayMode::DepthChart,
-            };
-            inst.center_on_mid = ob_cfg.center_on_mid;
-            inst.reverse_side = ob_cfg.reverse_side;
-            inst.show_spread_chart = ob_cfg.show_spread_chart;
-            inst.set_spread_chart_height(ob_cfg.spread_chart_height);
-            inst.book_loading = true;
             self.order_books.insert(ob_cfg.id, inst);
             self.next_order_book_id = self.next_order_book_id.max(ob_cfg.id + 1);
         }
 
-        let pane_ids = self
-            .workspace_pane_kinds()
-            .filter_map(|(_, _, kind)| match kind {
-                PaneKind::OrderBook(id) => Some(*id),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        for id in pane_ids {
-            if let Entry::Vacant(entry) = self.order_books.entry(id) {
-                let mut inst = OrderBookInstance::new(
-                    id,
-                    OrderBookSymbolMode::Active,
-                    Self::normalized_book_tick_size(cfg.book_tick_size),
-                );
-                inst.book_loading = true;
-                entry.insert(inst);
-                self.next_order_book_id = self.next_order_book_id.max(id + 1);
-            }
-        }
+        self.ensure_order_book_pane_instances(cfg.book_tick_size);
     }
 
     pub(super) fn boot_order_book_tasks(&mut self) -> Task<Message> {

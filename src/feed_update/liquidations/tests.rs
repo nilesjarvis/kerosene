@@ -2,6 +2,111 @@ use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::ws::{HydromancerWsMessage, LiquidationEvent};
+use std::collections::{BTreeMap, VecDeque};
+
+fn liquidation_event(time_ms: u64, is_buy: bool, size: f64, price: f64) -> LiquidationEvent {
+    LiquidationEvent {
+        coin: "HYPE".to_string(),
+        price,
+        size,
+        is_buy,
+        time_ms,
+        method: "market".to_string(),
+        liquidated_user: "synthetic-user".to_string(),
+        tx_index: 1,
+    }
+}
+
+#[test]
+fn live_liquidations_keep_bucket_sides_retention_and_bounded_history() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.liquidation_alerts_enabled = false;
+    terminal.liquidations = VecDeque::from(vec![liquidation_event(0, false, 1.0, 1.0); 10_000]);
+    terminal.liquidation_summary_buckets.insert(0, (1.0, 1.0));
+    terminal.liquidation_chart_buckets.insert(0, (1.0, 1.0));
+    // Future bucket boundaries avoid crossing a retention/minute boundary during the test.
+    let base = (TradingTerminal::now_ms() / 60_000 + 1) * 60_000;
+    for event in [
+        liquidation_event(base, false, 2.0, 5.0),
+        liquidation_event(base + 1_000, true, 4.0, 2.0),
+        liquidation_event(base + 1_000, false, 3.0, 4.0),
+    ] {
+        let message = scoped_liquidation_message(&terminal, HydromancerWsMessage::Event(event));
+        let _ = terminal.update_liquidation_feed(message);
+    }
+
+    assert_eq!(terminal.liquidations.len(), 10_000);
+    let latest = terminal
+        .liquidations
+        .front()
+        .expect("latest liquidation should be retained");
+    assert_eq!(latest.time_ms, base + 1_000);
+    assert_eq!(latest.size, 3.0);
+    assert_eq!(
+        terminal.liquidation_summary_buckets,
+        BTreeMap::from([(base / 60_000, (22.0, 8.0))])
+    );
+    assert_eq!(
+        terminal.liquidation_chart_buckets,
+        BTreeMap::from([(base / 1_000, (10.0, 0.0)), (base / 1_000 + 1, (12.0, 8.0)),])
+    );
+}
+
+#[test]
+fn recomputed_liquidation_buckets_include_all_history_without_pruning() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.liquidations = VecDeque::from([
+        liquidation_event(0, false, 1.0, 2.0),
+        liquidation_event(59_999, true, 3.0, 2.0),
+        liquidation_event(60_000, false, 2.0, 5.0),
+        liquidation_event(60_999, true, 4.0, 2.0),
+        liquidation_event(61_000, false, 5.0, 2.0),
+    ]);
+    terminal.liquidation_summary_buckets.insert(999, (1.0, 1.0));
+    terminal.liquidation_chart_buckets.insert(999, (1.0, 1.0));
+
+    terminal.recompute_liquidation_buckets();
+
+    assert_eq!(
+        terminal.liquidation_summary_buckets,
+        BTreeMap::from([(0, (2.0, 6.0)), (1, (20.0, 8.0))])
+    );
+    assert_eq!(
+        terminal.liquidation_chart_buckets,
+        BTreeMap::from([
+            (0, (2.0, 0.0)),
+            (59, (0.0, 6.0)),
+            (60, (10.0, 8.0)),
+            (61, (10.0, 0.0)),
+        ])
+    );
+}
+
+#[test]
+fn hidden_liquidation_refreshes_status_without_rows_or_buckets() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.muted_tickers.insert("HYPE".to_string());
+    terminal.liquidations_status = "Current".to_string();
+    terminal.liquidations_last_rx_ms = Some(123);
+    let before = TradingTerminal::now_ms();
+    let message = scoped_liquidation_message(
+        &terminal,
+        HydromancerWsMessage::Event(liquidation_event(before, false, 1.0, 1.0)),
+    );
+
+    let _ = terminal.update_liquidation_feed(message);
+
+    assert_eq!(terminal.liquidations_status, "Connected");
+    assert!(
+        terminal
+            .liquidations_last_rx_ms
+            .is_some_and(|last_rx| last_rx >= before)
+    );
+    assert!(terminal.liquidations.is_empty());
+    assert!(terminal.liquidation_summary_buckets.is_empty());
+    assert!(terminal.liquidation_chart_buckets.is_empty());
+    assert!(terminal.toasts.is_empty());
+}
 
 fn scoped_liquidation_message(
     terminal: &TradingTerminal,

@@ -78,8 +78,8 @@ fn ws_book_event_stream(coin: &str, sigfigs: BookSigfigs) -> BookEventStream {
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    if !super::emit_lag_after_reconnect(
-                        &reconnect_tx,
+                    if !super::emit_after_reconnect(
+                        || reconnect_tx.request_lag_reconnect(),
                         WsStreamEvent::Lagged { skipped },
                         |event| async { output.send(event).await.is_ok() },
                         std::time::Duration::from_secs(super::WS_LAG_RECONNECT_PAUSE_SECS),

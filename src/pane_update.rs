@@ -220,14 +220,14 @@ mod tests {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         terminal.add_widget_menu_open = true;
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
-        let request_id = terminal.portfolio.refresh_request_id;
+        let request_id = terminal.portfolio.refresh.request_id;
 
         let _task = terminal.update_panes(Message::AddPortfolioPane);
 
         assert!(!terminal.add_widget_menu_open);
         assert!(terminal.pane_is_open(|kind| matches!(kind, PaneKind::Portfolio)));
-        assert!(terminal.portfolio.loading);
-        assert_ne!(terminal.portfolio.refresh_request_id, request_id);
+        assert!(terminal.portfolio.refresh.loading);
+        assert_ne!(terminal.portfolio.refresh.request_id, request_id);
     }
 
     #[test]
@@ -237,14 +237,14 @@ mod tests {
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
         terminal
             .set_account_data_for_address_for_test(TEST_ACCOUNT, account_data_with_pm_enabled());
-        let request_id = terminal.income.refresh_request_id;
+        let request_id = terminal.income.refresh.request_id;
 
         let _task = terminal.update_panes(Message::AddIncomePane);
 
         assert!(!terminal.add_widget_menu_open);
         assert!(terminal.pane_is_open(|kind| matches!(kind, PaneKind::Income)));
-        assert!(terminal.income.loading);
-        assert_ne!(terminal.income.refresh_request_id, request_id);
+        assert!(terminal.income.refresh.loading);
+        assert_ne!(terminal.income.refresh.request_id, request_id);
     }
 
     #[test]

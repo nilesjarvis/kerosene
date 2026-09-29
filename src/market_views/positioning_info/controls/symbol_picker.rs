@@ -180,7 +180,7 @@ impl TradingTerminal {
             .into()
     }
 
-    fn positioning_info_symbol_display(&self, symbol: &str) -> String {
+    fn positioning_info_symbol_display<'a>(&'a self, symbol: &'a str) -> &'a str {
         self.exchange_symbols
             .iter()
             .find(|candidate| candidate.key == symbol)
@@ -189,9 +189,8 @@ impl TradingTerminal {
                     .display_name
                     .as_deref()
                     .unwrap_or(&candidate.ticker)
-                    .to_string()
             })
-            .unwrap_or_else(|| symbol.to_string())
+            .unwrap_or(symbol)
     }
 }
 

@@ -3,6 +3,7 @@ use crate::ws::{SubscriptionGuard, WsCommand, WsStream, get_manager};
 
 use super::{KeyedAssetContextStreamEvent, SymbolAssetContextStreamEvent, WsStreamEvent};
 use futures::SinkExt as _;
+use serde::Deserialize;
 use tokio::sync::broadcast;
 
 #[cfg(test)]
@@ -34,7 +35,7 @@ fn parse_active_asset_ctx(
     if data.get("coin").and_then(|v| v.as_str()) != Some(coin) {
         return None;
     }
-    serde_json::from_value::<AssetContext>(data.get("ctx")?.clone()).ok()
+    AssetContext::deserialize(data.get("ctx")?).ok()
 }
 
 fn ws_asset_ctx_stream(
@@ -80,8 +81,8 @@ fn ws_asset_ctx_stream(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    if !super::emit_lag_after_reconnect(
-                        &reconnect_tx,
+                    if !super::emit_after_reconnect(
+                        || reconnect_tx.request_lag_reconnect(),
                         WsStreamEvent::Lagged { skipped },
                         |event| async { output.send(event).await.is_ok() },
                         std::time::Duration::from_secs(super::WS_LAG_RECONNECT_PAUSE_SECS),

@@ -1,5 +1,6 @@
 mod errors;
 mod heatmap;
+mod http;
 mod liquidation_levels;
 mod models;
 mod positioning;

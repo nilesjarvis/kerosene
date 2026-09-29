@@ -22,11 +22,10 @@ impl TradingTerminal {
             }
             let key = TrackedTradeAggregationKey::from_event(trade);
             if let Some(index) = latest_by_key.get(&key).copied()
-                && rows.get(index).is_some_and(|row| row.can_merge(trade))
+                && let Some(row) = rows.get_mut(index)
+                && row.can_merge(trade)
             {
-                if let Some(row) = rows.get_mut(index) {
-                    row.add_event(trade);
-                }
+                row.add_event(trade);
                 continue;
             }
 

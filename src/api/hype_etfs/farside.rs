@@ -36,21 +36,6 @@ pub(super) fn parse_bhyp_flows_from_html(html: &str) -> Result<Vec<HypeEtfDailyF
 // ---------------------------------------------------------------------------
 
 fn extract_chart_data(html: &str) -> Result<(Vec<f64>, Vec<String>), String> {
-    let cumulative = extract_bhyp_cumulative(html)?;
-    let labels = extract_labels(html)?;
-
-    if labels.len() != cumulative.len() {
-        return Err(format!(
-            "Farside BHYP: labels count ({}) != data count ({})",
-            labels.len(),
-            cumulative.len()
-        ));
-    }
-
-    Ok((cumulative, labels))
-}
-
-fn extract_bhyp_cumulative(html: &str) -> Result<Vec<f64>, String> {
     let pos = html
         .find(BHYP_CHART_LABEL)
         .ok_or_else(|| "Farside BHYP: chart marker not found in response".to_string())?;
@@ -66,14 +51,6 @@ fn extract_bhyp_cumulative(html: &str) -> Result<Vec<f64>, String> {
         return Err("Farside BHYP: cumulative data included a non-finite value".to_string());
     }
 
-    Ok(cumulative)
-}
-
-fn extract_labels(html: &str) -> Result<Vec<String>, String> {
-    let pos = html
-        .find(BHYP_CHART_LABEL)
-        .ok_or_else(|| "Farside BHYP: chart marker not found in response".to_string())?;
-
     let labels_array = find_last_array_before_key(html, pos, "labels", "labels")?;
     let labels: Vec<String> = serde_json::from_str(labels_array)
         .map_err(|e| format!("Farside BHYP: labels array parse failed: {e}"))?;
@@ -82,7 +59,15 @@ fn extract_labels(html: &str) -> Result<Vec<String>, String> {
         return Err("Farside BHYP: empty labels array".to_string());
     }
 
-    Ok(labels)
+    if labels.len() != cumulative.len() {
+        return Err(format!(
+            "Farside BHYP: labels count ({}) != data count ({})",
+            labels.len(),
+            cumulative.len()
+        ));
+    }
+
+    Ok((cumulative, labels))
 }
 
 fn find_array_after_key<'a>(

@@ -1,6 +1,6 @@
 use super::{
     AggregatedTrade, JournalNote, JournalSnapshotCoverage, JournalTradeDetails,
-    JournalTradeSnapshot, JournalTradeSnapshotRequest,
+    JournalTradeSnapshot, JournalTradeSnapshotRequest, is_non_perp_coin,
 };
 use crate::helpers::redact_sensitive_response_text;
 use crate::portfolio_state::PortfolioWindow;
@@ -33,7 +33,7 @@ impl JournalFilter {
         // indices; `#` is outcome; everything else is perp.
         match self {
             Self::All => true,
-            Self::Perp => !coin.starts_with('@') && !coin.starts_with('#') && !coin.contains('/'),
+            Self::Perp => !is_non_perp_coin(coin),
             Self::Spot => coin.starts_with('@') || coin.contains('/'),
             Self::Outcome => coin.starts_with('#'),
         }

@@ -13,7 +13,7 @@ pub(in crate::portfolio_state::charts::income) fn prepare_income_chart_layout(
     bars: &[(String, f64)],
     width: f32,
     height: f32,
-) -> Option<IncomeChartLayout> {
+) -> Option<IncomeChartLayout<'_>> {
     if bars.is_empty() {
         return None;
     }
@@ -49,7 +49,7 @@ pub(in crate::portfolio_state::charts::income) fn prepare_income_chart_layout(
             };
 
             IncomeBarLayout {
-                label: label.clone(),
+                label,
                 value: *value,
                 center_x,
                 x: center_x - bar_width * 0.5,
@@ -74,10 +74,10 @@ pub(in crate::portfolio_state::charts::income) fn prepare_income_chart_layout(
     })
 }
 
-pub(in crate::portfolio_state::charts::income) fn hovered_income_bar(
-    layout: &IncomeChartLayout,
+pub(in crate::portfolio_state::charts::income) fn hovered_income_bar<'a, 'data>(
+    layout: &'a IncomeChartLayout<'data>,
     cursor: Point,
-) -> Option<&IncomeBarLayout> {
+) -> Option<&'a IncomeBarLayout<'data>> {
     if cursor.x < layout.left_pad
         || cursor.x > layout.left_pad + layout.plot_width
         || cursor.y < layout.top_pad

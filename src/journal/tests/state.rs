@@ -1,13 +1,34 @@
-use super::note;
+use super::{fill, note};
 use crate::{
     config::ChartBackfillSource,
     journal::{
         JournalAccountState, JournalFilter, JournalState, JournalSyncStatus,
-        JournalTradeSnapshotRequest,
+        JournalTradeSnapshotRequest, aggregate_trades_with_diagnostics, is_non_perp_coin,
     },
     timeframe::Timeframe,
 };
 use std::collections::HashMap;
+
+#[test]
+fn non_perp_coin_detection_covers_spot_and_outcome_keys() {
+    for (coin, expected) in [
+        ("@107", true),
+        ("#0", true),
+        ("PAIR/USDC", true),
+        ("xyz:PAIR/USDC", true),
+        ("#0/USDC", true),
+        ("@", true),
+        ("#", true),
+        ("/", true),
+        ("BTC", false),
+        ("xyz:NVDA", false),
+        ("", false),
+        (" BTC ", false),
+        (" @107", false),
+    ] {
+        assert_eq!(is_non_perp_coin(coin), expected, "{coin}");
+    }
+}
 
 #[test]
 fn journal_filter_matches_expected_coin_prefixes() {
@@ -16,6 +37,10 @@ fn journal_filter_matches_expected_coin_prefixes() {
         ("xyz:NVDA", true, true, false, false),
         ("@107", true, false, true, false),
         ("#950", true, false, false, true),
+        ("PAIR/USDC", true, false, true, false),
+        ("xyz:PAIR/USDC", true, false, true, false),
+        ("#0/USDC", true, false, true, true),
+        ("", true, true, false, false),
     ];
 
     for (coin, all, perp, spot, outcome) in cases {
@@ -228,22 +253,72 @@ fn journal_sync_status_is_scoped_by_account() {
 }
 
 #[test]
-fn journal_clear_data_resets_sync_status() {
-    let mut state = JournalState::new_for_account(
-        Some("account-a".to_string()),
-        HashMap::new(),
-        HashMap::new(),
-    );
-    state.sync_status = JournalSyncStatus {
-        watermark_ms: Some(10_000),
-        next_start_ms: Some(5_000),
-        pages_loaded: 2,
-        fills_loaded: 4_000,
-        pagination_warning: Some("page boundary warning".to_string()),
-        complete: false,
-    };
+fn journal_clear_data_resets_loaded_history_and_drafts_but_keeps_notes_and_preferences() {
+    for address in [None, Some("new-address")] {
+        let mut state = JournalState::new_for_account(
+            Some("account-a".to_string()),
+            HashMap::new(),
+            HashMap::new(),
+        );
+        state.loaded_address = Some("old-address".to_string());
+        state
+            .entries
+            .insert("BTC_1".to_string(), note("saved reflection"));
+        state.raw_fills.push(fill(1, 10, "BTC"));
+        let aggregated = aggregate_trades_with_diagnostics(state.raw_fills.clone());
+        state.trades = aggregated.trades;
+        state.trade_details = aggregated.trade_details;
+        let trade_id = state.trades[0].id.clone();
+        state.expanded_snapshot_trade_ids.insert(trade_id.clone());
+        state.selected_trade_id = Some(trade_id.clone());
+        state.edit_modes.insert(trade_id.clone(), true);
+        state
+            .edit_source_keys
+            .insert(trade_id.clone(), "BTC_1".to_string());
+        state
+            .edit_buffers
+            .insert(trade_id.clone(), note("draft reflection"));
+        state.edit_tag_raw.insert(trade_id, "draft-tag".to_string());
+        state.loading = true;
+        state.error = Some("old error".to_string());
+        state.warning = Some("old warning".to_string());
+        state.last_refresh_time = Some(10_000);
+        state.sync_request_id = 7;
+        state.filter = JournalFilter::Perp;
+        state.include_fees_in_pnl = false;
+        state.sync_status = JournalSyncStatus {
+            watermark_ms: Some(10_000),
+            next_start_ms: Some(5_000),
+            pages_loaded: 2,
+            fills_loaded: 4_000,
+            pagination_warning: Some("page boundary warning".to_string()),
+            complete: false,
+        };
 
-    state.clear_active_account_data();
+        match address {
+            Some(address) => state.clear_active_account_data_for_address(address.to_string()),
+            None => state.clear_active_account_data(),
+        }
 
-    assert_eq!(state.sync_status, JournalSyncStatus::default());
+        assert_eq!(state.loaded_address.as_deref(), address);
+        assert!(state.raw_fills.is_empty());
+        assert!(state.trades.is_empty());
+        assert!(state.trade_details.is_empty());
+        assert!(state.expanded_snapshot_trade_ids.is_empty());
+        assert!(state.selected_trade_id.is_none());
+        assert!(state.edit_modes.is_empty());
+        assert!(state.edit_source_keys.is_empty());
+        assert!(state.edit_buffers.is_empty());
+        assert!(state.edit_tag_raw.is_empty());
+        assert!(!state.loading);
+        assert!(state.error.is_none());
+        assert!(state.warning.is_none());
+        assert!(state.last_refresh_time.is_none());
+        assert_eq!(state.sync_status, JournalSyncStatus::default());
+        assert_eq!(state.sync_request_id, 7);
+        assert_eq!(state.active_account_key.as_deref(), Some("account-a"));
+        assert_eq!(state.entries["BTC_1"].open, "saved reflection");
+        assert_eq!(state.filter, JournalFilter::Perp);
+        assert!(!state.include_fees_in_pnl);
+    }
 }

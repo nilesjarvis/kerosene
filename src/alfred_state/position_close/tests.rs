@@ -184,6 +184,57 @@ fn parses_full_position_close() {
 }
 
 #[test]
+fn close_previews_preserve_resolved_coin_side_and_error_priority() {
+    for (size, side) in [
+        (" 2 ", "long"),
+        ("-3", "short"),
+        ("0", "open"),
+        ("NaN", "open"),
+    ] {
+        let mut position = perp_position("xyz:GOLD");
+        position.position.szi = size.into();
+        let mut terminal = close_terminal(vec![position], Vec::new());
+        let mut metadata = perp_symbol("xyz:GOLD");
+        metadata.ticker = "GOLD".into();
+        terminal.exchange_symbols.push(metadata);
+        for query in ["close XYZ:gold 12.5%", "close gold 12.5%"] {
+            let draft = close_draft_or_panic(&terminal, query);
+            assert!(draft.can_submit(), "{query}");
+            assert_eq!(draft.coin.as_deref(), Some("xyz:GOLD"));
+            assert_eq!(draft.fraction, 0.125);
+            assert_eq!(draft.title, "CLOSE 12.50% XYZ:GOLD");
+            assert_eq!(
+                draft.detail,
+                format!("Market close 12.50% of {side} position")
+            );
+            assert_eq!(draft.tag, "Close");
+            assert_eq!(draft.error, None);
+        }
+        terminal.account_loading = true;
+        for (query, title, error) in [
+            (
+                "close gold",
+                "CLOSE 100% GOLD",
+                "Account refresh in progress",
+            ),
+            (
+                "close gold 125",
+                "CLOSE 100% GOLD",
+                "Use a close percentage from 1 to 100",
+            ),
+            ("close", "CLOSE 100% TICKER", "Add a ticker to close"),
+        ] {
+            let draft = close_draft_or_panic(&terminal, query);
+            assert!(!draft.can_submit());
+            assert_eq!(draft.coin, None);
+            assert_eq!(draft.title, title);
+            assert_eq!(draft.detail, error);
+            assert_eq!(draft.error.as_deref(), Some(error));
+        }
+    }
+}
+
+#[test]
 fn parses_fractional_position_close() {
     let intent = parse_close_position_intent("close hype 25").expect("close intent");
 
@@ -232,4 +283,64 @@ fn rejects_invalid_close_percentages() {
 fn ignores_non_close_queries() {
     assert_eq!(parse_close_position_intent("buy HYPE"), None);
     assert_eq!(parse_close_position_intent("nuke"), None);
+}
+
+#[test]
+fn close_tokens_preserve_punctuation_and_error_precedence() {
+    let invalid = Some("Use a close percentage from 1 to 100");
+    let duplicate = Some("Use one close percentage");
+    let extra_symbol = Some("Use one ticker to close");
+    for (query, symbol, fraction, error) in [
+        (
+            "[CLOSE]\u{2003}; () (HYPE), [12.5%]",
+            Some("HYPE"),
+            Some(0.125),
+            None,
+        ),
+        ("close of position PCT 25", None, Some(0.25), None),
+        ("close 25 50 HYPE", Some("HYPE"), Some(0.25), duplicate),
+        ("close NaN HYPE 25", Some("HYPE"), Some(0.25), invalid),
+        ("close HYPE BTC 25 50", Some("HYPE"), Some(0.25), duplicate),
+        ("close HYPE 25 BTC", Some("HYPE"), Some(0.25), extra_symbol),
+        ("close HYPE NaN BTC", Some("HYPE"), None, invalid),
+        ("close HYPE 12.5%%", Some("HYPE"), Some(0.125), None),
+        ("close $ 25 HYPE", Some("$"), Some(0.25), extra_symbol),
+        ("close xyz:gold", Some("xyz:gold"), None, None),
+        ("close @107", Some("@107"), None, None),
+        ("close ,", None, None, None),
+    ] {
+        assert_eq!(
+            parse_close_position_intent(query),
+            Some(ParsedClosePositionIntent {
+                symbol: symbol.map(str::to_owned),
+                fraction,
+                error: error.map(str::to_owned),
+            }),
+            "{query}",
+        );
+    }
+    for query in ["", " [] , ; {} ", "closed HYPE", "buy close HYPE"] {
+        assert_eq!(parse_close_position_intent(query), None, "{query}");
+    }
+}
+
+#[test]
+fn normalizes_alfred_symbols_without_rewriting_indexed_keys() {
+    for (raw, expected) in [
+        ("", ""),
+        ("hype", "HYPE"),
+        ("HYPE/Usdc", "HYPE/USDC"),
+        ("XYZ:gold", "xyz:GOLD"),
+        ("XYZ:gold:usd", "xyz:GOLD:USD"),
+        (":gold", ":GOLD"),
+        ("XYZ:", "xyz:"),
+        ("@Index", "@Index"),
+        ("#Index:token", "#Index:token"),
+        ("+Index", "+Index"),
+        ("Éth", "ÉTH"),
+        ("éTH", "éTH"),
+        ("ÉX:gold", "Éx:GOLD"),
+    ] {
+        assert_eq!(normalize_symbol_input(raw), expected, "{raw}");
+    }
 }

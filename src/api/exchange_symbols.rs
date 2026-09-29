@@ -90,19 +90,16 @@ impl ExchangeSymbolsPayload {
 /// allPerpMetas, perpConciseAnnotations, perpDexs, spotMeta, outcomeMeta,
 /// and outcomeTemplates.
 pub async fn fetch_exchange_symbols() -> Result<ExchangeSymbolsPayload, String> {
-    let client = CLIENT.clone();
-    let perp_client = client.clone();
-    let spot_client = client.clone();
-    let outcome_client = client;
+    let client = &*CLIENT;
 
     // Fetch each market family independently. Spot discovery and quote-token
     // safety must not depend on unrelated perp metadata being available.
     let (perp_result, spot_result, outcome_result) = futures::join!(
         async move {
             let (metas_raw, annotations_raw, dexs_raw) = futures::try_join!(
-                post_info_value(perp_client.clone(), "allPerpMetas"),
-                post_info_value(perp_client.clone(), "perpConciseAnnotations"),
-                post_info_value(perp_client, "perpDexs"),
+                post_info_value(client, "allPerpMetas"),
+                post_info_value(client, "perpConciseAnnotations"),
+                post_info_value(client, "perpDexs"),
             )?;
             let mut symbols = Vec::new();
             append_perp_symbols(&mut symbols, &metas_raw, &annotations_raw, &dexs_raw)?;
@@ -110,15 +107,15 @@ pub async fn fetch_exchange_symbols() -> Result<ExchangeSymbolsPayload, String> 
             Ok::<_, String>((symbols, perp_dexes))
         },
         async move {
-            let spot_meta = post_info_value(spot_client, "spotMeta").await?;
+            let spot_meta = post_info_value(client, "spotMeta").await?;
             let mut symbols = Vec::new();
             append_spot_symbols(&mut symbols, &spot_meta)?;
             Ok::<_, String>(symbols)
         },
         async move {
             let (outcome_meta, templates) = futures::try_join!(
-                post_info_typed::<OutcomeMetaResponse>(outcome_client.clone(), "outcomeMeta"),
-                post_info_typed::<Vec<OutcomeTemplate>>(outcome_client, "outcomeTemplates"),
+                post_info_typed::<OutcomeMetaResponse>(client, "outcomeMeta"),
+                post_info_typed::<Vec<OutcomeTemplate>>(client, "outcomeTemplates"),
             )?;
             parse_outcome_symbols(outcome_meta, &templates)
         },
@@ -183,14 +180,14 @@ fn info_request_payload(request_type: &'static str) -> serde_json::Value {
 }
 
 async fn post_info_value(
-    client: reqwest::Client,
+    client: &reqwest::Client,
     request_type: &'static str,
 ) -> Result<Value, String> {
     post_info_typed(client, request_type).await
 }
 
 async fn post_info_typed<T: DeserializeOwned>(
-    client: reqwest::Client,
+    client: &reqwest::Client,
     request_type: &'static str,
 ) -> Result<T, String> {
     let response = client

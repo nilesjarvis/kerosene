@@ -28,13 +28,15 @@ impl TradingTerminal {
         instance.chart.candle_cache.clear();
     }
 
-    pub(crate) fn apply_heatmap_data_to_chart(
+    pub(crate) fn apply_cached_heatmap_to_chart(
         &mut self,
         chart_id: ChartId,
         cache_key: &str,
-        data: &LiquidationHeatmap,
         from_cache: bool,
     ) {
+        let Some(data) = self.heatmap_data_cache.get(cache_key) else {
+            return;
+        };
         let muted = self
             .charts
             .get(&chart_id)
@@ -110,7 +112,8 @@ mod tests {
             max_abs_usd: 15.0,
         };
 
-        terminal.apply_heatmap_data_to_chart(chart_id, &cache_key, &data, false);
+        terminal.cache_heatmap_data(cache_key.clone(), data);
+        terminal.apply_cached_heatmap_to_chart(chart_id, &cache_key, false);
 
         let instance = terminal.charts.get(&chart_id).expect("chart should exist");
         assert_eq!(instance.chart.heatmap_rects.len(), 1);

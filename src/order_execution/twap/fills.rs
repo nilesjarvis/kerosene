@@ -213,15 +213,7 @@ impl TradingTerminal {
                 // `status_check_cloid` set, blocking future slices.
                 status_update = Some(message);
             }
-            if twap.stop_requested
-                && !twap.status.is_terminal()
-                && twap.pending_op.is_none()
-                && !twap.has_status_unknown_child()
-            {
-                finish_ids.push(twap.id);
-                continue;
-            }
-            if no_fill_confirmed
+            if (twap.stop_requested || no_fill_confirmed)
                 && !twap.status.is_terminal()
                 && twap.pending_op.is_none()
                 && !twap.has_status_unknown_child()

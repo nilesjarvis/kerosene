@@ -1,10 +1,10 @@
 use base64::Engine;
+use iced::advanced::graphics::core::Bytes;
 use iced::widget::image::Handle as ImageHandle;
 use image::{DynamicImage, GenericImageView, ImageFormat, ImageReader, Limits};
 use std::fmt;
 use std::io::{BufReader, Cursor};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use zeroize::Zeroizing;
 
 const MAX_SOURCE_BYTES: u64 = 12 * 1024 * 1024;
@@ -23,7 +23,7 @@ pub(crate) struct AgentPnlCardAttachment {
     pub(crate) file_label: String,
     pub(crate) width: u32,
     pub(crate) height: u32,
-    pub(crate) png: Arc<[u8]>,
+    pub(crate) png: Bytes,
     pub(crate) preview_handle: ImageHandle,
 }
 
@@ -172,12 +172,13 @@ fn prepare_agent_pnl_card(path: &Path) -> Result<AgentPnlCardAttachment, String>
     }
 
     let file_label = bounded_file_label(path);
+    let png = Bytes::from(png);
     let preview_handle = ImageHandle::from_bytes(png.clone());
     Ok(AgentPnlCardAttachment {
         file_label,
         width,
         height,
-        png: Arc::from(png),
+        png,
         preview_handle,
     })
 }
@@ -230,6 +231,32 @@ mod tests {
         assert!(attachment.png.starts_with(b"\x89PNG\r\n\x1a\n"));
         assert_eq!(attachment.file_label, "social-card.png");
         assert_eq!(attachment.prompt_image().mime_type, "image/png");
+
+        let prompt = attachment.prompt_image();
+        let preview = attachment.preview_handle.clone();
+        let retained = attachment.clone();
+        drop(attachment);
+        let ImageHandle::Bytes(_, preview_bytes) = preview else {
+            panic!("prepared preview must retain encoded bytes");
+        };
+        assert_eq!(preview_bytes.as_ref(), retained.png.as_ref());
+        assert_eq!(preview_bytes.as_ptr(), retained.png.as_ptr());
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(prompt.data.as_bytes())
+                .expect("prompt base64"),
+            retained.png.as_ref()
+        );
+        assert_eq!(
+            image::load_from_memory(&preview_bytes)
+                .expect("preview must decode after the original attachment is dropped")
+                .dimensions(),
+            (2_000, 1_000)
+        );
+        assert_eq!(format!("{prompt:?}"), "AgentPromptImage(<redacted>)");
+        let debug = format!("{retained:?}");
+        assert!(!debug.contains("social-card.png"));
+        assert!(debug.contains("<redacted>"));
 
         let _ = std::fs::remove_file(path);
         let _ = std::fs::remove_dir(directory);

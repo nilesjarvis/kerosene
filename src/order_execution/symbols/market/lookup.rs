@@ -107,7 +107,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn market_type_for_symbol(&self, coin: &str) -> Option<MarketType> {
-        let _theme = self.theme();
         self.exchange_symbols
             .iter()
             .find(|s| s.key == coin)

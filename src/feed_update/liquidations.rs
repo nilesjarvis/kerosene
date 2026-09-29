@@ -1,6 +1,6 @@
+use super::hydromancer_status::apply_hydromancer_control_message;
 use crate::app_state::TradingTerminal;
-use crate::feed_state::liquidation_feed_scroll_id;
-use crate::helpers::redact_sensitive_response_text;
+use crate::feed_state::{add_liquidation_to_buckets, liquidation_feed_scroll_id};
 use crate::message::Message;
 use crate::ws;
 use iced::Task;
@@ -28,42 +28,14 @@ impl TradingTerminal {
                     return Task::none();
                 }
 
+                apply_hydromancer_control_message(
+                    &message,
+                    &mut self.liquidations_status,
+                    &mut self.liquidations_last_rx_ms,
+                );
+
                 match message {
-                    ws::HydromancerWsMessage::Connecting => {
-                        self.liquidations_status = "Connecting".to_string();
-                    }
-                    ws::HydromancerWsMessage::Resuming => {
-                        self.liquidations_status = "Resuming session".to_string();
-                    }
-                    ws::HydromancerWsMessage::Connected => {
-                        self.liquidations_last_rx_ms = Some(Self::now_ms());
-                        self.liquidations_status = "Connected".to_string();
-                    }
-                    ws::HydromancerWsMessage::Reconnected => {
-                        self.liquidations_last_rx_ms = Some(Self::now_ms());
-                        self.liquidations_status = "Reconnected".to_string();
-                    }
-                    ws::HydromancerWsMessage::Heartbeat => {
-                        self.liquidations_last_rx_ms = Some(Self::now_ms());
-                    }
-                    ws::HydromancerWsMessage::Reconnecting {
-                        error,
-                        retry_delay_secs,
-                    } => {
-                        let error = redact_sensitive_response_text(&error);
-                        self.liquidations_status =
-                            format!("Reconnecting in {retry_delay_secs}s: {error}");
-                    }
-                    ws::HydromancerWsMessage::Disconnected(e) => {
-                        self.liquidations_last_rx_ms = None;
-                        let e = redact_sensitive_response_text(&e);
-                        self.liquidations_status = format!("Disconnected: {e}");
-                    }
-                    ws::HydromancerWsMessage::Lagged { skipped } => {
-                        self.liquidations_last_rx_ms = None;
-                        self.liquidations_status = format!(
-                            "Stream lagged; reconnecting after skipping {skipped} messages"
-                        );
+                    ws::HydromancerWsMessage::Lagged { .. } => {
                         self.liquidation_summary_buckets.clear();
                         self.liquidation_chart_buckets.clear();
                     }
@@ -106,32 +78,14 @@ impl TradingTerminal {
                             self.push_toast(msg, liquidation.is_buy);
                         }
 
-                        self.liquidations.push_front(liquidation.clone());
+                        add_liquidation_to_buckets(
+                            &mut self.liquidation_summary_buckets,
+                            &mut self.liquidation_chart_buckets,
+                            &liquidation,
+                        );
+                        self.liquidations.push_front(liquidation);
                         if self.liquidations.len() > 10000 {
                             self.liquidations.truncate(10000);
-                        }
-
-                        let event_notional = liquidation.size * liquidation.price;
-                        let bucket_ms = liquidation.time_ms / 60_000;
-                        let entry = self
-                            .liquidation_summary_buckets
-                            .entry(bucket_ms)
-                            .or_insert((0.0, 0.0));
-                        if liquidation.is_buy {
-                            entry.1 += event_notional;
-                        } else {
-                            entry.0 += event_notional;
-                        }
-
-                        let chart_bucket_sec = liquidation.time_ms / 1000;
-                        let chart_entry = self
-                            .liquidation_chart_buckets
-                            .entry(chart_bucket_sec)
-                            .or_insert((0.0, 0.0));
-                        if liquidation.is_buy {
-                            chart_entry.1 += event_notional;
-                        } else {
-                            chart_entry.0 += event_notional;
                         }
 
                         let now_ms = Self::now_ms();
@@ -147,7 +101,7 @@ impl TradingTerminal {
                             return self.snap_liquidation_feed_to_latest();
                         }
                     }
-                    ws::HydromancerWsMessage::TrackedTrade(_) => {}
+                    _ => {}
                 }
             }
             Message::ClearLiquidations => {

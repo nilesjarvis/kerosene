@@ -19,22 +19,10 @@ impl TradingTerminal {
     ) -> Column<'a, Message> {
         let active_btn = button(text("Track Active Symbol").size(12).center().width(Fill))
             .on_press(Message::OrderBookSetMode(id, OrderBookSymbolMode::Active))
-            .style(move |theme: &Theme, status| {
-                let is_active = matches!(inst.mode, OrderBookSymbolMode::Active);
-                let bg = if is_active {
-                    theme.extended_palette().background.strong.color
-                } else {
-                    match status {
-                        button::Status::Hovered => theme.extended_palette().background.strong.color,
-                        _ => iced::Color::TRANSPARENT,
-                    }
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: theme.palette().text,
-                    ..Default::default()
-                }
-            });
+            .style(symbol_mode_button_style(matches!(
+                inst.mode,
+                OrderBookSymbolMode::Active
+            )));
 
         let search_col = column![
             active_btn,
@@ -59,30 +47,15 @@ impl TradingTerminal {
             if display.to_lowercase().contains(&query_lower)
                 || sym.key.to_lowercase().contains(&query_lower)
             {
-                let s_key = sym.key.clone();
-                let mode = OrderBookSymbolMode::Fixed(s_key.clone());
+                let is_active =
+                    matches!(&inst.mode, OrderBookSymbolMode::Fixed(key) if key == &sym.key);
                 let btn = button(text(display).size(12).width(Fill))
                     .height(SYMBOL_RESULT_ROW_HEIGHT)
-                    .on_press(Message::OrderBookSetMode(id, mode.clone()))
-                    .style(move |theme: &Theme, status| {
-                        let is_active =
-                            matches!(&inst.mode, OrderBookSymbolMode::Fixed(s) if s == &s_key);
-                        let bg = if is_active {
-                            theme.extended_palette().background.strong.color
-                        } else {
-                            match status {
-                                button::Status::Hovered => {
-                                    theme.extended_palette().background.strong.color
-                                }
-                                _ => iced::Color::TRANSPARENT,
-                            }
-                        };
-                        button::Style {
-                            background: Some(bg.into()),
-                            text_color: theme.palette().text,
-                            ..Default::default()
-                        }
-                    });
+                    .on_press(Message::OrderBookSetMode(
+                        id,
+                        OrderBookSymbolMode::Fixed(sym.key.clone()),
+                    ))
+                    .style(symbol_mode_button_style(is_active));
                 results = results.push(btn);
                 matches += 1;
             }
@@ -93,5 +66,20 @@ impl TradingTerminal {
                 .width(Fill)
                 .height(SYMBOL_RESULTS_AREA_HEIGHT),
         )
+    }
+}
+
+fn symbol_mode_button_style(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |theme, status| {
+        let bg = if active || matches!(status, button::Status::Hovered) {
+            theme.extended_palette().background.strong.color
+        } else {
+            iced::Color::TRANSPARENT
+        };
+        button::Style {
+            background: Some(bg.into()),
+            text_color: theme.palette().text,
+            ..Default::default()
+        }
     }
 }

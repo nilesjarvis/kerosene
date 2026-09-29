@@ -1,7 +1,9 @@
 use crate::account::{OpenOrder, UserFill};
 use crate::app_state::TradingTerminal;
 use crate::helpers::{parse_positive_finite_number, values_match_approx};
-use crate::order_execution::order_account_addresses_match;
+use crate::order_execution::{
+    PreparedExchangeOrder, open_order_side_is_buy, order_account_addresses_match,
+};
 
 use std::fmt;
 
@@ -46,7 +48,7 @@ impl fmt::Debug for PendingOrderIndicator {
     }
 }
 
-struct PendingOrderIndicatorInput {
+pub(crate) struct PendingOrderIndicatorInput {
     account_address: String,
     symbol: String,
     oid: Option<u64>,
@@ -54,6 +56,27 @@ struct PendingOrderIndicatorInput {
     size: String,
     price: String,
     kind: PendingOrderIndicatorKind,
+}
+
+impl PendingOrderIndicatorInput {
+    /// Keep the account order's raw identity and size independently of the
+    /// canonical symbol and normalized size used by the exchange request.
+    pub(crate) fn for_modification(
+        account_address: String,
+        order: &OpenOrder,
+        new_price: String,
+    ) -> Option<Self> {
+        let is_buy = open_order_side_is_buy(&order.side)?;
+        Some(Self {
+            account_address,
+            symbol: order.coin.clone(),
+            oid: Some(order.oid),
+            is_buy,
+            size: order.sz.clone(),
+            price: new_price,
+            kind: PendingOrderIndicatorKind::Modifying,
+        })
+    }
 }
 
 /// In-flight decoration for an Orders-tab row, derived from the pending
@@ -73,6 +96,30 @@ pub(crate) struct ProjectedPositionDelta {
 }
 
 impl TradingTerminal {
+    /// The submission surface chooses the projection policy: IOC limit orders,
+    /// for example, use market indicators because they never rest.
+    pub(crate) fn add_prepared_order_placement_indicator(
+        &mut self,
+        account_address: &str,
+        prepared: &PreparedExchangeOrder,
+        use_market_indicator: bool,
+    ) -> Option<u64> {
+        self.add_pending_order_indicator(PendingOrderIndicatorInput {
+            account_address: account_address.to_string(),
+            symbol: prepared.symbol_key.clone(),
+            oid: None,
+            is_buy: prepared.is_buy,
+            size: prepared.size.clone(),
+            price: prepared.price.clone(),
+            kind: if use_market_indicator {
+                PendingOrderIndicatorKind::MarketPlacing
+            } else {
+                PendingOrderIndicatorKind::Placing
+            },
+        })
+    }
+
+    #[cfg(test)]
     pub(crate) fn add_pending_order_placement_indicator(
         &mut self,
         account_address: String,
@@ -92,6 +139,7 @@ impl TradingTerminal {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn add_pending_market_order_placement_indicator(
         &mut self,
         account_address: String,
@@ -111,7 +159,10 @@ impl TradingTerminal {
         })
     }
 
-    fn add_pending_order_indicator(&mut self, input: PendingOrderIndicatorInput) -> Option<u64> {
+    pub(crate) fn add_pending_order_indicator(
+        &mut self,
+        input: PendingOrderIndicatorInput,
+    ) -> Option<u64> {
         match input.kind {
             // Placements render provisional rows/lines from these values, so
             // both must be well-formed.
@@ -155,7 +206,7 @@ impl TradingTerminal {
         account_address: String,
         order: &OpenOrder,
     ) -> Option<u64> {
-        let is_buy = open_order_is_buy(&order.side)?;
+        let is_buy = open_order_side_is_buy(&order.side)?;
         self.add_pending_order_indicator(PendingOrderIndicatorInput {
             account_address,
             symbol: order.coin.clone(),
@@ -167,22 +218,18 @@ impl TradingTerminal {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn add_pending_order_modification_indicator(
         &mut self,
         account_address: String,
         order: &OpenOrder,
         new_price: String,
     ) -> Option<u64> {
-        let is_buy = open_order_is_buy(&order.side)?;
-        self.add_pending_order_indicator(PendingOrderIndicatorInput {
+        self.add_pending_order_indicator(PendingOrderIndicatorInput::for_modification(
             account_address,
-            symbol: order.coin.clone(),
-            oid: Some(order.oid),
-            is_buy,
-            size: order.sz.clone(),
-            price: new_price,
-            kind: PendingOrderIndicatorKind::Modifying,
-        })
+            order,
+            new_price,
+        )?)
     }
 
     // ---- Optimistic table projections (Settings > Risk, default off) ----
@@ -421,19 +468,18 @@ impl TradingTerminal {
         changed
     }
 
-    pub(crate) fn pending_order_indicators_for_symbol(
-        &self,
-        symbol: &str,
-    ) -> Vec<(u64, PendingOrderIndicator)> {
-        let account_address = self.connected_order_account_address();
+    pub(crate) fn pending_order_indicators_for_symbol<'a>(
+        &'a self,
+        symbol: &'a str,
+    ) -> impl Iterator<Item = (u64, &'a PendingOrderIndicator)> {
+        let account_address = self.connected_address.as_deref();
         self.pending_order_indicators
             .iter()
-            .filter_map(|(pending_id, indicator)| {
-                (pending_indicator_is_for_connected_account(indicator, account_address.as_deref())
+            .filter_map(move |(pending_id, indicator)| {
+                (pending_indicator_is_for_connected_account(indicator, account_address)
                     && indicator.symbol == symbol)
-                    .then_some((*pending_id, indicator.clone()))
+                    .then_some((*pending_id, indicator))
             })
-            .collect()
     }
 
     fn next_pending_order_indicator_id(&self, created_at_ms: u64) -> u64 {
@@ -522,7 +568,7 @@ fn placing_indicator_matches_confirmed_order(
     };
     open_orders.iter().any(|order| {
         order.coin == indicator.symbol
-            && open_order_is_buy(&order.side) == Some(indicator.is_buy)
+            && open_order_side_is_buy(&order.side) == Some(indicator.is_buy)
             && order
                 .limit_px
                 .parse::<f64>()
@@ -540,14 +586,6 @@ fn placing_indicator_matches_confirmed_order(
 /// consumption until the REST ack clears the indicator.
 fn fill_time_covers_indicator(fill_time_ms: u64, created_at_ms: u64) -> bool {
     fill_time_ms.saturating_add(2_000) >= created_at_ms
-}
-
-fn open_order_is_buy(side: &str) -> Option<bool> {
-    match side {
-        "B" => Some(true),
-        "A" => Some(false),
-        _ => None,
-    }
 }
 
 fn indicator_is_fresh(created_at_ms: u64, now_ms: u64) -> bool {
@@ -809,7 +847,8 @@ mod tests {
         assert!(
             terminal
                 .pending_order_indicators_for_symbol("BTC")
-                .is_empty()
+                .next()
+                .is_none()
         );
         assert!(
             terminal
@@ -1082,8 +1121,60 @@ mod tests {
         assert!(cancel_id.is_some());
 
         assert!(terminal.has_pending_cancel_indicator(42));
-        assert_eq!(terminal.pending_order_indicators_for_symbol("BTC").len(), 2);
+        assert_eq!(
+            terminal.pending_order_indicators_for_symbol("BTC").count(),
+            2
+        );
         assert_eq!(terminal.optimistic_position_deltas().len(), 1);
+    }
+
+    #[test]
+    fn pending_indicator_selection_preserves_id_order_and_account_symbol_matching() {
+        let mut terminal = terminal_with_chart();
+        terminal.pending_order_indicators.clear();
+        for (id, account, symbol) in [
+            (7, TEST_ACCOUNT.to_string(), "BTC"),
+            (2, format!(" {} ", TEST_ACCOUNT.to_ascii_uppercase()), "BTC"),
+            (5, TEST_ACCOUNT.to_string(), "ETH"),
+            (3, "another-account".to_string(), "BTC"),
+            (1, TEST_ACCOUNT.to_string(), "btc"),
+        ] {
+            terminal.pending_order_indicators.insert(
+                id,
+                PendingOrderIndicator {
+                    account_address: account,
+                    symbol: symbol.to_string(),
+                    oid: None,
+                    is_buy: true,
+                    size: "1".to_string(),
+                    price: "100".to_string(),
+                    kind: PendingOrderIndicatorKind::Placing,
+                    created_at_ms: 1,
+                },
+            );
+        }
+        for (account, expected_btc, expected_eth) in [
+            (Some(TEST_ACCOUNT.to_string()), vec![2, 7], vec![5]),
+            (
+                Some(format!(" {} ", TEST_ACCOUNT.to_ascii_uppercase())),
+                vec![2, 7],
+                vec![5],
+            ),
+            (Some("another-account".to_string()), vec![3], vec![]),
+            (Some("  ".to_string()), vec![], vec![]),
+            (None, vec![], vec![]),
+        ] {
+            terminal.connected_address = account;
+            for (symbol, expected) in [("BTC", expected_btc), ("ETH", expected_eth)] {
+                let mut selected = Vec::new();
+                for (id, indicator) in terminal.pending_order_indicators_for_symbol(symbol) {
+                    selected.push(id);
+                    assert_eq!(indicator.symbol, symbol);
+                    assert_eq!(indicator.price, "100");
+                }
+                assert_eq!(selected, expected);
+            }
+        }
     }
 
     #[test]
@@ -1100,7 +1191,10 @@ mod tests {
         assert!(cancel_id.is_some());
 
         assert!(terminal.has_pending_cancel_indicator(42));
-        assert_eq!(terminal.pending_order_indicators_for_symbol("BTC").len(), 2);
+        assert_eq!(
+            terminal.pending_order_indicators_for_symbol("BTC").count(),
+            2
+        );
         assert_eq!(terminal.optimistic_position_deltas().len(), 1);
     }
 
@@ -1127,7 +1221,8 @@ mod tests {
         assert!(
             terminal
                 .pending_order_indicators_for_symbol("BTC")
-                .is_empty()
+                .next()
+                .is_none()
         );
         assert!(terminal.optimistic_position_deltas().is_empty());
         assert!(terminal.optimistic_open_order_rows().is_empty());

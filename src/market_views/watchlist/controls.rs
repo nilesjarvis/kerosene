@@ -44,19 +44,17 @@ impl TradingTerminal {
         let mut header_content = column![search_bar, controls].spacing(4);
 
         if self.symbol_search_market_filter == SymbolSearchMarketFilter::Hip3 {
-            let mut dex_options = Vec::with_capacity(self.symbol_search_hip3_dexes().len() + 1);
-            dex_options.push(SYMBOL_SEARCH_ALL_HIP3_DEXES.to_string());
-            dex_options.extend(self.symbol_search_hip3_dexes());
+            let dex_options: Vec<_> = std::iter::once(SYMBOL_SEARCH_ALL_HIP3_DEXES)
+                .chain(self.symbol_search_hip3_dexes())
+                .collect();
             let selected_dex = self
                 .symbol_search_hip3_dex_filter
-                .clone()
-                .unwrap_or_else(|| SYMBOL_SEARCH_ALL_HIP3_DEXES.to_string());
+                .as_deref()
+                .unwrap_or(SYMBOL_SEARCH_ALL_HIP3_DEXES);
             header_content = header_content.push(
-                pick_list(
-                    dex_options,
-                    Some(selected_dex),
-                    Message::SymbolSearchHip3DexFilterChanged,
-                )
+                pick_list(dex_options, Some(selected_dex), |dex: &str| {
+                    Message::SymbolSearchHip3DexFilterChanged(dex.to_string())
+                })
                 .width(Fill)
                 .padding([2, 8])
                 .text_size(11),

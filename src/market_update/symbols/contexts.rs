@@ -1,5 +1,8 @@
 use crate::api::{WatchlistContext, WatchlistContextsResponse};
+use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
+use crate::message::Message;
+use iced::Task;
 
 use std::collections::HashMap;
 
@@ -48,5 +51,55 @@ pub(super) fn apply_contexts_loaded(
                 true,
             ));
         }
+    }
+}
+
+impl TradingTerminal {
+    pub(super) fn apply_symbol_search_contexts_loaded(
+        &mut self,
+        request_id: u64,
+        requested_symbols: Vec<String>,
+        requested_at: u64,
+        result: Result<crate::api::WatchlistContextsResponse, String>,
+    ) -> Task<Message> {
+        if request_id != self.symbol_search_contexts_request_id {
+            return Task::none();
+        }
+
+        self.symbol_search_contexts_request_id =
+            self.symbol_search_contexts_request_id.saturating_add(1);
+        let refresh_pending = self.symbol_search_contexts_refresh_pending;
+        self.symbol_search_contexts_refresh_pending = false;
+        self.symbol_search_contexts_request_symbols.clear();
+
+        let result = result.map(|mut response| {
+            let requested_symbols: std::collections::HashSet<String> =
+                requested_symbols.into_iter().collect();
+            if !response.partial_errors.is_empty() {
+                let mut merged = std::mem::take(&mut self.symbol_search_ctxs);
+                merged.extend(response.contexts);
+                response.contexts = merged;
+            }
+            response
+                .contexts
+                .retain(|symbol, _| requested_symbols.contains(symbol));
+            response
+        });
+
+        apply_contexts_loaded(
+            &mut self.symbol_search_contexts_loading,
+            &mut self.symbol_search_contexts_last_fetch_ms,
+            &mut self.symbol_search_ctxs,
+            &mut self.symbol_search_status,
+            requested_at,
+            result,
+        );
+        self.refresh_symbol_search_results();
+
+        if refresh_pending {
+            return self.request_symbol_search_context_refresh(true);
+        }
+
+        Task::none()
     }
 }

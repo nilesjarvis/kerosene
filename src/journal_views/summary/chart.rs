@@ -33,11 +33,11 @@ impl TradingTerminal {
         total_closed: usize,
     ) -> Element<'_, Message> {
         let theme = self.theme();
-        let trade_pnl_points =
-            journal_cumulative_pnl_points(filtered_trades, self.journal.include_fees_in_pnl);
         let portfolio_pnl_points = self.journal_portfolio_margin_pnl_points();
         let using_portfolio_pnl = portfolio_pnl_points.is_some();
-        let all_pnl_points = portfolio_pnl_points.unwrap_or(trade_pnl_points);
+        let all_pnl_points = portfolio_pnl_points.unwrap_or_else(|| {
+            journal_cumulative_pnl_points(filtered_trades, self.journal.include_fees_in_pnl)
+        });
         let pnl_points = self.journal_portfolio_window_points(all_pnl_points);
         let selected_window_pnl = journal_window_total_pnl(&pnl_points).unwrap_or(total_pnl);
         let account_value_points = self.journal_account_value_chart_points(&pnl_points);

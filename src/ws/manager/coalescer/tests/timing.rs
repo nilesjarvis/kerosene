@@ -31,7 +31,7 @@ fn stale_last_emitted_history_is_pruned_on_book_submit() {
         "l2Book".to_string(),
         Arc::new(json!({ "coin": "BTC", "seq": 1 })),
     );
-    assert_eq!(sender.last_emitted.len(), 1);
+    assert_eq!(sender.snapshots.history_len(), 1);
 
     std::thread::sleep(Duration::from_millis(25));
     sender.submit(
@@ -39,7 +39,7 @@ fn stale_last_emitted_history_is_pruned_on_book_submit() {
         Arc::new(json!({ "coin": "ETH", "seq": 1 })),
     );
 
-    assert_eq!(sender.last_emitted.len(), 1);
+    assert_eq!(sender.snapshots.history_len(), 1);
     let drained = drain(&mut rx);
     assert_eq!(drained.len(), 2);
     assert_eq!(

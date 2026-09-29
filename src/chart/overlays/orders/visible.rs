@@ -73,11 +73,8 @@ where
             continue;
         }
 
-        let (order_color, order_color_solid, line_width) = visible_order_style(
-            ctx,
-            is_dragging || order.is_moving || pending_animates,
-            order.is_buy,
-        );
+        let (order_color, order_color_solid, line_width) =
+            visible_order_style(ctx, is_animating, order.is_buy);
         let side_label = order_side_label(order);
         let side_label_width = order_side_label_width_for_order(order, &side_label);
         let cancel_x = ORDER_LABEL_X + side_label_width + ORDER_CANCEL_GAP;
@@ -111,50 +108,29 @@ where
 
 fn visible_order_style<PriceToY, IdxToCx>(
     ctx: &TradingOverlayContext<'_, PriceToY, IdxToCx>,
-    is_dragging: bool,
+    is_animating: bool,
     is_buy: bool,
 ) -> (Color, Color, f32)
 where
     PriceToY: Fn(f64) -> f32,
     IdxToCx: Fn(usize) -> f32,
 {
-    if is_dragging {
-        if is_buy {
-            (
-                Color {
-                    a: 0.60,
-                    ..ctx.theme.palette().success
-                },
-                ctx.theme.palette().success,
-                MOVING_ORDER_LINE_WIDTH,
-            )
-        } else {
-            (
-                Color {
-                    a: 0.60,
-                    ..ctx.theme.palette().danger
-                },
-                ctx.theme.palette().danger,
-                MOVING_ORDER_LINE_WIDTH,
-            )
-        }
-    } else if is_buy {
-        (
-            Color {
-                a: 0.35,
-                ..ctx.theme.palette().success
-            },
-            ctx.theme.palette().success,
-            ORDER_LINE_WIDTH,
-        )
+    let solid_color = if is_buy {
+        ctx.theme.palette().success
     } else {
-        (
-            Color {
-                a: 0.35,
-                ..ctx.theme.palette().danger
-            },
-            ctx.theme.palette().danger,
-            ORDER_LINE_WIDTH,
-        )
-    }
+        ctx.theme.palette().danger
+    };
+    let (alpha, line_width) = if is_animating {
+        (0.60, MOVING_ORDER_LINE_WIDTH)
+    } else {
+        (0.35, ORDER_LINE_WIDTH)
+    };
+    (
+        Color {
+            a: alpha,
+            ..solid_color
+        },
+        solid_color,
+        line_width,
+    )
 }

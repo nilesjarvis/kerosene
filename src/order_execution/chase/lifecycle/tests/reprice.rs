@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 mod direct;
 mod reconciliation;
+mod spot;
 mod tick;
 
 const CONNECTED_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";

@@ -17,13 +17,13 @@ messages.
 | File | Responsibility |
 | --- | --- |
 | `src/agent_pnl_card.rs` | Bounded image selection, validation, normalization, preview, and redacted transport types. |
-| `src/agent_state.rs` | Window, transcript, runtime status, answer/reasoning streaming, tool cards, and redacted prompt wrapper. |
-| `src/agent_update.rs` | Window lifecycle, prompt submission, snapshot/runtime orchestration, and stale-generation guards. |
-| `src/agent_views.rs` | Native chat window, composer, status, usage, empty state, and tool activity UI. |
-| `src/agent_snapshot.rs` | Versioned, bounded, sanitized read-only export of Kerosene state. |
-| `src/agent_workspace.rs` | Strict host-action contract, active-turn authorization, all-or-nothing validation, idempotent chart mutations, and acknowledgements. |
-| `src/agent_runtime.rs` | Pi subprocess discovery, isolated environment, JSONL RPC transport, correlated extension UI responses, and event parsing. |
-| `src/llama_cpp.rs` | Loopback-only llama.cpp process/endpoint discovery, capability verification, and isolated Pi provider configuration. |
+| `src/agent_state.rs`, `src/agent_state/` | Central state and runtime reset; separate chat/wire types, session storage/replay, and stream/tool presentation modules. |
+| `src/agent_update.rs`, `src/agent_update/` | Message dispatch and window opening; separate prompt/attachment/snapshot, provider, runtime-event/presentation, session/cleanup, and system-link modules with the existing generation guards. |
+| `src/agent_views.rs`, `src/agent_views/` | Chat window and welcome screen; separate composer/attachment/status, session sidebar, model/provider picker, conversation/tool trace, streaming Markdown, and shared style modules with nearby tests. |
+| `src/agent_snapshot.rs`, `src/agent_snapshot/` | Snapshot assembly, limits, provenance, and shared sanitization; separate account, market, journal, workspace, and file modules for the read-only export. |
+| `src/agent_workspace.rs`, `src/agent_workspace/` | Request admission, active-turn authorization, and shared persistence coordination; separate indicator changes, staged drawing batches, and drawing request/style validation modules. |
+| `src/agent_runtime.rs`, `src/agent_runtime/` | Pi subprocess discovery, isolated environment, and command/event transport; separate redacted runtime types, JSONL RPC encoding/parsing, and bounded tool-summary modules with nearby tests. |
+| `src/llama_cpp.rs`, `src/llama_cpp/` | Local-server types, HTTP capability/model verification, and isolated Pi provider configuration; the discovery child owns loopback URL admission, candidate order, and platform process inspection. |
 | `src/chart_indicator.rs` | Shared typed registry for chart UI indicators and Assistant-visible indicator capabilities. |
 | `assets/agent/kerosene.ts` | Embedded Pi extension, typed snapshot/data tools, bounded indicator and drawing actions, deterministic calculations, and fixed-provider data adapters. |
 
@@ -55,8 +55,9 @@ The empty state and composer expose a P&L card action. Users can choose a PNG,
 JPEG, or WebP file, or drag one anywhere over the Assistant window on platforms
 where iced supports file-drop events. Kerosene decodes the image with strict
 file, dimension, and allocation limits, resizes it to at most 2000×2000, and
-normalizes it to an in-memory PNG. The preview and image bytes are transient and
-are never written to `assistant_sessions.json`.
+normalizes it to an in-memory PNG. The preview and prompt preparation share the
+same encoded byte buffer. The preview and image bytes are transient and are never
+written to `assistant_sessions.json`.
 
 Attaching a card requires the selected provider to advertise image input as
 well as tool calling. Pi receives the normalized image through its
@@ -80,6 +81,10 @@ parameters, other GraphQL errors, transport failures, and missing data through
 fixed reasons and warnings. Raw provider error messages and request context are
 never returned to the model. `scripts/check-agent-extension.ts` exercises the
 30-row page limit, pagination/search bounds, empty results, and error redaction.
+Its `scripts/agent-extension-checks/` helpers cover chart-action preflight and
+acknowledgements, session statistics across daylight-saving transitions, leap
+day, and year boundaries, and fill/funding aggregation, exposure, and stress
+calculations using offline fixtures.
 
 Assistant text uses an adaptive native reveal queue on top of Pi's real text
 deltas. Short backlogs resolve word by word with a fading leading edge and an
@@ -248,6 +253,11 @@ public cap. The private market index retains every sanitized Kerosene mid and
 its canonical/display metadata for targeted lookup. Raw `@N` and `#N` values
 are documented as exchange identifiers, not privacy redaction.
 
+Snapshot assembly builds market rows once; public selection sorts references to
+those rows while the private index keeps its original order. Public and private
+activity lists share fill/funding serializers with separate row limits. Journal
+sections share a status helper without rebuilding the public section for tools.
+
 Snapshot generation time and source observation time are separate. The root
 `generated_at_ms` records serialization time; section provenance keeps
 `observed_at_ms`/the compatibility alias `as_of_ms`, computed age, and an
@@ -272,6 +282,11 @@ Errors are represented as booleans instead of raw upstream messages because
 those messages can contain sensitive request context.
 
 ## Typed Tool Contract
+
+The two chart-action tools share acknowledgement decoding after their own
+snapshot preflight. The Rust host remains responsible for current-turn
+authorization and atomic validation. Session calculations reuse date formatters
+within each request, preserving the existing timezone and boundary rules.
 
 - `kerosene_data` reads one public snapshot section. `all` is reserved for a
   genuine cross-component summary.

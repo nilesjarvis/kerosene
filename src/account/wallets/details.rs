@@ -22,15 +22,15 @@ pub async fn fetch_wallet_details_scoped(
     address: String,
     scope: AccountDataFetchScope,
 ) -> Result<WalletDetailsData, String> {
-    let client = crate::api::CLIENT.clone();
+    let client = &*crate::api::CLIENT;
 
     let ch_fut = post_info_json_with_retries(
-        client.clone(),
+        client,
         "clearinghouseState",
         serde_json::json!({"type": "clearinghouseState", "user": address}),
     );
     let spot_fut = post_info_json_with_retries(
-        client.clone(),
+        client,
         "spotClearinghouseState",
         serde_json::json!({"type": "spotClearinghouseState", "user": address}),
     );
@@ -85,7 +85,7 @@ pub async fn fetch_wallet_details_scoped(
     let fills = fetch_wallet_user_fills_if_needed(&address, &spot, &mut warnings).await;
 
     let (hip3_ch_results, hip3_order_results) =
-        fetch_hip3_wallet_details(client.clone(), address, &scope).await;
+        fetch_hip3_wallet_details(client, address, &scope).await;
 
     append_hip3_positions(hip3_ch_results, &mut positions, &mut warnings).await;
     append_hip3_open_orders(hip3_order_results, &mut open_orders, &mut warnings).await;
@@ -135,24 +135,19 @@ async fn fetch_wallet_details_scoped_hydromancer(
     scope: AccountDataFetchScope,
     api_key: Zeroizing<String>,
 ) -> Result<WalletDetailsData, String> {
-    let portfolio_fut =
-        fetch_hydromancer_portfolio_state(address.clone(), scope.clone(), api_key.clone());
-    let orders_fut = fetch_hydromancer_frontend_open_orders_scoped(
-        address.clone(),
-        scope.clone(),
-        api_key.clone(),
-    );
+    let portfolio_fut = fetch_hydromancer_portfolio_state(&address, &scope, api_key.as_str());
+    let orders_fut =
+        fetch_hydromancer_frontend_open_orders_scoped(&address, &scope, api_key.as_str());
     let (portfolio, orders_result) = futures::future::join(portfolio_fut, orders_fut).await;
     let portfolio = portfolio?;
     let (clearinghouse, clearinghouses_by_dex, _) = portfolio.clearinghouses_for_scope(&scope)?;
     let spot = portfolio.spot_clearinghouse()?;
     let mut positions = Vec::new();
-    for (dex, clearinghouse) in &clearinghouses_by_dex {
+    for (dex, clearinghouse) in clearinghouses_by_dex {
         positions.extend(
             clearinghouse
                 .asset_positions
-                .iter()
-                .cloned()
+                .into_iter()
                 .map(|asset_position| WalletPositionDetail {
                     dex: dex.clone(),
                     asset_position,
@@ -171,8 +166,7 @@ async fn fetch_wallet_details_scoped_hydromancer(
     };
 
     let open_orders = orders
-        .iter()
-        .cloned()
+        .into_iter()
         .map(|order| WalletOpenOrderDetail {
             dex: order_detail_dex(&order),
             order,
@@ -194,7 +188,7 @@ fn order_detail_dex(order: &OpenOrder) -> String {
     let Some((dex, _)) = order.coin.split_once(':') else {
         return String::new();
     };
-    if HIP3_DEXES.iter().any(|known| known == &dex) {
+    if HIP3_DEXES.contains(&dex) {
         dex.to_string()
     } else {
         String::new()
@@ -280,6 +274,31 @@ mod tests {
             hold: "0".to_string(),
             entry_ntl: entry_ntl.to_string(),
             supplied: None,
+        }
+    }
+
+    #[test]
+    fn wallet_order_dex_uses_only_exact_known_prefixes() {
+        for (coin, expected) in [
+            ("BTC", ""),
+            ("", ""),
+            ("@1", ""),
+            ("+650", ""),
+            ("xyz:MSFT", "xyz"),
+            ("flx:GOLD", "flx"),
+            ("xyz:", "xyz"),
+            ("xyz:one:two", "xyz"),
+            ("XYZ:MSFT", ""),
+            (" xyz:MSFT", ""),
+            ("unknown:BTC", ""),
+            (":BTC", ""),
+        ] {
+            let order: OpenOrder = serde_json::from_value(serde_json::json!({
+                "coin": coin, "side": "B", "limitPx": "10", "sz": "1", "oid": 1, "timestamp": 2
+            }))
+            .expect("valid order fixture");
+            assert_eq!(order_detail_dex(&order), expected);
+            assert_eq!(order.coin, coin);
         }
     }
 

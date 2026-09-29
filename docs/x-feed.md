@@ -62,7 +62,9 @@ watch source for lower latency on public accounts/rules.
 
 ## Files
 
-- `src/x_feed.rs`: state model, X REST client, response parsing, dedupe helpers.
+- `src/x_feed.rs`: state model, credential lifecycle, source/post dedupe helpers.
+- `src/x_feed/client.rs`: X REST client, response parsing, image validation.
+- `src/x_feed/tests.rs` and `src/x_feed/client/tests.rs`: state and client tests.
 - `src/feed_update/x.rs`: token handling, auth/list refreshes, feed polling.
 - `src/feed_views/x.rs`: token controls, source picker, post cards.
 - `src/message.rs`: X feed messages and redacted result wrappers.

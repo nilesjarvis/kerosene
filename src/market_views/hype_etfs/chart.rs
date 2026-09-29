@@ -60,7 +60,7 @@ pub(super) fn daily_inflow_chart(
                 .color(theme.extended_palette().background.weak.text),
         );
     } else {
-        section = section.push(flow_chart(theme, &bars, denomination));
+        section = section.push(flow_chart(theme, bars, denomination));
         if let Some((first, last)) = bars.first().zip(bars.last()) {
             section = section.push(
                 row![
@@ -109,22 +109,17 @@ pub(super) fn daily_inflow_chart(
         .into()
 }
 
-fn daily_inflow_title(view: HypeEtfView) -> String {
-    if view == HypeEtfView::All {
-        "Combined Daily Inflow".to_string()
-    } else {
-        format!("{} Daily Inflow", view.label())
+fn daily_inflow_title(view: HypeEtfView) -> &'static str {
+    match view {
+        HypeEtfView::All => "Combined Daily Inflow",
+        HypeEtfView::Thyp => "THYP Daily Inflow",
+        HypeEtfView::Bhyp => "BHYP Daily Inflow",
     }
 }
 
-fn latest_daily_flows(flows: &[HypeEtfDailyFlow], max_bars: usize) -> Vec<HypeEtfDailyFlow> {
-    flows
-        .iter()
-        .rev()
-        .take(max_bars)
-        .cloned()
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect()
+fn latest_daily_flows(flows: &[HypeEtfDailyFlow], max_bars: usize) -> &[HypeEtfDailyFlow] {
+    &flows[flows.len().saturating_sub(max_bars)..]
 }
+
+#[cfg(test)]
+mod tests;

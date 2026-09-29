@@ -662,8 +662,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::PnlCardCopied(_)
         | Message::SavePnlCard(_)
         | Message::PnlCardSaved(_)
-        | Message::WalletKeyInputChanged(_)
-        | Message::WalletAddressInputChanged(_)
         | Message::ToggleAccountPicker
         | Message::AccountPickerSelected(_)
         | Message::AccountPickerRenameToggled(_)
@@ -681,7 +679,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::GhostWallet(_)
         | Message::ForgetGhostAccount(_)
         | Message::DeleteSavedAccount(_)
-        | Message::SaveCredentials
         | Message::ConnectWallet
         | Message::DisconnectWallet
         | Message::AccountDataLoaded(_, _, _)

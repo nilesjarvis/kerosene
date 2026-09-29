@@ -85,6 +85,29 @@ fn clearinghouse_deserialize_error_redacts_sensitive_json_preview() {
 }
 
 #[test]
+fn clearinghouse_deserialize_error_preserves_detail_and_original_json_preview() {
+    for (raw, expected) in [
+        (
+            serde_json::Value::Null,
+            "invalid type: null, expected struct ClearinghouseState | JSON: null",
+        ),
+        (
+            serde_json::json!({}),
+            "missing field `marginSummary` | JSON: {}",
+        ),
+        (
+            serde_json::json!({"marginSummary": {"accountValue": 100}}),
+            "invalid type: integer `100`, expected a string | JSON: {\"marginSummary\":{\"accountValue\":100}}",
+        ),
+    ] {
+        assert_eq!(
+            clearinghouse_from_required_value(raw).err(),
+            Some(format!("clearinghouseState deserialize failed: {expected}"))
+        );
+    }
+}
+
+#[test]
 fn healthy_spot_state_survives_failed_perp_clearinghouse() {
     let spot = serde_json::json!({
         "balances": [{

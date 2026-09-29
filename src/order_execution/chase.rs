@@ -170,7 +170,6 @@ impl TradingTerminal {
             reduce_only,
             use_ticket_percentage_sizing,
         } = inputs;
-        let _theme = self.theme();
         let Some(start_context) =
             self.advanced_order_start_context_for_symbol(AdvancedOrderKind::Chase, &symbol_key)
         else {

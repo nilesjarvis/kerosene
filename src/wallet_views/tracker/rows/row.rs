@@ -9,6 +9,7 @@ use self::metrics::{money_text, wallet_row_metrics, wallet_upnl_color};
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::wallet_state::WalletTrackerRow;
 
 use iced::widget::container as container_style;
 use iced::widget::{Space, container, row, text};
@@ -21,28 +22,23 @@ impl TradingTerminal {
         now_ms: u64,
         theme: &Theme,
     ) -> Element<'a, Message> {
-        let row_data = self
-            .wallet_tracker
-            .rows
-            .get(address)
-            .cloned()
-            .unwrap_or_default();
+        let empty_row = WalletTrackerRow::default();
+        let row_data = self.wallet_tracker.rows.get(address).unwrap_or(&empty_row);
         let display = self.wallet_display(address);
-        let label_value = self.wallet_label(address).unwrap_or_default().to_string();
+        let is_remote = self.wallet_is_remote(address);
         let denomination = self.display_denomination_context();
-        let metrics = wallet_row_metrics(&row_data, &denomination, theme);
+        let metrics = wallet_row_metrics(row_data, &denomination, theme);
         let upnl_color = wallet_upnl_color(&metrics, theme);
         let state_el: Element<'_, Message> =
-            self.view_wallet_tracker_state(&row_data, now_ms, theme);
+            self.view_wallet_tracker_state(row_data, now_ms, theme);
 
         let address = address.to_string();
         let wallet_row = container(
             row![
                 wallet_identity_cell(
                     address.clone(),
-                    label_value,
                     display,
-                    self.wallet_is_remote(&address),
+                    is_remote,
                     self.hovered_wallet_address_actions.as_deref(),
                     theme,
                 ),
@@ -68,7 +64,7 @@ impl TradingTerminal {
                 wallet_tracker_actions(
                     address.clone(),
                     self.wallet_tracker.is_muted(&address),
-                    self.wallet_is_remote(&address)
+                    is_remote
                 ),
             ]
             .spacing(8)

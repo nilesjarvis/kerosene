@@ -107,14 +107,9 @@ impl AccountDataCompleteness {
     }
 
     fn record_warning(&mut self, section: AccountDataSection, warning: impl Into<String>) {
-        let warning = warning.into();
-        if !warning.is_empty()
-            && !self
-                .warnings
-                .iter()
-                .any(|existing| existing == &(section, warning.clone()))
-        {
-            self.warnings.push((section, warning));
+        let entry = (section, warning.into());
+        if !entry.1.is_empty() && !self.warnings.contains(&entry) {
+            self.warnings.push(entry);
         }
     }
 
@@ -164,11 +159,12 @@ impl AccountDataCompleteness {
         Some(format!("{label} may be incomplete: {detail}"))
     }
 
-    fn warning_messages(&self) -> Vec<String> {
+    fn warning_messages(&self) -> Vec<&str> {
         let mut messages = Vec::new();
         for (_, warning) in &self.warnings {
-            if !messages.contains(warning) {
-                messages.push(warning.clone());
+            let warning = warning.as_str();
+            if !messages.contains(&warning) {
+                messages.push(warning);
             }
         }
         messages

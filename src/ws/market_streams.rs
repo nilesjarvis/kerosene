@@ -1,3 +1,4 @@
+use super::recovery::emit_after_reconnect;
 mod asset_context;
 mod books;
 mod candles;
@@ -7,9 +8,9 @@ use crate::api::Candle;
 use crate::spaghetti;
 use crate::timeframe::Timeframe;
 #[cfg(test)]
-use crate::ws::WsCommand;
-use crate::ws::WsCommandSender;
-use std::{future::Future, time::Duration};
+use crate::ws::{WsCommand, WsCommandSender};
+#[cfg(test)]
+use std::time::Duration;
 #[cfg(test)]
 use tokio::sync::mpsc;
 
@@ -120,32 +121,6 @@ pub enum SpaghettiCandleStreamEvent {
 
 const WS_LAG_RECONNECT_PAUSE_SECS: u64 = 2;
 
-fn request_ws_reconnect_after_lag(cmd_tx: &WsCommandSender) -> bool {
-    cmd_tx.request_lag_reconnect()
-}
-
-async fn emit_lag_after_reconnect<T, Emit, Fut>(
-    cmd_tx: &WsCommandSender,
-    event: T,
-    emit: Emit,
-    pause: Duration,
-) -> bool
-where
-    Emit: FnOnce(T) -> Fut,
-    Fut: Future<Output = bool>,
-{
-    if !request_ws_reconnect_after_lag(cmd_tx) {
-        return false;
-    }
-    if !emit(event).await {
-        return false;
-    }
-    if !pause.is_zero() {
-        tokio::time::sleep(pause).await;
-    }
-    true
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,7 +130,7 @@ mod tests {
         let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
         let cmd_tx = WsCommandSender::new_for_test(raw_cmd_tx);
 
-        assert!(request_ws_reconnect_after_lag(&cmd_tx));
+        assert!(cmd_tx.request_lag_reconnect());
         assert!(matches!(cmd_rx.try_recv().unwrap(), WsCommand::Reconnect));
     }
 
@@ -164,14 +139,14 @@ mod tests {
         let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
         let cmd_tx = WsCommandSender::new_for_test(raw_cmd_tx);
 
-        assert!(request_ws_reconnect_after_lag(&cmd_tx));
-        assert!(request_ws_reconnect_after_lag(&cmd_tx));
+        assert!(cmd_tx.request_lag_reconnect());
+        assert!(cmd_tx.request_lag_reconnect());
         let command = cmd_rx.try_recv().expect("first reconnect command");
         assert!(matches!(command, WsCommand::Reconnect));
         assert!(cmd_rx.try_recv().is_err());
 
         cmd_tx.note_command_dequeued_for_test(&command);
-        assert!(request_ws_reconnect_after_lag(&cmd_tx));
+        assert!(cmd_tx.request_lag_reconnect());
         assert!(matches!(cmd_rx.try_recv().unwrap(), WsCommand::Reconnect));
     }
 
@@ -180,8 +155,8 @@ mod tests {
         let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
         let cmd_tx = WsCommandSender::new_for_test(raw_cmd_tx);
 
-        let emitted = emit_lag_after_reconnect(
-            &cmd_tx,
+        let emitted = emit_after_reconnect(
+            || cmd_tx.request_lag_reconnect(),
             WsStreamEvent::<()>::Lagged { skipped: 7 },
             |_event| async { false },
             Duration::ZERO,

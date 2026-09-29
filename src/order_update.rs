@@ -16,6 +16,7 @@ mod presets;
 mod quick_order;
 mod quick_trade;
 mod results;
+mod transient_ui;
 
 use quick_order::QuickOrderOpenRequest;
 

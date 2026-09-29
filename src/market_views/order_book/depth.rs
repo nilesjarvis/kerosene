@@ -30,7 +30,7 @@ impl TradingTerminal {
         inst: &OrderBookInstance,
         tick: f64,
         theme: &Theme,
-        user_order_levels: &UserOrderBookLevels,
+        user_order_levels: UserOrderBookLevels,
         whole_contracts: bool,
     ) -> Element<'static, Message> {
         let decimals = tick_decimals(tick);
@@ -43,10 +43,8 @@ impl TradingTerminal {
             .asks
             .iter()
             .take(DEPTH_SIDE_ROWS)
-            .copied()
-            .collect::<Vec<_>>()
-            .into_iter()
             .rev()
+            .copied()
             .collect();
         let max_ask_cum = max_cumulative_depth(&ask_rows);
 
@@ -70,10 +68,10 @@ impl TradingTerminal {
             reverse_side: inst.reverse_side,
         };
         if inst.center_on_mid {
-            let centered_asks = ask_rows.clone();
-            let centered_bids = bid_rows.clone();
+            let centered_asks = ask_rows;
+            let centered_bids = bid_rows;
             let centered_ask_orders = user_order_levels.clone();
-            let centered_bid_orders = user_order_levels.clone();
+            let centered_bid_orders = user_order_levels;
             // Both sides must render the same number of rows so the book stays
             // symmetric about the spread even when aggregation or scope drift
             // leaves one side with fewer levels than the other.
@@ -128,13 +126,13 @@ impl TradingTerminal {
         let asks = depth_ask_column(
             column_context,
             &ask_rows,
-            user_order_levels,
+            &user_order_levels,
             DEPTH_SIDE_ROWS,
         );
         let bids = depth_bid_column(
             column_context,
             &bid_rows,
-            user_order_levels,
+            &user_order_levels,
             DEPTH_SIDE_ROWS,
         );
         let order_book_rows = column![asks, spread_widget, bids].spacing(2);
@@ -155,7 +153,7 @@ impl TradingTerminal {
         inst: &OrderBookInstance,
         tick: f64,
         theme: &Theme,
-        user_order_levels: &UserOrderBookLevels,
+        user_order_levels: UserOrderBookLevels,
         whole_contracts: bool,
     ) -> Element<'static, Message> {
         let spread_widget = Self::view_order_book_spread_widget(id, inst, theme);

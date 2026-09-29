@@ -2,7 +2,9 @@ use crate::app_state::TradingTerminal;
 use crate::ws::TrackedTradeEvent;
 use std::collections::VecDeque;
 
-use super::model::{TrackedTradeAggregationKey, TrackedTradeFeedRow, TrackedTradeIntent};
+use super::model::{
+    TrackedTradeAggregationKey, TrackedTradeFeedRow, TrackedTradeIntent, can_merge_trade,
+};
 
 // ---------------------------------------------------------------------------
 // Tracked Trade Alerts
@@ -14,19 +16,24 @@ impl TradingTerminal {
         aggregation_enabled: bool,
         trade: &TrackedTradeEvent,
     ) -> Option<TrackedTradeFeedRow> {
-        let row = TrackedTradeFeedRow::from_event(trade);
-        if !aggregation_enabled {
-            return Some(row);
-        }
-
-        let key = TrackedTradeAggregationKey::from_event(trade);
-        for existing in existing_trades {
-            if TrackedTradeAggregationKey::from_event(existing) == key && row.can_merge(existing) {
-                return None;
+        if aggregation_enabled {
+            let key = TrackedTradeAggregationKey::from_event(trade);
+            for existing in existing_trades {
+                if TrackedTradeAggregationKey::from_event(existing) == key
+                    && can_merge_trade(
+                        trade.oid,
+                        &trade.hash,
+                        trade.time_ms,
+                        trade.time_ms,
+                        existing,
+                    )
+                {
+                    return None;
+                }
             }
         }
 
-        Some(row)
+        Some(TrackedTradeFeedRow::from_event(trade))
     }
 
     pub(crate) fn tracked_trade_alert_row_for_event(

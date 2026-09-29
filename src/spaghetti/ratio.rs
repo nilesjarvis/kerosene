@@ -1,40 +1,18 @@
-mod axes;
-mod crosshair;
 mod series;
 
-use self::axes::{draw_ratio_base_line, draw_ratio_grid, draw_ratio_time_axis};
-use self::crosshair::draw_ratio_crosshair;
 use self::series::{draw_ratio_candles, draw_ratio_line};
 use super::helpers::has_positive_finite_prices;
-use super::{PRICE_PADDING_PCT, Series, SpaghettiCanvas, SpaghettiChartState};
+use super::{PRICE_PADDING_PCT, RenderContext, Series, SpaghettiCanvas};
+use super::{axes, crosshair};
 use crate::api::Candle;
-use crate::chart_background::{draw_dotted_background, draw_gradient_background};
+use iced::Point;
 use iced::alignment;
 use iced::widget::canvas;
-use iced::{Point, Rectangle, Renderer, Theme};
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 // Pair Ratio Rendering
 // ---------------------------------------------------------------------------
-
-pub(super) struct PairRatioRenderContext<'a> {
-    pub(super) state: &'a SpaghettiChartState,
-    pub(super) renderer: &'a Renderer,
-    pub(super) theme: &'a Theme,
-    pub(super) bounds: Rectangle,
-    pub(super) chart_w: f32,
-    pub(super) chart_h: f32,
-    pub(super) left_ts: f64,
-    pub(super) right_ts: f64,
-    pub(super) visible_ms: f64,
-    pub(super) time_px_per_ms: f64,
-    pub(super) effective_max: u64,
-    pub(super) base_timestamp: Option<u64>,
-    pub(super) crosshair_style: crate::config::ChartCrosshairStyle,
-    pub(super) crosshair_guides_enabled: bool,
-    pub(super) crosshair_scale: f32,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct RatioCandle {
@@ -48,7 +26,7 @@ pub(super) struct RatioCandle {
 impl SpaghettiCanvas {
     pub(super) fn draw_pair_ratio(
         &self,
-        ctx: PairRatioRenderContext<'_>,
+        ctx: RenderContext<'_>,
         loaded_series: &[&Series],
     ) -> Vec<canvas::Geometry> {
         let series_a = loaded_series[0];
@@ -96,37 +74,18 @@ impl SpaghettiCanvas {
         let ratio_to_y =
             |ratio: f64| -> f32 { ((ratio_hi - ratio) / ratio_range * ctx.chart_h as f64) as f32 };
 
-        let mut frame = canvas::Frame::new(ctx.renderer, ctx.bounds.size());
-        frame.fill_rectangle(Point::ORIGIN, ctx.bounds.size(), iced::Color::TRANSPARENT);
-
-        if self.gradient_background {
-            draw_gradient_background(
-                &mut frame,
-                ctx.theme,
-                ctx.chart_w,
-                ctx.chart_h,
-                self.gradient_contrast,
-            );
-        }
-        if self.dotted_background {
-            draw_dotted_background(
-                &mut frame,
-                ctx.theme,
-                ctx.chart_w,
-                ctx.chart_h,
-                self.dotted_background_opacity,
-                crate::chart::fisheye::ChartFisheye::disabled(),
-            );
-        }
-        draw_ratio_grid(
+        let mut frame = self.background_frame(&ctx);
+        axes::draw_value_grid(
             &mut frame,
             &ctx,
             ratio_hi,
             ratio_range,
             !self.dotted_background,
+            format_ratio_value,
         );
-        draw_ratio_time_axis(&mut frame, &ctx);
-        draw_ratio_base_line(&mut frame, &ctx, &ts_to_x);
+        axes::draw_value_axis_border(&mut frame, &ctx);
+        axes::draw_time_axis(&mut frame, &ctx);
+        axes::draw_session_start_line(&mut frame, &ctx, &ts_to_x, self.base_timestamp);
 
         if self.pair_candle_mode {
             draw_ratio_candles(
@@ -166,7 +125,10 @@ impl SpaghettiCanvas {
         }
 
         let base_geo = frame.into_geometry();
-        let overlay = draw_ratio_crosshair(&ctx, ratio_hi, ratio_range);
+        let overlay = crosshair::draw_crosshair_overlay(&ctx, |y| {
+            let hover_ratio = ratio_hi - (y as f64 / ctx.chart_h as f64) * ratio_range;
+            Some(format_ratio_value(hover_ratio))
+        });
         vec![base_geo, overlay]
     }
 }

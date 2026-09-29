@@ -1,4 +1,4 @@
-use super::parsing::{HYPERDASH_HEATMAP_MAX_CELLS, cap_heatmap_rects};
+use super::parsing::{HYPERDASH_HEATMAP_MAX_CELLS, cap_heatmap_rects, parse_heatmap_response};
 use super::{
     HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS, HYPERDASH_HEATMAP_MAX_LOOKBACK_SECS,
     infer_heatmap_bucket_duration_ms, normalize_heatmap_time_range, parse_heatmap_timestamp,
@@ -16,12 +16,78 @@ fn heatmap_timestamp_parser_uses_utc_epoch_millis() {
 #[test]
 fn heatmap_bucket_duration_infers_smallest_positive_gap() {
     assert_eq!(
-        infer_heatmap_bucket_duration_ms(&[
+        infer_heatmap_bucket_duration_ms(&mut [
             1_777_640_400_000,
             1_777_647_600_000,
             1_777_644_000_000,
         ]),
         HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS * 1000
+    );
+}
+
+#[test]
+fn heatmap_bucket_duration_handles_duplicates_empty_and_extreme_timestamps() {
+    let default_ms = HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS * 1000;
+    for (mut timestamps, expected) in [
+        (vec![], default_ms),
+        (vec![7], default_ms),
+        (vec![7, 7, 7], default_ms),
+        (vec![900, 100, 300, 100], 200),
+        (vec![u64::MAX, 0], u64::MAX),
+        (vec![u64::MAX, u64::MAX - 1, 0], 1),
+        (vec![8_000_000, 0, 4_000_000], 4_000_000),
+    ] {
+        assert_eq!(infer_heatmap_bucket_duration_ms(&mut timestamps), expected);
+    }
+}
+
+#[test]
+fn heatmap_duration_includes_timestamps_from_discarded_cells() {
+    let body = serde_json::json!({
+        "data": { "analytics": { "liquidationLevels": { "bands": [
+            {
+                "minPrice": 10.0, "maxPrice": 20.0,
+                "historicalData": [
+                    { "timestamp": "2026-05-01 13:00:00", "totalAmount": 2.0 },
+                    { "timestamp": "2026-05-01 14:00:00", "totalAmount": -3.0 },
+                    { "timestamp": "2026-05-01 13:00:00", "totalAmount": 0.0 },
+                    { "timestamp": "invalid", "totalAmount": 9.0 }
+                ]
+            },
+            {
+                "minPrice": 1e308, "maxPrice": 1e308,
+                "historicalData": [
+                    { "timestamp": "2026-05-01 13:15:00", "totalAmount": 1.0 }
+                ]
+            }
+        ] } } },
+        "errors": [{ "message": "partial warning" }]
+    });
+
+    let heatmap = parse_heatmap_response(&body.to_string()).expect("fixture heatmap");
+
+    assert_eq!(heatmap.max_abs_usd, 45.0);
+    let cells: Vec<_> = heatmap
+        .rects
+        .iter()
+        .map(|cell| {
+            (
+                cell.timestamp_ms,
+                cell.duration_ms,
+                cell.price_lo,
+                cell.price_hi,
+                cell.amount_coins,
+                cell.amount_usd,
+            )
+        })
+        .collect();
+    assert_eq!(
+        cells,
+        vec![
+            (1_777_640_400_000, 900_000, 10.0, 20.0, 2.0, 30.0),
+            (1_777_644_000_000, 900_000, 10.0, 20.0, -3.0, -45.0),
+            (1_777_640_400_000, 900_000, 10.0, 20.0, 0.0, 0.0),
+        ]
     );
 }
 

@@ -42,6 +42,12 @@ data, screenshots, and comparison charts.
 `TradingTerminal` stores chart instances in `charts: HashMap<ChartId,
 ChartInstance>` and allocates IDs through `alloc_chart_id`.
 
+Startup and saved-layout restoration share `ChartInstance::from_config` in
+`chart_state/model/restoration.rs` for persisted settings and annotations.
+Comparison charts use `SpaghettiChartInstance::from_config`. The callers retain
+symbol resolution, visibility filtering, and data request scheduling, which
+differ between startup and runtime layout changes.
+
 ## Chart Surfaces
 
 One chart can be rendered in different surfaces:
@@ -104,14 +110,25 @@ The backfill source comes from `ReadDataProvider`:
 
 ## Shared Candle Cache
 
+`api/candles/normalize.rs` validates and stably sorts candles, then deduplicates
+in place so the last valid input for each timestamp wins. Trailing-run helpers
+search backward for the final discontinuity, using the same exact or tolerant
+spacing rules as cache containment.
+
 `chart_state/candles/cache.rs` stores the bounded in-memory LRU by
 `(ChartBackfillSource, symbol, Timeframe)`, so data from different providers
 cannot overwrite or satisfy one another.
 
-The persistent cache is owned by `api_cache.rs`. Candle snapshots use their own
-versioned namespace, persist only buckets that were closed when the write was
-queued, and record coverage through the final close time. A snapshot without
-complete coverage cannot satisfy a range request.
+The persistent cache keeps its public entry points in `api_cache.rs`, with
+candle policy in `api_cache/candles.rs`, queued writes in `api_cache/writer.rs`,
+and JSON envelopes/path handling/atomic file replacement in
+`api_cache/storage.rs`. The writer identifies superseded saves in a single
+reverse pass, then executes retained jobs in their original order. Merges and
+removals always run.
+
+Candle snapshots use their own versioned namespace, persist only buckets that
+were closed when the write was queued, and record coverage through the final
+close time. A snapshot without complete coverage cannot satisfy a range request.
 
 Continuous-market cache reads require exact interval spacing and return only
 the trailing exact run after a discontinuity. Sparse spot/outcome and
@@ -149,6 +166,13 @@ latency does not prevent a current live bucket from arriving. A websocket
 update applies to every matching chart instance, triggers price flashes,
 invalidates render caches, and can schedule funding refreshes when macro panels
 need them.
+
+Primary and secondary series share the tail-update routine in
+`chart/data/candles.rs`: a valid candle replaces the same timestamp or appends a
+newer bucket, while an older timestamp is rejected. Appending trims the oldest
+history to the chart limit; replacement leaves history length unchanged. Only
+applied updates clear the render cache, and a missing secondary series rejects
+the update. The callers retain chart status and websocket reconciliation policy.
 
 Backward, skipped, or misaligned buckets on continuous markets are not blindly
 appended; they trigger a network-only reconciliation. Naturally sparse markets
@@ -193,6 +217,14 @@ Candles still use the selected read provider. Context subscriptions remain
 deduplicated by symbol and scoped to the current provider generation.
 `ChartWsAssetCtxUpdate` applies matching contexts to every chart instance unless
 the symbol is hidden.
+
+Spot chart REST fallback batches requested symbols through
+`api/chart_asset_context/spot.rs`. Each response builds one borrowed lookup for
+universe symbols/aliases and keyed contexts, then returns available contexts in
+request order with duplicate requests removed. This preserves first-match
+universe lookup, last-match duplicate context coins, and positional fallback
+only for responses without keyed contexts. Watchlist context parsing keeps its
+separate alias and duplicate-selection rules.
 
 The header's `24h Chg` compares the displayed latest candle close with a
 24-hour reference: `(last - previous) / previous * 100`. It prefers the
@@ -349,6 +381,40 @@ updates, order result handling, and candle loads. Order actions still route
 through `order_update` and `order_execution`; chart overlays do not place
 orders directly.
 
+`chart_state/overlays.rs` coordinates position, trade-marker, and reference-price
+updates. Order-line assembly lives in `chart_state/overlays/orders.rs`, and
+fill-to-marker mapping lives in `chart_state/overlays/trades.rs`. Synchronization
+borrows chart symbols and pending indicators, and iterates Chase overlays without
+an intermediate vector. Overlay rows still own the strings they need.
+Confirmed orders, Chase replacements, and pending decorations retain their order
+and distinct account/numeric matching rules; trade markers retain stable time order.
+
+Drawing lives in `chart/overlays/`. Order rendering prepares visible orders once,
+then draws lines and price badges, label connectors, and labels in separate passes.
+The last pass consumes the prepared labels without copying their strings. Current
+price and liquidation overlays reuse their line style for badge connectors; order
+styles select side colors and animation settings independently. Synthetic rendering
+tests cover pending/dragged orders, stacked badges, fisheye effects, and privacy.
+
+Order-label drawing and hit testing share the same stacking geometry. A single
+packing routine handles the full label area and the bands above/below a position
+label, including reserved-region avoidance and crowded-edge adjustments.
+Right-axis badges retain their separate variable-height and fixed-position rules;
+each band sorts its anchors once before packing.
+
+`chart/interaction/drag.rs` ends each active gesture through a shared drag reset,
+then performs gesture-specific payload cleanup and publication. Panning clears the
+candle cache on release so the next frame restores full heatmap detail. Annotation
+previews copy their original snapshot only after coordinate inputs are available;
+selecting a locked annotation leaves its drag snapshots untouched.
+
+Right-click handling shares the quick-order action builder for opening and
+replacing a card. The caller retains click priority and falls through when price
+inputs are unavailable. HUD size editing shares character insertion after its
+digit/decimal checks; filtering, replacement, and length limits remain in that
+order. HUD tests live in `chart/interaction/hud/tests.rs` and its `tests/`
+subdirectory.
+
 ## Liquidations And Heatmap
 
 Chart liquidation data comes from HyperDash update modules:
@@ -407,6 +473,13 @@ geometry/style retries are idempotent. Removal requires an exact current ID and
 respects the annotation lock. Geometry/style edits remain user-driven through
 Select mode, which keeps the first mutation surface small and deterministic.
 
+Annotation drawing and hit testing iterate `AnnotationKind::anchor_points`
+without allocating a handle list; fixed pairs are copied values and Fibonacci
+anchors borrow their stored slice. Rendering also borrows selected/live annotations
+and computes Fibonacci bounds directly. Hit testing checks topmost annotations
+first and each annotation's handles before its body. Locked annotations remain
+selectable, while the editing handlers enforce their locks.
+
 ## Detached Charts
 
 Detached charts are opened from chart controls and rendered by
@@ -462,10 +535,19 @@ Key modules:
 
 - `spaghetti_state.rs`
 - `spaghetti/model.rs`
+- `spaghetti/axes.rs`
+- `spaghetti/crosshair.rs`
 - `spaghetti/normalized/`
 - `spaghetti/ratio/`
 - `spaghetti_update/`
 - `spaghetti_views/`
+
+Both render modes receive the same frame context from `spaghetti.rs` and share
+grid lines, the value-axis border, relative-time labels, and session-start
+markers in `spaghetti/axes.rs`. They also use the same background-frame setup
+and crosshair overlay, with each mode supplying its optional hover-value label.
+Each mode retains its value calculations and formatting; the zero-percent
+baseline and positive-range guard for hover labels belong to normalized rendering.
 
 Spaghetti data uses the shared candle backfill infrastructure where practical
 but keeps its own chart instance map and canvas cache.

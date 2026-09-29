@@ -1,6 +1,4 @@
-use super::{
-    chase_resting_order_is_buy, chase_resting_order_wire_is_supported, chase_resting_reduce_only,
-};
+use super::{chase_resting_order_wire_is_supported, chase_resting_reduce_only};
 use crate::account::{
     AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary, OpenOrder,
     SpotClearinghouseState, UserFeeRates,
@@ -9,6 +7,8 @@ use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::config::AccountProfile;
 use crate::order_execution::PendingOrderAction;
+
+mod admission;
 
 const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
 
@@ -132,36 +132,26 @@ fn resting_chase_ignores_spot_reduce_only_metadata() {
 }
 
 #[test]
-fn resting_chase_side_parser_accepts_only_exchange_sides() {
-    assert_eq!(chase_resting_order_is_buy("B"), Some(true));
-    assert_eq!(chase_resting_order_is_buy("A"), Some(false));
-    assert_eq!(chase_resting_order_is_buy("bad"), None);
-}
-
-#[test]
 fn resting_chase_rejects_unsupported_wire_order_types() {
     let mut trigger_order = open_order(42);
     trigger_order.is_trigger = Some(true);
-    assert!(
-        chase_resting_order_wire_is_supported(&trigger_order)
-            .expect_err("trigger order should be rejected")
-            .contains("trigger orders")
+    assert_eq!(
+        chase_resting_order_wire_is_supported(&trigger_order),
+        Err("Cannot chase order: trigger orders cannot be chased safely yet")
     );
 
     let mut ioc_order = open_order(42);
     ioc_order.tif = Some("Ioc".to_string());
-    assert!(
-        chase_resting_order_wire_is_supported(&ioc_order)
-            .expect_err("IOC order should be rejected")
-            .contains("non-GTC")
+    assert_eq!(
+        chase_resting_order_wire_is_supported(&ioc_order),
+        Err("Cannot chase order: non-GTC orders cannot be chased safely yet")
     );
 
     let mut market_order = open_order(42);
     market_order.order_type = Some("Market".to_string());
-    assert!(
-        chase_resting_order_wire_is_supported(&market_order)
-            .expect_err("non-limit order should be rejected")
-            .contains("order type")
+    assert_eq!(
+        chase_resting_order_wire_is_supported(&market_order),
+        Err("Cannot chase order: order type cannot be chased safely yet")
     );
 }
 

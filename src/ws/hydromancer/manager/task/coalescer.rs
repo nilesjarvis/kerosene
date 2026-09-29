@@ -1,10 +1,10 @@
 use super::super::HydromancerRoutedMessage;
+use crate::ws::coalescer::SnapshotCoalescer;
 use crate::ws::{L2BookSigfigs, l2_book_sigfigs_from_value};
 
 use serde_json::Value;
-use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::broadcast;
 
 #[cfg(test)]
@@ -26,17 +26,8 @@ struct CoalesceKey {
     sigfigs: L2BookSigfigs,
 }
 
-#[derive(Debug)]
-struct PendingEntry {
-    deadline: Instant,
-    message: HydromancerRoutedMessage,
-}
-
 pub(super) struct HydromancerCoalescedSender {
-    inner: broadcast::Sender<HydromancerRoutedMessage>,
-    last_emitted: HashMap<CoalesceKey, Instant>,
-    pending: HashMap<CoalesceKey, PendingEntry>,
-    interval: Duration,
+    snapshots: SnapshotCoalescer<CoalesceKey, HydromancerRoutedMessage>,
 }
 
 impl HydromancerCoalescedSender {
@@ -49,10 +40,7 @@ impl HydromancerCoalescedSender {
         interval: Duration,
     ) -> Self {
         Self {
-            inner,
-            last_emitted: HashMap::new(),
-            pending: HashMap::new(),
-            interval,
+            snapshots: SnapshotCoalescer::new(inner, interval),
         }
     }
 
@@ -71,69 +59,19 @@ impl HydromancerCoalescedSender {
             }
             return;
         }
-
-        let Some(key) = coalesce_key(&message) else {
-            let _ = self.inner.send(message);
-            return;
-        };
-        let now = Instant::now();
-        self.prune_stale_last_emitted(now);
-
-        match self.last_emitted.get(&key).copied() {
-            Some(last) if now.duration_since(last) < self.interval => {
-                let deadline = last + self.interval;
-                self.pending.insert(key, PendingEntry { deadline, message });
-            }
-            _ => {
-                self.pending.remove(&key);
-                let _ = self.inner.send(message);
-                self.last_emitted.insert(key, now);
-            }
-        }
-    }
-
-    fn prune_stale_last_emitted(&mut self, now: Instant) {
-        let interval = self.interval;
-        let pending = &self.pending;
-        self.last_emitted
-            .retain(|key, last| pending.contains_key(key) || now.duration_since(*last) < interval);
+        self.snapshots.submit(coalesce_key(&message), message);
     }
 
     pub(super) fn next_due(&self) -> Option<Duration> {
-        let now = Instant::now();
-        self.pending
-            .values()
-            .map(|entry| entry.deadline.saturating_duration_since(now))
-            .min()
+        self.snapshots.next_due()
     }
 
     pub(super) fn flush_due(&mut self) -> usize {
-        let now = Instant::now();
-        let due: Vec<CoalesceKey> = self
-            .pending
-            .iter()
-            .filter(|(_, entry)| entry.deadline <= now)
-            .map(|(key, _)| key.clone())
-            .collect();
-        let count = due.len();
-        for key in due {
-            if let Some(entry) = self.pending.remove(&key) {
-                let _ = self.inner.send(entry.message);
-                self.last_emitted.insert(key, now);
-            }
-        }
-        count
+        self.snapshots.flush_due()
     }
 
     pub(super) fn flush_all(&mut self) -> usize {
-        let now = Instant::now();
-        let pending = std::mem::take(&mut self.pending);
-        let count = pending.len();
-        for (key, entry) in pending {
-            let _ = self.inner.send(entry.message);
-            self.last_emitted.insert(key, now);
-        }
-        count
+        self.snapshots.flush_all()
     }
 }
 
@@ -163,7 +101,8 @@ fn split_l2_book_batch_message(
 
     Some(
         items
-            .into_iter()
+            .iter()
+            .cloned()
             .map(|item| HydromancerRoutedMessage {
                 msg_type: message.msg_type.clone(),
                 data: Arc::new(item),
@@ -172,12 +111,12 @@ fn split_l2_book_batch_message(
     )
 }
 
-fn l2_book_batch_items(value: &Value) -> Option<Vec<Value>> {
+fn l2_book_batch_items(value: &Value) -> Option<&[Value]> {
     value
         .get("data")
         .and_then(Value::as_array)
         .or_else(|| value.get("books").and_then(Value::as_array))
-        .map(|items| items.to_vec())
+        .map(Vec::as_slice)
 }
 
 fn coalesce_key(message: &HydromancerRoutedMessage) -> Option<CoalesceKey> {

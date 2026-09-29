@@ -1,4 +1,4 @@
-use super::super::NormalizedRenderContext;
+use super::super::RenderContext;
 use super::series_render_color;
 use crate::helpers::{ellipsized_text, symbol_svg_logo, text_color_for_bg};
 use crate::spaghetti::{ComparisonColorMode, Series};
@@ -53,7 +53,7 @@ struct SeriesLabel {
 
 pub(in crate::spaghetti::normalized) fn draw_series_labels(
     frame: &mut canvas::Frame,
-    ctx: &NormalizedRenderContext<'_>,
+    ctx: &RenderContext<'_>,
     series_data: &[(&Series, Vec<(f32, f64)>)],
     pct_to_y: &impl Fn(f64) -> f32,
     color_mode: ComparisonColorMode,
@@ -100,11 +100,7 @@ pub(in crate::spaghetti::normalized) fn draw_series_labels(
     }
 }
 
-fn draw_series_label(
-    frame: &mut canvas::Frame,
-    ctx: &NormalizedRenderContext<'_>,
-    label: &SeriesLabel,
-) {
+fn draw_series_label(frame: &mut canvas::Frame, ctx: &RenderContext<'_>, label: &SeriesLabel) {
     let shifted = (label.label_y - label.y).abs() >= 1.0;
     let label_x = ctx.chart_w + 2.0;
     let max_label_width = (ctx.bounds.width - label_x - 2.0).max(0.0);

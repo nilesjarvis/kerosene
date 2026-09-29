@@ -2,6 +2,7 @@ use super::*;
 
 mod basic;
 mod labels;
+mod packing;
 mod reserved;
 
 fn anchor(order_index: usize, order_y: f32, is_buy: bool) -> OrderLabelAnchor {

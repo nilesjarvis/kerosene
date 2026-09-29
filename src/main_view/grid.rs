@@ -104,7 +104,7 @@ impl TradingTerminal {
                 row![pane_refresh_button(), close_btn]
             } else if matches!(kind, PaneKind::Income) {
                 row![
-                    income_refresh_button(self.income.loading),
+                    income_refresh_button(self.income.refresh.loading),
                     income_alerts_button(self.income_alerts_enabled),
                     close_btn
                 ]

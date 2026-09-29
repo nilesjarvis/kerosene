@@ -416,18 +416,19 @@ impl AnnotationKind {
     /// Anchor points exposed as draggable handles (in placement order).
     /// Single-axis shapes and freehand strokes expose none;
     /// they move by body drag.
-    pub fn anchor_points(&self) -> Vec<Anchor> {
-        match self {
+    pub fn anchor_points(&self) -> impl Iterator<Item = Anchor> + '_ {
+        let (pair, points): (Option<[Anchor; 2]>, &[Anchor]) = match self {
             Self::HorizontalLevel { .. } | Self::VerticalLine { .. } | Self::Pen { .. } => {
-                Vec::new()
+                (None, &[])
             }
             Self::TrendLine { start, end }
             | Self::Ray { start, end }
             | Self::ExtendedLine { start, end }
-            | Self::Measure { start, end } => vec![*start, *end],
-            Self::Rectangle { a, b } => vec![*a, *b],
-            Self::Fib { points, .. } => points.clone(),
-        }
+            | Self::Measure { start, end } => (Some([*start, *end]), &[]),
+            Self::Rectangle { a, b } => (Some([*a, *b]), &[]),
+            Self::Fib { points, .. } => (None, points),
+        };
+        pair.into_iter().flatten().chain(points.iter().copied())
     }
 
     /// Replace the anchor at `index` (no-op if out of range / unsupported kind).

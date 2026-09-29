@@ -422,7 +422,15 @@ impl TradingTerminal {
         self.tracked_trade_alerts_enabled = defaults.tracked_trade_alerts_enabled;
         self.tracked_trade_aggregation_enabled = defaults.tracked_trade_aggregation_enabled;
         self.liquidation_feed_aggregation_enabled = defaults.liquidation_feed_aggregation_enabled;
-        clear_telegram_fast_pending_auth();
+        {
+            // Config-clear tests share this registry with Telegram auth tests.
+            #[cfg(test)]
+            let _pending_auth_guard =
+                crate::telegram_fast_feed::telegram_fast_pending_auth_test_lock()
+                    .lock()
+                    .expect("pending auth test lock");
+            clear_telegram_fast_pending_auth();
+        }
         clear_all_fast_channel_cursors_best_effort();
         self.telegram_feed = TelegramFeedState::new(
             &defaults.telegram_feed_channels,
@@ -832,6 +840,7 @@ mod tests {
 
     #[test]
     fn clear_result_preserves_runtime_when_trading_request_becomes_pending() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
@@ -868,6 +877,7 @@ mod tests {
 
     #[test]
     fn clear_result_preserves_runtime_when_active_chase_appears_after_clear_started() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
@@ -906,6 +916,7 @@ mod tests {
 
     #[test]
     fn clearing_configs_clears_in_flight_order_decorations() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
         let pending_id = terminal.add_pending_market_order_placement_indicator(
@@ -924,12 +935,12 @@ mod tests {
         terminal.account_refresh_backoff_until_ms = Some(TradingTerminal::now_ms() + 60_000);
         terminal.account_refresh_retry_due_ms = terminal.account_refresh_backoff_until_ms;
         terminal.active_move_order_drag = Some(MoveOrderKey::new("BTC", 1001));
-        let portfolio_request_id = terminal.portfolio.begin_refresh();
-        terminal.portfolio.queue_refresh_followup();
+        let portfolio_request_id = terminal.portfolio.refresh.begin();
+        terminal.portfolio.refresh.queue_followup();
         terminal.portfolio.data = Some(portfolio_history());
         terminal.portfolio.last_error = Some("old portfolio error".to_string());
-        let income_request_id = terminal.income.begin_refresh();
-        terminal.income.queue_refresh_followup();
+        let income_request_id = terminal.income.refresh.begin();
+        terminal.income.refresh.queue_followup();
         terminal.income.data = Some(income_snapshot());
         terminal.income.last_error = Some("old income error".to_string());
         terminal.last_income_alert_time = Some(123);
@@ -950,14 +961,14 @@ mod tests {
         assert!(!terminal.account_reconciliation_required);
         assert!(terminal.account_refresh_backoff_until_ms.is_none());
         assert!(terminal.account_refresh_retry_due_ms.is_none());
-        assert_ne!(terminal.portfolio.refresh_request_id, portfolio_request_id);
-        assert!(!terminal.portfolio.loading);
-        assert!(!terminal.portfolio.refresh_followup_pending);
+        assert_ne!(terminal.portfolio.refresh.request_id, portfolio_request_id);
+        assert!(!terminal.portfolio.refresh.loading);
+        assert!(!terminal.portfolio.refresh.followup_pending);
         assert!(terminal.portfolio.data.is_none());
         assert!(terminal.portfolio.last_error.is_none());
-        assert_ne!(terminal.income.refresh_request_id, income_request_id);
-        assert!(!terminal.income.loading);
-        assert!(!terminal.income.refresh_followup_pending);
+        assert_ne!(terminal.income.refresh.request_id, income_request_id);
+        assert!(!terminal.income.refresh.loading);
+        assert!(!terminal.income.refresh.followup_pending);
         assert!(terminal.income.data.is_none());
         assert!(terminal.income.last_error.is_none());
         assert!(terminal.last_income_alert_time.is_none());
@@ -966,6 +977,7 @@ mod tests {
 
     #[test]
     fn clearing_configs_clears_pending_keychain_profile_deletions_after_runtime_reset() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal
             .pending_keychain_profile_deletions
@@ -989,6 +1001,7 @@ mod tests {
 
     #[test]
     fn clearing_configs_clears_wallet_detail_advanced_history_and_twap_runtime_state() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.wallet_tracker.compact_selections.insert(
             7,
@@ -1055,6 +1068,7 @@ mod tests {
 
     #[test]
     fn clearing_configs_replaces_stale_hydromancer_chart_request() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.chart_backfill_source = ChartBackfillSource::Hydromancer;
         terminal.hydromancer_api_key = sensitive_string("old-hydro");
@@ -1217,6 +1231,7 @@ mod tests {
 
     #[test]
     fn config_file_cleanup_failure_does_not_reset_runtime() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();
@@ -1251,6 +1266,7 @@ mod tests {
 
     #[test]
     fn config_file_cleanup_failure_status_redacts_warning_details() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
 
@@ -1275,6 +1291,7 @@ mod tests {
 
     #[test]
     fn config_clear_error_status_redacts_sensitive_text() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
 
@@ -1295,6 +1312,7 @@ mod tests {
 
     #[test]
     fn sensitive_side_file_cleanup_failure_after_config_removal_resets_runtime() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();
@@ -1369,6 +1387,7 @@ mod tests {
 
     #[test]
     fn keychain_cleanup_failure_without_config_removal_keeps_config_and_runtime() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();
@@ -1415,6 +1434,7 @@ mod tests {
 
     #[test]
     fn keychain_cleanup_failure_after_config_removal_pauses_persistence_without_runtime_reset() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.config_save_due_at = Some(Instant::now());
@@ -1463,6 +1483,7 @@ mod tests {
 
     #[test]
     fn ancillary_config_cleanup_warning_still_resets_runtime() {
+        let _cursor_guard = fast_channel_cursor_test_lock().blocking_lock();
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.config_clear_requested = true;
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();

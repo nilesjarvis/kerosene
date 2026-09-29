@@ -1,3 +1,4 @@
+use super::refresh::AnalyticsRefreshState;
 use crate::account_analytics::{IncomeSnapshot, PortfolioHistory};
 use crate::portfolio_state::PnlValueDisplayMode;
 use chrono::{Datelike, TimeZone, Utc};
@@ -103,9 +104,7 @@ impl IncomePaneView {
 
 #[derive(Debug, Clone)]
 pub(crate) struct PortfolioState {
-    pub(crate) loading: bool,
-    pub(crate) refresh_request_id: u64,
-    pub(crate) refresh_followup_pending: bool,
+    pub(crate) refresh: AnalyticsRefreshState,
     pub(crate) scope: PortfolioScope,
     pub(crate) window: PortfolioWindow,
     pub(crate) pnl_value_display_mode: PnlValueDisplayMode,
@@ -116,9 +115,7 @@ pub(crate) struct PortfolioState {
 impl Default for PortfolioState {
     fn default() -> Self {
         Self {
-            loading: false,
-            refresh_request_id: 0,
-            refresh_followup_pending: false,
+            refresh: AnalyticsRefreshState::default(),
             scope: PortfolioScope::All,
             // Spec default: the all-time window is active on first load so the
             // hero shows the headline lifetime PnL.
@@ -132,79 +129,68 @@ impl Default for PortfolioState {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct IncomeState {
-    pub(crate) loading: bool,
-    pub(crate) refresh_request_id: u64,
-    pub(crate) refresh_followup_pending: bool,
+    pub(crate) refresh: AnalyticsRefreshState,
     pub(crate) view: IncomePaneView,
     pub(crate) data: Option<IncomeSnapshot>,
     pub(crate) last_error: Option<String>,
 }
 
-impl PortfolioState {
-    pub(crate) fn begin_refresh(&mut self) -> u64 {
-        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
-        self.loading = true;
-        self.refresh_request_id
-    }
-
-    pub(crate) fn finish_refresh(&mut self, request_id: u64) -> bool {
-        if self.refresh_request_id != request_id {
-            return false;
-        }
-        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
-        self.loading = false;
-        true
-    }
-
-    pub(crate) fn queue_refresh_followup(&mut self) {
-        self.refresh_followup_pending = true;
-    }
-
-    pub(crate) fn take_refresh_followup(&mut self) -> bool {
-        std::mem::take(&mut self.refresh_followup_pending)
-    }
-
-    pub(crate) fn invalidate_refresh(&mut self) {
-        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
-        self.loading = false;
-        self.refresh_followup_pending = false;
-    }
-}
-
-impl IncomeState {
-    pub(crate) fn begin_refresh(&mut self) -> u64 {
-        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
-        self.loading = true;
-        self.refresh_request_id
-    }
-
-    pub(crate) fn finish_refresh(&mut self, request_id: u64) -> bool {
-        if self.refresh_request_id != request_id {
-            return false;
-        }
-        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
-        self.loading = false;
-        true
-    }
-
-    pub(crate) fn queue_refresh_followup(&mut self) {
-        self.refresh_followup_pending = true;
-    }
-
-    pub(crate) fn take_refresh_followup(&mut self) -> bool {
-        std::mem::take(&mut self.refresh_followup_pending)
-    }
-
-    pub(crate) fn invalidate_refresh(&mut self) {
-        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
-        self.loading = false;
-        self.refresh_followup_pending = false;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_refresh_lifecycle(mut state: AnalyticsRefreshState) {
+        assert!(!state.loading);
+        assert_eq!(state.request_id, 0);
+        assert!(!state.take_followup());
+
+        let first = state.begin();
+        assert_eq!(first, 1);
+        state.queue_followup();
+        state.queue_followup();
+        assert!(!state.finish(first - 1));
+        assert!(state.loading);
+        assert_eq!(state.request_id, first);
+        assert!(state.followup_pending);
+
+        assert!(state.finish(first));
+        assert!(!state.loading);
+        assert_eq!(state.request_id, first + 1);
+        assert!(!state.finish(first));
+        assert!(state.take_followup());
+        assert!(!state.take_followup());
+
+        state.queue_followup();
+        let second = state.begin();
+        assert!(state.followup_pending);
+        state.invalidate();
+        assert!(!state.loading);
+        assert!(!state.take_followup());
+        assert_eq!(state.request_id, second + 1);
+        assert!(!state.finish(second));
+
+        // The counter intentionally saturates instead of wrapping.
+        state.request_id = u64::MAX - 1;
+        assert_eq!(state.begin(), u64::MAX);
+        assert!(state.finish(u64::MAX));
+        assert_eq!(state.request_id, u64::MAX);
+        state.queue_followup();
+        state.invalidate();
+        assert_eq!(state.request_id, u64::MAX);
+        assert!(!state.loading);
+        assert!(!state.take_followup());
+        assert!(!state.finish(u64::MAX - 1));
+    }
+
+    #[test]
+    fn portfolio_refresh_preserves_completion_followup_and_invalidation_rules() {
+        assert_refresh_lifecycle(PortfolioState::default().refresh);
+    }
+
+    #[test]
+    fn income_refresh_preserves_completion_followup_and_invalidation_rules() {
+        assert_refresh_lifecycle(IncomeState::default().refresh);
+    }
 
     fn timestamp_ms(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32) -> u64 {
         let datetime = Utc

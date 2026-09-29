@@ -7,6 +7,7 @@ use self::response::{
     parse_perp_deltas_response, parse_ticker_positions_response, read_perp_deltas_response_text,
 };
 use super::errors::hyperdash_http_error;
+use super::http::request_text;
 use super::models::{PerpDeltas, TickerPositions};
 use super::{HYPERDASH_API_URL, KEROSENE_USER_AGENT};
 
@@ -97,25 +98,16 @@ pub async fn fetch_ticker_positions(
         "query": query,
     });
 
-    let response = CLIENT
-        .clone()
-        .post(HYPERDASH_API_URL)
-        .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .bearer_auth(api_key.as_str())
-        .json(&body)
-        .send_observed()
-        .await
-        .map_err(|e| format!("HyperDash positioning request failed: {e}"))?;
-
-    let status = response.status();
-    let text = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read HyperDash positioning response: {e}"))?;
-
-    if !status.is_success() {
-        return Err(hyperdash_http_error("positioning", status, &text));
-    }
+    let text = request_text(
+        CLIENT
+            .post(HYPERDASH_API_URL)
+            .header(USER_AGENT, KEROSENE_USER_AGENT)
+            .bearer_auth(api_key.as_str())
+            .json(&body),
+        "HyperDash positioning",
+        "positioning",
+    )
+    .await?;
 
     parse_ticker_positions_response(&text)
 }
@@ -163,7 +155,6 @@ pub async fn fetch_perp_deltas(
     });
 
     let response = CLIENT
-        .clone()
         .post(HYPERDASH_API_URL)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .bearer_auth(api_key.as_str())

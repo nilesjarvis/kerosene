@@ -43,9 +43,17 @@ They cover:
 - live watchlist refresh ticks
 - ticker tape context refresh ticks
 
-The order-book subscription path chooses Hyperliquid or Hydromancer stream
-helpers based on the configured read-data provider and available Hydromancer
-key. Hidden or unsupported symbols are skipped before subscriptions are added.
+Order-book panes, Chase, and TWAP use `market_book_subscription` to choose the
+Hyperliquid or Hydromancer stream from the configured read-data provider and
+available key. Each consumer keeps its own eligibility checks and message
+mapping; these mappings distinguish subscriptions even when IDs and symbols
+match. Order-book pane assembly lives in `market/order_book.rs`.
+
+Chart subscriptions deduplicate borrowed symbol/timeframe keys before creating
+owned stream parameters, retaining the lowest chart ID for each key. Native
+chart asset-context streams still provide funding data with either selected
+provider. One-second candles and real-time position PnL retain their explicit
+Hydromancer-keyed source context, independent of the selected read provider.
 
 L2 book subscriptions use one canonical live precision per coin across
 order-book panes, Chase, and TWAP. Stream helpers filter frames when a provider
@@ -58,22 +66,16 @@ same-coin multi-precision live subscriptions.
 
 ## User Data Subscriptions
 
-`src/subscription_state/user_data.rs` always pushes a user-data stream with
-`WsUserDataStreamParams`.
+`src/subscription_state/user_data.rs` always pushes a base user-data stream with
+`WsUserDataStreamParams`. It covers connected-account private data and all-mids
+subscriptions for visible dexes, yielding `Message::WsUserDataUpdate`. The stream
+filters private subscriptions internally when no address is connected.
 
-The stream covers:
-
-- connected account private user data when a wallet is connected
-- all-mids subscriptions for visible dexes
-- wallet detail windows for addresses different from the connected address
-
-Results become:
-
-- `Message::WsUserDataUpdate`
-- `Message::WalletDetailsWsUpdate`
-
-The stream filters private subscriptions internally when no address is
-connected.
+Separate streams cover wallet detail addresses different from the connected
+address and members of the selected wallet cluster. Each group normalizes,
+sorts, and deduplicates its addresses. These streams opt out of mids and use
+distinct `WalletDetail` and `WalletCluster` purposes in their identity, yielding
+`Message::WalletDetailsWsUpdate` and `Message::WalletClusterWsUpdate` respectively.
 
 ## Integration Subscriptions
 
@@ -136,7 +138,10 @@ commands use the same `Message` path as button-driven commands.
 - close events -> `Message::WindowClosed`
 - resized -> `Message::WindowResized`
 - moved -> `Message::WindowMoved`
-- unhandled window event -> `Message::Tick`
+- focused -> `Message::WindowFocused`
+- file hover/leave -> `Message::AgentPnlCardHoverChanged`
+- dropped file -> `Message::AgentPnlCardDropped`
+- unhandled window event -> `Message::NoOp`
 
 Window messages let `window_update.rs` persist auxiliary window state, remove
 closed windows from maps, and keep layout min sizes synchronized.
@@ -157,8 +162,29 @@ Key properties:
 - Stale read timeouts force reconnects to recover from half-open sockets.
 - `SubscriptionGuard` unsubscribes topics when a stream is dropped.
 
+`ws/telemetry.rs` keeps independent API-probe state for Hyperliquid and
+Hydromancer, using shared attempt/success/failure updates. Starting another
+attempt or recording a failure retains the previous successful measurement;
+separate success and in-flight flags determine how the status bar presents it.
+The public telemetry snapshot retains its provider-specific fields.
+
+Both providers share the snapshot pacing implementation in `ws/coalescer.rs`.
+Provider adapters retain their own channel, coin, and echoed precision rules,
+including Hydromancer batch splitting. The first snapshot emits immediately;
+updates within the 16 ms window replace the pending snapshot without extending
+its deadline. Other channels pass through, and pending snapshots flush before
+disconnect. The shared implementation also prunes expired emission history.
+
 Feature stream helpers in `src/ws/market_streams/` and `src/ws/user_streams/`
 subscribe to manager channels and convert routed payloads into typed app data.
+
+Streams that recover by reconnecting share `ws/recovery.rs`: request the
+provider's reconnect, notify the downstream consumer, then apply the caller's
+pause. Failed reconnect requests or downstream sends stop that sequence.
+User-data streams dispatch parsed messages and broadcast lag through the same
+action handler; malformed targeted spot state reconciles without a pause, while
+broadcast lag retains its two-second pause. Candle lag continues to use history
+repair without reconnecting the shared transport.
 
 ## Hydromancer Websocket Paths
 
@@ -171,6 +197,23 @@ Hydromancer covers:
 - liquidation feed
 - tracked trades
 - alternative candle/book/asset-context streams
+
+Liquidations and tracked trades share `ws/hydromancer/fill_stream.rs` for
+subscription cleanup, control forwarding, live/replay parsing, duplicate
+filtering, and lag recovery. Each adapter retains its subscription payload and
+stream identity; the shared handler retains separate feed parsers and history
+limits (20,000 liquidation keys and 50,000 tracked-trade keys). Lag recovery
+requests reconnect before notifying the consumer, then pauses for two seconds
+only if both succeed. The subscription guard releases the topic on stream
+completion or cancellation.
+
+Market adapters are split by feature under `ws/hydromancer/market_streams/`.
+Their shared payload selectors return borrowed slices for direct items, wrapped
+items, and batches; each adapter filters its symbol and other routing fields
+before parsing. Book and candle legacy wrapper fallbacks retain their own rules.
+Authentication failures can switch market streams to Hyperliquid, except for
+one-second candles. Fallback events retain the source generation supplied by the
+fallback stream.
 
 Hydromancer keys are secret-bearing values and should only be passed into
 stream setup or request tasks, never logged.

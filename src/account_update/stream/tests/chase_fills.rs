@@ -7,6 +7,7 @@ use crate::signing::{ChaseLifecycle, ChaseOrder, ChaseStopPhase, ChaseVerificati
 
 mod completion;
 mod progress;
+mod summaries;
 
 const CONNECTED_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
 

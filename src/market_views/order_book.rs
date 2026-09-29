@@ -29,11 +29,11 @@ impl TradingTerminal {
         };
         let theme = self.theme();
         let tracking_symbol = match &inst.mode {
-            OrderBookSymbolMode::Active => self.active_symbol.clone(),
-            OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
+            OrderBookSymbolMode::Active => self.active_symbol.as_str(),
+            OrderBookSymbolMode::Fixed(symbol) => symbol.as_str(),
         };
-        if !tracking_symbol.is_empty() && self.symbol_key_is_hidden(&tracking_symbol) {
-            let hidden_label = if self.is_ticker_muted(&tracking_symbol) {
+        if !tracking_symbol.is_empty() && self.symbol_key_is_hidden(tracking_symbol) {
+            let hidden_label = if self.is_ticker_muted(tracking_symbol) {
                 "Muted ticker"
             } else {
                 "Outside selected market"
@@ -85,10 +85,11 @@ impl TradingTerminal {
             tick
         };
         let title_row = self.view_order_book_title(id, inst);
-        let outcome_metadata = self.view_order_book_outcome_metadata(&tracking_symbol, inst);
+        let outcome_metadata = self.view_order_book_outcome_metadata(tracking_symbol, inst);
 
-        if inst.book.bids.is_empty() && inst.book.asks.is_empty() {
-            let loading_row: Element<'_, Message> = if let Some(error) = &inst.book_error {
+        let book_has_rows = !inst.book.bids.is_empty() || !inst.book.asks.is_empty();
+        let body: Element<'_, Message> = if !book_has_rows {
+            if let Some(error) = &inst.book_error {
                 column![
                     text("Order book unavailable")
                         .size(12)
@@ -122,53 +123,35 @@ impl TradingTerminal {
                 .size(12)
                 .color(theme.extended_palette().background.weak.text)
                 .into()
-            };
-            let mut content = column![title_row].spacing(4);
-            if let Some(outcome_metadata) = outcome_metadata {
-                content = content.push(outcome_metadata);
             }
-            if inst.settings_open {
-                content = content.push(self.view_order_book_settings(id, inst));
+        } else {
+            let user_order_levels = self.user_order_book_levels(tracking_symbol, render_tick);
+            let whole_contracts = self.is_outcome_coin(tracking_symbol);
+            match inst.display_mode {
+                OrderBookDisplayMode::DepthList => Self::view_order_book_rows(
+                    id,
+                    inst,
+                    render_tick,
+                    &theme,
+                    user_order_levels,
+                    whole_contracts,
+                ),
+                OrderBookDisplayMode::DomLadder => Self::view_order_book_dom_ladder(
+                    id,
+                    inst,
+                    render_tick,
+                    &theme,
+                    user_order_levels,
+                    whole_contracts,
+                ),
+                OrderBookDisplayMode::DepthChart => Self::view_order_book_depth_chart(
+                    id,
+                    inst,
+                    render_tick,
+                    &user_order_levels,
+                    whole_contracts,
+                ),
             }
-            content = content.push(tick_buttons);
-            if let Some(header) = header {
-                content = content.push(header);
-            }
-            content = content.push(rule::horizontal(1)).push(loading_row);
-
-            return container(content)
-                .width(Fill)
-                .height(Fill)
-                .padding(10)
-                .into();
-        }
-
-        let user_order_levels = self.user_order_book_levels(&tracking_symbol, render_tick);
-        let whole_contracts = self.is_outcome_coin(&tracking_symbol);
-        let scroll = match inst.display_mode {
-            OrderBookDisplayMode::DepthList => Self::view_order_book_rows(
-                id,
-                inst,
-                render_tick,
-                &theme,
-                &user_order_levels,
-                whole_contracts,
-            ),
-            OrderBookDisplayMode::DomLadder => Self::view_order_book_dom_ladder(
-                id,
-                inst,
-                render_tick,
-                &theme,
-                &user_order_levels,
-                whole_contracts,
-            ),
-            OrderBookDisplayMode::DepthChart => Self::view_order_book_depth_chart(
-                id,
-                inst,
-                render_tick,
-                &user_order_levels,
-                whole_contracts,
-            ),
         };
 
         let mut content_col = column![title_row].spacing(4);
@@ -184,9 +167,9 @@ impl TradingTerminal {
         if let Some(header) = header {
             content_col = content_col.push(header);
         }
-        content_col = content_col.push(rule::horizontal(1)).push(scroll);
+        content_col = content_col.push(rule::horizontal(1)).push(body);
 
-        if inst.show_spread_chart {
+        if book_has_rows && inst.show_spread_chart {
             content_col = content_col
                 .push(rule::horizontal(1))
                 .push(Self::view_order_book_spread_chart(id, inst));

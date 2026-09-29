@@ -19,8 +19,8 @@ impl TradingTerminal {
         &self,
         subs: &mut Vec<Subscription<Message>>,
     ) {
-        let mut candle_streams: BTreeMap<(String, String), u64> = BTreeMap::new();
-        let mut asset_ctx_streams: BTreeMap<String, u64> = BTreeMap::new();
+        let mut candle_streams: BTreeMap<(&str, &str), u64> = BTreeMap::new();
+        let mut asset_ctx_streams: BTreeMap<&str, u64> = BTreeMap::new();
 
         for instance in self.charts.values() {
             if !instance.symbol.is_empty()
@@ -28,10 +28,7 @@ impl TradingTerminal {
                 && instance.interval.uses_candle_backfill()
                 && !self.symbol_key_is_hidden(&instance.symbol)
             {
-                let key = (
-                    instance.symbol.clone(),
-                    instance.interval.api_str().to_string(),
-                );
+                let key = (instance.symbol.as_str(), instance.interval.api_str());
                 candle_streams
                     .entry(key)
                     .and_modify(|id| *id = (*id).min(instance.id))
@@ -42,7 +39,7 @@ impl TradingTerminal {
                 && instance.interval.uses_candle_backfill()
                 && !self.symbol_key_is_hidden(symbol)
             {
-                let key = (symbol.clone(), instance.interval.api_str().to_string());
+                let key = (symbol.as_str(), instance.interval.api_str());
                 candle_streams
                     .entry(key)
                     .and_modify(|id| *id = (*id).min(instance.id))
@@ -50,7 +47,7 @@ impl TradingTerminal {
             }
             if !instance.symbol.is_empty() && !self.symbol_key_is_hidden(&instance.symbol) {
                 asset_ctx_streams
-                    .entry(instance.symbol.clone())
+                    .entry(instance.symbol.as_str())
                     .and_modify(|id| *id = (*id).min(instance.id))
                     .or_insert(instance.id);
             }
@@ -80,7 +77,7 @@ impl TradingTerminal {
                 };
                 subs.push(
                     Subscription::run_with(
-                        (api_key, id, symbol, interval),
+                        (api_key, id, symbol.to_string(), interval.to_string()),
                         ws_hydromancer_candle_stream_keyed,
                     )
                     .with(stream_source_context)
@@ -88,9 +85,12 @@ impl TradingTerminal {
                 );
             } else {
                 subs.push(
-                    Subscription::run_with((id, symbol, interval), ws_candle_stream_keyed)
-                        .with(source_context)
-                        .map(chart_candle_stream_event_message),
+                    Subscription::run_with(
+                        (id, symbol.to_string(), interval.to_string()),
+                        ws_candle_stream_keyed,
+                    )
+                    .with(source_context)
+                    .map(chart_candle_stream_event_message),
                 );
             }
         }
@@ -99,7 +99,7 @@ impl TradingTerminal {
             // otherwise-live context also suppresses the REST fallback, so
             // chart headers need the complete native Hyperliquid stream.
             subs.push(
-                Subscription::run_with((id, symbol), ws_asset_ctx_stream_keyed)
+                Subscription::run_with((id, symbol.to_string()), ws_asset_ctx_stream_keyed)
                     .with(source_context)
                     .map(chart_asset_ctx_stream_event_message),
             );
@@ -107,7 +107,7 @@ impl TradingTerminal {
     }
 }
 
-fn chart_candle_stream_event_message(
+pub(super) fn chart_candle_stream_event_message(
     (source_context, event): (
         crate::read_data_provider::MarketDataSourceContext,
         KeyedCandleStreamEvent,

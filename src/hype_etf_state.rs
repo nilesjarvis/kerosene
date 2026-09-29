@@ -111,10 +111,6 @@ impl HypeEtfData {
             .collect()
     }
 
-    pub(crate) fn totals_for(&self, view: HypeEtfView) -> HypeEtfTotals {
-        HypeEtfTotals::from_funds(self.selected_funds(view))
-    }
-
     pub(crate) fn daily_flows_for(&self, view: HypeEtfView) -> Vec<HypeEtfDailyFlow> {
         let mut flows_by_date = BTreeMap::new();
         for fund in self.funds.iter().filter(|fund| view.includes(fund.ticker)) {
@@ -122,13 +118,16 @@ impl HypeEtfData {
                 let Some(amount_usd) = finite_value(flow.amount_usd) else {
                     continue;
                 };
-                *flows_by_date.entry(flow.date.clone()).or_insert(0.0) += amount_usd;
+                *flows_by_date.entry(flow.date.as_str()).or_insert(0.0) += amount_usd;
             }
         }
 
         flows_by_date
             .into_iter()
-            .map(|(date, amount_usd)| HypeEtfDailyFlow { date, amount_usd })
+            .map(|(date, amount_usd)| HypeEtfDailyFlow {
+                date: date.to_string(),
+                amount_usd,
+            })
             .collect()
     }
 }
@@ -240,16 +239,16 @@ impl fmt::Debug for HypeEtfTotals {
 }
 
 impl HypeEtfTotals {
-    fn from_funds(funds: Vec<&HypeEtfFund>) -> Self {
+    pub(crate) fn from_funds(funds: &[&HypeEtfFund]) -> Self {
         let net_assets_usd = sum_options(funds.iter().filter_map(|fund| fund.net_assets_usd));
         let hype_exposure = sum_options(funds.iter().filter_map(|fund| fund.hype_exposure));
         let shares_outstanding =
             sum_options(funds.iter().filter_map(|fund| fund.shares_outstanding));
         let daily_volume = sum_options(funds.iter().filter_map(|fund| fund.daily_volume));
-        let weighted_premium_discount_pct = weighted_average(&funds, |fund| {
+        let weighted_premium_discount_pct = weighted_average(funds, |fund| {
             fund.premium_discount_pct.zip(fund.net_assets_usd)
         });
-        let weighted_median_spread_pct = weighted_average(&funds, |fund| {
+        let weighted_median_spread_pct = weighted_average(funds, |fund| {
             fund.median_spread_pct.zip(fund.net_assets_usd)
         });
 

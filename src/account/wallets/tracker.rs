@@ -6,6 +6,7 @@ use super::super::{
 use crate::api::API_URL;
 use crate::api::proxy::HyperliquidRequestExt;
 
+use serde::Deserialize;
 use serde_json::Value;
 use zeroize::Zeroizing;
 
@@ -33,7 +34,7 @@ pub async fn fetch_wallet_tracker_snapshot_scoped(
     address: String,
     scope: AccountDataFetchScope,
 ) -> Result<WalletTrackerSnapshot, String> {
-    let client = crate::api::CLIENT.clone();
+    let client = &*crate::api::CLIENT;
 
     let response = client
         .post(API_URL)
@@ -58,14 +59,13 @@ pub async fn fetch_wallet_tracker_snapshot_scoped(
         return Err(format!("clearinghouseState error: {err}"));
     }
 
-    let main_clearinghouse = serde_json::from_value::<ClearinghouseState>(raw.clone()).ok();
-    let mut asset_positions = main_clearinghouse
-        .as_ref()
-        .map(|ch| ch.asset_positions.clone())
-        .unwrap_or_default();
+    let main_clearinghouse = ClearinghouseState::deserialize(&raw).ok();
     let mut margin_used = main_clearinghouse
         .as_ref()
         .and_then(|ch| parse_tracker_number(&ch.margin_summary.total_margin_used));
+    let mut asset_positions = main_clearinghouse
+        .map(|ch| ch.asset_positions)
+        .unwrap_or_default();
 
     let mut equity = raw
         .get("marginSummary")
@@ -81,9 +81,9 @@ pub async fn fetch_wallet_tracker_snapshot_scoped(
     // Best-effort like the HIP-3 pass below: a transient failure of the
     // auxiliary spot request must not discard the perp snapshot in hand.
     let valuation_warning =
-        apply_spot_equity_fallback(&client, &address, &mut equity, &mut withdrawable).await;
+        apply_spot_equity_fallback(client, &address, &mut equity, &mut withdrawable).await;
     append_hip3_margin_and_positions(
-        &client,
+        client,
         &address,
         &scope,
         &mut margin_used,
@@ -175,7 +175,7 @@ pub async fn fetch_wallet_tracker_snapshots_scoped_with_provider(
             .is_ok_and(|values| values.spot_fallback.is_some())
     });
     let mids = if needs_mids {
-        fetch_spot_fallback_mids(&crate::api::CLIENT.clone()).await
+        fetch_spot_fallback_mids(&crate::api::CLIENT).await
     } else {
         Err("no portfolio-margin wallets in batch".to_string())
     };
@@ -232,7 +232,7 @@ pub async fn fetch_wallet_tracker_open_order_count_scoped_with_provider(
         return fetch_wallet_tracker_open_order_count_scoped(address, scope).await;
     }
 
-    match fetch_hydromancer_frontend_open_orders_scoped(address.clone(), scope.clone(), api_key).await
+    match fetch_hydromancer_frontend_open_orders_scoped(&address, &scope, api_key.as_str()).await
     {
         Ok(orders) => Ok(orders.into_iter().filter(order_has_size).count()),
         Err(hydromancer_error) => fetch_wallet_tracker_open_order_count_scoped(address, scope)

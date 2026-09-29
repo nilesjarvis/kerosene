@@ -1,6 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
+use crate::order_execution::cancel_error_indicates_closed_order;
 use crate::signing::{self, ChaseLifecycle, ChaseStopPhase, ExchangeResponse};
 
 use iced::Task;
@@ -11,19 +12,6 @@ use super::super::results::result_requires_account_refresh;
 #[cfg(test)]
 mod tests;
 
-pub(in crate::order_update) fn chase_terminal_cancel_error(summary: &str) -> bool {
-    let summary = summary.to_ascii_lowercase();
-    summary.contains("filled")
-        || summary.contains("canceled")
-        || summary.contains("cancelled")
-        || summary.contains("cancled")
-        || summary.contains("never placed")
-        || summary.contains("not found")
-        || summary.contains("does not exist")
-        || summary.contains("no open order")
-        || summary.contains("no longer open")
-}
-
 impl TradingTerminal {
     pub(crate) fn handle_chase_cancel_result(
         &mut self,
@@ -32,24 +20,11 @@ impl TradingTerminal {
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         let should_refresh = result_requires_account_refresh(&result);
-        if !self.chase_orders.contains_key(&chase_id) {
-            return Task::none();
-        }
-        let Some(chase_account_address) = self
-            .chase_orders
-            .get(&chase_id)
-            .map(|chase| chase.account_address.clone())
-        else {
+        let Some(chase) = self.chase_orders.get(&chase_id) else {
             return Task::none();
         };
-        let lifecycle = self
-            .chase_orders
-            .get(&chase_id)
-            .map(|chase| chase.lifecycle);
-        let Some(lifecycle) = lifecycle else {
-            return Task::none();
-        };
-        if !lifecycle.expects_cancel_result(oid) {
+        let chase_account_address = chase.account_address.clone();
+        if !chase.lifecycle.expects_cancel_result(oid) {
             return self.refresh_after_chase_result_for_order_account(
                 should_refresh,
                 &chase_account_address,
@@ -60,7 +35,7 @@ impl TradingTerminal {
             Ok(resp) => {
                 if resp.is_error() {
                     let summary = resp.summary();
-                    if chase_terminal_cancel_error(&summary) {
+                    if cancel_error_indicates_closed_order(&summary) {
                         return self.check_chase_order_status(
                             chase_id,
                             oid,

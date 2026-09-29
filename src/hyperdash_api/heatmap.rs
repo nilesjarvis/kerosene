@@ -1,12 +1,11 @@
 use crate::api::CLIENT;
-use crate::network_activity::HttpRequestExt as _;
 use reqwest::header::USER_AGENT;
 use zeroize::Zeroizing;
 
 use self::parsing::parse_heatmap_response;
 #[cfg(test)]
 use self::parsing::{infer_heatmap_bucket_duration_ms, parse_heatmap_timestamp};
-use super::errors::hyperdash_http_error;
+use super::http::request_text;
 use super::models::LiquidationHeatmap;
 use super::{
     HYPERDASH_API_URL, HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS, HYPERDASH_HEATMAP_MAX_LOOKBACK_SECS,
@@ -101,25 +100,16 @@ pub async fn fetch_liquidation_heatmap(
         "query": query,
     });
 
-    let response = CLIENT
-        .clone()
-        .post(HYPERDASH_API_URL)
-        .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .bearer_auth(api_key.as_str())
-        .json(&body)
-        .send_observed()
-        .await
-        .map_err(|e| format!("HyperDash heatmap request failed: {e}"))?;
-
-    let status = response.status();
-    let text = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read HyperDash heatmap response: {e}"))?;
-
-    if !status.is_success() {
-        return Err(hyperdash_http_error("heatmap", status, &text));
-    }
+    let text = request_text(
+        CLIENT
+            .post(HYPERDASH_API_URL)
+            .header(USER_AGENT, KEROSENE_USER_AGENT)
+            .bearer_auth(api_key.as_str())
+            .json(&body),
+        "HyperDash heatmap",
+        "heatmap",
+    )
+    .await?;
 
     parse_heatmap_response(&text)
 }

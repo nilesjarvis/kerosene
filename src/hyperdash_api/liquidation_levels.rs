@@ -1,12 +1,12 @@
 use crate::api::CLIENT;
-use crate::network_activity::HttpRequestExt as _;
 use reqwest::header::USER_AGENT;
 use serde::Deserialize;
 use zeroize::Zeroizing;
 
 mod buckets;
 
-use super::errors::{hyperdash_graphql_error, hyperdash_http_error, hyperdash_missing_data_error};
+use super::errors::{hyperdash_graphql_error, hyperdash_missing_data_error};
+use super::http::request_text;
 use super::models::{GqlError, LiquidationEntry, LiquidationLevel};
 use super::{HYPERDASH_API_URL, KEROSENE_USER_AGENT, response_snippet};
 pub use buckets::bucket_liquidations;
@@ -69,25 +69,16 @@ pub async fn fetch_liquidation_levels_at(
         "query": query,
     });
 
-    let response = CLIENT
-        .clone()
-        .post(HYPERDASH_API_URL)
-        .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .bearer_auth(api_key.as_str())
-        .json(&body)
-        .send_observed()
-        .await
-        .map_err(|e| format!("HyperDash request failed: {e}"))?;
-
-    let status = response.status();
-    let text = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read HyperDash response: {e}"))?;
-
-    if !status.is_success() {
-        return Err(hyperdash_http_error("liquidation levels", status, &text));
-    }
+    let text = request_text(
+        CLIENT
+            .post(HYPERDASH_API_URL)
+            .header(USER_AGENT, KEROSENE_USER_AGENT)
+            .bearer_auth(api_key.as_str())
+            .json(&body),
+        "HyperDash",
+        "liquidation levels",
+    )
+    .await?;
 
     let parsed: GqlResponse = serde_json::from_str(&text).map_err(|e| {
         let snippet = response_snippet(&text);

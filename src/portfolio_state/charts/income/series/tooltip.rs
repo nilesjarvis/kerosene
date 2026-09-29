@@ -7,7 +7,7 @@ use super::{IncomeBarLayout, IncomeTooltipLayout, TOOLTIP_HEIGHT};
 // ---------------------------------------------------------------------------
 
 pub(in crate::portfolio_state::charts::income) fn income_tooltip_layout(
-    bar: &IncomeBarLayout,
+    bar: &IncomeBarLayout<'_>,
     value_text: &str,
     width: f32,
     height: f32,

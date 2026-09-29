@@ -24,6 +24,31 @@ reduce-only semantics, and order-status verification.
 | Market symbol helpers | `src/order_execution/symbols/` | Market lookup, outcome handling, fees, display labels, orderability. |
 | Risk filters | `src/risk_state/` | Hidden-symbol and market-universe checks that affect routing and order eligibility. |
 
+`order_execution.rs` re-exports shared types and helpers. Its account and pending
+state implementations live beside their responsibilities:
+
+- `order_execution/account_context.rs`: account-bound snapshots, spot-balance
+  invalidation, reconciliation guards, and committed signing-key capture.
+- `order_execution/pending.rs`: pending action, NUKE, and leverage models;
+  shared trading-request guards and the HUD concurrency limit.
+- `order_execution/identities.rs`: captured spot metadata for Chase/TWAP,
+  open-order identity checks for Chase, and shared open-order side decoding.
+- `order_execution/resting_order.rs`: shared wire-metadata admission for moving
+  and adopting resting orders, with caller-specific status messages.
+- `order_execution/exchange_errors.rs`: shared closed-order cancellation error
+  matching for ordinary orders, Chase, and TWAP, plus retryable error matching for
+  Chase and TWAP; callers retain their own reconciliation policies and precedence.
+- `order_execution/quick_order/model.rs`: quick-order form, recovery, and
+  percentage provenance, including redacted formatting.
+- `order_execution/quick_order/move_order/context.rs`: captured move-order
+  identity, task-key validation, and pending-move cleanup.
+
+Account snapshot matching ignores case and surrounding whitespace. Move-order
+task-key validation preserves its stricter policy: the trimmed current account
+must exactly match the captured account. Standard pending-request guards and HUD
+placement guards remain separate because HUD limit placements can overlap their
+own tracking, indicators, and status checks while other requests still block.
+
 ## Order Surfaces
 
 Orders can originate from several surfaces:
@@ -97,7 +122,7 @@ limit behavior is represented by `OrderKind::LimitIoc`.
 
 ## Prepared Order Boundary
 
-`order_execution/core.rs` defines the boundary between user intent and signed
+`order_execution/core.rs` exposes the boundary between user intent and signed
 exchange action:
 
 - `OrderSurface`
@@ -111,6 +136,19 @@ exchange action:
 - `QuantitySource`
 - `QuantityDenomination`
 - `ReduceOnlySource`
+
+The implementation lives in focused modules under `order_execution/core/`:
+
+- `model.rs`: intents, prepared orders, redacted formatting, and request/context
+  construction. Both placement helpers share the request field mapping.
+- `capabilities.rs`: market-type policy, surface labels, and capability errors.
+- `cloid.rs`: monotonic nonce allocation and one-shot client-order ID hashing.
+- `preparation.rs`: place/cancel/modify validation and prepared wire values,
+  including cancellation-only recovery when metadata is missing.
+- `tasks.rs`: owned signing inputs and asynchronous exchange task wrappers.
+
+Tests live beside each responsibility; preparation tests are grouped by place,
+cancel, and modify actions. Validation order stays explicit in preparation.
 
 This layer centralizes:
 
@@ -192,13 +230,24 @@ Key files:
 - `signing/model.rs`: order kinds, Chase model, exchange response model.
 - `signing/numbers.rs`: wire number formatting and price rounding.
 
+Action hashing feeds the encoded action, nonce, vault target, and optional expiry
+directly into Keccak in wire order. EIP-712 hashes share a helper that streams
+their byte slices, avoiding concatenation buffers. The wire field order, marker
+bytes, validation errors, and signature format are preserved by signing tests.
+
+Exchange-response parsing borrows the retained JSON body while constructing
+owned typed fields; malformed bodies remain available for fallback handling.
+Response predicates share a borrowed status-list lookup while retaining their
+separate confirmation rules. IOC no-match detection scans messages directly,
+including the existing redacted raw-body summary, without collecting copies.
+
 Signing uses agent private keys held in zeroizing strings. Do not log keys,
 print payloads containing keys, or serialize keys into plaintext config.
 
 ## Result Handling And Verification
 
 Exchange acknowledgements can be confirmed, rejected, or ambiguous. Result
-handlers in `order_update/results.rs` and advanced-order modules decide whether
+handlers in `order_update/results/` and advanced-order modules decide whether
 to:
 
 - show confirmed success
@@ -207,9 +256,34 @@ to:
 - query `orderStatus` by CLOID or OID
 - mark a pending indicator uncertain until a later update
 
+`order_update/results.rs` exposes the shared result types and classifier. Its
+implementations are split by responsibility:
+
+- `classification.rs`: execution outcomes, error redaction, and refresh policy.
+- `pending.rs`: captured placement/cancel/move status requests and refresh cleanup.
+- `one_shot.rs`: serialized placement completion and client-order ID reconciliation.
+- `cancel.rs`: cancellation completion, order-ID verification, and local removal.
+- `nuke.rs`: child-result reconciliation and aggregate completion.
+
+Ticket, close-position, and Quick Trade results share serialized completion.
+Quick-order recovery and concurrent HUD tracking retain their own cleanup
+before applying the common placement outcome. Unknown cancellation results and
+possibly completed cancellations share status verification while preserving
+their distinct messages. Task callbacks own the captured placement context.
+
+Close-menu toggling and workspace transient cleanup live in
+`order_update/transient_ui.rs`, with tests for docked and detached windows.
+
 Pending order indicators are keyed and shown in UI/account surfaces so users
 can see in-flight actions. The app should not assume an order succeeded merely
 because an HTTP request returned.
+
+Ticket, quick-order, close-position, HUD, and Quick Trade submission share
+`add_prepared_order_placement_indicator` in `order_pending_indicators.rs` to
+copy prepared wire fields into independently owned indicators. Each submission
+path chooses the projection kind: ticket and quick-order IOC limits project
+like market orders. Indicator validation, ID allocation, and chart sync use the
+same insertion path as other pending indicators.
 
 ## Cancel And Move Order
 
@@ -222,16 +296,21 @@ CancelOrder { coin, oid }
   -> confirmed local removal or account refresh/status feedback
 ```
 
-Move-order flow captures the original trading identity:
+Move-order admission borrows the account order through validation. `ModifyIntent`
+borrows its symbol, original price, and size; preparation produces owned wire
+values and returns early when the rounded price is unchanged. The pending
+indicator retains the original symbol and size text, including legacy spot
+aliases, while the exchange request uses the resolved symbol and normalized size.
 
-- `PendingMoveOrderContext` stores account address and agent key when the move
-  starts.
-- The original order is canceled.
-- Replacement placement uses the captured key only if the active account still
-  matches.
+`PendingMoveOrderContext` captures the account address and agent key. After key
+validation, admission records the indicator and context, synchronizes chart
+orders, invalidates spot balances where applicable, and dispatches a signed
+modify request. Indicator timestamps and IDs are assigned at insertion.
 
-This prevents an account switch from silently placing the replacement order on a
-different account after canceling the original order.
+Results must match the pending context and current account. A confirmed modify
+patches the local price and adopts any returned order ID. An ambiguous result or
+transport failure uses the same recovery branch to start order-status verification
+and refresh account data. Move-result tests live in `order_update/move_order/tests.rs`.
 
 ## Close Position
 
@@ -321,6 +400,47 @@ Lifecycle messages include:
 Websocket open-order/fill updates reconcile Chase progress. Terminal or removed
 Chase orders are archived into advanced order history.
 
+Resting-order adoption borrows the open order and symbol metadata through
+validation. Once admitted, it captures only the existing spot identity fields
+and moves the requested symbol into Chase state. Gate order, account refresh,
+rounding, fill cutoffs, and immediate task behavior are unchanged. Adoption,
+order movement, Chase identity checks, and pending indicators share the strict
+`A`/`B` side parser in `order_execution/identities.rs`.
+
+Resting Chase adoption and order movement also share wire-metadata validation in
+`order_execution/resting_order.rs`. Rejection priority is trigger orders, known
+non-limit order types, then known non-GTC time-in-force values. Missing type and
+time-in-force fields remain admissible. A positive finite trigger price marks a
+trigger order even when the trigger flag is absent or false. Each caller retains
+its status text, surrounding checks, and recovery behavior.
+
+Live and historical fill aggregation check borrowed known IDs plus the current
+OID. Live totals retain coin, side, and adoption-cutoff filtering; history keeps
+its separate fee/P&L rules. Completion formats the totals already computed for
+reconciliation, preserving matched-fill amounts even when recorded progress is
+ahead of that snapshot.
+
+Book repricing and final modify dispatch share the ordered spot-market checks
+in `chase/lifecycle/reprice.rs`: captured identity, quote support, then live
+metadata verification. Each caller keeps its existing lifecycle, account, price,
+and cooldown gates around those checks. Failures cancel a known order or use the
+existing stop path. Placement retains its distinct prior-exposure recovery rules.
+
+Place, modify, and cancel result handlers read the order and its lifecycle from
+one lookup before accepting a result. Results for absent orders do nothing;
+stale place/cancel results retain their outcome-based refresh policy for the
+original account, while stale modify results do not refresh. Placement- and
+OID-status handling borrow the admitted order through its transition, releasing
+it before terminal-wide stop, removal, or refresh operations. Client-order ID
+verification retains the original account for refresh even when no client-order
+ID is available. OID status-request setup and failed status responses share
+`ChaseLifecycle::verifying_order_status`, which preserves stop and missing-order
+intent while selecting the next verification state.
+
+Chase modify errors check closed-order text before retryable text. TWAP checks
+retryable text before its terminal-error classification. Both use the same retry
+predicate; TWAP reuses its normalized summary for further classification.
+
 ## TWAP Orders
 
 TWAP orders are client-side scheduled IOC slices. They are modeled in
@@ -358,6 +478,35 @@ Lifecycle messages include:
 
 Terminal TWAPs are archived into advanced order history. Active TWAPs are
 runtime-only and are not resumed as live automation after restart.
+
+Slice planning borrows the cached order book and retry size. Retry plans remain
+in state through admission, price validation, and key checks, then move into
+dispatch. Skip handling takes only the retry's slice index. New-slice random sizing
+and retry accounting retain their existing order.
+
+Slice-result handling consumes a pending placement by ownership; a late result
+leaves pending cancellations intact and retains its existing account-refresh
+policy. Retry plans and final-use client-order IDs move into the next operation,
+while child history, reconciliation state, and independent tasks retain their
+own copies. Response classification, retry limits, and fill accounting stay in
+the slice-result handler.
+
+Unexpected-child cancellation shares completion cleanup and retry accounting
+while preserving distinct events for confirmed, rejected, and transport-unknown
+results. It prepares the exchange summary once and updates only matching children.
+Transport errors still follow the retry budget when their text mentions a closed
+order. TWAP account refresh applies its policy to the original order through one
+lookup; status and cancellation callbacks move their final-use client-order IDs.
+
+Status reconciliation shares matching-child updates for the returned order ID,
+child state, and exchange summary. Matching remains exact by client-order ID,
+and absent returned order IDs preserve each child's existing ID. Unknown statuses
+and transport failures share retry accounting while retaining distinct pause
+reasons and messages; missing-status exhaustion keeps its separate recovery rules.
+Requested stops and confirmed absence of fills share completion eligibility checks.
+Fill reconciliation confirms no-fill children in the same pass that applies late
+fills. Only children with an exchange order ID can be confirmed absent, and a
+matching fill takes precedence over no-fill confirmation.
 
 ## Advanced Order History
 
@@ -420,7 +569,7 @@ Do not assume all market symbols are main-dex perpetuals.
 - Agent keys are secret-bearing and zeroized.
 - Signing happens only in `signing/`.
 - Config snapshots intentionally blank agent/API key fields.
-- Pending move-order replacement cannot switch accounts.
+- Move-order dispatch and result handling remain bound to the captured account.
 - Stale account data should block close/NUKE and high-risk automation.
 - Hidden-symbol and market-universe filters must be honored by automation.
 - Do not log exchange payloads that contain signatures or key material.

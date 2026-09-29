@@ -29,6 +29,89 @@ fn ws_book_parser_filters_nonfinite_nonpositive_levels() {
 }
 
 #[test]
+fn book_parsers_preserve_numeric_forms_order_and_empty_sides() {
+    let side = serde_json::json!([
+        { "px": 100, "sz": "2.5", "ignored": { "nested": [null, true] } },
+        ["102.5", 3],
+        { "px": "1.01e2", "sz": 1.25 },
+        { "px": -1, "sz": 1 },
+        { "px": 100, "sz": "NaN" },
+        { "px": 100, "sz": "inf" },
+        { "px": 100, "sz": -0.0 },
+        { "px": "1e309", "sz": 1 }
+    ]);
+    for side_index in 0..2 {
+        let mut data = serde_json::json!({ "levels": [[], [], "ignored extra side"] });
+        data["levels"][side_index] = side.clone();
+        for book in [
+            parse_ws_book(&data).expect("valid websocket book"),
+            parse_order_book_response(&data).expect("valid REST book"),
+        ] {
+            let sides = [book.bids, book.asks];
+            let actual: Vec<_> = sides[side_index]
+                .iter()
+                .map(|level| (level.px, level.sz))
+                .collect();
+            assert_eq!(actual, [(100.0, 2.5), (102.5, 3.0), (101.0, 1.25)]);
+            assert!(sides[1 - side_index].is_empty());
+        }
+    }
+}
+
+#[test]
+fn book_parsers_reject_malformed_sides_without_returning_partial_levels() {
+    for (side, reason) in [
+        (
+            serde_json::json!(null),
+            "invalid type: null, expected a sequence",
+        ),
+        (serde_json::json!([{}]), "missing field `px`"),
+        (serde_json::json!([{ "px": 100 }]), "missing field `sz`"),
+        (
+            serde_json::json!([[100, 1, 2]]),
+            "invalid length 3, expected fewer elements in array",
+        ),
+        (
+            serde_json::json!([{ "px": 100, "sz": 1 }, { "px": "bad", "sz": 2 }]),
+            "invalid float literal",
+        ),
+        (
+            serde_json::json!([{ "px": 0, "sz": true }]),
+            "invalid type: boolean `true`, expected a string or number representing an f64",
+        ),
+    ] {
+        for (side_index, side_name) in [(0, "bids"), (1, "asks")] {
+            let mut data = serde_json::json!({ "levels": [[], []] });
+            data["levels"][side_index] = side.clone();
+            assert!(parse_ws_book(&data).is_none());
+            assert_eq!(
+                parse_order_book_response(&data).expect_err("malformed side"),
+                format!("Failed to parse {side_name}: {reason}")
+            );
+        }
+    }
+}
+
+#[test]
+fn book_parsers_keep_rest_error_precedence_separate_from_websocket_shape() {
+    let mut data = serde_json::json!({ "error": "Unknown coin", "levels": [[], []] });
+    assert_eq!(
+        parse_order_book_response(&data).expect_err("REST error takes precedence"),
+        "l2Book error: Unknown coin"
+    );
+    assert!(parse_ws_book(&data).is_some());
+
+    data["error"] = serde_json::json!(42);
+    assert!(parse_order_book_response(&data).is_ok());
+
+    data["levels"] = serde_json::json!([null, null]);
+    assert_eq!(
+        parse_order_book_response(&data).expect_err("bid error takes precedence"),
+        "Failed to parse bids: invalid type: null, expected a sequence"
+    );
+}
+
+#[test]
 fn book_level_debug_redacts_price_and_size() {
     let level = BookLevel {
         px: 12345.67,

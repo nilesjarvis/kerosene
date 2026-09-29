@@ -127,6 +127,33 @@ pub(crate) struct SpaghettiChartInstance {
 }
 
 impl SpaghettiChartInstance {
+    /// Restore chart settings before the caller resolves symbols and schedules
+    /// data requests. Session granularity is normalized separately with the
+    /// current time.
+    pub(crate) fn from_config(config: &crate::config::SpaghettiChartConfig) -> Self {
+        let mut inst = Self::new_empty(config.id);
+        inst.watchlist_preset_id = (!config.pair_mode)
+            .then_some(config.watchlist_preset_id)
+            .flatten();
+        inst.interval = Timeframe::from_config_str(&config.timeframe);
+        inst.pair_mode = config.pair_mode;
+        inst.canvas.pair_ratio_mode = config.pair_mode;
+        inst.pair_candle_mode = config.pair_candle_mode;
+        inst.canvas.pair_candle_mode = config.pair_candle_mode;
+        inst.canvas.color_mode = config.color_mode;
+        inst.canvas.show_labels = config.show_labels;
+        inst.canvas.active_session = config
+            .anchor
+            .as_deref()
+            .and_then(spaghetti::Session::from_config_str);
+        inst.session_granularity = config
+            .anchor_granularity
+            .as_deref()
+            .and_then(Timeframe::from_config_str_opt);
+        inst.editor_open = false;
+        inst
+    }
+
     pub(crate) fn new_empty(id: SpaghettiChartId) -> Self {
         Self {
             id,

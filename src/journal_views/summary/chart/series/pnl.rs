@@ -37,11 +37,7 @@ pub(in crate::journal_views::summary::chart) fn journal_cumulative_pnl_points(
     let mut trade_pnls = trades
         .iter()
         .filter_map(|trade| {
-            let pnl = if include_fees {
-                trade.pnl - trade.fee
-            } else {
-                trade.pnl
-            };
+            let pnl = trade.effective_pnl(include_fees);
             pnl.is_finite()
                 .then_some((trade.end_time.unwrap_or(trade.start_time), pnl))
         })
@@ -58,13 +54,8 @@ pub(in crate::journal_views::summary::chart) fn journal_cumulative_pnl_points(
 
     let mut points = journal_leading_zero_points(first_timestamp, last_timestamp);
     let mut cumulative_pnl = 0.0;
-    let mut idx = 0;
-    while idx < trade_pnls.len() {
-        let timestamp_ms = trade_pnls[idx].0;
-        while idx < trade_pnls.len() && trade_pnls[idx].0 == timestamp_ms {
-            cumulative_pnl += trade_pnls[idx].1;
-            idx += 1;
-        }
+    for (timestamp_ms, pnl) in trade_pnls {
+        cumulative_pnl += pnl;
         if let Some(last) = points.last_mut()
             && last.0 == timestamp_ms
         {
@@ -86,17 +77,17 @@ pub(in crate::journal_views::summary::chart) fn subtract_latest_pnl_series(
         return Vec::new();
     }
 
-    let subtrahend_points = finite_sorted_points(subtrahend_points);
+    let mut subtrahend_points = finite_sorted_points(subtrahend_points)
+        .into_iter()
+        .peekable();
     let mut out = Vec::with_capacity(total_points.len());
-    let mut subtrahend_idx = 0;
     let mut latest_subtrahend = 0.0;
 
     for (timestamp_ms, total) in total_points {
-        while subtrahend_idx < subtrahend_points.len()
-            && subtrahend_points[subtrahend_idx].0 <= timestamp_ms
+        while let Some((_, value)) =
+            subtrahend_points.next_if(|(time_ms, _)| *time_ms <= timestamp_ms)
         {
-            latest_subtrahend = subtrahend_points[subtrahend_idx].1;
-            subtrahend_idx += 1;
+            latest_subtrahend = value;
         }
 
         out.push((timestamp_ms, total - latest_subtrahend));

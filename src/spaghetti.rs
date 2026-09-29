@@ -1,3 +1,5 @@
+mod axes;
+mod crosshair;
 mod helpers;
 mod interaction;
 mod model;
@@ -8,16 +10,15 @@ mod state;
 #[cfg(test)]
 mod tests;
 
+use crate::chart_background::{draw_dotted_background, draw_gradient_background};
 use crate::message::Message;
 use iced::mouse;
 use iced::widget::canvas;
-use iced::{Rectangle, Renderer, Theme};
+use iced::{Color, Point, Rectangle, Renderer, Theme};
 
 use self::helpers::{chart_time_window, global_time_range};
 pub use self::model::ComparisonColorMode;
 pub use self::model::{Series, SpaghettiCanvas, series_colors};
-use self::normalized::NormalizedRenderContext;
-use self::ratio::PairRatioRenderContext;
 use self::state::SpaghettiChartState;
 pub use session::{SESSION_OPTIONS, Session};
 
@@ -33,6 +34,51 @@ const TIME_AXIS_HEIGHT: f32 = 24.0;
 const PRICE_PADDING_PCT: f64 = 0.08;
 
 const ZOOM_SPEED: f32 = 1.12;
+
+struct RenderContext<'a> {
+    state: &'a SpaghettiChartState,
+    renderer: &'a Renderer,
+    theme: &'a Theme,
+    bounds: Rectangle,
+    chart_w: f32,
+    chart_h: f32,
+    left_ts: f64,
+    right_ts: f64,
+    visible_ms: f64,
+    time_px_per_ms: f64,
+    effective_max: u64,
+    crosshair_style: crate::config::ChartCrosshairStyle,
+    crosshair_guides_enabled: bool,
+    crosshair_scale: f32,
+}
+
+impl SpaghettiCanvas {
+    fn background_frame(&self, ctx: &RenderContext<'_>) -> canvas::Frame {
+        let mut frame = canvas::Frame::new(ctx.renderer, ctx.bounds.size());
+        frame.fill_rectangle(Point::ORIGIN, ctx.bounds.size(), Color::TRANSPARENT);
+
+        if self.gradient_background {
+            draw_gradient_background(
+                &mut frame,
+                ctx.theme,
+                ctx.chart_w,
+                ctx.chart_h,
+                self.gradient_contrast,
+            );
+        }
+        if self.dotted_background {
+            draw_dotted_background(
+                &mut frame,
+                ctx.theme,
+                ctx.chart_w,
+                ctx.chart_h,
+                self.dotted_background_opacity,
+                crate::chart::fisheye::ChartFisheye::disabled(),
+            );
+        }
+        frame
+    }
+}
 
 // ---------------------------------------------------------------------------
 // canvas::Program implementation
@@ -89,49 +135,31 @@ impl canvas::Program<Message> for SpaghettiCanvas {
             chart_w,
         );
 
+        let ctx = RenderContext {
+            state,
+            renderer,
+            theme,
+            bounds,
+            chart_w,
+            chart_h,
+            left_ts,
+            right_ts,
+            visible_ms,
+            time_px_per_ms,
+            effective_max,
+            crosshair_style: self.crosshair_style,
+            crosshair_guides_enabled: self.crosshair_guides_enabled,
+            crosshair_scale: self.crosshair_scale,
+        };
         if self.pair_ratio_mode && loaded_series.len() >= 2 {
-            return self.draw_pair_ratio(
-                PairRatioRenderContext {
-                    state,
-                    renderer,
-                    theme,
-                    bounds,
-                    chart_w,
-                    chart_h,
-                    left_ts,
-                    right_ts,
-                    visible_ms,
-                    time_px_per_ms,
-                    effective_max,
-                    base_timestamp: self.base_timestamp,
-                    crosshair_style: self.crosshair_style,
-                    crosshair_guides_enabled: self.crosshair_guides_enabled,
-                    crosshair_scale: self.crosshair_scale,
-                },
+            self.draw_pair_ratio(ctx, &loaded_series)
+        } else {
+            self.draw_normalized(
+                ctx,
                 &loaded_series,
-            );
+                self.base_timestamp.unwrap_or(global_min_ts),
+            )
         }
-
-        self.draw_normalized(
-            NormalizedRenderContext {
-                state,
-                renderer,
-                theme,
-                bounds,
-                chart_w,
-                chart_h,
-                left_ts,
-                right_ts,
-                visible_ms,
-                time_px_per_ms,
-                effective_max,
-                base_ts: self.base_timestamp.unwrap_or(global_min_ts),
-                crosshair_style: self.crosshair_style,
-                crosshair_guides_enabled: self.crosshair_guides_enabled,
-                crosshair_scale: self.crosshair_scale,
-            },
-            &loaded_series,
-        )
     }
 
     fn mouse_interaction(

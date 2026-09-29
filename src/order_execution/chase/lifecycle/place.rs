@@ -131,7 +131,6 @@ impl TradingTerminal {
 
     /// Place a new chase limit order at the current best bid/ask.
     pub(crate) fn chase_place_at_best(&mut self, chase_id: u64, best: f64) -> Task<Message> {
-        let _theme = self.theme();
         let now = Instant::now();
         let Some(chase_snapshot) = self.chase_orders.get(&chase_id) else {
             return Task::none();

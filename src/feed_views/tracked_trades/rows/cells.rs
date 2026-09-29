@@ -11,8 +11,8 @@ impl TradingTerminal {
     pub(super) fn view_tracked_trade_wallet_cell(
         &self,
         address_for_message: String,
+        theme: &Theme,
     ) -> Element<'_, Message> {
-        let theme = self.theme();
         let address = address_for_message.trim().to_string();
         if address.is_empty() {
             return text("-")
@@ -31,11 +31,12 @@ impl TradingTerminal {
             format!("Copy {address}")
         };
 
+        let hover_key = format!("tracked-trades:{address}");
         wallet_address_action_cell(WalletAddressActionCell {
-            address: address.clone(),
+            address,
             label: display.primary,
             tooltip_label,
-            hover_key: format!("tracked-trades:{address}"),
+            hover_key,
             hovered_key: self.hovered_wallet_address_actions.as_deref(),
             width: WALLET_COLUMN_WIDTH,
             text_size: 12,
@@ -43,9 +44,13 @@ impl TradingTerminal {
         })
     }
 
-    pub(super) fn view_tracked_trade_coin_cell(&self, coin: String) -> Element<'_, Message> {
-        let theme = self.theme();
+    pub(super) fn view_tracked_trade_coin_cell(
+        &self,
+        coin: String,
+        theme: &Theme,
+    ) -> Element<'_, Message> {
         let display_coin = self.display_coin_for_journal(&coin);
+        let tooltip_coin = (display_coin != coin).then(|| coin.clone());
         let mut coin_content = row![];
         if let Some(icon) = helpers::symbol_icon(&display_coin, 14, theme.palette().text)
             .or_else(|| helpers::symbol_icon(&coin, 14, theme.palette().text))
@@ -54,14 +59,13 @@ impl TradingTerminal {
         }
         coin_content = coin_content
             .push(
-                text(display_coin.clone())
+                text(display_coin)
                     .size(12)
                     .font(crate::app_fonts::monospace_font())
                     .wrapping(Wrapping::None),
             )
             .align_y(iced::Alignment::Center);
 
-        let raw_coin = coin.clone();
         let coin_button = button(coin_content)
             .on_press(Message::SymbolSelected(coin))
             .padding(0)
@@ -78,7 +82,7 @@ impl TradingTerminal {
                 }
             });
 
-        if display_coin != raw_coin {
+        if let Some(raw_coin) = tooltip_coin {
             return tooltip(
                 coin_button,
                 text(raw_coin)

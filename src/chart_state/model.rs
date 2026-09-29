@@ -15,6 +15,7 @@ mod instance;
 mod order_lines;
 mod price_flash;
 mod quick_order;
+mod restoration;
 mod surface;
 
 pub(crate) use price_flash::{CHART_PRICE_FLASH_MS, PriceFlash, PriceFlashDirection};
@@ -275,7 +276,6 @@ pub(crate) struct ChartInstance {
 impl TradingTerminal {
     /// Allocate the next chart ID.
     pub(crate) fn alloc_chart_id(&mut self) -> ChartId {
-        let _theme = self.theme();
         let id = self.next_chart_id;
         self.next_chart_id += 1;
         id

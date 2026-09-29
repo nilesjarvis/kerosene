@@ -75,7 +75,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn execute_nuke_positions(&mut self) -> Task<Message> {
-        let _theme = self.theme();
         if self.pending_nuke_execution.is_some() {
             self.order_status = Some(("NUKE already in progress".into(), true));
             return Task::none();

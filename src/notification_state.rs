@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 
-use crate::sound;
+use crate::sound::{self, SoundKind};
 
 #[cfg(target_os = "macos")]
 use std::ffi::OsStr;
@@ -143,95 +143,54 @@ impl TradingTerminal {
     /// Push a toast notification. Also plays sound and sends desktop
     /// notification if enabled.
     pub(crate) fn push_toast(&mut self, message: String, is_error: bool) {
-        let _theme = self.theme();
-        push_toast_entry(
-            &mut self.toasts,
-            &mut self.next_toast_id,
-            message.clone(),
-            is_error,
-        );
-        // Sound
-        self.play_notification_sound(is_error);
-        // Desktop notification
-        if self.desktop_notifications {
-            let summary = if is_error {
-                "Kerosene: Error"
-            } else {
-                "Kerosene: Trade"
-            };
-            show_desktop_notification(summary, message);
-        }
+        let (summary, sound) = if is_error {
+            ("Kerosene: Error", SoundKind::Error)
+        } else {
+            ("Kerosene: Trade", SoundKind::Fill)
+        };
+        self.push_alert(message, is_error, summary, sound);
     }
 
     /// Push a positive interest alert with dedicated sound and summary.
     pub(crate) fn push_interest_alert(&mut self, message: String) {
-        let _theme = self.theme();
-        push_toast_entry(
-            &mut self.toasts,
-            &mut self.next_toast_id,
-            message.clone(),
-            false,
-        );
-
-        if self.sound_enabled {
-            sound::play_interest();
-        }
-
-        if self.desktop_notifications {
-            show_desktop_notification("Kerosene: Interest", message);
-        }
+        self.push_alert(message, false, "Kerosene: Interest", SoundKind::Interest);
     }
 
     /// Push a tracked-trade alert. This alert is controlled by the Tracked
     /// Trades pane button and intentionally emits both sound and desktop
     /// notification when enabled.
     pub(crate) fn push_tracked_trade_alert(&mut self, message: String) {
-        push_toast_entry(
-            &mut self.toasts,
-            &mut self.next_toast_id,
-            message.clone(),
-            false,
-        );
-
-        if self.sound_enabled {
-            sound::play_fill();
-        }
-
-        if self.desktop_notifications {
-            show_desktop_notification("Kerosene: Tracked Trade", message);
-        }
+        self.push_alert(message, false, "Kerosene: Tracked Trade", SoundKind::Fill);
     }
 
     pub(crate) fn push_telegram_feed_alert(&mut self, message: String) {
-        push_toast_entry(
-            &mut self.toasts,
-            &mut self.next_toast_id,
-            message.clone(),
-            false,
-        );
+        self.push_alert(message, false, "Kerosene: Telegram Feed", SoundKind::Fill);
+    }
+
+    fn push_alert(&mut self, message: String, is_error: bool, summary: &str, sound: SoundKind) {
+        let desktop_message = self.desktop_notifications.then(|| message.clone());
+        self.push_silent_toast(message, is_error);
 
         if self.sound_enabled {
-            sound::play_fill();
+            sound::play(sound);
         }
 
-        if self.desktop_notifications {
-            show_desktop_notification("Kerosene: Telegram Feed", message);
+        if let Some(message) = desktop_message {
+            show_desktop_notification(summary, message);
         }
     }
 
     pub(crate) fn play_notification_sound(&self, is_error: bool) {
-        let _theme = self.theme();
         if self.sound_enabled {
-            if is_error {
-                sound::play_error();
+            sound::play(if is_error {
+                SoundKind::Error
             } else {
-                sound::play_fill();
-            }
+                SoundKind::Fill
+            });
         }
     }
 
     pub(crate) fn set_order_status(&mut self, message: String, is_error: bool) {
-        let _theme = self.theme();
         self.order_status = Some((message.clone(), is_error));
         if is_error {
             // Execution failures must stay visible when the order ticket pane
@@ -295,6 +254,76 @@ mod tests {
             created_at: std::time::Instant::now(),
             dismissing_at: None,
         }
+    }
+
+    #[test]
+    fn alerts_keep_toasts_when_sound_and_desktop_notifications_are_disabled() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.sound_enabled = false;
+        terminal.desktop_notifications = false;
+        terminal.order_status = Some(("Existing order status".into(), false));
+
+        terminal.push_toast("Trade filled".into(), false);
+        terminal.push_toast("Order failed".into(), true);
+        terminal.push_interest_alert("Interest received".into());
+        terminal.push_tracked_trade_alert("Tracked trade".into());
+        terminal.push_telegram_feed_alert("Feed alert".into());
+        terminal.push_silent_toast("Silent error".into(), true);
+
+        let actual: Vec<_> = terminal
+            .toasts
+            .iter()
+            .map(|toast| (toast.id, toast.message.as_str(), toast.is_error))
+            .collect();
+        assert_eq!(
+            actual,
+            [
+                (0, "Trade filled", false),
+                (1, "Order failed", true),
+                (2, "Interest received", false),
+                (3, "Tracked trade", false),
+                (4, "Feed alert", false),
+                (5, "Silent error", true),
+            ]
+        );
+        assert_eq!(terminal.next_toast_id, 6);
+        assert!(
+            terminal
+                .toasts
+                .iter()
+                .all(|toast| toast.dismissing_at.is_none())
+        );
+        assert_eq!(
+            terminal.order_status,
+            Some(("Existing order status".into(), false))
+        );
+    }
+
+    #[test]
+    fn feed_alerts_preserve_a_full_error_queue_and_consume_toast_ids() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.sound_enabled = false;
+        terminal.desktop_notifications = false;
+        for id in 0..MAX_TOASTS {
+            terminal.push_toast(format!("Error {id}"), true);
+        }
+
+        terminal.push_interest_alert("Interest received".into());
+        terminal.push_tracked_trade_alert("Tracked trade".into());
+        terminal.push_telegram_feed_alert("Feed alert".into());
+
+        assert_eq!(terminal.toasts.len(), MAX_TOASTS);
+        assert!(terminal.toasts.iter().all(|toast| toast.is_error));
+        assert_eq!(terminal.toasts.first().map(|toast| toast.id), Some(0));
+        let next_id = (MAX_TOASTS + 3) as u64;
+        assert_eq!(terminal.next_toast_id, next_id);
+
+        terminal.push_toast("New error".into(), true);
+
+        assert_eq!(terminal.toasts.len(), MAX_TOASTS);
+        assert_eq!(terminal.toasts.first().map(|toast| toast.id), Some(1));
+        assert_eq!(terminal.toasts.last().map(|toast| toast.id), Some(next_id));
+        assert_eq!(terminal.next_toast_id, next_id + 1);
     }
 
     #[test]

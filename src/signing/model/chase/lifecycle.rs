@@ -87,6 +87,25 @@ impl ChaseLifecycle {
         matches!(self, Self::Stopping { .. })
     }
 
+    /// Preserve stop or missing-order intent while checking an order's status.
+    pub(crate) fn verifying_order_status(self, oid: u64) -> Self {
+        match self {
+            Self::Stopping { .. } => Self::Stopping {
+                phase: ChaseStopPhase::VerifyingCancel { oid },
+            },
+            Self::Verifying {
+                reason:
+                    ChaseVerificationReason::MissingOrder
+                    | ChaseVerificationReason::MissingOrderResolvedNoFill,
+            } => Self::Verifying {
+                reason: ChaseVerificationReason::MissingOrder,
+            },
+            _ => Self::Verifying {
+                reason: ChaseVerificationReason::Modify,
+            },
+        }
+    }
+
     pub fn is_book_repriceable(self) -> bool {
         matches!(self, Self::Resting | Self::Queued { .. })
     }

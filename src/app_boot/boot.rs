@@ -140,42 +140,7 @@ impl TradingTerminal {
                 crate::x_feed::XFeedInstance::new(id, crate::x_feed::XFeedSource::Following),
             );
         }
-        let missing_live_watchlist_ids = state
-            .workspace_pane_kinds()
-            .filter_map(|(_, _, kind)| match kind {
-                PaneKind::LiveWatchlist(id) if !state.live_watchlists.contains_key(id) => Some(*id),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        for id in missing_live_watchlist_ids {
-            let preset_id = state.ensure_default_watchlist_preset();
-            let symbols = state
-                .watchlist_preset(preset_id)
-                .map(|preset| {
-                    preset
-                        .symbols
-                        .iter()
-                        .filter(|symbol| !state.symbol_key_is_hidden(symbol))
-                        .cloned()
-                        .collect()
-                })
-                .unwrap_or_default();
-            state.live_watchlists.insert(
-                id,
-                crate::market_state::LiveWatchlistInstance {
-                    id,
-                    preset_id: Some(preset_id),
-                    symbols,
-                    search_query: String::new(),
-                    sort_column: Default::default(),
-                    sort_direction: Default::default(),
-                    visible_columns: config::default_live_watchlist_columns(),
-                    ema: Default::default(),
-                    ema_period_input: "20".to_string(),
-                    row_cache: Vec::new(),
-                },
-            );
-        }
+        state.ensure_live_watchlist_pane_instances();
 
         state.ensure_boot_layout_chart_panes(
             first_chart_id,

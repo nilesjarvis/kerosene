@@ -137,6 +137,28 @@ fn liquidation_parser_rejects_malformed_numeric_fields() {
 }
 
 #[test]
+fn liquidation_parser_still_requires_a_string_fill_address() {
+    let details = serde_json::json!({
+        "coin": "HYPE",
+        "px": "10.5",
+        "sz": "2.25",
+        "liquidation": { "method": "market", "liquidatedUser": "synthetic-user" }
+    });
+
+    for address in [serde_json::Value::Null, serde_json::json!(42)] {
+        let fill = serde_json::json!([address, details]);
+        assert!(parse_liquidation_event(&fill).is_none());
+    }
+    for address in ["", "synthetic-address"] {
+        let fill = serde_json::json!([address, details]);
+        let event = parse_liquidation_event(&fill).expect("string address should be accepted");
+        assert_eq!(event.liquidated_user, "synthetic-user");
+        assert_eq!(event.price, 10.5);
+        assert_eq!(event.size, 2.25);
+    }
+}
+
+#[test]
 fn fill_item_parser_only_accepts_matching_replay_channel() {
     let payload = serde_json::json!({
         "type": "replay",

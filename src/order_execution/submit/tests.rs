@@ -9,10 +9,75 @@ use crate::order_execution::{
     OneShotPlacementContext, OrderSurface, PendingOrderAction, PreparedExchangeOrder,
     TicketOrderPlaceIntent, TicketOrderSubmissionSnapshot,
 };
+use crate::order_pending_indicators::PendingOrderIndicatorKind::{MarketPlacing, Placing};
 use crate::order_update::PendingOneShotStatusRequest;
 use crate::signing::{ExchangeOrderKind, OrderKind};
 
 mod outcomes;
+
+#[test]
+fn prepared_ticket_indicators_preserve_wire_fields_and_taker_policy() {
+    let account = " 0xAbC0000000000000000000000000000000000000 ";
+    for (order_kind, expected_kind) in [
+        (ExchangeOrderKind::Market, MarketPlacing),
+        (ExchangeOrderKind::Limit, Placing),
+        (ExchangeOrderKind::LimitIoc, MarketPlacing),
+    ] {
+        for is_buy in [false, true] {
+            for (size, price, valid) in [
+                ("1.2500", "102.5000", true),
+                ("0", "102.5000", false),
+                ("1.2500", "NaN", false),
+            ] {
+                let mut terminal = TradingTerminal::boot().0;
+                let task = terminal.submit_prepared_ticket_order(
+                    "fixture-key".into(),
+                    account.to_string(),
+                    PreparedExchangeOrder {
+                        surface: OrderSurface::Ticket,
+                        symbol_key: "BTC".to_string(),
+                        asset: 7,
+                        is_buy,
+                        price: price.to_string(),
+                        size: size.to_string(),
+                        order_kind,
+                        reduce_only: true,
+                        market_type: MarketType::Perp,
+                    },
+                );
+
+                assert_eq!(task.units(), 1);
+                assert_eq!(
+                    terminal.order_status.as_ref(),
+                    Some(&("Placing order...".to_string(), false))
+                );
+                assert_eq!(
+                    terminal.pending_order_action,
+                    Some(if is_buy {
+                        PendingOrderAction::Buy
+                    } else {
+                        PendingOrderAction::Sell
+                    })
+                );
+                assert_eq!(terminal.pending_order_indicators.len(), usize::from(valid));
+                if valid {
+                    let indicator = terminal
+                        .pending_order_indicators
+                        .values()
+                        .next()
+                        .expect("indicator");
+                    assert_eq!(indicator.kind, expected_kind);
+                    assert_eq!(indicator.account_address, account);
+                    assert_eq!(indicator.symbol, "BTC");
+                    assert_eq!(indicator.oid, None);
+                    assert_eq!(indicator.is_buy, is_buy);
+                    assert_eq!(indicator.size, size);
+                    assert_eq!(indicator.price, price);
+                }
+            }
+        }
+    }
+}
 
 fn outcome_info(is_question_fallback: bool) -> OutcomeSymbolInfo {
     OutcomeSymbolInfo {

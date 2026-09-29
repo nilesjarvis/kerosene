@@ -43,46 +43,7 @@ impl TradingTerminal {
                 )
             })
             .collect();
-        let missing_ids = self
-            .workspace_pane_kinds()
-            .filter_map(|(_, _, kind)| match kind {
-                crate::pane_state::PaneKind::LiveWatchlist(id)
-                    if !self.live_watchlists.contains_key(id) =>
-                {
-                    Some(*id)
-                }
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        for id in missing_ids {
-            let preset_id = self.ensure_default_watchlist_preset();
-            let symbols = self
-                .watchlist_preset(preset_id)
-                .map(|preset| {
-                    preset
-                        .symbols
-                        .iter()
-                        .filter(|symbol| !self.symbol_key_is_hidden(symbol))
-                        .cloned()
-                        .collect()
-                })
-                .unwrap_or_default();
-            self.live_watchlists.insert(
-                id,
-                LiveWatchlistInstance {
-                    id,
-                    preset_id: Some(preset_id),
-                    symbols,
-                    search_query: String::new(),
-                    sort_column: Default::default(),
-                    sort_direction: Default::default(),
-                    visible_columns: config::default_live_watchlist_columns(),
-                    ema: Default::default(),
-                    ema_period_input: "20".to_string(),
-                    row_cache: Vec::new(),
-                },
-            );
-        }
+        self.ensure_live_watchlist_pane_instances();
         self.refresh_live_watchlist_row_caches();
     }
 }

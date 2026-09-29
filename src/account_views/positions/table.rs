@@ -17,18 +17,17 @@ mod summary;
 impl TradingTerminal {
     pub(super) fn view_position_rows<'a>(
         &'a self,
-        positions: &[account::AssetPosition],
+        positions: &[&account::AssetPosition],
         can_close: bool,
         theme: &Theme,
         columns: PositionColumnVisibility,
         number_mode: PositionNumberMode,
     ) -> Column<'a, Message> {
-        self.sorted_position_rows(positions).into_iter().fold(
-            Column::new().spacing(2),
-            |col, data| {
+        self.sorted_position_rows(positions.iter().copied())
+            .into_iter()
+            .fold(Column::new().spacing(2), |col, data| {
                 col.push(self.view_position_row(data, can_close, theme, columns, number_mode))
-            },
-        )
+            })
     }
 }
 

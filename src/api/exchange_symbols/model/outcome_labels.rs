@@ -72,13 +72,7 @@ impl OutcomeSymbolInfo {
             && let (Some(underlying), Some(target)) = (&self.underlying, &self.target_price)
         {
             let label = Self::price_threshold_label(underlying, target, true);
-            if !include_expiry {
-                return label;
-            }
-            let Some(expiry) = &self.expiry else {
-                return label;
-            };
-            return format!("{label} at {}", Self::format_expiry_at(expiry, now_ms));
+            return Self::label_with_expiry(label, self.expiry.as_deref(), now_ms, include_expiry);
         }
 
         if let Some(question_name) = &self.question_name {
@@ -93,11 +87,7 @@ impl OutcomeSymbolInfo {
         match (&self.underlying, &self.target_price, &self.expiry) {
             (Some(underlying), Some(target), expiry) => {
                 let label = Self::price_threshold_label(underlying, target, true);
-                if include_expiry && let Some(expiry) = expiry {
-                    format!("{label} at {}", Self::format_expiry_at(expiry, now_ms))
-                } else {
-                    label
-                }
+                Self::label_with_expiry(label, expiry.as_deref(), now_ms, include_expiry)
             }
             _ => self.outcome_name.clone(),
         }

@@ -44,7 +44,7 @@ pub(super) fn append_spot_symbols(
     symbols: &mut Vec<ExchangeSymbol>,
     spot_meta: &Value,
 ) -> Result<(), String> {
-    let meta: SpotMetaResponse = serde_json::from_value(spot_meta.clone())
+    let meta = SpotMetaResponse::deserialize(spot_meta)
         .map_err(|e| format!("spotMeta schema invalid: {e}"))?;
     if meta.tokens.is_empty() {
         return Err("spotMeta tokens list is empty".to_string());
@@ -117,16 +117,15 @@ pub(super) fn append_spot_symbols(
                 pair.index, base_idx
             ));
         }
-        let (base_name, sz_decimals, full_name) =
-            token_info.get(&base_idx).cloned().ok_or_else(|| {
-                format!(
-                    "spotMeta universe index {} references unknown base token {}",
-                    pair.index, base_idx
-                )
-            })?;
+        let (base_name, sz_decimals, full_name) = token_info.get(&base_idx).ok_or_else(|| {
+            format!(
+                "spotMeta universe index {} references unknown base token {}",
+                pair.index, base_idx
+            )
+        })?;
         let quote_name = token_info
             .get(&quote_idx)
-            .map(|(name, _, _)| name.clone())
+            .map(|(name, _, _)| name)
             .ok_or_else(|| {
                 format!(
                     "spotMeta universe index {} references unknown quote token {}",
@@ -170,14 +169,14 @@ pub(super) fn append_spot_symbols(
         let display = Some(token_derived_display);
 
         let mut kw = Vec::new();
-        if let Some(fn_name) = &full_name {
+        if let Some(fn_name) = full_name {
             kw.push(fn_name.to_lowercase());
         }
         kw.push("spot".to_string());
 
         parsed.push(ExchangeSymbol {
             key,
-            ticker: base_name,
+            ticker: base_name.clone(),
             category: "spot".to_string(),
             display_name: display,
             keywords: kw,
@@ -185,7 +184,7 @@ pub(super) fn append_spot_symbols(
             // Reuse this field for the spot quote token. The sizing path must
             // debit the pair's actual quote balance rather than assume USDC.
             collateral_token: Some(quote_idx),
-            sz_decimals,
+            sz_decimals: *sz_decimals,
             max_leverage: 1,
             only_isolated: false,
             growth_mode: false,

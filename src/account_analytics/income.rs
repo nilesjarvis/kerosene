@@ -18,11 +18,11 @@ mod snapshot;
 
 /// Fetch borrow/lend income data for a portfolio-margin account.
 pub async fn fetch_income_data(address: String) -> Result<IncomeSnapshot, String> {
-    fetch_income_data_from_url(CLIENT.clone(), API_URL, address).await
+    fetch_income_data_from_url(&CLIENT, API_URL, address).await
 }
 
 async fn fetch_income_data_from_url(
-    client: reqwest::Client,
+    client: &reqwest::Client,
     url: &str,
     address: String,
 ) -> Result<IncomeSnapshot, String> {

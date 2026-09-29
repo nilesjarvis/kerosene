@@ -27,14 +27,13 @@ pub(in crate::ws::hydromancer) fn hydromancer_control_message(
                 .get("error")
                 .or_else(|| data.get("message"))
                 .and_then(|v| v.as_str())
-                .unwrap_or("stream interrupted")
-                .to_string();
+                .unwrap_or("stream interrupted");
             let retry_delay_secs = data
                 .get("retryDelaySecs")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(HYDROMANCER_RECONNECT_DELAY_SECS);
             Some(HydromancerWsMessage::Reconnecting {
-                error: hydromancer_status_error(&error),
+                error: hydromancer_status_error(error),
                 retry_delay_secs,
             })
         }
@@ -43,10 +42,9 @@ pub(in crate::ws::hydromancer) fn hydromancer_control_message(
                 .get("error")
                 .or_else(|| data.get("message"))
                 .and_then(|v| v.as_str())
-                .unwrap_or("stream disconnected")
-                .to_string();
+                .unwrap_or("stream disconnected");
             Some(HydromancerWsMessage::Disconnected(
-                hydromancer_status_error(&error),
+                hydromancer_status_error(error),
             ))
         }
         _ => None,

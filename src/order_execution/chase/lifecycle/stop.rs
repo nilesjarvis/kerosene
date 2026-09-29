@@ -39,7 +39,6 @@ impl TradingTerminal {
         reason: impl Into<String>,
         is_error: bool,
     ) -> Task<Message> {
-        let _theme = self.theme();
         let clear_startup_pending = self.chase_orders.get(&chase_id).is_some_and(|chase| {
             self.chase_owns_startup_pending_action(chase_id, chase)
                 && chase.current_cloid.is_none()

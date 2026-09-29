@@ -123,20 +123,8 @@ impl JournalState {
     }
 
     pub fn clear_active_account_data_for_address(&mut self, address: String) {
+        self.clear_active_account_data();
         self.loaded_address = Some(address);
-        self.raw_fills.clear();
-        self.trades.clear();
-        self.clear_snapshot_data();
-        self.loading = false;
-        self.error = None;
-        self.warning = None;
-        self.last_refresh_time = None;
-        self.sync_status = super::JournalSyncStatus::default();
-        self.edit_modes.clear();
-        self.edit_source_keys.clear();
-        self.edit_buffers.clear();
-        self.edit_tag_raw.clear();
-        self.selected_trade_id = None;
     }
 
     pub fn clear_active_account_data(&mut self) {

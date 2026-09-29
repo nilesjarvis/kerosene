@@ -11,14 +11,9 @@ use iced::Task;
 impl TradingTerminal {
     pub(crate) fn start_wallet_tracker_core_refresh(&mut self, address: String) -> Task<Message> {
         let read_context = self.read_data_request_context();
-        self.wallet_tracker
-            .rows
-            .entry(address.clone())
-            .or_default()
-            .loading = true;
-        if let Some(row) = self.wallet_tracker.rows.get_mut(&address) {
-            row.loading_context = Some(read_context);
-        }
+        let row = self.wallet_tracker.rows.entry(address.clone()).or_default();
+        row.loading = true;
+        row.loading_context = Some(read_context);
         let scope = self.account_data_fetch_scope();
         let provider = self.read_data_provider;
         let hydromancer_key = self.hydromancer_api_key_for_task();

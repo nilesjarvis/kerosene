@@ -1,4 +1,3 @@
-use crate::account;
 use crate::account_state::PositionsSortColumn;
 use crate::app_state::TradingTerminal;
 use crate::config;
@@ -18,7 +17,6 @@ impl TradingTerminal {
     pub(super) fn view_positions_header<'a>(
         &'a self,
         can_close: bool,
-        _positions: &[account::AssetPosition],
         hidden_count: usize,
         has_nuke_positions: bool,
         theme: &Theme,

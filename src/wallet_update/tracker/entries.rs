@@ -3,6 +3,9 @@ use crate::message::Message;
 use crate::wallet_state::WalletTrackerRow;
 use iced::Task;
 
+#[cfg(test)]
+mod tests;
+
 impl TradingTerminal {
     pub(super) fn update_wallet_tracker_entries(&mut self, message: Message) -> Task<Message> {
         match message {
@@ -20,37 +23,29 @@ impl TradingTerminal {
                 };
                 let was_muted = self.wallet_tracker.unmute_address(&addr);
                 if self.wallet_tracker.tracked_addresses.contains(&addr) {
-                    if was_muted {
-                        let label = self.wallet_tracker.add_label_input.trim();
-                        if !label.is_empty() && !self.wallet_is_remote(&addr) {
-                            self.address_book.entry(addr.clone()).or_default().label =
-                                label.to_string();
-                        }
-                        self.refresh_tracked_trades_subscription();
-                        self.wallet_tracker.rows.entry(addr.clone()).or_default();
-                        self.wallet_tracker.add_input.clear();
-                        self.wallet_tracker.add_label_input.clear();
-                        self.persist_config();
-                        self.queue_wallet_tracker_core_refresh(addr);
-                        return self.refresh_next_wallet_tracker_core();
+                    if !was_muted {
+                        self.push_toast("Wallet already shown in tracker".to_string(), true);
+                        return Task::none();
                     }
-                    self.push_toast("Wallet already shown in tracker".to_string(), true);
-                    return Task::none();
-                }
-
-                self.wallet_tracker.tracked_addresses.push(addr.clone());
-                let label = self.wallet_tracker.add_label_input.trim();
-                if !label.is_empty() {
-                    self.address_book.entry(addr.clone()).or_default().label = label.to_string();
+                    let label = self.wallet_tracker.add_label_input.trim();
+                    if !label.is_empty() && !self.wallet_is_remote(&addr) {
+                        self.address_book.entry(addr.clone()).or_default().label =
+                            label.to_string();
+                    }
                     self.refresh_tracked_trades_subscription();
+                    self.wallet_tracker.rows.entry(addr.clone()).or_default();
+                } else {
+                    self.wallet_tracker.tracked_addresses.push(addr.clone());
+                    let label = self.wallet_tracker.add_label_input.trim();
+                    if !label.is_empty() {
+                        self.address_book.entry(addr.clone()).or_default().label =
+                            label.to_string();
+                        self.refresh_tracked_trades_subscription();
+                    }
+                    self.wallet_tracker
+                        .rows
+                        .insert(addr.clone(), WalletTrackerRow::default());
                 }
-                self.wallet_tracker.rows.insert(
-                    addr.clone(),
-                    WalletTrackerRow {
-                        loading: false,
-                        ..Default::default()
-                    },
-                );
                 self.wallet_tracker.add_input.clear();
                 self.wallet_tracker.add_label_input.clear();
                 self.persist_config();

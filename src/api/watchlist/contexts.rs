@@ -6,7 +6,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 enum ContextFamily {
     Perp {
-        label: String,
         dex: Option<String>,
         requested_symbols: HashSet<String>,
     },
@@ -20,7 +19,8 @@ type ContextFamilyResult = (String, Result<HashMap<String, WatchlistContext>, St
 impl ContextFamily {
     fn label(&self) -> String {
         match self {
-            Self::Perp { label, .. } => label.clone(),
+            Self::Perp { dex: Some(dex), .. } => format!("HIP-3 dex {dex}"),
+            Self::Perp { dex: None, .. } => "main perps".to_string(),
             Self::Spot { .. } => "spot".to_string(),
         }
     }
@@ -54,25 +54,24 @@ async fn fetch_watchlist_contexts_with_cache(
     let mut dex_symbols: BTreeMap<String, HashSet<String>> = BTreeMap::new();
     let mut spot_symbols = HashSet::new();
 
-    for symbol in &symbols {
+    for symbol in symbols {
         if symbol.starts_with('#') {
             insert_empty_context(&mut map, symbol);
         } else if symbol.starts_with('@') || symbol.contains('/') {
-            spot_symbols.insert(symbol.clone());
+            spot_symbols.insert(symbol);
         } else if let Some((dex, _)) = symbol.split_once(':') {
             dex_symbols
                 .entry(dex.to_string())
                 .or_default()
-                .insert(symbol.clone());
+                .insert(symbol);
         } else {
-            main_symbols.insert(symbol.clone());
+            main_symbols.insert(symbol);
         }
     }
 
     let mut families = Vec::new();
     if !main_symbols.is_empty() {
         families.push(ContextFamily::Perp {
-            label: "main perps".to_string(),
             dex: None,
             requested_symbols: main_symbols,
         });
@@ -81,7 +80,6 @@ async fn fetch_watchlist_contexts_with_cache(
         dex_symbols
             .into_iter()
             .map(|(dex, requested_symbols)| ContextFamily::Perp {
-                label: format!("HIP-3 dex {dex}"),
                 dex: Some(dex),
                 requested_symbols,
             }),
@@ -120,7 +118,6 @@ async fn fetch_context_family(family: ContextFamily) -> ContextFamilyResult {
             ContextFamily::Perp {
                 dex,
                 requested_symbols,
-                ..
             } => {
                 append_perp_contexts_for_symbols(
                     response,

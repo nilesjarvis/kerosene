@@ -10,6 +10,7 @@ const LIVE_WATCHLIST_SETTINGS_DROPDOWN_OFFSET: f32 = 32.0;
 
 mod controls;
 mod rows;
+mod symbol_cell;
 
 // ---------------------------------------------------------------------------
 // Live Watchlist View
@@ -28,9 +29,7 @@ impl TradingTerminal {
         let theme = self.theme();
         let now_ms = self.status_bar_now_ms;
 
-        let wl = if let Some(w) = self.live_watchlists.get(&id) {
-            w
-        } else {
+        let Some(wl) = self.live_watchlists.get(&id) else {
             return text("Watchlist instance missing").into();
         };
         let display_columns =
@@ -38,7 +37,6 @@ impl TradingTerminal {
 
         let settings_open = self.live_watchlist_settings_menu_open == Some(id);
         let search_bar = self.view_live_watchlist_search_bar(id, &wl.search_query);
-        let autocomplete = self.view_live_watchlist_autocomplete(id, &wl.search_query);
         let header = self.view_live_watchlist_header(id, wl, &display_columns);
         let top_controls = row![
             self.view_live_watchlist_preset_picker(id, wl.preset_id),
@@ -57,7 +55,7 @@ impl TradingTerminal {
 
         let mut content = column![top_controls].spacing(8);
         if !settings_open {
-            content = content.push(autocomplete);
+            content = content.push(self.view_live_watchlist_autocomplete(id, &wl.search_query));
         }
         if let Some((status, is_error)) = &self.live_watchlist_status {
             content = content.push(text(status).size(10).color(if *is_error {

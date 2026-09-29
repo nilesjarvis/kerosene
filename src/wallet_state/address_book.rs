@@ -100,7 +100,6 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     const TEST_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
 
@@ -123,8 +122,9 @@ mod tests {
 
     #[test]
     fn wallet_display_debug_redacts_full_addresses() {
-        let display =
-            TradingTerminal::wallet_display_from_address_book(&HashMap::new(), TEST_ADDRESS);
+        let terminal =
+            TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default()).0;
+        let display = terminal.wallet_display(TEST_ADDRESS);
 
         let rendered = format!("{display:?}");
 

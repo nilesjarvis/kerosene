@@ -65,16 +65,14 @@ impl TradingTerminal {
         reason: String,
     ) -> Task<Message> {
         let reason = redact_sensitive_response_text(&reason);
-        let chase_account_address = self
-            .chase_orders
-            .get(&chase_id)
-            .map(|chase| chase.account_address.clone());
-        let Some((account_address, cloid)) = self.chase_orders.get(&chase_id).and_then(|chase| {
+        let chase = self.chase_orders.get(&chase_id);
+        let Some((account_address, cloid)) = chase.and_then(|chase| {
             chase
                 .current_cloid
                 .as_ref()
                 .map(|cloid| (chase.account_address.clone(), cloid.clone()))
         }) else {
+            let chase_account_address = chase.map(|chase| chase.account_address.clone());
             let summary = format!(
                 concat!(
                     "Chase placement status unknown: response was not confirmed ({}); ",
@@ -130,21 +128,11 @@ impl TradingTerminal {
     ) -> Task<Message> {
         let owns_startup_pending = self.chase_place_result_owns_startup_pending(chase_id);
         let should_refresh = result_requires_account_refresh(&result);
-        if !self.chase_orders.contains_key(&chase_id) {
-            return Task::none();
-        }
-        let Some(chase_account_address) = self
-            .chase_orders
-            .get(&chase_id)
-            .map(|chase| chase.account_address.clone())
-        else {
+        let Some(chase) = self.chase_orders.get(&chase_id) else {
             return Task::none();
         };
-        if !self
-            .chase_orders
-            .get(&chase_id)
-            .is_some_and(|chase| chase.lifecycle.expects_place_result())
-        {
+        let chase_account_address = chase.account_address.clone();
+        if !chase.lifecycle.expects_place_result() {
             return self.refresh_after_chase_result_for_order_account(
                 should_refresh,
                 &chase_account_address,

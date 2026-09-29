@@ -48,14 +48,15 @@ impl TradingTerminal {
             theme.extended_palette().background.weak.text
         };
 
+        let dated_events = helpers::parsed_events(&self.calendar_events);
         let filtered = helpers::filtered_events(
-            &self.calendar_events,
+            &dated_events,
             self.calendar_impact_filter,
             self.calendar_window_filter,
             now_utc,
             now_local,
         );
-        let next_important = helpers::next_important_event(&self.calendar_events, now_utc);
+        let next_important = helpers::next_important_event(&dated_events, now_utc);
 
         let mut content = column![
             self.view_calendar_top_bar(),

@@ -6,7 +6,6 @@ use iced::Task;
 
 impl TradingTerminal {
     pub(crate) fn execute_cancel(&mut self, coin: &str, oid: u64) -> Task<Message> {
-        let _theme = self.theme();
         // The chart suppresses interaction on a Cancelling line, but the
         // orders table and queued clicks can still re-dispatch; a duplicate
         // cancel surfaces a spurious red error after the first one lands.

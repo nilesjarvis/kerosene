@@ -1,4 +1,5 @@
 use super::super::state::DragKind;
+use super::super::viewport::annotations::AnnotationHitPart;
 use super::super::{CandlestickChart, ChartState, VOLUME_REGION_RATIO};
 use super::{InteractionLayout, ProjectedCursor};
 use crate::chart::fisheye::ChartFisheye;
@@ -278,23 +279,9 @@ impl CandlestickChart {
         if self.quick_order_open
             && visual_pos.x < chart_w
             && visual_pos.y < chart_h
-            && let Some((price_hi, price_range, price_h)) =
-                self.visible_price_params(state, chart_w, chart_h)
+            && let Some(action) = self.quick_order_action(state, pos, chart_w, chart_h)
         {
-            let clamped_y = pos.y.clamp(0.0, price_h);
-            let price = self.y_to_price_with(clamped_y, price_hi, price_range, price_h);
-            return Some(
-                canvas::Action::publish(Message::OpenQuickOrder(
-                    self.id,
-                    self.surface_id,
-                    price,
-                    pos.x,
-                    pos.y,
-                    chart_w,
-                    chart_h,
-                ))
-                .and_capture(),
-            );
+            return Some(action);
         }
 
         if visual_pos.x < chart_w && visual_pos.y < chart_h && state.range_anchor_price.is_some() {
@@ -349,27 +336,35 @@ impl CandlestickChart {
             return Some(canvas::Action::request_redraw());
         }
 
-        if visual_pos.x < chart_w
-            && visual_pos.y < chart_h
-            && let Some((price_hi, price_range, price_h)) =
-                self.visible_price_params(state, chart_w, chart_h)
-        {
-            let clamped_y = pos.y.clamp(0.0, price_h);
-            let price = self.y_to_price_with(clamped_y, price_hi, price_range, price_h);
-            return Some(
-                canvas::Action::publish(Message::OpenQuickOrder(
-                    self.id,
-                    self.surface_id,
-                    price,
-                    pos.x,
-                    pos.y,
-                    chart_w,
-                    chart_h,
-                ))
-                .and_capture(),
-            );
+        if visual_pos.x < chart_w && visual_pos.y < chart_h {
+            return self.quick_order_action(state, pos, chart_w, chart_h);
         }
         None
+    }
+
+    fn quick_order_action(
+        &self,
+        state: &ChartState,
+        pos: iced::Point,
+        chart_w: f32,
+        chart_h: f32,
+    ) -> Option<canvas::Action<Message>> {
+        let (price_hi, price_range, price_h) =
+            self.visible_price_params(state, chart_w, chart_h)?;
+        let clamped_y = pos.y.clamp(0.0, price_h);
+        let price = self.y_to_price_with(clamped_y, price_hi, price_range, price_h);
+        Some(
+            canvas::Action::publish(Message::OpenQuickOrder(
+                self.id,
+                self.surface_id,
+                price,
+                pos.x,
+                pos.y,
+                chart_w,
+                chart_h,
+            ))
+            .and_capture(),
+        )
     }
 }
 
@@ -383,8 +378,6 @@ impl CandlestickChart {
         chart_w: f32,
         chart_h: f32,
     ) -> Option<canvas::Action<Message>> {
-        use super::super::viewport::annotations::AnnotationHitPart;
-
         if let Some(hit) = self.hit_test_annotation(state, pos, chart_w, chart_h) {
             state.selected_annotation = Some(hit.id);
             // Locked drawings can be selected (to restyle / unlock) but not
@@ -393,8 +386,8 @@ impl CandlestickChart {
                 .annotations
                 .iter()
                 .find(|ann| ann.id == hit.id)
-                .cloned()
                 .filter(|ann| !ann.style.locked)
+                .cloned()
             {
                 state.drag_annotation_base = Some(base.clone());
                 state.drag_annotation = Some(base);

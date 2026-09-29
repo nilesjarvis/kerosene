@@ -1,6 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
+use crate::order_execution::{cancel_error_indicates_closed_order, retryable_exchange_error};
 use crate::signing::{
     CHASE_RETRY_COOLDOWN, ChaseLifecycle, ChaseQueuedAction, ChaseVerificationReason,
     ExchangeResponse, MIN_CHASE_REPRICE_INTERVAL,
@@ -10,22 +11,8 @@ use crate::twap_state::ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL;
 use iced::Task;
 use std::time::Instant;
 
-use super::cancel::chase_terminal_cancel_error;
-
 #[cfg(test)]
 mod tests;
-
-fn chase_retryable_exchange_error(summary: &str) -> bool {
-    let summary = summary.to_ascii_lowercase();
-    summary.contains("rate limit")
-        || summary.contains("ratelimit")
-        || summary.contains("too many requests")
-        || summary.contains("429")
-        || summary.contains("temporarily")
-        || summary.contains("unavailable")
-        || summary.contains("overloaded")
-        || summary.contains("try again")
-}
 
 fn cooldown_marker(now: Instant, gate: std::time::Duration) -> Instant {
     now + CHASE_RETRY_COOLDOWN.saturating_sub(gate)
@@ -38,26 +25,13 @@ impl TradingTerminal {
         oid: u64,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
-        if !self.chase_orders.contains_key(&chase_id) {
-            return Task::none();
-        }
-        let Some(chase_account_address) = self
-            .chase_orders
-            .get(&chase_id)
-            .map(|chase| chase.account_address.clone())
-        else {
+        let Some(chase) = self.chase_orders.get(&chase_id) else {
             return Task::none();
         };
-        let lifecycle = self
-            .chase_orders
-            .get(&chase_id)
-            .map(|chase| chase.lifecycle);
-        let Some(lifecycle) = lifecycle else {
-            return Task::none();
-        };
-        if !lifecycle.expects_modify_result(oid) {
+        if !chase.lifecycle.expects_modify_result(oid) {
             return Task::none();
         }
+        let chase_account_address = chase.account_address.clone();
 
         match result {
             Ok(resp) => {
@@ -116,7 +90,7 @@ impl TradingTerminal {
         summary: String,
     ) -> Task<Message> {
         let summary = redact_sensitive_response_text(&summary);
-        if chase_terminal_cancel_error(&summary) {
+        if cancel_error_indicates_closed_order(&summary) {
             return self.check_chase_order_status(
                 chase_id,
                 oid,
@@ -130,7 +104,7 @@ impl TradingTerminal {
         let now = Instant::now();
         let mut apply_global_cooldown = false;
         let stop_status = if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
-            if chase_retryable_exchange_error(&summary) {
+            if retryable_exchange_error(&summary) {
                 let was_stopping = chase.lifecycle.is_stopping();
                 chase.last_reprice_at = Some(cooldown_marker(now, MIN_CHASE_REPRICE_INTERVAL));
                 if was_stopping {

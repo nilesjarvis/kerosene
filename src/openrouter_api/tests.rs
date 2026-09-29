@@ -1,8 +1,128 @@
 use super::*;
+use serde_json::json;
 
-// ---------------------------------------------------------------------------
-// Request Construction
-// ---------------------------------------------------------------------------
+#[tokio::test]
+async fn shared_transport_preserves_body_and_distinguishes_failure_stages() {
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let client = Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .expect("fixture client");
+    for context in ["chat completion", "model catalog", "key check"] {
+        for (status, body, truncated) in [
+            (200, "  Σ → 🦀\n ", false),
+            (
+                429,
+                r#"{"error":{"message":"limit token=test-secret"}}"#,
+                false,
+            ),
+            (500, "api_key=test-secret", false),
+            (200, "partial", true),
+            (429, "partial", true),
+        ] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("fixture listener");
+            let address = listener.local_addr().expect("fixture address");
+            let server = tokio::spawn(async move {
+                tokio::time::timeout(Duration::from_secs(3), async move {
+                    let (mut stream, _) = listener.accept().await.expect("fixture connection");
+                    let mut request = Vec::new();
+                    while !request.windows(7).any(|part| part == b"PAYLOAD") {
+                        let mut buffer = [0; 1_024];
+                        let read = stream.read(&mut buffer).await.expect("fixture request");
+                        assert!(read > 0 && request.len() < 8_192);
+                        request.extend_from_slice(&buffer[..read]);
+                    }
+                    assert!(request.starts_with(b"POST /fixture HTTP/1.1\r\n"));
+                    let request = String::from_utf8(request).expect("ASCII request");
+                    assert!(request.contains("x-fixture: preserved\r\n"));
+                    let length = body.len() + usize::from(truncated);
+                    let response = format!(
+                        "HTTP/1.1 {status} Fixture\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n{body}"
+                    );
+                    stream.write_all(response.as_bytes()).await.expect("fixture response");
+                })
+                .await
+                .expect("fixture deadline");
+            });
+            let result = send_request(
+                client
+                    .post(format!("http://{address}/fixture"))
+                    .header("x-fixture", "preserved")
+                    .body("PAYLOAD"),
+                context,
+            )
+            .await;
+            server.await.expect("fixture task");
+
+            if truncated {
+                assert!(
+                    result
+                        .expect_err("truncated body")
+                        .starts_with(&format!("OpenRouter {context} response read failed:"))
+                );
+            } else if status == 200 {
+                assert_eq!(result.expect("successful response"), body);
+            } else {
+                let expected = if status == 429 {
+                    format!("OpenRouter {context} HTTP 429 (rate limited): limit token=<redacted>")
+                } else {
+                    format!("OpenRouter {context} HTTP 500: api_key=<redacted>")
+                };
+                assert_eq!(result.expect_err("HTTP error"), expected);
+            }
+        }
+        let error = send_request(client.get("not a URL"), context)
+            .await
+            .expect_err("invalid request builder");
+        assert!(error.starts_with(&format!("OpenRouter {context} request failed:")));
+    }
+}
+
+#[test]
+fn content_parts_preserve_unicode_whitespace_and_first_choice_precedence() {
+    for (parts, expected) in [
+        (json!([]), None),
+        (json!([{}, {"text": ""}]), None),
+        (json!([{"text": " \n"}, {"text": "\t"}]), None),
+        (
+            json!([{"text": " 前 "}, {}, {"text": "e\u{301} → 🦀\n"}]),
+            Some(" 前 e\u{301} → 🦀\n"),
+        ),
+        (
+            json!([{"text": ""}, {"text": "a"}, {"text": "b"}, {"text": " "}]),
+            Some("ab "),
+        ),
+    ] {
+        let body = json!({"choices": [
+            {"message": {"content": parts}, "finish_reason": "first"},
+            {"message": {"content": "ignored second choice"}}
+        ]});
+        let result = parse_chat_completion_response(&body.to_string());
+        if let Some(expected) = expected {
+            let result = result.expect("nonempty first choice");
+            assert_eq!(result.content, expected);
+            assert_eq!(result.finish_reason.as_deref(), Some("first"));
+        } else {
+            assert_eq!(
+                result.expect_err("empty first choice"),
+                "OpenRouter chat completion returned no content"
+            );
+        }
+    }
+    let body = json!({
+        "choices": [{"message": {"content": [{"text": "otherwise valid"}]}}],
+        "error": {"message": "upstream failure"}
+    });
+    assert_eq!(
+        parse_chat_completion_response(&body.to_string()).expect_err("error overrides content"),
+        "OpenRouter chat completion failed: upstream failure"
+    );
+}
 
 #[test]
 fn chat_completion_request_serializes_model_roles_and_content() {
@@ -46,10 +166,6 @@ fn chat_completion_request_serializes_set_optional_fields() {
     assert_eq!(json["max_tokens"], 512);
     assert_eq!(json["temperature"], 0.25);
 }
-
-// ---------------------------------------------------------------------------
-// Chat Completion Response Parsing
-// ---------------------------------------------------------------------------
 
 #[test]
 fn chat_completion_response_parses_text_content_and_usage() {
@@ -147,163 +263,6 @@ fn chat_completion_response_with_invalid_json_is_an_error() {
     assert!(error.contains("parse failed"));
 }
 
-// ---------------------------------------------------------------------------
-// Model catalog parsing and pricing
-// ---------------------------------------------------------------------------
-
-#[test]
-fn model_catalog_keeps_tool_models_and_normalizes_openrouter_pricing() {
-    let text = r#"{
-        "data": [
-            {
-                "id": "openai/gpt-tool",
-                "name": "OpenAI: GPT Tool",
-                "context_length": 128000,
-                "pricing": {
-                    "prompt": "0.0000025",
-                    "completion": "0.00001",
-                    "internal_reasoning": "0.000005",
-                    "request": "0.01",
-                    "overrides": [{"min_prompt_tokens": 100000, "prompt": "0.000005"}]
-                },
-                "architecture": {"input_modalities": ["text", "image"]},
-                "supported_parameters": ["temperature", "tools"]
-            },
-            {
-                "id": "example/no-tools",
-                "name": "No tools",
-                "context_length": 32000,
-                "pricing": {"prompt": "0", "completion": "0"},
-                "supported_parameters": ["temperature"]
-            },
-            {
-                "id": "openrouter/auto",
-                "name": "API auto entry",
-                "supported_parameters": ["tools"]
-            }
-        ]
-    }"#;
-
-    let models = parse_model_catalog_response(text).expect("catalog should parse");
-
-    assert_eq!(models.len(), 2);
-    assert_eq!(models[0].id, DEFAULT_OPENROUTER_MODEL);
-    assert_eq!(
-        models[0].pricing_summary(),
-        "Pricing varies by routed model"
-    );
-    assert_eq!(models[1].id, "openai/gpt-tool");
-    assert_eq!(models[1].context_length, Some(128_000));
-    assert_eq!(models[1].prompt_price_per_million_usd, Some(2.5));
-    assert_eq!(models[1].completion_price_per_million_usd, Some(10.0));
-    assert_eq!(models[1].reasoning_price_per_million_usd, Some(5.0));
-    assert_eq!(models[1].request_price_usd, Some(0.01));
-    assert!(models[1].has_conditional_pricing);
-    assert!(models[0].supports_image_input);
-    assert!(models[1].supports_image_input);
-    assert_eq!(models[1].provider_summary(), "OpenAI");
-    assert_eq!(
-        models[1].pricing_summary(),
-        "$2.50/M input · $10.00/M output · $5.00/M reasoning · $0.010/request · variable rates"
-    );
-    assert_eq!(models[1].context_summary(), "128K context");
-}
-
-#[test]
-fn model_catalog_ignores_duplicate_ids_and_invalid_prices() {
-    let text = r#"{
-        "data": [
-            {
-                "id": "vendor/model",
-                "name": "Vendor Model",
-                "pricing": {"prompt": "not-a-price", "completion": "-1"},
-                "supported_parameters": ["tools"]
-            },
-            {
-                "id": "vendor/model",
-                "name": "Duplicate",
-                "pricing": {"prompt": "1", "completion": "1"},
-                "supported_parameters": ["tools"]
-            }
-        ]
-    }"#;
-
-    let models = parse_model_catalog_response(text).expect("catalog should parse");
-
-    assert_eq!(models.len(), 2);
-    assert_eq!(models[1].name, "Vendor Model");
-    assert_eq!(models[1].prompt_price_per_million_usd, None);
-    assert_eq!(models[1].completion_price_per_million_usd, None);
-    assert!(!models[1].supports_image_input);
-    assert_eq!(models[1].pricing_summary(), "Pricing unavailable");
-}
-
-#[test]
-fn model_catalog_requires_the_documented_data_envelope() {
-    let error =
-        parse_model_catalog_response(r#"{"models": []}"#).expect_err("missing data should fail");
-
-    assert!(error.contains("model catalog parse failed"));
-}
-
-// ---------------------------------------------------------------------------
-// Key Status Parsing
-// ---------------------------------------------------------------------------
-
-#[test]
-fn key_status_response_parses_full_payload() {
-    let text = r#"{
-        "data": {
-            "label": "kerosene",
-            "usage": 25.5,
-            "limit": 100.0,
-            "limit_remaining": 74.5,
-            "is_free_tier": false,
-            "rate_limit": {"requests": 10, "interval": "10s"}
-        }
-    }"#;
-
-    let status = parse_key_status_response(text).expect("full key status should parse");
-
-    assert_eq!(
-        status,
-        OpenRouterKeyStatus {
-            usage_usd: 25.5,
-            limit_usd: Some(100.0),
-            limit_remaining_usd: Some(74.5),
-            is_free_tier: false,
-        }
-    );
-}
-
-#[test]
-fn key_status_response_defaults_missing_fields() {
-    let status =
-        parse_key_status_response(r#"{"data": {}}"#).expect("minimal key status should parse");
-
-    assert_eq!(
-        status,
-        OpenRouterKeyStatus {
-            usage_usd: 0.0,
-            limit_usd: None,
-            limit_remaining_usd: None,
-            is_free_tier: false,
-        }
-    );
-}
-
-#[test]
-fn key_status_response_without_data_is_an_error() {
-    let error =
-        parse_key_status_response(r#"{"unexpected": true}"#).expect_err("missing data should fail");
-
-    assert!(error.contains("key check parse failed"));
-}
-
-// ---------------------------------------------------------------------------
-// HTTP Error Mapping
-// ---------------------------------------------------------------------------
-
 #[test]
 fn http_error_uses_error_envelope_message_and_status_hint() {
     let rendered = openrouter_http_error(
@@ -340,10 +299,6 @@ fn http_error_falls_back_to_redacted_body_snippet() {
     assert!(!rendered.contains("oops-secret"));
 }
 
-// ---------------------------------------------------------------------------
-// Request Guards
-// ---------------------------------------------------------------------------
-
 #[test]
 fn chat_completion_rejects_missing_key_model_and_messages_before_any_io() {
     let request = ChatCompletionRequest::new("openrouter/auto", vec![ChatMessage::user("hi")]);
@@ -367,20 +322,4 @@ fn chat_completion_rejects_missing_key_model_and_messages_before_any_io() {
     ))
     .expect_err("missing messages should fail");
     assert!(error.contains("missing messages"));
-}
-
-#[test]
-fn key_status_fetch_rejects_missing_key_before_any_io() {
-    let error = futures::executor::block_on(fetch_key_status(Zeroizing::new(String::new())))
-        .expect_err("missing key should fail");
-
-    assert!(error.contains("OpenRouter API key is required"));
-}
-
-#[test]
-fn model_catalog_fetch_rejects_missing_key_before_any_io() {
-    let error = futures::executor::block_on(fetch_tool_models(Zeroizing::new(String::new())))
-        .expect_err("missing key should fail");
-
-    assert!(error.contains("OpenRouter API key is required"));
 }

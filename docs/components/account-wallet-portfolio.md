@@ -13,7 +13,7 @@ views.
 | Account runtime | `src/account_state.rs`, `src/account_update/` | Active profile, connect/disconnect, account refresh, user stream application, profile picker. |
 | Account views | `src/account_views/` | Summary bar, positions, open orders, balances, history, account picker, income. |
 | Wallet tracker | `src/wallet_state/`, `src/wallet_update/`, `src/wallet_views/` | Watch-only tracked wallets, address book, detail windows, snapshot refreshes. |
-| Wallet clusters | `src/wallet_cluster_state.rs`, `src/wallet_cluster_update.rs`, `src/wallet_cluster_views.rs` | Saved groups of trading profiles, aggregate positions, and split order submission. |
+| Wallet clusters | `src/wallet_cluster_state.rs`, `src/wallet_cluster_update.rs`, `src/wallet_cluster_update/`, `src/wallet_cluster_views.rs`, `src/wallet_cluster_views/` | Saved groups of trading profiles, aggregate positions, and split order submission. |
 | Portfolio | `src/portfolio_state/`, `src/portfolio_update.rs` | Portfolio history, PnL charts, income state and refreshes. |
 | Combined portfolio | `src/combined_portfolio.rs`, `src/combined_portfolio_update.rs`, `src/combined_portfolio_views.rs` | Watch-only multi-wallet portfolio history, aggregate PnL, and its standalone window. |
 | Analytics and metrics | `src/account_analytics/`, `src/account_metrics.rs`, `src/pnl_card/` | Portfolio/income HTTP fetches, position metrics, exportable PnL cards. |
@@ -40,7 +40,12 @@ The account picker can:
 - add ghost wallets
 - forget ghost accounts
 - delete saved accounts
-- save credentials for the active profile
+
+The Add Account window holds address and key drafts separately from the active
+profile. `AddAccountAddressChanged` and `AddAccountKeyChanged` only update that
+draft. `AddAccountSubmit` validates it and persists the new profile's credentials
+before optionally switching accounts through the normal trading-state guards.
+Cancelling drops the draft without changing saved or active credentials.
 
 ### Existing Subaccounts
 
@@ -120,6 +125,37 @@ perpetual clearinghouse state independently so a failed perpetual read does not
 discard a valid spot snapshot. Percentage orders require a complete, fresh
 spot snapshot and use the selected pair's verified base/quote token identities.
 
+`account/types/data/completeness.rs` records unique section/message pairs and
+builds the overall warning summary from borrowed messages in order of first
+occurrence, deduplicating identical text across sections. Section warnings retain
+their own messages and fallback text. Marking positions incomplete clears
+actionability; marking them degraded preserves the existing actionability flag.
+
+Fetch-scope constructors borrow input, trim whitespace, and fold ASCII case when
+building owned DEX keys. Selecting a blank DEX falls back to the default
+all-markets scope. Reading a scope borrows DEX names in their stored order and
+uses the caller's fallback only for an empty all-markets list.
+
+Hydromancer request orchestration lives in `account/data/bootstrap/hydromancer.rs`.
+Its `portfolio.rs` submodule owns single/batch response parsing, the redacted
+portfolio model, scoped conversion, native/DEX merging, and batch-size policy.
+Batch requests use that shared scope limit and serialize borrowed address slices
+while the public fetch task retains the owned list for result assembly.
+Joined portfolio and order helpers borrow addresses, scopes, and API keys from
+the enclosing task; the task retains its `Zeroizing` key through the requests.
+DEX names become owned strings when stored in returned account or wallet data.
+Owned response parsers move JSON fields, tuple payloads, and address strings into
+their outputs. Primary snake-case fields take precedence over camel-case aliases
+whenever present, including null or malformed values. Tests beside the model
+cover those distinctions, validation order, metadata selection, and redaction.
+Portfolio getters and native bootstrap/wallet conversion deserialize retained
+JSON by reference into owned models. Getters preserve independent results on
+repeated calls; bootstrap errors can still preview the original redacted JSON.
+Wallet snapshot conversion moves parsed positions into aggregation while keeping
+equity and withdrawable parsing independent of position-schema errors.
+Hydromancer wallet-detail conversion also consumes temporary DEX states and order
+vectors, preserving the independently returned native clearinghouse snapshot.
+
 ## User Data Stream
 
 `subscription_state/user_data.rs` creates `WsUserDataStreamParams` for:
@@ -166,6 +202,17 @@ Features include:
 
 Hidden positions are scoped by account and persisted. Hidden/muted exposure is
 a trading risk boundary and must be considered by close/NUKE/order automation.
+
+Account projection in `account_positions.rs` borrows native positions from the
+connected account snapshot and eagerly appends owned outcome and spot rows, in
+that order. Table filtering, section lists, summary accumulation, chart overlays,
+tab counts, and PnL-card metrics consume these rows without copying native wire
+fields. Rendered widgets, action messages, and export snapshots own their outputs.
+
+Spot-pair selection collects borrowed USD-quoted candidates once and stably sorts
+them by asset index. It prefers a fill-reconciled pair, then the most recent fill
+(the last candidate wins a timestamp tie), then the first live mark, then the
+first candidate. Only an owned synthesized position copies the selected key.
 
 ## Open Orders
 
@@ -322,6 +369,33 @@ Wallet tracker features:
 - open-order counts
 - HIP-3 and spot fallback handling
 
+Tracker config restoration normalizes and deduplicates addresses in first-seen
+order, taking the current list before legacy wallet entries. Muted addresses use
+the same normalization independently, including addresses absent from the tracked
+list. Address-book label lists share one collection/sort/deduplication path;
+combined local/remote labels are sorted once, then subscription selection filters
+muted addresses. Color or tags alone do not create a label subscription.
+Config Debug output uses the same count-only redaction as runtime wallet state.
+
+Wallet label and display helpers normalize addresses once and share the lookup
+for the first nonblank label, checking the remote book before the local book.
+Invalid addresses retain their raw display text and never use a stored label.
+Tracker rows borrow loaded row state, reuse remote status, and consume prepared
+display strings for label controls and address text.
+
+`wallet_state/tracker/selection.rs` gives queued requests FIFO precedence over
+automatic refreshes. Automatic core selection ranks borrowed addresses by age
+and copies only the selected batch; order selection copies only the chosen
+address. Timestamp ties retain tracked-list order. Core and order loading/retry
+checks remain independent, and automatic order refresh requires a core snapshot.
+Refresh-all rebuilds the core queue directly from tracked addresses, copying only
+eligible, nonduplicate entries and reusing queue capacity.
+Tracker tests cover these policies and request-context setup before tasks run.
+Adding a wallet and restoring a muted wallet share input clearing, deferred
+persistence, and refresh dispatch. Restored rows retain their data and remote
+label protection; new rows start from defaults. Subscription refresh conditions
+remain specific to each path.
+
 Portfolio-margin headline equity and available balance are spot-state values,
 not the values reported by an individual perpetual clearinghouse. Tracker
 refreshes therefore inspect spot state even when the perp response is positive,
@@ -390,6 +464,22 @@ grid. They can subscribe to user-data streams for their own address and show:
 The detail window should not mutate the connected trading account unless a
 message explicitly targets account profile state.
 
+Summary and table preparation borrow stored position rows and append owned spot
+rows through `wallet_position_details_with_spot`. Spot synthesis remains eager;
+the table filters its row buffer in place and caches symbol sort keys, preserving
+source order for equal symbols. Positions, orders, and spot balances share the
+table container in `wallet_views/style.rs`. Error and warning text borrow their
+window snapshot; outgoing messages continue to own their values.
+
+`wallet_state/details.rs` shares window selection and snapshot timestamps across
+position, order, balance, and fill stream events. Matching windows clear their
+error and record a refresh even while awaiting an initial snapshot; stream
+events leave REST loading/context state intact. Each loaded window retains an
+independent snapshot. Event-specific hidden-symbol filters, DEX order replacement,
+and fill deduplication remain separate. Lag recovery preserves pending requests
+and starts refreshes only for idle matching windows. Cluster position freshness
+uses its own trading-specific rules.
+
 For portfolio-margin wallets, detail-window equity is recomputed from spot
 balances and token-0 maintenance availability. If any material held balance
 cannot be priced, the headline value is unavailable instead of showing a
@@ -431,16 +521,37 @@ Key behavior:
 
 - `wallet_cluster_state.rs` owns runtime cluster form state, member snapshots,
   aggregate position summaries, and recent execution legs.
-- `wallet_cluster_update.rs` handles create/select/member edits, snapshot
-  refresh, websocket updates, order splitting, result classification, and
-  orderStatus checks for ambiguous legs.
+- `wallet_cluster_update.rs` routes messages and holds the feature's shared
+  preparation types. Its child modules separate cluster/member editing
+  (`management.rs`), snapshot refresh/results and websocket updates (`data.rs`),
+  order/close planning and member eligibility (`orders.rs`), dispatch and result
+  reconciliation (`execution.rs`), and position aggregation/close sizing
+  (`positions.rs`). Focused tests live beside each module.
 - `wallet_cluster_views.rs` renders the auxiliary window opened from the add
-  widget menu.
+  widget menu. Its `members.rs`, `ticket.rs`, `positions.rs`, and `executions.rs`
+  children own each section. The members section receives the already-selected
+  cluster, display text borrows state where possible, and event messages retain
+  owned IDs. Disabled close buttons do not copy symbols, and the ticket builds
+  the price input only when visible.
 - Cluster member streams are generated in
   `subscription_state/user_data.rs` for the selected cluster only.
 
 Cluster close actions require fresh member snapshots and route through the
 shared order preparation boundary with `OrderSurface::ClusterClose`.
+
+Order and close plans share `PreparedClusterLeg::new` to bind the prepared
+request and completion context to the captured member. Dispatch moves the owned
+signing key and context into the task while execution history retains its own
+client-order ID. Position aggregation borrows input symbol names and copies a
+name only when creating a summary; calculation order and optional totals remain
+unchanged.
+
+Full-cluster and single-member refreshes share selection in `data.rs`. They copy
+the selected cluster ID and matching profile IDs before updating state, preserving
+member order and repeated entries without cloning names, weights, or input drafts.
+Read refreshes include zero-weight members and preserve cached snapshots and
+position timestamps while loading. Missing profiles remove cached rows; invalid
+addresses replace their rows with the existing validation error.
 
 ## Portfolio And Income
 
@@ -457,11 +568,38 @@ Portfolio state lives in `portfolio_state/` and is updated by
 The state is read-only analytics; trading actions should not depend on it for
 order-critical validation.
 
+Portfolio and income each own an independent `AnalyticsRefreshState` from
+`portfolio_state/refresh.rs`. It holds the loading flag, saturating request
+counter, and one queued follow-up flag. Completion checks the request ID before
+clearing loading state; invalidation advances the counter and clears pending
+refresh work. Account matching, income eligibility, result handling, and
+follow-up dispatch stay in `portfolio_update.rs`.
+
+Each completion handler applies a result only to the matching connected account,
+then uses one follow-up path for both current and previous-account responses.
+That path checks the current connection and, for income, its Portfolio Margin
+eligibility. Income snapshot application and interest alerts are handled together
+in `apply_income_snapshot` after the request and account checks pass.
+
+Income snapshot assembly validates each token's carrying values and annualized
+projection before adding it to the totals. Recent payments sort borrowed hourly
+entries by descending time and build the first 12 valid rows, keeping input order
+for ties. Invalid amounts and aggregate samples do not consume that limit.
+Portfolio buckets retain history order and distinguish missing volume from an
+invalid supplied value. Portfolio data selection is independent of theme
+construction.
+
 The Income pane uses three local views so its small PaneGrid footprint remains
 readable: Overview presents realized interest, account health, current carrying
 values, and the 12-month projection; Tokens shows annualized per-token
 contributions; Payments shows recent hourly interest. Refresh and alert controls
 remain available from the pane title bar in every view.
+
+Portfolio daily rows borrow the selected bucket histories, and the performance
+chip is prepared only in dollar mode. Income compact and wide tables share their
+common cells; payment amounts remain in raw token units while position values
+use the display denomination. Income chart layout borrows projection labels and
+creates owned text only for visible axis labels and the hovered tooltip.
 
 ## PnL Cards
 
@@ -481,6 +619,11 @@ Features include:
 
 PnL cards can include financial values, so privacy toggles and output handling
 should be treated carefully.
+
+Preview and export use the same `pnl_card_render_text` transformation. Whole-price
+and fractional-price privacy rules share one ASCII-digit masking helper, with
+their visibility thresholds selected separately. Export requests own snapshots
+of the card settings and metrics after checking the card's account binding.
 
 ## Freshness And Refresh
 

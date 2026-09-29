@@ -1,4 +1,4 @@
-use super::NormalizedRenderContext;
+use super::RenderContext;
 use crate::spaghetti::{ComparisonColorMode, Series};
 
 use iced::widget::canvas;
@@ -19,39 +19,9 @@ pub(super) use legend::legend_label;
 // Normalized Series
 // ---------------------------------------------------------------------------
 
-pub(super) fn draw_session_start_line(
-    frame: &mut canvas::Frame,
-    ctx: &NormalizedRenderContext<'_>,
-    ts_to_x: &impl Fn(u64) -> f32,
-    base_timestamp: Option<u64>,
-) {
-    if let Some(base_ts) = base_timestamp {
-        let base_x = ts_to_x(base_ts);
-        if base_x >= 0.0 && base_x <= ctx.chart_w {
-            let dash_len: f32 = 4.0;
-            let gap_len: f32 = 3.0;
-            let mut y = 0.0_f32;
-            while y < ctx.chart_h {
-                let end = (y + dash_len).min(ctx.chart_h);
-                let seg = canvas::Path::line(Point::new(base_x, y), Point::new(base_x, end));
-                frame.stroke(
-                    &seg,
-                    canvas::Stroke::default()
-                        .with_color(Color {
-                            a: 0.2,
-                            ..ctx.theme.palette().text
-                        })
-                        .with_width(1.0),
-                );
-                y += dash_len + gap_len;
-            }
-        }
-    }
-}
-
 pub(super) fn draw_series_lines(
     frame: &mut canvas::Frame,
-    ctx: &NormalizedRenderContext<'_>,
+    ctx: &RenderContext<'_>,
     series_data: &[(&Series, Vec<(f32, f64)>)],
     pct_to_y: &impl Fn(f64) -> f32,
     color_mode: ComparisonColorMode,

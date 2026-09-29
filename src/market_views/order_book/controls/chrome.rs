@@ -7,6 +7,7 @@ use crate::message::Message;
 
 use iced::widget::{button, column, container, row, text, tooltip};
 use iced::{Color, Element, Fill, Theme};
+use std::borrow::Cow;
 
 impl TradingTerminal {
     pub(in crate::market_views::order_book) fn view_order_book_header(
@@ -45,9 +46,9 @@ impl TradingTerminal {
     ) -> Element<'_, Message> {
         let is_active = matches!(inst.mode, OrderBookSymbolMode::Active);
 
-        let tracking_label = match &inst.mode {
-            OrderBookSymbolMode::Active => self.active_symbol_display.clone(),
-            OrderBookSymbolMode::Fixed(symbol) => self.display_name_for_symbol(symbol),
+        let tracking_label: Cow<'_, str> = match &inst.mode {
+            OrderBookSymbolMode::Active => Cow::Borrowed(&self.active_symbol_display),
+            OrderBookSymbolMode::Fixed(symbol) => Cow::Owned(self.display_name_for_symbol(symbol)),
         };
 
         let book_has_rows = !inst.book.bids.is_empty() || !inst.book.asks.is_empty();
@@ -70,7 +71,7 @@ impl TradingTerminal {
         if let Some(error) = &inst.book_error
             && book_has_rows
         {
-            title = title.push(stale_book_badge(error.clone()));
+            title = title.push(stale_book_badge(error));
         }
 
         title
@@ -232,7 +233,7 @@ fn active_indicator(is_active: bool) -> Element<'static, Message> {
 
 /// Compact constant-size indicator that the displayed book is a stale
 /// snapshot; the full error message lives in the tooltip.
-fn stale_book_badge(error: String) -> Element<'static, Message> {
+fn stale_book_badge(error: &str) -> Element<'static, Message> {
     tooltip(
         container(
             text("stale")

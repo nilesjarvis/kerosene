@@ -1,4 +1,6 @@
+use crate::alfred_state::parsing::command_tokens;
 use crate::signing::OrderKind;
+use std::borrow::Cow;
 
 use super::AlfredTradeSide;
 
@@ -106,11 +108,11 @@ pub(super) fn parse_trade_intent(query: &str) -> Option<ParsedTradeIntent> {
         }
     }
 
-    for (idx, token) in tokens.iter().enumerate() {
-        if consumed[idx] || is_trade_filler(token) {
+    for (idx, token) in tokens.into_iter().enumerate() {
+        if consumed[idx] || is_trade_filler(&token) {
             continue;
         }
-        symbol = Some(token.to_string());
+        symbol = Some(token.into_owned());
         break;
     }
 
@@ -136,37 +138,19 @@ pub(super) fn parse_trade_intent(query: &str) -> Option<ParsedTradeIntent> {
     })
 }
 
-fn trade_tokens(query: &str) -> Vec<String> {
-    let raw: Vec<String> = query
-        .split_whitespace()
-        .map(trim_trade_token)
-        .filter(|token| !token.is_empty())
-        .map(ToString::to_string)
-        .collect();
-
-    let mut tokens = Vec::with_capacity(raw.len());
-    let mut index = 0;
-    while index < raw.len() {
-        if raw[index] == "$"
-            && let Some(next) = raw.get(index + 1)
+fn trade_tokens(query: &str) -> Vec<Cow<'_, str>> {
+    let mut raw = command_tokens(query);
+    let mut tokens = Vec::new();
+    while let Some(token) = raw.next() {
+        if token == "$"
+            && let Some(next) = raw.next()
         {
-            tokens.push(format!("${next}"));
-            index += 2;
-            continue;
+            tokens.push(Cow::Owned(format!("${next}")));
+        } else {
+            tokens.push(Cow::Borrowed(token));
         }
-        tokens.push(raw[index].clone());
-        index += 1;
     }
     tokens
-}
-
-fn trim_trade_token(token: &str) -> &str {
-    token.trim_matches(|ch: char| {
-        matches!(
-            ch,
-            '\'' | '"' | '(' | ')' | '[' | ']' | '{' | '}' | ';' | ','
-        )
-    })
 }
 
 fn is_trade_filler(token: &str) -> bool {
@@ -197,20 +181,4 @@ fn parse_compact_amount(token: &str) -> Option<(f64, bool)> {
 
     let value = number.replace(',', "").parse::<f64>().ok()? * multiplier;
     (value.is_finite() && value > 0.0).then_some((value, is_usd))
-}
-
-pub(super) fn normalize_symbol_input(symbol: &str) -> String {
-    if symbol.starts_with('@') || symbol.starts_with('#') || symbol.starts_with('+') {
-        return symbol.to_string();
-    }
-
-    if let Some((dex, ticker)) = symbol.split_once(':') {
-        format!(
-            "{}:{}",
-            dex.to_ascii_lowercase(),
-            ticker.to_ascii_uppercase()
-        )
-    } else {
-        symbol.to_ascii_uppercase()
-    }
 }

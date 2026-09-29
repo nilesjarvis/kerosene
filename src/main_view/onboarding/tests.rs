@@ -1,4 +1,6 @@
+use super::animation::onboarding_gradient;
 use super::*;
+use iced::Size;
 
 #[test]
 fn onboarding_phase_advances_and_wraps_without_skipping_a_step() {

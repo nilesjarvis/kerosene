@@ -1,12 +1,12 @@
-use super::analytics::{
-    JournalKpis, journal_effective_pnl, journal_is_non_perp, journal_trade_r_multiple,
-};
+use super::analytics::{JournalKpis, journal_trade_r_multiple};
 use super::trade_card::journal_chip;
 use super::trade_list::journal_asset_badge;
 use super::trades::trade_duration_ms;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
-use crate::journal::{AggregatedTrade, JournalSnapshotCoverage, JournalTradeSnapshotStatus};
+use crate::journal::{
+    AggregatedTrade, JournalSnapshotCoverage, JournalTradeSnapshotStatus, is_non_perp_coin,
+};
 use crate::journal_views::style::{
     journal_accent_soft, journal_card_style, journal_dim, journal_muted, journal_rule_style,
     journal_segment_style,
@@ -26,19 +26,15 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let theme = self.theme();
         let include_fees = self.journal.include_fees_in_pnl;
-        let net_pnl = journal_effective_pnl(trade, include_fees);
+        let net_pnl = trade.effective_pnl(include_fees);
         let pnl_color = helpers::signed_number_color(net_pnl, &theme);
         let denomination = self.display_denomination_context();
 
         // ---- Header ----
-        let monogram = journal_asset_badge(
-            &self.display_coin_for_journal(&trade.coin),
-            34.0,
-            20,
-            &theme,
-        );
+        let display_coin = self.display_coin_for_journal(&trade.coin);
+        let monogram = journal_asset_badge(&display_coin, 34.0, 20, &theme);
 
-        let side = if journal_is_non_perp(&trade.coin) {
+        let side = if is_non_perp_coin(&trade.coin) {
             ("SPOT", journal_muted(&theme))
         } else if trade.is_long {
             ("LONG", theme.palette().success)
@@ -65,9 +61,7 @@ impl TradingTerminal {
         let header = row![
             back,
             monogram,
-            text(self.display_coin_for_journal(&trade.coin))
-                .size(20)
-                .color(theme.palette().text),
+            text(display_coin).size(20).color(theme.palette().text),
             journal_chip(side.0, side.1),
             journal_chip(trade.status.clone(), status_tint),
             Space::new().width(Fill),
@@ -133,27 +127,20 @@ impl TradingTerminal {
         trade: &'a AggregatedTrade,
         theme: &Theme,
     ) -> Element<'a, Message> {
-        let is_perp = !journal_is_non_perp(&trade.coin);
-        let active_timeframe = self
-            .journal
-            .snapshots
-            .get(&trade.id)
-            .map(|snapshot| snapshot.timeframe)
-            .or_else(|| {
-                self.journal
-                    .snapshot_requests
-                    .get(&trade.id)
-                    .map(|request| request.timeframe)
-            });
+        let is_perp = !is_non_perp_coin(&trade.coin);
+        let snapshot = self.journal.snapshots.get(&trade.id);
+        let active_timeframe = snapshot.map(|snapshot| snapshot.timeframe).or_else(|| {
+            self.journal
+                .snapshot_requests
+                .get(&trade.id)
+                .map(|request| request.timeframe)
+        });
 
         // Match the caption to how the chart actually renders: a live-position
         // chart (entry guide, no fill markers) only when the loaded snapshot is
         // flagged live. Before the snapshot loads, fill-less open positions
         // (fill_count 0) are the live case.
-        let is_live_chart = self
-            .journal
-            .snapshots
-            .get(&trade.id)
+        let is_live_chart = snapshot
             .map(|snapshot| snapshot.live_position)
             .unwrap_or_else(|| trade.end_time.is_none() && trade.fill_count == 0);
         let caption = if is_live_chart {
@@ -234,17 +221,16 @@ impl TradingTerminal {
     ) -> Element<'_, Message> {
         let denomination = self.display_denomination_context();
         let include_fees = self.journal.include_fees_in_pnl;
-        let net_pnl = journal_effective_pnl(trade, include_fees);
+        let net_pnl = trade.effective_pnl(include_fees);
 
-        let (entry_display, exit_display) = if journal_is_non_perp(&trade.coin) {
+        let (entry_display, exit_display) = if is_non_perp_coin(&trade.coin) {
             non_perp_entry_exit_display(trade)
         } else {
-            let snapshot = self.journal.snapshots.get(&trade.id);
-            let loaded = snapshot.is_some_and(|snapshot| {
-                matches!(snapshot.status, JournalTradeSnapshotStatus::Loaded)
-            });
+            let snapshot =
+                self.journal.snapshots.get(&trade.id).filter(|snapshot| {
+                    matches!(snapshot.status, JournalTradeSnapshotStatus::Loaded)
+                });
             let entry_price = snapshot
-                .filter(|_| loaded)
                 .map(|snapshot| snapshot.metrics.entry_price)
                 .filter(|price| price.is_finite() && *price > 0.0)
                 .unwrap_or(trade.avg_entry_price);
@@ -254,13 +240,14 @@ impl TradingTerminal {
                 "—".to_string()
             };
             let exit_display = snapshot
-                .filter(|_| loaded && trade.end_time.is_some())
+                .filter(|_| trade.end_time.is_some())
                 .map(|snapshot| helpers::format_price(snapshot.metrics.exit_price))
                 .unwrap_or_else(|| "—".to_string());
             (entry_display, exit_display)
         };
 
-        let r_display = journal_trade_r_multiple(trade, kpis.r_unit, include_fees)
+        let r_multiple = journal_trade_r_multiple(trade, kpis.r_unit, include_fees);
+        let r_display = r_multiple
             .map(|r| format!("{r:+.2}R"))
             .unwrap_or_else(|| "—".to_string());
 
@@ -305,8 +292,8 @@ impl TradingTerminal {
             stat_divider(),
             stat_cell(
                 "R MULTIPLE",
-                r_display.clone(),
-                journal_trade_r_multiple(trade, kpis.r_unit, include_fees)
+                r_display,
+                r_multiple
                     .map(|r| helpers::signed_number_color(r, theme))
                     .unwrap_or(text_color),
                 theme,

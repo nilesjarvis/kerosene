@@ -44,18 +44,8 @@ pub(super) fn parse_hydromancer_text_frame(text: &str) -> Option<HydromancerText
         "ping" => HydromancerTextFrameKind::Ping,
         _ => HydromancerTextFrameKind::Other,
     };
-    let cursor = json
-        .get("cursor")
-        .and_then(|value| value.as_str())
-        .map(|value| Zeroizing::new(value.to_string()));
-    let session_id = json
-        .get("sessionId")
-        .and_then(|value| value.as_str())
-        .map(|value| Zeroizing::new(value.to_string()));
-    if let Value::Object(fields) = &mut json {
-        fields.remove("cursor");
-        fields.remove("sessionId");
-    }
+    let cursor = take_resume_field(&mut json, "cursor");
+    let session_id = take_resume_field(&mut json, "sessionId");
 
     Some(HydromancerTextFrame {
         json,
@@ -63,4 +53,12 @@ pub(super) fn parse_hydromancer_text_frame(text: &str) -> Option<HydromancerText
         cursor,
         session_id,
     })
+}
+
+/// Remove resume metadata from the broadcast payload even when its type is invalid.
+fn take_resume_field(json: &mut Value, key: &str) -> Option<Zeroizing<String>> {
+    match json.as_object_mut()?.remove(key)? {
+        Value::String(value) => Some(Zeroizing::new(value)),
+        _ => None,
+    }
 }

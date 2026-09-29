@@ -219,23 +219,11 @@ impl TradingTerminal {
             );
         }
 
-        let pending_indicator_id = if is_market_order {
-            self.add_pending_market_order_placement_indicator(
-                account_address.clone(),
-                prepared.symbol_key.clone(),
-                prepared.is_buy,
-                prepared.size.clone(),
-                prepared.price.clone(),
-            )
-        } else {
-            self.add_pending_order_placement_indicator(
-                account_address.clone(),
-                prepared.symbol_key.clone(),
-                prepared.is_buy,
-                prepared.size.clone(),
-                prepared.price.clone(),
-            )
-        };
+        let pending_indicator_id = self.add_prepared_order_placement_indicator(
+            &account_address,
+            &prepared,
+            is_market_order,
+        );
 
         let inflight_id = (!is_market_order).then(|| {
             self.hud_placements.begin(

@@ -5,6 +5,7 @@ use super::planning::{
 use super::*;
 use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
 
+mod admission;
 mod availability;
 mod load_failures;
 mod planning;

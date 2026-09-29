@@ -13,13 +13,7 @@ impl OutcomeSymbolInfo {
             && let (Some(underlying), Some(target)) = (&self.underlying, &self.target_price)
         {
             let label = Self::price_threshold_label(underlying, target, false);
-            if !include_expiry {
-                return label;
-            }
-            let Some(expiry) = &self.expiry else {
-                return label;
-            };
-            return format!("{label} at {}", Self::format_expiry_at(expiry, now_ms));
+            return Self::label_with_expiry(label, self.expiry.as_deref(), now_ms, include_expiry);
         }
         if let Some(label) = self.named_outcome_label() {
             return format!("not {label}");
@@ -52,14 +46,13 @@ impl OutcomeSymbolInfo {
             return format!("Bucket {}", index + 1);
         }
 
-        let expiry = self
-            .question_expiry
-            .as_ref()
-            .filter(|_| include_expiry)
-            .map(|expiry| Self::format_expiry_at(expiry, now_ms));
-        let with_expiry = |label: String| match &expiry {
-            Some(expiry) => format!("{label} at {expiry}"),
-            None => label,
+        let with_expiry = |label| {
+            Self::label_with_expiry(
+                label,
+                self.question_expiry.as_deref(),
+                now_ms,
+                include_expiry,
+            )
         };
 
         if index == 0 {
@@ -101,11 +94,6 @@ impl OutcomeSymbolInfo {
         now_ms: Option<u64>,
         include_expiry: bool,
     ) -> String {
-        let expiry = self
-            .question_expiry
-            .as_ref()
-            .filter(|_| include_expiry)
-            .map(|expiry| Self::format_expiry_at(expiry, now_ms));
         let label = if affirmative {
             "fallback / other settlement".to_string()
         } else if let Some(underlying) = self.question_underlying.as_deref() {
@@ -114,10 +102,12 @@ impl OutcomeSymbolInfo {
             "a named outcome settles".to_string()
         };
 
-        match expiry {
-            Some(expiry) => format!("{label} at {expiry}"),
-            None => label,
-        }
+        Self::label_with_expiry(
+            label,
+            self.question_expiry.as_deref(),
+            now_ms,
+            include_expiry,
+        )
     }
 
     pub(super) fn is_no_side(&self) -> bool {

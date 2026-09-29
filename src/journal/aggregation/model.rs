@@ -21,6 +21,17 @@ pub struct AggregatedTrade {
     pub basis_complete: bool,
 }
 
+impl AggregatedTrade {
+    /// Realized PnL, subtracting fees when requested. Callers retain their own validity checks.
+    pub(crate) fn effective_pnl(&self, include_fees: bool) -> f64 {
+        if include_fees {
+            self.pnl - self.fee
+        } else {
+            self.pnl
+        }
+    }
+}
+
 impl fmt::Debug for AggregatedTrade {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AggregatedTrade")
@@ -174,6 +185,35 @@ mod tests {
         JournalAttributedFill, JournalAttributedFillRole, JournalTradeDetails,
     };
     use std::collections::HashMap;
+
+    #[test]
+    fn effective_pnl_preserves_rebates_signed_zero_and_nonfinite_values() {
+        for (pnl, fee, net) in [
+            (10.0, -2.0, 12.0),
+            (-10.0, 2.0, -12.0),
+            (-0.0, 0.0, -0.0),
+            (-0.0, -0.0, 0.0),
+            (f64::INFINITY, 1.0, f64::INFINITY),
+            (1.0, f64::INFINITY, f64::NEG_INFINITY),
+            (f64::INFINITY, f64::INFINITY, f64::NAN),
+            (f64::NAN, 1.0, f64::NAN),
+            (1.0, f64::NAN, f64::NAN),
+        ] {
+            let trade = AggregatedTrade {
+                pnl,
+                fee,
+                ..aggregated_trade()
+            };
+            for (fees, expected) in [(false, pnl), (true, net)] {
+                let actual = trade.effective_pnl(fees);
+                if expected.is_nan() {
+                    assert!(actual.is_nan());
+                } else {
+                    assert_eq!(actual.to_bits(), expected.to_bits());
+                }
+            }
+        }
+    }
 
     #[test]
     fn aggregated_trade_debug_redacts_trade_values() {

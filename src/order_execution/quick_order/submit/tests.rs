@@ -8,14 +8,68 @@ use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId, DetachedChartWindowState};
 use crate::config::AccountProfile;
 use crate::order_execution::{
-    OneShotPlacementContext, OrderSurface, PendingOrderAction, QuickOrderForm, QuickOrderRecovery,
-    QuickOrderSubmissionSnapshot,
+    OneShotPlacementContext, OrderSurface, PendingOrderAction, PreparedExchangeOrder,
+    QuickOrderForm, QuickOrderRecovery, QuickOrderSubmissionSnapshot,
 };
+use crate::order_pending_indicators::PendingOrderIndicatorKind::{MarketPlacing, Placing};
 use crate::order_update::PendingOneShotStatusRequest;
 use crate::signing::{ExchangeOrderKind, ExchangeResponse};
 use crate::timeframe::Timeframe;
 
 mod restoration;
+
+#[test]
+fn prepared_quick_order_indicators_use_wire_kind_and_preserve_fields() {
+    for (order_kind, expected_kind) in [
+        (ExchangeOrderKind::Market, MarketPlacing),
+        (ExchangeOrderKind::Limit, Placing),
+        (ExchangeOrderKind::LimitIoc, MarketPlacing),
+    ] {
+        for is_buy in [false, true] {
+            for is_limit in [false, true] {
+                let mut terminal = terminal_with_quick_order(42, "BTC");
+                let task = terminal.submit_prepared_quick_order(
+                    "fixture-key".into(),
+                    TEST_ACCOUNT.to_string(),
+                    PreparedExchangeOrder {
+                        surface: OrderSurface::QuickOrder,
+                        symbol_key: "BTC".to_string(),
+                        asset: 7,
+                        is_buy,
+                        price: "102.5000".to_string(),
+                        size: "1.2500".to_string(),
+                        order_kind,
+                        reduce_only: false,
+                        market_type: MarketType::Perp,
+                    },
+                    is_limit,
+                    None,
+                );
+
+                assert_eq!(task.units(), 1);
+                let side = if is_buy { "BUY" } else { "SELL" };
+                let kind = if is_limit { "limit" } else { "market" };
+                assert_eq!(
+                    terminal.order_status.as_ref(),
+                    Some(&(format!("Placing {kind} {side} 1.2500 BTC..."), false))
+                );
+                assert_eq!(terminal.pending_order_indicators.len(), 1);
+                let indicator = terminal
+                    .pending_order_indicators
+                    .values()
+                    .next()
+                    .expect("indicator");
+                assert_eq!(indicator.kind, expected_kind);
+                assert_eq!(indicator.account_address, TEST_ACCOUNT);
+                assert_eq!(indicator.symbol, "BTC");
+                assert_eq!(indicator.oid, None);
+                assert_eq!(indicator.is_buy, is_buy);
+                assert_eq!(indicator.size, "1.2500");
+                assert_eq!(indicator.price, "102.5000");
+            }
+        }
+    }
+}
 
 const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
 const OTHER_ACCOUNT: &str = "0xdef0000000000000000000000000000000000000";
@@ -425,6 +479,9 @@ fn spot_quick_order_recomputes_percentage_quantity_for_buy_side() {
         .and_then(|instance| instance.quick_order.as_ref())
         .map(|form| form.quantity.as_str());
     assert_eq!(preview, Some("5.0000"));
+    let provenance = quick_order_or_panic(chart_instance_or_panic(&terminal, chart_id))
+        .quantity_provenance
+        .clone();
 
     let _task = terminal.handle_submit_quick_order(chart_id, true);
 
@@ -435,6 +492,10 @@ fn spot_quick_order_recomputes_percentage_quantity_for_buy_side() {
         .and_then(|instance| instance.quick_order.as_ref())
         .map(|form| form.quantity.as_str());
     assert_eq!(reviewed_quantity, Some("10.0000"));
+    assert_eq!(
+        quick_order_or_panic(chart_instance_or_panic(&terminal, chart_id)).quantity_provenance,
+        provenance
+    );
     let (message, is_error) = order_status_or_panic(&terminal);
     assert!(is_error);
     assert!(message.contains("review the quantity and submit again"));

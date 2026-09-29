@@ -181,8 +181,9 @@ impl TradingTerminal {
             .iter()
             .filter(|ap| self.symbol_key_is_hidden(&ap.position.coin))
             .count();
-        let visible_symbol_positions: Vec<account::AssetPosition> = account_positions
-            .into_iter()
+        let visible_symbol_positions: Vec<&account::AssetPosition> = account_positions
+            .iter()
+            .map(|position| position.as_ref())
             .filter(|ap| !self.symbol_key_is_hidden(&ap.position.coin))
             .collect();
         let account_hidden_count = visible_symbol_positions
@@ -190,7 +191,7 @@ impl TradingTerminal {
             .filter(|ap| self.position_is_hidden(&ap.position.coin))
             .count();
         let hidden_count = symbol_hidden_count + account_hidden_count;
-        let positions: Vec<account::AssetPosition> = visible_symbol_positions
+        let positions: Vec<&account::AssetPosition> = visible_symbol_positions
             .into_iter()
             .filter(|ap| self.show_hidden_positions || !self.position_is_hidden(&ap.position.coin))
             .collect();
@@ -204,7 +205,6 @@ impl TradingTerminal {
 
         let header = self.view_positions_header(
             can_close,
-            &positions,
             account_hidden_count,
             has_nuke_positions,
             &theme,
@@ -282,7 +282,7 @@ impl TradingTerminal {
 
     fn view_position_sections<'a>(
         &'a self,
-        positions: &[account::AssetPosition],
+        positions: &[&account::AssetPosition],
         can_close: bool,
         theme: &Theme,
         columns: PositionColumnVisibility,
@@ -291,13 +291,13 @@ impl TradingTerminal {
         let mut perp_positions = Vec::new();
         let mut spot_positions = Vec::new();
         let mut outcome_positions = Vec::new();
-        for position in positions {
+        for &position in positions {
             if self.is_outcome_coin(&position.position.coin) {
-                outcome_positions.push(position.clone());
+                outcome_positions.push(position);
             } else if self.is_spot_coin(&position.position.coin) {
-                spot_positions.push(position.clone());
+                spot_positions.push(position);
             } else {
-                perp_positions.push(position.clone());
+                perp_positions.push(position);
             }
         }
 

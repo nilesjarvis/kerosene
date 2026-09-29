@@ -3,10 +3,14 @@ use crate::message::Message;
 use iced::Task;
 
 mod connection;
+mod hydromancer_status;
 mod liquidations;
 mod telegram;
 mod tracked_trades;
 mod x;
+
+#[cfg(test)]
+mod tests;
 
 impl TradingTerminal {
     pub(crate) fn update_feed(&mut self, message: Message) -> Task<Message> {

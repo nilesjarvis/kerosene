@@ -111,28 +111,23 @@ fn order_line_start_x(order: &VisibleOrder, position: OrderLabelPosition, chart_
 }
 
 fn order_line_style(order: &VisibleOrder) -> SegmentedHLineStyle {
-    if order.is_animating {
-        SegmentedHLineStyle {
-            segment_len: MOVING_ORDER_LINE_DASH[0],
-            gap_len: MOVING_ORDER_LINE_DASH[1],
-            offset: order.line_offset,
-            color: order.order_color,
-            width: order.line_width,
-        }
+    let (dash, offset) = if order.is_animating {
+        (MOVING_ORDER_LINE_DASH, order.line_offset)
     } else {
-        SegmentedHLineStyle {
-            segment_len: ORDER_LINE_DASH[0],
-            gap_len: ORDER_LINE_DASH[1],
-            offset: 0.0,
-            color: order.order_color,
-            width: order.line_width,
-        }
+        (ORDER_LINE_DASH, 0.0)
+    };
+    SegmentedHLineStyle {
+        segment_len: dash[0],
+        gap_len: dash[1],
+        offset,
+        color: order.order_color,
+        width: order.line_width,
     }
 }
 
 pub(super) fn draw_order_label<PriceToY, IdxToCx>(
     ctx: &mut TradingOverlayContext<'_, PriceToY, IdxToCx>,
-    order: &VisibleOrder,
+    mut order: VisibleOrder,
     position: OrderLabelPosition,
 ) where
     PriceToY: Fn(f64) -> f32,
@@ -152,8 +147,8 @@ pub(super) fn draw_order_label<PriceToY, IdxToCx>(
         },
     );
     ctx.frame.fill_text(canvas::Text {
-        content: order.side_label.clone(),
-        position: Point::new(order_label_text_x(order), visual_label_y),
+        content: std::mem::take(&mut order.side_label),
+        position: Point::new(order_label_text_x(&order), visual_label_y),
         color: order.order_color_solid,
         size: iced::Pixels(8.0),
         align_x: alignment::Horizontal::Left.into(),
@@ -162,7 +157,7 @@ pub(super) fn draw_order_label<PriceToY, IdxToCx>(
         ..canvas::Text::default()
     });
     if order.pending_state.is_some() {
-        draw_order_pending_spinner(ctx, order, visual_label_y);
+        draw_order_pending_spinner(ctx, &order, visual_label_y);
         return;
     }
 

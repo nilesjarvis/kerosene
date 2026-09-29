@@ -1,9 +1,9 @@
+use super::super::symbol_cell::view_live_watchlist_symbol_cell;
 use crate::api::ExchangeSymbol;
 use crate::app_state::TradingTerminal;
-use crate::helpers;
 use crate::market_state::LiveWatchlistId;
 use crate::message::Message;
-use iced::widget::{Column, Space, button, container, row, scrollable, text};
+use iced::widget::{Column, button, container, scrollable, text};
 use iced::{Element, Fill, Length, Theme};
 
 const AUTOCOMPLETE_MAX_HEIGHT: f32 = 120.0;
@@ -34,19 +34,8 @@ impl TradingTerminal {
         for m in matches {
             let sym_key = m.key.clone();
             let display = m.display_name.as_deref().unwrap_or(&m.ticker);
-            let mut coin_content = row![];
-            if let Some(icon) = helpers::symbol_icon(&sym_key, 14, theme.palette().text) {
-                coin_content = coin_content.push(icon).push(Space::new().width(4.0));
-            }
-            coin_content = coin_content.push(
-                text(display)
-                    .size(12)
-                    .color(theme.palette().text)
-                    .width(Fill),
-            );
-            if m.growth_mode {
-                coin_content = coin_content.push(helpers::growth_mode_chip());
-            }
+            let coin_content =
+                view_live_watchlist_symbol_cell(&sym_key, display, m.growth_mode, &theme);
 
             let btn = button(
                 coin_content

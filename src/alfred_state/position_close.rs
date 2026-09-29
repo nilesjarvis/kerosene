@@ -1,3 +1,4 @@
+use super::parsing::normalize_symbol_input;
 use crate::account::Position;
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
@@ -51,8 +52,8 @@ impl TradingTerminal {
                     error = Some("Account refresh in progress".to_string());
                 } else if self.connected_order_account_snapshot().is_none() {
                     error = Some("No account data available".to_string());
-                } else if let Some((coin, position)) = self.resolve_close_position(symbol) {
-                    resolved_position = Some((coin, position.clone()));
+                } else if let Some(position) = self.resolve_close_position(symbol) {
+                    resolved_position = Some(position);
                 } else if let Some(spot_error) = self.spot_holding_close_error(symbol) {
                     error = Some(spot_error);
                 } else {
@@ -68,18 +69,17 @@ impl TradingTerminal {
             _ => {}
         }
 
-        let coin = resolved_position
-            .as_ref()
-            .map(|(coin, _)| coin.clone())
-            .or_else(|| intent.symbol.clone());
-        let title_symbol = coin.clone().unwrap_or_else(|| "ticker".to_string());
+        let title_symbol = resolved_position
+            .map(|position| position.coin.as_str())
+            .or(intent.symbol.as_deref())
+            .unwrap_or("ticker");
         let title = format!(
             "CLOSE {percent_label} {}",
             title_symbol.to_ascii_uppercase()
         );
-        let detail = match (&error, resolved_position.as_ref()) {
+        let detail = match (&error, resolved_position) {
             (Some(error), _) => error.clone(),
-            (None, Some((_, position))) => {
+            (None, Some(position)) => {
                 let side = close_position_side_label(&position.szi);
                 format!("Market close {percent_label} of {side} position")
             }
@@ -87,7 +87,7 @@ impl TradingTerminal {
         };
 
         AlfredClosePositionDraft {
-            coin: resolved_position.map(|(coin, _)| coin),
+            coin: resolved_position.map(|position| position.coin.clone()),
             fraction,
             title,
             detail,
@@ -96,13 +96,13 @@ impl TradingTerminal {
         }
     }
 
-    fn resolve_close_position(&self, raw_symbol: &str) -> Option<(String, &Position)> {
+    fn resolve_close_position(&self, raw_symbol: &str) -> Option<&Position> {
         let positions = &self
             .connected_order_account_snapshot()?
             .1
             .clearinghouse
             .asset_positions;
-        let normalized = normalize_close_symbol_input(raw_symbol);
+        let normalized = normalize_symbol_input(raw_symbol);
         let resolved_key = self
             .resolve_exchange_symbol_by_key_or_ticker(raw_symbol)
             .map(|symbol| symbol.key.as_str())
@@ -117,7 +117,7 @@ impl TradingTerminal {
             .or_else(|| {
                 resolved_key.and_then(|key| positions.iter().find(|ap| ap.position.coin == key))
             })
-            .map(|ap| (ap.position.coin.clone(), &ap.position))
+            .map(|ap| &ap.position)
     }
 
     /// `close` only targets perp positions, but the Positions tab shows spot
@@ -154,7 +154,7 @@ impl TradingTerminal {
     /// "hype" and "HYPE/USDC" resolve to "HYPE", and a raw pair key like
     /// "@107" resolves through its spot market entry.
     fn close_symbol_spot_ticker(&self, raw_symbol: &str) -> Option<String> {
-        let normalized = normalize_close_symbol_input(raw_symbol);
+        let normalized = normalize_symbol_input(raw_symbol);
         let base = normalized.split('/').next().unwrap_or(&normalized);
         if base.starts_with('@') {
             return self
@@ -164,22 +164,6 @@ impl TradingTerminal {
                 .map(|symbol| symbol.ticker.clone());
         }
         Some(base.to_string())
-    }
-}
-
-fn normalize_close_symbol_input(symbol: &str) -> String {
-    if symbol.starts_with('@') || symbol.starts_with('#') || symbol.starts_with('+') {
-        return symbol.to_string();
-    }
-
-    if let Some((dex, ticker)) = symbol.split_once(':') {
-        format!(
-            "{}:{}",
-            dex.to_ascii_lowercase(),
-            ticker.to_ascii_uppercase()
-        )
-    } else {
-        symbol.to_ascii_uppercase()
     }
 }
 

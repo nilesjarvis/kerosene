@@ -64,6 +64,10 @@ storage. They live in `SecretPayload.global.hyperliquid_proxy_urls`, whose defau
 is an empty list for older credential bundles. Raw URLs are skipped during
 config serialization/deserialization; runtime config snapshots carry no URLs.
 
+When enabled, pool construction revalidates stored URLs because secret-payload
+deserialization does not run the input parser. Applying invalid saved URLs keeps
+enabled reads paused until the entries are corrected or the pool is disabled.
+
 The existing OS keychain and encrypted-config flows save, load, migrate, and
 clear the proxy list together with other credentials. Explicit list mutations
 must successfully persist before runtime state changes. Saving another

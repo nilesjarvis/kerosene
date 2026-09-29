@@ -5,6 +5,7 @@ use crate::order_execution::PendingOrderAction;
 use crate::signing::{ChaseLifecycle, ChaseOrder, ChaseStopPhase, ChaseVerificationReason};
 use std::time::Instant;
 
+mod admission;
 mod oid_status;
 mod placement_status;
 mod stop_cancel;

@@ -3,6 +3,9 @@ use crate::app_state::TradingTerminal;
 
 use std::collections::HashMap;
 
+#[cfg(test)]
+mod tests;
+
 // ---------------------------------------------------------------------------
 // Labeled Address Tracker Sync
 // ---------------------------------------------------------------------------
@@ -11,14 +14,7 @@ impl TradingTerminal {
     pub(crate) fn labeled_wallet_addresses_from_address_book(
         address_book: &HashMap<String, AddressBookEntry>,
     ) -> Vec<String> {
-        let mut addresses: Vec<_> = address_book
-            .iter()
-            .filter(|(_, entry)| !entry.label.trim().is_empty())
-            .map(|(address, _)| address.clone())
-            .collect();
-        addresses.sort();
-        addresses.dedup();
-        addresses
+        labeled_addresses_from_entries(address_book.iter())
     }
 
     pub(crate) fn add_labeled_addresses_to_wallet_tracker(
@@ -35,16 +31,6 @@ impl TradingTerminal {
         added
     }
 
-    pub(crate) fn tracked_trade_subscription_addresses_from_address_book(
-        address_book: &HashMap<String, AddressBookEntry>,
-        muted_addresses: &[String],
-    ) -> Vec<String> {
-        Self::labeled_wallet_addresses_from_address_book(address_book)
-            .into_iter()
-            .filter(|address| !muted_addresses.contains(address))
-            .collect()
-    }
-
     pub(crate) fn sync_labeled_addresses_to_wallet_tracker(&mut self) -> Vec<String> {
         let added = Self::add_labeled_addresses_to_wallet_tracker(
             &mut self.wallet_tracker.tracked_addresses,
@@ -57,28 +43,29 @@ impl TradingTerminal {
     }
 
     pub(crate) fn labeled_wallet_addresses(&self) -> Vec<String> {
-        let mut addresses = Self::labeled_wallet_addresses_from_address_book(&self.address_book);
-        addresses.extend(Self::labeled_wallet_addresses_from_address_book(
-            &self.wallet_tracker.remote_database.entries,
-        ));
-        addresses.sort();
-        addresses.dedup();
-        addresses
+        labeled_addresses_from_entries(
+            self.address_book
+                .iter()
+                .chain(self.wallet_tracker.remote_database.entries.iter()),
+        )
     }
 
     pub(crate) fn tracked_trade_subscription_addresses(&self) -> Vec<String> {
-        let mut addresses = Self::tracked_trade_subscription_addresses_from_address_book(
-            &self.address_book,
-            &self.wallet_tracker.muted_addresses,
-        );
-        addresses.extend(
-            Self::tracked_trade_subscription_addresses_from_address_book(
-                &self.wallet_tracker.remote_database.entries,
-                &self.wallet_tracker.muted_addresses,
-            ),
-        );
-        addresses.sort();
-        addresses.dedup();
-        addresses
+        self.labeled_wallet_addresses()
+            .into_iter()
+            .filter(|address| !self.wallet_tracker.muted_addresses.contains(address))
+            .collect()
     }
+}
+
+fn labeled_addresses_from_entries<'a>(
+    entries: impl Iterator<Item = (&'a String, &'a AddressBookEntry)>,
+) -> Vec<String> {
+    let mut addresses: Vec<_> = entries
+        .filter(|(_, entry)| !entry.label.trim().is_empty())
+        .map(|(address, _)| address.clone())
+        .collect();
+    addresses.sort();
+    addresses.dedup();
+    addresses
 }

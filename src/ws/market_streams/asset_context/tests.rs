@@ -85,3 +85,26 @@ fn parse_active_asset_ctx_rejects_other_coins_and_channels() {
         .is_none()
     );
 }
+
+#[test]
+fn parse_active_asset_ctx_preserves_optional_strings_and_malformed_context_rejection() {
+    for channel in ["activeAssetCtx", "activeSpotAssetCtx"] {
+        let mut data = serde_json::json!({
+            "coin": "BTC",
+            "ctx": { "midPx": null, "impactPxs": ["100", "101"], "unknown": { "nested": [true] } }
+        });
+        let ctx = parse_active_asset_ctx(channel, &data, "BTC").expect("optional context fields");
+        assert!(ctx.mid_px.is_none());
+        assert!(ctx.funding.is_none());
+        assert_eq!(ctx.impact_pxs, Some(vec!["100".into(), "101".into()]));
+        for malformed in [
+            serde_json::json!(null),
+            serde_json::json!({ "midPx": 100 }),
+            serde_json::json!({ "funding": true }),
+            serde_json::json!({ "impactPxs": ["100", 101] }),
+        ] {
+            data["ctx"] = malformed;
+            assert!(parse_active_asset_ctx(channel, &data, "BTC").is_none());
+        }
+    }
+}

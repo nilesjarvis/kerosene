@@ -41,3 +41,26 @@ fn price_privacy_keeps_only_early_significant_sub_dollar_digits() {
     assert_eq!(obscure_price_digits("0.00001234"), "0.00001xxx");
     assert_eq!(obscure_price_digits("0.0000"), "0.00xx");
 }
+
+#[test]
+fn price_privacy_preserves_signs_separators_and_existing_non_digit_rules() {
+    for (price, expected) in [
+        ("", ""),
+        (" \t", " \t"),
+        ("  +12,345.67  ", "+12,3xx"),
+        ("-82.54", "-8x"),
+        ("€12.34", "€1x"),
+        ("1\u{202f}234.5", "1\u{202f}2xx"),
+        ("0.a012", "0.a0xx"),
+        ("0.é0001", "0.é00xx"),
+        ("0.abc", "0.abc"),
+        ("0.1", "0.x"),
+        ("0.01", "0.xx"),
+        ("8.€", "8.xxx"),
+        ("１２.3456", "１２.3xxx"),
+        ("n/a", "x"),
+    ] {
+        assert_eq!(obscure_price_digits(price), expected, "{price}");
+        assert_eq!(privacy_price_display(price, false), price);
+    }
+}

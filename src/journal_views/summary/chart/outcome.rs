@@ -61,11 +61,7 @@ pub(super) fn journal_recent_trade_outcome_tiles(
         .iter()
         .filter(|trade| journal_trade_counts_toward_win_rate(trade))
         .map(|trade| {
-            let pnl = if include_fees {
-                trade.pnl - trade.fee
-            } else {
-                trade.pnl
-            };
+            let pnl = trade.effective_pnl(include_fees);
             let outcome = if pnl > 0.0 {
                 JournalTradeOutcome::Win
             } else if pnl < 0.0 {

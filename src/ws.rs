@@ -1,8 +1,10 @@
+mod coalescer;
 mod connect;
 mod hydromancer;
 mod l2_book;
 mod manager;
 mod market_streams;
+mod recovery;
 mod telemetry;
 mod user_streams;
 

@@ -33,10 +33,10 @@ fn display_uses_label_for_normalized_liquidation_address() {
         },
     );
 
-    let display = TradingTerminal::wallet_display_from_address_book(
-        &address_book,
-        "0xEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
-    );
+    let mut terminal =
+        TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default()).0;
+    terminal.address_book = address_book;
+    let display = terminal.wallet_display("0xEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE");
 
     assert_eq!(display.primary, "Tracked Wallet");
     assert_eq!(display.secondary, "0xeeee...eeee");

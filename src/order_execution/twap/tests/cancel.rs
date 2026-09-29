@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 const CLOID: &str = "0x1234567890abcdef1234567890abcdef";
 const OID: u64 = 42;
 
+mod outcomes;
+
 #[test]
 fn twap_cancel_target_matches_by_oid_or_cloid() {
     assert!(twap_cancel_target_matches(

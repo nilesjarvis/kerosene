@@ -72,46 +72,7 @@ pub(in crate::chart) fn stack_order_label_positions_avoiding(
         );
     }
 
-    let step = ORDER_LABEL_HEIGHT + ORDER_LABEL_STACK_GAP;
-    let label_half = ORDER_LABEL_HEIGHT * 0.5;
-    let mut positions = Vec::with_capacity(anchors.len());
-    let mut next_y = min_y;
-
-    for anchor in anchors {
-        let desired_y = anchor.order_y.clamp(min_y, max_y);
-        let label_y =
-            push_label_below_reserved(desired_y.max(next_y), label_half, &reserved_ranges);
-        positions.push(OrderLabelPosition {
-            order_index: anchor.order_index,
-            order_y: anchor.order_y,
-            label_y,
-        });
-        next_y = label_y + step;
-    }
-
-    if positions
-        .last()
-        .is_some_and(|position| position.label_y > max_y)
-    {
-        let mut next_y = max_y;
-        for position in positions.iter_mut().rev() {
-            position.label_y = position.label_y.min(next_y);
-            position.label_y =
-                push_label_above_reserved(position.label_y, label_half, &reserved_ranges);
-            next_y = position.label_y - step;
-        }
-
-        if let Some(first) = positions.first()
-            && first.label_y < min_y
-        {
-            let shift = min_y - first.label_y;
-            for position in &mut positions {
-                position.label_y += shift;
-            }
-        }
-    }
-
-    positions
+    stack_order_label_positions_in_band(anchors, min_y, max_y, &reserved_ranges)
 }
 
 fn stack_order_label_positions_around_reserved(
@@ -133,11 +94,12 @@ fn stack_order_label_positions_around_reserved(
         }
     }
 
-    let mut positions = stack_order_label_positions_in_band(above, min_y, above_max_y);
+    let mut positions = stack_order_label_positions_in_band(above, min_y, above_max_y, &[]);
     positions.extend(stack_order_label_positions_in_band(
         below,
         below_min_y,
         max_y,
+        &[],
     ));
     positions.sort_by_key(|position| position.order_index);
     positions
@@ -147,18 +109,20 @@ fn stack_order_label_positions_in_band(
     anchors: Vec<OrderLabelAnchor>,
     min_y: f32,
     max_y: f32,
+    reserved_ranges: &[ReservedLabelRange],
 ) -> Vec<OrderLabelPosition> {
     if anchors.is_empty() {
         return Vec::new();
     }
 
     let step = ORDER_LABEL_HEIGHT + ORDER_LABEL_STACK_GAP;
+    let label_half = ORDER_LABEL_HEIGHT * 0.5;
     let mut positions = Vec::with_capacity(anchors.len());
     let mut next_y = min_y;
 
     for anchor in anchors {
         let desired_y = anchor.order_y.clamp(min_y, max_y);
-        let label_y = desired_y.max(next_y);
+        let label_y = push_label_below_reserved(desired_y.max(next_y), label_half, reserved_ranges);
         positions.push(OrderLabelPosition {
             order_index: anchor.order_index,
             order_y: anchor.order_y,
@@ -174,6 +138,8 @@ fn stack_order_label_positions_in_band(
         let mut next_y = max_y;
         for position in positions.iter_mut().rev() {
             position.label_y = position.label_y.min(next_y);
+            position.label_y =
+                push_label_above_reserved(position.label_y, label_half, reserved_ranges);
             next_y = position.label_y - step;
         }
 

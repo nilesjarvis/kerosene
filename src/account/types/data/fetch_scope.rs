@@ -31,8 +31,8 @@ impl AccountDataFetchScope {
         Self::AllMarkets { hip3_dexes }
     }
 
-    pub fn hip3_dex(dex: impl Into<String>) -> Self {
-        normalized_hip3_dex(&dex.into())
+    pub fn hip3_dex(dex: impl AsRef<str>) -> Self {
+        normalized_hip3_dex(dex.as_ref())
             .map(|dex| Self::Hip3Dex { dex })
             .unwrap_or_default()
     }
@@ -44,16 +44,13 @@ impl AccountDataFetchScope {
         }
     }
 
-    pub fn hip3_dexes(&self, all_dexes: &[&str]) -> Vec<String> {
+    /// Borrows stored DEX names in order, using the caller's fallback only for an
+    /// empty all-markets list. Normalization belongs to the scope constructors.
+    pub fn hip3_dexes<'a>(&'a self, all_dexes: &[&'a str]) -> Vec<&'a str> {
         match self {
-            Self::AllMarkets { hip3_dexes } => {
-                if hip3_dexes.is_empty() {
-                    all_dexes.iter().map(|dex| (*dex).to_string()).collect()
-                } else {
-                    hip3_dexes.clone()
-                }
-            }
-            Self::Hip3Dex { dex } => vec![dex.clone()],
+            Self::AllMarkets { hip3_dexes } if hip3_dexes.is_empty() => all_dexes.to_vec(),
+            Self::AllMarkets { hip3_dexes } => hip3_dexes.iter().map(String::as_str).collect(),
+            Self::Hip3Dex { dex } => vec![dex.as_str()],
         }
     }
 

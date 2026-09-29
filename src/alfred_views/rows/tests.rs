@@ -16,17 +16,21 @@ fn disabled_alfred_rows_show_disabled_reason_as_detail() {
     assert_eq!(
         alfred_visible_detail(
             false,
-            "Close all open perp positions at market",
-            Some("Account data is stale; refresh before NUKE"),
+            "Close all open perp positions at market".into(),
+            Some("Account data is stale; refresh before NUKE".into()),
         ),
         "Account data is stale; refresh before NUKE"
     );
     assert_eq!(
-        alfred_visible_detail(false, "Fallback detail", None),
+        alfred_visible_detail(false, "Fallback detail".into(), None),
         "Fallback detail"
     );
     assert_eq!(
-        alfred_visible_detail(true, "Enabled detail", Some("Disabled reason")),
+        alfred_visible_detail(
+            true,
+            "Enabled detail".into(),
+            Some("Disabled reason".into())
+        ),
         "Enabled detail"
     );
 }

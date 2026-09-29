@@ -3,6 +3,7 @@ use crate::ws::{SubscriptionGuard, WsCommand, WsStream, get_manager};
 
 use super::{KeyedCandleStreamEvent, SpaghettiCandleStreamEvent};
 use futures::SinkExt as _;
+use serde::Deserialize;
 use tokio::sync::broadcast;
 
 // ---------------------------------------------------------------------------
@@ -15,10 +16,7 @@ enum CandleStreamEvent {
     Unavailable(String),
 }
 
-fn ws_candle_stream(params: &(String, String)) -> WsStream<CandleStreamEvent> {
-    let coin = params.0.clone();
-    let interval = params.1.clone();
-
+fn ws_candle_stream(coin: String, interval: String) -> WsStream<CandleStreamEvent> {
     Box::pin(iced::stream::channel(128, async move |mut output| {
         let (cmd_tx, mut msg_rx) = get_manager();
 
@@ -82,7 +80,7 @@ fn ws_candle_stream(params: &(String, String)) -> WsStream<CandleStreamEvent> {
                     if msg.channel == "candle"
                         && msg.data.get("s").and_then(|v| v.as_str()) == Some(&coin)
                         && msg.data.get("i").and_then(|v| v.as_str()) == Some(&interval)
-                        && let Ok(candle) = serde_json::from_value::<Candle>((*msg.data).clone())
+                        && let Ok(candle) = Candle::deserialize(msg.data.as_ref())
                         && crate::api::is_valid_candle(&candle)
                     {
                         watchdog.mark_valid();
@@ -119,8 +117,7 @@ pub fn ws_candle_stream_keyed(params: &(u64, String, String)) -> WsStream<KeyedC
     let chart_id = params.0;
     let coin = params.1.clone();
     let interval = params.2.clone();
-    let pair = (params.1.clone(), params.2.clone());
-    let inner = ws_candle_stream(&pair);
+    let inner = ws_candle_stream(coin.clone(), interval.clone());
     Box::pin(futures::StreamExt::map(inner, move |event| match event {
         CandleStreamEvent::Item(candle) => {
             KeyedCandleStreamEvent::Item(chart_id, coin.clone(), interval.clone(), None, candle)
@@ -158,8 +155,7 @@ pub fn ws_spaghetti_candle_stream(
     let timeframe = params.3;
     let session = params.4;
     let session_granularity = params.5;
-    let pair = (params.2.clone(), params.3.api_str().to_string());
-    let inner = ws_candle_stream(&pair);
+    let inner = ws_candle_stream(coin.clone(), timeframe.api_str().to_string());
     Box::pin(futures::StreamExt::map(inner, move |event| match event {
         CandleStreamEvent::Item(candle) => SpaghettiCandleStreamEvent::Item {
             id: spaghetti_id,

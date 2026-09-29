@@ -32,6 +32,42 @@ fn text_frame_parser_ignores_invalid_or_incomplete_frames() {
 }
 
 #[test]
+fn text_frame_parser_preserves_all_json_data_shapes_and_pong_precedence() {
+    for data in [
+        json!(null),
+        json!(false),
+        json!(42),
+        json!("snapshot"),
+        json!([]),
+        json!({"coin": "BTC", "levels": [[{"px": "100", "sz": "2"}], []]}),
+    ] {
+        let frame = json!({"channel": "l2Book", "data": data, "extra": "ignored"});
+        assert_eq!(
+            parse_ws_text_frame(&frame.to_string()),
+            WsTextFrame::Data {
+                channel: "l2Book".to_string(),
+                data: data.clone()
+            }
+        );
+        assert_eq!(
+            parse_ws_text_frame(&json!({"channel": "pong", "data": data}).to_string()),
+            WsTextFrame::Pong
+        );
+    }
+    for frame in [
+        json!(null),
+        json!([{"channel": "l2Book", "data": []}]),
+        json!({"channel": null, "data": []}),
+        json!({"channel": 42, "data": []}),
+    ] {
+        assert_eq!(
+            parse_ws_text_frame(&frame.to_string()),
+            WsTextFrame::Ignored
+        );
+    }
+}
+
+#[test]
 fn text_frame_debug_redacts_raw_data() {
     let address = "0xabc0000000000000000000000000000000000000";
     let frame = parse_ws_text_frame(&format!(

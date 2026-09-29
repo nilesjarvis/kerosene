@@ -37,6 +37,62 @@ fn receive_sequences_by_coin(
 }
 
 #[test]
+fn unsplit_batches_retain_the_original_frame_and_selection_borrows_items() {
+    for data in [
+        serde_json::json!({"data": []}),
+        serde_json::json!({"data": [{"coin": "BTC", "seq": 1}]}),
+        serde_json::json!({"data": [{"coin": "BTC"}, {"seq": 2}]}),
+        serde_json::json!({"data": [], "books": [{"coin": "BTC"}, {"coin": "ETH"}]}),
+    ] {
+        let message = routed("l2Book", data);
+        let original = message.data.clone();
+        let items = l2_book_batch_items(&original).expect("data array selected");
+        let expected = original["data"].as_array().expect("data array");
+        assert_eq!(items.as_ptr(), expected.as_ptr());
+        assert_eq!(items.len(), expected.len());
+
+        let (tx, mut rx) = broadcast::channel(8);
+        let mut coalescer = HydromancerCoalescedSender::with_interval(tx, Duration::from_secs(60));
+        coalescer.submit(message);
+        let received = receive(&mut rx);
+        assert!(Arc::ptr_eq(&received.data, &original));
+        assert_eq!(coalescer.flush_all(), 0);
+    }
+}
+
+#[test]
+fn books_batches_keep_each_precision_and_only_the_latest_snapshot() {
+    let (tx, mut rx) = broadcast::channel(8);
+    let mut coalescer = HydromancerCoalescedSender::with_interval(tx, Duration::from_secs(60));
+    for seq in 1..=3 {
+        coalescer.submit_json(serde_json::json!({
+            "channel": "l2Book",
+            "books": [
+                {"coin": "BTC", "nSigFigs": 4, "mantissa": 1, "seq": seq},
+                {"coin": "BTC", "nSigFigs": 5, "mantissa": 1, "seq": seq}
+            ]
+        }));
+    }
+    let first = receive(&mut rx);
+    let second = receive(&mut rx);
+    assert_eq!(first.data["nSigFigs"], 4);
+    assert_eq!(second.data["nSigFigs"], 5);
+    assert_eq!(first.data["seq"], 1);
+    assert_eq!(second.data["seq"], 1);
+    assert!(rx.try_recv().is_err());
+    assert_eq!(coalescer.flush_all(), 2);
+    let mut precisions = Vec::new();
+    for _ in 0..2 {
+        let message = receive(&mut rx);
+        assert_eq!(message.msg_type, "l2Book");
+        assert_eq!(message.data["seq"], 3);
+        precisions.push(message.data["nSigFigs"].as_u64().expect("precision"));
+    }
+    precisions.sort_unstable();
+    assert_eq!(precisions, vec![4, 5]);
+}
+
+#[test]
 fn non_book_messages_pass_through_immediately() {
     let (sender, mut receiver) = broadcast::channel(8);
     let mut coalescer = HydromancerCoalescedSender::with_interval(sender, Duration::from_secs(60));
@@ -236,7 +292,7 @@ fn stale_last_emitted_history_is_pruned_on_book_submit() {
         "l2Book",
         serde_json::json!({"coin": "BTC", "seq": 1}),
     ));
-    assert_eq!(coalescer.last_emitted.len(), 1);
+    assert_eq!(coalescer.snapshots.history_len(), 1);
 
     std::thread::sleep(Duration::from_millis(25));
     coalescer.submit(routed(
@@ -244,7 +300,7 @@ fn stale_last_emitted_history_is_pruned_on_book_submit() {
         serde_json::json!({"coin": "ETH", "seq": 1}),
     ));
 
-    assert_eq!(coalescer.last_emitted.len(), 1);
+    assert_eq!(coalescer.snapshots.history_len(), 1);
     assert_eq!(receive(&mut receiver).data["seq"], 1);
     assert_eq!(receive(&mut receiver).data["coin"], "ETH");
     assert!(coalescer.next_due().is_none());

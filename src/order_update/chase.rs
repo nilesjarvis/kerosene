@@ -3,13 +3,10 @@ mod modify;
 mod resting;
 mod result;
 
-pub(super) use cancel::chase_terminal_cancel_error;
-
 use crate::api::fetch_order_status_by_oid;
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
-use crate::signing::{ChaseLifecycle, ChaseStopPhase, ChaseVerificationReason};
 use iced::Task;
 use std::time::Instant;
 
@@ -47,37 +44,16 @@ impl TradingTerminal {
         status: impl Into<String>,
     ) -> Task<Message> {
         let status = redact_sensitive_response_text(&status.into());
-        let can_refresh_chase_account = self
-            .chase_orders
-            .get(&chase_id)
-            .is_some_and(|chase| self.connected_order_account_matches(&chase.account_address));
-        let account_address = self
-            .chase_orders
-            .get(&chase_id)
-            .map(|chase| chase.account_address.clone());
-        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+        let account_address = self.chase_orders.get_mut(&chase_id).map(|chase| {
+            let account_address = chase.account_address.clone();
             chase.current_oid = Some(oid);
-            chase.lifecycle = if chase.lifecycle.is_stopping() {
-                ChaseLifecycle::Stopping {
-                    phase: ChaseStopPhase::VerifyingCancel { oid },
-                }
-            } else if matches!(
-                chase.lifecycle,
-                ChaseLifecycle::Verifying {
-                    reason: ChaseVerificationReason::MissingOrder
-                        | ChaseVerificationReason::MissingOrderResolvedNoFill
-                }
-            ) {
-                ChaseLifecycle::Verifying {
-                    reason: ChaseVerificationReason::MissingOrder,
-                }
-            } else {
-                ChaseLifecycle::Verifying {
-                    reason: ChaseVerificationReason::Modify,
-                }
-            };
+            chase.lifecycle = chase.lifecycle.verifying_order_status(oid);
             chase.last_reprice_at = Some(Instant::now());
-        }
+            account_address
+        });
+        let can_refresh_chase_account = account_address
+            .as_deref()
+            .is_some_and(|address| self.connected_order_account_matches(address));
         let status_task = account_address.map_or_else(Task::none, |account_address| {
             Task::perform(
                 fetch_order_status_by_oid(account_address, oid),

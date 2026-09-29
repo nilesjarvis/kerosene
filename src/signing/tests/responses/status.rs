@@ -1,4 +1,79 @@
-use super::{exchange_response, exchange_response_with_statuses};
+use super::{exchange_response, exchange_response_from_value, exchange_response_with_statuses};
+
+#[test]
+fn ioc_no_match_search_preserves_envelope_raw_and_status_message_rules() {
+    let phrase = "ORDER COULD NOT IMMEDIATELY MATCH AGAINST ANY RESTING ORDERS";
+    for (envelope, expected) in [
+        (serde_json::json!({"status": phrase}), true),
+        (
+            serde_json::json!({"status": "err", "response": phrase}),
+            true,
+        ),
+        (
+            serde_json::json!({"status": "ok", "response": {"message": phrase}}),
+            true,
+        ),
+        (
+            serde_json::json!({"status": "ok", "response": format!("api_key=\"{phrase}\"")}),
+            false,
+        ),
+        (
+            serde_json::json!({"status": "ok", "response": {"type": "order", "data": {"statuses": [{"error": "unrelated"}, {"error": phrase}]}}}),
+            true,
+        ),
+        (
+            serde_json::json!({"status": "ok", "response": {"type": "order", "data": {"statuses": [{"error": null}, {"error": {"message": phrase}}, {"note": phrase}, phrase]}}}),
+            false,
+        ),
+        (
+            serde_json::json!({"status": "ok", "response": {"type": "order", "data": {"statuses": []}}}),
+            false,
+        ),
+        (
+            serde_json::json!({"status": "ok", "response": {"type": "default"}}),
+            false,
+        ),
+    ] {
+        let response = exchange_response_from_value(envelope, "IOC search fixture");
+        assert_eq!(response.is_ioc_no_match(), expected);
+    }
+}
+
+#[test]
+fn reported_fills_preserve_size_validation_and_conflicting_status_rules() {
+    for size in [
+        serde_json::Value::Null,
+        serde_json::json!(1),
+        serde_json::json!("NaN"),
+        serde_json::json!("inf"),
+        serde_json::json!("0"),
+        serde_json::json!("-1"),
+    ] {
+        let response =
+            exchange_response(serde_json::json!({"filled": {"oid": 42, "totalSz": size}}));
+        assert!(response.reports_filled());
+        assert!(!response.is_fully_filled());
+        assert!(response.is_ambiguous_order_result());
+        assert_eq!(response.filled_total_size(), None);
+    }
+    let missing_size = exchange_response(serde_json::json!({"filled": {"oid": 42}}));
+    assert!(missing_size.reports_filled());
+    assert!(!missing_size.is_fully_filled());
+
+    for conflict in ["error", "resting"] {
+        let mut status = serde_json::json!({"filled": {"oid": 42, "totalSz": "1.25"}});
+        status[conflict] = serde_json::Value::Null;
+        let response = exchange_response(status);
+        assert!(!response.reports_filled());
+        assert!(!response.is_fully_filled());
+        assert_eq!(response.filled_total_size(), Some(1.25));
+    }
+
+    let empty = exchange_response_with_statuses(Vec::new());
+    assert!(!empty.reports_filled());
+    assert!(!empty.is_fully_filled());
+    assert_eq!(empty.filled_total_size(), None);
+}
 
 #[test]
 fn exchange_response_resting_status_reports_oid_without_error() {

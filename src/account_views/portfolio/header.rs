@@ -66,7 +66,6 @@ pub(super) fn view_portfolio_hero(
     value_text: String,
     value_color: Color,
     performance: Option<f64>,
-    show_chip: bool,
 ) -> Element<'static, Message> {
     let headline = column![
         text(label)
@@ -82,7 +81,7 @@ pub(super) fn view_portfolio_hero(
     .width(Fill);
 
     let mut hero = row![headline].align_y(iced::Alignment::End).width(Fill);
-    if show_chip && let Some(performance) = performance {
+    if let Some(performance) = performance {
         hero = hero.push(performance_chip(theme, performance));
     }
     hero.into()

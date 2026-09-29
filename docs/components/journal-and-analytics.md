@@ -16,7 +16,7 @@ boundaries.
 | Fill fetch/cache | `src/journal/cache.rs`, `src/api/user_fills.rs`, `src/journal_update.rs` | Paged fill fetches, per-wallet cache, merge/dedup, cache writes. |
 | Aggregation | `src/journal/aggregation/` | Fill identity, ordering, perpetual trade reconstruction, spot/outcome grouping. |
 | Current positions | `src/journal/current_positions.rs` | Fallback partial trades from current account snapshot. |
-| Snapshots | `src/journal/snapshot.rs`, `src/journal_views/trade_card/snapshot.rs` | Per-trade candle snapshots, markers, excursion metrics, embedded chart view. |
+| Snapshots | `src/journal/snapshot.rs`, `src/journal/snapshot/`, `src/journal_views/trade_card/snapshot.rs`, `src/journal_views/trade_card/snapshot/` | Per-trade candle snapshots, request planning, markers, excursion metrics, embedded chart view. |
 | Views | `src/journal_views/` | Journal window/pane, header, controls, summary, trade cards, notes editor. |
 | Analytics | `src/account_analytics/`, `src/portfolio_state/`, `src/pnl_card/` | Portfolio/income snapshots and exportable visual summaries. |
 
@@ -88,10 +88,19 @@ Aggregation starts by normalizing fill identity and order:
 
 The composite identity includes time, trade/order IDs, hash, coin, side, price,
 and size. This avoids dropping legitimate fills that share only one identifier.
+Stable sorting places equal identities together, so normalization deduplicates
+adjacent fills in place and keeps the first occurrence's complete payload,
+including fields outside the identity such as fees and starting position.
 
 Same-millisecond groups can arrive with transaction IDs that do not reflect
 execution order. The journal chains fills by `startPosition` and signed size
 when possible, falling back to deterministic sorting if the chain is ambiguous.
+Normalization retains the input vector and applies chain ordering separately to
+each time/coin group with multiple fills; single-fill groups need no copying.
+
+`journal::is_non_perp_coin` owns the shared `@`/`#`/named-pair classification used
+by aggregation, snapshot admission, the perp filter, and journal analytics/views.
+Spot and outcome filters retain their individual matching rules.
 
 ## Perpetual Trade Aggregation
 
@@ -140,6 +149,12 @@ Trade notes are user-authored and persisted by account. Note changes should
 update journal state and call config persistence, but they should not mutate
 fill cache files.
 
+`journal::note_entry_for_trade` borrows the saved key and note from the same lookup:
+the current trade ID wins, including an empty note, followed by the first exact
+match in `legacy_note_ids` order. Read-only callers use `note_for_trade`; the
+reflection display copies the selected key only for its edit message so saving
+can migrate a legacy entry to the current ID.
+
 ## Chart Snapshots
 
 Journal chart snapshots request candles around a trade and render a compact
@@ -151,18 +166,43 @@ trade-specific chart. Snapshot state includes:
 - cached snapshot results
 - expanded snapshot trade IDs
 
+`snapshot.rs` owns the snapshot models, assembly, and fill markers;
+`snapshot/requests.rs` owns admission, timeframe selection, retry planning, and
+request bounds; `snapshot/metrics.rs` computes prices, excursions, and drawdown.
+Automatic and pinned requests share the same trade-history admission checks.
+Initial requests and retries share saturating bounds calculations, while live
+positions retain their separate admission and recent-history lookback rules.
+
+Automatic timeframe selection budgets padding on both sides of the window.
+Open-position requests still stop at the reference time without forward padding.
+Pinning a live position to a fine timeframe caps its lookback separately.
+
 When the read-data provider changes, snapshot cache is cleared so later
 snapshots use the selected provider.
 
+`journal_views/trade_card/snapshot.rs` renders loading/unavailable states and the
+metric rows. Its `snapshot/` modules separate canvas wiring, viewport interaction,
+plot geometry, candle/guide drawing, and fill-marker grouping. The canvas borrows
+the loaded snapshot for the lifetime of the view; iced owns its viewport/drag
+state independently. Reset identity and zoom/pan boundaries live together in
+`interaction.rs`, with interaction and marker tests beside their owners.
+
 ## Summary And Analytics Views
 
-`journal_views/summary/` computes and renders:
+`journal_views/analytics.rs` computes KPIs, direction splits, per-asset totals,
+and time-of-day aggregates. Per-asset aggregation borrows coin names while
+summing trades and copies each distinct name once into the resulting rows.
 
-- realized PnL summaries
-- win-rate metrics
-- fee totals
-- top assets
-- account value or PnL chart series
+`journal_views/cockpit.rs` arranges the analytics panels and applies the selected
+time window. Its `cockpit/` modules own the asset/direction bars, heatmap, KPI
+tiles, and win/loss canvas. The global KPI strip in `chrome.rs` stays all-time;
+`summary/` owns the account-value/PnL chart series and outcome strip.
+
+The summary chart prefers available portfolio-margin history and builds its
+fill-based PnL fallback only when needed. Cumulative fill PnL uses a stable
+timestamp sort and adds each trade to the running total in that order, updating
+the last chart point for equal timestamps. This preserves floating-point
+accumulation order and coalesces trades at the leading baseline timestamp.
 
 Portfolio/income analytics are adjacent but separate:
 
@@ -173,6 +213,12 @@ Portfolio/income analytics are adjacent but separate:
 
 These analytics should not be used as the authoritative source for trading
 validation.
+
+`AggregatedTrade::effective_pnl` owns the optional fee subtraction shared by
+analytics, rows/details, chart series, outcome tiles, and Assistant journal
+exports. Callers retain their eligibility, ordering, and non-finite-value rules;
+the outcome strip's legacy prefix-only eligibility remains separate from KPI
+scoring, which also excludes named spot pairs.
 
 ## Assistant Access
 

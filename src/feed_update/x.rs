@@ -6,7 +6,7 @@ use crate::message::{
 use crate::pane_state::PaneKind;
 use crate::x_feed::{
     X_PROFILE_IMAGE_RETRY_BACKOFF_MS, XAuthenticatedUser, XAuthorProfile, XFeedId, XFeedInstance,
-    XFeedPage, XFeedPost, XFeedRequestError, XFeedSource, XListsFetchOutcome, XOAuthTokenRefresh,
+    XFeedPage, XFeedRequestError, XFeedSource, XListsFetchOutcome, XOAuthTokenRefresh,
     fetch_x_auth_context, fetch_x_feed_page, fetch_x_lists, fetch_x_profile_image_bytes,
     refresh_x_access_token,
 };
@@ -104,15 +104,10 @@ impl TradingTerminal {
 
     pub(crate) fn request_x_feed_auth_refresh(&mut self) -> Task<Message> {
         let now_ms = Self::now_ms();
-        if self.x_feed.access_token_refresh_due(now_ms)
-            || (!self.x_feed.has_access_token() && self.x_feed.has_refresh_credentials())
-        {
+        if self.x_feed.access_token_refresh_due(now_ms) {
             return self.request_x_access_token_refresh();
         }
-        if !self.x_feed.has_access_token() {
-            return Task::none();
-        }
-        if self.x_feed.connecting {
+        if !self.x_feed.has_access_token() || self.x_feed.connecting {
             return Task::none();
         }
         let token = self.x_feed.access_token_for_task();
@@ -120,10 +115,7 @@ impl TradingTerminal {
     }
 
     fn request_x_access_token_refresh(&mut self) -> Task<Message> {
-        if !self.x_feed.has_refresh_credentials() {
-            return Task::none();
-        }
-        if self.x_feed.token_refreshing {
+        if !self.x_feed.has_refresh_credentials() || self.x_feed.token_refreshing {
             return Task::none();
         }
         let client_id = self.x_feed.oauth_client_id_for_task();
@@ -174,9 +166,7 @@ impl TradingTerminal {
                             self.x_feed.refresh_token_for_task(),
                         )
                     });
-                let refresh_token = refresh.refresh_token.unwrap_or_else(|| {
-                    zeroize::Zeroizing::new(fallback_refresh_token.as_str().to_string())
-                });
+                let refresh_token = refresh.refresh_token.unwrap_or(fallback_refresh_token);
                 let expires_at_ms = refresh
                     .expires_in_secs
                     .map(|secs| Self::now_ms().saturating_add(secs.saturating_mul(1_000)));
@@ -230,15 +220,14 @@ impl TradingTerminal {
                     self.persist_config();
                 }
                 self.x_feed.clear_pending_oauth_credentials();
-                let username = user.username.clone();
+                let username = &user.username;
                 let list_count = outcome.lists.len();
                 let status_suffix = outcome.status_suffix();
+                let status =
+                    format!("Connected @{username}; {list_count} Lists available{status_suffix}");
                 self.x_feed.auth_user = Some(user);
                 self.x_feed.lists = outcome.lists;
-                self.x_feed.status = Some((
-                    format!("Connected @{username}; {list_count} Lists available{status_suffix}"),
-                    false,
-                ));
+                self.x_feed.status = Some((status, false));
                 self.request_x_feed_open_refresh(true)
             }
             Err(err) => {
@@ -251,9 +240,7 @@ impl TradingTerminal {
 
     fn request_x_feed_lists_refresh(&mut self) -> Task<Message> {
         let now_ms = Self::now_ms();
-        if self.x_feed.access_token_refresh_due(now_ms)
-            || (!self.x_feed.has_access_token() && self.x_feed.has_refresh_credentials())
-        {
+        if self.x_feed.access_token_refresh_due(now_ms) {
             return self.request_x_access_token_refresh();
         }
         let Some(user_id) = self.x_feed.auth_user.as_ref().map(|user| user.id.clone()) else {
@@ -306,16 +293,13 @@ impl TradingTerminal {
             .collect::<Vec<_>>();
         let tasks = open_ids
             .into_iter()
-            .map(|id| self.request_x_feed_refresh(id, visible))
-            .collect::<Vec<_>>();
+            .map(|id| self.request_x_feed_refresh(id, visible));
         Task::batch(tasks)
     }
 
     pub(crate) fn request_x_feed_refresh(&mut self, id: XFeedId, visible: bool) -> Task<Message> {
         let now_ms = Self::now_ms();
-        if self.x_feed.access_token_refresh_due(now_ms)
-            || (!self.x_feed.has_access_token() && self.x_feed.has_refresh_credentials())
-        {
+        if self.x_feed.access_token_refresh_due(now_ms) {
             return self.request_x_access_token_refresh();
         }
         if !self.x_feed.has_access_token() {
@@ -325,16 +309,10 @@ impl TradingTerminal {
             return Task::none();
         }
         let Some(user_id) = self.x_feed.auth_user.as_ref().map(|user| user.id.clone()) else {
-            if self.x_feed.has_access_token() {
-                if visible && let Some(instance) = self.x_feed.instances.get_mut(&id) {
-                    instance.last_error = None;
-                }
-                return self.request_x_feed_auth_refresh();
-            }
             if visible && let Some(instance) = self.x_feed.instances.get_mut(&id) {
-                instance.last_error = Some("Connect X before refreshing".to_string());
+                instance.last_error = None;
             }
-            return Task::none();
+            return self.request_x_feed_auth_refresh();
         };
         let Some(instance) = self.x_feed.instances.get(&id) else {
             return Task::none();
@@ -366,7 +344,7 @@ impl TradingTerminal {
                     .filter_map(XFeedInstance::newest_seen_id)
                     .filter_map(|id| id.parse::<u64>().ok().map(|parsed| (parsed, id)))
                     .max_by_key(|(parsed, _)| *parsed)
-                    .map(|(_, id)| id)
+                    .map(|(_, id)| id.to_string())
             })
             .flatten();
         let token = self.x_feed.access_token_for_task();
@@ -440,21 +418,21 @@ impl TradingTerminal {
         let mut tasks = Vec::new();
 
         for post in &page.posts {
-            let Some(image_url) = post.author_profile_image_url.clone() else {
-                self.store_x_author_profile_metadata(post);
-                continue;
-            };
-            let key = post.author_profile_key();
-            let mut profile = self
+            let profile = self
                 .x_feed
                 .author_profiles
-                .remove(&key)
-                .unwrap_or_else(|| XAuthorProfile::from_post(post));
+                .entry(post.author_profile_key())
+                .and_modify(|profile| {
+                    profile.author_id.clone_from(&post.author_id);
+                    profile.username.clone_from(&post.author_username);
+                    profile.name.clone_from(&post.author_name);
+                    profile.initials = post.author_initials();
+                })
+                .or_insert_with(|| XAuthorProfile::from_post(post));
 
-            profile.author_id = post.author_id.clone();
-            profile.username = post.author_username.clone();
-            profile.name = post.author_name.clone();
-            profile.initials = post.author_initials();
+            let Some(image_url) = &post.author_profile_image_url else {
+                continue;
+            };
             if profile.profile_image_url.as_deref() != Some(image_url.as_str()) {
                 profile.profile_image_url = Some(image_url.clone());
                 profile.image_handle = None;
@@ -476,7 +454,7 @@ impl TradingTerminal {
                 profile.image_failed_at_ms = None;
                 let request_id = profile.image_request_id;
                 tasks.push(Task::perform(
-                    fetch_x_profile_image_bytes(image_url),
+                    fetch_x_profile_image_bytes(image_url.clone()),
                     move |result| {
                         Message::XProfileImageLoaded(
                             request_id,
@@ -485,24 +463,9 @@ impl TradingTerminal {
                     },
                 ));
             }
-
-            self.x_feed.author_profiles.insert(key, profile);
         }
 
         Task::batch(tasks)
-    }
-
-    fn store_x_author_profile_metadata(&mut self, post: &XFeedPost) {
-        let key = post.author_profile_key();
-        let profile = self
-            .x_feed
-            .author_profiles
-            .entry(key)
-            .or_insert_with(|| XAuthorProfile::from_post(post));
-        profile.author_id = post.author_id.clone();
-        profile.username = post.author_username.clone();
-        profile.name = post.author_name.clone();
-        profile.initials = post.author_initials();
     }
 
     fn handle_x_profile_image_loaded(&mut self, request_id: u64, result: Result<Vec<u8>, String>) {
@@ -536,25 +499,4 @@ impl TradingTerminal {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn open_refresh_includes_canvas_x_feed_instances() {
-        let (mut terminal, _) =
-            TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default());
-        let id = 17;
-        terminal
-            .x_feed
-            .instances
-            .insert(id, XFeedInstance::new(id, XFeedSource::Following));
-        terminal.insert_test_canvas_pane(7, PaneKind::XFeed(id));
-
-        let _task = terminal.request_x_feed_open_refresh(true);
-
-        assert_eq!(
-            terminal.x_feed.instances[&id].last_error.as_deref(),
-            Some("Paste an X OAuth 2.0 user access token")
-        );
-    }
-}
+mod tests;

@@ -67,6 +67,23 @@ Symbol search is implemented in `market_state/symbol_search/` and
 filters, hides muted tickers, resolves aliases, and feeds chart/order-book/order
 entry selection.
 
+`market_update/symbols.rs` dispatches symbol messages. Its `refresh.rs` child
+owns metadata provenance, family failures, registry updates, and refresh
+orchestration. `migration.rs` rewrites legacy spot aliases across books,
+comparison charts, watchlists, and preset snapshots. `charts.rs` reconciles
+primary/secondary chart identities and schedules their replacement data;
+`contexts.rs` applies request-scoped search contexts. Successful partial context
+responses merge into the existing cache before it is filtered to requested
+symbols; complete responses replace it, and failed or stale responses retain it.
+
+`market_state/symbol_search/results.rs` computes favourite positions and the
+selected mode's relevance/volume values once per result rebuild. Sorting keeps
+favourites in their saved order and preserves input order for equal ranks.
+Ranking data is temporary; each rebuild uses the current query, metadata,
+contexts, and filters. Exchange ranking borrows DEX names, and volume lookup
+uses the exact symbol key so a builder market cannot inherit a native market's
+volume.
+
 The symbol universe refreshes every 120 seconds to discover new and expired
 markets. Metadata and label changes preserve open chart history and order-book
 state. A full widget reload is only scheduled if the selected market universe
@@ -189,11 +206,26 @@ request. Missing/error results use bounded exponential backoff; rate limits set
 a shared cooldown so multiple charts cannot create a per-chart retry storm. A
 live websocket context always wins a race with REST fallback data.
 
+Perpetual and spot chart contexts decode directly from borrowed response values.
+The resulting contexts own their fields; decoding preserves optional-string
+validation and each market family's existing lookup/fallback policy.
+Perpetual lookup compares borrowed names with the full requested symbol or its
+literal DEX prefix removed. Qualified names match as written, and the first
+matching universe row selects the context.
+
 Watchlist/context requests are request-scoped: malformed top-level spot data is
 rejected, missing unrelated universe rows do not poison requested results, and
 missing requested symbols are reported without presenting a partial response
 as complete. Healthy requested market families are returned alongside explicit
 partial errors when another family fails.
+After a cache miss, request groups and local outcome contexts take ownership of
+the input symbol strings; request/result keys remain owned. Family labels are
+derived from their market/DEX identity when the family fetch starts. Perp and
+spot parsers share response-shape validation while retaining their distinct
+missing-row and lookup rules. Perp parsing borrows raw names and unmodified
+canonical keys until map insertion; only DEX-prefixed keys require earlier
+ownership. Staged results preserve atomic strict failures, canonical keys retain
+overwrite priority, and distinct raw aliases retain their first existing value.
 
 Sparse spot candle history is loaded but visibly marked stale when its tail is
 too old. A live jump beyond the normal contiguous window triggers a bounded
@@ -206,6 +238,11 @@ primary and comparison series.
 Runtime order books are keyed by `OrderBookId` and stored as
 `OrderBookInstance`.
 
+Startup and layout loading share `OrderBookInstance::from_config` for display
+settings and `ensure_order_book_pane_instances` for panes missing saved widget
+state. Their callers retain symbol resolution, tick-size fallback, and fetch
+scheduling.
+
 Order books support:
 
 - active-symbol or fixed-symbol mode
@@ -215,7 +252,7 @@ Order books support:
 - configurable tick grouping
 - center-on-mid behavior
 - reverse-side layout
-- regular depth rows or DOM ladder display
+- regular depth rows, DOM ladder, or depth chart display
 - optional spread chart
 - user open-order overlays
 
@@ -247,11 +284,43 @@ The update path rejects websocket data that does not match the instance's
 symbol mode or canonical precision. Tick-size changes reuse cached book data
 when possible and refetch when precision changes require it.
 
+REST and websocket book parsers decode sides directly from borrowed JSON arrays,
+then retain positive finite levels in their received order. A malformed level
+rejects its side before filtering; REST reports the failing side while websocket
+parsing drops the snapshot. REST also checks error envelopes before levels.
+
+Pending fetch identity lives in `market_state/types/order_book/requests.rs`.
+Deduplication and response matching share the same symbol, tick-tolerance, and
+sigfig comparison; response application additionally requires the request ID.
+The five tick-selector options and supported sigfig mantissas use fixed storage.
+
+Availability checks, canonical precision lookup, boot filtering, and refresh
+scans borrow the active or fixed symbol. Fetch admission retains its borrowed
+instance through validation and deduplication; plans, pending requests, and
+asynchronous request/result data keep owned keys.
+
+Empty and populated books share the pane's title, settings, tick controls, and
+header composition. Empty books keep the spread chart hidden. Centered depth
+lists move their prepared rows into responsive closures; depth and DOM views
+also consume the freshly built user-order markers. Cached DOM rows and depth
+chart levels still require owned copies because their cache guards cannot
+outlive view construction.
+
+Settings share the orientation/spread toggle widget and symbol-choice styling.
+Symbol results retain catalog order, visibility filtering, and the five-result
+limit; only the selection message needs an owned copy of each admitted key.
+
 ## Symbol Search And Watchlist
 
 `PaneKind::Watchlist` is the symbol-search pane. It shows tradable markets,
 filters by market type or HIP-3 dex, displays favourites, and can select the
 active symbol.
+
+The HIP-3 picker discovers its sorted, unique DEX prefixes once per view and
+borrows them until selection creates an owned message. Rows prepare one exchange
+label for both their group header and identity cell; static labels are borrowed.
+Empty and populated views share status styling while keeping their existing
+placement and padding.
 
 Important modules:
 
@@ -311,10 +380,35 @@ timer or symbol change
   -> view renders rows and flashes
 ```
 
+Row-cache refresh builds one borrowed symbol-metadata index for all affected
+panes. The index lives only for that refresh; each pane still applies its own
+symbol list and sorting, using current visibility, prices, history, and contexts.
+
+Row views borrow display labels from their cached rows, and the preset picker
+borrows its options and selected preset. `live_watchlist/symbol_cell.rs` shares
+the icon, label, and growth indicator between rows and autocomplete entries.
+Selection/removal messages retain owned keys or numeric IDs. The pane only
+prepares autocomplete while its settings menu is closed; matching and scrolling
+remain in the autocomplete component.
+
+Live-watchlist and ticker-tape context results share scope reconciliation in
+`market_update/context_results.rs`. Callers reject stale IDs and mismatched
+request symbols before reconciliation. Incoming values must be both requested
+and currently displayed. Complete responses remove omitted requested values;
+partial responses retain them. Current values outside the request survive.
+Errors prune removed symbols without advancing freshness while any requested
+symbol remains current. When the entire request is obsolete, it completes
+without an error and records its timestamp. Status messages and follow-up
+refresh scheduling remain specific to each caller.
+
 Named presets are persisted globally in `KeroseneConfig::watchlist_presets`.
 Live-watchlist layout configs store the preset ID plus an inline symbol snapshot
 for compatibility with older and imported layouts. Legacy inline-only lists are
 migrated to named presets when configuration is loaded.
+
+Default instances are created in `market_update/live_watchlist/panes.rs`.
+Startup and layout loading use its `ensure_live_watchlist_pane_instances`
+helper; Add Widget uses the same preset selection and visibility filtering.
 
 The optional **EMA distance** column is enabled in the watchlist settings menu.
 Each widget saves its own `ema: { period, timeframe }` in `LiveWatchlistConfig`,
@@ -375,6 +469,12 @@ changing one surface does not disturb the other. Exchange stats refresh every
 minute while the ticker tape is visible; incomplete API snapshots leave the
 last complete value in place.
 
+The view prepares price/percentage labels and their widths once after collecting
+the market values and display denomination. Widgets consume those prepared items;
+a second owned sequence is created only when scrolling needs it. Both separator
+styles share one builder, while the track retains its layout, clipping, and
+selection behavior.
+
 ## Positioning Info
 
 Positioning info panes are keyed by `PositioningInfoId` and backed by
@@ -400,10 +500,25 @@ Key modules:
 Positioning requests use request keys for dedupe and stale-response protection.
 Asset-context streams update live mark/mid metadata for matching panes.
 
+The change-flow view composes the responsive canvas and trader-action overlay
+in `market_views/positioning_info/flow.rs`. Its `chart.rs` child owns prepared
+rows and hover animation; `chart/drawing.rs` holds layout and painting, and
+`chart/formatting.rs` prepares labels and tooltip values. Flow size labels reuse
+the positioning signed-size helper while retaining their own compact-money
+precision. Table cells consume formatted strings, and symbol controls borrow
+display text while keeping owned selection messages.
+
+`PositioningInfoInstance::from_config` restores saved filters and normalizes
+removed sort options. Startup and layout loading share
+`ensure_positioning_info_pane_instances` to populate missing pane state across
+the main workspace and canvases. Runtime layout loading clears pending requests
+before replacing instances.
+
 ## Session Data
 
-Session data panes are keyed by `SessionDataId`. They fetch daily candles for a
-selected symbol and lookback window to display session-level behavior.
+Session data panes are keyed by `SessionDataId`. They fetch daily and chunked
+30-minute candles for a selected symbol and lookback window to summarize
+completed UTC days and market-session bands.
 
 Key modules:
 
@@ -411,7 +526,29 @@ Key modules:
 - `market_update/session_data.rs`
 - `market_views/session_data.rs`
 
+`session_data_state.rs` exposes the feature types and statistics. Its child
+modules separate models (`model.rs`), history and refresh state (`instance.rs`),
+candle returns and bucket rates (`returns.rs`), and aggregate statistics/verdicts
+(`statistics.rs`). Daily and intraday summaries share average/win-rate division
+while retaining their own validation, grouping, and accumulation order. Verdict
+labels use the static weekday/session names. Tests for returns and statistics
+live under `session_data_state/tests/`.
+
+`market_views/session_data.rs` composes the pane and prepares its lane rows.
+Child modules own the header/symbol controls (`controls.rs`), verdict and KPI
+widgets (`summary.rs`), shared tooltip presentation (`tooltips.rs`), and lane
+interaction (`lane.rs`). Lane geometry and painting live in `lane/drawing.rs`.
+The six KPI tiles use a fixed array; fixed KPI and lane labels borrow static
+text. Drawing order, responsive thresholds, and hover behavior are preserved.
+
 Session data instances are persisted in layout/widget configs.
+
+`market_update/session_data.rs` routes messages and handles pane/lookback changes.
+Its `requests.rs` child owns refresh admission, pending-result matching, and
+chunked fetching; `symbols.rs` owns selection, reconciliation, and resolution.
+Symbol checks borrow the catalog key through the shared key-or-ticker resolver,
+with owned keys created for stored selections and requests. Lookup precedence,
+empty-catalog fallback, hidden/muted policies, and refresh coalescing are unchanged.
 
 ## Outcomes
 
@@ -433,6 +570,19 @@ Key modules:
 
 Outcome markets force coin-size input for some order flows and should avoid
 incorrect USD-notional assumptions.
+
+Group preparation formats keys and titles once per admitted question or standalone
+outcome, retaining the first admitted symbol's metadata. Cards consume their
+prepared side lists; `groups/card/sides.rs` shares side-button preparation across
+row and column layouts, and `groups/card/volume.rs` owns volume aggregation and
+the shared header label. Venue choices borrow metadata until selection creates
+an owned message value.
+
+`groups/search.rs` owns the Outcomes search field list and term matching.
+Grouping ASCII-lowercases the query once, and each symbol's assembled search
+text is lowercased in place. All whitespace-separated terms must match. This
+remains separate from symbol search and live-watchlist autocomplete, which use
+Unicode lowercasing and whole-query substring matching with different field sets.
 
 ### Skew / HIP-4 venues
 
@@ -490,6 +640,15 @@ outcomes must reference a valid question with the expected parent template;
 they inherit its deadline and rules. Legacy price-binary and price-bucket
 metadata remains supported with validated bounds and expiry.
 
+Outcome parsing builds each question record once and uses a borrowed index to
+associate its named, settled, and fallback outcomes. The index lasts only for
+that parse; each final symbol still owns its question metadata and contract terms.
+
+Binary, bucket, fallback, and legacy recurring labels share optional expiry
+formatting in `model/outcome_labels/expiry.rs`. Countdown labels reuse the parsed
+expiry timestamp; the callers retain their wording, expiry source, and short-label
+rules.
+
 `OutcomeSymbolInfo.contract` stores resolved `OutcomeContract` terms. Missing
 fields in older caches default safely; the `verified` flag is runtime-only and
 never survives serialization. A cached or failed metadata refresh preserves
@@ -545,8 +704,27 @@ HYPE-specific market widgets live in:
 - `api/hype_unstaking_queue.rs`
 
 HYPE ETFs combine THYP, BHYP, and Farside BHYP flow data where available.
+Farside extraction locates the first BHYP chart marker once and uses it for both
+the cumulative data and preceding labels. It validates data before labels and
+derives daily flows only after the two arrays have matching lengths.
+
+ETF summaries reuse the selected fund list for totals and fund sections. Daily
+flows combine finite inputs by their literal date strings in source order, then
+sort by date for display. The chart borrows the latest 10, 18, or 30 aggregated
+flows at the existing width thresholds; metric cards consume their formatted
+values, while error, warning, and fund-date text borrow the retained state.
+
 Unstaking queue state supports window filters, amount filters, sorting, and
-mine-only filtering.
+mine-only filtering. The pane root composes controls, summary metrics, and event
+rows from `market_views/hype_unstaking_queue/`. Row formatting and amount heat
+styling live beside the row module. Filtering and sorting cover the full upcoming
+set before the 250-row display limit; summary totals and heat scaling also use
+that full set. Mine-only matching compares borrowed addresses without changing
+their ASCII-insensitive, whitespace-preserving semantics.
+
+Unstaking refreshes retain cached data on failure. A background refresh of an
+existing cache retains its previous error until success; a manual refresh clears
+it on admission. State, update, and presentation tests live beside their modules.
 
 These panes are informational. They are refreshed by timers and manual refresh
 messages, not by trading-order state.

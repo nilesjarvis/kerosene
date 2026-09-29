@@ -10,13 +10,19 @@ runtime cannot write into another session.
 
 ## State And Runtime Boundaries
 
-- `src/agent_state.rs` owns the active session plus the inactive session list,
-  applies storage bounds, and builds the bounded transcript used to resume a
-  saved conversation.
-- `src/agent_update.rs` coordinates create/switch actions, stops the previous Pi
-  process, requests Pi context metrics, and schedules session saves.
-- `src/agent_views.rs` renders the collapsible session navigation, persistence
-  status, prompt-bar model selector, and active session context footer.
+- `src/agent_state.rs` owns central state, defaults, and runtime reset. Its
+  `sessions.rs` child handles the active/inactive session list, storage bounds,
+  context metrics, and replay. `model.rs` contains chat and persisted wire types
+  with their existing redaction; `stream.rs` handles response, reasoning, and
+  tool presentation. Tests live beside each child module.
+- `src/agent_update.rs` dispatches Assistant actions. Its `sessions.rs` child
+  coordinates create/switch actions, runtime/file cleanup, and session saves;
+  `runtime.rs` handles Pi events, context updates, and response presentation.
+  Closing the window uses the same runtime invalidation path as provider changes.
+- `src/agent_views.rs` composes the Assistant window. Its `sessions.rs` child
+  renders collapsible navigation and persistence status; `composer.rs` renders
+  the prompt bar and active session context footer, with the provider/model
+  picker in `models.rs`.
 - `src/agent_persistence.rs` loads and atomically saves the side-file.
 
 Pi continues to run with `--no-session`. After an app restart, runtime exit, or
@@ -51,6 +57,12 @@ format is schema version 1. Saves use a temporary file and replacement, use
 owner-only mode (`0600`) on Unix, and apply an owner-only ACL on Windows. The
 store is limited to 32 MiB and 50 sessions; drafts, message counts, individual
 messages, and replay context are also bounded.
+
+Saving retains the latest 500 nonempty user/assistant messages, then reverses
+that buffer in place to keep chronological order. Restoration first selects the
+last 500 stored entries, then filters empty messages and restores Markdown.
+Replay borrows UTF-8 suffixes from message text before formatting the bounded
+transcript, preserving its existing character accounting and message order.
 
 Only user and assistant messages are durable. P&L card previews, image bytes,
 tool activity cards, and model-authored follow-up prompts are transient UI

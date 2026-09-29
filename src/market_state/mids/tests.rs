@@ -20,8 +20,7 @@ fn all_markets_fetch_scope_includes_registered_dexes_without_active_symbols() {
         terminal
             .account_data_fetch_scope()
             .hip3_dexes(&[])
-            .iter()
-            .any(|dex| dex == "newdex")
+            .contains(&"newdex")
     );
 }
 

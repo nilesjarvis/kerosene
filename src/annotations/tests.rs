@@ -1,5 +1,7 @@
 use super::*;
 
+mod anchors;
+
 fn level_config(price: f64) -> AnnotationConfig {
     AnnotationConfig {
         kind: "level".into(),
@@ -331,7 +333,7 @@ fn pen_validation_and_translation_preserve_traversal_order() {
         style: sample_style(),
     };
     assert!(annotation.is_valid());
-    assert!(annotation.kind.anchor_points().is_empty());
+    assert!(annotation.kind.anchor_points().next().is_none());
     annotation.kind.translate(500, 2.0);
     assert_eq!(
         annotation.kind,

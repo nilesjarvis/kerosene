@@ -100,7 +100,6 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let _theme = self.theme();
         let Some((key, account_address)) = self.order_signing_context() else {
             self.toast_order_status();
             return Task::none();
@@ -202,7 +201,7 @@ impl TradingTerminal {
         action: &str,
         is_buy: bool,
     ) -> Option<Task<Message>> {
-        let provenance = form.quantity_provenance.clone()?;
+        let provenance = form.quantity_provenance.as_ref()?;
 
         if provenance.symbol_key != chart_symbol
             || provenance.quantity_is_usd != form.quantity_is_usd
@@ -386,23 +385,11 @@ impl TradingTerminal {
         });
         // IOC limit orders are taker orders that never rest, so they project
         // like market orders instead of drawing a provisional resting line.
-        let pending_indicator_id = if prepared.order_kind != ExchangeOrderKind::Limit {
-            self.add_pending_market_order_placement_indicator(
-                account_address.clone(),
-                prepared.symbol_key.clone(),
-                prepared.is_buy,
-                prepared.size.clone(),
-                prepared.price.clone(),
-            )
-        } else {
-            self.add_pending_order_placement_indicator(
-                account_address.clone(),
-                prepared.symbol_key.clone(),
-                prepared.is_buy,
-                prepared.size.clone(),
-                prepared.price.clone(),
-            )
-        };
+        let pending_indicator_id = self.add_prepared_order_placement_indicator(
+            &account_address,
+            &prepared,
+            prepared.order_kind != ExchangeOrderKind::Limit,
+        );
 
         let (request, context) = prepared.place_request_with_context(&account_address);
         self.invalidate_spot_balances_after_exchange_dispatch(

@@ -1,6 +1,66 @@
 use super::*;
 
 #[test]
+fn chase_placement_fill_status_credits_remaining_size_and_refreshes_only_owner() {
+    for stopping in [false, true] {
+        for connected_to_owner in [false, true] {
+            for oid in [None, Some(9001)] {
+                let mut chase = chase();
+                chase.lifecycle = if stopping {
+                    ChaseLifecycle::Stopping {
+                        phase: ChaseStopPhase::AwaitingPlace,
+                    }
+                } else {
+                    ChaseLifecycle::Verifying {
+                        reason: ChaseVerificationReason::Placement,
+                    }
+                };
+                chase.current_cloid = Some(TEST_CLOID.to_string());
+                chase.filled_size = 0.25;
+                chase.remaining_size = 0.75;
+                chase.stop_reason = stopping.then(|| ("user stopped".to_string(), false));
+                let mut terminal = terminal_with_chase(chase);
+                terminal.connected_address = connected_to_owner.then(|| TEST_ACCOUNT.to_string());
+                terminal.account_loading = false;
+
+                let task = terminal.handle_chase_order_status_result(
+                    1,
+                    TEST_CLOID.to_string(),
+                    Ok(OrderStatusResult {
+                        status: "filled".to_string(),
+                        oid,
+                        cloid: Some(TEST_CLOID.to_string()),
+                        raw_summary: "filled".to_string(),
+                    }),
+                );
+
+                let chase = chase_from_terminal(&terminal, 1);
+                assert_eq!(chase.current_oid, oid);
+                assert_eq!(chase.known_oids, oid.into_iter().collect::<Vec<_>>());
+                assert_eq!(chase.filled_size, 1.0);
+                assert_eq!(chase.remaining_size, 0.0);
+                assert_eq!(
+                    chase.lifecycle,
+                    ChaseLifecycle::Verifying {
+                        reason: ChaseVerificationReason::MissingOrder
+                    }
+                );
+                assert_eq!(
+                    chase.stop_reason,
+                    stopping.then(|| ("user stopped".to_string(), false))
+                );
+                assert_eq!(terminal.account_loading, connected_to_owner);
+                assert_eq!(task.units() > 0, connected_to_owner);
+                assert_eq!(terminal.order_status, Some((
+                    "Chase placement filled according to orderStatus: filled; refreshing account data".to_string(),
+                    false,
+                )));
+            }
+        }
+    }
+}
+
+#[test]
 fn chase_place_status_open_recovers_oid_after_unknown_place_response() {
     let mut chase = chase();
     chase.lifecycle = ChaseLifecycle::Placing;

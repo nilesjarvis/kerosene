@@ -138,3 +138,150 @@ fn all_dex_positions_prefixes_hip3_position_coins() {
     assert_eq!(position_details[1].dex, "xyz");
     assert_eq!(position_details[1].asset_position.position.coin, "xyz:NVDA");
 }
+
+#[test]
+fn private_array_events_preserve_account_matching_and_reject_partial_payloads() {
+    let target = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let other = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    for (channel, path, mut payload) in [
+        (
+            "openOrders",
+            "/orders",
+            serde_json::json!({ "orders": [{
+                "coin": "BTC", "side": "B", "limitPx": "100", "sz": "1",
+                "oid": 7, "timestamp": 10, "unknown": [null, true]
+            }] }),
+        ),
+        (
+            "userFills",
+            "/fills",
+            serde_json::json!({ "fills": [user_fill("BTC", "B", 7)] }),
+        ),
+        (
+            "spotState",
+            "/spotState/balances",
+            serde_json::json!({ "spotState": { "balances": [{
+                "coin": "USDC", "total": "100", "hold": "1", "entryNtl": "99"
+            }] } }),
+        ),
+    ] {
+        payload["user"] = serde_json::json!(format!(" {} ", target.to_uppercase()));
+        let (source, update) = parse_user_stream_message(channel, &payload, Some(target), None)
+            .expect("valid targeted payload");
+        assert_eq!(source.as_deref(), Some(target));
+        match update {
+            WsUserData::OpenOrders { dex, orders } => {
+                assert!(dex.is_empty());
+                assert_eq!(orders[0].oid, 7);
+                assert!(orders[0].reduce_only.is_none());
+            }
+            WsUserData::Fills { fills, is_snapshot } => {
+                assert!(!is_snapshot);
+                assert_eq!(fills[0].oid, Some(7));
+                assert!(fills[0].hash.is_none());
+            }
+            WsUserData::SpotBalances(balances) => {
+                assert_eq!(balances[0].total, "100");
+                assert!(balances[0].token.is_none());
+            }
+            _ => panic!("unexpected private array event"),
+        }
+        assert!(parse_user_stream_message(channel, &payload, Some(other), None).is_none());
+        assert!(parse_user_stream_message(channel, &payload, None, None).is_none());
+
+        payload
+            .pointer_mut(path)
+            .expect("array field")
+            .as_array_mut()
+            .expect("array payload")
+            .push(Value::Null);
+        assert!(parse_user_stream_message(channel, &payload, Some(target), None).is_none());
+
+        *payload.pointer_mut(path).expect("array field") = serde_json::json!([]);
+        assert!(parse_user_stream_message(channel, &payload, Some(target), None).is_some());
+        payload
+            .as_object_mut()
+            .expect("payload object")
+            .remove("user");
+        assert!(parse_user_stream_message(channel, &payload, Some(target), None).is_none());
+    }
+}
+
+#[test]
+fn all_dex_positions_keep_partial_entries_duplicates_and_last_main_state() {
+    let target = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let payload = serde_json::json!({
+        "user": target,
+        "clearinghouseStates": [
+            null, ["broken", {}], ["incomplete"],
+            ["", clearinghouse_with_position("BTC")],
+            ["xyz", clearinghouse_with_position("NVDA")],
+            ["xyz", clearinghouse_with_position("TSLA"), "ignored"],
+            [false, clearinghouse_with_position("ETH")],
+            ["", {}]
+        ]
+    });
+    let Some((
+        _,
+        WsUserData::AllDexPositions {
+            main_state,
+            states_by_dex,
+            all_positions,
+            position_details,
+        },
+    )) = parse_user_stream_message("allDexsClearinghouseState", &payload, Some(target), None)
+    else {
+        panic!("valid entries must survive malformed neighboring entries");
+    };
+    assert_eq!(main_state.asset_positions[0].position.coin, "ETH");
+    assert_eq!(states_by_dex.len(), 2);
+    assert_eq!(states_by_dex[""].asset_positions[0].position.coin, "ETH");
+    assert_eq!(
+        states_by_dex["xyz"].asset_positions[0].position.coin,
+        "xyz:TSLA"
+    );
+    let symbols: Vec<_> = all_positions
+        .iter()
+        .map(|entry| entry.position.coin.as_str())
+        .collect();
+    assert_eq!(symbols, ["BTC", "xyz:NVDA", "xyz:TSLA", "ETH"]);
+    let details: Vec<_> = position_details
+        .iter()
+        .map(|entry| {
+            (
+                entry.dex.as_str(),
+                entry.asset_position.position.coin.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        details,
+        [
+            ("", "BTC"),
+            ("xyz", "xyz:NVDA"),
+            ("xyz", "xyz:TSLA"),
+            ("", "ETH")
+        ]
+    );
+
+    let no_main = serde_json::json!({
+        "user": target,
+        "clearinghouseStates": [["xyz", clearinghouse_with_position("NVDA")], ["", {}]]
+    });
+    assert!(
+        parse_user_stream_message("allDexsClearinghouseState", &no_main, Some(target), None)
+            .is_none()
+    );
+}
+
+#[test]
+fn all_mids_rejects_non_string_prices_before_numeric_filtering() {
+    for malformed in [
+        serde_json::json!(100),
+        Value::Null,
+        serde_json::json!(false),
+    ] {
+        let payload = serde_json::json!({ "mids": { "BTC": "100", "BAD": malformed } });
+        assert!(parse_user_stream_message("allMids", &payload, None, None).is_none());
+    }
+}

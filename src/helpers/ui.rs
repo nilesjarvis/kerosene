@@ -5,7 +5,7 @@ mod labels;
 mod panes;
 mod separators;
 
-pub use buttons::{buy_button, order_type_button, sell_button};
+pub use buttons::{buy_button, order_type_button, selected_row_button_style, sell_button};
 pub use colors::{optional_value_color, signed_number_color, text_color_for_bg};
 pub use inputs::text_input_style;
 pub use labels::{growth_mode_chip, label_value, label_value_colored, vertical_spacer};

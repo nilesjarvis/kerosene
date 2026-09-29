@@ -11,7 +11,7 @@ This document describes implementation boundaries.
 | Component | Key files | Responsibility |
 | --- | --- | --- |
 | State | `src/alfred_state.rs`, `src/alfred_state/` | Query, selection, catalog, parsed trading intents, close-position helpers. |
-| Update | `src/alfred_update.rs` | Open/close, query changes, selection movement, submit, command dispatch. |
+| Update | `src/alfred_update.rs`, `src/alfred_update/` | Open/close, query changes, selection movement, submit, command dispatch. |
 | Views | `src/alfred_views.rs`, `src/alfred_views/` | Overlay, result rows, disabled-state explanations. |
 | Routing | `src/message.rs`, `src/app_update/routing.rs` | Alfred messages and route ownership. |
 | Execution targets | `pane_update.rs`, `order_update.rs`, `order_execution/`, `risk_state/` | Pane/window commands and trading actions reuse normal app paths. |
@@ -37,6 +37,18 @@ AlfredSubmit / AlfredCommandSelected
 
 Escape closes Alfred without action.
 
+Dynamic commands take ownership of their draft's display text after checking
+whether it can submit. Close-position previews borrow the resolved position and
+copy only the coin needed by the draft. Result rows consume the freshly built
+commands, moving their text into widgets. The overlay still shows at most seven
+results, and submission resolves the command again against current state.
+
+Submission dispatch lives in `alfred_update/submit.rs`. Its `trading.rs` child
+handles trade application and exchange/Chase checks; `positions.rs` handles close
+checks and NUKE's two-press confirmation. These paths borrow queries and read-only
+metadata while preserving validation order and the palette's state on rejection.
+Tests share fixtures in `submit/tests.rs` and follow the same feature boundaries.
+
 ## Command Catalog
 
 The catalog includes non-trading commands such as:
@@ -47,8 +59,18 @@ The catalog includes non-trading commands such as:
 
 Command rows should emit existing messages where possible. For example, adding
 a pane should go through the same pane update path as the add-widget menu.
+Catalog filtering trims and lowercases the query once, then matches its tokens
+against each command's existing search text in catalog order. Dynamic trading
+queries are resolved before this normalization.
 
 ## Trading Parser
+
+Trade and close intents share token trimming and symbol normalization in
+`src/alfred_state/parsing.rs`. Close parsing streams borrowed tokens; trade
+parsing retains borrowed tokens for its multiple passes and owns only joined
+dollar amounts such as `$ 1k`. Each parser keeps its own recognition, modifiers,
+and error precedence. Symbol resolution still applies each command's market
+selection rules.
 
 Trading-style queries can parse into a single preview row. Examples include:
 
@@ -101,7 +123,9 @@ Use focused tests in:
 
 - `src/alfred_state/**/tests`
 - `src/alfred_views/rows/tests.rs`
-- `src/alfred_update.rs` tests where present
+- `src/alfred_views/tests.rs` (synthetic rendering and enabled/disabled row clicks;
+  set `KEROSENE_ALFRED_PREVIEW_DIR` to export comparison PNGs)
+- `src/alfred_update/submit/tests/` (submission, preflight errors, and confirmation)
 - order execution tests for trading command behavior
 - risk-state tests for hidden symbol behavior
 - routing tests when adding Alfred messages

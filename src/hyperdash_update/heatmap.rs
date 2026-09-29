@@ -22,9 +22,9 @@ impl TradingTerminal {
         let chart_symbol = self
             .charts
             .get(&chart_id)
-            .map(|instance| instance.symbol.clone())
+            .map(|instance| instance.symbol.as_str())
             .unwrap_or_default();
-        let chart_symbol_muted = self.symbol_key_is_hidden(&chart_symbol);
+        let chart_symbol_muted = self.symbol_key_is_hidden(chart_symbol);
         let mut show_key_prompt = false;
         let should_fetch = if let Some(instance) = self.charts.get_mut(&chart_id) {
             instance.show_heatmap = !instance.show_heatmap;
@@ -89,9 +89,9 @@ impl TradingTerminal {
         }
         match result {
             Ok(data) => {
-                self.cache_heatmap_data(cache_key.clone(), data.clone());
+                self.cache_heatmap_data(cache_key.clone(), data);
                 for chart_id in pending {
-                    self.apply_heatmap_data_to_chart(chart_id, &cache_key, &data, false);
+                    self.apply_cached_heatmap_to_chart(chart_id, &cache_key, false);
                 }
             }
             Err(e) => {
@@ -142,202 +142,9 @@ impl TradingTerminal {
         if ids.is_empty() {
             return Task::none();
         }
-        let mut tasks = Vec::new();
-        for id in ids {
-            let task = self.maybe_fetch_heatmap(id);
-            tasks.push(task);
-        }
-        Task::batch(tasks)
+        Task::batch(ids.into_iter().map(|id| self.maybe_fetch_heatmap(id)))
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    use crate::chart_state::ChartInstance;
-    use crate::hyperdash_api::{HeatmapFetchParams, LiquidationHeatmap};
-    use crate::timeframe::Timeframe;
-
-    #[test]
-    fn stale_hyperdash_generation_heatmap_result_keeps_current_pending_request() {
-        let (mut terminal, _) = TradingTerminal::boot();
-        let cache_key = "BTC:1.00000000:2.00000000:10:20".to_string();
-        terminal.hyperdash_key_generation = 2;
-        terminal
-            .heatmap_pending_charts
-            .insert(cache_key.clone(), vec![7]);
-
-        terminal.apply_chart_heatmap_loaded(
-            cache_key.clone(),
-            1,
-            Ok(LiquidationHeatmap {
-                rects: Vec::new(),
-                max_abs_usd: 0.0,
-            }),
-        );
-
-        assert_eq!(
-            terminal.heatmap_pending_charts.get(&cache_key),
-            Some(&vec![7])
-        );
-    }
-
-    #[test]
-    fn heatmap_result_without_pending_charts_is_ignored() {
-        let (mut terminal, _) = TradingTerminal::boot();
-        let cache_key = "BTC:1.00000000:2.00000000:10:20".to_string();
-        let generation = terminal.hyperdash_key_generation;
-
-        terminal.apply_chart_heatmap_loaded(
-            cache_key.clone(),
-            generation,
-            Ok(LiquidationHeatmap {
-                rects: Vec::new(),
-                max_abs_usd: 0.0,
-            }),
-        );
-        terminal.apply_chart_heatmap_loaded(
-            cache_key.clone(),
-            generation,
-            Err("late failure".to_string()),
-        );
-
-        assert!(!terminal.heatmap_data_cache.contains_key(&cache_key));
-        assert!(terminal.toasts.is_empty());
-    }
-
-    #[test]
-    fn disabling_heatmap_overlay_removes_pending_waiter_and_ignores_late_error() {
-        let (mut terminal, _) = TradingTerminal::boot();
-        let chart_id = 1;
-        let cache_key = "BTC:1.00000000:2.00000000:10:20".to_string();
-        let generation = terminal.hyperdash_key_generation;
-        terminal.charts.clear();
-        let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
-        instance.show_heatmap = true;
-        instance.heatmap_fetching = true;
-        instance.heatmap_status = Some(("HEAT refreshing hourly data".to_string(), false));
-        terminal.charts.insert(chart_id, instance);
-        terminal
-            .heatmap_pending_charts
-            .insert(cache_key.clone(), vec![chart_id]);
-
-        let _task = terminal.toggle_heatmap_overlay(chart_id);
-        terminal.apply_chart_heatmap_loaded(
-            cache_key.clone(),
-            generation,
-            Err("late failure".to_string()),
-        );
-
-        assert!(!terminal.heatmap_pending_charts.contains_key(&cache_key));
-        assert!(terminal.toasts.is_empty());
-        let instance = terminal.charts.get(&chart_id).expect("chart");
-        assert!(!instance.show_heatmap);
-        assert!(!instance.heatmap_fetching);
-        assert!(instance.heatmap_status.is_none());
-    }
-
-    #[test]
-    fn late_heatmap_error_for_old_request_does_not_clear_current_request() {
-        let (mut terminal, _) = TradingTerminal::boot();
-        let chart_id = 1;
-        let stale_request = HeatmapFetchParams {
-            coin: "BTC".to_string(),
-            min_price: 1.0,
-            max_price: 2.0,
-            start_time: 10,
-            end_time: 20,
-        };
-        let current_request = HeatmapFetchParams {
-            coin: "BTC".to_string(),
-            min_price: 3.0,
-            max_price: 4.0,
-            start_time: 30,
-            end_time: 40,
-        };
-        let stale_key = stale_request.cache_key();
-        let current_key = current_request.cache_key();
-        let generation = terminal.hyperdash_key_generation;
-        terminal.charts.clear();
-        let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
-        instance.show_heatmap = true;
-        instance.heatmap_fetching = true;
-        instance.heatmap_last_fetch = Some(current_request);
-        instance.heatmap_status = Some(("HEAT refreshing current data".to_string(), false));
-        terminal.charts.insert(chart_id, instance);
-        terminal
-            .heatmap_pending_charts
-            .insert(stale_key.clone(), vec![chart_id]);
-
-        terminal.apply_chart_heatmap_loaded(stale_key, generation, Err("late failure".to_string()));
-
-        assert!(terminal.toasts.is_empty());
-        let instance = terminal.charts.get(&chart_id).expect("chart");
-        assert!(instance.heatmap_fetching);
-        assert_eq!(
-            instance
-                .heatmap_last_fetch
-                .as_ref()
-                .map(HeatmapFetchParams::cache_key)
-                .as_deref(),
-            Some(current_key.as_str())
-        );
-        assert_eq!(
-            instance
-                .heatmap_status
-                .as_ref()
-                .map(|(message, is_error)| { (message.as_str(), *is_error) }),
-            Some(("HEAT refreshing current data", false))
-        );
-    }
-
-    #[test]
-    fn current_heatmap_error_redacts_toast_detail() {
-        let (mut terminal, _) = TradingTerminal::boot();
-        let chart_id = 1;
-        let request = HeatmapFetchParams {
-            coin: "BTC".to_string(),
-            min_price: 1.0,
-            max_price: 2.0,
-            start_time: 10,
-            end_time: 20,
-        };
-        let cache_key = request.cache_key();
-        let generation = terminal.hyperdash_key_generation;
-        terminal.charts.clear();
-        let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
-        instance.show_heatmap = true;
-        instance.heatmap_fetching = true;
-        instance.heatmap_last_fetch = Some(request);
-        instance.heatmap_status = Some(("HEAT refreshing current data".to_string(), false));
-        terminal.charts.insert(chart_id, instance);
-        terminal
-            .heatmap_pending_charts
-            .insert(cache_key.clone(), vec![chart_id]);
-
-        terminal.apply_chart_heatmap_loaded(
-            cache_key,
-            generation,
-            Err("heatmap rejected: api_key=key-secret signature=sig-secret".to_string()),
-        );
-
-        let instance = terminal.charts.get(&chart_id).expect("chart");
-        assert!(!instance.heatmap_fetching);
-        assert!(instance.heatmap_last_fetch.is_none());
-        assert_eq!(
-            instance
-                .heatmap_status
-                .as_ref()
-                .map(|(message, is_error)| (message.as_str(), *is_error)),
-            Some(("HEAT fetch failed", true))
-        );
-
-        let toast = terminal.toasts.last().expect("toast");
-        assert!(toast.is_error);
-        assert!(toast.message.contains("api_key=<redacted>"));
-        assert!(toast.message.contains("signature=<redacted>"));
-        assert!(!toast.message.contains("key-secret"));
-        assert!(!toast.message.contains("sig-secret"));
-    }
-}
+mod tests;

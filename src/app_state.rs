@@ -70,6 +70,7 @@ impl SensitiveString {
         self.0.as_str()
     }
 
+    #[cfg(test)]
     pub(crate) fn into_zeroizing(self) -> Zeroizing<String> {
         self.0
     }
@@ -163,8 +164,8 @@ impl TradingTerminal {
     }
 
     pub(crate) fn invalidate_portfolio_income_refreshes(&mut self) {
-        self.portfolio.invalidate_refresh();
-        self.income.invalidate_refresh();
+        self.portfolio.refresh.invalidate();
+        self.income.refresh.invalidate();
     }
 
     pub(crate) fn clear_portfolio_income_account_state(&mut self) {

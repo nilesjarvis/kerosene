@@ -1,6 +1,7 @@
 use super::chart::daily_inflow_chart;
 use super::sections::{fund_section, summary_section};
 use crate::app_state::TradingTerminal;
+use crate::hype_etf_state::HypeEtfTotals;
 use crate::message::Message;
 
 use iced::widget::{Column, row, scrollable, text};
@@ -31,7 +32,7 @@ impl TradingTerminal {
 
         if let Some(error) = &self.hype_etfs.error {
             body = body.push(
-                text(error.clone())
+                text(error.as_str())
                     .size(11)
                     .color(color!(0xff5555))
                     .width(Fill),
@@ -41,7 +42,7 @@ impl TradingTerminal {
         if let Some(data) = &self.hype_etfs.data {
             for warning in &data.warnings {
                 body = body.push(
-                    text(warning.clone())
+                    text(warning.as_str())
                         .size(11)
                         .color(color!(0xffb86c))
                         .width(Fill),
@@ -59,7 +60,7 @@ impl TradingTerminal {
                 body = body.push(summary_section(
                     &theme,
                     self.hype_etfs.view,
-                    data.totals_for(self.hype_etfs.view),
+                    HypeEtfTotals::from_funds(&selected_funds),
                     selected_funds.len(),
                     available_width,
                     &denomination,

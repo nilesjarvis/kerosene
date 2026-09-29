@@ -23,7 +23,7 @@ impl TradingTerminal {
                 .push(text("Warnings").size(13).color(theme.palette().danger)),
             |column, warning| {
                 column.push(
-                    text(warning.clone())
+                    text(warning)
                         .size(10)
                         .color(theme.extended_palette().background.weak.text),
                 )

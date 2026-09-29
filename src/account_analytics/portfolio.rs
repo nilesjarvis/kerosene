@@ -7,16 +7,16 @@ use serde_json::Value;
 
 /// Fetch user portfolio history buckets from the `portfolio` info endpoint.
 pub async fn fetch_portfolio_history(address: String) -> Result<PortfolioHistory, String> {
-    fetch_portfolio_history_from_url(CLIENT.clone(), API_URL, address).await
+    fetch_portfolio_history_from_url(&CLIENT, API_URL, address).await
 }
 
 async fn fetch_portfolio_history_from_url(
-    client: reqwest::Client,
+    client: &reqwest::Client,
     url: &str,
     address: String,
 ) -> Result<PortfolioHistory, String> {
     let raw: Value = post_info_json(
-        &client,
+        client,
         url,
         "portfolio",
         serde_json::json!({"type": "portfolio", "user": address}),
@@ -63,20 +63,18 @@ async fn fetch_portfolio_history_from_url(
 }
 
 fn parse_portfolio_bucket(obj: &serde_json::Map<String, Value>) -> PortfolioBucket {
-    let mut bucket = PortfolioBucket::default();
     let account_value_history = parse_history_points_with_stats(obj.get("accountValueHistory"));
     let pnl_history = parse_history_points_with_stats(obj.get("pnlHistory"));
-    bucket
-        .account_value_history
-        .extend(account_value_history.points);
-    bucket.pnl_history.extend(pnl_history.points);
-    bucket.skipped_invalid_points =
-        account_value_history.invalid_points + pnl_history.invalid_points;
-    bucket.vlm = obj.get("vlm").and_then(value_as_f64);
-    bucket.invalid_vlm = obj
-        .get("vlm")
-        .is_some_and(|value| value_as_f64(value).is_none());
-    bucket
+    let raw_vlm = obj.get("vlm");
+    let vlm = raw_vlm.and_then(parse_finite_json_number);
+
+    PortfolioBucket {
+        account_value_history: account_value_history.points,
+        pnl_history: pnl_history.points,
+        skipped_invalid_points: account_value_history.invalid_points + pnl_history.invalid_points,
+        vlm,
+        invalid_vlm: raw_vlm.is_some() && vlm.is_none(),
+    }
 }
 
 struct ParsedHistoryPoints {
@@ -114,7 +112,7 @@ fn parse_history_points_with_stats(raw: Option<&Value>) -> ParsedHistoryPoints {
             continue;
         }
 
-        let Some(value) = value_as_f64(&p[1]) else {
+        let Some(value) = parse_finite_json_number(&p[1]) else {
             invalid_points += 1;
             continue;
         };
@@ -125,10 +123,6 @@ fn parse_history_points_with_stats(raw: Option<&Value>) -> ParsedHistoryPoints {
         points: parsed,
         invalid_points,
     }
-}
-
-fn value_as_f64(value: &Value) -> Option<f64> {
-    parse_finite_json_number(value)
 }
 
 #[cfg(test)]

@@ -14,9 +14,9 @@ pub(in crate::ws::hydromancer) fn hydromancer_fill_items<'a>(
     }
 }
 
-pub(super) fn fill_address_and_details(fill_tuple: &Value) -> Option<(String, &Value)> {
+pub(super) fn fill_address_and_details(fill_tuple: &Value) -> Option<(&str, &Value)> {
     let fill = fill_tuple.as_array()?;
-    let address = fill.first()?.as_str()?.to_string();
+    let address = fill.first()?.as_str()?;
     let details = fill.get(1)?;
     Some((address, details))
 }

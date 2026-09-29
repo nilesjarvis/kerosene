@@ -1,23 +1,20 @@
-use crate::api::{CLIENT, KEROSENE_USER_AGENT};
+mod client;
+
+pub(crate) use client::{
+    fetch_x_auth_context, fetch_x_feed_page, fetch_x_lists, fetch_x_profile_image_bytes,
+    refresh_x_access_token,
+};
+
 use crate::app_state::{SensitiveString, sensitive_string};
 use crate::helpers::{fallback_initials, redact_sensitive_response_text};
-use crate::network_activity::HttpRequestExt as _;
-use chrono::{DateTime, Utc};
 use iced::widget::image::Handle as ImageHandle;
-use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::time::Duration;
 use zeroize::{Zeroize, Zeroizing};
 
-const X_API_BASE: &str = "https://api.x.com/2";
-const X_FEED_REQUEST_TIMEOUT: Duration = Duration::from_secs(6);
 pub(crate) const X_FEED_REFRESH_INTERVAL_SECS: u64 = 10;
 pub(crate) const X_FEED_POST_LIMIT: usize = 100;
-// Keep poll payloads small because X API usage is cost-sensitive.
-const X_FEED_FETCH_LIMIT: usize = 10;
-const X_PROFILE_IMAGE_MAX_BODY_BYTES: usize = 512 * 1024;
 pub(crate) const X_PROFILE_IMAGE_RETRY_BACKOFF_MS: u64 = 300_000;
 
 pub(crate) type XFeedId = u64;
@@ -535,30 +532,31 @@ impl XFeedState {
         &self,
     ) -> (Zeroizing<String>, Zeroizing<String>, Zeroizing<String>) {
         (
-            Zeroizing::new(self.access_token.trim().to_string()),
-            Zeroizing::new(self.oauth_client_id.trim().to_string()),
-            Zeroizing::new(self.refresh_token.trim().to_string()),
+            self.access_token_for_task(),
+            self.oauth_client_id_for_task(),
+            self.refresh_token_for_task(),
         )
     }
 
     pub(crate) fn access_token_candidate_from_input(&mut self) -> Option<Zeroizing<String>> {
-        let token = self.access_token_input.trim().to_string();
+        let token = self.access_token_input.trim();
         if token.is_empty() {
             self.status = Some(("Paste an X OAuth 2.0 user access token".to_string(), true));
             return None;
         }
 
+        let token = Zeroizing::new(token.to_string());
         self.pending_access_token.zeroize();
-        self.pending_access_token = sensitive_string(token.clone());
+        self.pending_access_token = token.clone().into();
         self.access_token_input.zeroize();
-        Some(Zeroizing::new(token))
+        Some(token)
     }
 
     pub(crate) fn refresh_credentials_candidate_from_input(
         &mut self,
     ) -> Option<(Zeroizing<String>, Zeroizing<String>)> {
-        let client_id = self.oauth_client_id_input.trim().to_string();
-        let refresh_token = self.refresh_token_input.trim().to_string();
+        let client_id = self.oauth_client_id_input.trim();
+        let refresh_token = self.refresh_token_input.trim();
         if client_id.is_empty() || refresh_token.is_empty() {
             self.status = Some((
                 "Paste both an X OAuth 2.0 Client ID and refresh token".to_string(),
@@ -567,24 +565,19 @@ impl XFeedState {
             return None;
         }
 
+        let client_id = Zeroizing::new(client_id.to_string());
+        let refresh_token = Zeroizing::new(refresh_token.to_string());
         self.pending_oauth_client_id.zeroize();
         self.pending_refresh_token.zeroize();
-        self.pending_oauth_client_id = sensitive_string(client_id.clone());
-        self.pending_refresh_token = sensitive_string(refresh_token.clone());
+        self.pending_oauth_client_id = client_id.clone().into();
+        self.pending_refresh_token = refresh_token.clone().into();
         self.oauth_client_id_input.zeroize();
         self.refresh_token_input.zeroize();
-        Some((Zeroizing::new(client_id), Zeroizing::new(refresh_token)))
+        Some((client_id, refresh_token))
     }
 
     pub(crate) fn commit_access_token(&mut self, token: &str) -> bool {
-        let changed = self.set_oauth_credentials_from_secret(token, "", "", None);
-        self.access_token_input.zeroize();
-        self.pending_access_token.zeroize();
-        self.oauth_client_id_input.zeroize();
-        self.refresh_token_input.zeroize();
-        self.pending_oauth_client_id.zeroize();
-        self.pending_refresh_token.zeroize();
-        changed
+        self.commit_oauth_credentials(token, "", "", None)
     }
 
     pub(crate) fn commit_oauth_credentials(
@@ -600,27 +593,26 @@ impl XFeedState {
             refresh_token,
             expires_at_ms,
         );
-        self.access_token_input.zeroize();
-        self.oauth_client_id_input.zeroize();
-        self.refresh_token_input.zeroize();
-        self.pending_access_token.zeroize();
-        self.pending_oauth_client_id.zeroize();
-        self.pending_refresh_token.zeroize();
+        self.clear_credential_inputs();
         changed
     }
 
     pub(crate) fn pending_access_token_for_secret(&self) -> Option<Zeroizing<String>> {
-        let token = self.pending_access_token.trim().to_string();
-        (!token.is_empty()).then(|| Zeroizing::new(token))
+        let token = self.pending_access_token.trim();
+        (!token.is_empty()).then(|| Zeroizing::new(token.to_string()))
     }
 
     pub(crate) fn pending_oauth_credentials_for_secret(
         &self,
     ) -> Option<(Zeroizing<String>, Zeroizing<String>)> {
-        let client_id = self.pending_oauth_client_id.trim().to_string();
-        let refresh_token = self.pending_refresh_token.trim().to_string();
-        (!client_id.is_empty() && !refresh_token.is_empty())
-            .then(|| (Zeroizing::new(client_id), Zeroizing::new(refresh_token)))
+        let client_id = self.pending_oauth_client_id.trim();
+        let refresh_token = self.pending_refresh_token.trim();
+        (!client_id.is_empty() && !refresh_token.is_empty()).then(|| {
+            (
+                Zeroizing::new(client_id.to_string()),
+                Zeroizing::new(refresh_token.to_string()),
+            )
+        })
     }
 
     pub(crate) fn clear_pending_access_token(&mut self) {
@@ -677,22 +669,28 @@ impl XFeedState {
         if !self.has_refresh_credentials() {
             return false;
         }
-        match self.access_token_expires_at_ms {
-            Some(expires_at_ms) => expires_at_ms.saturating_sub(now_ms) <= 60_000,
-            None => true,
-        }
+        !self.has_access_token()
+            || match self.access_token_expires_at_ms {
+                Some(expires_at_ms) => expires_at_ms.saturating_sub(now_ms) <= 60_000,
+                None => true,
+            }
     }
 
     pub(crate) fn clear_access_token(&mut self) {
+        self.clear_credential_inputs();
+        self.invalidate_requests();
+        self.set_oauth_credentials_from_secret("", "", "", None);
+        self.status = Some(("X token cleared".to_string(), false));
+    }
+
+    /// Erase both editable fields and pending login credentials.
+    fn clear_credential_inputs(&mut self) {
         self.access_token_input.zeroize();
         self.oauth_client_id_input.zeroize();
         self.refresh_token_input.zeroize();
         self.pending_access_token.zeroize();
         self.pending_oauth_client_id.zeroize();
         self.pending_refresh_token.zeroize();
-        self.invalidate_requests();
-        self.set_oauth_credentials_from_secret("", "", "", None);
-        self.status = Some(("X token cleared".to_string(), false));
     }
 
     pub(crate) fn invalidate_requests(&mut self) {
@@ -778,18 +776,13 @@ impl XFeedState {
     pub(crate) fn source_options(&self) -> Vec<XFeedSourceOption> {
         let mut options = vec![XFeedSourceOption::new(XFeedSource::Following)];
         let mut seen_lists = HashSet::new();
-        let mut lists = self.lists.clone();
-        lists.sort_by(|a, b| {
-            a.name
-                .to_ascii_lowercase()
-                .cmp(&b.name.to_ascii_lowercase())
-                .then_with(|| a.id.cmp(&b.id))
-        });
+        let mut lists = self.lists.iter().collect::<Vec<_>>();
+        lists.sort_by_cached_key(|list| (list.name.to_ascii_lowercase(), list.id.as_str()));
         for list in lists {
-            if seen_lists.insert(list.id.clone()) {
+            if seen_lists.insert(list.id.as_str()) {
                 options.push(XFeedSourceOption::new(XFeedSource::List {
-                    id: list.id,
-                    name: list.name,
+                    id: list.id.clone(),
+                    name: list.name.clone(),
                     private: list.private,
                 }));
             }
@@ -838,404 +831,12 @@ impl XFeedInstance {
         self.last_error = None;
     }
 
-    pub(crate) fn newest_seen_id(&self) -> Option<String> {
+    pub(crate) fn newest_seen_id(&self) -> Option<&str> {
         self.posts
             .iter()
-            .filter_map(|post| post.id.parse::<u64>().ok().map(|id| (id, post.id.clone())))
+            .filter_map(|post| post.id.parse::<u64>().ok().map(|id| (id, post.id.as_str())))
             .max_by_key(|(id, _)| *id)
             .map(|(_, id)| id)
-    }
-}
-
-pub(crate) async fn fetch_x_auth_context(
-    access_token: Zeroizing<String>,
-) -> Result<(XAuthenticatedUser, XListsFetchOutcome), String> {
-    let user = fetch_x_me(access_token.clone()).await?;
-    let lists = fetch_x_lists(access_token, user.id.clone()).await?;
-    Ok((user, lists))
-}
-
-pub(crate) async fn fetch_x_lists(
-    access_token: Zeroizing<String>,
-    user_id: String,
-) -> Result<XListsFetchOutcome, String> {
-    let mut lists = Vec::new();
-    let mut unavailable_sources = Vec::new();
-    let mut errors = Vec::new();
-    let mut successful_sources = 0;
-
-    for owner in [XListOwnerKind::Owned, XListOwnerKind::Followed] {
-        match fetch_x_list_page(&access_token, &user_id, owner).await {
-            Ok(page) => {
-                successful_sources += 1;
-                lists.extend(page);
-            }
-            Err(error) => {
-                unavailable_sources.push(owner);
-                errors.push(error);
-            }
-        }
-    }
-
-    if successful_sources == 0 {
-        return Err(errors.join("; "));
-    }
-
-    Ok(XListsFetchOutcome {
-        lists: dedup_x_lists(lists),
-        unavailable_sources,
-    })
-}
-
-pub(crate) async fn fetch_x_feed_page(
-    access_token: Zeroizing<String>,
-    user_id: String,
-    source: XFeedSource,
-    since_id: Option<String>,
-) -> Result<XFeedPage, XFeedRequestError> {
-    let url = match &source {
-        XFeedSource::Following => {
-            format!("{X_API_BASE}/users/{user_id}/timelines/reverse_chronological")
-        }
-        XFeedSource::List { id, .. } => format!("{X_API_BASE}/lists/{id}/tweets"),
-    };
-    let mut request = CLIENT
-        .get(url)
-        .bearer_auth(access_token.as_str())
-        .timeout(X_FEED_REQUEST_TIMEOUT)
-        .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .query(&[
-            ("max_results", X_FEED_FETCH_LIMIT.to_string()),
-            (
-                "tweet.fields",
-                "author_id,created_at,public_metrics,entities,referenced_tweets".to_string(),
-            ),
-            ("expansions", "author_id".to_string()),
-            (
-                "user.fields",
-                "username,name,verified,profile_image_url".to_string(),
-            ),
-        ]);
-    if source.supports_since_id()
-        && let Some(since_id) = since_id.filter(|id| !id.trim().is_empty())
-    {
-        request = request.query(&[("since_id", since_id)]);
-    }
-
-    let response = request
-        .send_observed()
-        .await
-        .map_err(|e| XFeedRequestError::new(format!("X feed request failed: {e}"), None))?;
-    let status = response.status();
-    let rate_limited_until_ms = x_response_rate_limited_until_ms(status.as_u16(), &response);
-    if !status.is_success() {
-        return Err(XFeedRequestError::new(
-            x_error_message("X feed request", status.as_u16(), response).await,
-            rate_limited_until_ms,
-        ));
-    }
-
-    let fetched_at_ms = crate::app_time::now_ms();
-    let response = response
-        .json::<XTimelineResponse>()
-        .await
-        .map_err(|e| XFeedRequestError::new(format!("X feed response was invalid: {e}"), None))?;
-    let mut page = page_from_timeline_response(source, response, fetched_at_ms);
-    page.rate_limited_until_ms = rate_limited_until_ms;
-    Ok(page)
-}
-
-pub(crate) async fn fetch_x_profile_image_bytes(image_url: String) -> Result<Vec<u8>, String> {
-    let response = CLIENT
-        .get(&image_url)
-        .timeout(X_FEED_REQUEST_TIMEOUT)
-        .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .send_observed()
-        .await
-        .map_err(|e| format!("X profile image request failed: {e}"))?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(format!("X profile image request failed with HTTP {status}"));
-    }
-    let content_type = response
-        .headers()
-        .get(CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_string);
-
-    let body = read_x_response_body_limited(response, X_PROFILE_IMAGE_MAX_BODY_BYTES).await?;
-    if !is_supported_x_profile_image(&body) {
-        let content_type = content_type.unwrap_or_else(|| "unknown content type".to_string());
-        return Err(format!(
-            "X profile image response was not a supported image: {content_type}"
-        ));
-    }
-
-    Ok(body)
-}
-
-pub(crate) async fn refresh_x_access_token(
-    oauth_client_id: Zeroizing<String>,
-    refresh_token: Zeroizing<String>,
-) -> Result<XOAuthTokenRefresh, String> {
-    let response = CLIENT
-        .post(format!("{X_API_BASE}/oauth2/token"))
-        .timeout(X_FEED_REQUEST_TIMEOUT)
-        .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .form(&[
-            ("grant_type", "refresh_token"),
-            ("client_id", oauth_client_id.as_str()),
-            ("refresh_token", refresh_token.as_str()),
-        ])
-        .send_observed()
-        .await
-        .map_err(|e| format!("X token refresh failed: {e}"))?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(x_error_message("X token refresh", status.as_u16(), response).await);
-    }
-
-    response
-        .json::<XOAuthTokenPayload>()
-        .await
-        .map(|payload| XOAuthTokenRefresh {
-            access_token: payload.access_token.into(),
-            refresh_token: payload.refresh_token.map(Into::into),
-            expires_in_secs: payload.expires_in,
-        })
-        .map_err(|e| format!("X token refresh response was invalid: {e}"))
-}
-
-fn is_supported_x_profile_image(bytes: &[u8]) -> bool {
-    bytes.starts_with(&[0xFF, 0xD8, 0xFF])
-        || bytes.starts_with(b"\x89PNG\r\n\x1A\n")
-        || bytes.starts_with(b"GIF87a")
-        || bytes.starts_with(b"GIF89a")
-        || (bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP")
-        || bytes.starts_with(b"BM")
-}
-
-async fn fetch_x_me(access_token: Zeroizing<String>) -> Result<XAuthenticatedUser, String> {
-    let response = CLIENT
-        .get(format!("{X_API_BASE}/users/me"))
-        .bearer_auth(access_token.as_str())
-        .timeout(X_FEED_REQUEST_TIMEOUT)
-        .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .query(&[("user.fields", "username,name,profile_image_url")])
-        .send_observed()
-        .await
-        .map_err(|e| format!("X auth check failed: {e}"))?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(x_error_message("X auth check", status.as_u16(), response).await);
-    }
-
-    response
-        .json::<XMeResponse>()
-        .await
-        .map(|response| XAuthenticatedUser {
-            id: response.data.id,
-            username: response.data.username,
-            name: response.data.name,
-        })
-        .map_err(|e| format!("X auth response was invalid: {e}"))
-}
-
-async fn fetch_x_list_page(
-    access_token: &Zeroizing<String>,
-    user_id: &str,
-    owner: XListOwnerKind,
-) -> Result<Vec<XListSummary>, String> {
-    let path = match owner {
-        XListOwnerKind::Owned => "owned_lists",
-        XListOwnerKind::Followed => "followed_lists",
-    };
-    let response = CLIENT
-        .get(format!("{X_API_BASE}/users/{user_id}/{path}"))
-        .bearer_auth(access_token.as_str())
-        .timeout(X_FEED_REQUEST_TIMEOUT)
-        .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .query(&[("max_results", "100"), ("list.fields", "name,private")])
-        .send_observed()
-        .await
-        .map_err(|e| format!("X list lookup failed: {e}"))?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(x_error_message("X list lookup", status.as_u16(), response).await);
-    }
-
-    let response = response
-        .json::<XListsResponse>()
-        .await
-        .map_err(|e| format!("X list response was invalid: {e}"))?;
-    Ok(response
-        .data
-        .unwrap_or_default()
-        .into_iter()
-        .map(|list| XListSummary {
-            id: list.id,
-            name: list.name,
-            private: list.private.unwrap_or(false),
-            owner,
-        })
-        .collect())
-}
-
-async fn x_error_message(operation: &str, status: u16, response: reqwest::Response) -> String {
-    let rate_hint = x_rate_limit_hint(&response);
-    let body = response.text().await.unwrap_or_default();
-    let body = redact_sensitive_response_text(&body);
-    if body.trim().is_empty() {
-        format!("{operation} returned HTTP {status}{rate_hint}")
-    } else {
-        format!("{operation} returned HTTP {status}{rate_hint}: {body}")
-    }
-}
-
-fn x_rate_limit_hint(response: &reqwest::Response) -> String {
-    let remaining = response
-        .headers()
-        .get("x-rate-limit-remaining")
-        .and_then(|value| value.to_str().ok());
-    let reset = response
-        .headers()
-        .get("x-rate-limit-reset")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<u64>().ok());
-
-    match (remaining, reset) {
-        (Some(remaining), Some(reset)) => format!(
-            " (rate remaining {remaining}, reset {})",
-            crate::helpers::format_timestamp(reset)
-        ),
-        (Some(remaining), None) => format!(" (rate remaining {remaining})"),
-        _ => String::new(),
-    }
-}
-
-fn x_response_rate_limited_until_ms(status: u16, response: &reqwest::Response) -> Option<u64> {
-    let remaining_is_zero = response
-        .headers()
-        .get("x-rate-limit-remaining")
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value == "0");
-    if status != 429 && !remaining_is_zero {
-        return None;
-    }
-
-    response
-        .headers()
-        .get("x-rate-limit-reset")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<u64>().ok())
-        .map(|reset_secs| reset_secs.saturating_mul(1_000))
-        .or_else(|| Some(crate::app_time::now_ms().saturating_add(60_000)))
-}
-
-fn dedup_x_lists(lists: Vec<XListSummary>) -> Vec<XListSummary> {
-    let mut seen = HashSet::new();
-    let mut output = Vec::new();
-    for list in lists {
-        if seen.insert(list.id.clone()) {
-            output.push(list);
-        }
-    }
-    output
-}
-
-async fn read_x_response_body_limited(
-    mut response: reqwest::Response,
-    max_body_bytes: usize,
-) -> Result<Vec<u8>, String> {
-    if response
-        .content_length()
-        .is_some_and(|len| len > max_body_bytes as u64)
-    {
-        return Err(format!(
-            "X profile image response was too large: more than {max_body_bytes} bytes"
-        ));
-    }
-
-    let mut body = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|e| format!("X profile image response read failed: {e}"))?
-    {
-        if body.len() + chunk.len() > max_body_bytes {
-            return Err(format!(
-                "X profile image response was too large: more than {max_body_bytes} bytes"
-            ));
-        }
-        body.extend_from_slice(&chunk);
-    }
-    Ok(body)
-}
-
-fn page_from_timeline_response(
-    source: XFeedSource,
-    response: XTimelineResponse,
-    fetched_at_ms: u64,
-) -> XFeedPage {
-    let authors = response
-        .includes
-        .map(|includes| includes.users.unwrap_or_default())
-        .unwrap_or_default()
-        .into_iter()
-        .map(|user| (user.id.clone(), user))
-        .collect::<HashMap<_, _>>();
-
-    let posts = response
-        .data
-        .unwrap_or_default()
-        .into_iter()
-        .map(|tweet| post_from_tweet(tweet, &authors, fetched_at_ms))
-        .collect();
-
-    XFeedPage {
-        source,
-        posts,
-        newest_id: response.meta.and_then(|meta| meta.newest_id),
-        rate_limited_until_ms: None,
-    }
-}
-
-fn post_from_tweet(
-    tweet: XTweetPayload,
-    authors: &HashMap<String, XUserPayload>,
-    fetched_at_ms: u64,
-) -> XFeedPost {
-    let author = tweet
-        .author_id
-        .as_ref()
-        .and_then(|author_id| authors.get(author_id));
-    let author_username = author
-        .map(|author| author.username.clone())
-        .unwrap_or_else(|| {
-            tweet
-                .author_id
-                .clone()
-                .unwrap_or_else(|| "unknown".to_string())
-        });
-    let author_name = author
-        .map(|author| author.name.clone())
-        .unwrap_or_else(|| author_username.clone());
-    let created_at_ms = tweet
-        .created_at
-        .as_deref()
-        .and_then(parse_x_timestamp_ms)
-        .unwrap_or(fetched_at_ms);
-
-    XFeedPost {
-        url: format!("https://x.com/{author_username}/status/{}", tweet.id),
-        id: tweet.id,
-        author_id: tweet.author_id,
-        author_name,
-        author_username,
-        author_profile_image_url: author.and_then(|author| author.profile_image_url.clone()),
-        text: tweet.text,
-        created_at_ms,
-        received_at_ms: fetched_at_ms,
     }
 }
 
@@ -1247,222 +848,5 @@ fn x_author_profile_key(author_id: Option<&str>, username: &str) -> String {
         .unwrap_or_else(|| format!("username:{}", username.to_ascii_lowercase()))
 }
 
-fn parse_x_timestamp_ms(value: &str) -> Option<u64> {
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc).timestamp_millis())
-        .and_then(|ms| u64::try_from(ms).ok())
-}
-
-#[derive(Debug, Deserialize)]
-struct XMeResponse {
-    data: XUserPayload,
-}
-
-#[derive(Debug, Deserialize)]
-struct XListsResponse {
-    data: Option<Vec<XListPayload>>,
-}
-
-#[derive(Deserialize)]
-struct XOAuthTokenPayload {
-    access_token: String,
-    #[serde(default)]
-    refresh_token: Option<String>,
-    #[serde(default)]
-    expires_in: Option<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct XListPayload {
-    id: String,
-    name: String,
-    private: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
-struct XTimelineResponse {
-    data: Option<Vec<XTweetPayload>>,
-    includes: Option<XTimelineIncludes>,
-    meta: Option<XTimelineMeta>,
-}
-
-#[derive(Debug, Deserialize)]
-struct XTimelineIncludes {
-    users: Option<Vec<XUserPayload>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct XTimelineMeta {
-    newest_id: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct XTweetPayload {
-    id: String,
-    text: String,
-    author_id: Option<String>,
-    created_at: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct XUserPayload {
-    id: String,
-    username: String,
-    name: String,
-    profile_image_url: Option<String>,
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn x_feed_state_debug_redacts_tokens_and_status() {
-        let mut state = XFeedState::new(&[], "", "", "");
-        state.access_token_input = sensitive_string("token-input");
-        state.oauth_client_id_input = sensitive_string("client-input");
-        state.refresh_token_input = sensitive_string("refresh-input");
-        state.access_token = sensitive_string("saved-token");
-        state.oauth_client_id = sensitive_string("saved-client");
-        state.refresh_token = sensitive_string("saved-refresh");
-        state.status = Some(("auth_token=token-input failed".to_string(), true));
-
-        let rendered = format!("{state:?}");
-
-        assert!(!rendered.contains("token-input"));
-        assert!(!rendered.contains("client-input"));
-        assert!(!rendered.contains("refresh-input"));
-        assert!(!rendered.contains("saved-token"));
-        assert!(!rendered.contains("saved-client"));
-        assert!(!rendered.contains("saved-refresh"));
-        assert!(rendered.contains("<redacted>"));
-    }
-
-    #[test]
-    fn direct_access_token_commit_clears_refresh_credentials() {
-        let mut state = XFeedState::new(&[], "old-access", "old-client", "old-refresh");
-        state.token_refreshing = true;
-        let previous_refresh_request_id = state.token_refresh_request_id;
-
-        assert!(state.commit_access_token("new-access"));
-
-        let (access_token, client_id, refresh_token) = state.oauth_credentials_for_secret();
-        assert_eq!(access_token.as_str(), "new-access");
-        assert_eq!(client_id.as_str(), "");
-        assert_eq!(refresh_token.as_str(), "");
-        assert!(!state.has_refresh_credentials());
-        assert!(!state.token_refreshing);
-        assert!(state.token_refresh_request_id > previous_refresh_request_id);
-    }
-
-    #[test]
-    fn clear_access_token_invalidates_pending_refresh_request() {
-        let mut state = XFeedState::new(&[], "", "", "");
-        state.pending_oauth_client_id = sensitive_string("pending-client");
-        state.pending_refresh_token = sensitive_string("pending-refresh");
-        state.token_refreshing = true;
-        let previous_refresh_request_id = state.token_refresh_request_id;
-
-        state.clear_access_token();
-
-        let (access_token, client_id, refresh_token) = state.oauth_credentials_for_secret();
-        assert_eq!(access_token.as_str(), "");
-        assert_eq!(client_id.as_str(), "");
-        assert_eq!(refresh_token.as_str(), "");
-        assert!(state.pending_oauth_credentials_for_secret().is_none());
-        assert!(!state.token_refreshing);
-        assert!(state.token_refresh_request_id > previous_refresh_request_id);
-    }
-
-    #[test]
-    fn x_feed_instance_dedupes_and_sorts_posts() {
-        let mut instance = XFeedInstance::new(0, XFeedSource::Following);
-        let page = XFeedPage {
-            source: XFeedSource::Following,
-            posts: vec![
-                test_post("1", 1_000),
-                test_post("2", 2_000),
-                test_post("1", 1_000),
-            ],
-            newest_id: Some("2".to_string()),
-            rate_limited_until_ms: None,
-        };
-
-        instance.apply_page(&page, 3_000);
-
-        assert_eq!(instance.posts.len(), 2);
-        assert_eq!(instance.posts[0].id, "2");
-        assert_eq!(instance.newest_seen_id().as_deref(), Some("2"));
-    }
-
-    #[test]
-    fn x_feed_source_options_dedupe_lists() {
-        let mut state = XFeedState::new(&[], "", "", "");
-        state.lists = vec![
-            XListSummary {
-                id: "10".to_string(),
-                name: "Macro".to_string(),
-                private: false,
-                owner: XListOwnerKind::Owned,
-            },
-            XListSummary {
-                id: "10".to_string(),
-                name: "Macro copy".to_string(),
-                private: false,
-                owner: XListOwnerKind::Followed,
-            },
-        ];
-
-        let options = state.source_options();
-
-        assert_eq!(options.len(), 2);
-        assert!(matches!(options[0].source, XFeedSource::Following));
-        assert_eq!(options[1].source.key(), "list:10");
-    }
-
-    #[test]
-    fn timeline_response_carries_author_profile_image_urls() {
-        let page = page_from_timeline_response(
-            XFeedSource::Following,
-            XTimelineResponse {
-                data: Some(vec![XTweetPayload {
-                    id: "99".to_string(),
-                    text: "hello".to_string(),
-                    author_id: Some("42".to_string()),
-                    created_at: Some("2026-06-30T12:00:00.000Z".to_string()),
-                }]),
-                includes: Some(XTimelineIncludes {
-                    users: Some(vec![XUserPayload {
-                        id: "42".to_string(),
-                        username: "alice".to_string(),
-                        name: "Alice".to_string(),
-                        profile_image_url: Some("https://example.com/alice.jpg".to_string()),
-                    }]),
-                }),
-                meta: None,
-            },
-            1_000,
-        );
-
-        assert_eq!(
-            page.posts[0].author_profile_image_url.as_deref(),
-            Some("https://example.com/alice.jpg")
-        );
-        assert_eq!(page.posts[0].author_profile_key(), "id:42");
-    }
-
-    fn test_post(id: &str, created_at_ms: u64) -> XFeedPost {
-        XFeedPost {
-            id: id.to_string(),
-            author_id: Some("42".to_string()),
-            author_name: "Alice".to_string(),
-            author_username: "alice".to_string(),
-            author_profile_image_url: Some("https://example.com/alice.jpg".to_string()),
-            text: "hello".to_string(),
-            created_at_ms,
-            received_at_ms: created_at_ms,
-            url: format!("https://x.com/alice/status/{id}"),
-        }
-    }
-}
+mod tests;

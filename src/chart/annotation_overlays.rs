@@ -18,6 +18,9 @@ use crate::helpers::format_price;
 use iced::widget::canvas;
 use iced::{Color, Point, Size, Theme, alignment};
 
+#[cfg(test)]
+mod tests;
+
 // ---------------------------------------------------------------------------
 // Annotation Overlays
 // ---------------------------------------------------------------------------
@@ -74,8 +77,8 @@ impl CandlestickChart {
 
         // In-progress drag copy is rendered at its live position and treated as
         // selected so the handles track the cursor.
-        if let Some(live) = ctx.state.drag_annotation.clone() {
-            self.render_annotation(ctx, &live, None, true);
+        if let Some(live) = ctx.state.drag_annotation.as_ref() {
+            self.render_annotation(ctx, live, None, true);
         }
 
         self.draw_annotation_handles(ctx);
@@ -521,18 +524,14 @@ impl CandlestickChart {
         }
 
         // Horizontal extent: from the leftmost anchor to the right edge.
-        let mut anchor_xs = Vec::with_capacity(points.len());
+        let mut x_left = f32::INFINITY;
         for point in points {
             let Some(x) = self.timestamp_to_x(point.0, ctx.state, ctx.chart_w) else {
                 return;
             };
-            anchor_xs.push(x);
+            x_left = x_left.min(x);
         }
-        let x_left = anchor_xs
-            .iter()
-            .cloned()
-            .fold(f32::INFINITY, f32::min)
-            .max(0.0);
+        let x_left = x_left.max(0.0);
         if x_left > ctx.chart_w {
             return;
         }
@@ -623,13 +622,13 @@ impl CandlestickChart {
     where
         PriceToY: Fn(f64) -> f32,
     {
-        let target = ctx.state.drag_annotation.clone().or_else(|| {
+        let target = ctx.state.drag_annotation.as_ref().or_else(|| {
             if self.active_tool != Some(DrawingTool::Select) {
                 return None;
             }
             ctx.state
                 .selected_annotation
-                .and_then(|id| self.annotations.iter().find(|ann| ann.id == id).cloned())
+                .and_then(|id| self.annotations.iter().find(|ann| ann.id == id))
         });
         let Some(target) = target else {
             return;
@@ -871,60 +870,5 @@ fn format_compact_duration(ms: u64) -> String {
         format!("{}m", ms / MIN)
     } else {
         format!("{}s", ms / SEC)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pen_path_clips_crossings_and_does_not_join_offscreen_excursions() {
-        let points = [
-            Point::new(10.0, 20.0),
-            Point::new(120.0, 20.0),
-            Point::new(120.0, 80.0),
-            Point::new(10.0, 80.0),
-            Point::new(40.0, 50.0),
-        ];
-        let path = clipped_pen_path(points.into_iter().map(Some), 100.0, 100.0);
-        assert_eq!(path.len(), 5);
-        assert_eq!(path[1].point, Point::new(100.0, 20.0));
-        assert_eq!(path[2].point, Point::new(100.0, 80.0));
-        assert!(path[0].starts_segment);
-        assert!(path[2].starts_segment);
-        assert!(!path[4].starts_segment);
-        assert!(
-            path.iter()
-                .all(|p| (0.0..=100.0).contains(&p.point.x) && (0.0..=100.0).contains(&p.point.y))
-        );
-    }
-
-    #[test]
-    fn pen_path_keeps_connected_corners_and_breaks_at_missing_coordinates() {
-        let a = Point::new(10.0, 20.0);
-        let b = Point::new(40.0, 80.0);
-        let c = Point::new(20.0, 50.0);
-        let path = clipped_pen_path(
-            [Some(a), Some(b), Some(c), None, Some(a), Some(c)].into_iter(),
-            100.0,
-            100.0,
-        );
-        assert_eq!(path.iter().filter(|p| p.starts_segment).count(), 2);
-        assert_eq!(
-            path.iter().map(|p| p.point).collect::<Vec<_>>(),
-            vec![a, b, c, a, c]
-        );
-    }
-
-    #[test]
-    fn pen_path_keeps_fractional_corners_connected_after_clipping_roundoff() {
-        let points = [
-            Point::new(90.12345, 80.65432),
-            Point::new(0.12345, 0.65432),
-            Point::new(70.56789, 60.12345),
-        ];
-        let path = clipped_pen_path(points.into_iter().map(Some), 100.0, 100.0);
-        assert_eq!(path.iter().filter(|point| point.starts_segment).count(), 1);
     }
 }

@@ -1,8 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::message::Message;
-use crate::pane_state::PaneKind;
-use crate::positioning_state::{PositioningInfoId, PositioningInfoInstance};
+use crate::positioning_state::PositioningInfoInstance;
 use iced::Task;
 
 // ---------------------------------------------------------------------------
@@ -20,39 +19,12 @@ impl TradingTerminal {
 
         for config in &layout.positioning_infos {
             let symbol = self.retained_positioning_symbol(&config.symbol);
-            let mut instance = PositioningInfoInstance::new(config.id, symbol);
-            instance.page = config.page;
-            instance.side = config.side;
-            instance.sort_field = config.sort_field;
-            instance.sort_direction = config.sort_direction;
-            instance.entry_min_input = config.entry_min.clone();
-            instance.entry_max_input = config.entry_max.clone();
-            instance.change_timeframe = config.change_timeframe;
-            instance.change_sort_field = config.change_sort_field;
-            instance.change_sort_direction = config.change_sort_direction;
-            instance.normalize_removed_filters();
+            let instance = PositioningInfoInstance::from_config(config, symbol);
             self.positioning_infos.insert(config.id, instance);
             self.next_positioning_info_id = self.next_positioning_info_id.max(config.id + 1);
         }
 
-        let pane_ids: Vec<PositioningInfoId> = self
-            .workspace_pane_kinds()
-            .filter_map(|(_, _, kind)| {
-                if let PaneKind::PositioningInfo(id) = kind {
-                    Some(*id)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        for id in pane_ids {
-            if !self.positioning_infos.contains_key(&id) {
-                let symbol = self.visible_positioning_symbol("");
-                self.positioning_infos
-                    .insert(id, PositioningInfoInstance::new(id, symbol));
-                self.next_positioning_info_id = self.next_positioning_info_id.max(id + 1);
-            }
-        }
+        self.ensure_positioning_info_pane_instances();
 
         self.request_positioning_info_refresh_all(false)
     }

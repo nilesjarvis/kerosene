@@ -27,6 +27,13 @@ where
     pub(super) is_muted: F,
 }
 
+struct RankedSymbol {
+    index: usize,
+    favourite_rank: Option<usize>,
+    relevance: u8,
+    volume: Option<f64>,
+}
+
 pub(super) fn filtered_symbol_search_indices<F>(
     input: SymbolSearchResultsInput<'_, F>,
 ) -> (Vec<usize>, usize)
@@ -34,7 +41,11 @@ where
     F: Fn(&ExchangeSymbol) -> bool,
 {
     let query = input.query.to_lowercase();
-    let mut indices: Vec<usize> = input
+    let mut favourite_ranks = HashMap::new();
+    for (rank, key) in input.favourite_symbols.iter().enumerate() {
+        favourite_ranks.entry(key.as_str()).or_insert(rank);
+    }
+    let mut ranked: Vec<RankedSymbol> = input
         .symbols
         .iter()
         .enumerate()
@@ -43,57 +54,72 @@ where
         })
         .filter(|(_, symbol)| !(input.is_muted)(symbol))
         .filter(|(_, symbol)| symbol_search_query_matches(symbol, &query))
-        .map(|(index, _)| index)
+        .map(|(index, symbol)| {
+            let favourite_rank = favourite_ranks.get(symbol.key.as_str()).copied();
+            // Favourites use only their saved order. Other rows compute each
+            // ranking value once, and only when the selected sort needs it.
+            let relevance = if favourite_rank.is_none()
+                && input.sort_mode != SymbolSearchSortMode::Alphabetical
+            {
+                symbol_search_score(symbol, &query)
+            } else {
+                0
+            };
+            let volume =
+                if favourite_rank.is_none() && input.sort_mode == SymbolSearchSortMode::Volume24h {
+                    symbol_search_volume(input.contexts, symbol)
+                } else {
+                    None
+                };
+            RankedSymbol {
+                index,
+                favourite_rank,
+                relevance,
+                volume,
+            }
+        })
         .collect();
 
-    indices.sort_by(|a_index, b_index| {
-        let a = &input.symbols[*a_index];
-        let b = &input.symbols[*b_index];
-        let a_fav = input.favourite_symbols.iter().position(|key| key == &a.key);
-        let b_fav = input.favourite_symbols.iter().position(|key| key == &b.key);
-
-        match (a_fav, b_fav) {
+    ranked.sort_by(|a, b| {
+        match (a.favourite_rank, b.favourite_rank) {
             (Some(ai), Some(bi)) => return ai.cmp(&bi),
             (Some(_), None) => return std::cmp::Ordering::Less,
             (None, Some(_)) => return std::cmp::Ordering::Greater,
             (None, None) => {}
         }
 
-        let fallback = || symbol_search_fallback_order(a, b, &query);
+        let a_symbol = &input.symbols[a.index];
+        let b_symbol = &input.symbols[b.index];
+        let alphabetical = || {
+            a_symbol
+                .ticker
+                .cmp(&b_symbol.ticker)
+                .then_with(|| compare_symbol_keys_for_same_ticker(&a_symbol.key, &b_symbol.key))
+        };
+        let fallback = || a.relevance.cmp(&b.relevance).then_with(alphabetical);
         match input.sort_mode {
             SymbolSearchSortMode::Relevance => fallback(),
-            SymbolSearchSortMode::Alphabetical => a
-                .ticker
-                .cmp(&b.ticker)
-                .then_with(|| compare_symbol_keys_for_same_ticker(&a.key, &b.key)),
-            SymbolSearchSortMode::Exchange => symbol_search_exchange_rank(a)
-                .cmp(&symbol_search_exchange_rank(b))
+            SymbolSearchSortMode::Alphabetical => alphabetical(),
+            SymbolSearchSortMode::Exchange => symbol_search_exchange_rank(a_symbol)
+                .cmp(&symbol_search_exchange_rank(b_symbol))
                 .then_with(fallback),
-            SymbolSearchSortMode::Volume24h => {
-                match (
-                    symbol_search_volume(input.contexts, a),
-                    symbol_search_volume(input.contexts, b),
-                ) {
-                    (Some(a_volume), Some(b_volume)) => b_volume
-                        .partial_cmp(&a_volume)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                        .then_with(fallback),
-                    (Some(_), None) => std::cmp::Ordering::Less,
-                    (None, Some(_)) => std::cmp::Ordering::Greater,
-                    (None, None) => fallback(),
-                }
-            }
+            SymbolSearchSortMode::Volume24h => match (a.volume, b.volume) {
+                (Some(a_volume), Some(b_volume)) => b_volume
+                    .partial_cmp(&a_volume)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(fallback),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => fallback(),
+            },
         }
     });
 
-    let favourite_count = indices
+    let favourite_count = ranked
         .iter()
-        .filter(|index| {
-            input
-                .favourite_symbols
-                .contains(&input.symbols[**index].key)
-        })
+        .take_while(|symbol| symbol.favourite_rank.is_some())
         .count();
+    let indices = ranked.into_iter().map(|symbol| symbol.index).collect();
     (indices, favourite_count)
 }
 
@@ -110,21 +136,6 @@ fn symbol_search_query_matches(sym: &ExchangeSymbol, query: &str) -> bool {
             .iter()
             .any(|kw| kw.to_lowercase().contains(query))
         || sym.key.to_lowercase().contains(query)
-}
-
-fn symbol_search_fallback_order(
-    a: &ExchangeSymbol,
-    b: &ExchangeSymbol,
-    query: &str,
-) -> std::cmp::Ordering {
-    let score_order = symbol_search_score(a, query).cmp(&symbol_search_score(b, query));
-    if score_order != std::cmp::Ordering::Equal {
-        score_order
-    } else {
-        a.ticker
-            .cmp(&b.ticker)
-            .then_with(|| compare_symbol_keys_for_same_ticker(&a.key, &b.key))
-    }
 }
 
 fn symbol_search_score(sym: &ExchangeSymbol, query: &str) -> u8 {

@@ -13,6 +13,9 @@ mod snapshots;
 mod widget_configs;
 mod x_feeds;
 
+#[cfg(test)]
+mod tests;
+
 pub(crate) use widget_configs::LayoutWidgetConfigs;
 
 // ---------------------------------------------------------------------------

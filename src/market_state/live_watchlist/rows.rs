@@ -17,30 +17,41 @@ mod tests;
 impl TradingTerminal {
     pub(crate) fn refresh_live_watchlist_row_caches(&mut self) {
         let ids: Vec<LiveWatchlistId> = self.live_watchlists.keys().copied().collect();
-        for id in ids {
-            self.refresh_live_watchlist_row_cache(id);
-        }
+        self.refresh_live_watchlist_row_caches_for(&ids);
     }
 
     pub(crate) fn refresh_live_watchlist_row_cache(&mut self, id: LiveWatchlistId) {
-        let Some(watchlist) = self.live_watchlists.get(&id) else {
+        if self.live_watchlists.contains_key(&id) {
+            self.refresh_live_watchlist_row_caches_for(&[id]);
+        }
+    }
+
+    fn refresh_live_watchlist_row_caches_for(&mut self, ids: &[LiveWatchlistId]) {
+        if ids.is_empty() {
             return;
-        };
-        let rows = self.live_watchlist_rows_for(watchlist);
-        if let Some(watchlist) = self.live_watchlists.get_mut(&id) {
-            watchlist.row_cache = rows;
+        }
+        // Share one borrowed metadata index across every pane in this refresh.
+        let symbols_by_key: HashMap<&str, &ExchangeSymbol> = self
+            .exchange_symbols
+            .iter()
+            .map(|symbol| (symbol.key.as_str(), symbol))
+            .collect();
+        for id in ids {
+            let Some(watchlist) = self.live_watchlists.get(id) else {
+                continue;
+            };
+            let rows = self.live_watchlist_rows_for(watchlist, &symbols_by_key);
+            if let Some(watchlist) = self.live_watchlists.get_mut(id) {
+                watchlist.row_cache = rows;
+            }
         }
     }
 
     fn live_watchlist_rows_for(
         &self,
         watchlist: &LiveWatchlistInstance,
+        symbols_by_key: &HashMap<&str, &ExchangeSymbol>,
     ) -> Vec<LiveWatchlistRowData> {
-        let symbols_by_key: HashMap<&str, &ExchangeSymbol> = self
-            .exchange_symbols
-            .iter()
-            .map(|symbol| (symbol.key.as_str(), symbol))
-            .collect();
         let mut rows = Vec::with_capacity(watchlist.symbols.len());
         let now_ms = Self::now_ms();
 
@@ -56,13 +67,7 @@ impl TradingTerminal {
                 .map(Self::exchange_symbol_display_name)
                 .unwrap_or_else(|| self.display_name_for_symbol(sym_key));
             let mid_px = self.resolve_mid_for_symbol(sym_key);
-            let ctx = self.live_watchlist_ctxs.get(sym_key).or_else(|| {
-                sym_meta.and_then(|symbol| {
-                    (symbol.key == symbol.ticker)
-                        .then(|| self.live_watchlist_ctxs.get(&symbol.ticker))
-                        .flatten()
-                })
-            });
+            let ctx = self.live_watchlist_ctxs.get(sym_key);
             let prev_px = ctx.and_then(|ctx| ctx.prev_day_px);
             let funding = ctx.and_then(|ctx| ctx.funding);
             let (px_5m, px_30m, px_1h) = self
