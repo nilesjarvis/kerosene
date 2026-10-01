@@ -13,7 +13,7 @@ data, screenshots, and comparison charts.
 | Chart update flow | `src/chart_update/` | Candle loads, timeframe changes, websocket updates, editor, detached charts, earnings, macro indicators, HUD. |
 | Chart views | `src/chart_views/` | Header, toolbar, editor, indicator menu, canvas surface composition. |
 | Canvas engine | `src/chart/` | `CandlestickChart`, canvas program, data model, geometry, viewport, interaction, overlays, drawing layers. |
-| Screenshots | `src/chart_screenshot/` | Screenshot UI, capture bounds, bitmap primitives, labels, PNG export. |
+| Screenshots | `src/chart_screenshot/` | Screenshot UI, canvas snapshots, offscreen rendering, PNG export. |
 | Spaghetti charts | `src/spaghetti_state.rs`, `src/spaghetti/`, `src/spaghetti_update/`, `src/spaghetti_views/` | Normalized comparison and pair-ratio charts. |
 | Spread chart | `src/spread_chart/` | Compact order-book spread history canvas. |
 
@@ -504,18 +504,30 @@ grid.
 
 ## Chart Screenshots
 
-`chart_screenshot/` exports a chart to PNG. It handles:
+`chart_screenshot/` exports the visible chart canvas to PNG. The camera action
+freezes chart data, theme, privacy settings, and the capture timestamp. A thin
+`ScreenshotCanvas` wrapper exposes the clicked surface's actual widget-local
+`ChartState` and current logical size through a read-only iced operation. The
+operation finishes before opening/focusing the preview window. Docked and
+detached surfaces have separate IDs; a missing surface produces an error rather
+than falling back to another chart or a cached heatmap viewport.
 
-- screenshot menu and settings
-- chart bounds and sizing
-- offscreen capture model
-- bitmap primitives and glyphs
-- optional labels
-- file save/copy behavior
-- privacy-sensitive display flags
+Rendering uses the same chart drawing code at the **original logical size**.
+Only the offscreen renderer's pixel density increases: normally 3×, with at least
+1920 pixels on the longest edge for small panes, subject to an 8192-pixel edge
+and 12,582,912-pixel area limit. Fractional bounds are retained until final pixel
+rounding, and oversized sources also obey the limits. This preserves candle
+spacing, pan/zoom, blank space, inverted/manual price scales, funding/session
+panel proportions, annotations, and indicator geometry across resolutions.
+The snapshot retains the reset epoch and HUD price-follow state, so export uses
+the same effective view as the live canvas after symbol/timeframe resets.
 
-Screenshot settings are persisted, but generated images are output artifacts
-and should not include secrets.
+Pointer/drag affordances and widget menus are omitted. There is no extra ticker
+badge painted over candles; symbol/timeframe remain in preview metadata and the
+filename. The existing position-price and positions/orders privacy flags apply
+only to the frozen export, and remain persisted with compatible defaults.
+Copy Image and Save PNG use the same rendered pixels shown in the preview.
+Late results from a closed or superseded request are ignored.
 
 ## Spaghetti Charts
 

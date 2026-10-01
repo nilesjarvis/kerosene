@@ -205,6 +205,10 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::ChartScreenshot,
     );
     assert_route(
+        Message::ChartScreenshotCaptured(3, 7, Err("renderer unavailable".to_string())),
+        UpdateRoute::ChartScreenshot,
+    );
+    assert_route(
         Message::ToggleChartScreenshotObscurePositionEntry(true),
         UpdateRoute::ChartScreenshot,
     );

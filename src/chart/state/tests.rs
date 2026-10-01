@@ -1,6 +1,6 @@
 use super::ChartState;
 use crate::api::Candle;
-use crate::chart::{CANDLE_GAP_RATIO, CandlestickChart, ChartViewport, PRICE_AXIS_WIDTH};
+use crate::chart::{CANDLE_GAP_RATIO, CandlestickChart, PRICE_AXIS_WIDTH};
 
 mod export;
 mod reset;

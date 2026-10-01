@@ -5,15 +5,15 @@ use std::sync::Arc;
 
 mod bitmap;
 mod capture;
-mod label;
 mod update;
 mod view;
+mod widget;
+
+pub(crate) use widget::ScreenshotCanvas;
 
 pub(crate) use bitmap::encode_png_rgba;
 #[cfg(test)]
 use capture::*;
-#[cfg(test)]
-use label::*;
 #[cfg(test)]
 use update::chart_for_screenshot_export;
 

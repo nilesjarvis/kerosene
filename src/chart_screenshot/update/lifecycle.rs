@@ -27,15 +27,4 @@ impl TradingTerminal {
 
         Task::batch([open_task.map(Message::WindowOpened), task])
     }
-
-    pub(super) fn finish_chart_screenshot_error(&mut self, request_id: u64, err: String) {
-        if self.chart_screenshot_pending_request_id != Some(request_id) {
-            return;
-        }
-
-        self.chart_screenshot_pending_request_id = None;
-        self.chart_screenshot_capture_in_progress = false;
-        self.chart_screenshot_error = Some(err.clone());
-        self.push_toast(err, true);
-    }
 }

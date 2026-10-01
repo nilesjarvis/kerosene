@@ -2,14 +2,13 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
-use self::bounds::FindWidgetBounds;
 use super::capture::{
     copy_chart_screenshot_to_clipboard, render_chart_screenshot, save_chart_screenshot_png,
 };
+use super::widget::CaptureChartCanvas;
 
 use iced::{Task, window};
 
-mod bounds;
 mod lifecycle;
 mod request;
 #[cfg(test)]
@@ -65,6 +64,8 @@ impl TradingTerminal {
                     return Task::none();
                 }
 
+                // Freeze model, privacy settings, theme and timestamp at the click.
+                let mut request = Some(self.chart_screenshot_render_request(instance));
                 self.chart_screenshot_next_request_id =
                     self.chart_screenshot_next_request_id.saturating_add(1);
                 let request_id = self.chart_screenshot_next_request_id;
@@ -74,42 +75,27 @@ impl TradingTerminal {
                 self.chart_screenshot = None;
 
                 let target = Self::chart_screenshot_canvas_id(surface_id);
-                let bounds_task = iced::advanced::widget::operate(FindWidgetBounds::new(target))
-                    .map(move |bounds| {
-                        Message::ChartScreenshotBoundsResolved(
-                            request_id, chart_id, surface_id, bounds,
-                        )
-                    });
-                return self.open_or_focus_chart_screenshot_window(bounds_task);
-            }
-            Message::ChartScreenshotBoundsResolved(
-                request_id,
-                chart_id,
-                surface_id,
-                Some(bounds),
-            ) => {
-                if self.chart_screenshot_pending_request_id != Some(request_id) {
-                    return Task::none();
-                }
-
-                let Some(instance) = self.charts.get(&chart_id) else {
-                    self.finish_chart_screenshot_error(
-                        request_id,
-                        "Chart screenshot unavailable: chart not found".to_string(),
-                    );
-                    return Task::none();
-                };
-
-                let request = self.chart_screenshot_render_request(instance, surface_id, bounds);
-
-                return Task::perform(render_chart_screenshot(request), move |result| {
-                    Message::ChartScreenshotCaptured(request_id, chart_id, result)
-                });
-            }
-            Message::ChartScreenshotBoundsResolved(request_id, _, _, None) => {
-                self.finish_chart_screenshot_error(
-                    request_id,
-                    "Chart screenshot unavailable: chart area was not visible".to_string(),
+                let mut open_preview =
+                    Some(self.open_or_focus_chart_screenshot_window(Task::none()));
+                return iced::advanced::widget::operate(CaptureChartCanvas::new(target)).then(
+                    move |snapshot| {
+                        // A widget operation resolves once. Secure the canvas state
+                        // before opening/focusing another window or awaiting rendering.
+                        let Some(request) = request.take() else {
+                            return Task::none();
+                        };
+                        let capture = Task::perform(
+                            async move {
+                                let snapshot = snapshot
+                                    .ok_or_else(|| "chart area was not visible".to_string())?;
+                                render_chart_screenshot(request, snapshot).await
+                            },
+                            move |result| {
+                                Message::ChartScreenshotCaptured(request_id, chart_id, result)
+                            },
+                        );
+                        Task::batch([open_preview.take().unwrap_or_else(Task::none), capture])
+                    },
                 );
             }
             Message::ChartScreenshotCaptured(request_id, _chart_id, result) => {
@@ -199,7 +185,61 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::Candle;
+    use crate::chart_state::ChartInstance;
     use crate::config::KeroseneConfig;
+    use crate::timeframe::Timeframe;
+
+    #[test]
+    fn chart_screenshot_ignores_cancelled_and_superseded_results() {
+        for pending in [None, Some(9)] {
+            let (mut terminal, _task) =
+                TradingTerminal::boot_from_config(KeroseneConfig::default());
+            terminal.chart_screenshot_pending_request_id = pending;
+            terminal.chart_screenshot_capture_in_progress = pending.is_some();
+            let toast_count = terminal.toasts.len();
+
+            let _task = terminal.update_chart_screenshot(Message::ChartScreenshotCaptured(
+                8,
+                1,
+                Err("stale render failure".to_string()),
+            ));
+
+            assert_eq!(terminal.chart_screenshot_pending_request_id, pending);
+            assert_eq!(
+                terminal.chart_screenshot_capture_in_progress,
+                pending.is_some()
+            );
+            assert!(terminal.chart_screenshot.is_none());
+            assert!(terminal.chart_screenshot_error.is_none());
+            assert_eq!(terminal.toasts.len(), toast_count);
+        }
+    }
+
+    #[test]
+    fn chart_screenshot_request_freezes_data_and_privacy_at_click() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let mut instance = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        instance.chart.candles.push(Candle::test_ohlcv(
+            0,
+            59_999,
+            [100.0, 110.0, 90.0, 105.0],
+            1000.0,
+        ));
+        instance.chart.request_view_reset();
+        terminal.chart_screenshot_settings.hide_positions_and_orders = true;
+        let request = terminal.chart_screenshot_render_request(&instance);
+
+        instance.chart.candles[0].close = 106.0;
+        instance.chart.request_view_reset();
+        instance.symbol_display = "ETH".to_string();
+        terminal.chart_screenshot_settings.hide_positions_and_orders = false;
+
+        assert_eq!(request.symbol, "BTC");
+        assert_eq!(request.chart.candles[0].close, 105.0);
+        assert!(request.chart.hide_positions_and_orders);
+        assert!(!instance.chart.hide_positions_and_orders);
+    }
 
     #[test]
     fn chart_screenshot_capture_error_redacts_window_error_and_toast() {

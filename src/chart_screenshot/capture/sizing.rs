@@ -1,59 +1,43 @@
-use iced::Rectangle;
+use iced::Size;
 
-const CHART_SCREENSHOT_MIN_EXPORT_WIDTH: u32 = 1280;
-const CHART_SCREENSHOT_MIN_EXPORT_HEIGHT: u32 = 720;
-pub(in crate::chart_screenshot) const CHART_SCREENSHOT_MAX_EXPORT_EDGE: u32 = 8192;
-const CHART_SCREENSHOT_MAX_EXPORT_PIXELS: u64 = 12_582_912;
+const EXPORT_SCALE: f64 = 3.0;
+const MIN_EXPORT_EDGE: f64 = 1920.0;
+const MAX_EXPORT_EDGE: u32 = 8192;
+const MAX_EXPORT_PIXELS: u64 = 12_582_912;
 
-// ---------------------------------------------------------------------------
-// Export Sizing
-// ---------------------------------------------------------------------------
-
-pub(in crate::chart_screenshot) fn chart_screenshot_export_size(
-    logical_bounds: Rectangle,
-) -> Result<(u32, u32), String> {
-    if !logical_bounds.width.is_finite()
-        || !logical_bounds.height.is_finite()
-        || logical_bounds.width <= 0.0
-        || logical_bounds.height <= 0.0
-    {
-        return Err("invalid chart bounds".to_string());
-    }
-
-    let width = logical_bounds.width.round().max(1.0) as u32;
-    let height = logical_bounds.height.round().max(1.0) as u32;
-    Ok(chart_screenshot_export_dimensions(width, height).unwrap_or((width, height)))
+/// Pixel density is independent of layout. Never substitute these physical
+/// dimensions for the canvas's logical dimensions when drawing the chart.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ExportResolution {
+    pub(super) size: Size<u32>,
+    pub(super) scale_factor: f32,
 }
 
-pub(in crate::chart_screenshot) fn chart_screenshot_export_dimensions(
-    width: u32,
-    height: u32,
-) -> Option<(u32, u32)> {
-    if width == 0 || height == 0 {
-        return None;
-    }
+impl ExportResolution {
+    pub(super) fn new(logical_size: Size) -> Result<Self, String> {
+        let width = f64::from(logical_size.width);
+        let height = f64::from(logical_size.height);
+        if !width.is_finite() || !height.is_finite() || width < 1.0 || height < 1.0 {
+            return Err("invalid chart bounds".to_string());
+        }
 
-    let width_scale = CHART_SCREENSHOT_MIN_EXPORT_WIDTH as f64 / width as f64;
-    let height_scale = CHART_SCREENSHOT_MIN_EXPORT_HEIGHT as f64 / height as f64;
-    let requested_scale = width_scale.max(height_scale).max(1.0);
-    if requested_scale <= 1.0 {
-        return None;
-    }
+        let longest = width.max(height);
+        let requested_scale = EXPORT_SCALE.max(MIN_EXPORT_EDGE / longest);
+        let edge_limit = f64::from(MAX_EXPORT_EDGE) / longest;
+        let pixel_limit = (MAX_EXPORT_PIXELS as f64 / (width * height)).sqrt();
+        let scale = requested_scale.min(edge_limit).min(pixel_limit);
 
-    let edge_scale = CHART_SCREENSHOT_MAX_EXPORT_EDGE as f64 / width.max(height) as f64;
-    let pixel_scale =
-        (CHART_SCREENSHOT_MAX_EXPORT_PIXELS as f64 / (width as f64 * height as f64)).sqrt();
-    let max_scale = edge_scale.max(1.0).min(pixel_scale.max(1.0));
-    let scale = requested_scale.min(max_scale);
-    if scale <= 1.0 {
-        return None;
-    }
-
-    let target_width = ((width as f64 * scale).round() as u32).max(width);
-    let target_height = ((height as f64 * scale).round() as u32).max(height);
-    if target_width == width && target_height == height {
-        None
-    } else {
-        Some((target_width, target_height))
+        // Round down only at the final pixel boundary. Even an oversized source
+        // is capped, and fractional logical bounds are never rounded/reflowed.
+        Ok(Self {
+            size: Size::new(
+                (width * scale).floor().max(1.0) as u32,
+                (height * scale).floor().max(1.0) as u32,
+            ),
+            scale_factor: scale as f32,
+        })
     }
 }
+
+#[cfg(test)]
+mod tests;

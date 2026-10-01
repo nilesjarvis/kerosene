@@ -449,7 +449,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleChartScreenshotObscurePositionEntry(_)
         | Message::ToggleChartScreenshotHidePositionsAndOrders(_)
         | Message::OpenChartScreenshot(_, _)
-        | Message::ChartScreenshotBoundsResolved(_, _, _, _)
         | Message::ChartScreenshotCaptured(_, _, _)
         | Message::CopyChartScreenshot
         | Message::ChartScreenshotCopied(_)

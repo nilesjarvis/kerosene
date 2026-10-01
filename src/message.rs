@@ -1426,7 +1426,6 @@ pub(crate) enum Message {
     ToggleChartScreenshotObscurePositionEntry(bool),
     ToggleChartScreenshotHidePositionsAndOrders(bool),
     OpenChartScreenshot(ChartId, ChartSurfaceId),
-    ChartScreenshotBoundsResolved(u64, ChartId, ChartSurfaceId, Option<iced::Rectangle>),
     ChartScreenshotCaptured(u64, ChartId, Result<ChartScreenshotState, String>),
     CopyChartScreenshot,
     ChartScreenshotCopied(Result<(), String>),

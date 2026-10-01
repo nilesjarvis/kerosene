@@ -11,7 +11,7 @@ use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::chart_state::{CandleFetchMode, ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
-use iced::widget::{Space, button, canvas, column, container, rule, stack, text, text::Wrapping};
+use iced::widget::{Space, button, column, container, rule, stack, text, text::Wrapping};
 use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
@@ -159,8 +159,11 @@ impl TradingTerminal {
             let header = self.view_chart_header(chart_id, instance, surface_id);
             let toolbar = self.view_chart_toolbar(chart_id, instance, surface_id);
             let quick_order_on_surface = self.chart_surface_has_quick_order(chart_id, surface_id);
-            let chart_canvas: Element<'_, Message> =
-                canvas(&instance.chart).width(Fill).height(Fill).into();
+            let chart_canvas = crate::chart_screenshot::ScreenshotCanvas::new(
+                &instance.chart,
+                Self::chart_screenshot_canvas_id(surface_id),
+            )
+            .into();
             let mut canvas_layers = vec![chart_canvas];
             if let Some(indicator_badges) = self.view_chart_indicator_badges(chart_id, instance) {
                 canvas_layers.push(indicator_badges);
@@ -198,10 +201,6 @@ impl TradingTerminal {
 
             let chart_area: Element<'_, Message> =
                 stack(chart_area_layers).width(Fill).height(Fill).into();
-            let chart_area = container(chart_area)
-                .id(Self::chart_screenshot_canvas_id(surface_id))
-                .width(Fill)
-                .height(Fill);
 
             let padded_header = container(header).width(Fill).padding([0, 4]);
             let padded_chart_area = container(chart_area)
