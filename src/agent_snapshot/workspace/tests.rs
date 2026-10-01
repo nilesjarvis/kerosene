@@ -9,6 +9,10 @@ fn workspace_snapshot_exposes_selected_chart_and_safe_indicator_catalog() {
     terminal.charts.clear();
     let mut chart = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
     chart.macro_indicators.tf_ema_50 = true;
+    chart
+        .macro_indicators
+        .moving_average_periods
+        .insert("tf_ema_50".into(), 21);
     chart.chart.macro_indicators = chart.macro_indicators.clone();
     chart.annotations.push(Annotation {
         id: 42,
@@ -45,6 +49,14 @@ fn workspace_snapshot_exposes_selected_chart_and_safe_indicator_catalog() {
     assert_eq!(workspace["charts"][0]["symbol"], "BTC");
     assert_eq!(workspace["charts"][0]["timeframe"], "1H");
     assert_eq!(workspace["charts"][0]["indicators"]["tf_ema_50"], true);
+    assert_eq!(
+        workspace["charts"][0]["moving_average_periods"]["tf_ema_50"],
+        21
+    );
+    assert_eq!(
+        workspace["charts"][0]["moving_average_periods"]["tf_sma_50"],
+        50
+    );
     assert!(catalog.iter().any(|entry| entry["id"] == "tf_ema_50"));
     assert!(catalog.iter().any(|entry| {
         entry["id"] == "funding_rate"

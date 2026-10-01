@@ -78,7 +78,8 @@ impl TradingTerminal {
                         self.chart_backfill_request_context_for_timeframe(tf),
                         None,
                         0,
-                    );
+                    )
+                    .with_moving_average_history(&instance.macro_indicators);
                     instance.candle_fetch_request = Some(request.clone());
                     boot_tasks.push(Self::fetch_candles_task(
                         request,

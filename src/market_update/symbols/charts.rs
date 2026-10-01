@@ -42,7 +42,8 @@ impl TradingTerminal {
                         chart_backfill_request_context,
                         None,
                         0,
-                    );
+                    )
+                    .with_moving_average_history(&inst.macro_indicators);
                     inst.candle_fetch_request = Some(request.clone());
                     let mut chart_tasks = vec![Self::fetch_candles_task(
                         request,

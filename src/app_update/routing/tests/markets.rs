@@ -281,3 +281,15 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::Market,
     );
 }
+
+#[test]
+fn moving_average_period_edits_reach_chart_route() {
+    assert_route(
+        Message::ChartMovingAveragePeriodChanged(
+            7,
+            crate::chart_indicator::ChartIndicatorId::TfEma50,
+            "21".into(),
+        ),
+        UpdateRoute::Chart,
+    );
+}

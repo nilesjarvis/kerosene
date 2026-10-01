@@ -40,7 +40,7 @@ struct ChartIndicatorChartResult {
 #[derive(Serialize)]
 struct ChartIndicatorChangeResult {
     indicator_id: &'static str,
-    label: &'static str,
+    label: String,
     previous_enabled: bool,
     enabled: bool,
     outcome: &'static str,
@@ -167,7 +167,10 @@ impl TradingTerminal {
 
                 change_results.push(ChartIndicatorChangeResult {
                     indicator_id: change.indicator_id.key(),
-                    label: change.indicator_id.label(),
+                    label: change
+                        .indicator_id
+                        .moving_average_label(&instance.macro_indicators)
+                        .unwrap_or_else(|| change.indicator_id.label().to_string()),
                     previous_enabled,
                     enabled: change.enabled,
                     outcome: if changed { "changed" } else { "already_set" },

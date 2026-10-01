@@ -7,9 +7,9 @@ use iced::{Color, Theme};
 // Active Indicator Registry
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(in crate::chart_views::indicator_badges) struct ActiveIndicator {
-    pub(in crate::chart_views::indicator_badges) label: &'static str,
+    pub(in crate::chart_views::indicator_badges) label: String,
     pub(in crate::chart_views::indicator_badges) key: ChartIndicatorId,
     pub(in crate::chart_views::indicator_badges) color: Color,
 }
@@ -257,6 +257,11 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         theme,
     );
 
+    for indicator in &mut active {
+        if let Some(label) = indicator.key.moving_average_label(indicators) {
+            indicator.label = label;
+        }
+    }
     active
 }
 
@@ -270,7 +275,7 @@ fn push_indicator(
 ) {
     if enabled {
         active.push(ActiveIndicator {
-            label,
+            label: label.to_string(),
             key,
             color: color_role.color(theme),
         });

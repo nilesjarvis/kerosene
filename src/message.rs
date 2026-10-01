@@ -725,6 +725,7 @@ pub(crate) enum Message {
     ToggleLayoutMenu,
     ToggleMacroMenu(ChartId),
     ToggleMacroIndicator(ChartId, ChartIndicatorId),
+    ChartMovingAveragePeriodChanged(ChartId, ChartIndicatorId, String),
     OpenQuickTradeEditor(ChartId),
     QuickTradeActionAdded,
     QuickTradeActionSideToggled(usize),

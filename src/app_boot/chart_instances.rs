@@ -51,7 +51,8 @@ impl TradingTerminal {
                         crate::chart_state::ChartBackfillRequestContext::new(source, 0, 0),
                         None,
                         0,
-                    );
+                    )
+                    .with_moving_average_history(&instance.macro_indicators);
                     instance.candle_fetch_request = Some(request.clone());
                     if can_load_cached_candles {
                         boot_tasks.push(Self::load_cached_candles_task(

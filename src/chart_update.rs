@@ -92,6 +92,7 @@ impl TradingTerminal {
             }
             message @ (Message::ToggleMacroMenu(_)
             | Message::ToggleMacroIndicator(_, _)
+            | Message::ChartMovingAveragePeriodChanged(_, _, _)
             | Message::MacroCandlesLoaded(_, _, _, _, _)) => {
                 return self.update_chart_macro_indicators(message);
             }

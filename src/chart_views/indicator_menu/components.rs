@@ -1,8 +1,8 @@
 use super::IndicatorOption;
-use crate::chart_state::ChartId;
+use crate::chart_state::{ChartId, ChartInstance};
 use crate::message::Message;
 
-use iced::widget::{Column, Space, checkbox, row, rule, text};
+use iced::widget::{Column, Space, checkbox, row, rule, text, text_input, tooltip};
 use iced::{Alignment, Color, Element, Fill, Length, Theme};
 
 // ---------------------------------------------------------------------------
@@ -101,4 +101,74 @@ fn indicator_checkbox(chart_id: ChartId, option: IndicatorOption) -> Element<'st
         option.checked,
         Message::ToggleMacroIndicator(chart_id, option.key),
     )
+}
+
+/// Periods are independently editable for every SMA/EMA slot and source timeframe.
+pub(super) fn moving_average_group<const N: usize>(
+    chart_id: ChartId,
+    label: &'static str,
+    options: [IndicatorOption; N],
+    instance: &ChartInstance,
+) -> Element<'static, Message> {
+    let mut rows = Column::new().spacing(3).width(Fill);
+    for pair in options.chunks(2) {
+        let mut controls = row![].spacing(8).align_y(Alignment::Center).width(Fill);
+        for option in pair {
+            let key = option.key;
+            let Some(period) = key.period(&instance.macro_indicators) else {
+                continue;
+            };
+            let value = instance
+                .moving_average_period_inputs
+                .get(&key)
+                .cloned()
+                .unwrap_or_else(|| period.to_string());
+            let invalid = value.parse::<usize>().ok().is_none_or(|value| value == 0);
+            let period_input = text_input("Period", &value)
+                .on_input(move |value| {
+                    Message::ChartMovingAveragePeriodChanged(chart_id, key, value)
+                })
+                .style(move |theme: &Theme, status| {
+                    let mut style = text_input::default(theme, status);
+                    if invalid {
+                        style.border.color = theme.extended_palette().danger.base.color;
+                    }
+                    style
+                })
+                .padding([2, 4])
+                .size(10)
+                .font(crate::app_fonts::monospace_font())
+                .width(Length::FillPortion(1));
+            let toggle = checkbox(option.checked)
+                .label(if key.key().contains("ema") {
+                    "EMA"
+                } else {
+                    "SMA"
+                })
+                .on_toggle(move |_| Message::ToggleMacroIndicator(chart_id, key))
+                .size(10)
+                .spacing(4)
+                .text_size(10)
+                .font(crate::app_fonts::monospace_font());
+            controls = controls.push(
+                row![
+                    tooltip(
+                        period_input,
+                        text("Period: 1–5000").size(11),
+                        tooltip::Position::Bottom
+                    ),
+                    toggle,
+                ]
+                .spacing(4)
+                .align_y(Alignment::Center)
+                .width(Length::FillPortion(1)),
+            );
+        }
+        rows = rows.push(controls);
+    }
+    row![indicator_group_label(label), rows]
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .width(Fill)
+        .into()
 }

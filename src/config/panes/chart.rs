@@ -1,5 +1,6 @@
 use crate::annotations::AnnotationConfig;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use super::super::{default_symbol, default_timeframe, default_true};
 
@@ -90,6 +91,9 @@ fn compact_action_quantity(quantity: f64) -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MacroIndicatorsConfig {
+    /// Period overrides keyed by stable EMA/SMA indicator slot IDs.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub moving_average_periods: BTreeMap<String, usize>,
     #[serde(default)]
     pub tf_sma_50: bool,
     #[serde(default)]
@@ -147,6 +151,7 @@ pub struct MacroIndicatorsConfig {
 impl Default for MacroIndicatorsConfig {
     fn default() -> Self {
         Self {
+            moving_average_periods: BTreeMap::new(),
             tf_sma_50: false,
             tf_ema_50: false,
             tf_sma_200: false,

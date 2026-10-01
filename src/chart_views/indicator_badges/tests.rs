@@ -21,7 +21,7 @@ fn active_indicator_registry_preserves_badge_order_and_keys() {
     let active = active_chart_indicators(&instance, &Theme::Dark);
     let labels_and_keys: Vec<_> = active
         .iter()
-        .map(|indicator| (indicator.label, indicator.key.key()))
+        .map(|indicator| (indicator.label.as_str(), indicator.key.key()))
         .collect();
 
     assert_eq!(
@@ -37,4 +37,18 @@ fn active_indicator_registry_preserves_badge_order_and_keys() {
             ("High/Low", "high_low"),
         ]
     );
+}
+
+#[test]
+fn moving_average_badges_show_custom_periods_with_stable_remove_keys() {
+    let mut instance = ChartInstance::new(7, "BTC".into(), Timeframe::H1);
+    instance.macro_indicators.tf_ema_50 = true;
+    instance
+        .macro_indicators
+        .moving_average_periods
+        .insert("tf_ema_50".into(), 21);
+    let active = active_chart_indicators(&instance, &Theme::Dark);
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].label, "TF 21 EMA");
+    assert_eq!(active[0].key.key(), "tf_ema_50");
 }

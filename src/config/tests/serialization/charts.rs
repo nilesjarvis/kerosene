@@ -11,3 +11,5 @@ mod annotations;
 mod detached;
 mod markers;
 mod screenshot;
+
+mod moving_averages;

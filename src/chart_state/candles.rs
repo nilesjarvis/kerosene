@@ -61,7 +61,17 @@ impl TradingTerminal {
                     api::fetch_candles(
                         symbol.clone(),
                         tf.api_str().to_string(),
-                        now_ms.saturating_sub(tf.lookback_ms()),
+                        now_ms.saturating_sub(crate::chart_indicator::moving_average_lookback_ms(
+                            config,
+                            tf,
+                            match tf {
+                                Timeframe::H1 => "hourly",
+                                Timeframe::D1 => "daily",
+                                Timeframe::W1 => "weekly",
+                                Timeframe::Mo1 => "monthly",
+                                _ => "chart_timeframe",
+                            },
+                        )),
                         now_ms,
                     ),
                     move |result| {
@@ -270,7 +280,7 @@ impl TradingTerminal {
         )
     }
 
-    pub(crate) fn queue_candle_fetch(&mut self, request: CandleFetchRequest) -> Task<Message> {
+    pub(crate) fn queue_candle_fetch(&mut self, mut request: CandleFetchRequest) -> Task<Message> {
         if request.timeframe.uses_orderbook_tick_candles() {
             if let Some(instance) = self.charts.get_mut(&request.chart_id) {
                 instance.candle_fetch_request = None;
@@ -284,6 +294,7 @@ impl TradingTerminal {
         }
 
         if let Some(instance) = self.charts.get_mut(&request.chart_id) {
+            request = request.with_moving_average_history(&instance.macro_indicators);
             instance.candle_fetch_request = Some(request.clone());
             instance.candle_fetch_error = None;
             instance.candle_ws_updates_during_fetch.clear();
@@ -378,6 +389,7 @@ impl TradingTerminal {
                     None,
                     0,
                 )
+                .with_moving_average_history(&instance.macro_indicators)
             })
             .collect();
         let secondary_chart_requests: Vec<_> = self

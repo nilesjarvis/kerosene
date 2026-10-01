@@ -1,6 +1,8 @@
 use super::super::indicators::{calculate_ema, calculate_sma};
 use crate::api::Candle;
 use crate::chart::fisheye::{ChartFisheye, ProjectedPathPoint};
+use crate::chart_indicator::ChartIndicatorId;
+use crate::config::MacroIndicatorsConfig;
 use iced::widget::canvas;
 use iced::{Color, Point, Size, Theme, alignment};
 
@@ -35,7 +37,7 @@ pub(super) struct MovingAverageSpec<'a> {
     period: usize,
     use_ema: bool,
     color_role: MovingAverageColorRole,
-    label: &'static str,
+    label: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -62,34 +64,19 @@ impl MovingAverageColorRole {
 }
 
 impl<'a> MovingAverageSpec<'a> {
-    pub(super) fn sma(
+    pub(super) fn new(
         source_candles: &'a [Candle],
-        period: usize,
+        key: ChartIndicatorId,
         color_role: MovingAverageColorRole,
-        label: &'static str,
-    ) -> Self {
-        Self {
+        config: &MacroIndicatorsConfig,
+    ) -> Option<Self> {
+        Some(Self {
             source_candles,
-            period,
-            use_ema: false,
+            period: key.period(config)?,
+            use_ema: key.key().contains("ema"),
             color_role,
-            label,
-        }
-    }
-
-    pub(super) fn ema(
-        source_candles: &'a [Candle],
-        period: usize,
-        color_role: MovingAverageColorRole,
-        label: &'static str,
-    ) -> Self {
-        Self {
-            source_candles,
-            period,
-            use_ema: true,
-            color_role,
-            label,
-        }
+            label: key.moving_average_label(config)?,
+        })
     }
 }
 
@@ -115,7 +102,7 @@ where
             chart_candles,
             &series,
             color,
-            spec.label,
+            &spec.label,
             dash_segments,
             show_labels,
         );
@@ -195,6 +182,43 @@ where
                 font: crate::app_fonts::monospace_font(),
                 ..canvas::Text::default()
             });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn moving_average_specs_use_custom_periods_for_sma_and_ema() {
+        let candles = vec![
+            Candle::test_flat(1_000, 10.0),
+            Candle::test_flat(2_000, 20.0),
+            Candle::test_flat(3_000, 50.0),
+        ];
+        for key in ChartIndicatorId::MOVING_AVERAGES {
+            let mut config = MacroIndicatorsConfig::default();
+            config
+                .moving_average_periods
+                .insert(key.key().to_string(), 2);
+            let spec = MovingAverageSpec::new(&candles, key, MovingAverageColorRole::Fast, &config)
+                .expect("moving average slot");
+            assert_eq!(spec.period, 2);
+            assert!(spec.label.contains('2'));
+            let series = if spec.use_ema {
+                calculate_ema(spec.source_candles, spec.period)
+            } else {
+                calculate_sma(spec.source_candles, spec.period)
+            };
+            assert_eq!(series.len(), 2);
+            assert_eq!(series[0], (2_000, 15.0));
+            let expected = if key.key().contains("ema") {
+                115.0 / 3.0
+            } else {
+                35.0
+            };
+            assert!((series[1].1 - expected).abs() < 1e-10, "{}", key.key());
         }
     }
 }

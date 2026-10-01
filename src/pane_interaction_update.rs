@@ -48,7 +48,22 @@ impl TradingTerminal {
                 self.last_focused_workspace = workspace;
                 self.add_widget_workspace = workspace;
 
-                self.close_chart_header_menus();
+                // PaneGrid emits PaneClicked even when a child text input captured
+                // the press. Keep this chart's menu mounted so period inputs retain
+                // focus; its backdrop still closes it when clicked outside the card.
+                let editing_chart_indicators = self
+                    .workspace_panes(workspace)
+                    .and_then(|panes| panes.get(pane))
+                    .is_some_and(|kind| match kind {
+                        PaneKind::Chart(id) => self
+                            .charts
+                            .get(id)
+                            .is_some_and(|chart| chart.macro_menu_open),
+                        _ => false,
+                    });
+                if !editing_chart_indicators {
+                    self.close_chart_header_menus();
+                }
 
                 if let Some(PaneKind::Chart(id)) = self
                     .workspace_panes(workspace)

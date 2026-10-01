@@ -49,6 +49,21 @@ pub(crate) enum CandleCacheTarget {
 }
 
 impl CandleFetchRequest {
+    pub(crate) fn with_moving_average_history(
+        mut self,
+        config: &config::MacroIndicatorsConfig,
+    ) -> Self {
+        if self.mode == CandleFetchMode::Refresh {
+            let lookback = crate::chart_indicator::moving_average_lookback_ms(
+                config,
+                self.timeframe,
+                "chart_timeframe",
+            );
+            self.start_ms = self.start_ms.min(self.end_ms.saturating_sub(lookback));
+        }
+        self
+    }
+
     /// Visible-chart refreshes must prove freshness against the provider.
     /// Historical pagination may reuse a complete, finalized cache page.
     pub(crate) fn fetch_policy(&self) -> crate::api::CandleFetchPolicy {
@@ -265,6 +280,9 @@ pub(crate) struct ChartInstance {
     pub(crate) quick_trade_actions: Vec<config::QuickTradeActionConfig>,
     /// Toggle state for the macro indicators dropdown menu.
     pub(crate) macro_menu_open: bool,
+    /// Editable period text, including an empty field while replacing a value.
+    pub(crate) moving_average_period_inputs:
+        std::collections::HashMap<crate::chart_indicator::ChartIndicatorId, String>,
     /// Whether the header open-interest metric is shown as USD notional for this chart.
     pub(crate) open_interest_as_notional: bool,
     /// Whether the header 24h volume metric is shown as USD notional for this chart.

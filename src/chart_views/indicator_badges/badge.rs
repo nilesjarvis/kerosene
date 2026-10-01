@@ -32,7 +32,7 @@ pub(super) fn indicator_badge(
     let badge = button(
         row![
             swatch,
-            text(indicator.label)
+            text(indicator.label.clone())
                 .size(10)
                 .font(crate::app_fonts::monospace_font())
                 .color(indicator.color),

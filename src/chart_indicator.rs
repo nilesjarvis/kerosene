@@ -1,4 +1,5 @@
 use crate::chart_state::ChartInstance;
+use crate::config::MacroIndicatorsConfig;
 
 use serde::{Deserialize, Serialize};
 
@@ -59,6 +60,81 @@ pub(crate) enum ChartIndicatorId {
 }
 
 impl ChartIndicatorId {
+    pub(crate) const MAX_MOVING_AVERAGE_PERIOD: usize = 5_000;
+
+    pub(crate) const MOVING_AVERAGES: [Self; 18] = [
+        Self::TfSma50,
+        Self::TfEma50,
+        Self::TfSma200,
+        Self::TfEma200,
+        Self::Sma50h,
+        Self::Ema50h,
+        Self::Sma200h,
+        Self::Ema200h,
+        Self::Sma50d,
+        Self::Ema50d,
+        Self::Sma200d,
+        Self::Ema200d,
+        Self::Sma20w,
+        Self::Ema20w,
+        Self::Sma50w,
+        Self::Ema50w,
+        Self::Sma12m,
+        Self::Ema12m,
+    ];
+
+    pub(crate) const fn default_period(self) -> Option<usize> {
+        match self {
+            Self::TfSma50
+            | Self::TfEma50
+            | Self::Sma50h
+            | Self::Ema50h
+            | Self::Sma50d
+            | Self::Ema50d
+            | Self::Sma50w
+            | Self::Ema50w => Some(50),
+            Self::TfSma200
+            | Self::TfEma200
+            | Self::Sma200h
+            | Self::Ema200h
+            | Self::Sma200d
+            | Self::Ema200d => Some(200),
+            Self::Sma20w | Self::Ema20w => Some(20),
+            Self::Sma12m | Self::Ema12m => Some(12),
+            _ => None,
+        }
+    }
+
+    /// Invalid persisted overrides fall back to the original slot's period.
+    pub(crate) fn period(self, config: &MacroIndicatorsConfig) -> Option<usize> {
+        let default = self.default_period()?;
+        Some(
+            config
+                .moving_average_periods
+                .get(self.key())
+                .copied()
+                .filter(|period| (1..=Self::MAX_MOVING_AVERAGE_PERIOD).contains(period))
+                .unwrap_or(default),
+        )
+    }
+
+    pub(crate) fn moving_average_label(self, config: &MacroIndicatorsConfig) -> Option<String> {
+        let period = self.period(config)?;
+        let kind = if self.key().contains("ema") {
+            "EMA"
+        } else {
+            "SMA"
+        };
+        Some(match self.group() {
+            "chart_timeframe" => format!("TF {period} {kind}"),
+            "hourly" => format!("{period}h {kind}"),
+            "daily" => format!("{period}d {kind}"),
+            "weekly" => format!("{period}w {kind}"),
+            "monthly" => format!("{period}M {kind}"),
+            _ => return None,
+        })
+    }
+
     #[cfg(test)]
     pub(crate) const ALL: [Self; 27] = [
         Self::TfSma50,
@@ -243,7 +319,14 @@ impl ChartIndicatorId {
     }
 
     pub(crate) fn is_enabled(self, instance: &ChartInstance) -> bool {
-        let indicators = &instance.macro_indicators;
+        if self == Self::TradeMarkers {
+            instance.chart.show_trade_markers
+        } else {
+            self.is_enabled_in_config(&instance.macro_indicators)
+        }
+    }
+
+    pub(crate) fn is_enabled_in_config(self, indicators: &MacroIndicatorsConfig) -> bool {
         match self {
             Self::TfSma50 => indicators.tf_sma_50,
             Self::TfEma50 => indicators.tf_ema_50,
@@ -271,7 +354,7 @@ impl ChartIndicatorId {
             Self::HighLow => indicators.show_high_low,
             Self::LeledcArrows => indicators.show_leledc_arrows,
             Self::LeledcLevels => indicators.show_leledc_levels,
-            Self::TradeMarkers => instance.chart.show_trade_markers,
+            Self::TradeMarkers => false,
         }
     }
 
@@ -315,6 +398,35 @@ impl ChartIndicatorId {
     }
 }
 
+/// Retain the normal visible history plus enough warm-up candles for custom periods.
+pub(crate) fn moving_average_lookback_ms(
+    config: &MacroIndicatorsConfig,
+    timeframe: crate::timeframe::Timeframe,
+    group: &str,
+) -> u64 {
+    let period = ChartIndicatorId::MOVING_AVERAGES
+        .into_iter()
+        .filter(|key| {
+            key.group() == group
+                && key.is_enabled_in_config(config)
+                && config.moving_average_periods.contains_key(key.key())
+        })
+        .filter_map(|key| key.period(config))
+        .max()
+        .unwrap_or(0) as u64;
+    if period == 0 {
+        return timeframe.lookback_ms();
+    }
+    let duration = timeframe.duration_ms();
+    let visible_candles = timeframe.lookback_ms() / duration;
+    timeframe.lookback_ms().max(
+        duration.saturating_mul(
+            (period.saturating_mul(3) + visible_candles)
+                .min(ChartIndicatorId::MAX_MOVING_AVERAGE_PERIOD as u64),
+        ),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +459,63 @@ mod tests {
         assert!(ChartIndicatorId::TfEma50.set_enabled(&mut instance, true));
         assert!(!ChartIndicatorId::TfEma50.set_enabled(&mut instance, true));
         assert!(ChartIndicatorId::TfEma50.is_enabled(&instance));
+    }
+    #[test]
+    fn moving_average_defaults_and_overrides_are_independent() {
+        let mut config = MacroIndicatorsConfig::default();
+        for key in ChartIndicatorId::ALL {
+            assert_eq!(key.period(&config), key.default_period());
+        }
+        config.moving_average_periods.insert("tf_ema_50".into(), 21);
+        assert_eq!(ChartIndicatorId::TfEma50.period(&config), Some(21));
+        assert_eq!(ChartIndicatorId::TfSma50.period(&config), Some(50));
+        assert_eq!(
+            ChartIndicatorId::TfEma50
+                .moving_average_label(&config)
+                .as_deref(),
+            Some("TF 21 EMA")
+        );
+        config.moving_average_periods.insert("sma_200d".into(), 55);
+        assert_eq!(
+            ChartIndicatorId::Sma200d
+                .moving_average_label(&config)
+                .as_deref(),
+            Some("55d SMA")
+        );
+        for invalid in [0, 5_001, usize::MAX] {
+            config
+                .moving_average_periods
+                .insert("tf_ema_50".into(), invalid);
+            assert_eq!(ChartIndicatorId::TfEma50.period(&config), Some(50));
+        }
+    }
+
+    #[test]
+    fn moving_average_history_is_bounded_and_only_expands_enabled_sources() {
+        let tf = Timeframe::H1;
+        let mut config = MacroIndicatorsConfig::default();
+        config
+            .moving_average_periods
+            .insert("tf_ema_50".into(), 1_000);
+        assert_eq!(
+            moving_average_lookback_ms(&config, tf, "chart_timeframe"),
+            tf.lookback_ms()
+        );
+        config.tf_ema_50 = true;
+        assert_eq!(
+            moving_average_lookback_ms(&config, tf, "chart_timeframe"),
+            tf.lookback_ms() + 3_000 * tf.duration_ms()
+        );
+        assert_eq!(
+            moving_average_lookback_ms(&config, tf, "hourly"),
+            tf.lookback_ms()
+        );
+        config
+            .moving_average_periods
+            .insert("tf_ema_50".into(), 5_000);
+        assert_eq!(
+            moving_average_lookback_ms(&config, tf, "chart_timeframe"),
+            5_000 * tf.duration_ms()
+        );
     }
 }

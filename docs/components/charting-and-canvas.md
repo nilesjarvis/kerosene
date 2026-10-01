@@ -451,6 +451,17 @@ Macro indicators are configured per chart and include candle/funding-derived
 series. The candle-backed moving averages support active-timeframe, 1-hour,
 daily, weekly, and monthly source series. Their menu and active badges live in
 `chart_views/indicator_menu/` and `chart_views/indicator_badges/`.
+Each EMA/SMA slot has an editable period (1–5000 candles), applied immediately
+through `ChartMovingAveragePeriodChanged`. Periods are independent per chart,
+source timeframe, and average type. The optional
+`macro_indicators.moving_average_periods` map stores overrides under the existing
+stable slot IDs (for example, `tf_ema_50` can use period 21). Missing or invalid
+periods retain the original 50/200/20/12 defaults, preserving old layouts.
+Temporary empty/zero edits keep the last valid period and are not persisted.
+Canvas labels and active badges display the effective period; detached charts
+and restored layouts retain it. Custom averages request additional warm-up
+history, bounded to 5000 candles and subject to the source's available history.
+
 
 `chart_indicator.rs` is the shared stable-ID registry used by the chart UI and
 the Assistant workspace contract. Assistant actions set explicit enabled states
@@ -459,7 +470,9 @@ is restricted to reversible visual indicators on open candlestick charts;
 presentation labels and Quick Trade controls are intentionally excluded. The
 Rust host validates the complete batch and any integration dependency before it
 changes a chart, then synchronizes render state and schedules layout/config
-persistence through the normal chart path.
+persistence through the normal chart path. Per-chart workspace snapshots expose
+the effective `moving_average_periods`; stable IDs identify the original slots,
+and action-result labels reflect any custom period.
 
 The Assistant drawing bridge uses the existing annotation model rather than
 simulating clicks in the drawing toolbar. `agent_snapshot.rs` exposes bounded

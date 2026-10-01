@@ -123,3 +123,45 @@ fn assert_pending_chart_requests_pruned(terminal: &TradingTerminal, other_chart_
             .contains_key("TSLA")
     );
 }
+
+#[test]
+fn moving_average_inputs_keep_menu_open_when_the_chart_pane_receives_focus() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let chart_pane = terminal
+        .find_pane_matching(|kind| matches!(kind, PaneKind::Chart(_)))
+        .expect("chart pane");
+    let chart_id = match terminal.panes.get(chart_pane).expect("pane kind") {
+        PaneKind::Chart(id) => *id,
+        _ => panic!("expected chart pane"),
+    };
+    terminal
+        .charts
+        .get_mut(&chart_id)
+        .expect("chart")
+        .macro_menu_open = true;
+    let _task = terminal.update_pane_interactions(Message::PaneClicked(
+        crate::canvas_state::WorkspaceId::Main,
+        chart_pane,
+    ));
+    assert!(terminal.charts[&chart_id].macro_menu_open);
+    let _task = terminal.update(Message::ChartMovingAveragePeriodChanged(
+        chart_id,
+        crate::chart_indicator::ChartIndicatorId::TfEma50,
+        "21".into(),
+    ));
+    assert_eq!(
+        terminal.charts[&chart_id]
+            .macro_indicators
+            .moving_average_periods["tf_ema_50"],
+        21
+    );
+
+    let other_pane = terminal
+        .find_pane_matching(|kind| !matches!(kind, PaneKind::Chart(_)))
+        .expect("another pane");
+    let _task = terminal.update_pane_interactions(Message::PaneClicked(
+        crate::canvas_state::WorkspaceId::Main,
+        other_pane,
+    ));
+    assert!(!terminal.charts[&chart_id].macro_menu_open);
+}

@@ -1,4 +1,4 @@
-use components::{compact_separator, indicator_footer, indicator_group};
+use components::{compact_separator, indicator_footer, indicator_group, moving_average_group};
 use options::{
     daily_options, footer_options, hourly_options, leledc_options, monthly_options, price_options,
     quick_trade_options, timeframe_options, volume_options, weekly_options,
@@ -41,36 +41,46 @@ impl TradingTerminal {
 
         let mut menu_col = Column::new()
             .spacing(3)
-            .padding(6)
+            .padding(iced::Padding {
+                top: 6.0,
+                right: 16.0,
+                bottom: 6.0,
+                left: 6.0,
+            })
             .width(Fill)
-            .push(indicator_group(
+            .push(moving_average_group(
                 chart_id,
                 "TF",
                 timeframe_options(indicator_options),
+                instance,
             ))
             .push(separator())
-            .push(indicator_group(
+            .push(moving_average_group(
                 chart_id,
                 "1H",
                 hourly_options(indicator_options),
+                instance,
             ))
             .push(separator())
-            .push(indicator_group(
+            .push(moving_average_group(
                 chart_id,
                 "D",
                 daily_options(indicator_options),
+                instance,
             ))
             .push(separator())
-            .push(indicator_group(
+            .push(moving_average_group(
                 chart_id,
                 "W",
                 weekly_options(indicator_options),
+                instance,
             ))
             .push(separator())
-            .push(indicator_group(
+            .push(moving_average_group(
                 chart_id,
                 "M",
                 monthly_options(indicator_options),
+                instance,
             ))
             .push(separator())
             .push(indicator_footer(
@@ -113,8 +123,8 @@ impl TradingTerminal {
         }
 
         let menu_card = container(scrollable(menu_col).height(iced::Length::Shrink))
-            .width(240.0)
-            .max_height(220.0)
+            .width(300.0)
+            .max_height(300.0)
             .style(|theme: &Theme| container_style::Style {
                 background: Some(theme.extended_palette().background.strong.color.into()),
                 border: iced::Border {

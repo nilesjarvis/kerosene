@@ -41,6 +41,11 @@ impl TradingTerminal {
                         )
                     })
                     .collect::<serde_json::Map<_, _>>();
+                let moving_average_periods = ChartIndicatorId::MOVING_AVERAGES
+                    .into_iter()
+                    .filter_map(|key| key.period(&instance.macro_indicators)
+                        .map(|period| (key.key().to_string(), json!(period))))
+                    .collect::<serde_json::Map<_, _>>();
                 let total_chart_drawings = instance.annotations.len();
                 let mut drawing_refs = instance.annotations.iter().collect::<Vec<_>>();
                 drawing_refs.sort_by_key(|annotation| {
@@ -77,6 +82,7 @@ impl TradingTerminal {
                     "timeframe_config": instance.interval.config_str(),
                     "selected": selected_chart_id == Some(instance.id),
                     "indicators": indicators,
+                    "moving_average_periods": moving_average_periods,
                     "selected_drawing_id": instance.selected_annotation,
                     "drawings": drawings,
                     "drawing_coverage": {
