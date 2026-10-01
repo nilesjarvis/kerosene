@@ -1,5 +1,21 @@
 # Ticker logo sources
 
+## Crypto additions (2026-10-01)
+
+`PUMP.svg`, `MON.svg`, and `ZRO.svg` use vector paths from the projects' official
+websites. They have tight `viewBox` bounds, transparent backgrounds, and black
+fills for the app's theme tint, with no embedded raster images or external
+resources. Ticker filenames are resolved and embedded automatically by
+`src/helpers/symbols.rs`.
+
+| Ticker | Project | Source | Normalization |
+| --- | --- | --- | --- |
+| `PUMP` | pump.fun | [Official SVG](https://pump.fun/pump-logomark.svg) | Retained the capsule outline and filled half; removed the white base and colored shadow so the other half and highlight cutouts stay transparent. |
+| `MON` | Monad | [Official brand kit](https://monad.xyz/brand-and-media-kit) | Extracted the inline Monad Logomark path; changed its fill to black and removed webpage metadata. |
+| `ZRO` | LayerZero | [Official Foundation SVG](https://layerzero.foundation/static/logo-foundation.svg) | Extracted the symbol path; removed the square background and wordmark, and changed its fill to black. |
+
+## XYZ market coverage (2026-09-26)
+
 XYZ market coverage checked on 2026-09-26 using Hyperliquid's public
 [`info` endpoint](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint)
 (`meta` with `dex: xyz` and `perpConciseAnnotations`). The existing and added
