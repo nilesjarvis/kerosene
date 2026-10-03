@@ -283,6 +283,9 @@ pub(crate) struct ChartInstance {
     /// Editable period text, including an empty field while replacing a value.
     pub(crate) moving_average_period_inputs:
         std::collections::HashMap<crate::chart_indicator::ChartIndicatorId, String>,
+    /// Temporary cloud period edits; only valid numbers enter persisted config.
+    pub(crate) ema_cloud_period_inputs:
+        std::collections::HashMap<(u64, config::EmaCloudPeriod), String>,
     /// Whether the header open-interest metric is shown as USD notional for this chart.
     pub(crate) open_interest_as_notional: bool,
     /// Whether the header 24h volume metric is shown as USD notional for this chart.

@@ -293,3 +293,19 @@ fn moving_average_period_edits_reach_chart_route() {
         UpdateRoute::Chart,
     );
 }
+
+#[test]
+fn ema_cloud_actions_reach_chart_route() {
+    use crate::config::{EmaCloudColor, EmaCloudPeriod, EmaCloudTimeframe};
+    for message in [
+        Message::ChartEmaCloudAdded(7),
+        Message::ChartEmaCloudRemoved(7, 1),
+        Message::ChartEmaCloudToggled(7, 1),
+        Message::ChartEmaCloudPeriodChanged(7, 1, EmaCloudPeriod::Fast, "9".into()),
+        Message::ChartEmaCloudTimeframeChanged(7, 1, EmaCloudTimeframe::Day),
+        Message::ChartEmaCloudColorChanged(7, 1, EmaCloudColor::Primary),
+        Message::ChartEmaCloudOpacityChanged(7, 1, 25),
+    ] {
+        assert_route(message, UpdateRoute::Chart);
+    }
+}

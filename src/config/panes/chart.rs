@@ -4,6 +4,11 @@ use std::collections::BTreeMap;
 
 use super::super::{default_symbol, default_timeframe, default_true};
 
+mod ema_cloud;
+pub use ema_cloud::{
+    EmaCloudColor, EmaCloudConfig, EmaCloudPeriod, EmaCloudTimeframe, MAX_EMA_CLOUDS,
+};
+
 pub const MAX_QUICK_TRADE_ACTIONS: usize = 12;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -91,6 +96,12 @@ fn compact_action_quantity(quantity: f64) -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MacroIndicatorsConfig {
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "ema_cloud::deserialize_ema_clouds"
+    )]
+    pub ema_clouds: Vec<EmaCloudConfig>,
     /// Period overrides keyed by stable EMA/SMA indicator slot IDs.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub moving_average_periods: BTreeMap<String, usize>,
@@ -152,6 +163,7 @@ impl Default for MacroIndicatorsConfig {
     fn default() -> Self {
         Self {
             moving_average_periods: BTreeMap::new(),
+            ema_clouds: Vec::new(),
             tf_sma_50: false,
             tf_ema_50: false,
             tf_sma_200: false,

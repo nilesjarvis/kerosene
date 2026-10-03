@@ -17,11 +17,23 @@ pub(super) fn indicator_badge(
     chart_id: ChartId,
     indicator: ActiveIndicator,
 ) -> Element<'static, Message> {
+    indicator_badge_with_action(
+        indicator.label,
+        indicator.color,
+        Message::ToggleMacroIndicator(chart_id, indicator.key),
+    )
+}
+
+pub(super) fn indicator_badge_with_action(
+    label: String,
+    color: Color,
+    action: Message,
+) -> Element<'static, Message> {
     let swatch = container(Space::new().width(6.0).height(6.0))
         .width(6.0)
         .height(6.0)
         .style(move |_theme: &Theme| container_style::Style {
-            background: Some(indicator.color.into()),
+            background: Some(color.into()),
             border: iced::Border {
                 radius: 3.0.into(),
                 ..Default::default()
@@ -32,10 +44,10 @@ pub(super) fn indicator_badge(
     let badge = button(
         row![
             swatch,
-            text(indicator.label.clone())
+            text(label.clone())
                 .size(10)
                 .font(crate::app_fonts::monospace_font())
-                .color(indicator.color),
+                .color(color),
             text(REMOVE_ICON)
                 .size(10)
                 .font(crate::app_fonts::monospace_font()),
@@ -43,7 +55,7 @@ pub(super) fn indicator_badge(
         .spacing(4)
         .align_y(Alignment::Center),
     )
-    .on_press(Message::ToggleMacroIndicator(chart_id, indicator.key))
+    .on_press(action)
     .padding([2, 6])
     .style(move |theme: &Theme, status| {
         let bg = match status {
@@ -60,10 +72,7 @@ pub(super) fn indicator_badge(
             border: iced::Border {
                 radius: 4.0.into(),
                 width: 1.0,
-                color: Color {
-                    a: 0.5,
-                    ..indicator.color
-                },
+                color: Color { a: 0.5, ..color },
             },
             ..Default::default()
         }
@@ -71,7 +80,7 @@ pub(super) fn indicator_badge(
 
     tooltip(
         badge,
-        text(format!("Remove {}", indicator.label))
+        text(format!("Remove {}", label))
             .size(10)
             .font(crate::app_fonts::monospace_font()),
         tooltip::Position::Bottom,

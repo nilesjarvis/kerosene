@@ -10,6 +10,7 @@ mod candles;
 mod detached;
 mod earnings;
 mod editor;
+mod ema_clouds;
 mod macro_indicators;
 mod price_change;
 mod quick_trade;
@@ -89,6 +90,15 @@ impl TradingTerminal {
             | Message::SaveQuickTradeActions
             | Message::CloseQuickTradeEditor) => {
                 return self.update_chart_quick_trade(message);
+            }
+            message @ (Message::ChartEmaCloudAdded(_)
+            | Message::ChartEmaCloudRemoved(_, _)
+            | Message::ChartEmaCloudToggled(_, _)
+            | Message::ChartEmaCloudPeriodChanged(_, _, _, _)
+            | Message::ChartEmaCloudTimeframeChanged(_, _, _)
+            | Message::ChartEmaCloudColorChanged(_, _, _)
+            | Message::ChartEmaCloudOpacityChanged(_, _, _)) => {
+                return self.update_chart_ema_clouds(message);
             }
             message @ (Message::ToggleMacroMenu(_)
             | Message::ToggleMacroIndicator(_, _)

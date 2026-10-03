@@ -58,6 +58,7 @@ impl TradingTerminal {
                     inst.macro_menu_open = opening;
                     if opening {
                         inst.moving_average_period_inputs.clear();
+                        inst.ema_cloud_period_inputs.clear();
                     }
                 }
             }

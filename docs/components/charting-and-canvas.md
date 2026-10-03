@@ -462,6 +462,28 @@ Canvas labels and active badges display the effective period; detached charts
 and restored layouts retain it. Custom averages request additional warm-up
 history, bounded to 5000 candles and subject to the source's available history.
 
+The same indicator menu includes **EMA clouds → + Add**. A chart supports up to
+eight independent clouds, each with two editable close-price EMA periods
+(1–5000), a chart/1-hour/daily/weekly/monthly source, a color choice, and opacity
+(0–100%, default 20%). Bull / Bear coloring follows whether the fast EMA is above
+or below the slow EMA; the other choices use the theme's primary, warning, or
+secondary color. Clouds render behind candles as translucent fills without
+boundary lines. Crossings split the fill into separate polygons, including with
+an inverted axis or fisheye projection. Geometry is limited to the visible range
+and its immediate neighbors, clipped to the price panel, and starts only once
+both EMAs have enough history. Fixed source timeframes use the existing macro
+candle loading and sampling behavior.
+
+`ChartEmaCloudAdded/Removed/Toggled` and `ChartEmaCloudPeriod/Timeframe/Color/OpacityChanged`
+route to `chart_update/ema_clouds.rs`. Changes synchronize the canvas, invalidate
+its cache, and persist through `macro_indicators.ema_clouds`. The optional list
+stores stable per-chart IDs, enabled state, periods, timeframe, color, and opacity;
+old layouts default to no clouds. Invalid saved ranges, duplicate IDs, and entries
+beyond the eight-cloud limit are discarded. Empty/zero period drafts preserve
+the last valid value. Clouds survive layout restoration and detached chart
+cloning, have individual active badges, and request source history using the
+same bounded warm-up policy as custom moving averages.
+
 
 `chart_indicator.rs` is the shared stable-ID registry used by the chart UI and
 the Assistant workspace contract. Assistant actions set explicit enabled states

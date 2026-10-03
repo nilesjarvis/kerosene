@@ -9,6 +9,7 @@ use crate::config::{
 
 mod annotations;
 mod detached;
+mod ema_clouds;
 mod markers;
 mod screenshot;
 

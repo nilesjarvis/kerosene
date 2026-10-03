@@ -91,6 +91,14 @@ async fn export_pixels_match_live_canvas_at_higher_density() {
 
     for panels in [false, true] {
         let mut chart = synthetic_chart();
+        chart
+            .macro_indicators
+            .ema_clouds
+            .push(crate::config::EmaCloudConfig {
+                fast_period: 5,
+                slow_period: 21,
+                ..Default::default()
+            });
         chart.macro_indicators.show_funding_rate = panels;
         chart.macro_indicators.show_session_indicator = panels;
         chart.funding_panel_height = 83.0;

@@ -15,6 +15,7 @@ use iced::widget::{Column, button, container, scrollable, stack};
 use iced::{Color, Element, Fill, Theme};
 
 mod components;
+mod ema_clouds;
 mod options;
 mod overlays;
 
@@ -82,6 +83,8 @@ impl TradingTerminal {
                 monthly_options(indicator_options),
                 instance,
             ))
+            .push(separator())
+            .push(ema_clouds::view_ema_clouds(chart_id, instance))
             .push(separator())
             .push(indicator_footer(
                 chart_id,

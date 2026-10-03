@@ -48,7 +48,8 @@ pub use live_watchlist::{
 };
 pub use order_presets::{OrderPreset, OrderPresetsConfig};
 pub use panes::{
-    ChartConfig, DetachedChartWindowConfig, DetachedSpaghettiWindowConfig, MAX_QUICK_TRADE_ACTIONS,
+    ChartConfig, DetachedChartWindowConfig, DetachedSpaghettiWindowConfig, EmaCloudColor,
+    EmaCloudConfig, EmaCloudPeriod, EmaCloudTimeframe, MAX_EMA_CLOUDS, MAX_QUICK_TRADE_ACTIONS,
     MacroIndicatorsConfig, OrderBookConfig, OrderBookDisplayModeConfig, OrderBookSymbolModeConfig,
     PositioningInfoConfig, QuickTradeActionConfig, QuickTradeDenomination, QuickTradeSide,
     SessionDataConfig, SpaghettiChartConfig, XFeedConfig, default_detached_chart_window_height,

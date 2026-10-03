@@ -412,6 +412,15 @@ pub(crate) fn moving_average_lookback_ms(
                 && config.moving_average_periods.contains_key(key.key())
         })
         .filter_map(|key| key.period(config))
+        .chain(
+            config
+                .ema_clouds
+                .iter()
+                .filter(|cloud| {
+                    cloud.enabled && cloud.is_valid() && cloud.timeframe.group() == group
+                })
+                .map(|cloud| cloud.fast_period.max(cloud.slow_period)),
+        )
         .max()
         .unwrap_or(0) as u64;
     if period == 0 {

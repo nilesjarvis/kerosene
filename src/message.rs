@@ -723,6 +723,13 @@ pub(crate) enum Message {
     // Add widget menu
     ToggleAddWidgetMenu(WorkspaceId),
     ToggleLayoutMenu,
+    ChartEmaCloudAdded(ChartId),
+    ChartEmaCloudRemoved(ChartId, u64),
+    ChartEmaCloudToggled(ChartId, u64),
+    ChartEmaCloudPeriodChanged(ChartId, u64, crate::config::EmaCloudPeriod, String),
+    ChartEmaCloudTimeframeChanged(ChartId, u64, crate::config::EmaCloudTimeframe),
+    ChartEmaCloudColorChanged(ChartId, u64, crate::config::EmaCloudColor),
+    ChartEmaCloudOpacityChanged(ChartId, u64, u8),
     ToggleMacroMenu(ChartId),
     ToggleMacroIndicator(ChartId, ChartIndicatorId),
     ChartMovingAveragePeriodChanged(ChartId, ChartIndicatorId, String),

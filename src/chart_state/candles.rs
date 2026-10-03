@@ -570,12 +570,67 @@ fn macro_history_timeframes(config: &crate::config::MacroIndicatorsConfig) -> Ve
         (Timeframe::Mo1, config.sma_12m || config.ema_12m),
     ]
     .into_iter()
-    .filter_map(|(tf, enabled)| enabled.then_some(tf))
+    .filter_map(|(tf, enabled)| {
+        (enabled
+            || config.ema_clouds.iter().any(|cloud| {
+                cloud.enabled && cloud.is_valid() && cloud.timeframe.source() == Some(tf)
+            }))
+        .then_some(tf)
+    })
     .collect()
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ema_cloud_history_uses_enabled_sources_and_custom_lookback() {
+        use crate::config::{EmaCloudConfig, EmaCloudTimeframe};
+        let mut config = crate::config::MacroIndicatorsConfig {
+            ema_clouds: vec![
+                EmaCloudConfig {
+                    id: 1,
+                    timeframe: EmaCloudTimeframe::Hour,
+                    slow_period: 1000,
+                    ..Default::default()
+                },
+                EmaCloudConfig {
+                    id: 2,
+                    timeframe: EmaCloudTimeframe::Hour,
+                    ..Default::default()
+                },
+                EmaCloudConfig {
+                    id: 3,
+                    timeframe: EmaCloudTimeframe::Day,
+                    enabled: false,
+                    ..Default::default()
+                },
+                EmaCloudConfig {
+                    id: 4,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        assert_eq!(
+            super::macro_history_timeframes(&config),
+            vec![Timeframe::H1]
+        );
+        assert_eq!(
+            crate::chart_indicator::moving_average_lookback_ms(&config, Timeframe::H1, "hourly"),
+            Timeframe::H1.lookback_ms() + 3000 * Timeframe::H1.duration_ms()
+        );
+        config.ema_clouds[2].enabled = true;
+        assert_eq!(
+            super::macro_history_timeframes(&config),
+            vec![Timeframe::H1, Timeframe::D1]
+        );
+        config.ema_clouds[0].slow_period = 5000;
+        assert_eq!(
+            crate::chart_indicator::moving_average_lookback_ms(&config, Timeframe::H1, "hourly"),
+            5000 * Timeframe::H1.duration_ms()
+        );
+    }
+
     #[test]
     fn macro_history_is_only_requested_for_enabled_intervals() {
         let mut config = crate::config::MacroIndicatorsConfig::default();

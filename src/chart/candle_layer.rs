@@ -1,6 +1,7 @@
 mod axes;
 mod candles;
 mod earnings;
+mod ema_clouds;
 mod funding;
 mod leledc;
 mod line_series;
@@ -101,6 +102,7 @@ impl CandlestickChart {
                     }
                     self.draw_price_volume_separator(ctx, frame);
                     self.draw_historical_heatmap(ctx, frame);
+                    self.draw_ema_clouds(ctx, frame);
                     if self.series_style.is_line() {
                         self.draw_line_series(ctx, frame);
                     } else {

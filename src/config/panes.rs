@@ -6,7 +6,8 @@ mod spaghetti;
 mod x_feed;
 
 pub use chart::{
-    ChartConfig, DetachedChartWindowConfig, MAX_QUICK_TRADE_ACTIONS, MacroIndicatorsConfig,
+    ChartConfig, DetachedChartWindowConfig, EmaCloudColor, EmaCloudConfig, EmaCloudPeriod,
+    EmaCloudTimeframe, MAX_EMA_CLOUDS, MAX_QUICK_TRADE_ACTIONS, MacroIndicatorsConfig,
     QuickTradeActionConfig, QuickTradeDenomination, QuickTradeSide,
     default_detached_chart_window_height, default_detached_chart_window_width,
 };
