@@ -5,7 +5,7 @@ fn default_theme_is_kerosene() {
     assert_eq!(default_theme(), "Custom: Kerosene");
 }
 
-fn default_theme_expectations() -> [ThemeExpectation<'static>; 15] {
+fn default_theme_expectations() -> [ThemeExpectation<'static>; 16] {
     [
         ThemeExpectation {
             name: "Kerosene",
@@ -66,6 +66,18 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 15] {
             chart_bull: Some("#26A69A"),
             chart_bear: Some("#EF5350"),
             chart_line: None,
+        },
+        ThemeExpectation {
+            name: "TradingView",
+            background: "#131722",
+            text: "#D1D4DC",
+            primary: "#2962FF",
+            success: "#26A69A",
+            warning: "#FF9800",
+            danger: "#EF5350",
+            chart_bull: Some("#26A69A"),
+            chart_bear: Some("#EF5350"),
+            chart_line: Some("#2962FF"),
         },
         ThemeExpectation {
             name: "XYZ",

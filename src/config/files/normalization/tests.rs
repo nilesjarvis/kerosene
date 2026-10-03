@@ -140,6 +140,44 @@ fn adds_hyperdash_to_existing_config_once_and_preserves_customizations() {
 }
 
 #[test]
+fn adds_tradingview_to_existing_config_once_and_preserves_customizations() {
+    let mut config = KeroseneConfig {
+        active_theme: "Dark".to_string(),
+        custom_themes: Vec::new(),
+        ..KeroseneConfig::default()
+    };
+
+    normalize_loaded_config(&mut config);
+
+    let tradingview = config
+        .custom_themes
+        .iter_mut()
+        .find(|theme| theme.name == "TradingView")
+        .expect("TradingView theme should be added to older configs");
+    assert_eq!(tradingview.background, "#131722");
+    assert_eq!(tradingview.chart_bull.as_deref(), Some("#26A69A"));
+    assert_eq!(tradingview.chart_bear.as_deref(), Some("#EF5350"));
+    assert_eq!(tradingview.chart_line.as_deref(), Some("#2962FF"));
+    tradingview.primary = "#123456".to_string();
+    tradingview.chart_bull = Some("#ABCDEF".to_string());
+    tradingview.chart_line = Some("#FEDCBA".to_string());
+    let customized = tradingview.clone();
+
+    let serialized = serde_json::to_string(&config).expect("config serializes");
+    let mut reloaded: KeroseneConfig =
+        serde_json::from_str(&serialized).expect("config deserializes");
+    normalize_loaded_config(&mut reloaded);
+
+    let tradingview_themes: Vec<_> = reloaded
+        .custom_themes
+        .iter()
+        .filter(|theme| theme.name == "TradingView")
+        .collect();
+    assert_eq!(tradingview_themes, vec![&customized]);
+    assert_eq!(reloaded.active_theme, "Dark");
+}
+
+#[test]
 fn normalizes_out_of_range_market_slippage() {
     let mut value =
         serde_json::to_value(KeroseneConfig::default()).expect("default config serializes");

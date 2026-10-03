@@ -14,6 +14,7 @@ mod hyperliquid;
 mod ibkr_dark;
 mod kraken;
 mod kwenta;
+mod tradingview;
 mod ubuntu;
 
 pub(crate) use chart_colors::ChartThemeOverrides;
@@ -107,6 +108,8 @@ impl TradingTerminal {
             && Self::palette_matches_coinbase_light_source(palette);
         let use_kwenta_source_palette =
             theme_name == "Custom: kwenta" && Self::palette_matches_kwenta_source(palette);
+        let use_tradingview_source_palette = theme_name == "Custom: TradingView"
+            && Self::palette_matches_tradingview_source(palette);
         let use_ubuntu_source_palette =
             theme_name == "Custom: ubuntu" && Self::palette_matches_ubuntu_source(palette);
 
@@ -159,6 +162,11 @@ impl TradingTerminal {
                 }
                 if use_kwenta_source_palette && TradingTerminal::palette_matches_kwenta_source(p) {
                     return TradingTerminal::kwenta_source_extended_palette();
+                }
+                if use_tradingview_source_palette
+                    && TradingTerminal::palette_matches_tradingview_source(p)
+                {
+                    return TradingTerminal::tradingview_source_extended_palette();
                 }
                 if use_ubuntu_source_palette && TradingTerminal::palette_matches_ubuntu_source(p) {
                     return TradingTerminal::ubuntu_source_extended_palette();

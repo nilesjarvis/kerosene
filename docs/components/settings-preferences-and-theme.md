@@ -90,6 +90,16 @@ editing that palette uses the normal custom-theme color generation instead.
 The existing config normalization adds Hyperdash to older configurations without
 changing the active theme or replacing an existing preset with the same name.
 
+The bundled **TradingView** preset follows the classic dark chart appearance in
+[FXOpen's TradingView screenshot](https://fxopen.com/cn-hk/assets/images/tradingview/tradingview-dark.png):
+navy chart backgrounds, cool gray labels, blue actions and line charts, and
+teal/red candles. It is available under Settings > Themes > Custom Themes.
+`app_theme/tradingview.rs` supplies matching panel and control shades while the
+base palette is unchanged; user edits fall back to generated custom-theme
+shades. Config normalization adds the preset to older configurations once,
+preserves existing customizations, and keeps the active theme unchanged. The
+screenshot is a visual reference, not a bundled application asset.
+
 ### Window Transparency and Blur
 
 Appearance settings include an opt-in `Transparency` toggle and a background

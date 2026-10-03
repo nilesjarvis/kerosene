@@ -116,6 +116,18 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
             chart: Some(ChartThemeSpec::candles("#26A69A", "#EF5350")),
         },
         ThemeSpec {
+            name: "TradingView",
+            colors: [
+                "#131722", "#D1D4DC", "#2962FF", "#26A69A", "#FF9800", "#EF5350",
+            ],
+            chart: Some(ChartThemeSpec {
+                bull: "#26A69A",
+                bear: "#EF5350",
+                line: Some("#2962FF"),
+                line_gradient: None,
+            }),
+        },
+        ThemeSpec {
             name: "XYZ",
             colors: [
                 "#11151B", "#E8E8E8", "#FFC028", "#08A088", "#D8A828", "#FF3848",
