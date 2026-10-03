@@ -1,8 +1,8 @@
 use super::super::manager::{
     HydromancerCommand, HydromancerSubscriptionGuard, get_hydromancer_manager,
 };
-use super::super::parsing::hydromancer_control_message;
 use super::super::{HYDROMANCER_RECONNECT_DELAY_SECS, HydromancerStreamKey, emit_after_reconnect};
+use super::hydromancer_market_control_message;
 use super::hydromancer_market_control_should_fallback;
 use super::payloads::active_asset_ctx_items;
 use crate::account::AssetContext;
@@ -90,7 +90,7 @@ fn hydromancer_asset_ctx_stream(
             match msg_rx.recv().await {
                 Ok(msg) => {
                     if let Some(control) =
-                        hydromancer_control_message(&msg.msg_type, msg.data.as_ref())
+                        hydromancer_market_control_message(&msg.msg_type, msg.data.as_ref())
                     {
                         if hydromancer_market_control_should_fallback(&control) {
                             drop(guard);

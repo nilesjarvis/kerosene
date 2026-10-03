@@ -146,6 +146,24 @@ Market streams borrow direct, wrapped, or batched items from the frame before
 decoding candles and asset contexts. Symbol/channel checks, candle validation,
 watchdogs, and provider fallback rules stay in their existing stream handlers.
 
+Hydromancer-only feeds have priority when the key reaches a streaming limit.
+The manager replays liquidations and tracked trades first, followed by one-second
+candles. Capacity feedback moves ordinary candles (including spaghetti charts),
+books, and asset contexts to native Hyperliquid and releases their Hydromancer
+subscriptions before retrying required feeds. New market consumers also fall
+back while that manager remains alive; changing keys or recreating the manager
+allows Hydromancer market streams to be tried again. One-second candles never
+fall back because Hyperliquid does not provide them. REST provider selection is
+unchanged.
+
+The limit is detected from legacy error messages and structured subscription
+feedback, including capacity-related connection failures and close reasons.
+There is no universal ten-connection cap in the application: the provider's
+[documented quotas](https://docs.hydromancer.xyz/readme/websocket/rate-limits-user-limits-and-heartbeats)
+vary by subscription type and key tier. Capacity errors mentioning an API key
+are not misreported as invalid credentials. If required feeds alone exceed the
+key's quota, the provider error remains visible.
+
 Feed updates share control-message status and heartbeat transitions in
 `feed_update/hydromancer_status.rs`, after validating the stream generation and
 scope. Data-event filtering and freshness remain feed-specific: hidden

@@ -183,7 +183,7 @@ fn control_message_uses_hydromancer_message_field_for_errors() {
         panic!("expected disconnected control message");
     };
 
-    assert_eq!(error, "Too many subscriptions");
+    assert_eq!(error, "Hydromancer subscription capacity exceeded.");
 }
 
 #[test]
@@ -260,4 +260,31 @@ fn connecting_control_distinguishes_session_resume() {
         hydromancer_control_message("connecting", &data),
         Some(HydromancerWsMessage::Resuming)
     ));
+}
+
+#[test]
+fn capacity_errors_mentioning_keys_are_not_misreported_as_authentication_failures() {
+    let control = hydromancer_control_message(
+        "error",
+        &serde_json::json!({
+            "message":"Maximum subscriptions reached for API key hydro-secret"
+        }),
+    )
+    .expect("capacity control");
+    let HydromancerWsMessage::Disconnected(error) = control else {
+        panic!("expected disconnected control");
+    };
+    assert_eq!(error, "Hydromancer subscription capacity exceeded.");
+    assert!(!error.contains("hydro-secret"));
+}
+
+#[test]
+fn structured_capacity_feedback_is_visible_for_required_only_overload() {
+    for msg_type in ["error", "subscriptionUpdate", "subscriptionResponse"] {
+        assert!(
+            matches!(hydromancer_control_message(msg_type, &serde_json::json!({
+            "code":"subscription_type_limit_exceeded"
+        })), Some(HydromancerWsMessage::Disconnected(error)) if error.contains("capacity exceeded"))
+        );
+    }
 }

@@ -211,9 +211,25 @@ Market adapters are split by feature under `ws/hydromancer/market_streams/`.
 Their shared payload selectors return borrowed slices for direct items, wrapped
 items, and batches; each adapter filters its symbol and other routing fields
 before parsing. Book and candle legacy wrapper fallbacks retain their own rules.
-Authentication failures can switch market streams to Hyperliquid, except for
-one-second candles. Fallback events retain the source generation supplied by the
-fallback stream.
+Authentication and capacity failures can switch market streams to Hyperliquid,
+except for one-second candles. The shared manager replays liquidation and
+tracked-trade subscriptions before one-second candles and replaceable market
+streams. On subscription/connection/quota limit feedback it removes replaceable
+candle, book, and asset-context topics from desired state, unsubscribes them,
+and retries required feeds after releasing capacity. A rejection explicitly
+scoped to a retired market topic does not mark the liquidation feed disconnected.
+Later market consumers use Hyperliquid for the rest of that manager's lifetime,
+so adding charts or reconnecting cannot immediately reclaim the freed capacity.
+Key rotation or manager recreation resets this policy. Capacity-related socket
+closes and ambiguous legacy limit errors discard the overloaded resume session
+before retrying, avoiding stale subscriptions and queued market rejections.
+
+The policy reacts to provider feedback rather than hard-coding one tier's limits:
+Hydromancer has distinct per-key connection, total-subscription, candle, and
+order-book quotas. Required-only overload remains a visible provider error.
+Fallback events retain the source generation supplied by the fallback stream;
+the key-gated position-PnL consumer additionally retains its subscription's key
+generation so native fallback events are accepted but old-key events are rejected.
 
 Hydromancer keys are secret-bearing values and should only be passed into
 stream setup or request tasks, never logged.

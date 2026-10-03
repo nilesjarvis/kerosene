@@ -1,8 +1,8 @@
 use super::super::manager::{
     HydromancerCommand, HydromancerSubscriptionGuard, get_hydromancer_manager,
 };
-use super::super::parsing::hydromancer_control_message;
 use super::super::{HYDROMANCER_RECONNECT_DELAY_SECS, HydromancerStreamKey, HydromancerWsMessage};
+use super::hydromancer_candle_control_message;
 use super::hydromancer_market_control_should_fallback;
 use super::payloads::candle_items;
 use crate::api::Candle;
@@ -170,9 +170,11 @@ fn hydromancer_candle_stream(
             };
             match message {
                 Ok(msg) => {
-                    if let Some(control) =
-                        hydromancer_control_message(&msg.msg_type, msg.data.as_ref())
-                    {
+                    if let Some(control) = hydromancer_candle_control_message(
+                        &interval,
+                        &msg.msg_type,
+                        msg.data.as_ref(),
+                    ) {
                         if interval != "1s" && hydromancer_market_control_should_fallback(&control)
                         {
                             drop(guard);

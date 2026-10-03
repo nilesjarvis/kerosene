@@ -1,4 +1,5 @@
 use super::super::super::HYDROMANCER_RECONNECT_DELAY_SECS;
+use super::super::super::capacity::{has_market_fallback, is_capacity_error, is_capacity_message};
 use super::super::{HydromancerCommand, HydromancerRoutedMessage};
 use super::coalescer::HydromancerCoalescedSender;
 use super::frames::{HydromancerTextFrameKind, parse_hydromancer_text_frame};
@@ -80,7 +81,7 @@ where
 
 pub(super) async fn handle_hydromancer_ws_message<W>(
     msg: WsMsg,
-    active_subs: &ActiveHydromancerSubscriptions,
+    active_subs: &mut ActiveHydromancerSubscriptions,
     session: &mut HydromancerSessionState,
     msg_tx: &broadcast::Sender<HydromancerRoutedMessage>,
     coalescer: &mut HydromancerCoalescedSender,
@@ -104,10 +105,23 @@ where
             let _ = broadcast_hydromancer_heartbeat(msg_tx);
             false
         }
-        WsMsg::Close(_) => {
+        WsMsg::Close(frame) => {
+            let capacity_exceeded = frame
+                .as_ref()
+                .is_some_and(|frame| is_capacity_error(&frame.reason));
+            if capacity_exceeded {
+                active_subs.fallback_market_streams();
+                // A closed socket cannot unsubscribe the retired topics. Do not
+                // resume a server session that still owns those subscriptions.
+                *session = HydromancerSessionState::default();
+            }
             let _ = broadcast_hydromancer_reconnecting(
                 msg_tx,
-                "stream closed",
+                if capacity_exceeded {
+                    "Hydromancer subscription capacity exceeded"
+                } else {
+                    "stream closed"
+                },
                 HYDROMANCER_RECONNECT_DELAY_SECS,
             );
             true
@@ -118,7 +132,7 @@ where
 
 async fn handle_hydromancer_text_frame<W>(
     text: &str,
-    active_subs: &ActiveHydromancerSubscriptions,
+    active_subs: &mut ActiveHydromancerSubscriptions,
     session: &mut HydromancerSessionState,
     msg_tx: &broadcast::Sender<HydromancerRoutedMessage>,
     coalescer: &mut HydromancerCoalescedSender,
@@ -132,9 +146,50 @@ where
     };
     let frame_action = session.apply_text_frame(&frame);
 
+    let msg_type = frame
+        .json
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    if is_capacity_message(msg_type, &frame.json) {
+        let retired = active_subs.fallback_market_streams();
+        let market_rejection = has_market_fallback(&frame.json);
+        if !retired.is_empty() {
+            // Free capacity before retrying priority feeds. Keep their socket
+            // and resume cursor alive when the provider permits it.
+            coalescer.flush_all();
+            for payload in retired {
+                if !send_text(write, hydromancer_unsubscribe_payload(&payload).to_string()).await {
+                    *session = HydromancerSessionState::default();
+                    return true;
+                }
+            }
+            if !market_rejection {
+                // Legacy errors do not identify the rejected topic. Start a
+                // clean session with priority feeds only: queued rejections
+                // from retired charts must not poison those feeds, and a
+                // required subscription may need to be retried as well.
+                *session = HydromancerSessionState::default();
+                let _ = broadcast_hydromancer_reconnecting(
+                    msg_tx,
+                    "prioritizing required feeds after capacity limit",
+                    HYDROMANCER_RECONNECT_DELAY_SECS,
+                );
+                return true;
+            }
+            // A charts-only workspace should release its now-unused socket.
+            return active_subs.is_empty();
+        }
+        if market_rejection {
+            // Late rejections for retired charts must not disconnect fill feeds.
+            return false;
+        }
+    }
+
     match frame.kind {
         HydromancerTextFrameKind::Connected | HydromancerTextFrameKind::Reconnected => {
             let _ = broadcast_hydromancer_json(msg_tx, frame.json);
+            active_subs.notify_market_fallback();
             if !frame_action.resend_subscriptions {
                 return false;
             }

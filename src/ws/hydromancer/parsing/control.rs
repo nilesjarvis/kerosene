@@ -7,6 +7,15 @@ pub(in crate::ws::hydromancer) fn hydromancer_control_message(
     msg_type: &str,
     data: &Value,
 ) -> Option<HydromancerWsMessage> {
+    if matches!(
+        msg_type,
+        "error" | "disconnected" | "subscriptionUpdate" | "subscriptionResponse"
+    ) && super::super::capacity::is_capacity_message(msg_type, data)
+    {
+        return Some(HydromancerWsMessage::Disconnected(
+            "Hydromancer subscription capacity exceeded.".to_string(),
+        ));
+    }
     match msg_type {
         "connecting" => {
             if data
@@ -52,6 +61,9 @@ pub(in crate::ws::hydromancer) fn hydromancer_control_message(
 }
 
 fn hydromancer_status_error(error: &str) -> String {
+    if super::super::capacity::is_capacity_error(error) {
+        return "Hydromancer subscription capacity exceeded.".to_string();
+    }
     let lower = error.to_ascii_lowercase();
     if lower.contains("unauthorized")
         || lower.contains("unauthenticated")

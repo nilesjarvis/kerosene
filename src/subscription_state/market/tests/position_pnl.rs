@@ -116,3 +116,31 @@ fn position_pnl_book_lagged_event_maps_to_account_message() {
         other => panic!("expected position PnL book lagged message, got {other:?}"),
     }
 }
+
+#[test]
+fn position_pnl_fallback_keeps_key_scope_and_rejects_events_after_rotation() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.hydromancer_api_key = "hydro-key".to_string().into();
+    terminal.hydromancer_key_generation = 7;
+    let context = terminal.hydromancer_keyed_market_data_source_context();
+    let message = position_pnl_book_stream_event_message((
+        context,
+        crate::ws::KeyedBookStreamEvent::Item(
+            0,
+            "BTC".to_string(),
+            terminal.canonical_l2_book_sigfigs("BTC"),
+            None,
+            crate::api::OrderBook {
+                bids: Vec::new(),
+                asks: Vec::new(),
+            },
+        ),
+    ));
+    let Message::PositionPnlWsBookUpdate { source_context, .. } = message else {
+        panic!("expected position PnL update");
+    };
+    assert_eq!(source_context, context);
+    assert!(terminal.hydromancer_keyed_market_stream_source_is_current(source_context));
+    terminal.hydromancer_key_generation += 1;
+    assert!(!terminal.hydromancer_keyed_market_stream_source_is_current(source_context));
+}

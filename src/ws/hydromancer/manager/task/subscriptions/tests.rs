@@ -134,3 +134,77 @@ fn topic_repair_preserves_references_and_is_throttled() {
     subscriptions.unsubscribe(topic, payload);
     assert!(subscriptions.is_empty());
 }
+
+fn candle(coin: &str, interval: &str) -> serde_json::Value {
+    json!({"method":"subscribe", "subscription":{"type":"candle", "coin":coin, "interval":interval}})
+}
+
+#[test]
+fn overload_releases_all_replaceable_topics_once_and_preserves_priority_references() {
+    let (tx, mut rx) = tokio::sync::broadcast::channel(8);
+    let mut subscriptions = ActiveHydromancerSubscriptions::new(tx);
+    let liquidation = json!({"type":"subscribe", "subscription":{"type":"liquidationFills"}});
+    let tracked = json!({"type":"subscribe", "subscription":{"type":"userFills", "addresses":["test-address"]}});
+    for i in 0..11 {
+        let topic = format!("candle:{i}:1m");
+        let payload = candle(&i.to_string(), "1m");
+        subscriptions.subscribe(topic.clone(), payload.clone());
+        subscriptions.subscribe(topic, payload);
+    }
+    subscriptions.subscribe("second".into(), candle("BTC", "1s"));
+    subscriptions.subscribe("tracked".into(), tracked.clone());
+    subscriptions.subscribe("liq".into(), liquidation.clone());
+    subscriptions.subscribe("liq".into(), liquidation.clone());
+
+    let before = subscriptions.payloads().cloned().collect::<Vec<_>>();
+    assert_eq!(
+        &before[..3],
+        &[liquidation.clone(), tracked.clone(), candle("BTC", "1s")]
+    );
+    assert_eq!(subscriptions.fallback_market_streams().len(), 11);
+    assert_eq!(
+        rx.try_recv().expect("fallback notice").msg_type,
+        "marketFallback"
+    );
+    assert_eq!(
+        subscriptions.payloads().cloned().collect::<Vec<_>>(),
+        before[..3]
+    );
+    assert!(subscriptions.resubscribe("candle:0:1m").is_none());
+    assert_eq!(
+        subscriptions.unsubscribe("candle:0:1m".into(), candle("0", "1m")),
+        HydromancerUnsubscribeResult::Missing
+    );
+    assert_eq!(
+        subscriptions.unsubscribe("liq".into(), liquidation),
+        HydromancerUnsubscribeResult::StillActive
+    );
+}
+
+#[test]
+fn later_charts_fall_back_without_reclaiming_capacity_but_new_manager_can_retry() {
+    let (tx, mut rx) = tokio::sync::broadcast::channel(8);
+    let mut subscriptions = ActiveHydromancerSubscriptions::new(tx);
+    subscriptions.fallback_market_streams();
+    rx.try_recv().expect("initial notice");
+    assert!(
+        subscriptions
+            .subscribe("chart".into(), candle("BTC", "1m"))
+            .is_none()
+    );
+    assert!(subscriptions.is_empty());
+    assert_eq!(
+        rx.try_recv().expect("late consumer notice").msg_type,
+        "marketFallback"
+    );
+    assert!(
+        subscriptions
+            .subscribe("second".into(), candle("BTC", "1s"))
+            .is_some()
+    );
+    assert!(
+        ActiveHydromancerSubscriptions::default()
+            .subscribe("chart".into(), candle("BTC", "1m"))
+            .is_some()
+    );
+}

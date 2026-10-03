@@ -63,7 +63,7 @@ async fn hydromancer_manager_task_with_options(
     connect_url_override: Option<String>,
     reconnect_gate: HydromancerReconnectGate,
 ) {
-    let mut active_subs = ActiveHydromancerSubscriptions::default();
+    let mut active_subs = ActiveHydromancerSubscriptions::new(msg_tx.clone());
     let mut coalescer = HydromancerCoalescedSender::new(msg_tx.clone());
     let mut retry_delay = 1;
     let mut session = HydromancerSessionState::default();
@@ -153,6 +153,10 @@ async fn hydromancer_manager_task_with_options(
         let ws_stream = match connect_result {
             Ok((ws, _)) => ws,
             Err(error) => {
+                if super::super::capacity::is_capacity_error(&error) {
+                    active_subs.fallback_market_streams();
+                    session = HydromancerSessionState::default();
+                }
                 record_ws_lifecycle(Provider::Hydromancer, ActivityKind::WsFailed);
                 let _ = broadcast_hydromancer_reconnecting(&msg_tx, error, retry_delay);
                 if hydromancer_sleep_or_shutdown(
@@ -207,7 +211,7 @@ async fn hydromancer_manager_task_with_options(
                     last_rx_at = Instant::now();
                     disconnected = handle_hydromancer_ws_message(
                         msg,
-                        &active_subs,
+                        &mut active_subs,
                         &mut session,
                         &msg_tx,
                         &mut coalescer,
@@ -246,6 +250,9 @@ async fn hydromancer_manager_task_with_options(
         }
 
         finish_connected_hydromancer_session(&mut coalescer);
+        // Release the old socket before waiting or attempting another connection.
+        drop(write);
+        drop(read);
         if hydromancer_sleep_or_shutdown(
             &mut cmd_rx,
             &mut active_subs,

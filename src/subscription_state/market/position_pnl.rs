@@ -55,8 +55,13 @@ pub(super) fn position_pnl_book_stream_event_message(
 ) -> Message {
     match event {
         KeyedBookStreamEvent::Item(_id, coin, sigfigs, hydromancer_key_generation, book) => {
-            let source_context =
-                source_context_for_stream_event(source_context, hydromancer_key_generation);
+            // This subscription is gated by a configured key even when its
+            // transport falls back. Retain that lifecycle generation so key
+            // rotation still invalidates late native events.
+            let source_context = source_context_for_stream_event(
+                source_context,
+                hydromancer_key_generation.or(source_context.hydromancer_key_generation),
+            );
             Message::PositionPnlWsBookUpdate {
                 coin,
                 sigfigs,
@@ -71,8 +76,10 @@ pub(super) fn position_pnl_book_stream_event_message(
             hydromancer_key_generation,
             skipped,
         } => {
-            let source_context =
-                source_context_for_stream_event(source_context, hydromancer_key_generation);
+            let source_context = source_context_for_stream_event(
+                source_context,
+                hydromancer_key_generation.or(source_context.hydromancer_key_generation),
+            );
             Message::PositionPnlWsBookLagged {
                 coin,
                 sigfigs,
