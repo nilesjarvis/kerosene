@@ -25,16 +25,20 @@ traffic were inspected, and no exchange load test was performed.
 
 ## Implemented recovery and traffic controls
 
-- `api/read_control.rs` admits info reads through a process-wide weighted rolling
-  minute budget: 900 Hyperliquid weight total, at most 700 for background reads.
+- `api/read_control.rs` admits info reads through weighted rolling-minute
+  budgets: 900 Hyperliquid weight total, at most 700 for background reads, for
+  the direct connection and independently for each configured proxy route.
   Account state and order-status reads retain 200 weight of headroom and two
   concurrency slots; background reads have four slots. Admission waits are
   bounded to 30 seconds, then return a recoverable error. Exchange writes are
   outside this queue. Hydromancer info reads share concurrency and cooldown
   controls without assuming an unknown subscription tier's numeric REST budget.
-- Direct HTTP 429 responses apply `Retry-After` to other reads of that provider.
-  Proxy responses keep their existing per-route cooldown; every proxy attempt
-  also passes admission. The budget is deliberately conservative across proxies.
+- Direct HTTP 429 responses apply `Retry-After` to other direct reads of that
+  provider. Proxy attempts use independent route budgets and cooldowns while
+  sharing process-wide concurrency slots. Unavailable routes spend no weight;
+  exhausted routes are skipped when another has capacity. Proxy leases last
+  through response-body transfer, with bounded buffering and body-failure
+  failover. Distinct outbound IPs are needed for additional exchange capacity.
 - `api/shared_reads.rs` retains complete public context snapshots for five seconds
   and DEX metadata for sixty seconds. Chart headers, watchlists, screeners, and
   ticker statistics share these responses and concurrent requests. Private

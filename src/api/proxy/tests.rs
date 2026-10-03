@@ -1,3 +1,6 @@
+mod balancing;
+mod bodies;
+
 use super::*;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -11,6 +14,10 @@ fn urls() -> Vec<ProxyUrl> {
     .iter()
     .map(|value| ProxyUrl::parse(value).expect("test URL"))
     .collect()
+}
+
+fn read_cost() -> RequestCost {
+    RequestCost::from_request(&mock_read())
 }
 
 #[test]
@@ -84,17 +91,22 @@ fn only_official_https_info_posts_are_routed() {
 fn concurrent_reads_balance_and_idle_routes_rotate() {
     let pool = ProxyPool::build(true, &urls()).expect("pool");
     let now = Instant::now();
-    let a = pool.acquire(&[], now).expect("first route");
-    let b = pool.acquire(&[], now).expect("second route");
-    let c = pool.acquire(&[], now).expect("third route");
+    let a = pool.acquire(&[], now, read_cost()).expect("first route");
+    let b = pool.acquire(&[], now, read_cost()).expect("second route");
+    let c = pool.acquire(&[], now, read_cost()).expect("third route");
     assert_eq!([a.index, b.index, c.index], [0, 1, 2]);
     drop(b);
     // Route 1 is less busy even though the round-robin cursor points to 0.
-    assert_eq!(pool.acquire(&[], now).expect("idle route").index, 1);
+    assert_eq!(
+        pool.acquire(&[], now, read_cost())
+            .expect("idle route")
+            .index,
+        1
+    );
     drop(a);
     drop(c);
     let picked: Vec<_> = (0..6)
-        .map(|_| pool.acquire(&[], now).expect("route").index)
+        .map(|_| pool.acquire(&[], now, read_cost()).expect("route").index)
         .collect();
     assert_eq!(picked, [2, 0, 1, 2, 0, 1]);
     assert!(
@@ -112,14 +124,14 @@ fn failed_routes_cool_down_and_reenter_rotation() {
     let pool = ProxyPool::build(true, &urls()).expect("pool");
     pool.cool_down(0, Duration::from_secs(60));
     let before = Instant::now();
-    assert!(pool.acquire(&[1, 2], before).is_none());
+    assert!(pool.acquire(&[1, 2], before, read_cost()).is_err());
     assert_eq!(
-        pool.acquire(&[1, 2], before + Duration::from_secs(61))
+        pool.acquire(&[1, 2], before + Duration::from_secs(61), read_cost())
             .expect("recovered")
             .index,
         0
     );
-    assert!(pool.acquire(&[0, 1, 2], before).is_none());
+    assert!(pool.acquire(&[0, 1, 2], before, read_cost()).is_err());
 }
 
 // A loopback HTTP proxy records the real reqwest request and serves an upstream
@@ -141,35 +153,40 @@ async fn mock_proxy(
     );
     let task = tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.expect("accept");
-        let mut request = Vec::new();
-        loop {
-            let mut bytes = [0; 1024];
-            let n = stream.read(&mut bytes).await.expect("read");
-            if n == 0 {
-                break;
-            }
-            request.extend_from_slice(&bytes[..n]);
-            if let Some(end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
-                let header = String::from_utf8_lossy(&request[..end]).to_lowercase();
-                let length: usize = header
-                    .lines()
-                    .find_map(|line| {
-                        line.strip_prefix("content-length: ")
-                            .and_then(|length| length.parse().ok())
-                    })
-                    .unwrap_or(0);
-                if request.len() >= end + 4 + length {
-                    break;
-                }
-            }
-        }
+        let request = read_request(&mut stream).await;
         stream
             .write_all(reply.as_bytes())
             .await
             .expect("write response");
-        String::from_utf8(request).expect("HTTP request")
+        request
     });
     (url, task)
+}
+
+async fn read_request(stream: &mut tokio::net::TcpStream) -> String {
+    let mut request = Vec::new();
+    loop {
+        let mut bytes = [0; 1024];
+        let n = stream.read(&mut bytes).await.expect("read");
+        if n == 0 {
+            break;
+        }
+        request.extend_from_slice(&bytes[..n]);
+        if let Some(end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+            let header = String::from_utf8_lossy(&request[..end]).to_lowercase();
+            let length: usize = header
+                .lines()
+                .find_map(|line| {
+                    line.strip_prefix("content-length: ")
+                        .and_then(|length| length.parse().ok())
+                })
+                .unwrap_or(0);
+            if request.len() >= end + 4 + length {
+                break;
+            }
+        }
+    }
+    String::from_utf8(request).expect("HTTP request")
 }
 
 fn mock_read() -> Request {
@@ -222,7 +239,7 @@ async fn rate_limited_route_retries_another_proxy_and_honors_cooldown() {
         .cooldown_until
         .expect("cooldown");
     assert!(until > Instant::now() + Duration::from_secs(115));
-    assert!(pool.acquire(&[1], Instant::now()).is_none());
+    assert!(pool.acquire(&[1], Instant::now(), read_cost()).is_err());
 }
 
 #[tokio::test]

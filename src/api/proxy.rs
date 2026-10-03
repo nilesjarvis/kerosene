@@ -1,14 +1,18 @@
 //! Optional routing for read-only requests to the official Hyperliquid info API.
 //! Each proxy owns a connection pool; exchange writes and other services never enter it.
 
+mod response;
 mod url;
 pub(crate) use url::ProxyUrl;
 
+use super::read_control::{Budget, RequestCost, acquire_proxy_slot};
 use reqwest::{Client, Method, Request, RequestBuilder, Response, StatusCode};
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime};
+use tokio::sync::OwnedSemaphorePermit;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+const ADMISSION_TIMEOUT: Duration = Duration::from_secs(30);
 const FAILURE_COOLDOWN: Duration = Duration::from_secs(15);
 const RATE_LIMIT_COOLDOWN: Duration = Duration::from_secs(60);
 const MAX_ATTEMPTS: usize = 2;
@@ -32,6 +36,13 @@ struct PoolState {
 struct RouteState {
     in_flight: usize,
     cooldown_until: Option<Instant>,
+    budget: Budget,
+}
+
+#[derive(Debug)]
+enum AcquireError {
+    Unavailable,
+    BudgetBusy(Duration),
 }
 
 struct RouteLease<'a> {
@@ -79,19 +90,81 @@ impl ProxyPool {
         Ok(pool)
     }
 
-    fn acquire(&self, attempted: &[usize], now: Instant) -> Option<RouteLease<'_>> {
+    fn acquire(
+        &self,
+        attempted: &[usize],
+        now: Instant,
+        cost: RequestCost,
+    ) -> Result<RouteLease<'_>, AcquireError> {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let count = state.routes.len();
-        let index = (0..count)
-            .map(|offset| (state.next + offset) % count)
-            .filter(|index| {
-                let route = &state.routes[*index];
-                !attempted.contains(index) && route.cooldown_until.is_none_or(|until| until <= now)
-            })
-            .min_by_key(|index| state.routes[*index].in_flight)?;
+        let mut selected = None;
+        let mut wait: Option<Duration> = None;
+        let mut recovery: Option<Duration> = None;
+        for offset in 0..count {
+            let index = (state.next + offset) % count;
+            let route = &mut state.routes[index];
+            if attempted.contains(&index) {
+                continue;
+            }
+            if let Some(until) = route.cooldown_until.filter(|until| *until > now) {
+                let delay = until.duration_since(now);
+                recovery = Some(recovery.map_or(delay, |previous| previous.min(delay)));
+                continue;
+            }
+            if let Some(delay) = route.budget.delay(now, cost.weight, cost.critical) {
+                wait = Some(wait.map_or(delay, |previous| previous.min(delay)));
+                continue;
+            }
+            if selected.is_none_or(|(_, in_flight)| route.in_flight < in_flight) {
+                selected = Some((index, route.in_flight));
+            }
+        }
+        let Some((index, _)) = selected else {
+            return Err(wait.map_or(AcquireError::Unavailable, |delay| {
+                // A cooling route may recover before an exhausted budget does.
+                AcquireError::BudgetBusy(recovery.map_or(delay, |recovery| delay.min(recovery)))
+            }));
+        };
+        state.routes[index]
+            .budget
+            .charge(now, cost.weight, cost.critical);
         state.routes[index].in_flight += 1;
         state.next = (index + 1) % count;
-        Some(RouteLease { pool: self, index })
+        Ok(RouteLease { pool: self, index })
+    }
+
+    async fn admit(
+        &self,
+        attempted: &[usize],
+        cost: RequestCost,
+        deadline: Instant,
+    ) -> Result<(OwnedSemaphorePermit, RouteLease<'_>), String> {
+        let admission = async {
+            loop {
+                let permit = acquire_proxy_slot(cost).await?;
+                let now = Instant::now();
+                if now >= deadline {
+                    return Err("Hyperliquid proxy admission timed out; retry shortly".to_string());
+                }
+                match self.acquire(attempted, now, cost) {
+                    Ok(route) => return Ok((permit, route)),
+                    Err(AcquireError::Unavailable) => {
+                        return Err(
+                            "Hyperliquid proxies unavailable or cooling down; retry shortly".into(),
+                        );
+                    }
+                    Err(AcquireError::BudgetBusy(delay)) => {
+                        // Waiting for an IP budget must not occupy a network slot.
+                        drop(permit);
+                        tokio::time::sleep(delay).await;
+                    }
+                }
+            }
+        };
+        tokio::time::timeout_at(deadline.into(), admission)
+            .await
+            .map_err(|_| "Hyperliquid proxy admission timed out; retry shortly".to_string())?
     }
 
     fn cool_down(&self, index: usize, duration: Duration) {
@@ -127,29 +200,49 @@ impl ProxyPool {
             .copied()
             .unwrap_or(REQUEST_TIMEOUT)
             .min(REQUEST_TIMEOUT);
+        if timeout.is_zero() {
+            return Err("Hyperliquid proxy request timed out".into());
+        }
         let mut deadline = None;
+        let admission_deadline = Instant::now() + ADMISSION_TIMEOUT;
+        let cost = RequestCost::from_request(&request);
         let mut attempted = Vec::new();
         let mut last_error =
             "Hyperliquid proxies unavailable or cooling down; retry shortly".to_string();
         for _ in 0..MAX_ATTEMPTS {
-            let gate = super::read_control::gate(&request);
-            let _permit = match gate {
-                Some(gate) => Some(gate.acquire(&request).await?),
-                None => None,
+            let Some(mut attempt) = request.try_clone() else {
+                return Err("Hyperliquid read request cannot be replayed".to_string());
+            };
+            let (_permit, route) = match self
+                .admit(&attempted, cost, deadline.unwrap_or(admission_deadline))
+                .await
+            {
+                Ok(admitted) => admitted,
+                Err(error) if attempted.is_empty() => return Err(error),
+                Err(_) => break,
             };
             let deadline = *deadline.get_or_insert_with(|| Instant::now() + timeout);
             let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
                 break;
             };
-            let Some(route) = self.acquire(&attempted, Instant::now()) else {
-                break;
-            };
             attempted.push(route.index);
-            let Some(mut attempt) = request.try_clone() else {
-                return Err("Hyperliquid read request cannot be replayed".to_string());
-            };
             *attempt.timeout_mut() = Some(remaining);
-            match crate::network_activity::execute(&self.routes[route.index], attempt, true).await {
+            let result = tokio::time::timeout_at(deadline.into(), async {
+                let response =
+                    crate::network_activity::execute(&self.routes[route.index], attempt, true)
+                        .await
+                        .map_err(|_| {
+                            "Hyperliquid proxy connection failed or timed out".to_string()
+                        })?;
+                if response.status().is_success() {
+                    response::buffer(response).await
+                } else {
+                    Ok(response)
+                }
+            })
+            .await
+            .unwrap_or_else(|_| Err("Hyperliquid proxy request timed out".to_string()));
+            match result {
                 Ok(response) if response.status().is_success() => return Ok(response),
                 Ok(response) => {
                     let status = response.status();
@@ -167,9 +260,9 @@ impl ProxyPool {
                         return Err(last_error);
                     }
                 }
-                Err(_) => {
+                Err(error) => {
                     self.cool_down(route.index, FAILURE_COOLDOWN);
-                    last_error = "Hyperliquid proxy connection failed or timed out".to_string();
+                    last_error = error;
                 }
             }
         }

@@ -22,6 +22,10 @@ Official REST reads use `api::proxy::HyperliquidRequestExt::send_info` so the
 optional [proxy pool](../operations/hyperliquid-proxies.md) can distribute each
 request. `api/read_control.rs` provides weighted admission, reserved account-read
 capacity, bounded concurrency/waits, and provider cooldown after direct HTTP 429.
+Each proxy has an independent weighted budget; direct and proxy reads share
+process-wide concurrency slots. Proxy selection skips exhausted routes and
+holds its route and slot until the bounded response body is complete, allowing
+body failures to trigger cooldown and failover.
 `api/shared_reads.rs` shares complete public metadata/context snapshots and
 in-flight work across feature callers. Candle endpoint reads also coalesce by
 provider, credential scope, symbol, interval and range. No account responses are

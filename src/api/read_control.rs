@@ -1,4 +1,4 @@
-//! Process-wide admission for info reads. Exchange writes never enter this queue.
+//! Info-read budgets and process-wide concurrency. Exchange writes bypass both.
 use reqwest::Request;
 use serde_json::Value;
 use std::collections::VecDeque;
@@ -15,6 +15,38 @@ const BACKGROUND_WEIGHT: u32 = 700;
 static HYPERLIQUID: LazyLock<ReadGate> = LazyLock::new(ReadGate::new);
 static HYDROMANCER: LazyLock<ReadGate> = LazyLock::new(ReadGate::new);
 
+#[derive(Clone, Copy)]
+pub(super) struct RequestCost {
+    pub(super) weight: u32,
+    pub(super) critical: bool,
+}
+
+impl RequestCost {
+    pub(super) fn from_request(request: &Request) -> Self {
+        let body = request
+            .body()
+            .and_then(|body| body.as_bytes())
+            .and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok())
+            .unwrap_or(Value::Null);
+        Self {
+            weight: request_weight(&body),
+            critical: matches!(
+                body["type"].as_str().unwrap_or(""),
+                "orderStatus"
+                    | "clearinghouseState"
+                    | "spotClearinghouseState"
+                    | "openOrders"
+                    | "frontendOpenOrders"
+            ),
+        }
+    }
+}
+
+/// Proxy attempts share the direct read concurrency limits, but not its IP budget.
+pub(super) async fn acquire_proxy_slot(cost: RequestCost) -> Result<OwnedSemaphorePermit, String> {
+    HYPERLIQUID.acquire_slot(cost.critical).await
+}
+
 pub(super) struct ReadGate {
     state: Mutex<Budget>,
     background: Arc<Semaphore>,
@@ -22,13 +54,22 @@ pub(super) struct ReadGate {
 }
 
 #[derive(Default)]
-struct Budget {
+pub(super) struct Budget {
     spent: VecDeque<(Instant, u32, bool)>,
     cooldown: Option<Instant>,
 }
 
 impl Budget {
     fn wait(&mut self, now: Instant, weight: u32, critical: bool) -> Option<Duration> {
+        if let Some(delay) = self.delay(now, weight, critical) {
+            return Some(delay);
+        }
+        self.charge(now, weight, critical);
+        None
+    }
+
+    /// Inspect capacity without spending it; route selection charges only its winner.
+    pub(super) fn delay(&mut self, now: Instant, weight: u32, critical: bool) -> Option<Duration> {
         while self
             .spent
             .front()
@@ -52,10 +93,13 @@ impl Budget {
                 .front()
                 .map(|(at, _, _)| (*at + WINDOW).saturating_duration_since(now));
         }
+        None
+    }
+
+    pub(super) fn charge(&mut self, now: Instant, weight: u32, critical: bool) {
         if weight > 0 {
             self.spent.push_back((now, weight, critical));
         }
-        None
     }
 }
 
@@ -75,46 +119,37 @@ impl ReadGate {
     }
 
     async fn acquire_inner(&self, request: &Request) -> Result<OwnedSemaphorePermit, String> {
-        let body = request
-            .body()
-            .and_then(|body| body.as_bytes())
-            .and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok())
-            .unwrap_or(Value::Null);
-        let kind = body["type"].as_str().unwrap_or("");
-        let critical = matches!(
-            kind,
-            "orderStatus"
-                | "clearinghouseState"
-                | "spotClearinghouseState"
-                | "openOrders"
-                | "frontendOpenOrders"
-        );
+        let cost = RequestCost::from_request(request);
         let weight = if request.url().host_str() == Some("api.hyperliquid.xyz") {
-            request_weight(&body)
+            cost.weight
         } else {
             0
         };
-        let semaphore = if critical {
-            &self.critical
-        } else {
-            &self.background
-        };
-        let permit = semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| "Read queue closed".to_string())?;
+        let permit = self.acquire_slot(cost.critical).await?;
         loop {
             let delay = self.state.lock().unwrap_or_else(|e| e.into_inner()).wait(
                 Instant::now(),
                 weight,
-                critical,
+                cost.critical,
             );
             match delay {
                 Some(delay) => tokio::time::sleep(delay).await,
                 None => return Ok(permit),
             }
         }
+    }
+
+    async fn acquire_slot(&self, critical: bool) -> Result<OwnedSemaphorePermit, String> {
+        let semaphore = if critical {
+            &self.critical
+        } else {
+            &self.background
+        };
+        semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| "Read queue closed".to_string())
     }
 
     pub(super) fn cool_down(&self, duration: Duration) {
@@ -209,6 +244,40 @@ mod tests {
 #[cfg(test)]
 mod async_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn concurrency_slots_ignore_ip_budget_and_keep_account_reserve() {
+        let gate = ReadGate::new();
+        gate.state
+            .lock()
+            .expect("budget")
+            .charge(Instant::now(), 900, true);
+        gate.cool_down(Duration::from_secs(60));
+        let mut background = Vec::new();
+        let mut critical = Vec::new();
+        for _ in 0..4 {
+            background.push(gate.acquire_slot(false).await.expect("background slot"));
+        }
+        for _ in 0..2 {
+            critical.push(gate.acquire_slot(true).await.expect("account slot"));
+        }
+        for is_critical in [false, true] {
+            assert!(
+                tokio::time::timeout(Duration::from_millis(10), gate.acquire_slot(is_critical))
+                    .await
+                    .is_err()
+            );
+        }
+        background.pop();
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), gate.acquire_slot(false))
+                .await
+                .expect("released slot")
+                .is_ok()
+        );
+        assert_eq!(gate.state.lock().expect("budget").spent.len(), 1);
+    }
+
     #[tokio::test]
     async fn rate_limit_cooldown_applies_across_distinct_requests() {
         let gate = ReadGate::new();
