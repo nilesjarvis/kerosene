@@ -495,11 +495,17 @@ the window requests the public portfolio-history endpoint for every member in
 parallel.
 
 The combined chart normalizes each wallet's selected cumulative PnL series to
-its own period baseline, aligns the series on their union of timestamps, and
-carries each wallet's latest sample forward. The headline PnL is the sum of the
-individual period changes, while combined account value is the sum of the
-latest available account-value samples. Failed wallets stay visible as stale
-rows and do not hide successfully loaded results.
+its own period baseline and aligns the series on their union of timestamps.
+At each timestamp it linearly interpolates between each wallet's surrounding
+samples before summing, matching the chart's straight segments and avoiding
+artificial plateaus when wallets have different sampling cadences. Source
+timestamps and turning points are preserved on an elapsed-time axis;
+interpolation estimates the path between samples, not additional observations.
+A wallet contributes nothing before its first sample and holds its final value
+after its last sample, without extrapolating a trend. The headline PnL remains
+the sum of the individual period changes, while combined account value is the
+sum of the latest available account-value samples. Failed wallets stay visible
+as stale rows and do not hide successfully loaded results.
 
 This feature never reads or stores agent keys and never changes the active
 trading account. Per-wallet Details actions reuse the existing watch-only wallet

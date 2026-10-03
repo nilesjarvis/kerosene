@@ -345,17 +345,31 @@ fn aggregate_relative_series(series: &[Vec<(u64, f64)>]) -> Vec<(u64, f64)> {
         .filter_map(|timestamp| {
             let total = relative
                 .iter()
-                .filter_map(|points| {
-                    points
-                        .iter()
-                        .take_while(|(point_timestamp, _)| *point_timestamp <= timestamp)
-                        .last()
-                        .map(|(_, value)| *value)
-                })
+                .filter_map(|points| interpolated_pnl_at(points, timestamp))
                 .sum::<f64>();
             total.is_finite().then_some((timestamp, total))
         })
         .collect()
+}
+
+/// Sample a sorted, deduplicated series along the chart's straight segments.
+/// Before the first sample there is no contribution; after the last, hold the
+/// final value instead of extrapolating a trend beyond the available history.
+fn interpolated_pnl_at(points: &[(u64, f64)], timestamp: u64) -> Option<f64> {
+    let next_index = points.partition_point(|(point_timestamp, _)| *point_timestamp <= timestamp);
+    let &(previous_timestamp, previous_value) = points.get(next_index.checked_sub(1)?)?;
+    let Some(&(next_timestamp, next_value)) = points.get(next_index) else {
+        return Some(previous_value);
+    };
+    if previous_timestamp == timestamp {
+        return Some(previous_value);
+    }
+
+    // Interpolate each wallet before summing: carrying a sparse wallet forward
+    // at other wallets' timestamps would introduce artificial flats and jumps.
+    let weight =
+        (timestamp - previous_timestamp) as f64 / (next_timestamp - previous_timestamp) as f64;
+    Some(previous_value * (1.0 - weight) + next_value * weight)
 }
 
 #[cfg(test)]
@@ -394,6 +408,115 @@ mod tests {
         assert_eq!(aggregate.account_value, Some(3_000.0));
         assert_eq!(aggregate.profitable_wallets, 2);
         assert_eq!(aggregate.points.last(), Some(&(40, 90.0)));
+    }
+
+    #[test]
+    fn dense_flat_wallet_does_not_turn_sparse_wallet_growth_into_steps() {
+        let sparse = history(&[(10, 100.0), (110, 200.0)], 1_000.0);
+        let dense = history(
+            &[(10, 50.0), (11, 50.0), (60, 50.0), (109, 50.0), (110, 50.0)],
+            2_000.0,
+        );
+
+        let aggregate = aggregate_portfolios(
+            &[&sparse, &dense],
+            PortfolioScope::All,
+            PortfolioWindow::AllTime,
+            110,
+        );
+
+        assert_eq!(
+            aggregate.points,
+            vec![(10, 0.0), (11, 1.0), (60, 50.0), (109, 99.0), (110, 100.0)]
+        );
+        assert_eq!(aggregate.total_pnl, Some(100.0));
+    }
+
+    #[test]
+    fn aggregation_interpolates_each_wallet_before_summing() {
+        let first = history(&[(10, 100.0), (30, 140.0), (50, 100.0)], 1_000.0);
+        let second = history(&[(20, 50.0), (40, 30.0), (60, 50.0)], 2_000.0);
+
+        let aggregate = aggregate_portfolios(
+            &[&first, &second],
+            PortfolioScope::All,
+            PortfolioWindow::AllTime,
+            60,
+        );
+
+        // Keep both wallets' turning points, including interpolated losses.
+        assert_eq!(
+            aggregate.points,
+            vec![
+                (10, 0.0),
+                (20, 20.0),
+                (30, 30.0),
+                (40, 0.0),
+                (50, -10.0),
+                (60, 0.0)
+            ]
+        );
+        assert_eq!(aggregate.total_pnl, Some(0.0));
+    }
+
+    #[test]
+    fn aggregation_does_not_extrapolate_across_non_overlapping_histories() {
+        let first = history(&[(10, 100.0), (20, 120.0)], 1_000.0);
+        let second = history(&[(40, 50.0), (60, 90.0)], 2_000.0);
+
+        let aggregate = aggregate_portfolios(
+            &[&first, &second],
+            PortfolioScope::All,
+            PortfolioWindow::AllTime,
+            60,
+        );
+
+        assert_eq!(
+            aggregate.points,
+            vec![(10, 0.0), (20, 20.0), (40, 20.0), (60, 60.0)]
+        );
+        assert_eq!(aggregate.total_pnl, Some(60.0));
+    }
+
+    #[test]
+    fn aggregation_preserves_single_sample_wallets_and_empty_histories() {
+        let empty = history(&[], 0.0);
+        let single = history(&[(20, -5.0)], 1_000.0);
+        let flat = history(&[(10, 100.0), (30, 100.0)], 2_000.0);
+
+        let aggregate = aggregate_portfolios(
+            &[&empty, &single, &flat],
+            PortfolioScope::All,
+            PortfolioWindow::AllTime,
+            30,
+        );
+
+        assert_eq!(aggregate.points, vec![(10, 0.0), (20, -5.0), (30, -5.0)]);
+        assert_eq!(aggregate.total_pnl, Some(-5.0));
+    }
+
+    #[test]
+    fn aggregation_preserves_single_wallet_samples_after_cleaning() {
+        let wallet = history(
+            &[
+                (40, 120.0),
+                (20, 130.0),
+                (10, 100.0),
+                (20, 140.0),
+                (30, f64::NAN),
+            ],
+            1_000.0,
+        );
+
+        let aggregate = aggregate_portfolios(
+            &[&wallet],
+            PortfolioScope::All,
+            PortfolioWindow::AllTime,
+            40,
+        );
+
+        assert_eq!(aggregate.points, vec![(10, 0.0), (20, 40.0), (40, 20.0)]);
+        assert_eq!(aggregate.total_pnl, Some(20.0));
     }
 
     #[test]
