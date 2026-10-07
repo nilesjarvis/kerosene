@@ -102,6 +102,9 @@ impl CandlestickChart {
         state.cursor_position = source_pos;
 
         if state.reset_epoch_seen != self.reset_epoch {
+            if state.reset_epoch_seen < self.symbol_reset_epoch {
+                state.reset_hud_size();
+            }
             state.reset_view(self.reset_epoch);
             self.candle_cache.clear();
             if let Some(action) = self.viewport_action(state, bounds) {

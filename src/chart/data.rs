@@ -37,6 +37,7 @@ impl CandlestickChart {
             status: ChartStatus::Loading,
             candle_cache: canvas::Cache::new(),
             reset_epoch: 0,
+            symbol_reset_epoch: 0,
             active_position: None,
             active_orders: Vec::new(),
             trade_markers: Vec::new(),
@@ -120,6 +121,7 @@ impl CandlestickChart {
             status: self.status.clone(),
             candle_cache: canvas::Cache::new(),
             reset_epoch: self.reset_epoch,
+            symbol_reset_epoch: self.symbol_reset_epoch,
             active_position: self.active_position.clone(),
             active_orders: self.active_orders.clone(),
             trade_markers: self.trade_markers.clone(),
@@ -233,6 +235,8 @@ impl CandlestickChart {
         if self.symbol_key != symbol_key {
             self.symbol_key = symbol_key;
             self.clear_hud_armed();
+            self.request_view_reset();
+            self.symbol_reset_epoch = self.reset_epoch;
         }
     }
 

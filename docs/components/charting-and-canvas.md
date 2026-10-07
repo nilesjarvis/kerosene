@@ -312,6 +312,11 @@ and `H` selects Chase. Market and Chase use the `Y`/`X` side selector; Limit
 infers its side from the clicked price. An armed Chase click routes through the
 normal client-side Chase lifecycle for the chart's symbol.
 
+Changing the chart symbol disarms HUD trading and resets its coin size to `1`,
+including any in-progress size edit. The reset applies before the next canvas
+interaction can submit an order. Timeframe changes and ordinary view resets
+preserve the entered size.
+
 HUD Limit and Market clicks use the entered coin quantity and do not wait for
 background account reconciliation, including post-trade refreshes or refresh
 rate-limit backoff. Market clicks still serialize pending trading requests and

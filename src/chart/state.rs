@@ -4,6 +4,8 @@ use iced::Point;
 
 mod export;
 
+const DEFAULT_HUD_SIZE: &str = "1";
+
 // ---------------------------------------------------------------------------
 // Chart Interaction State
 // ---------------------------------------------------------------------------
@@ -104,7 +106,7 @@ pub struct ChartState {
     pub(super) hud_order_kind: HudOrderKind,
     /// Visual-only market side used by the HUD game-mode overlay.
     pub(super) hud_market_side: HudMarketSide,
-    /// Visual-only coin size shown by the HUD game-mode overlay.
+    /// Coin quantity displayed and submitted by the HUD game-mode overlay.
     pub(super) hud_size_input: String,
     /// True while typed keyboard input should update the HUD size.
     pub(super) hud_size_editing: bool,
@@ -151,7 +153,7 @@ impl Default for ChartState {
             ctrl_down: false,
             hud_order_kind: HudOrderKind::Limit,
             hud_market_side: HudMarketSide::Long,
-            hud_size_input: "1".to_string(),
+            hud_size_input: DEFAULT_HUD_SIZE.to_string(),
             hud_size_editing: false,
             hud_size_replace_on_type: false,
             hud_size_scroll_bias: 0.0,
@@ -163,6 +165,13 @@ impl Default for ChartState {
 }
 
 impl ChartState {
+    pub(super) fn reset_hud_size(&mut self) {
+        self.hud_size_input = DEFAULT_HUD_SIZE.to_string();
+        self.hud_size_editing = false;
+        self.hud_size_replace_on_type = false;
+        self.hud_size_scroll_bias = 0.0;
+    }
+
     pub(super) fn reset_for_epoch(reset_epoch: u64) -> Self {
         let mut state = Self::default();
         state.reset_view(reset_epoch);

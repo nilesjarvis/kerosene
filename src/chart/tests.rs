@@ -6,6 +6,7 @@ use iced::{Point, Rectangle};
 mod data;
 mod earnings;
 mod hud_safety;
+mod hud_size_reset;
 mod input;
 mod orders;
 mod view_state;

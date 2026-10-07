@@ -84,6 +84,8 @@ pub struct CandlestickChart {
     pub status: ChartStatus,
     pub candle_cache: canvas::Cache,
     pub(super) reset_epoch: u64,
+    /// Latest view reset caused by a symbol change; invalidates HUD coin sizing.
+    pub(super) symbol_reset_epoch: u64,
     /// Active position on the currently viewed symbol (if any).
     pub active_position: Option<PositionOverlay>,
     /// Open limit orders on the currently viewed symbol.
