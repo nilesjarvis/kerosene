@@ -47,10 +47,30 @@ Secret-bearing state includes:
 Do not clone secrets unnecessarily. When a task must own a key, keep the
 ownership scope narrow.
 
-The Kerosene Assistant passes an owned OpenRouter key to the Pi child process
-through its environment. The key must never appear in process arguments, the
+The Kerosene Assistant passes owned OpenRouter and HyperDash keys to the Pi child
+process through its environment. Keys must never appear in process arguments, the
 assistant snapshot, RPC payloads, transcripts, or debug output. Pi runs with an
-isolated config directory and no session persistence.
+isolated config directory and no session persistence. Successful key rotation
+invalidates both starting and connected runtimes so a child cannot retain the
+previous key for the rest of the session. This transport does not isolate keys
+from other processes running as the same OS user; on Linux, those processes may
+be able to read the child's environment through `/proc`.
+
+Assistant snapshots contain sensitive trading history even though credentials
+and wallet addresses are omitted. Before starting any assistant tasks, startup
+removes `snapshot.json` and staged `snapshot-<generation>-<request>.json` files
+from `kerosene-agent-<pid>` temporary directories whose process has exited. It
+also clears residue with the new process's reused PID. Live or inaccessible PIDs
+are preserved. Unix cleanup checks directory ownership and rejects shared
+writable directories; symlink directories and Windows reparse points are skipped.
+Deletion is nonrecursive and limited to recognized snapshot files. Extension
+files, Pi configuration, and unrecognized content remain untouched.
+
+Cleanup is best effort: residue can remain between a crash and the next launch,
+when permissions prevent deletion, or while a PID has been reused by another
+live process. Unlinking is not secure erasure and cannot remove backups or
+filesystem copies. Owner-only file permissions are not a boundary against
+other processes running as the same user.
 
 Kerosene itself persists bounded Assistant chats in the owner-only
 `assistant_sessions.json` side-file. Chat content is sensitive account context,
@@ -74,6 +94,21 @@ Credential storage supports:
 - encrypted config
 
 OS keychain mode stores profile/global secrets outside plaintext config.
+
+On Linux, Kerosene uses the D-Bus Secret Service backend. It does not provide
+Kerosene with a per-application credential ACL: other applications in the same
+login session may retrieve secrets from an unlocked collection. The
+[Secret Service specification](https://specifications.freedesktop.org/secret-service/latest-single/)
+does not mandate access control, and the
+[GNOME Keyring security FAQ](https://wiki.gnome.org/Projects/GnomeKeyring/SecurityFAQ)
+explicitly excludes protection against malicious applications reading an
+unlocked keyring. Desktop sandboxing and service-specific policy may further
+restrict access; do not assume that the "OS Keychain" label alone provides it.
+
+Choose encrypted config when credentials should require a separate Kerosene
+password before loading. This adds at-rest protection while locked; after
+unlocking, credentials must still enter application memory and it does not
+protect against a compromised user session.
 
 Normal credential saves are scoped read-modify-write operations: the existing
 bundle must be read successfully, and only the profile or integration named by
@@ -167,6 +202,11 @@ Saving or replacing keys should update secret storage and clear stale
 connection/cache state when required. Hydromancer key rotation should evict old
 websocket managers so old-key tasks stop.
 
+Hydromancer WebSocket authentication currently uses a `token` query parameter
+over `wss://`. In-process URLs and errors are redacted, but TLS-terminating
+services can see the handshake URL and may log it. Do not replace this with
+header authentication without confirming provider support.
+
 ## Release-Time Embedded Credentials
 
 Kerosene can be built with optional Telegram fast-mode defaults through
@@ -192,6 +232,12 @@ Do not display secrets in:
 
 When showing credential status, say where credentials are stored or what failed
 without echoing the value.
+
+Opt-in desktop notifications send trading details to the operating system's
+notification service, including user-chosen wallet labels, symbols, sides,
+prices, and interest totals. Notification history or lock-screen previews may
+retain or display this context. Disable desktop notifications when this is not
+appropriate; in-app toasts remain available.
 
 ## Filesystem Safety
 

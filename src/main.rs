@@ -145,6 +145,7 @@ mod positions_funding_tests;
 
 pub fn main() -> iced::Result {
     configure_graphics_backend();
+    agent_snapshot::cleanup_stale_runtime_snapshots();
     let config = startup_config();
     let settings = app_fonts::settings_from_config(&config);
 

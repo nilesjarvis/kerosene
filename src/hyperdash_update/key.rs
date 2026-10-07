@@ -24,6 +24,9 @@ impl TradingTerminal {
                 let hyperdash_key_changed = previous_key.as_str() != next_key.as_str();
                 if hyperdash_key_changed {
                     self.bump_hyperdash_key_generation();
+                    // Pi captures the key before it reports Ready. Invalidate
+                    // starting runtimes and pending snapshots as well as live ones.
+                    self.invalidate_agent_runtime();
                 }
                 self.persist_config();
                 let heatmap_ids: Vec<ChartId> = self

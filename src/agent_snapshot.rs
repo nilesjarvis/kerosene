@@ -2,12 +2,14 @@ use crate::app_state::TradingTerminal;
 use serde_json::{Value, json};
 
 mod account;
+mod cleanup;
 mod files;
 mod journal;
 mod markets;
 mod workspace;
 
 use account::{agent_fill_snapshot, agent_funding_snapshot};
+pub(crate) use cleanup::cleanup_stale_runtime_snapshots;
 pub(crate) use files::{
     activate_agent_snapshot, clear_sensitive_runtime_files, workspace_dir, write_agent_snapshot,
 };

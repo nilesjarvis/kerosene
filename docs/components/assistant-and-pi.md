@@ -208,7 +208,10 @@ not require a user-installed Node.js runtime or a shell-visible `pi` command.
 
 Each prompt first writes a fresh `schema_version: 5` JSON snapshot to a
 per-process temporary directory. On Unix, the directory and file use owner-only
-permissions. The snapshot contains public sections and a private sanitized
+permissions. Startup sweeps active and staged snapshot files left by exited
+processes, before any assistant task starts. Live processes and unrecognized
+files are preserved; see the [cleanup limits](../operations/security-and-secrets.md#runtime-secret-handling).
+The snapshot contains public sections and a private sanitized
 `_tool_data` backing index. `kerosene_data`, including its `all` mode, never
 returns `_tool_data`; typed tools use it to answer targeted queries without
 sending the entire market or activity history to the model.

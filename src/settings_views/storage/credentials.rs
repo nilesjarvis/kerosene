@@ -46,6 +46,14 @@ impl TradingTerminal {
         }
 
         let mut credential_section = Column::new().spacing(8).push(storage_selector_row);
+        #[cfg(target_os = "linux")]
+        if !encrypted_selected {
+            credential_section = credential_section.push(
+                text("Other apps in your login session may read an unlocked Linux keychain. Choose Encrypted Config for a separate password.")
+                    .size(11)
+                    .color(current_theme.extended_palette().background.weak.text),
+            );
+        }
         if encrypted_selected {
             credential_section =
                 credential_section.push(encrypted_password_row(self, encrypted_locked));
