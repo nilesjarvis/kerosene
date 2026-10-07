@@ -203,6 +203,9 @@ EOF
     # In a container without it (e.g. this CI box with no working sudo), a
     # user-space rpm tree can be supplied and pointed at via RPM_CONFIGDIR.
     # Set RPM_CONFIGDIR=<dir containing rpmrc+macros> for that case.
+    # Disable the RPM post-install strip/compress step: it strips the bundled
+    # Pi runtime and breaks its standalone application payload. The .deb and
+    # .AppImage paths do not strip either.
     if [ -n "${RPM_CONFIGDIR:-}" ]; then
         rpmbuild \
             --buildroot="$RPM_TOPDIR/BUILDROOT" \
@@ -210,11 +213,13 @@ EOF
             --define "_dbpath $RPM_TOPDIR/rpmdb" \
             --define "_tmppath $RPM_TOPDIR/tmp" \
             --define "_build_id_links none" \
+            --define "__os_install_post %{nil}" \
             -bb "$RPM_SPEC"
     else
         rpmbuild \
             --define "_topdir $RPM_TOPDIR" \
             --define "_build_id_links none" \
+            --define "__os_install_post %{nil}" \
             -bb "$RPM_SPEC"
     fi
 
