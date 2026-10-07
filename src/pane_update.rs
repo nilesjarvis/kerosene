@@ -31,6 +31,7 @@ impl TradingTerminal {
             | Message::AddCompactWalletTrackerPane
             | Message::AddXFeedPane
             | Message::AddAdvancedOrdersPane
+            | Message::AddOrderEntryPane
             | Message::AddOutcomesPane
             | Message::AddNewListingsPane
             | Message::AddHypeEtfsPane
@@ -47,8 +48,10 @@ mod tests {
         AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary,
         SpotClearinghouseState, UserFeeRates,
     };
+    use crate::canvas_state::WorkspaceId;
     use crate::config::KeroseneConfig;
     use crate::hype_unstaking_state::{HypeUnstakingEvent, HypeUnstakingQueueData};
+    use crate::pane_management::{AddWidgetKind, AddWidgetPlacement};
     use crate::pane_state::PaneKind;
     use std::time::{Duration, Instant};
 
@@ -107,6 +110,95 @@ mod tests {
                 active_tab: crate::account_state::BottomTab::Positions
             }
         )));
+    }
+
+    #[test]
+    fn order_entry_can_be_reopened_and_placed_in_each_workspace() {
+        for workspace in [WorkspaceId::Main, WorkspaceId::Canvas(7)] {
+            let (mut terminal, _task) =
+                TradingTerminal::boot_from_config(KeroseneConfig::default());
+            let order_entry = terminal
+                .find_pane_matching(|kind| matches!(kind, PaneKind::OrderEntry))
+                .expect("default Order Entry pane");
+            let _task = terminal.update(Message::ClosePane(WorkspaceId::Main, order_entry));
+            assert!(!terminal.pane_is_open(|kind| matches!(kind, PaneKind::OrderEntry)));
+
+            let target = match workspace {
+                WorkspaceId::Main => terminal.chart_anchor_pane().expect("default chart pane"),
+                WorkspaceId::Canvas(id) => {
+                    terminal.insert_test_canvas_pane(id, PaneKind::Watchlist)
+                }
+            };
+            let pane_count = terminal.workspace_pane_kinds().count();
+            let _task = terminal.update(Message::ToggleAddWidgetMenu(workspace));
+            let _task = terminal.update(Message::BeginWidgetPlacement(AddWidgetKind::OrderEntry));
+
+            assert!(!terminal.add_widget_menu_open);
+            assert_eq!(terminal.placing_widget, Some(AddWidgetKind::OrderEntry));
+            assert_eq!(terminal.workspace_pane_kinds().count(), pane_count);
+
+            let _task = terminal.update(Message::PlaceWidget(
+                workspace,
+                target,
+                AddWidgetPlacement::Right,
+            ));
+            let _task = terminal.update(menu::add_widget_message(
+                AddWidgetKind::OrderEntry,
+                workspace,
+                target,
+            ));
+
+            let (added_workspace, added) = terminal
+                .find_workspace_pane_matching(|kind| matches!(kind, PaneKind::OrderEntry))
+                .expect("restored Order Entry pane");
+            assert_eq!(added_workspace, workspace);
+            assert_eq!(terminal.workspace_pane_kinds().count(), pane_count + 1);
+            assert_eq!(terminal.workspace_focus(workspace), Some(added));
+            assert_eq!(
+                terminal
+                    .workspace_panes(workspace)
+                    .expect("target workspace")
+                    .adjacent(target, iced::widget::pane_grid::Direction::Right),
+                Some(added)
+            );
+            assert_eq!(terminal.placing_widget, None);
+            assert!(terminal.config_save_due_at.is_some());
+        }
+    }
+
+    #[test]
+    fn order_entry_selection_focuses_existing_pane_across_workspaces() {
+        for workspace in [WorkspaceId::Main, WorkspaceId::Canvas(7)] {
+            let (mut terminal, _task) =
+                TradingTerminal::boot_from_config(KeroseneConfig::default());
+            let order_entry = terminal
+                .find_pane_matching(|kind| matches!(kind, PaneKind::OrderEntry))
+                .expect("default Order Entry pane");
+            let order_entry = match workspace {
+                WorkspaceId::Main => order_entry,
+                WorkspaceId::Canvas(id) => {
+                    let _task = terminal.update(Message::ClosePane(WorkspaceId::Main, order_entry));
+                    terminal.insert_test_canvas_pane(id, PaneKind::OrderEntry)
+                }
+            };
+            terminal.focus = terminal.chart_anchor_pane();
+            let pane_count = terminal.workspace_pane_kinds().count();
+            let _task = terminal.update(Message::ToggleAddWidgetMenu(WorkspaceId::Main));
+
+            let _task = terminal.update(Message::BeginWidgetPlacement(AddWidgetKind::OrderEntry));
+
+            assert!(!terminal.add_widget_menu_open);
+            assert_eq!(terminal.placing_widget, None);
+            assert_eq!(terminal.last_focused_workspace, workspace);
+            assert_eq!(terminal.workspace_focus(workspace), Some(order_entry));
+            assert_eq!(terminal.workspace_pane_kinds().count(), pane_count);
+            if let WorkspaceId::Canvas(id) = workspace {
+                assert!(terminal.canvases[&id].window_id.is_some());
+            }
+
+            let _task = terminal.update(Message::AddOrderEntryPane);
+            assert_eq!(terminal.workspace_pane_kinds().count(), pane_count);
+        }
     }
 
     #[test]

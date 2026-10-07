@@ -65,6 +65,13 @@ When adding a pane type, update all of these surfaces:
 
 ## Main Pane Rendering
 
+The Widgets dropdown includes **Order Entry** under **Tools** in both the main
+window and Canvas workspaces. Selecting it starts the standard pane-placement
+flow; `AddOrderEntryPane` is routed through `pane_update` to restore the pane.
+Order Entry remains a singleton across workspaces: its menu entry shows **Open**
+when present, and selecting it focuses the existing pane and opens its Canvas
+window if needed.
+
 `TradingTerminal::view_main` composes:
 
 1. Account summary/top bar.

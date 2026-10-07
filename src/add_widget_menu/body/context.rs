@@ -5,6 +5,7 @@ use crate::pane_state::PaneKind;
 pub(super) struct AddWidgetMenuContext {
     pub(super) can_add_pane: bool,
     pub(super) can_add_income: bool,
+    pub(super) order_entry_open: bool,
     pub(super) positions_history_open: bool,
     pub(super) portfolio_open: bool,
     pub(super) income_open: bool,
@@ -41,6 +42,7 @@ impl AddWidgetMenuContext {
                 .add_target_pane_in(terminal.add_widget_workspace)
                 .is_some(),
             can_add_income,
+            order_entry_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::OrderEntry)),
             positions_history_open: terminal
                 .pane_is_open(|kind| matches!(kind, PaneKind::BottomTabs { .. })),
             portfolio_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::Portfolio)),

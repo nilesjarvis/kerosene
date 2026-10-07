@@ -128,6 +128,16 @@ impl TradingTerminal {
                     |kind| matches!(kind, PaneKind::AdvancedOrders),
                 );
             }
+            Message::AddOrderEntryPane => {
+                self.add_widget_menu_open = false;
+                self.add_or_focus_singleton_pane(
+                    workspace,
+                    self.add_widget_axis(),
+                    PaneKind::OrderEntry,
+                    "Order Entry",
+                    |kind| matches!(kind, PaneKind::OrderEntry),
+                );
+            }
             Message::AddTrackedTradesPane => {
                 self.add_widget_menu_open = false;
                 self.add_or_focus_singleton_pane(

@@ -15,6 +15,7 @@ fn alfred_screener_settings_and_window_routes_stay_on_feature_modules() {
     );
     assert_route(Message::AddXFeedPane, UpdateRoute::Panes);
     assert_route(Message::AddPositionsHistoryPane, UpdateRoute::Panes);
+    assert_route(Message::AddOrderEntryPane, UpdateRoute::Panes);
     assert_route(
         Message::BeginWidgetPlacement(crate::pane_management::AddWidgetKind::OrderBook),
         UpdateRoute::Panes,

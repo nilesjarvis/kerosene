@@ -158,6 +158,7 @@ pub(super) fn add_widget_message(
         AddWidgetKind::XFeed => Message::AddXFeedPane,
         AddWidgetKind::Calendar => Message::AddCalendarPane,
         AddWidgetKind::OrderBook => Message::AddOrderBookPane,
+        AddWidgetKind::OrderEntry => Message::AddOrderEntryPane,
         AddWidgetKind::LiveWatchlist => Message::AddLiveWatchlistPane,
         AddWidgetKind::CompactWalletTracker => Message::AddCompactWalletTrackerPane,
         AddWidgetKind::PositioningInfo => Message::AddPositioningInfoPane,

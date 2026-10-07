@@ -15,6 +15,17 @@ pub(in crate::add_widget_menu::body) fn add_tool_section(
         .push(rule::horizontal(1))
         .push(section_label("Tools", theme))
         .push(menu_item(
+            "Order Entry",
+            if context.order_entry_open {
+                "Open"
+            } else {
+                "Pane"
+            },
+            Some(Message::BeginWidgetPlacement(AddWidgetKind::OrderEntry)),
+            context.can_add_pane,
+            theme,
+        ))
+        .push(menu_item(
             "Order Book",
             "Pane",
             Some(Message::BeginWidgetPlacement(AddWidgetKind::OrderBook)),

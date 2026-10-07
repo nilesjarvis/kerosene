@@ -34,6 +34,7 @@ pub(crate) enum AddWidgetKind {
     TelegramFeed,
     XFeed,
     Calendar,
+    OrderEntry,
     OrderBook,
     LiveWatchlist,
     CompactWalletTracker,
@@ -61,6 +62,7 @@ impl AddWidgetKind {
             Self::TelegramFeed => "Telegram Feed",
             Self::XFeed => "X Feed",
             Self::Calendar => "Calendar",
+            Self::OrderEntry => "Order Entry",
             Self::OrderBook => "Order Book",
             Self::LiveWatchlist => "Live Watchlist",
             Self::CompactWalletTracker => "Compact Wallet Tracker",
@@ -176,6 +178,7 @@ impl TradingTerminal {
                     AddWidgetKind::TrackedTrades => matches!(kind, PaneKind::TrackedTrades),
                     AddWidgetKind::TelegramFeed => matches!(kind, PaneKind::TelegramFeed),
                     AddWidgetKind::Calendar => matches!(kind, PaneKind::Calendar),
+                    AddWidgetKind::OrderEntry => matches!(kind, PaneKind::OrderEntry),
                     AddWidgetKind::AdvancedOrders => matches!(kind, PaneKind::AdvancedOrders),
                     AddWidgetKind::CandlestickChart
                     | AddWidgetKind::ComparisonChart

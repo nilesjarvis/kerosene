@@ -641,6 +641,7 @@ pub(crate) enum Message {
         Box<Result<crate::hyperdash_api::PerpDeltas, String>>,
     ),
     AddOrderBookPane,
+    AddOrderEntryPane,
     AddAdvancedOrdersPane,
     PositionsSortChanged(PositionsSortColumn),
 

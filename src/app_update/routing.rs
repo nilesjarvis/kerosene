@@ -122,6 +122,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddLiquidationsPane
         | Message::AddLiquidationsDistributionPane
         | Message::AddAdvancedOrdersPane
+        | Message::AddOrderEntryPane
         | Message::AddTrackedTradesPane
         | Message::AddTelegramFeedPane
         | Message::AddCompactWalletTrackerPane
