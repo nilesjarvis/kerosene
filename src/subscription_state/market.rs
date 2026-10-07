@@ -61,6 +61,15 @@ impl TradingTerminal {
         symbol: &str,
     ) -> Subscription<(MarketDataSourceContext, KeyedBookStreamEvent)> {
         let sigfigs = self.canonical_l2_book_sigfigs(symbol);
+        self.market_book_subscription_at_precision(id, symbol, sigfigs)
+    }
+
+    fn market_book_subscription_at_precision(
+        &self,
+        id: u64,
+        symbol: &str,
+        sigfigs: crate::ws::L2BookSigfigs,
+    ) -> Subscription<(MarketDataSourceContext, KeyedBookStreamEvent)> {
         let symbol = symbol.to_string();
         let stream = if let Some(api_key) = self.hydromancer_read_provider_key() {
             let stream_key =

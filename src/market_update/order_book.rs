@@ -9,6 +9,9 @@ mod book_data;
 mod panes;
 mod ws_updates;
 
+#[cfg(test)]
+mod transitions;
+
 use ws_updates::order_book_tracks_coin;
 
 impl TradingTerminal {
@@ -84,9 +87,13 @@ impl TradingTerminal {
                 if self.symbol_key_is_hidden(&coin) {
                     return Task::none();
                 }
-                if sigfigs != self.canonical_l2_book_sigfigs(&coin) {
+                if self.order_book_instance_is_muted(id)
+                    || Some(sigfigs) != self.order_book_sigfigs(id)
+                {
                     return Task::none();
                 }
+                // Aggregated mids must not introduce artificial moves into tick charts.
+                let updates_tick_charts = sigfigs == self.canonical_l2_book_sigfigs(&coin);
                 let source_tick = helpers::sigfig_server_tick(sigfigs, book.mid_price());
                 let now_ms = Self::now_ms();
                 let mut newly_populated = false;
@@ -96,16 +103,21 @@ impl TradingTerminal {
                 {
                     let was_empty = inst.book.bids.is_empty() && inst.book.asks.is_empty();
                     let now = std::time::Instant::now();
-                    inst.apply_book_update_preserving_scope(book, source_tick);
+                    inst.set_book_with_source(book, source_tick);
+                    // A live snapshot supersedes a concurrent REST bootstrap,
+                    // including its eventual failure or older successful result.
+                    inst.clear_book_request();
+                    inst.normalize_tick_size();
                     inst.record_mid_price_sample(now);
                     inst.record_spread_sample(now);
                     tick_mid = inst.current_mid_price();
                     inst.book_loading = false;
                     inst.book_error = None;
+                    inst.book_failure_toasted = false;
                     newly_populated =
                         was_empty && !(inst.book.bids.is_empty() && inst.book.asks.is_empty());
                 }
-                if let Some(mid) = tick_mid {
+                if let Some(mid) = tick_mid.filter(|_| updates_tick_charts) {
                     self.apply_orderbook_tick_price_to_charts(&coin, mid, now_ms);
                 }
 
@@ -130,7 +142,9 @@ impl TradingTerminal {
                 if self.symbol_key_is_hidden(&coin) {
                     return Task::none();
                 }
-                if sigfigs != self.canonical_l2_book_sigfigs(&coin) {
+                if self.order_book_instance_is_muted(id)
+                    || Some(sigfigs) != self.order_book_sigfigs(id)
+                {
                     return Task::none();
                 }
                 if let Some(inst) = self.order_books.get_mut(&id)
@@ -163,31 +177,17 @@ impl TradingTerminal {
                     return Task::none();
                 }
                 if let Some(inst) = self.order_books.get_mut(&id) {
-                    if helpers::tick_sizes_match(inst.tick_size, tick) {
+                    if helpers::tick_sizes_match(inst.tick_size, tick) && inst.book_error.is_none()
+                    {
                         return Task::none();
                     }
-                    let old_tick = inst.tick_size;
-                    let denomination_increased = tick > old_tick;
-                    let should_fetch = inst.book.bids.is_empty()
-                        || inst.book.asks.is_empty()
-                        || denomination_increased
-                        || !inst.can_render_book_at_tick(tick)
-                        || inst.book_error.is_some();
                     inst.set_tick_size(tick);
                     inst.clear_book_request();
-                    inst.book_loading = should_fetch;
-                    if should_fetch {
-                        inst.book_error = None;
-                    }
+                    inst.book_loading = true;
+                    inst.book_error = None;
 
                     self.persist_config();
-                    if should_fetch {
-                        return Task::batch([
-                            self.center_order_book(id),
-                            self.order_book_fetch_task_for_id(id),
-                        ]);
-                    }
-                    return self.center_order_book(id);
+                    return self.order_book_fetch_task_for_id(id);
                 }
                 Task::none()
             }
@@ -372,7 +372,7 @@ mod tests {
         let _task = terminal.update_order_book_market(Message::WsBookUpdate {
             id: 7,
             coin: "BTC".to_string(),
-            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            sigfigs: terminal.order_book_sigfigs(7).expect("book precision"),
             source_context: source_context(&terminal, Some(1)),
             book: book(),
         });
@@ -390,7 +390,7 @@ mod tests {
         let _task = terminal.update_order_book_market(Message::WsBookUpdate {
             id: 7,
             coin: "BTC".to_string(),
-            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            sigfigs: terminal.order_book_sigfigs(7).expect("book precision"),
             source_context: stale_context,
             book: book(),
         });
@@ -409,7 +409,7 @@ mod tests {
         let _task = terminal.update_order_book_market(Message::WsBookUpdate {
             id: 7,
             coin: "BTC".to_string(),
-            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            sigfigs: terminal.order_book_sigfigs(7).expect("book precision"),
             source_context: source_context(&terminal, Some(2)),
             book: book(),
         });
@@ -429,7 +429,7 @@ mod tests {
         let _task = terminal.update_order_book_market(Message::WsBookUpdate {
             id: 7,
             coin: "BTC".to_string(),
-            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            sigfigs: terminal.order_book_sigfigs(7).expect("book precision"),
             source_context: source_context(&terminal, None),
             book: book(),
         });
@@ -445,7 +445,7 @@ mod tests {
         terminal.read_data_provider = ReadDataProvider::Hydromancer;
         terminal.hydromancer_api_key = "hydro-key".to_string().into();
         terminal.hydromancer_key_generation = 2;
-        let sigfigs = terminal.canonical_l2_book_sigfigs("BTC");
+        let sigfigs = terminal.order_book_sigfigs(7).expect("book precision");
 
         let _task = terminal.update_order_book_market(Message::WsBookUpdate {
             id: 7,
@@ -454,7 +454,7 @@ mod tests {
             source_context: source_context(&terminal, Some(2)),
             book: book(),
         });
-        let current_sigfigs = terminal.canonical_l2_book_sigfigs("BTC");
+        let current_sigfigs = terminal.order_book_sigfigs(7).expect("book precision");
         let _task = terminal.update_order_book_market(Message::OrderBookWsBookLagged {
             id: 7,
             coin: "BTC".to_string(),
@@ -479,7 +479,7 @@ mod tests {
         terminal.read_data_provider = ReadDataProvider::Hydromancer;
         terminal.hydromancer_api_key = "hydro-key".to_string().into();
         terminal.hydromancer_key_generation = 2;
-        let sigfigs = terminal.canonical_l2_book_sigfigs("BTC");
+        let sigfigs = terminal.order_book_sigfigs(7).expect("book precision");
 
         let _task = terminal.update(Message::OrderBookWsBookLagged {
             id: 7,
@@ -503,7 +503,7 @@ mod tests {
         terminal.read_data_provider = ReadDataProvider::Hydromancer;
         terminal.hydromancer_api_key = "hydro-key".to_string().into();
         terminal.hydromancer_key_generation = 2;
-        let sigfigs = terminal.canonical_l2_book_sigfigs("BTC");
+        let sigfigs = terminal.order_book_sigfigs(7).expect("book precision");
 
         let _task = terminal.update_order_book_market(Message::OrderBookWsBookLagged {
             id: 7,
@@ -585,7 +585,7 @@ mod tests {
         let _task = terminal.update_order_book_market(Message::WsBookUpdate {
             id: 7,
             coin: "BTC".to_string(),
-            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            sigfigs: terminal.order_book_sigfigs(7).expect("book precision"),
             source_context: source_context(&terminal, Some(2)),
             book: book(),
         });
@@ -648,7 +648,7 @@ mod tests {
         let _task = terminal.update_order_book_market(Message::WsBookUpdate {
             id: 7,
             coin: "BTC".to_string(),
-            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            sigfigs: terminal.order_book_sigfigs(7).expect("book precision"),
             source_context: source_context(&terminal, Some(2)),
             book: book(),
         });
@@ -661,7 +661,7 @@ mod tests {
         let _task = terminal.update_order_book_market(Message::WsBookUpdate {
             id: 7,
             coin: "BTC".to_string(),
-            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            sigfigs: terminal.order_book_sigfigs(7).expect("book precision"),
             source_context: source_context(&terminal, None),
             book: book(),
         });

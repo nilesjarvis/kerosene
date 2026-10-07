@@ -28,10 +28,12 @@ pub fn default_tick_for_price(mid_price: f64) -> f64 {
 }
 
 /// Compute dynamic tick size options based on the current mid price.
-/// Returns 5 geometrically spaced options centered around the default tick.
+/// Use only native L2 aggregations so every option can receive 20 levels per
+/// side. The API permits mantissas 2 and 5 only at five significant figures;
+/// a 50x option would re-bucket the 20 returned 10x levels into just 4 rows.
 pub fn book_tick_options(mid_price: f64) -> [f64; 5] {
     let base = default_tick_for_price(mid_price);
-    [base, base * 5.0, base * 10.0, base * 50.0, base * 100.0]
+    [base, base * 2.0, base * 5.0, base * 10.0, base * 100.0]
 }
 
 pub fn compute_sigfigs(tick_size: f64, mid_price: f64) -> (Option<u8>, Option<u8>) {

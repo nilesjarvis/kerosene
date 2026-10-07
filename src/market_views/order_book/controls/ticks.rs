@@ -39,6 +39,7 @@ impl TradingTerminal {
                     button(text(label).size(10).center().width(Fill))
                         .on_press(Message::SetBookTickSize(id, opt))
                         .padding([2, 6])
+                        .width(Fill)
                         .style(move |theme: &Theme, status| {
                             let bg = if is_active {
                                 theme.extended_palette().background.strong.color

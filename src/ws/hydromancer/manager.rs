@@ -4,6 +4,7 @@ mod task;
 mod tests;
 
 use super::HydromancerStreamKey;
+use crate::ws::L2BookSigfigs;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt;
@@ -122,8 +123,12 @@ struct HydromancerManager {
     msg_rx: broadcast::Receiver<HydromancerRoutedMessage>,
 }
 
-static HYDROMANCER_MANAGERS: OnceLock<std::sync::Mutex<HashMap<u64, HydromancerManager>>> =
-    OnceLock::new();
+// None owns general streams; each L2 precision has its own socket because
+// book frames may omit precision. The first key component retains key-rotation
+// ownership so reconnect and eviction always cover the entire provider.
+type HydromancerManagerKey = (u64, Option<L2BookSigfigs>);
+type HydromancerManagerPool = std::sync::Mutex<HashMap<HydromancerManagerKey, HydromancerManager>>;
+static HYDROMANCER_MANAGERS: OnceLock<HydromancerManagerPool> = OnceLock::new();
 static NEXT_HYDROMANCER_MANAGER_TASK_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Default)]
@@ -227,7 +232,10 @@ fn next_hydromancer_manager_task_id() -> u64 {
     NEXT_HYDROMANCER_MANAGER_TASK_ID.fetch_add(1, Ordering::Relaxed)
 }
 
-fn spawn_hydromancer_manager(manager_id: u64, api_key: Zeroizing<String>) -> HydromancerManager {
+fn spawn_hydromancer_manager(
+    manager_id: HydromancerManagerKey,
+    api_key: Zeroizing<String>,
+) -> HydromancerManager {
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
     let (msg_tx, msg_rx) = broadcast::channel(10000);
     let task_id = next_hydromancer_manager_task_id();
@@ -245,7 +253,7 @@ fn spawn_hydromancer_manager(manager_id: u64, api_key: Zeroizing<String>) -> Hyd
     }
 }
 
-fn remove_hydromancer_manager_if_finished(manager_id: u64, task_id: u64) -> bool {
+fn remove_hydromancer_manager_if_finished(manager_id: HydromancerManagerKey, task_id: u64) -> bool {
     let Some(managers) = HYDROMANCER_MANAGERS.get() else {
         return false;
     };
@@ -266,9 +274,29 @@ pub(super) fn get_hydromancer_manager(
     HydromancerCommandSender,
     broadcast::Receiver<HydromancerRoutedMessage>,
 ) {
+    get_hydromancer_manager_for_scope(stream_key, None)
+}
+
+pub(super) fn get_hydromancer_book_manager(
+    stream_key: HydromancerStreamKey,
+    sigfigs: L2BookSigfigs,
+) -> (
+    HydromancerCommandSender,
+    broadcast::Receiver<HydromancerRoutedMessage>,
+) {
+    get_hydromancer_manager_for_scope(stream_key, Some(sigfigs))
+}
+
+fn get_hydromancer_manager_for_scope(
+    stream_key: HydromancerStreamKey,
+    scope: Option<L2BookSigfigs>,
+) -> (
+    HydromancerCommandSender,
+    broadcast::Receiver<HydromancerRoutedMessage>,
+) {
     let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let mut managers = managers.lock().unwrap_or_else(|e| e.into_inner());
-    let manager_key = stream_key.manager_id();
+    let manager_key = (stream_key.manager_id(), scope);
     let api_key = stream_key.api_key_for_task();
 
     let manager = match managers.entry(manager_key) {
@@ -294,11 +322,7 @@ pub fn reconnect_hydromancer(stream_key: HydromancerStreamKey) {
         return;
     };
     let manager_id = stream_key.manager_id();
-    if let Some(manager) = managers.get(&manager_id)
-        && !manager.cmd_tx.request_reconnect()
-    {
-        managers.remove(&manager_id);
-    }
+    managers.retain(|key, manager| key.0 != manager_id || manager.cmd_tx.request_reconnect());
 }
 
 #[cfg(test)]
@@ -306,7 +330,7 @@ pub(crate) fn hydromancer_manager_reconnect_sent_for_test(
     stream_key: HydromancerStreamKey,
     action: impl FnOnce(),
 ) -> bool {
-    let manager_id = stream_key.manager_id();
+    let manager_id = (stream_key.manager_id(), None);
     let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
     let cmd_tx = HydromancerCommandSender::new_for_test(cmd_tx);
@@ -353,9 +377,11 @@ pub fn evict_hydromancer_manager(stream_key: HydromancerStreamKey) {
         return;
     };
     let manager_id = stream_key.manager_id();
-    if let Some((_key, manager)) = managers.remove_entry(&manager_id) {
-        // Best-effort shutdown signal. If the channel is already closed
-        // the task is gone anyway.
+    managers.retain(|key, manager| {
+        if key.0 != manager_id {
+            return true;
+        }
         let _ = manager.cmd_tx.send(HydromancerCommand::Shutdown);
-    }
+        false
+    });
 }

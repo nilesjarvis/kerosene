@@ -47,14 +47,14 @@ fn hydromancer_manager_id_uses_key_and_generation() {
     assert_ne!(first.manager_id(), next_generation.manager_id());
 }
 
-fn remove_manager_for_test(manager_id: u64) {
+fn remove_manager_for_test(manager_id: HydromancerManagerKey) {
     let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let mut managers = managers.lock().unwrap_or_else(|e| e.into_inner());
     managers.remove(&manager_id);
 }
 
 fn insert_manager_for_test(
-    manager_id: u64,
+    manager_id: HydromancerManagerKey,
     task_id: u64,
     cmd_tx: mpsc::UnboundedSender<HydromancerCommand>,
 ) {
@@ -72,15 +72,51 @@ fn insert_manager_for_test(
     );
 }
 
-fn manager_exists_for_test(manager_id: u64) -> bool {
+fn manager_exists_for_test(manager_id: HydromancerManagerKey) -> bool {
     let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let managers = managers.lock().unwrap_or_else(|e| e.into_inner());
     managers.contains_key(&manager_id)
 }
 
 #[test]
+fn reconnect_and_key_eviction_cover_every_book_precision_but_not_other_keys() {
+    let key = HydromancerStreamKey::new("test-order-book-provider", u64::MAX - 200);
+    let other_key = HydromancerStreamKey::new("test-other-provider", u64::MAX - 200);
+    let other_id = (other_key.manager_id(), Some((Some(5), None)));
+    let (other_tx, mut other_rx) = mpsc::unbounded_channel();
+    insert_manager_for_test(other_id, 5000, other_tx);
+    let mut receivers = Vec::new();
+    for (i, scope) in [
+        None,
+        Some((None, None)),
+        Some((Some(5), None)),
+        Some((Some(3), None)),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let manager_id = (key.manager_id(), scope);
+        let (tx, rx) = mpsc::unbounded_channel();
+        insert_manager_for_test(manager_id, 6000 + i as u64, tx);
+        receivers.push((manager_id, rx));
+    }
+    reconnect_hydromancer(key.clone());
+    for (_, rx) in &mut receivers {
+        assert!(matches!(rx.try_recv(), Ok(HydromancerCommand::Reconnect)));
+    }
+    evict_hydromancer_manager(key);
+    for (id, mut rx) in receivers {
+        assert!(matches!(rx.try_recv(), Ok(HydromancerCommand::Shutdown)));
+        assert!(!manager_exists_for_test(id));
+    }
+    assert!(other_rx.try_recv().is_err());
+    assert!(manager_exists_for_test(other_id));
+    remove_manager_for_test(other_id);
+}
+
+#[test]
 fn finished_manager_cleanup_removes_matching_closed_entry() {
-    let manager_id = u64::MAX - 100;
+    let manager_id = (u64::MAX - 100, None);
     let task_id = 1001;
     remove_manager_for_test(manager_id);
 
@@ -94,7 +130,7 @@ fn finished_manager_cleanup_removes_matching_closed_entry() {
 
 #[test]
 fn finished_manager_cleanup_keeps_replacement_entry() {
-    let manager_id = u64::MAX - 101;
+    let manager_id = (u64::MAX - 101, None);
     let old_task_id = 2001;
     let replacement_task_id = 2002;
     remove_manager_for_test(manager_id);
@@ -118,7 +154,7 @@ fn finished_manager_cleanup_keeps_replacement_entry() {
 #[test]
 fn reconnect_prunes_closed_registry_entry() {
     let stream_key = HydromancerStreamKey::new("hydro-secret-token-a", u64::MAX - 102);
-    let manager_id = stream_key.manager_id();
+    let manager_id = (stream_key.manager_id(), None);
     remove_manager_for_test(manager_id);
 
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
@@ -133,7 +169,7 @@ fn reconnect_prunes_closed_registry_entry() {
 #[test]
 fn direct_reconnect_requests_are_coalesced_until_dequeued() {
     let stream_key = HydromancerStreamKey::new("hydro-secret-token-a", u64::MAX - 103);
-    let manager_id = stream_key.manager_id();
+    let manager_id = (stream_key.manager_id(), None);
     remove_manager_for_test(manager_id);
 
     let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();

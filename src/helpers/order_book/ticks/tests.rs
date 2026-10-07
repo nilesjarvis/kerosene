@@ -1,4 +1,19 @@
 use super::*;
+
+#[test]
+fn every_selector_option_maps_to_an_exact_server_tick() {
+    for mid in [0.0000123, 0.123, 12.3, 123.0, 80_000.0, 123_000.0] {
+        for tick in book_tick_options(mid) {
+            let sigfigs = compute_sigfigs(tick, mid);
+            let source_tick = sigfig_server_tick(sigfigs, mid).expect("native aggregation");
+            assert!(
+                tick_sizes_match(source_tick, tick),
+                "{mid}: {tick} != {source_tick}"
+            );
+            assert!(sigfigs.1.is_none() || sigfigs.0 == Some(5));
+        }
+    }
+}
 use proptest::prelude::*;
 
 #[test]

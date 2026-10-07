@@ -11,14 +11,14 @@ use iced::widget::{column, container, responsive, scrollable};
 use iced::{Element, Fill, Theme};
 
 use rows::{
-    DepthColumnContext, centered_symmetric_side_row_count, depth_ask_column, depth_bid_column,
+    DepthColumnContext, centered_order_book_side_row_count, depth_ask_column, depth_bid_column,
     max_cumulative_depth, max_level_size, order_book_row_padding, order_book_scroll_direction,
 };
 
 /// Fixed number of rows rendered per side. The sides are padded with inert
 /// filler rows up to this count so the scroll content height never changes
 /// while the market moves.
-const DEPTH_SIDE_ROWS: usize = 40;
+const DEPTH_SIDE_ROWS: usize = 20;
 
 // ---------------------------------------------------------------------------
 // Order Book Depth
@@ -72,15 +72,11 @@ impl TradingTerminal {
             let centered_bids = bid_rows;
             let centered_ask_orders = user_order_levels.clone();
             let centered_bid_orders = user_order_levels;
-            // Both sides must render the same number of rows so the book stays
-            // symmetric about the spread even when aggregation or scope drift
-            // leaves one side with fewer levels than the other.
-            let ask_len = centered_asks.len();
-            let bid_len = centered_bids.len();
 
             let order_book_rows = column![
                 responsive(move |size| {
-                    let count = centered_symmetric_side_row_count(size.height, ask_len, bid_len);
+                    let count =
+                        centered_order_book_side_row_count(size.height, centered_asks.len());
                     let start = centered_asks.len().saturating_sub(count);
                     let asks = depth_ask_column(
                         column_context,
@@ -97,7 +93,8 @@ impl TradingTerminal {
                 .height(Fill),
                 spread_widget,
                 responsive(move |size| {
-                    let count = centered_symmetric_side_row_count(size.height, ask_len, bid_len);
+                    let count =
+                        centered_order_book_side_row_count(size.height, centered_bids.len());
                     let bids = depth_bid_column(
                         column_context,
                         &centered_bids[..count],

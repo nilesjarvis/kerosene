@@ -75,15 +75,8 @@ impl TradingTerminal {
             // The depth chart draws its own axis labels on the canvas.
             OrderBookDisplayMode::DepthChart => None,
         };
-        let waiting_for_selected_precision = !inst.can_render_book_at_tick(tick);
-        // While a finer denomination is being fetched, keep showing the book
-        // at the freshest renderable granularity instead of blanking the
-        // widget; the title-row spinner signals the fetch in flight.
-        let render_tick = if waiting_for_selected_precision {
-            inst.book_source_tick_size().unwrap_or(tick)
-        } else {
-            tick
-        };
+        let render_tick = inst.displayed_tick_size();
+        let waiting_for_selected_precision = !helpers::tick_sizes_match(render_tick, tick);
         let title_row = self.view_order_book_title(id, inst);
         let outcome_metadata = self.view_order_book_outcome_metadata(tracking_symbol, inst);
 

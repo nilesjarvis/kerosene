@@ -1,7 +1,9 @@
 use crate::account::AssetContext;
 use crate::api::OrderBook;
 use crate::config;
-use crate::helpers::{positive_finite_value, tick_sizes_match};
+use crate::helpers::{
+    book_tick_options, default_tick_for_price, nearest_tick_option, positive_finite_value,
+};
 use crate::market_state::MARKET_ASSET_CONTEXT_MAX_AGE_MS;
 
 use std::cell::RefCell;
@@ -12,7 +14,6 @@ mod aggregation;
 mod cache;
 mod price_history;
 mod requests;
-mod scope;
 
 #[cfg(test)]
 mod tests;
@@ -20,7 +21,6 @@ mod tests;
 pub use aggregation::AggregatedDepth;
 pub(super) use aggregation::aggregate_with_cumulative;
 use requests::PendingOrderBookRequest;
-use scope::merge_books_preserving_scope;
 
 // ---------------------------------------------------------------------------
 // Order Book State
@@ -72,7 +72,7 @@ pub struct OrderBookInstance {
     pub book_error: Option<String>,
     /// Set once a load failure has been toasted, so a failing background
     /// refresh loop produces one toast per streak instead of one per attempt.
-    /// Cleared only by a successful REST load or a symbol/mode change.
+    /// Cleared by a successful snapshot or a symbol/mode change.
     pub book_failure_toasted: bool,
     pub center_on_mid: bool,
     pub reverse_side: bool,
@@ -82,10 +82,9 @@ pub struct OrderBookInstance {
     pub(super) mid_price_history: VecDeque<(Instant, f64)>,
     book_source_tick_size: Option<f64>,
     book_source_mid: Option<f64>,
-    /// Slow-moving mid the tick-size options are derived from. Updated with
-    /// hysteresis so the selector buttons do not relabel (and the selected
-    /// aggregation does not flap) while the live mid hovers around a
-    /// power-of-ten boundary.
+    displayed_tick_size: f64,
+    /// Basis for native API tick options. Stable within a price decade; when
+    /// the decade changes, preserve the selected precision's relative scale.
     tick_options_basis: Option<f64>,
     next_book_request_id: u64,
     pending_book_request: Option<PendingOrderBookRequest>,
@@ -141,6 +140,7 @@ impl OrderBookInstance {
             mid_price_history: VecDeque::new(),
             book_source_tick_size: None,
             book_source_mid: None,
+            displayed_tick_size: tick_size,
             tick_options_basis: None,
             next_book_request_id: 0,
             pending_book_request: None,
@@ -161,6 +161,7 @@ impl OrderBookInstance {
         self.book = book;
         self.book_source_tick_size = source_tick_size;
         self.book_source_mid = source_mid;
+        self.displayed_tick_size = source_tick_size.unwrap_or(self.tick_size);
         if let Some(mid) = source_mid {
             self.update_tick_options_basis(mid);
         }
@@ -216,12 +217,15 @@ impl OrderBookInstance {
     }
 
     fn update_tick_options_basis(&mut self, mid: f64) {
-        match self.tick_options_basis {
-            // Hold the basis while the mid stays within the band; the
-            // options only need to track decade-scale moves.
-            Some(basis) if mid >= basis * 0.3 && mid <= basis * 3.0 => {}
-            _ => self.tick_options_basis = Some(mid),
+        if let Some(basis) = self.tick_options_basis {
+            let old_base = default_tick_for_price(basis);
+            let new_base = default_tick_for_price(mid);
+            if crate::helpers::tick_sizes_match(old_base, new_base) {
+                return;
+            }
+            self.tick_size *= new_base / old_base;
         }
+        self.tick_options_basis = Some(mid);
     }
 
     pub fn book_source_tick_size(&self) -> Option<f64> {
@@ -232,16 +236,17 @@ impl OrderBookInstance {
         self.book_source_mid
     }
 
-    pub fn apply_book_update_preserving_scope(
-        &mut self,
-        incoming: OrderBook,
-        incoming_source_tick_size: Option<f64>,
-    ) {
-        if self.should_merge_finer_book(incoming_source_tick_size) {
-            self.book = merge_books_preserving_scope(&self.book, &incoming);
-            self.book_revision = self.book_revision.wrapping_add(1);
-        } else {
-            self.set_book_with_source(incoming, incoming_source_tick_size);
+    /// Hold the displayed denomination until its replacement snapshot arrives,
+    /// in either direction. Re-bucketing a fine snapshot immediately would
+    /// collapse the visible depth while a wider book is still in flight.
+    pub fn displayed_tick_size(&self) -> f64 {
+        self.displayed_tick_size
+    }
+
+    pub(crate) fn normalize_tick_size(&mut self) {
+        if positive_finite_value(self.tick_options_mid()).is_some() {
+            self.tick_size =
+                nearest_tick_option(&book_tick_options(self.tick_options_mid()), self.tick_size);
         }
     }
 
@@ -251,23 +256,5 @@ impl OrderBookInstance {
 
     pub(crate) fn set_spread_chart_height(&mut self, height: f32) {
         self.spread_chart_height = clamp_order_book_spread_chart_height(height);
-    }
-
-    pub fn can_render_book_at_tick(&self, tick: f64) -> bool {
-        self.book_source_tick_size
-            .is_none_or(|source_tick| source_tick <= tick || tick_sizes_match(source_tick, tick))
-    }
-
-    fn should_merge_finer_book(&self, incoming_source_tick_size: Option<f64>) -> bool {
-        let Some(current_source_tick) = self.book_source_tick_size else {
-            return false;
-        };
-        let Some(incoming_source_tick) = incoming_source_tick_size else {
-            return false;
-        };
-
-        incoming_source_tick < current_source_tick
-            && self.can_render_book_at_tick(self.tick_size)
-            && (!self.book.bids.is_empty() || !self.book.asks.is_empty())
     }
 }

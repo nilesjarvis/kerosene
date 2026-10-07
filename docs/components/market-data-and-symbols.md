@@ -285,8 +285,39 @@ order book pane opens
 ```
 
 The update path rejects websocket data that does not match the instance's
-symbol mode or canonical precision. Tick-size changes reuse cached book data
-when possible and refetch when precision changes require it.
+symbol, selected precision, or provider generation. Each pane subscribes at its
+selected aggregation; Chase, TWAP, and position PnL retain canonical fine
+precision. Aggregated widget mids do not feed tick charts.
+
+Hyperliquid's [L2 API](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#l2-book-snapshot)
+returns at most 20 levels per side. The five denomination options use native
+server steps (1x, 2x, 5x, 10x, 100x the five-significant-figure base). The old
+50x option required grouping the already-truncated 10x book and could leave
+only four rows. Old saved denominations snap to the nearest supported option
+once a price is known. On a price-decade change, the selection retains its
+relative precision and the labels follow the API's new native steps.
+
+A denomination change retains the displayed snapshot and its tick until the
+replacement arrives, in either direction. It does not recenter the scroller.
+Snapshots replace both sides atomically; finer levels are never merged into
+older coarse buckets. A live result clears the pending REST request so a late
+bootstrap response or failure cannot overwrite it. Failed switches retain the
+last snapshot with the stale indicator; clicking the selected denomination
+retries the request. Thin or one-sided books show all available levels within
+each half of the viewport; missing depth is not invented or used to hide the
+opposite side. Scrollable depth lists reserve 20 slots per side.
+
+Live API checks confirmed that L2 websocket snapshots omit the subscription's
+precision, even when multiple aggregations of the same coin are subscribed.
+Both provider managers therefore isolate L2 streams by `(nSigFigs, mantissa)`
+on separate sockets, sharing subscriptions within each precision. Hyperliquid
+book sockets remain reusable for 60 seconds after their last unsubscribe, then
+close; this avoids handshake churn against the 30-new-connections-per-minute
+limit when scrubbing denominations. Hydromancer retains its existing idle
+shutdown lifecycle. Hyperliquid's general socket owns
+the REST latency probe; extra book sockets do not duplicate it. Hydromancer
+reconnect and key eviction cover all precision sockets for the affected key.
+Fallback to Hyperliquid retains this same isolation.
 
 REST and websocket book parsers decode sides directly from borrowed JSON arrays,
 then retain positive finite levels in their received order. A malformed level

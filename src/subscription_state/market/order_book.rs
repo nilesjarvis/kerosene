@@ -46,8 +46,12 @@ impl TradingTerminal {
             );
             if streams.l2_book {
                 subs.push(
-                    self.market_book_subscription(ob.id, symbol)
-                        .map(order_book_stream_event_message),
+                    self.market_book_subscription_at_precision(
+                        ob.id,
+                        symbol,
+                        self.order_book_sigfigs(ob.id).unwrap_or((None, None)),
+                    )
+                    .map(order_book_stream_event_message),
                 );
             }
 

@@ -32,20 +32,21 @@ fn asset_context_with_impact(bid: &str, ask: &str) -> AssetContext {
 }
 
 #[test]
-fn tick_options_basis_holds_within_band_and_tracks_regime_changes() {
+fn tick_options_follow_native_precision_at_decade_changes() {
     let mut inst = OrderBookInstance::new(1, OrderBookSymbolMode::Active, 0.01);
     inst.set_book_with_source(book_at(100.0), None);
     assert_eq!(inst.tick_options_mid(), 100.0);
 
-    // Mid wobbling around the basis (including across a decade boundary)
-    // must not move it — that is the hysteresis the selector relies on.
-    inst.set_book_with_source(book_at(95.0), None);
-    inst.set_book_with_source(book_at(105.0), None);
-    assert_eq!(inst.tick_options_mid(), 100.0);
+    inst.set_book_with_source(book_at(95.0), Some(0.001));
+    assert_eq!(inst.tick_options_mid(), 95.0);
+    assert!((inst.tick_size - 0.001).abs() < 1e-12);
+    inst.set_book_with_source(book_at(105.0), Some(0.01));
+    assert_eq!(inst.tick_options_mid(), 105.0);
+    assert!((inst.tick_size - 0.01).abs() < 1e-12);
 
-    // A decisive regime change re-seeds the basis.
-    inst.set_book_with_source(book_at(400.0), None);
-    assert_eq!(inst.tick_options_mid(), 400.0);
+    // Ordinary moves within a decade keep the selector stable.
+    inst.set_book_with_source(book_at(400.0), Some(0.01));
+    assert_eq!(inst.tick_options_mid(), 105.0);
 
     inst.reset_tick_options_basis();
     inst.set_book_with_source(book_at(50.0), None);

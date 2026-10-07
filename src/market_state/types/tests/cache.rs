@@ -74,18 +74,20 @@ fn order_book_source_precision_blocks_fake_finer_rendering() {
         Some(5.0),
     );
 
-    assert!(inst.can_render_book_at_tick(5.0));
-    assert!(inst.can_render_book_at_tick(10.0));
-    assert!(!inst.can_render_book_at_tick(1.0));
+    inst.set_tick_size(1.0);
+    assert_eq!(inst.displayed_tick_size(), 5.0);
+    inst.set_tick_size(10.0);
+    assert_eq!(inst.displayed_tick_size(), 5.0);
 }
 
 #[test]
-fn unknown_source_precision_is_renderable() {
+fn unknown_source_precision_keeps_the_display_tick_until_replaced() {
     let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 1.0);
     inst.set_book(OrderBook {
         bids: vec![lvl(100.0, 1.0)],
         asks: vec![lvl(101.0, 1.0)],
     });
 
-    assert!(inst.can_render_book_at_tick(0.1));
+    inst.set_tick_size(0.1);
+    assert_eq!(inst.displayed_tick_size(), 1.0);
 }

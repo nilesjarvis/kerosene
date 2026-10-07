@@ -16,6 +16,23 @@ mod planning;
 mod tests;
 
 impl TradingTerminal {
+    /// Widget depth follows the selected denomination; automation keeps its
+    /// own canonical precision regardless of any pane's display settings.
+    pub(crate) fn order_book_sigfigs(&self, id: OrderBookId) -> Option<crate::ws::L2BookSigfigs> {
+        let inst = self.order_books.get(&id)?;
+        let symbol = self.order_book_symbol_for_mode(&inst.mode);
+        plan_order_book_fetch(
+            id,
+            &inst.mode,
+            &self.active_symbol,
+            inst.tick_size,
+            inst.book.mid_price(),
+            self.resolve_mid_for_symbol(symbol),
+            false,
+        )
+        .map(|plan| plan.sigfigs)
+    }
+
     pub(crate) fn canonical_l2_book_sigfigs(&self, symbol: &str) -> (Option<u8>, Option<u8>) {
         let Some(mid) = self
             .order_books
@@ -115,20 +132,7 @@ impl TradingTerminal {
                     inst.book_error = None;
                     inst.book_failure_toasted = false;
 
-                    let tick_options = helpers::book_tick_options(inst.tick_options_mid());
-                    let is_valid_tick = tick_options
-                        .iter()
-                        .any(|&opt| (opt - inst.tick_size).abs() / opt.max(1e-12) < 0.01);
-
-                    if !is_valid_tick {
-                        // Stale persisted tick from a different price regime:
-                        // snap to the nearest option so the selector keeps an
-                        // active button and the coarseness choice survives.
-                        inst.set_tick_size(helpers::nearest_tick_option(
-                            &tick_options,
-                            inst.tick_size,
-                        ));
-                    }
+                    inst.normalize_tick_size();
 
                     // Only snap the scroll position when the book goes from
                     // empty to populated; background precision and scope

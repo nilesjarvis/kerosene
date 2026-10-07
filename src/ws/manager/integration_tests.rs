@@ -211,6 +211,72 @@ where
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn book_socket_reuses_idle_connection_then_closes_without_reconnecting() {
+    // The server accepts only once: a successful second subscribe proves reuse.
+    let mut handles = start_mock_server(1).await;
+    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+    let (msg_tx, _msg_rx) = broadcast::channel(64);
+    let manager = tokio::spawn(ws_manager_task_with_options(
+        handles.server.url(),
+        cmd_rx,
+        msg_tx,
+        ApiLatencyProbe::Disabled,
+        WsReconnectGate::default(),
+        Duration::from_secs(1),
+        Duration::from_millis(200),
+    ));
+    let topic = "l2Book:BTC:3:0".to_string();
+    let payload = serde_json::json!({
+        "method": "subscribe",
+        "subscription": { "type": "l2Book", "coin": "BTC", "nSigFigs": 3 },
+    });
+    for _ in 0..2 {
+        cmd_tx
+            .send(WsCommand::Subscribe {
+                topic: topic.clone(),
+                payload: payload.clone(),
+            })
+            .expect("subscribe");
+        wait_for_event(&mut handles.events_rx, |event| {
+            matches!(event, ServerEvent::Received(text) if text.contains("\"method\":\"subscribe\""))
+        }, Duration::from_secs(2)).await.expect("subscription reaches the same socket");
+        cmd_tx
+            .send(WsCommand::Unsubscribe {
+                topic: topic.clone(),
+                payload: payload.clone(),
+            })
+            .expect("unsubscribe");
+        wait_for_event(&mut handles.events_rx, |event| {
+            matches!(event, ServerEvent::Received(text) if text.contains("\"method\":\"unsubscribe\""))
+        }, Duration::from_secs(2)).await.expect("unsubscribe reaches server");
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    // Heartbeats do not extend the absolute idle deadline.
+    let ping_tx = cmd_tx.clone();
+    let pinger = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            if ping_tx.send(WsCommand::Ping).is_err() {
+                break;
+            }
+        }
+    });
+    wait_for_event(
+        &mut handles.events_rx,
+        |event| matches!(event, ServerEvent::ClientClosed),
+        Duration::from_secs(1),
+    )
+    .await
+    .expect("idle book socket closes on schedule");
+    pinger.abort();
+    drop(cmd_tx);
+    tokio::time::timeout(Duration::from_secs(1), manager)
+        .await
+        .expect("manager exits")
+        .expect("manager task");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn subscribe_payload_reaches_the_server() {
     let mut handles = start_mock_server(1).await;
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();

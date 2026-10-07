@@ -59,22 +59,24 @@ impl TradingTerminal {
                 color: Some(theme.extended_palette().background.strong.text),
             });
 
-        let mut title = row![active_indicator(is_active), tracking_text]
+        let title = row![active_indicator(is_active), tracking_text]
             .spacing(2)
             .align_y(iced::Alignment::Center);
 
         // Fixed-size status badges live in the title row so background
         // refreshes and transient errors never reflow the book below.
+        let mut status = row![].spacing(2).align_y(iced::Alignment::Center);
         if inst.book_loading && book_has_rows {
-            title = title.push(self.view_spinner(12));
+            status = status.push(self.view_spinner(12));
         }
         if let Some(error) = &inst.book_error
             && book_has_rows
         {
-            title = title.push(stale_book_badge(error));
+            status = status.push(stale_book_badge(error));
         }
 
         title
+            .push(container(status).width(44).height(16).center_y(16))
             .push(iced::widget::Space::new().width(Fill))
             .push(Element::from(display_mode_button(
                 id,

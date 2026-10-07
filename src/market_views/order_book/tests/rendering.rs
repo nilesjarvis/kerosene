@@ -144,6 +144,98 @@ fn book() -> OrderBook {
 }
 
 #[tokio::test]
+async fn denomination_switches_keep_row_geometry_and_one_sided_depth_visible() {
+    let mut renderer = iced::Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+        .await
+        .expect("software renderer");
+    let mut terminal = TradingTerminal::boot_from_config(KeroseneConfig::default()).0;
+    terminal.active_symbol = "BTC".into();
+    terminal.active_symbol_display = "BTC".into();
+    let theme = terminal.theme();
+    let size = Size::new(420.0, 1000.0);
+    let mut inst = OrderBookInstance::new(91, OrderBookSymbolMode::Active, 1.0);
+    for tick in [1.0, 2.0, 5.0, 10.0, 100.0, 1.0] {
+        inst.set_tick_size(tick);
+        inst.set_book_with_source(
+            OrderBook {
+                bids: (1..=20)
+                    .map(|i| BookLevel {
+                        px: 80_000.0 - f64::from(i) * tick,
+                        sz: f64::from(i),
+                    })
+                    .collect(),
+                asks: (1..=20)
+                    .map(|i| BookLevel {
+                        px: 80_000.0 + f64::from(i) * tick,
+                        sz: f64::from(i),
+                    })
+                    .collect(),
+            },
+            Some(tick),
+        );
+        for pending in [false, true] {
+            inst.book_loading = pending;
+            inst.set_tick_size(if pending {
+                if tick == 100.0 { 1.0 } else { 100.0 }
+            } else {
+                tick
+            });
+            terminal.order_books.insert(91, inst);
+            let mut view = terminal.view_order_book(91);
+            let (mut tree, node) = render(
+                &mut view,
+                &mut renderer,
+                &theme,
+                size,
+                &format!("denomination-{tick}-pending-{pending}"),
+            );
+            let mut prices = BTreeSet::new();
+            for y in (90..990).step_by(10) {
+                for message in click(
+                    &mut view,
+                    &mut tree,
+                    &node,
+                    &mut renderer,
+                    size,
+                    Point::new(100.0, y as f32),
+                ) {
+                    if let Message::OrderBookPriceSelected { price, .. } = message {
+                        prices.insert(price);
+                    }
+                }
+            }
+            assert_eq!(prices.len(), 40, "tick {tick}, pending {pending}");
+            assert!(prices.contains(&format!("{:.0}", 80_000.0 - tick)));
+            assert!(prices.contains(&format!("{:.0}", 80_000.0 + tick)));
+            drop(view);
+            inst = terminal.order_books.remove(&91).expect("book");
+        }
+    }
+
+    inst.book.asks.clear();
+    inst.set_book_with_source(inst.book.clone(), Some(1.0));
+    terminal.order_books.insert(91, inst);
+    let mut view = terminal.view_order_book(91);
+    let (mut tree, node) = render(&mut view, &mut renderer, &theme, size, "one-sided-depth");
+    let mut prices = BTreeSet::new();
+    for y in (90..990).step_by(10) {
+        for message in click(
+            &mut view,
+            &mut tree,
+            &node,
+            &mut renderer,
+            size,
+            Point::new(100.0, y as f32),
+        ) {
+            if let Message::OrderBookPriceSelected { price, .. } = message {
+                prices.insert(price);
+            }
+        }
+    }
+    assert_eq!(prices.len(), 20);
+}
+
+#[tokio::test]
 async fn pane_composition_preserves_empty_loading_stale_and_spread_states() {
     let mut renderer = iced::Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
         .await
@@ -280,8 +372,12 @@ async fn book_rows_preserve_price_actions_through_centering_and_orientation() {
                         assert!(prices.contains("99"));
                         assert!(prices.contains("101"));
                     } else if !dom {
-                        // The top of the scrollable depth list contains inert padding.
-                        assert!(prices.is_empty());
+                        // Twenty slots per side: padding stays inert and the
+                        // first real ask enters at the bottom of this viewport.
+                        assert_eq!(
+                            prices,
+                            BTreeSet::from(["104".to_string(), "106".to_string()])
+                        );
                     } else {
                         assert!(prices.contains("180"));
                     }

@@ -1,5 +1,5 @@
 use super::super::manager::{
-    HydromancerCommand, HydromancerSubscriptionGuard, get_hydromancer_manager,
+    HydromancerCommand, HydromancerSubscriptionGuard, get_hydromancer_book_manager,
 };
 use super::super::{HYDROMANCER_RECONNECT_DELAY_SECS, HydromancerStreamKey, emit_after_reconnect};
 use super::hydromancer_market_control_message;
@@ -23,7 +23,7 @@ pub fn ws_hydromancer_book_stream_keyed_events(
     let sigfigs = params.3;
 
     Box::pin(iced::stream::channel(10, async move |mut output| {
-        let (cmd_tx, mut msg_rx) = get_hydromancer_manager(stream_key);
+        let (cmd_tx, mut msg_rx) = get_hydromancer_book_manager(stream_key, sigfigs);
         let (topic, payload) = hydromancer_l2_book_subscription(&coin, sigfigs);
         let subscription = (topic.clone(), payload.clone());
         if cmd_tx

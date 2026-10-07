@@ -19,7 +19,7 @@ fn apply_update(
     asks: &[(f64, f64)],
     source_scope: f64,
 ) {
-    inst.apply_book_update_preserving_scope(book(bids, asks), Some(source_scope));
+    inst.set_book_with_source(book(bids, asks), Some(source_scope));
 }
 
 fn book(bids: &[(f64, f64)], asks: &[(f64, f64)]) -> OrderBook {

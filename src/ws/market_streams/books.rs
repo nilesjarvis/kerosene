@@ -1,9 +1,8 @@
 use super::{KeyedBookStreamEvent, WsStreamEvent};
 use crate::api::{OrderBook, parse_ws_book};
-use crate::ws::{
-    L2BookSigfigs, SubscriptionGuard, WsCommand, get_manager, l2_book_payload_matches_sigfigs,
-};
+use crate::ws::{L2BookSigfigs, SubscriptionGuard, WsCommand, l2_book_payload_matches_sigfigs};
 
+use crate::ws::manager::get_book_manager;
 use futures::SinkExt as _;
 use std::pin::Pin;
 use tokio::sync::broadcast;
@@ -21,7 +20,7 @@ fn ws_book_event_stream(coin: &str, sigfigs: BookSigfigs) -> BookEventStream {
     let coin = coin.to_string();
 
     Box::pin(iced::stream::channel(10, async move |mut output| {
-        let (cmd_tx, mut msg_rx) = get_manager();
+        let (cmd_tx, mut msg_rx) = get_book_manager(sigfigs);
 
         let topic = format!(
             "l2Book:{}:{}:{}",

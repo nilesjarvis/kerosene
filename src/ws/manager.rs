@@ -5,7 +5,6 @@ use self::timing::{
     EXCHANGE_WS_RECONNECT_POLICY, ReconnectPolicy, WS_CONNECT_TIMEOUT_SECS, read_loop_timeout,
     stale_read_remaining,
 };
-use super::WS_URL;
 use super::connect::{ConnectAttempt, connect_with_timeout};
 #[cfg(not(test))]
 use super::telemetry::{
@@ -15,11 +14,13 @@ use super::telemetry::{
     telemetry_add_rx, telemetry_add_tx, telemetry_mark_ws_ping_start, telemetry_on_connect,
     telemetry_on_disconnect, telemetry_update_ws_latency_from_ping_start,
 };
+use super::{L2BookSigfigs, WS_URL};
 #[cfg(not(test))]
 use crate::api::proxy::HyperliquidRequestExt;
 use crate::network_activity::{ActivityKind, Provider, record_ws_frame, record_ws_lifecycle};
 use futures::{Sink, SinkExt as _};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -140,7 +141,8 @@ struct WsManager {
     msg_rx: broadcast::Receiver<WsRoutedMessage>,
 }
 
-static WS_MANAGER: OnceLock<WsManager> = OnceLock::new();
+type WsManagerPool = std::sync::Mutex<HashMap<Option<L2BookSigfigs>, WsManager>>;
+static WS_MANAGERS: OnceLock<WsManagerPool> = OnceLock::new();
 
 #[derive(Clone, Default)]
 struct WsReconnectGate(Arc<AtomicBool>);
@@ -198,7 +200,32 @@ impl WsCommandSender {
 }
 
 pub(crate) fn get_manager() -> (WsCommandSender, broadcast::Receiver<WsRoutedMessage>) {
-    let mgr = WS_MANAGER.get_or_init(|| {
+    get_manager_for_scope(None)
+}
+
+/// L2 frames do not echo their precision. Sharing a socket across precisions
+/// would deliver each snapshot to every consumer of that coin, including
+/// automation. One ref-counted manager per precision makes attribution exact.
+/// Recently used book sockets stay idle briefly so denomination scrubbing
+/// reuses connections instead of exhausting the exchange's handshake limit.
+pub(crate) fn get_book_manager(
+    sigfigs: L2BookSigfigs,
+) -> (WsCommandSender, broadcast::Receiver<WsRoutedMessage>) {
+    get_manager_for_scope(Some(sigfigs))
+}
+
+fn get_manager_for_scope(
+    scope: Option<L2BookSigfigs>,
+) -> (WsCommandSender, broadcast::Receiver<WsRoutedMessage>) {
+    let managers = WS_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut managers = managers.lock().unwrap_or_else(|e| e.into_inner());
+    if managers
+        .get(&scope)
+        .is_some_and(|manager| manager.cmd_tx.inner.is_closed())
+    {
+        managers.remove(&scope);
+    }
+    let mgr = managers.entry(scope).or_insert_with(|| {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (msg_tx, msg_rx) = broadcast::channel(10000);
         let reconnect_gate = WsReconnectGate::default();
@@ -214,11 +241,21 @@ pub(crate) fn get_manager() -> (WsCommandSender, broadcast::Receiver<WsRoutedMes
             }
         });
 
-        tokio::spawn(ws_manager_task_with_reconnect_gate(
+        tokio::spawn(ws_manager_task_with_api_probe(
             WS_URL.to_string(),
             cmd_rx,
             msg_tx,
+            if scope.is_some() {
+                ApiLatencyProbe::Disabled
+            } else {
+                ApiLatencyProbe::production()
+            },
             reconnect_gate,
+            if scope.is_some() {
+                Duration::from_secs(60)
+            } else {
+                Duration::ZERO
+            },
         ));
         WsManager {
             cmd_tx: command_sender,
@@ -237,6 +274,7 @@ pub(super) async fn ws_manager_task(
     ws_manager_task_with_reconnect_gate(ws_url, cmd_rx, msg_tx, WsReconnectGate::default()).await;
 }
 
+#[cfg(test)]
 async fn ws_manager_task_with_reconnect_gate(
     ws_url: String,
     cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
@@ -249,6 +287,7 @@ async fn ws_manager_task_with_reconnect_gate(
         msg_tx,
         ApiLatencyProbe::production(),
         reconnect_gate,
+        Duration::ZERO,
     )
     .await;
 }
@@ -259,6 +298,7 @@ async fn ws_manager_task_with_api_probe(
     msg_tx: broadcast::Sender<WsRoutedMessage>,
     api_probe: ApiLatencyProbe,
     reconnect_gate: WsReconnectGate,
+    idle_timeout: Duration,
 ) {
     ws_manager_task_with_options(
         ws_url,
@@ -267,6 +307,7 @@ async fn ws_manager_task_with_api_probe(
         api_probe,
         reconnect_gate,
         Duration::from_secs(WS_CONNECT_TIMEOUT_SECS),
+        idle_timeout,
     )
     .await;
 }
@@ -278,6 +319,7 @@ async fn ws_manager_task_with_options(
     api_probe: ApiLatencyProbe,
     reconnect_gate: WsReconnectGate,
     connect_timeout: Duration,
+    idle_timeout: Duration,
 ) {
     let mut active_subs = ActiveWsSubscriptions::default();
     let mut coalescer = CoalescedSender::new(msg_tx);
@@ -353,11 +395,12 @@ async fn ws_manager_task_with_options(
         let mut disconnected = false;
         let mut last_rx_at = Instant::now();
         let mut next_api_probe_at = Instant::now();
+        let mut idle_since = None;
 
         if !drain_disconnected_ws_commands(&mut active_subs, &mut cmd_rx, &reconnect_gate) {
             return;
         }
-        if active_subs.is_empty() {
+        if active_subs.is_empty() && idle_timeout.is_zero() {
             disconnected = true;
         }
 
@@ -370,6 +413,17 @@ async fn ws_manager_task_with_options(
 
         while !disconnected {
             let now = Instant::now();
+            let idle_in = if active_subs.is_empty() {
+                let since = *idle_since.get_or_insert(now);
+                let remaining = idle_timeout.saturating_sub(now.duration_since(since));
+                if remaining.is_zero() {
+                    break;
+                }
+                remaining
+            } else {
+                idle_since = None;
+                Duration::MAX
+            };
             if now >= next_api_probe_at {
                 api_probe.spawn();
                 next_api_probe_at = now + API_LATENCY_PROBE_INTERVAL;
@@ -379,7 +433,9 @@ async fn ws_manager_task_with_options(
             let read_fut = Box::pin(read.next());
             let stale_in = stale_read_remaining(last_rx_at.elapsed());
             let api_probe_in = next_api_probe_at.saturating_duration_since(Instant::now());
-            let timeout_in = read_loop_timeout(stale_in, coalescer.next_due()).min(api_probe_in);
+            let timeout_in = read_loop_timeout(stale_in, coalescer.next_due())
+                .min(api_probe_in)
+                .min(idle_in);
 
             match tokio::time::timeout(timeout_in, select(cmd_fut, read_fut)).await {
                 Err(_) => {
@@ -417,7 +473,7 @@ async fn ws_manager_task_with_options(
                     if action.disconnect_after_handling {
                         disconnected = true;
                     }
-                    if active_subs.is_empty() {
+                    if active_subs.is_empty() && idle_timeout.is_zero() {
                         disconnected = true;
                     }
                 }
@@ -473,7 +529,6 @@ async fn ws_manager_task_with_options(
 enum ApiLatencyProbe {
     #[cfg(not(test))]
     Network,
-    #[cfg(test)]
     Disabled,
     #[cfg(test)]
     Notify(mpsc::UnboundedSender<()>),
@@ -497,7 +552,6 @@ impl ApiLatencyProbe {
             Self::Network => {
                 tokio::spawn(update_api_latency_once());
             }
-            #[cfg(test)]
             Self::Disabled => {}
             #[cfg(test)]
             Self::Notify(probe_tx) => {
@@ -520,6 +574,7 @@ pub(super) async fn ws_manager_task_with_api_probe_notifier(
         msg_tx,
         ApiLatencyProbe::Notify(probe_tx),
         WsReconnectGate::default(),
+        Duration::ZERO,
     )
     .await;
 }
@@ -538,6 +593,7 @@ pub(super) async fn ws_manager_task_with_connect_timeout_for_test(
         ApiLatencyProbe::Disabled,
         WsReconnectGate::default(),
         connect_timeout,
+        Duration::ZERO,
     )
     .await;
 }

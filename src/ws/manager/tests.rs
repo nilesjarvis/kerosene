@@ -6,6 +6,19 @@ mod reconnect;
 mod stale_read;
 mod timeout;
 
+#[tokio::test]
+async fn book_manager_shares_equal_precision_and_isolates_unattributed_frames() {
+    let (fine, _) = get_book_manager((Some(5), None));
+    let (same, _) = get_book_manager((Some(5), None));
+    let (coarse, _) = get_book_manager((Some(3), None));
+    let (mantissa, _) = get_book_manager((Some(5), Some(5)));
+    let (general, _) = get_manager();
+    assert!(fine.inner.same_channel(&same.inner));
+    assert!(!fine.inner.same_channel(&coarse.inner));
+    assert!(!fine.inner.same_channel(&mantissa.inner));
+    assert!(!fine.inner.same_channel(&general.inner));
+}
+
 const DEBUG_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
 
 #[test]
