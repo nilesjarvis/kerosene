@@ -44,6 +44,12 @@ Runtime data includes:
 Journal fills are fetched with Hyperliquid `userFillsByTime` through
 `api::fetch_user_fills`.
 
+Fill pages use the background read budget, preserving reserved capacity for
+account state and order-status reads. Direct and proxy reads admit requests in
+FIFO order within each priority so small market polls cannot repeatedly overtake
+a waiting fill page. Admission allows up to 90 seconds to cover the 60-second
+budget window; budget waits do not occupy network concurrency slots.
+
 The loading path:
 
 ```text

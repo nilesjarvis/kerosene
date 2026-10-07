@@ -7,6 +7,49 @@ fn background_cost() -> RequestCost {
     }
 }
 
+#[tokio::test(start_paused = true)]
+async fn journal_fills_keep_their_place_while_proxy_budget_recovers() {
+    let pool = ProxyPool::build(true, &urls()[..1]).expect("pool");
+    // Leave capacity for small polls, but not a fill page, until this charge
+    // expires. No network requests are sent by admission.
+    pool.state.lock().expect("state").routes[0]
+        .budget
+        .charge(Instant::now(), 600, false);
+    let request = Client::new()
+        .post(super::super::super::API_URL)
+        .json(&serde_json::json!({"type": "userFillsByTime"}))
+        .build()
+        .expect("request");
+    let cost = RequestCost::from_request(&request);
+    assert!(!cost.critical);
+    let deadline = Instant::now() + ADMISSION_TIMEOUT;
+    let mut fills_admission = Box::pin(pool.admit(&[], cost, deadline));
+    assert!(futures::poll!(&mut fills_admission).is_pending());
+    let mut poll_admission = Box::pin(pool.admit(&[], background_cost(), deadline));
+    assert!(futures::poll!(&mut poll_admission).is_pending());
+
+    tokio::time::advance(Duration::from_secs(31)).await;
+    assert!(futures::poll!(&mut fills_admission).is_pending());
+    assert!(futures::poll!(&mut poll_admission).is_pending());
+    assert_eq!(pool.state.lock().expect("state").routes[0].in_flight, 0);
+    tokio::time::advance(Duration::from_secs(29)).await;
+    // Other parallel tests share process-wide network slots. Resume real time
+    // before awaiting those slots so this test cannot auto-advance its timeout.
+    tokio::time::resume();
+    let (_fills_permit, fills_route) =
+        tokio::time::timeout(Duration::from_secs(2), fills_admission)
+            .await
+            .expect("budget recovers")
+            .expect("fill page admitted");
+    // Admission releases the queue while the network lease is still held.
+    let (_poll_permit, poll_route) = tokio::time::timeout(Duration::from_secs(2), poll_admission)
+        .await
+        .expect("queue released")
+        .expect("poll admitted");
+    assert_eq!(fills_route.index, poll_route.index);
+    assert_eq!(pool.state.lock().expect("state").routes[0].in_flight, 2);
+}
+
 #[test]
 fn each_route_has_its_own_budget_and_account_reserve() {
     let pool = ProxyPool::build(true, &urls()).expect("pool");

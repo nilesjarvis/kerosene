@@ -35,11 +35,14 @@ the configured proxies. Routes are charged only after selection; unavailable
 routes, unreplayable requests, and admission timeouts do not spend capacity.
 
 Concurrency remains process-wide: four background slots and two account-read
-slots, shared with direct Hyperliquid reads. Waiting for proxy budget capacity
-releases the concurrency slot and retries selection when capacity can recover;
+slots, shared with direct Hyperliquid reads. Waiting for direct or proxy budget
+capacity releases the concurrency slot and retries selection when capacity can recover;
 an exhausted route does not block another route that has capacity. Initial
-admission waits at most 30 seconds. Retries must fit within the remaining
-request deadline and cannot start a fresh admission timeout.
+admission waits at most 90 seconds, covering the 60-second budget window.
+Each direct connection or proxy pool admits requests in FIFO order within each
+priority so small polls cannot starve larger fill/history pages. The account
+queue remains independent of background admission. Retries must fit within the
+remaining request deadline and cannot start a fresh admission timeout.
 
 Only POSTs to `https://api.hyperliquid.xyz/info` enter the pool. Signed exchange
 actions, WebSocket streams, Hydromancer, HyperDash, Telegram, and other

@@ -5,14 +5,14 @@ mod response;
 mod url;
 pub(crate) use url::ProxyUrl;
 
-use super::read_control::{Budget, RequestCost, acquire_proxy_slot};
+use super::read_control::{ADMISSION_TIMEOUT, Budget, ReadQueue, RequestCost, acquire_proxy_slot};
 use reqwest::{Client, Method, Request, RequestBuilder, Response, StatusCode};
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 use tokio::sync::OwnedSemaphorePermit;
+use tokio::time::Instant;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
-const ADMISSION_TIMEOUT: Duration = Duration::from_secs(30);
 const FAILURE_COOLDOWN: Duration = Duration::from_secs(15);
 const RATE_LIMIT_COOLDOWN: Duration = Duration::from_secs(60);
 const MAX_ATTEMPTS: usize = 2;
@@ -24,6 +24,7 @@ pub(crate) struct ProxyPool {
     enabled: bool,
     routes: Vec<Client>,
     state: Mutex<PoolState>,
+    queue: ReadQueue,
 }
 
 #[derive(Default)]
@@ -63,6 +64,7 @@ impl ProxyPool {
             enabled,
             routes: Vec::new(),
             state: Mutex::new(PoolState::default()),
+            queue: ReadQueue::default(),
         }
     }
 
@@ -141,6 +143,7 @@ impl ProxyPool {
         deadline: Instant,
     ) -> Result<(OwnedSemaphorePermit, RouteLease<'_>), String> {
         let admission = async {
+            let _admission = self.queue.enter(cost.critical).await;
             loop {
                 let permit = acquire_proxy_slot(cost).await?;
                 let now = Instant::now();
@@ -162,7 +165,7 @@ impl ProxyPool {
                 }
             }
         };
-        tokio::time::timeout_at(deadline.into(), admission)
+        tokio::time::timeout_at(deadline, admission)
             .await
             .map_err(|_| "Hyperliquid proxy admission timed out; retry shortly".to_string())?
     }
@@ -227,7 +230,7 @@ impl ProxyPool {
             };
             attempted.push(route.index);
             *attempt.timeout_mut() = Some(remaining);
-            let result = tokio::time::timeout_at(deadline.into(), async {
+            let result = tokio::time::timeout_at(deadline, async {
                 let response =
                     crate::network_activity::execute(&self.routes[route.index], attempt, true)
                         .await

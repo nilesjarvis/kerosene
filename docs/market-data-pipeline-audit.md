@@ -29,8 +29,10 @@ traffic were inspected, and no exchange load test was performed.
   budgets: 900 Hyperliquid weight total, at most 700 for background reads, for
   the direct connection and independently for each configured proxy route.
   Account state and order-status reads retain 200 weight of headroom and two
-  concurrency slots; background reads have four slots. Admission waits are
-  bounded to 30 seconds, then return a recoverable error. Exchange writes are
+  concurrency slots; background reads have four slots. Admission is FIFO within
+  each priority and waits up to 90 seconds so larger fill pages can survive a
+  full budget window without smaller polls overtaking them. Budget waits release
+  network slots. On timeout, reads return a recoverable error. Exchange writes are
   outside this queue. Hydromancer info reads share concurrency and cooldown
   controls without assuming an unknown subscription tier's numeric REST budget.
 - Direct HTTP 429 responses apply `Retry-After` to other direct reads of that

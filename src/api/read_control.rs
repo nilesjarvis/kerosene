@@ -4,10 +4,13 @@ use serde_json::Value;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::{LazyLock, Mutex};
-use std::time::{Duration, Instant};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use std::time::Duration;
+use tokio::sync::{Mutex as AsyncMutex, MutexGuard, OwnedSemaphorePermit, Semaphore};
+use tokio::time::Instant;
 
 const WINDOW: Duration = Duration::from_secs(60);
+// Admission must survive a full budget window, plus time spent in the queue.
+pub(super) const ADMISSION_TIMEOUT: Duration = Duration::from_secs(90);
 // Leave room for exchange writes and other applications sharing this IP.
 const TOTAL_WEIGHT: u32 = 900;
 const BACKGROUND_WEIGHT: u32 = 700;
@@ -47,8 +50,27 @@ pub(super) async fn acquire_proxy_slot(cost: RequestCost) -> Result<OwnedSemapho
     HYPERLIQUID.acquire_slot(cost.critical).await
 }
 
+/// Admit each priority in FIFO order so small polls cannot starve larger pages.
+/// Only admission is serialized; network requests retain their concurrency.
+#[derive(Default)]
+pub(super) struct ReadQueue {
+    background: AsyncMutex<()>,
+    critical: AsyncMutex<()>,
+}
+
+impl ReadQueue {
+    pub(super) async fn enter(&self, critical: bool) -> MutexGuard<'_, ()> {
+        if critical {
+            self.critical.lock().await
+        } else {
+            self.background.lock().await
+        }
+    }
+}
+
 pub(super) struct ReadGate {
     state: Mutex<Budget>,
+    queue: ReadQueue,
     background: Arc<Semaphore>,
     critical: Arc<Semaphore>,
 }
@@ -107,13 +129,14 @@ impl ReadGate {
     fn new() -> Self {
         Self {
             state: Mutex::new(Budget::default()),
+            queue: ReadQueue::default(),
             background: Arc::new(Semaphore::new(4)),
             critical: Arc::new(Semaphore::new(2)),
         }
     }
 
     pub(super) async fn acquire(&self, request: &Request) -> Result<OwnedSemaphorePermit, String> {
-        tokio::time::timeout(Duration::from_secs(30), self.acquire_inner(request))
+        tokio::time::timeout(ADMISSION_TIMEOUT, self.acquire_inner(request))
             .await
             .map_err(|_| "Market data read budget busy; retry shortly".to_string())?
     }
@@ -125,15 +148,20 @@ impl ReadGate {
         } else {
             0
         };
-        let permit = self.acquire_slot(cost.critical).await?;
+        let _admission = self.queue.enter(cost.critical).await;
         loop {
+            let permit = self.acquire_slot(cost.critical).await?;
             let delay = self.state.lock().unwrap_or_else(|e| e.into_inner()).wait(
                 Instant::now(),
                 weight,
                 cost.critical,
             );
             match delay {
-                Some(delay) => tokio::time::sleep(delay).await,
+                Some(delay) => {
+                    // Keep our queue position without occupying a network slot.
+                    drop(permit);
+                    tokio::time::sleep(delay).await;
+                }
                 None => return Ok(permit),
             }
         }
@@ -244,6 +272,110 @@ mod tests {
 #[cfg(test)]
 mod async_tests {
     use super::*;
+
+    fn info_request(kind: &str) -> Request {
+        reqwest::Client::new()
+            .post("https://api.hyperliquid.xyz/info")
+            .json(&serde_json::json!({"type": kind}))
+            .build()
+            .expect("request")
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn journal_fill_admission_survives_a_full_budget_window() {
+        let gate = ReadGate::new();
+        gate.state
+            .lock()
+            .expect("budget")
+            .charge(Instant::now(), BACKGROUND_WEIGHT, false);
+        let request = info_request("userFillsByTime");
+        let mut admission = Box::pin(gate.acquire(&request));
+        assert!(futures::poll!(&mut admission).is_pending());
+        assert_eq!(gate.background.available_permits(), 4);
+
+        tokio::time::advance(Duration::from_secs(31)).await;
+        assert!(futures::poll!(&mut admission).is_pending());
+        assert_eq!(gate.state.lock().expect("budget").spent.len(), 1);
+
+        tokio::time::advance(Duration::from_secs(29)).await;
+        let _permit = admission.await.expect("budget recovers without a retry");
+        let state = gate.state.lock().expect("budget");
+        assert_eq!(state.spent.len(), 1);
+        assert_eq!(state.spent[0].1, 120);
+        assert!(
+            !state.spent[0].2,
+            "fills must keep the account reserve free"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn small_market_polls_cannot_overtake_waiting_journal_fills() {
+        let gate = ReadGate::new();
+        gate.state
+            .lock()
+            .expect("budget")
+            .charge(Instant::now(), 600, false);
+        let fills = info_request("userFillsByTime");
+        let poll = info_request("allMids");
+        let account = info_request("orderStatus");
+        let mut fills_admission = Box::pin(gate.acquire(&fills));
+        assert!(futures::poll!(&mut fills_admission).is_pending());
+        let mut poll_admission = Box::pin(gate.acquire(&poll));
+        assert!(futures::poll!(&mut poll_admission).is_pending());
+
+        // Account/order reads use an independent queue and can still proceed.
+        let mut account_admission = Box::pin(gate.acquire(&account));
+        assert!(matches!(
+            futures::poll!(&mut account_admission),
+            std::task::Poll::Ready(Ok(_))
+        ));
+        assert_eq!(gate.background.available_permits(), 4);
+
+        tokio::time::advance(WINDOW).await;
+        let _fills_permit = fills_admission.await.expect("fills admitted first");
+        let _poll_permit = poll_admission.await.expect("poll follows fills");
+        let state = gate.state.lock().expect("budget");
+        let weights: Vec<_> = state.spent.iter().map(|(_, weight, _)| *weight).collect();
+        assert_eq!(weights, [120, 2]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cancelling_waiting_fills_releases_queue_without_spending_budget() {
+        let gate = ReadGate::new();
+        gate.state
+            .lock()
+            .expect("budget")
+            .charge(Instant::now(), 600, false);
+        let fills = info_request("userFillsByTime");
+        let mut admission = Box::pin(gate.acquire(&fills));
+        assert!(futures::poll!(&mut admission).is_pending());
+        drop(admission);
+
+        let poll = info_request("allMids");
+        let mut poll_admission = Box::pin(gate.acquire(&poll));
+        assert!(matches!(
+            futures::poll!(&mut poll_admission),
+            std::task::Poll::Ready(Ok(_))
+        ));
+        let state = gate.state.lock().expect("budget");
+        let weights: Vec<_> = state.spent.iter().map(|(_, weight, _)| *weight).collect();
+        assert_eq!(weights, [600, 2]);
+        assert_eq!(gate.background.available_permits(), 4);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn admission_remains_bounded_during_long_provider_cooldown() {
+        let gate = ReadGate::new();
+        gate.cool_down(Duration::from_secs(3600));
+        let fills = info_request("userFillsByTime");
+        let mut admission = Box::pin(gate.acquire(&fills));
+        assert!(futures::poll!(&mut admission).is_pending());
+        tokio::time::advance(ADMISSION_TIMEOUT).await;
+        assert!(admission.await.expect_err("bounded wait").contains("busy"));
+        assert!(gate.state.lock().expect("budget").spent.is_empty());
+        assert_eq!(gate.background.available_permits(), 4);
+        assert!(gate.queue.background.try_lock().is_ok());
+    }
 
     #[tokio::test]
     async fn concurrency_slots_ignore_ip_budget_and_keep_account_reserve() {
