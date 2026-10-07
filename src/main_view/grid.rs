@@ -13,8 +13,8 @@ use components::{
 use iced::widget::{container, pane_grid, row, stack, text};
 use iced::{Element, Fill, Theme};
 use styles::{
-    drag_ghost_title_color, pane_content_style, pane_drag_ghost_style,
-    pane_drag_ghost_title_bar_style, pane_grid_style, pane_title_bar_style,
+    PANE_BORDER_WIDTH, drag_ghost_title_color, pane_body_style, pane_content_style,
+    pane_drag_ghost_style, pane_drag_ghost_title_bar_style, pane_grid_style, pane_title_bar_style,
     subtle_pane_title_color,
 };
 
@@ -64,6 +64,24 @@ impl TradingTerminal {
             }
 
             let content = self.view_pane_content(workspace, pane, kind, chart_count);
+            // iced paints container borders before children, so full-bleed
+            // widget backgrounds would cover the pane outline below the title
+            // bar. Inset the body by the border width and stroke the wrapper
+            // itself so the side/bottom lines stay continuous with the
+            // header's outline.
+            let content: Element<'_, Message> = container(content)
+                .width(Fill)
+                .height(Fill)
+                .padding(iced::Padding {
+                    top: 0.0,
+                    right: PANE_BORDER_WIDTH,
+                    bottom: PANE_BORDER_WIDTH,
+                    left: PANE_BORDER_WIDTH,
+                })
+                .style(move |theme: &Theme| {
+                    pane_body_style(theme, pane_corner_radius, pane_dividers_enabled)
+                })
+                .into();
             let widget_padding = self.widget_padding_for_kind(kind);
             let content = if widget_padding > 0.0 {
                 container(content)

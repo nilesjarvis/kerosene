@@ -33,12 +33,12 @@ pub(super) fn pane_drag_ghost_title_bar_style(
     background.a = 0.18;
 
     let mut border_color = theme.palette().primary;
-    border_color.a = 0.35;
+    border_color.a = 0.85;
 
     container_style::Style {
         background: Some(background.into()),
         border: iced::Border {
-            width: 0.0,
+            width: PANE_BORDER_WIDTH,
             color: border_color,
             radius: iced::border::Radius::default().top(corner_radius),
         },
@@ -57,26 +57,24 @@ pub(super) fn pane_title_bar_style(
     corner_radius: f32,
     dividers_enabled: bool,
 ) -> container_style::Style {
-    use iced::gradient;
-
+    // The pane outline is stroked by `pane_content_style` around the whole
+    // pane, but iced paints the title bar background over it. Stroke the same
+    // border here so the header shares the widget outline; the bottom edge
+    // doubles as the header/body separator.
     let background = theme.extended_palette().background.strong.color;
-    let mut separator = theme.extended_palette().background.strong.text;
-    separator.a = 0.08;
+    let mut border_color = theme.extended_palette().background.strong.text;
+    border_color.a = 0.10;
 
     container_style::Style {
-        background: Some(if dividers_enabled {
-            gradient::Linear::new(iced::Degrees(180.0))
-                .add_stop(0.00, background)
-                .add_stop(0.97, background)
-                .add_stop(0.985, separator)
-                .add_stop(1.00, separator)
-                .into()
-        } else {
-            background.into()
-        }),
+        background: Some(background.into()),
         border: iced::Border {
+            width: PANE_BORDER_WIDTH,
+            color: if dividers_enabled {
+                border_color
+            } else {
+                Color::TRANSPARENT
+            },
             radius: iced::border::Radius::default().top(corner_radius),
-            ..Default::default()
         },
         ..Default::default()
     }
@@ -100,6 +98,33 @@ pub(super) fn pane_content_style(
                 Color::TRANSPARENT
             },
             radius: corner_radius.into(),
+        },
+        ..Default::default()
+    }
+}
+
+/// Outlines the pane body below the title bar. iced strokes container borders
+/// before children, so full-bleed widget backgrounds paint over the outline of
+/// the pane's own container; this wrapper sits above the body content and
+/// keeps the side/bottom lines continuous with the header.
+pub(super) fn pane_body_style(
+    theme: &Theme,
+    corner_radius: f32,
+    dividers_enabled: bool,
+) -> container_style::Style {
+    let mut border_color = theme.extended_palette().background.strong.text;
+    border_color.a = 0.10;
+
+    container_style::Style {
+        background: Some(theme.extended_palette().background.strong.color.into()),
+        border: iced::Border {
+            width: PANE_BORDER_WIDTH,
+            color: if dividers_enabled {
+                border_color
+            } else {
+                Color::TRANSPARENT
+            },
+            radius: iced::border::Radius::default().bottom(corner_radius),
         },
         ..Default::default()
     }
