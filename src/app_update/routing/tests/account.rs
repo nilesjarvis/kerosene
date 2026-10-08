@@ -108,6 +108,7 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
 fn add_account_draft_messages_route_to_account() {
     for message in [
         Message::OpenAddAccountWindow,
+        Message::DiscoverAccountSubaccounts(0),
         Message::AddAccountNameChanged("New account".to_string()),
         Message::AddAccountAddressChanged("0xabc0000000000000000000000000000000000000".into()),
         Message::AddAccountKeyChanged("sentinel-secret".into()),

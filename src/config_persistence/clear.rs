@@ -202,6 +202,7 @@ impl TradingTerminal {
     ) -> Task<Message> {
         let agent_reset_task = self.prepare_agent_for_config_clear();
         let defaults = KeroseneConfig::default();
+        let add_account_window_id = self.add_account_window.take().map(|state| state.window_id);
 
         self.config_clear_requested = false;
         self.config_cleared_this_session = true;
@@ -484,6 +485,7 @@ impl TradingTerminal {
         Task::batch(
             [agent_reset_task, backfill_task, funding_task]
                 .into_iter()
+                .chain(add_account_window_id.map(iced::window::close))
                 .chain(
                     wallet_detail_window_ids
                         .into_iter()
@@ -1342,6 +1344,12 @@ mod tests {
             hydromancer_api_key: sensitive_string("legacy-hydro").into_zeroizing(),
         }];
 
+        let mut draft =
+            crate::account_state::AddAccountWindowState::new(iced::window::Id::unique());
+        draft.key_input = sensitive_string("inherited-key");
+        draft.inherited_key_profile_id = Some("acct-a".to_string());
+        terminal.add_account_window = Some(draft);
+
         let _task = terminal.handle_config_clear_result(Ok(ClearConfigSummary {
             files_removed: 1,
             file_cleanup_failed: true,
@@ -1349,6 +1357,7 @@ mod tests {
             warnings: vec!["Telegram session cleanup failed: permission denied".to_string()],
         }));
 
+        assert!(terminal.add_account_window.is_none());
         assert!(!terminal.config_clear_requested);
         assert!(terminal.config_cleared_this_session);
         assert!(terminal.config_save_due_at.is_none());

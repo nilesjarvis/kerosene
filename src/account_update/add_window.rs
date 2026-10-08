@@ -45,6 +45,39 @@ impl TradingTerminal {
         task.map(Message::WindowOpened)
     }
 
+    pub(super) fn discover_account_subaccounts(&mut self, index: usize) -> Task<Message> {
+        let Some(master_address) = self.subaccount_discovery_master_address(index) else {
+            return Task::none();
+        };
+        // An empty window can be reused, but never overwrite an in-progress draft.
+        if let Some(state) = self.add_account_window.as_mut()
+            && !state.is_pristine()
+        {
+            if Self::normalize_wallet_address(&state.address_input).as_deref()
+                != Some(master_address.as_str())
+            {
+                state.error = Some(
+                    "Finish or cancel this draft before discovering another account's subaccounts."
+                        .to_string(),
+                );
+            }
+            return self.open_add_account_window();
+        }
+        let profile = &self.accounts[index];
+        let inherited_key_profile_id =
+            (!profile.agent_key.trim().is_empty()).then(|| profile.secret_id.clone());
+        let agent_key = profile.agent_key.clone();
+        let open_task = self.open_add_account_window();
+        if let Some(state) = self.add_account_window.as_mut() {
+            state.address_input = master_address;
+            state.inherited_key_profile_id = inherited_key_profile_id;
+            state.key_input = agent_key.into();
+            state.target = None;
+        }
+        let discovery_task = self.discover_add_account_subaccounts();
+        Task::batch([open_task, discovery_task])
+    }
+
     pub(super) fn update_add_account_name(&mut self, value: String) -> Task<Message> {
         if let Some(state) = self.add_account_window.as_mut() {
             state.name_input = value;
@@ -58,6 +91,9 @@ impl TradingTerminal {
                 != Self::normalize_wallet_address(&value)
             {
                 state.invalidate_subaccounts();
+                if state.inherited_key_profile_id.take().is_some() {
+                    state.key_input.zeroize();
+                }
             }
             state.address_input = value;
             state.error = None;
@@ -133,8 +169,13 @@ impl TradingTerminal {
 
     pub(super) fn update_add_account_key(&mut self, value: SecretInput) -> Task<Message> {
         if let Some(state) = self.add_account_window.as_mut() {
+            // A no-op edit must not detach an inherited key from its source.
+            let value = value.into_zeroizing();
+            if state.key_input.trim() != value.trim() {
+                state.inherited_key_profile_id = None;
+            }
             state.key_input.zeroize();
-            state.key_input = value.into_zeroizing().into();
+            state.key_input = value.into();
             state.error = None;
         }
         Task::none()
@@ -155,6 +196,17 @@ impl TradingTerminal {
     }
 
     pub(super) fn submit_add_account(&mut self) -> Task<Message> {
+        if !self.add_account_inherited_key_is_current() {
+            if let Some(state) = self.add_account_window.as_mut() {
+                state.key_input.zeroize();
+                state.inherited_key_profile_id = None;
+                state.error = Some(
+                    "The saved account or its key changed. Reopen discovery or enter a key before adding this account."
+                        .to_string(),
+                );
+            }
+            return Task::none();
+        }
         let (window_id, switch_on_add, name, addresses, agent_key) = {
             let Some(state) = self.add_account_window.as_ref() else {
                 return Task::none();
@@ -162,7 +214,7 @@ impl TradingTerminal {
             (
                 state.window_id,
                 state.switch_on_add,
-                state.profile_name(self.persisted_accounts_snapshot().len() + 1),
+                state.profile_name(self.saved_account_count() + 1),
                 state.selected_addresses(),
                 Zeroizing::new(state.key_input.trim().to_string()),
             )
@@ -258,6 +310,22 @@ impl TradingTerminal {
 
         self.push_toast(format!("Added account \"{profile_name}\""), false);
         close_task
+    }
+
+    fn add_account_inherited_key_is_current(&self) -> bool {
+        let Some(state) = &self.add_account_window else {
+            return true;
+        };
+        let Some(source_id) = &state.inherited_key_profile_id else {
+            return true;
+        };
+        self.accounts.iter().enumerate().any(|(index, profile)| {
+            profile.secret_id == *source_id
+                && self.subaccount_discovery_master_address(index)
+                    == Self::normalize_wallet_address(&state.address_input)
+                && !self.ghost_account_secret_ids.contains(source_id)
+                && profile.agent_key.trim() == state.key_input.trim()
+        })
     }
 
     fn set_add_account_error(&mut self, message: impl Into<String>) {

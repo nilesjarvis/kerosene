@@ -31,6 +31,13 @@ impl TradingTerminal {
             .unwrap_or(0)
     }
 
+    pub(crate) fn saved_account_count(&self) -> usize {
+        self.accounts
+            .iter()
+            .filter(|profile| !self.ghost_account_secret_ids.contains(&profile.secret_id))
+            .count()
+    }
+
     pub(crate) fn persisted_accounts_snapshot(&self) -> Vec<AccountProfile> {
         Self::persisted_accounts_from(&self.accounts, &self.ghost_account_secret_ids)
     }

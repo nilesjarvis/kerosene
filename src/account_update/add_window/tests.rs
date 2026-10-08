@@ -546,3 +546,221 @@ fn cancel_drops_the_draft_state() {
     assert!(terminal.add_account_window.is_none());
     assert_eq!(terminal.accounts.len(), 1);
 }
+
+#[test]
+fn saved_account_discovery_prefills_key_and_saves_child_under_parent() {
+    for is_child in [false, true] {
+        let mut profile = account("saved", ADDRESS_A, VALID_KEY);
+        if is_child {
+            profile.wallet_address = ADDRESS_C.to_string();
+            profile.master_address = Some(ADDRESS_A.to_string());
+        }
+        let mut terminal = terminal_with_encrypted_storage(vec![profile]);
+        let _task = terminal.update_account(Message::DiscoverAccountSubaccounts(0));
+        let state = window_state(&mut terminal);
+        assert_eq!(state.address_input, ADDRESS_A);
+        assert!(state.target.is_none());
+        assert!(state.key_input.as_str() == VALID_KEY);
+        assert_eq!(state.inherited_key_profile_id.as_deref(), Some("saved"));
+        let request = state.discovery_request.clone().expect("discovery started");
+        assert_eq!(request.master_address.as_str(), ADDRESS_A);
+        let _task = terminal.apply_add_account_subaccounts(
+            request,
+            SubaccountDiscoveryResult(Ok(vec![discovered_child()])),
+        );
+        let _task =
+            terminal.select_add_account_target(AddAccountTarget::Subaccount(discovered_child()));
+        assert_eq!(
+            window_state(&mut terminal)
+                .selected_addresses()
+                .expect("valid selection"),
+            (ADDRESS_B.to_string(), Some(ADDRESS_A.to_string()))
+        );
+        assert_eq!(terminal.accounts.len(), 1);
+        assert_eq!(terminal.active_account_index, 0);
+        window_state(&mut terminal).switch_on_add = false;
+        let _task = terminal.submit_add_account();
+        assert!(terminal.add_account_window.is_none());
+        assert_eq!(terminal.accounts.len(), 2);
+        assert_eq!(terminal.accounts[1].wallet_address, ADDRESS_B);
+        assert_eq!(
+            terminal.accounts[1].master_address.as_deref(),
+            Some(ADDRESS_A)
+        );
+        assert!(terminal.accounts[1].agent_key.as_str() == VALID_KEY);
+        let payload = config::decrypt_secrets(
+            terminal
+                .encrypted_secrets
+                .as_ref()
+                .expect("saved encrypted secrets"),
+            &terminal.encrypted_secret_password,
+        )
+        .expect("saved secrets decrypt");
+        assert!(payload.profile_agent_key_for_account(&terminal.accounts[1]) == Some(VALID_KEY));
+        assert_eq!(terminal.active_account_index, 0);
+    }
+}
+
+#[test]
+fn inherited_key_survives_rediscovery_but_is_cleared_on_parent_change() {
+    let mut terminal =
+        terminal_with_encrypted_storage(vec![account("saved", ADDRESS_A, VALID_KEY)]);
+    let _task = terminal.discover_account_subaccounts(0);
+    let _task = terminal.update_add_account_address(format!("  {}  ", ADDRESS_A.to_uppercase()));
+    let _task = terminal.discover_add_account_subaccounts();
+    assert!(window_state(&mut terminal).key_input.as_str() == VALID_KEY);
+    let _task = terminal.update_add_account_address(ADDRESS_C.to_string());
+    assert!(window_state(&mut terminal).key_input.is_empty());
+    assert!(
+        window_state(&mut terminal)
+            .inherited_key_profile_id
+            .is_none()
+    );
+    assert!(terminal.accounts[0].agent_key.as_str() == VALID_KEY);
+}
+
+#[test]
+fn inherited_key_can_be_replaced_or_cleared_explicitly() {
+    let mut terminal =
+        terminal_with_encrypted_storage(vec![account("saved", ADDRESS_A, VALID_KEY)]);
+    let _task = terminal.discover_account_subaccounts(0);
+    let _task = terminal.update_add_account_key("manually-entered-key".into());
+    assert!(
+        window_state(&mut terminal)
+            .inherited_key_profile_id
+            .is_none()
+    );
+    let _task = terminal.update_add_account_address(ADDRESS_C.to_string());
+    assert!(window_state(&mut terminal).key_input.as_str() == "manually-entered-key");
+    let _task = terminal.update_add_account_key("".into());
+    let _task = terminal.discover_add_account_subaccounts();
+    assert!(window_state(&mut terminal).key_input.is_empty());
+}
+
+#[test]
+fn saved_account_discovery_without_key_remains_watch_only() {
+    let mut terminal = terminal_with_encrypted_storage(vec![account("saved", ADDRESS_A, "")]);
+    let _task = terminal.discover_account_subaccounts(0);
+    assert!(window_state(&mut terminal).key_input.is_empty());
+    assert!(
+        window_state(&mut terminal)
+            .inherited_key_profile_id
+            .is_none()
+    );
+}
+
+#[test]
+fn saved_account_discovery_preserves_an_open_draft() {
+    let mut terminal = terminal_with_encrypted_storage(vec![account("saved", ADDRESS_A, "")]);
+    open_window(&mut terminal);
+    let state = window_state(&mut terminal);
+    state.address_input = ADDRESS_C.to_string();
+    state.name_input = "Unsaved draft".to_string();
+    state.key_input = sensitive_string(VALID_KEY);
+    let window_id = state.window_id;
+    let _task = terminal.discover_account_subaccounts(0);
+    let state = window_state(&mut terminal);
+    assert_eq!(state.window_id, window_id);
+    assert_eq!(state.address_input, ADDRESS_C);
+    assert_eq!(state.name_input, "Unsaved draft");
+    assert!(!state.key_input.is_empty());
+    assert!(state.discovery_request.is_none());
+}
+
+#[test]
+fn saved_account_discovery_ignores_invalid_and_ghost_profiles() {
+    let mut terminal = terminal_with_encrypted_storage(vec![account("saved", "invalid", "")]);
+    let _task = terminal.discover_account_subaccounts(1);
+    assert!(terminal.add_account_window.is_none());
+    let _task = terminal.discover_account_subaccounts(0);
+    assert!(terminal.add_account_window.is_none());
+    terminal.accounts[0].wallet_address = ADDRESS_A.to_string();
+    terminal
+        .ghost_account_secret_ids
+        .insert("saved".to_string());
+    let _task = terminal.discover_account_subaccounts(0);
+    assert!(terminal.add_account_window.is_none());
+}
+
+#[test]
+fn saved_account_discovery_reuses_pristine_window() {
+    let mut terminal =
+        terminal_with_encrypted_storage(vec![account("saved", ADDRESS_A, VALID_KEY)]);
+    open_window(&mut terminal);
+    let window_id = window_state(&mut terminal).window_id;
+    let _task = terminal.discover_account_subaccounts(0);
+    let state = window_state(&mut terminal);
+    assert_eq!(state.window_id, window_id);
+    assert_eq!(state.address_input, ADDRESS_A);
+    assert!(state.discovery_request.is_some());
+    assert!(state.key_input.as_str() == VALID_KEY);
+}
+
+#[test]
+fn unchanged_key_edit_preserves_inheritance_and_parent_change_clears_it() {
+    let mut terminal =
+        terminal_with_encrypted_storage(vec![account("saved", ADDRESS_A, VALID_KEY)]);
+    let _task = terminal.discover_account_subaccounts(0);
+    let _task = terminal.update_add_account_key(format!(" {VALID_KEY} ").into());
+    assert!(
+        window_state(&mut terminal)
+            .inherited_key_profile_id
+            .is_some()
+    );
+    let _task = terminal.update_add_account_address(ADDRESS_C.to_string());
+    assert!(window_state(&mut terminal).key_input.is_empty());
+}
+
+#[test]
+fn stale_inherited_credentials_never_create_a_child_profile() {
+    for change in ["delete", "rotate", "address", "ghost", "clear"] {
+        let mut terminal =
+            terminal_with_encrypted_storage(vec![account("saved", ADDRESS_A, VALID_KEY)]);
+        let _task = terminal.discover_account_subaccounts(0);
+        select_child(&mut terminal);
+        match change {
+            "delete" => terminal.accounts.clear(),
+            "rotate" => {
+                terminal.accounts[0].agent_key = sensitive_string("changed-key").into_zeroizing()
+            }
+            "address" => terminal.accounts[0].wallet_address = ADDRESS_C.to_string(),
+            "ghost" => {
+                terminal
+                    .ghost_account_secret_ids
+                    .insert("saved".to_string());
+            }
+            "clear" => terminal.accounts[0].agent_key.zeroize(),
+            _ => unreachable!(),
+        }
+        let count = terminal.accounts.len();
+        let encrypted_before = terminal.encrypted_secrets.clone();
+        let _task = terminal.submit_add_account();
+        assert_eq!(terminal.accounts.len(), count);
+        assert_eq!(terminal.encrypted_secrets, encrypted_before);
+        let state = window_state(&mut terminal);
+        assert!(state.key_input.is_empty());
+        assert!(state.inherited_key_profile_id.is_none());
+        assert!(
+            state
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("changed"))
+        );
+    }
+}
+
+#[test]
+fn inherited_key_tracks_profile_identity_across_reordering() {
+    let mut terminal = terminal_with_encrypted_storage(vec![
+        account("saved", ADDRESS_A, VALID_KEY),
+        account("other", ADDRESS_C, ""),
+    ]);
+    let _task = terminal.discover_account_subaccounts(0);
+    select_child(&mut terminal);
+    terminal.accounts.swap(0, 1);
+    window_state(&mut terminal).switch_on_add = false;
+    let _task = terminal.submit_add_account();
+    assert!(terminal.add_account_window.is_none());
+    assert_eq!(terminal.accounts.len(), 3);
+    assert!(terminal.accounts[2].agent_key.as_str() == VALID_KEY);
+}

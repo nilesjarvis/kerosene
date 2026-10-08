@@ -49,12 +49,28 @@ Cancelling drops the draft without changing saved or active credentials.
 
 ### Existing Subaccounts
 
+Saved profiles have a **Subaccounts** action in the account picker.
+`DiscoverAccountSubaccounts` opens the Add Account window with the profile's
+parent address and starts discovery, without switching the active account.
+For a saved child it uses the recorded master address. An empty Add Account
+window is reused; a draft in progress is focused and preserved with feedback
+when it belongs to another parent. Select a discovered child explicitly before
+saving. Duplicate feedback refers to the selected account, not its parent.
+
 The Add Account window discovers existing Hyperliquid subaccounts through the
 public `subAccounts` info request, using the configured Hyperliquid read proxies
 when enabled. Enter the parent address, choose **Discover
 Subaccounts**, select the child, and supply an agent key approved by the parent
-if trading is needed. Each child is saved as its own account profile. Creation
-and transfers are outside this workflow.
+if trading is needed. The same master-approved agent key can be entered for
+multiple children. Discovery from a saved profile prefills its agent key when
+available and the field is labeled as inherited. The inherited key is cleared if
+the parent address changes; users can replace it or clear it for watch-only
+access. Submission revalidates the source profile's identity, parent address,
+and current credential so deleted or changed credentials cannot be silently
+copied. Clearing config closes and drops the draft, including its key.
+Each submitted child stores its own credential through the normal secret-storage
+flow. Each child is saved as its own account profile. Creation and transfers are
+outside this workflow.
 
 `wallet_address` remains the effective account address used for positions,
 balances, fills, WebSocket subscriptions, portfolio history, and reconciliation.

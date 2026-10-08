@@ -40,6 +40,7 @@ impl TradingTerminal {
                 self.update_account_picker_label(index, value)
             }
             Message::OpenAddAccountWindow => self.open_add_account_window(),
+            Message::DiscoverAccountSubaccounts(index) => self.discover_account_subaccounts(index),
             Message::AddAccountNameChanged(value) => self.update_add_account_name(value),
             Message::AddAccountAddressChanged(value) => {
                 self.update_add_account_address(value.into_string())

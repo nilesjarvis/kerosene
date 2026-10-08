@@ -675,6 +675,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AccountPickerRenameToggled(_)
         | Message::AccountPickerLabelChanged(_, _)
         | Message::OpenAddAccountWindow
+        | Message::DiscoverAccountSubaccounts(_)
         | Message::AddAccountNameChanged(_)
         | Message::AddAccountAddressChanged(_)
         | Message::AddAccountDiscoverSubaccounts

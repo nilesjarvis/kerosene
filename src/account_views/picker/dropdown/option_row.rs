@@ -132,20 +132,33 @@ impl TradingTerminal {
             theme.palette().danger
         };
 
-        container(
-            row![
-                container(account_control).width(Fill),
-                account_action_button(
-                    RENAME_ICON,
-                    Message::AccountPickerRenameToggled(index),
-                    theme.palette().primary,
-                    is_renaming,
-                ),
-                account_action_button(delete_label, delete_message, delete_color, false),
-            ]
-            .spacing(6)
-            .align_y(iced::Alignment::Center),
-        )
+        let mut actions = Row::new().spacing(6);
+        if self.subaccount_discovery_master_address(index).is_some() {
+            actions = actions.push(account_action_button(
+                "Subaccounts",
+                Message::DiscoverAccountSubaccounts(index),
+                theme.palette().primary,
+                false,
+            ));
+        }
+        actions = actions
+            .push(account_action_button(
+                RENAME_ICON,
+                Message::AccountPickerRenameToggled(index),
+                theme.palette().primary,
+                is_renaming,
+            ))
+            .push(account_action_button(
+                delete_label,
+                delete_message,
+                delete_color,
+                false,
+            ));
+
+        container(column![
+            account_control,
+            container(actions.align_y(iced::Alignment::Center)).align_right(Fill),
+        ])
         .padding([3, 0])
         .width(Fill)
         .into()

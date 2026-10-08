@@ -1,5 +1,5 @@
 use super::{AddAccountTarget, DiscoveredSubaccount, SubaccountDiscoveryRequest};
-use crate::app_state::SensitiveString;
+use crate::app_state::{SensitiveString, TradingTerminal};
 use crate::wallet_state::address_book::normalize_wallet_address_value;
 
 use iced::window;
@@ -16,6 +16,8 @@ pub(crate) struct AddAccountWindowState {
     pub(crate) name_input: String,
     pub(crate) address_input: String,
     pub(crate) key_input: SensitiveString,
+    /// Identifies the saved credential to revalidate before committing this draft.
+    pub(crate) inherited_key_profile_id: Option<String>,
     pub(crate) switch_on_add: bool,
     pub(crate) error: Option<String>,
     pub(crate) target: Option<AddAccountTarget>,
@@ -33,6 +35,7 @@ impl AddAccountWindowState {
             name_input: String::new(),
             address_input: String::new(),
             key_input: SensitiveString::default(),
+            inherited_key_profile_id: None,
             switch_on_add: true,
             error: None,
             target: Some(AddAccountTarget::Master),
@@ -42,6 +45,17 @@ impl AddAccountWindowState {
             discovered_master: None,
             discovery_error: None,
         }
+    }
+
+    pub(crate) fn is_pristine(&self) -> bool {
+        self.name_input.is_empty()
+            && self.address_input.is_empty()
+            && self.key_input.is_empty()
+            && self.switch_on_add
+            && self.target == Some(AddAccountTarget::Master)
+            && self.discovery_generation == 0
+            && self.error.is_none()
+            && self.discovery_error.is_none()
     }
 
     pub(crate) fn invalidate_subaccounts(&mut self) {
@@ -92,6 +106,22 @@ impl AddAccountWindowState {
             }
             _ => Err("Select an account again before adding this profile.".to_string()),
         }
+    }
+}
+
+impl TradingTerminal {
+    /// Shared by the picker and update path so discovery eligibility stays consistent.
+    pub(crate) fn subaccount_discovery_master_address(&self, index: usize) -> Option<String> {
+        let profile = self.accounts.get(index)?;
+        if self.ghost_account_secret_ids.contains(&profile.secret_id) {
+            return None;
+        }
+        normalize_wallet_address_value(
+            profile
+                .master_address
+                .as_deref()
+                .unwrap_or(&profile.wallet_address),
+        )
     }
 }
 

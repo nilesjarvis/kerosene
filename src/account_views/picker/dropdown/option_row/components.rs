@@ -38,7 +38,7 @@ fn account_action_button_width(label: &str) -> Length {
     if label == RENAME_ICON {
         Length::Fixed(34.0)
     } else {
-        Length::Fixed(64.0)
+        Length::Shrink
     }
 }
 

@@ -650,6 +650,7 @@ pub(crate) enum Message {
     AccountPickerRenameToggled(usize),
     AccountPickerLabelChanged(usize, String),
     OpenAddAccountWindow,
+    DiscoverAccountSubaccounts(usize),
     AddAccountNameChanged(String),
     AddAccountAddressChanged(RedactedAddress),
     AddAccountDiscoverSubaccounts,

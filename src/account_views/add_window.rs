@@ -23,7 +23,11 @@ enum FeedbackTone {
     Error,
 }
 
-fn address_feedback(address_input: &str, existing_addresses: &[String]) -> (String, FeedbackTone) {
+fn address_feedback(
+    address_input: &str,
+    selected_address: Option<&str>,
+    existing_addresses: &[&str],
+) -> (String, FeedbackTone) {
     if address_input.trim().is_empty() {
         return (
             "Enter the master address to add it or discover its subaccounts.".to_string(),
@@ -36,11 +40,14 @@ fn address_feedback(address_input: &str, existing_addresses: &[String]) -> (Stri
             FeedbackTone::Error,
         );
     };
-    if existing_addresses.iter().any(|existing| {
-        TradingTerminal::normalize_wallet_address(existing).as_deref() == Some(address.as_str())
+    if selected_address.is_some_and(|selected| {
+        existing_addresses.iter().any(|existing| {
+            TradingTerminal::normalize_wallet_address(existing).as_deref() == Some(selected)
+        })
     }) {
         return (
-            "A saved profile already uses this address; adding another is allowed.".to_string(),
+            "A saved profile already uses the selected account address; adding another is allowed."
+                .to_string(),
             FeedbackTone::Warning,
         );
     }
@@ -111,13 +118,21 @@ impl TradingTerminal {
             return Space::new().into();
         };
 
-        let existing_addresses: Vec<String> = self
+        let existing_addresses: Vec<&str> = self
             .accounts
             .iter()
-            .map(|profile| profile.wallet_address.clone())
+            .filter(|profile| !self.ghost_account_secret_ids.contains(&profile.secret_id))
+            .map(|profile| profile.wallet_address.as_str())
             .collect();
-        let (address_message, address_tone) =
-            address_feedback(&state.address_input, &existing_addresses);
+        let selected_addresses = state.selected_addresses();
+        let (address_message, address_tone) = address_feedback(
+            &state.address_input,
+            selected_addresses
+                .as_ref()
+                .ok()
+                .map(|(address, _)| address.as_str()),
+            &existing_addresses,
+        );
         let (key_message, key_tone) = key_feedback(&state.key_input);
         let notice = storage_notice(
             self.secret_storage_mode,
@@ -129,11 +144,11 @@ impl TradingTerminal {
         let has_key = !state.key_input.trim().is_empty();
         let submit_enabled = address_tone != FeedbackTone::Error
             && !state.address_input.trim().is_empty()
-            && state.selected_addresses().is_ok()
+            && selected_addresses.is_ok()
             && key_tone != FeedbackTone::Error
             && !(has_key && notice.blocks_key_save);
 
-        let default_name = state.default_profile_name(self.persisted_accounts_snapshot().len() + 1);
+        let default_name = state.default_profile_name(self.saved_account_count() + 1);
         let name_input = text_input(&default_name, &state.name_input)
             .style(helpers::text_input_style)
             .on_input(Message::AddAccountNameChanged)
@@ -262,10 +277,17 @@ impl TradingTerminal {
             rule::horizontal(1),
             self.view_add_account_field("Profile name (optional)", name_input.into()),
             self.view_add_account_field("Master account address", address_input.into()),
-            feedback_line(address_message, address_tone, &theme),
             account_selection,
+            feedback_line(address_message, address_tone, &theme),
             rule::horizontal(1),
-            self.view_add_account_field("Agent private key (optional)", key_input.into()),
+            self.view_add_account_field(
+                if state.inherited_key_profile_id.is_some() {
+                    "Agent private key (from saved account)"
+                } else {
+                    "Agent private key (optional)"
+                },
+                key_input.into(),
+            ),
             feedback_line(key_message, key_tone, &theme),
             storage_row,
             rule::horizontal(1),
@@ -377,24 +399,41 @@ mod tests {
 
     #[test]
     fn address_feedback_flags_empty_invalid_duplicate_and_valid_inputs() {
-        let existing = vec![ADDRESS_A.to_string()];
+        let existing = vec![ADDRESS_A];
 
-        let (_, tone) = address_feedback("", &existing);
+        let (_, tone) = address_feedback("", None, &existing);
         assert_eq!(tone, FeedbackTone::Hint);
 
-        let (message, tone) = address_feedback("0x1234", &existing);
+        let (message, tone) = address_feedback("0x1234", None, &existing);
         assert_eq!(tone, FeedbackTone::Error);
         assert!(message.contains("Not a valid wallet address"));
 
-        let (message, tone) =
-            address_feedback(&ADDRESS_A.to_uppercase().replace("0X", "0x"), &existing);
+        let (message, tone) = address_feedback(
+            &ADDRESS_A.to_uppercase().replace("0X", "0x"),
+            Some(ADDRESS_A),
+            &existing,
+        );
         assert_eq!(tone, FeedbackTone::Warning);
-        assert!(message.contains("already uses this address"));
+        assert!(message.contains("already uses the selected account address"));
 
-        let (message, tone) =
-            address_feedback("0xdef0000000000000000000000000000000000000", &existing);
+        let (message, tone) = address_feedback(
+            "0xdef0000000000000000000000000000000000000",
+            None,
+            &existing,
+        );
         assert_eq!(tone, FeedbackTone::Valid);
         assert!(message.contains("Valid address"));
+    }
+
+    #[test]
+    fn duplicate_feedback_checks_selected_child_instead_of_saved_parent() {
+        let child = "0xdef0000000000000000000000000000000000000";
+        let (_, tone) = address_feedback(ADDRESS_A, Some(child), &[ADDRESS_A]);
+        assert_eq!(tone, FeedbackTone::Valid);
+        let (_, tone) = address_feedback(ADDRESS_A, Some(child), &[child]);
+        assert_eq!(tone, FeedbackTone::Warning);
+        let (_, tone) = address_feedback(ADDRESS_A, None, &[ADDRESS_A]);
+        assert_eq!(tone, FeedbackTone::Valid);
     }
 
     #[test]
