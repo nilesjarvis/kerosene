@@ -7,6 +7,9 @@ use iced::window;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::fmt;
+use std::time::Duration;
+
+const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// A validated child of the master address used for discovery. Names and
 /// addresses are omitted from Debug because messages are routinely logged.
@@ -78,10 +81,12 @@ fn parse_subaccounts(
 ) -> Result<Vec<DiscoveredSubaccount>, String> {
     let master = normalize_wallet_address_value(requested_master)
         .ok_or_else(|| "Enter a valid master account address.".to_string())?;
-    let records: Vec<WireSubaccount> = serde_json::from_slice(body)
+    let records: Option<Vec<WireSubaccount>> = serde_json::from_slice(body)
         .map_err(|_| "Hyperliquid returned an invalid subaccount response.".to_string())?;
     let mut addresses = HashSet::new();
+    // Hyperliquid returns null when the account has no subaccounts.
     records
+        .unwrap_or_default()
         .into_iter()
         .map(|record| {
             let parent = normalize_wallet_address_value(&record.master);
@@ -114,16 +119,35 @@ fn parse_subaccounts(
 }
 
 pub(crate) async fn fetch_subaccounts(master_address: &str) -> SubaccountDiscoveryResult {
-    SubaccountDiscoveryResult(fetch_subaccounts_inner(master_address).await)
+    fetch_subaccounts_from(master_address, CLIENT.post(API_URL)).await
+}
+
+async fn fetch_subaccounts_from(
+    master_address: &str,
+    request: reqwest::RequestBuilder,
+) -> SubaccountDiscoveryResult {
+    // Bound admission, proxy retries, and response-body reads together. The HTTP
+    // client's timeout alone does not include time spent in the read queue.
+    SubaccountDiscoveryResult(
+        tokio::time::timeout(
+            DISCOVERY_TIMEOUT,
+            fetch_subaccounts_inner(master_address, request),
+        )
+        .await
+        .unwrap_or_else(|_| {
+            Err("Subaccount discovery timed out. Hyperliquid or the read queue may be busy. Try again."
+                .to_string())
+        }),
+    )
 }
 
 async fn fetch_subaccounts_inner(
     master_address: &str,
+    request: reqwest::RequestBuilder,
 ) -> Result<Vec<DiscoveredSubaccount>, String> {
     let master = normalize_wallet_address_value(master_address)
         .ok_or_else(|| "Enter a valid master account address.".to_string())?;
-    let response = CLIENT
-        .post(API_URL)
+    let response = request
         .json(&serde_json::json!({"type": "subAccounts", "user": master}))
         .send_info()
         .await
@@ -174,8 +198,12 @@ mod tests {
     #[test]
     fn accepts_empty_list_and_rejects_malformed_or_ambiguous_responses() {
         assert!(parse(serde_json::json!([])).expect("empty list").is_empty());
+        assert!(
+            parse(serde_json::Value::Null)
+                .expect("no subaccounts")
+                .is_empty()
+        );
         for invalid in [
-            serde_json::Value::Null,
             serde_json::json!({"error": MASTER}),
             serde_json::json!([record(MASTER, "invalid")]),
             serde_json::json!([record("invalid", CHILD)]),
@@ -190,6 +218,54 @@ mod tests {
         }
         assert!(parse_subaccounts(MASTER, b"not json").is_err());
         assert!(parse_subaccounts("invalid", b"[]").is_err());
+    }
+
+    #[tokio::test]
+    async fn discovery_timeout_covers_stalled_response_bodies() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+        use tokio::sync::oneshot;
+
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind mock server");
+        let url = format!(
+            "http://{}/info",
+            listener.local_addr().expect("server address")
+        );
+        let (headers_tx, mut headers_rx) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept request");
+            let mut bytes = [0; 2048];
+            let _ = stream.read(&mut bytes).await.expect("read request");
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n")
+                .await
+                .expect("write headers");
+            headers_tx.send(()).expect("signal headers");
+            std::future::pending::<()>().await;
+            drop(stream);
+        });
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("client");
+        let mut discovery = Box::pin(fetch_subaccounts_from(MASTER, client.post(url)));
+        tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::select! {
+                headers = &mut headers_rx => headers.expect("headers sent"),
+                _ = &mut discovery => panic!("discovery completed before its response body"),
+            }
+        })
+        .await
+        .expect("mock server responds");
+        tokio::time::pause();
+        tokio::time::advance(DISCOVERY_TIMEOUT).await;
+        let result = discovery.await;
+        server.abort();
+        let error = result.0.expect_err("stalled response times out");
+        assert!(error.contains("timed out"));
+        assert!(!error.contains(MASTER));
     }
 
     #[test]

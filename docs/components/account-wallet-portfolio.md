@@ -59,7 +59,11 @@ saving. Duplicate feedback refers to the selected account, not its parent.
 
 The Add Account window discovers existing Hyperliquid subaccounts through the
 public `subAccounts` info request, using the configured Hyperliquid read proxies
-when enabled. Enter the parent address, choose **Discover
+when enabled. Discovery uses the reserved account-read queue and has a 20-second
+end-to-end timeout, including admission and response-body reads, so a busy
+background queue cannot leave the form waiting for its 90-second admission
+limit. Timeout errors re-enable discovery for retry; `null` and empty lists both
+mean no subaccounts. Enter the parent address, choose **Discover
 Subaccounts**, select the child, and supply an agent key approved by the parent
 if trading is needed. The same master-approved agent key can be entered for
 multiple children. Discovery from a saved profile prefills its agent key when

@@ -764,3 +764,44 @@ fn inherited_key_tracks_profile_identity_across_reordering() {
     assert_eq!(terminal.accounts.len(), 3);
     assert!(terminal.accounts[2].agent_key.as_str() == VALID_KEY);
 }
+
+#[test]
+fn discovery_timeout_clears_loading_and_retry_ignores_late_results() {
+    let mut terminal =
+        terminal_with_encrypted_storage(vec![account("saved", ADDRESS_A, VALID_KEY)]);
+    let _task = terminal.discover_account_subaccounts(0);
+    let timed_out = window_state(&mut terminal)
+        .discovery_request
+        .clone()
+        .expect("pending discovery");
+    let _task = terminal.update(Message::AddAccountSubaccountsLoaded(
+        timed_out.clone(),
+        SubaccountDiscoveryResult(Err("Subaccount discovery timed out. Try again.".to_string())),
+    ));
+    let state = window_state(&mut terminal);
+    assert!(state.discovery_request.is_none());
+    assert!(
+        state
+            .discovery_error
+            .as_deref()
+            .is_some_and(|error| error.contains("timed out"))
+    );
+    assert!(state.key_input.as_str() == VALID_KEY);
+    let retry = start_discovery(&mut terminal);
+    let _task = terminal.update(Message::AddAccountSubaccountsLoaded(
+        timed_out,
+        SubaccountDiscoveryResult(Ok(Vec::new())),
+    ));
+    assert_eq!(
+        window_state(&mut terminal).discovery_request.as_ref(),
+        Some(&retry)
+    );
+    let _task = terminal.update(Message::AddAccountSubaccountsLoaded(
+        retry,
+        SubaccountDiscoveryResult(Ok(vec![discovered_child()])),
+    ));
+    let state = window_state(&mut terminal);
+    assert!(state.discovery_request.is_none());
+    assert!(state.discovery_error.is_none());
+    assert_eq!(state.subaccounts.len(), 1);
+}

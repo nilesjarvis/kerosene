@@ -40,6 +40,7 @@ impl RequestCost {
                     | "spotClearinghouseState"
                     | "openOrders"
                     | "frontendOpenOrders"
+                    | "subAccounts"
             ),
         }
     }
@@ -337,6 +338,36 @@ mod async_tests {
         let state = gate.state.lock().expect("budget");
         let weights: Vec<_> = state.spent.iter().map(|(_, weight, _)| *weight).collect();
         assert_eq!(weights, [120, 2]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn subaccount_discovery_bypasses_busy_background_reads_but_respects_total_budget() {
+        let gate = ReadGate::new();
+        gate.state
+            .lock()
+            .expect("budget")
+            .charge(Instant::now(), BACKGROUND_WEIGHT, false);
+        let background = info_request("allMids");
+        let mut background_admission = Box::pin(gate.acquire(&background));
+        assert!(futures::poll!(&mut background_admission).is_pending());
+
+        let request = info_request("subAccounts");
+        let mut discovery = Box::pin(gate.acquire(&request));
+        assert!(matches!(
+            futures::poll!(&mut discovery),
+            std::task::Poll::Ready(Ok(_))
+        ));
+        assert!(futures::poll!(&mut background_admission).is_pending());
+
+        gate.state
+            .lock()
+            .expect("budget")
+            .charge(Instant::now(), TOTAL_WEIGHT, true);
+        let mut discovery = Box::pin(gate.acquire(&request));
+        assert!(futures::poll!(&mut discovery).is_pending());
+        drop(discovery);
+        assert_eq!(gate.critical.available_permits(), 2);
+        assert!(gate.queue.critical.try_lock().is_ok());
     }
 
     #[tokio::test(start_paused = true)]
