@@ -355,7 +355,12 @@ selection and framing; only Linux adds the existing edge/corner resize overlay.
 Onboarding layout lives in `main_view/onboarding.rs`, with its canvas programs
 and drawing helpers in `main_view/onboarding/animation.rs`.
 Settings can enable custom chrome where supported. The setting may require
-a restart before all windows use the new decorations. Platform-specific
+a restart before all windows use the new decorations. PnL visibility, sound,
+and desktop-notification controls appear in the custom title bar while it is
+active; with native decorations they join the account summary's action row.
+The summary reserves their width when wrapping its actions, including
+disconnected, loading, and error states. Placement follows the active chrome
+mode when a preference change is waiting for a restart. Platform-specific
 behavior:
 
 - Linux can apply decoration changes live.

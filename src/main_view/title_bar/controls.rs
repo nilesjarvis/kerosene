@@ -6,7 +6,7 @@ use iced::{Element, Fill, Length};
 
 #[cfg(target_os = "linux")]
 const WINDOW_BUTTON_WIDTH: f32 = 42.0;
-const CHROME_TOGGLE_BUTTON_WIDTH: f32 = 34.0;
+pub(super) const CHROME_TOGGLE_BUTTON_WIDTH: f32 = 34.0;
 #[cfg(target_os = "linux")]
 const WINDOW_BUTTON_ICON_SIZE: f32 = 12.0;
 const CHROME_TOGGLE_ICON_SIZE: f32 = 13.0;

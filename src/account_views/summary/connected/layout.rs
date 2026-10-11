@@ -56,7 +56,9 @@ impl TradingTerminal {
         let summary_values = self.connected_summary_values(data);
         let metrics = self.connected_summary_metrics_row(data, &summary_values, theme, compaction);
 
-        if available_width < CONNECTED_SUMMARY_ACTION_BREAKPOINT {
+        if available_width
+            < self.account_summary_action_breakpoint(CONNECTED_SUMMARY_ACTION_BREAKPOINT)
+        {
             column![
                 metrics,
                 row![
@@ -87,7 +89,9 @@ impl TradingTerminal {
         let compaction = ConnectedSummaryCompaction::for_width(available_width);
         let metrics = self.connected_summary_skeleton_row(&theme);
 
-        if available_width < CONNECTED_SUMMARY_ACTION_BREAKPOINT {
+        if available_width
+            < self.account_summary_action_breakpoint(CONNECTED_SUMMARY_ACTION_BREAKPOINT)
+        {
             column![
                 metrics,
                 row![
@@ -264,12 +268,13 @@ impl TradingTerminal {
             actions = actions.push(self.summary_display_denomination_picker());
         }
 
-        actions
+        let actions = actions
             .push(self.summary_layouts_button())
             .push(self.summary_widgets_button())
             .push(self.summary_settings_button())
             .spacing(6)
-            .align_y(iced::Alignment::Center)
+            .align_y(iced::Alignment::Center);
+        self.push_summary_status_toggles(actions)
     }
 
     fn mask_connected_summary_usd(&self, value: &str) -> String {

@@ -1,6 +1,4 @@
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod controls;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod icons;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod resize;
@@ -9,20 +7,19 @@ mod tests;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 use controls::chrome_toggle_button;
 #[cfg(target_os = "linux")]
 use controls::{WindowButtonKind, window_chrome_button};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use iced::mouse;
+use iced::widget::row;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-use iced::widget::{Space, column, container, mouse_area, row};
+use iced::widget::{Space, column, container, mouse_area};
+use iced::{Alignment, Element, window};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-use iced::{Alignment, Fill, Length};
-use iced::{Element, window};
+use iced::{Fill, Length};
 #[cfg(target_os = "linux")]
 use icons::{CLOSE_ICON_SVG, MAXIMIZE_ICON_SVG, MINIMIZE_ICON_SVG};
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 use icons::{
     NOTIFICATIONS_OFF_ICON_SVG, NOTIFICATIONS_ON_ICON_SVG, PNL_HIDDEN_ICON_SVG,
     PNL_VISIBLE_ICON_SVG, SOUND_OFF_ICON_SVG, SOUND_ON_ICON_SVG,
@@ -32,8 +29,8 @@ use icons::{
 // Main Window Title Bar
 // ---------------------------------------------------------------------------
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 const TITLE_BAR_HEIGHT: f32 = 34.0;
+pub(crate) const STATUS_TOGGLES_WIDTH: f32 = 3.0 * controls::CHROME_TOGGLE_BUTTON_WIDTH;
 #[cfg(target_os = "macos")]
 const MACOS_TRAFFIC_LIGHT_SPACER: f32 = 72.0;
 
@@ -185,8 +182,7 @@ impl TradingTerminal {
             .into()
     }
 
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn view_chrome_status_toggles(&self) -> Element<'static, Message> {
+    pub(crate) fn view_chrome_status_toggles(&self) -> Element<'static, Message> {
         row![
             chrome_toggle_button(
                 if self.hide_pnl {
@@ -231,6 +227,7 @@ impl TradingTerminal {
                 Message::ToggleDesktopNotifications,
             )
         ]
+        .width(STATUS_TOGGLES_WIDTH)
         .align_y(Alignment::Center)
         .into()
     }

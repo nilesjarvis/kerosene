@@ -11,10 +11,14 @@ use iced::{Element, Fill};
 
 impl TradingTerminal {
     pub(super) fn view_connected_account_status(&self) -> Element<'_, Message> {
-        responsive(move |size| self.view_connected_account_status_layout(size.width))
-            .width(Fill)
-            .height(Fill)
-            .into()
+        container(responsive(move |size| {
+            self.view_connected_account_status_layout(size.width)
+        }))
+        .width(Fill)
+        .height(Fill)
+        .padding([6, 12])
+        .center_y(Fill)
+        .into()
     }
 
     // Non-loading status only: the loading state routes to the skeleton in
@@ -62,7 +66,9 @@ impl TradingTerminal {
         .spacing(6)
         .align_y(iced::Alignment::Center);
         let actions = self.connected_status_actions_row();
-        let items: Element<'_, Message> = if available_width < CONNECTED_STATUS_ACTION_BREAKPOINT {
+        if available_width
+            < self.account_summary_action_breakpoint(CONNECTED_STATUS_ACTION_BREAKPOINT)
+        {
             column![
                 status_widget,
                 row![Space::new().width(Fill), actions]
@@ -78,24 +84,18 @@ impl TradingTerminal {
                 .align_y(iced::Alignment::Center)
                 .width(Fill)
                 .into()
-        };
-
-        container(items)
-            .width(Fill)
-            .height(Fill)
-            .padding([6, 12])
-            .center_y(Fill)
-            .into()
+        }
     }
 
     fn connected_status_actions_row(&self) -> Row<'_, Message> {
-        row![
+        let actions = row![
             self.summary_market_universe_picker(),
             self.summary_layouts_button(),
             self.summary_widgets_button(),
             self.summary_settings_button(),
         ]
         .spacing(6)
-        .align_y(iced::Alignment::Center)
+        .align_y(iced::Alignment::Center);
+        self.push_summary_status_toggles(actions)
     }
 }

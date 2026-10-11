@@ -5,9 +5,10 @@ mod layout_switcher;
 mod menus;
 
 use crate::app_state::TradingTerminal;
+use crate::main_view::STATUS_TOGGLES_WIDTH;
 use crate::message::Message;
 use iced::widget::container as container_style;
-use iced::widget::container;
+use iced::widget::{Row, container};
 use iced::{Element, Fill, Length, Theme};
 
 pub(crate) use menus::{AnchoredAccountMenu, AnchoredMenuLayer, MenuAlignment, MenuKind};
@@ -18,6 +19,7 @@ pub(crate) const CONNECTED_STATUS_ACTION_BREAKPOINT: f32 = 820.0;
 const ACCOUNT_SUMMARY_DEFAULT_HEIGHT: f32 = 54.0;
 const ACCOUNT_SUMMARY_WRAPPED_HEIGHT: f32 = 104.0;
 const ACCOUNT_SUMMARY_HORIZONTAL_PADDING: f32 = 24.0;
+const ACCOUNT_SUMMARY_STATUS_SPACING: f32 = 8.0;
 const ACCOUNT_SUMMARY_BORDER_WIDTH: f32 = 1.0;
 const PANE_GRID_MIN_SIZE: f32 = 50.0;
 
@@ -38,6 +40,27 @@ impl TradingTerminal {
         };
 
         self.view_account_summary_with_menus(content)
+    }
+
+    pub(super) fn push_summary_status_toggles<'a>(
+        &self,
+        actions: Row<'a, Message>,
+    ) -> Row<'a, Message> {
+        if self.custom_window_chrome_active {
+            actions
+        } else {
+            actions.push(self.view_chrome_status_toggles())
+        }
+    }
+
+    pub(super) fn account_summary_action_breakpoint(&self, breakpoint: f32) -> f32 {
+        // Allow room for all three status controls and the action row's gap
+        // when native decorations replace the custom title bar.
+        if self.custom_window_chrome_active {
+            breakpoint
+        } else {
+            breakpoint + STATUS_TOGGLES_WIDTH + ACCOUNT_SUMMARY_STATUS_SPACING
+        }
     }
 
     /// Whether the connected summary (metrics or its loading skeleton) should be
@@ -73,9 +96,11 @@ impl TradingTerminal {
             && (self.connected_order_account_snapshot().is_some()
                 || self.account_summary_is_loading())
         {
-            content_width < CONNECTED_SUMMARY_ACTION_BREAKPOINT
+            content_width
+                < self.account_summary_action_breakpoint(CONNECTED_SUMMARY_ACTION_BREAKPOINT)
         } else {
-            content_width < CONNECTED_STATUS_ACTION_BREAKPOINT
+            content_width
+                < self.account_summary_action_breakpoint(CONNECTED_STATUS_ACTION_BREAKPOINT)
         };
 
         if needs_wrapped_height {
@@ -130,6 +155,7 @@ mod tests {
 
     fn connected_terminal(content_width: Option<f32>) -> TradingTerminal {
         let mut terminal = TradingTerminal::boot().0;
+        terminal.custom_window_chrome_active = true;
         terminal.connected_address = Some("0xabc".to_string());
         terminal.main_window_size =
             content_width.map(|w| iced::Size::new(w + ACCOUNT_SUMMARY_HORIZONTAL_PADDING, 800.0));
@@ -173,6 +199,7 @@ mod tests {
     #[test]
     fn disconnected_bar_wraps_only_below_toolbar_breakpoint() {
         let mut terminal = TradingTerminal::boot().0;
+        terminal.custom_window_chrome_active = true;
         terminal.connected_address = None;
         terminal.account_loading = false;
         terminal.account_connect_pending = false;
@@ -203,5 +230,40 @@ mod tests {
             terminal.account_summary_bar_height(),
             ACCOUNT_SUMMARY_DEFAULT_HEIGHT
         );
+    }
+
+    #[test]
+    fn native_chrome_reserves_status_control_width_before_wrapping_summary() {
+        let mut terminal =
+            TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default()).0;
+        for connected in [false, true] {
+            terminal.connected_address = connected.then(|| "synthetic".to_string());
+            for loading in [false, true] {
+                terminal.account_loading = loading;
+                let breakpoint = if loading {
+                    CONNECTED_SUMMARY_ACTION_BREAKPOINT
+                } else {
+                    CONNECTED_STATUS_ACTION_BREAKPOINT
+                };
+                for custom_chrome in [false, true] {
+                    terminal.custom_window_chrome_active = custom_chrome;
+                    let status_width = if custom_chrome {
+                        0.0
+                    } else {
+                        STATUS_TOGGLES_WIDTH + ACCOUNT_SUMMARY_STATUS_SPACING
+                    };
+                    for (offset, expected_height) in [
+                        (-1.0, ACCOUNT_SUMMARY_WRAPPED_HEIGHT),
+                        (0.0, ACCOUNT_SUMMARY_DEFAULT_HEIGHT),
+                    ] {
+                        terminal.main_window_size = Some(iced::Size::new(
+                            breakpoint + ACCOUNT_SUMMARY_HORIZONTAL_PADDING + status_width + offset,
+                            800.0,
+                        ));
+                        assert_eq!(terminal.account_summary_bar_height(), expected_height);
+                    }
+                }
+            }
+        }
     }
 }

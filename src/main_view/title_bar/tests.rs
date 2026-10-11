@@ -1,4 +1,5 @@
 use super::*;
+use crate::account::{AccountData, ClearinghouseState, MarginSummary, SpotClearinghouseState};
 use crate::config::KeroseneConfig;
 use iced::advanced::renderer::Headless;
 use iced::advanced::{Layout, Shell, clipboard, layout, renderer, widget::Tree};
@@ -132,6 +133,108 @@ async fn title_bar_preserves_window_and_status_actions() {
                 }
             }
         }
+    }
+}
+
+#[tokio::test]
+async fn native_chrome_keeps_status_actions_in_every_account_summary_state() {
+    let mut renderer = iced::Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+        .await
+        .expect("software renderer");
+    let mut terminal = TradingTerminal::boot_from_config(KeroseneConfig::default()).0;
+    for (theme_name, theme) in [("dark", Theme::Dark), ("light", Theme::Light)] {
+        for width in [600.0, 1000.0, 1600.0] {
+            terminal.main_window_size = Some(Size::new(width, 800.0));
+            for state in ["disconnected", "loading", "error", "populated"] {
+                terminal.connected_address =
+                    (state != "disconnected").then(|| "synthetic".to_string());
+                terminal.account_data_address = terminal.connected_address.clone();
+                terminal.account_loading = state == "loading";
+                terminal.account_error = (state == "error").then(|| "Synthetic error".to_string());
+                terminal.account_data = (state == "populated").then(synthetic_account_data);
+                for custom_chrome in [false, true] {
+                    // Use the active chrome mode even if a restart is pending.
+                    terminal.custom_window_chrome_enabled = !custom_chrome;
+                    terminal.custom_window_chrome_active = custom_chrome;
+                    for enabled in [false, true] {
+                        terminal.hide_pnl = enabled;
+                        terminal.sound_enabled = enabled;
+                        terminal.desktop_notifications = enabled;
+                        let height = terminal.account_summary_bar_height();
+                        let mut scene = Scene::render(
+                            terminal.view_account_summary_bar(),
+                            &mut renderer,
+                            &theme,
+                            Size::new(width, height),
+                            &format!(
+                                "summary-{theme_name}-{width}-{state}-{custom_chrome}-{enabled}"
+                            ),
+                        );
+                        for (offset, expected) in [
+                            (29.0, Message::ToggleDesktopNotifications),
+                            (63.0, Message::ToggleSound),
+                            (97.0, Message::ToggleHidePnl),
+                        ] {
+                            // Wrapped summaries move the whole action row down.
+                            let messages = (0..height as u32)
+                                .step_by(2)
+                                .map(|y| {
+                                    scene.click(&renderer, Point::new(width - offset, y as f32))
+                                })
+                                .find(|messages| {
+                                    messages.iter().any(|message| {
+                                        matches!(
+                                            message,
+                                            Message::ToggleDesktopNotifications
+                                                | Message::ToggleSound
+                                                | Message::ToggleHidePnl
+                                        )
+                                    })
+                                })
+                                .unwrap_or_default();
+                            if custom_chrome {
+                                assert!(messages.is_empty());
+                            } else {
+                                assert_eq!(messages.len(), 1, "{state} summary at width {width}");
+                                assert_eq!(format!("{:?}", messages[0]), format!("{expected:?}"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn synthetic_account_data() -> AccountData {
+    AccountData {
+        fetch_scope: Default::default(),
+        request_weight_estimate: 0,
+        account_abstraction: Default::default(),
+        clearinghouse: ClearinghouseState {
+            margin_summary: MarginSummary {
+                account_value: "1000".to_string(),
+                total_ntl_pos: "200".to_string(),
+                total_margin_used: "100".to_string(),
+            },
+            cross_margin_summary: None,
+            cross_maintenance_margin_used: None,
+            withdrawable: "900".to_string(),
+            asset_positions: Vec::new(),
+        },
+        clearinghouses_by_dex: Default::default(),
+        spot: SpotClearinghouseState {
+            balances: Vec::new(),
+            portfolio_margin_enabled: false,
+            portfolio_margin_ratio: None,
+            token_to_available_after_maintenance: None,
+        },
+        open_orders: Vec::new(),
+        fills: Vec::new(),
+        funding_history: Vec::new(),
+        fee_rates: Default::default(),
+        completeness: Default::default(),
+        fetched_at_ms: 0,
     }
 }
 
