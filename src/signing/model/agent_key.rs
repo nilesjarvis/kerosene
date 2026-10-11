@@ -2,6 +2,8 @@ use std::fmt;
 
 use zeroize::{Zeroize, Zeroizing};
 
+use crate::builder_codes::{BuilderCodeConfig, BuilderFee, normalize_builder_address};
+
 // ---------------------------------------------------------------------------
 // Captured Agent Key
 // ---------------------------------------------------------------------------
@@ -10,6 +12,13 @@ use zeroize::{Zeroize, Zeroizing};
 pub(crate) struct CapturedAgentKey {
     agent_key: Zeroizing<String>,
     vault_address: Option<String>,
+    builder: Result<Option<BuilderContext>, String>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct BuilderContext {
+    fee: BuilderFee,
+    account_address: String,
 }
 
 impl CapturedAgentKey {
@@ -45,7 +54,64 @@ impl CapturedAgentKey {
         Ok(Self {
             agent_key,
             vault_address,
+            builder: Ok(None),
         })
+    }
+
+    /// Preserve invalid enabled configuration as a placement rejection rather
+    /// than silently dropping attribution. Cancels and leverage remain available.
+    pub(crate) fn with_builder_config(
+        mut self,
+        config: &BuilderCodeConfig,
+        account_address: &str,
+    ) -> Self {
+        self.builder = config
+            .resolve()
+            .and_then(|fee| capture_builder(fee, account_address));
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_builder(
+        mut self,
+        builder: Option<BuilderFee>,
+        account_address: &str,
+    ) -> Result<Self, String> {
+        self.builder = Ok(capture_builder(builder, account_address)?);
+        Ok(self)
+    }
+
+    pub(crate) fn builder_fee(&self) -> Option<&BuilderFee> {
+        self.builder
+            .as_ref()
+            .ok()?
+            .as_ref()
+            .map(|context| &context.fee)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn builder_account_address(&self) -> Option<&str> {
+        self.builder
+            .as_ref()
+            .ok()?
+            .as_ref()
+            .map(|context| context.account_address.as_str())
+    }
+
+    pub(crate) fn builder_configured(&self) -> bool {
+        !matches!(self.builder, Ok(None))
+    }
+
+    pub(crate) fn validate_builder_routing(&self) -> Result<Option<(&str, &BuilderFee)>, String> {
+        let context = self.builder.as_ref().map_err(Clone::clone)?;
+        if self.builder_configured() && self.vault_address.is_some() {
+            return Err(
+                "Builder codes are not yet supported for subaccount or vault orders".to_string(),
+            );
+        }
+        Ok(context
+            .as_ref()
+            .map(|context| (context.account_address.as_str(), &context.fee)))
     }
 
     pub(crate) fn clone_for_task(&self) -> Self {
@@ -67,12 +133,28 @@ impl CapturedAgentKey {
     pub(crate) fn clear(&mut self) {
         self.agent_key.zeroize();
         self.vault_address = None;
+        self.builder = Ok(None);
     }
 
     #[cfg(test)]
     pub(crate) fn as_str(&self) -> &str {
         self.agent_key.as_str()
     }
+}
+
+fn capture_builder(
+    fee: Option<BuilderFee>,
+    account_address: &str,
+) -> Result<Option<BuilderContext>, String> {
+    fee.map(|fee| {
+        let account_address = normalize_builder_address(account_address)
+            .map_err(|_| "A valid account address is required for builder approval".to_string())?;
+        Ok(BuilderContext {
+            fee,
+            account_address,
+        })
+    })
+    .transpose()
 }
 
 impl fmt::Debug for CapturedAgentKey {
@@ -107,6 +189,107 @@ mod tests {
     use super::*;
 
     const SUBACCOUNT: &str = "0xabcdef0123456789abcdef0123456789abcdef01";
+    const BUILDER: &str = "0x1111111111111111111111111111111111111111";
+
+    fn builder_config() -> BuilderCodeConfig {
+        BuilderCodeConfig {
+            enabled: true,
+            address: BUILDER.to_string(),
+            fee_tenths_bps: 37,
+        }
+    }
+
+    #[test]
+    fn captured_builder_retains_exact_account_and_fee_after_settings_change() {
+        let mut config = builder_config();
+        let key = CapturedAgentKey::from("agent-secret").with_builder_config(
+            &config,
+            &format!(" 0x{} ", SUBACCOUNT[2..].to_ascii_uppercase()),
+        );
+        let task_key = key.clone_for_task();
+        config.address = SUBACCOUNT.to_string();
+        config.fee_tenths_bps = 100;
+        config.enabled = false;
+
+        let (account, builder) = task_key
+            .validate_builder_routing()
+            .expect("valid routing")
+            .expect("enabled builder");
+        assert_eq!(account, SUBACCOUNT);
+        assert_eq!(builder.address(), BUILDER);
+        assert_eq!(builder.fee_tenths_bps(), 37);
+        assert_eq!(task_key.builder_account_address(), Some(SUBACCOUNT));
+        assert_eq!(task_key, key);
+        assert_eq!(config.resolve().expect("now disabled"), None);
+        let debug = format!("{task_key:?}");
+        assert!(!debug.contains(SUBACCOUNT));
+        assert!(!debug.contains(BUILDER));
+        assert!(!debug.contains("agent-secret"));
+    }
+
+    #[test]
+    fn invalid_enabled_builder_stays_blocked_across_task_clones() {
+        let invalid = BuilderCodeConfig {
+            enabled: true,
+            ..BuilderCodeConfig::default()
+        };
+        let key = CapturedAgentKey::from("agent-secret").with_builder_config(&invalid, SUBACCOUNT);
+        assert!(key.builder_configured());
+        assert!(key.builder_fee().is_none());
+        assert!(key.validate_builder_routing().is_err());
+        assert!(key.clone_for_task().validate_builder_routing().is_err());
+        assert!(!key.is_empty());
+    }
+
+    #[test]
+    fn builder_clear_drops_routing_without_changing_inflight_task_capture() {
+        let mut key = CapturedAgentKey::from("agent-secret")
+            .with_builder_config(&builder_config(), SUBACCOUNT);
+        let captured = key.clone_for_task();
+        key.clear();
+        assert!(!key.builder_configured());
+        assert_eq!(key.builder_fee(), None);
+        assert_eq!(key.builder_account_address(), None);
+        assert!(captured.builder_configured());
+        assert_eq!(captured.builder_account_address(), Some(SUBACCOUNT));
+    }
+
+    #[test]
+    fn disabled_builder_allows_invalid_account_but_enabled_builder_cannot() {
+        let key = CapturedAgentKey::from("agent-secret")
+            .with_builder_config(&BuilderCodeConfig::default(), "bad-account");
+        assert!(!key.builder_configured());
+        assert_eq!(
+            key.validate_builder_routing().expect("disabled routing"),
+            None
+        );
+
+        let key = CapturedAgentKey::from("agent-secret")
+            .with_builder_config(&builder_config(), "bad-account");
+        let error = key
+            .validate_builder_routing()
+            .expect_err("invalid account blocks");
+        assert!(!error.contains("bad-account"));
+        assert!(!error.contains(BUILDER));
+    }
+
+    #[test]
+    fn subaccount_capture_preserves_cancel_context_but_blocks_builder_placement() {
+        let key = CapturedAgentKey::for_account(
+            Zeroizing::new("agent-secret".to_string()),
+            Some(SUBACCOUNT),
+        )
+        .expect("valid subaccount")
+        .with_builder_config(&builder_config(), SUBACCOUNT);
+        assert!(!key.is_empty());
+        assert_eq!(key.vault_address(), Some(SUBACCOUNT));
+        assert!(key.builder_fee().is_some());
+        assert!(
+            key.validate_builder_routing()
+                .expect_err("unsupported subaccount")
+                .contains("subaccount")
+        );
+    }
 
     #[test]
     fn captured_agent_key_trims_task_clone() {

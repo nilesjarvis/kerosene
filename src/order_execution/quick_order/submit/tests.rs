@@ -157,6 +157,7 @@ fn quick_order_submission_snapshot_debug_redacts_symbol_and_form_values() {
         },
         reduce_only: true,
         market_universe: Default::default(),
+        builder_code: Default::default(),
     };
 
     let rendered = format!("{snapshot:?}");
@@ -632,6 +633,32 @@ fn stale_quick_order_snapshot_rejection_pushes_toast() {
     assert_eq!(
         error_toast_messages(&terminal),
         vec!["Quick order changed; review and submit again"]
+    );
+}
+
+#[test]
+fn changed_builder_rejects_queued_quick_order_and_preserves_form() {
+    let chart_id = 42;
+    let mut terminal = terminal_with_quick_order(chart_id, "BTC");
+    let form = quick_order_or_panic(chart_instance_or_panic(&terminal, chart_id)).clone();
+    let snapshot =
+        terminal.quick_order_submission_snapshot(chart_id, ChartSurfaceId::Docked(chart_id), &form);
+    terminal.builder_codes.config.enabled = true;
+
+    let task = terminal.handle_submit_quick_order_from_snapshot(chart_id, true, snapshot);
+
+    assert_eq!(task.units(), 0);
+    assert!(terminal.pending_order_action.is_none());
+    assert!(terminal.pending_order_indicators.is_empty());
+    assert_eq!(
+        chart_instance_or_panic(&terminal, chart_id)
+            .quick_order
+            .as_ref(),
+        Some(&form)
+    );
+    assert_eq!(
+        order_status_or_panic(&terminal),
+        ("Quick order changed; review and submit again", true)
     );
 }
 

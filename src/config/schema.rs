@@ -94,6 +94,8 @@ impl AssistantProvider {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct KeroseneConfig {
     #[serde(default)]
+    pub builder_code: crate::builder_codes::BuilderCodeConfig,
+    #[serde(default)]
     pub saved_layouts: Vec<SavedLayout>,
     #[serde(default)]
     pub active_layout_name: Option<String>,

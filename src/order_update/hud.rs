@@ -43,6 +43,13 @@ impl TradingTerminal {
             self.set_order_status("HUD order ignored: chart symbol changed".into(), true);
             return Task::none();
         }
+        if request.builder_code.as_ref() != Some(&self.builder_codes.config) {
+            self.set_order_status(
+                "HUD builder settings changed; review and submit again".into(),
+                true,
+            );
+            return Task::none();
+        }
         if !instance.chart.hud_order_submission_enabled() {
             self.set_order_status(
                 "HUD trading is in safe mode; arm the chart first".into(),
@@ -409,6 +416,7 @@ mod tests {
             chart_id: 1,
             surface_id,
             symbol_key: "BTC".to_string(),
+            builder_code: Some(Default::default()),
             price: 100.0,
             quantity: "1".to_string(),
             order_type: HudOrderType::Limit,
@@ -418,6 +426,33 @@ mod tests {
             click_y: 80.0,
             chart_w: 400.0,
             chart_h: 240.0,
+        }
+    }
+
+    #[test]
+    fn changed_or_missing_builder_snapshot_rejects_hud_before_optimistic_state() {
+        for missing in [false, true] {
+            let mut terminal = terminal_with_hud_chart(true);
+            let mut request = hud_request(ChartSurfaceId::Docked(1));
+            if missing {
+                request.builder_code = None;
+            } else {
+                terminal.builder_codes.config.enabled = true;
+            }
+
+            let task = terminal.handle_submit_hud_order(request);
+
+            assert_eq!(task.units(), 0);
+            assert!(terminal.pending_order_action.is_none());
+            assert!(terminal.pending_order_indicators.is_empty());
+            assert!(terminal.chase_orders.is_empty());
+            assert_eq!(
+                order_status_of(&terminal),
+                Some((
+                    "HUD builder settings changed; review and submit again",
+                    true
+                ))
+            );
         }
     }
 

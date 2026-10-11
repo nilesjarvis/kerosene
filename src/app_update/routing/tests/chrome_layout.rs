@@ -1,6 +1,32 @@
 use super::*;
 
 #[test]
+fn builder_settings_messages_route_to_settings() {
+    let request = crate::settings_state::BuilderApprovalRequest {
+        generation: 1,
+        account: "0x1111111111111111111111111111111111111111".into(),
+        builder: crate::builder_codes::BuilderFee::new(
+            "0x2222222222222222222222222222222222222222",
+            10,
+        )
+        .expect("builder"),
+        wallet: false,
+    };
+    for message in [
+        Message::BuilderAddressChanged("test".to_string().into()),
+        Message::BuilderFeeChanged("1".to_string().into()),
+        Message::SaveBuilderCode,
+        Message::SetBuilderCodeEnabled(true),
+        Message::CheckBuilderApproval,
+        Message::ApproveBuilderInWallet,
+        Message::BuilderApprovalChecked(request.clone(), Ok(10)),
+        Message::BuilderWalletApprovalFinished(request, Ok(())),
+    ] {
+        assert_route(message, UpdateRoute::Settings);
+    }
+}
+
+#[test]
 fn console_messages_route_to_console() {
     for message in [
         Message::OpenConsoleWindow,

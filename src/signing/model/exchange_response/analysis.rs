@@ -9,6 +9,23 @@ use std::fmt;
 // ---------------------------------------------------------------------------
 
 impl ExchangeResponse {
+    /// A definitive rejection before any exchange submission. Using the same
+    /// classifier as exchange rejections avoids reconciling an order never sent.
+    pub(crate) fn local_rejection(message: impl Into<String>) -> Self {
+        Self {
+            status: "err".to_string(),
+            response: None,
+            raw_response: Some(Value::String(redact_sensitive_response_text(
+                &message.into(),
+            ))),
+            local_rejection: true,
+        }
+    }
+
+    pub(crate) fn is_local_rejection(&self) -> bool {
+        self.local_rejection
+    }
+
     /// Extract a human-readable summary from the response.
     pub fn summary(&self) -> String {
         if self.status != "ok" {

@@ -454,6 +454,9 @@ impl TradingTerminal {
             portfolio: PortfolioState::default(),
             income: IncomeState::default(),
             hyperliquid_proxies: crate::settings_state::HyperliquidProxySettings::from_config(cfg),
+            builder_codes: crate::settings_state::BuilderCodeSettings::from_config(
+                &cfg.builder_code,
+            ),
             settings_active_tab: SettingsTab::Themes,
             settings_theme_page: ThemeSettingsPage::Overview,
             custom_themes: cfg.custom_themes.clone(),

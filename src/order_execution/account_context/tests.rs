@@ -329,3 +329,53 @@ fn subaccount_signing_and_snapshots_reject_parent_account_context() {
     terminal.account_data_address = Some(TEST_ACCOUNT.to_string());
     assert!(terminal.connected_order_account_snapshot().is_some());
 }
+
+#[test]
+fn builder_routing_captures_account_and_config_for_in_flight_orders() {
+    let mut terminal = TradingTerminal::boot().0;
+    connect_test_account(&mut terminal);
+    terminal.set_committed_agent_key_for_test("agent-key");
+    terminal.builder_codes.config = crate::builder_codes::BuilderCodeConfig {
+        enabled: true,
+        address: OTHER_ACCOUNT.into(),
+        fee_tenths_bps: 5,
+    };
+    let (key, _) = terminal.order_signing_context().expect("captured context");
+
+    terminal.builder_codes.config.fee_tenths_bps = 20;
+    terminal.builder_codes.config.address = TEST_ACCOUNT.into();
+    terminal.accounts[0].wallet_address = OTHER_ACCOUNT.into();
+    terminal.wallet_address_input = OTHER_ACCOUNT.into();
+    terminal.connected_address = Some(OTHER_ACCOUNT.into());
+
+    let cloned_key = key.clone_for_task();
+    let (account, builder) = cloned_key
+        .validate_builder_routing()
+        .expect("valid captured routing")
+        .expect("builder enabled");
+    assert_eq!(account, TEST_ACCOUNT);
+    assert_eq!(builder.address(), OTHER_ACCOUNT);
+    assert_eq!(builder.fee_tenths_bps(), 5);
+
+    terminal.builder_codes.config.enabled = false;
+    let (disabled_key, _) = terminal.order_signing_context().expect("disabled context");
+    assert!(!disabled_key.builder_configured());
+    assert!(key.builder_configured());
+}
+
+#[test]
+fn invalid_builder_configuration_and_subaccounts_do_not_block_signing_capture() {
+    let mut terminal = TradingTerminal::boot().0;
+    connect_test_account(&mut terminal);
+    terminal.set_committed_agent_key_for_test("agent-key");
+    terminal.builder_codes.config.enabled = true;
+    for parent in [None, Some(OTHER_ACCOUNT.to_string())] {
+        terminal.accounts[0].master_address = parent;
+        let (key, _) = terminal
+            .order_signing_context()
+            .expect("cancellation must retain a usable signing context");
+        assert_eq!(key.as_str(), "agent-key");
+        assert!(key.builder_configured());
+        assert!(key.validate_builder_routing().is_err());
+    }
+}

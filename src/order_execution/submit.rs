@@ -1,6 +1,7 @@
 use super::PendingOrderAction;
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
+use crate::builder_codes::BuilderCodeConfig;
 use crate::config::MarketUniverseConfig;
 use crate::message::Message;
 use crate::order_execution::{
@@ -38,6 +39,7 @@ pub(crate) struct TicketOrderSubmissionSnapshot {
     pub(crate) quantity_is_usd: bool,
     pub(crate) reduce_only: bool,
     pub(crate) market_universe: MarketUniverseConfig,
+    pub(crate) builder_code: BuilderCodeConfig,
 }
 
 impl fmt::Debug for TicketOrderSubmissionSnapshot {
@@ -50,6 +52,7 @@ impl fmt::Debug for TicketOrderSubmissionSnapshot {
             .field("quantity_is_usd", &self.quantity_is_usd)
             .field("reduce_only", &self.reduce_only)
             .field("market_universe", &self.market_universe)
+            .field("builder_code", &self.builder_code)
             .finish()
     }
 }
@@ -64,6 +67,7 @@ impl TradingTerminal {
             quantity_is_usd: self.order_quantity_is_usd,
             reduce_only: self.order_reduce_only,
             market_universe: self.market_universe.clone(),
+            builder_code: self.builder_codes.config.clone(),
         }
     }
 
@@ -78,6 +82,7 @@ impl TradingTerminal {
             && self.order_quantity_is_usd == snapshot.quantity_is_usd
             && self.order_reduce_only == snapshot.reduce_only
             && self.market_universe == snapshot.market_universe
+            && self.builder_codes.config == snapshot.builder_code
     }
 
     pub(crate) fn execute_order_from_snapshot(

@@ -76,6 +76,7 @@ These documents remain useful when working in their specific feature areas:
 - [X Feed](x-feed.md)
 - [Trading Journal](journal.md)
 - [Chase Orders](advanced-orders/chase-orders.md)
+- [Custom Builder Codes](builder-codes.md)
 - [TWAP Orders](advanced-orders/twap-orders.md)
 - [Chase Metrics Audit](advanced-orders/chase-metrics-audit.md)
 - [Liquidation Feed UI Audit](liquidation-feed-ui-audit.md)

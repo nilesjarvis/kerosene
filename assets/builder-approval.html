@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kerosene · Builder approval</title>
+  <style nonce="__KEROSENE_NONCE__">
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101215; color: #e9edf1; }
+    body { max-width: 620px; margin: 8vh auto; padding: 24px; }
+    h1 { font-size: 24px; margin-bottom: 12px; }
+    p { line-height: 1.55; color: #adb7c2; }
+    dl { border: 1px solid #303740; border-radius: 8px; padding: 20px; }
+    dt { color: #adb7c2; font-size: 13px; margin-top: 16px; }
+    dt:first-child { margin-top: 0; }
+    dd { margin: 6px 0 0; overflow-wrap: anywhere; }
+    .address { font-family: ui-monospace, monospace; font-size: 14px; }
+    label { display: block; margin: 20px 0 8px; }
+    select, button { font: inherit; border: 1px solid #495561; border-radius: 6px; padding: 11px 14px; }
+    select { width: 100%; background: #171c21; color: inherit; }
+    button { cursor: pointer; margin: 20px 8px 0 0; background: #edf2f7; color: #151a20; }
+    button.secondary { background: transparent; color: #c6d0dc; }
+    button:disabled { opacity: .45; cursor: default; }
+    #status { min-height: 48px; color: #d6dee8; }
+  </style>
+</head>
+<body>
+  <h1>Approve your builder</h1>
+  <p>Review the fee, then sign with your main wallet. This sets the maximum fee the builder can charge on Hyperliquid Mainnet.</p>
+  <dl>
+    <dt>Main account</dt><dd class="address" id="account"></dd>
+    <dt>Builder address</dt><dd class="address" id="builder"></dd>
+    <dt>Maximum builder fee</dt><dd id="fee"></dd>
+  </dl>
+  <label for="wallet">Browser wallet</label>
+  <select id="wallet" aria-label="Browser wallet"></select>
+  <button id="approve" disabled>Connect wallet and approve</button>
+  <button id="cancel" class="secondary">Cancel</button>
+  <p id="status" role="status" aria-live="polite">Looking for a browser wallet…</p>
+  <p>Your private key stays in your wallet. This page expires after five minutes.</p>
+  <script nonce="__KEROSENE_NONCE__">
+    "use strict";
+    const config = __KEROSENE_CONFIG__;
+    const account = document.getElementById("account");
+    const builder = document.getElementById("builder");
+    const fee = document.getElementById("fee");
+    const walletSelect = document.getElementById("wallet");
+    const approve = document.getElementById("approve");
+    const cancel = document.getElementById("cancel");
+    const status = document.getElementById("status");
+    account.textContent = config.account;
+    builder.textContent = config.action.builder;
+    fee.textContent = config.feeBps + " bps (" + config.action.maxFeeRate + ")";
+    const wallets = [];
+    let busy = false;
+    let finished = false;
+    let submitted = false;
+    const expired = () => Date.now() >= config.expiresAt;
+    const refresh = () => {
+      approve.disabled = busy || finished || expired() || wallets.length === 0;
+      walletSelect.disabled = busy || finished || expired();
+      cancel.disabled = busy || finished;
+    };
+    function addWallet(provider, name) {
+      if (!provider || typeof provider.request !== "function" || wallets.some(entry => entry.provider === provider)) return;
+      wallets.push({provider});
+      const option = document.createElement("option");
+      option.value = String(wallets.length - 1);
+      option.textContent = typeof name === "string" ? name.slice(0, 80) : "Browser wallet";
+      walletSelect.appendChild(option);
+      if (!busy && !finished && !expired()) status.textContent = "Select your wallet, then approve the displayed maximum fee.";
+      refresh();
+    }
+    window.addEventListener("eip6963:announceProvider", event => {
+      if (event.detail) addWallet(event.detail.provider, event.detail.info && event.detail.info.name);
+    });
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+    setTimeout(() => {
+      if (wallets.length === 0 && window.ethereum) {
+        const providers = Array.isArray(window.ethereum.providers) ? window.ethereum.providers : [window.ethereum];
+        providers.forEach((provider, index) => addWallet(provider, "Browser wallet " + (index + 1)));
+      }
+      if (wallets.length === 0 && !finished) status.textContent = "No browser wallet found. Open this page in a browser with your wallet extension, then reload.";
+    }, 300);
+    setTimeout(() => {
+      if (!finished) status.textContent = "This approval page has expired. Return to Kerosene to check approval or start again.";
+      refresh();
+    }, Math.max(0, config.expiresAt - Date.now()));
+    async function notify(result) {
+      const response = await fetch(config.completionPath, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({status: result}), credentials: "omit", redirect: "error",
+        signal: AbortSignal.timeout(5000)
+      });
+      if (!response.ok) throw new Error("Local session unavailable");
+    }
+    async function verifyAccount(provider, requestAccess) {
+      const accounts = await provider.request({method: requestAccess ? "eth_requestAccounts" : "eth_accounts"});
+      if (!Array.isArray(accounts) || typeof accounts[0] !== "string" || accounts[0].toLowerCase() !== config.account) {
+        throw new Error("wrong-account");
+      }
+      if (expired()) throw new Error("expired");
+    }
+    approve.addEventListener("click", async () => {
+      const selected = wallets[Number(walletSelect.value)];
+      if (!selected || busy || finished || expired()) return;
+      const provider = selected.provider;
+      busy = true;
+      submitted = false;
+      refresh();
+      try {
+        status.textContent = "Connect the main account shown above in your wallet.";
+        await verifyAccount(provider, true);
+        const chainId = await provider.request({method: "eth_chainId"});
+        if (typeof chainId !== "string" || !/^0x[0-9a-f]{1,64}$/i.test(chainId)) throw new Error("invalid-chain");
+        // Hyperliquid allows any signing chain; hyperliquidChain binds this
+        // action to Mainnet. Using the wallet's chain avoids changing networks.
+        const action = {...config.action, signatureChainId: chainId};
+        const typedData = {
+          domain: {...config.domain, chainId}, types: config.types,
+          primaryType: config.primaryType, message: config.action
+        };
+        status.textContent = "Review and sign the builder fee approval in your wallet.";
+        const signature = await provider.request({
+          method: "eth_signTypedData_v4", params: [config.account, JSON.stringify(typedData)]
+        });
+        await verifyAccount(provider, false);
+        const currentChain = await provider.request({method: "eth_chainId"});
+        if (typeof currentChain !== "string" || currentChain.toLowerCase() !== chainId.toLowerCase()) throw new Error("changed-chain");
+        if (typeof signature !== "string" || !/^0x[0-9a-f]{130}$/i.test(signature)) throw new Error("invalid-signature");
+        let v = parseInt(signature.slice(130, 132), 16);
+        if (v === 0 || v === 1) v += 27;
+        if (v !== 27 && v !== 28) throw new Error("invalid-signature");
+        if (expired()) throw new Error("expired");
+        status.textContent = "Submitting approval to Hyperliquid…";
+        submitted = true;
+        const response = await fetch("https://api.hyperliquid.xyz/exchange", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({action, nonce: action.nonce, signature: {
+            r: signature.slice(0, 66), s: "0x" + signature.slice(66, 130), v
+          }}), credentials: "omit", redirect: "error", signal: AbortSignal.timeout(15000)
+        });
+        if (!response.ok) throw new Error("exchange-response");
+        const result = await response.json();
+        if (!result || result.status !== "ok" || !result.response || result.response.type !== "default") throw new Error("exchange-rejected");
+        finished = true;
+        status.textContent = "Approved. Return to Kerosene to verify your builder is active.";
+        try { await notify("approved"); }
+        catch (_) { status.textContent = "Approved. Return to Kerosene and select Check approval."; }
+      } catch (error) {
+        if (submitted) {
+          // A missing response is ambiguous. Never resubmit automatically.
+          finished = true;
+          status.textContent = error && error.message === "exchange-rejected"
+            ? "Hyperliquid rejected the approval. Return to Kerosene to check the account, builder, and fee, then try again."
+            : "The approval response could not be confirmed. Return to Kerosene and select Check approval before trying again.";
+          // Release the pending session for an independent exchange recheck,
+          // including when the response to the signed submission was lost.
+          try { await notify("submitted"); } catch (_) { /* The session may already have expired. */ }
+        } else if (error && error.message === "wrong-account") {
+          status.textContent = "Select the main account shown above in your wallet, then try again.";
+        } else if (expired()) {
+          status.textContent = "This approval page has expired. Return to Kerosene to start again.";
+        } else if (error && error.code === 4001) {
+          status.textContent = "Wallet request cancelled. You can try again or cancel this session.";
+        } else {
+          status.textContent = "The wallet could not sign this approval. Check the selected account and wallet, then try again.";
+        }
+      } finally {
+        busy = false;
+        refresh();
+      }
+    });
+    cancel.addEventListener("click", async () => {
+      if (busy || finished) return;
+      finished = true;
+      refresh();
+      status.textContent = "Approval cancelled. You can close this page.";
+      try { await notify("cancelled"); } catch (_) { /* The expiring server may already be closed. */ }
+    });
+  </script>
+</body>
+</html>

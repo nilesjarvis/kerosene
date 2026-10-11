@@ -45,13 +45,22 @@ pub(super) struct LimitOrderWire {
     pub(super) tif: String,
 }
 
-/// Order action: fields in Python SDK order: type, orders, grouping
+/// Order action: fields in Python SDK order: type, orders, grouping, builder
 #[derive(Clone, Serialize)]
 pub(in crate::signing) struct OrderAction {
     #[serde(rename = "type")]
     pub(super) action_type: String,
     pub(super) orders: Vec<OrderWire>,
     pub(super) grouping: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) builder: Option<BuilderWire>,
+}
+
+/// Builder field order is also signed: b (lowercase address), then f (0.1 bps).
+#[derive(Clone, Serialize)]
+pub(super) struct BuilderWire {
+    pub(super) b: String,
+    pub(super) f: u32,
 }
 
 impl fmt::Debug for OrderAction {
@@ -60,6 +69,7 @@ impl fmt::Debug for OrderAction {
             .field("action_type", &self.action_type)
             .field("orders_count", &self.orders.len())
             .field("grouping", &self.grouping)
+            .field("has_builder", &self.builder.is_some())
             .finish()
     }
 }

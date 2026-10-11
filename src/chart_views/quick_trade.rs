@@ -57,6 +57,7 @@ impl TradingTerminal {
                     chart_id,
                     surface_id,
                     symbol_key: instance.symbol.clone(),
+                    builder_code: self.builder_codes.config.clone(),
                     action_index: index,
                     action: action.clone(),
                 };

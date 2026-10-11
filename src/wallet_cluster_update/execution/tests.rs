@@ -56,6 +56,31 @@ fn response(status: serde_json::Value) -> Result<ExchangeResponse, String> {
 }
 
 #[test]
+fn local_builder_cluster_rejection_refreshes_connected_account_without_status_reconciliation() {
+    let mut terminal = terminal_with_execution();
+    terminal.connected_address = Some(ADDRESS.into());
+    terminal.account_data_address = Some(ADDRESS.into());
+
+    let task = terminal.apply_wallet_cluster_order_result(
+        7,
+        Some("first".into()),
+        context(ExchangeOrderKind::Limit),
+        Ok(ExchangeResponse::local_rejection(
+            "Builder fee is not approved",
+        )),
+    );
+
+    assert!(task.units() > 0);
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+    assert!(!terminal.has_pending_one_shot_status_requests_for_test());
+    assert_eq!(
+        terminal.wallet_clusters.executions[0].legs[0].status,
+        WalletClusterLegStatus::Failed
+    );
+}
+
+#[test]
 fn cluster_order_results_preserve_accepted_rejected_and_uncertain_outcomes() {
     use ExchangeOrderKind::{Limit, LimitIoc, Market};
     use WalletClusterLegStatus::{Checking, Confirmed, Failed, Uncertain};

@@ -65,6 +65,7 @@ pub(in crate::signing) fn build_order_action_with_cloid(
             cloid,
         )],
         grouping: "na".to_string(),
+        builder: None,
     }
 }
 

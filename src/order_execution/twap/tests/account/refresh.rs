@@ -53,3 +53,58 @@ fn twap_refresh_preserves_policy_account_and_loading_behavior() {
         }
     }
 }
+
+#[test]
+fn local_builder_rejections_stop_spot_twap_without_consuming_slice_or_checking_order_status() {
+    for message in [
+        "Builder fee is not approved",
+        "Builder approval check failed with HTTP 429",
+        "Builder address must be a nonzero 0x-prefixed 20-byte address",
+        "Builder approval check timed out; check approval in Settings before retrying",
+    ] {
+        let mut terminal = origin_account_terminal();
+        let mut data = empty_account_data();
+        data.mark_spot_balances_fetched_at(TradingTerminal::now_ms());
+        set_account_data_for_connected_account(&mut terminal, data);
+        terminal.invalidate_spot_balances_after_exchange_dispatch(
+            ORIGIN_ADDRESS,
+            crate::api::MarketType::Spot,
+        );
+        let mut twap = pending_twap(1, CLOID, Instant::now());
+        twap.is_spot = true;
+        twap.slices_attempted = 1;
+        twap.slices_sent = 1;
+        let next_slice_due = twap.next_slice_due;
+        let remaining_size = twap.remaining_size;
+        terminal.twap_orders.insert(1, twap);
+
+        let task = terminal.handle_twap_slice_result(
+            1,
+            Ok(crate::signing::ExchangeResponse::local_rejection(message)),
+        );
+
+        assert!(task.units() > 0);
+        assert!(terminal.account_loading);
+        assert!(terminal.account_reconciliation_required);
+        assert!(
+            !terminal
+                .account_data
+                .as_ref()
+                .expect("snapshot")
+                .completeness
+                .spot_balances_complete
+        );
+        let twap = twap_by_id(&terminal, 1);
+        assert_eq!(twap.status, TwapStatus::Error);
+        assert_eq!(twap.next_slice_due, next_slice_due);
+        assert_eq!(twap.remaining_size, remaining_size);
+        assert_eq!(twap.filled_size, 0.0);
+        assert_eq!(twap.slices_attempted, 1);
+        assert!(twap.retry_slice.is_none());
+        assert_eq!(twap.child_orders[0].status, TwapChildStatus::Rejected);
+        assert_eq!(twap.child_orders[0].retry_count, 0);
+        assert!(twap.status_check_cloid.is_none());
+        assert!(twap.reconciliation_deadline.is_none());
+        assert!(twap.child_orders[0].oid.is_none());
+    }
+}

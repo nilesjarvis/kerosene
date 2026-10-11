@@ -197,7 +197,10 @@ impl TradingTerminal {
 
         let profile = self.accounts.get(self.active_account_index)?;
         match Self::capture_profile_signing_key(profile) {
-            Ok(key) => Some((key, account_address)),
+            Ok(key) => Some((
+                key.with_builder_config(&self.builder_codes.config, &account_address),
+                account_address,
+            )),
             Err(error) => {
                 self.order_status = Some((error, true));
                 None

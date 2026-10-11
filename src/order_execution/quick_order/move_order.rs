@@ -52,6 +52,14 @@ impl TradingTerminal {
         let Some((key, account_address)) = self.order_signing_context() else {
             return Task::none();
         };
+        if key.builder_configured() {
+            self.order_status = Some((
+                "Moving orders is unavailable while builder routing is enabled; cancel and place a new order"
+                    .into(),
+                true,
+            ));
+            return Task::none();
+        }
         if self.account_loading {
             self.order_status = Some((
                 "Account refresh in progress; wait for fresh open orders before moving".into(),

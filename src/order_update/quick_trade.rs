@@ -28,6 +28,11 @@ impl TradingTerminal {
         if instance.symbol != request.symbol_key {
             return self.reject_quick_trade("Quick Trade ignored: chart symbol changed");
         }
+        if request.builder_code != self.builder_codes.config {
+            return self.reject_quick_trade(
+                "Quick Trade builder settings changed; review and submit again",
+            );
+        }
         if instance.quick_trade_actions.get(request.action_index) != Some(&request.action) {
             return self.reject_quick_trade("Quick Trade action changed; review it before trading");
         }
@@ -187,6 +192,7 @@ mod tests {
                 chart_id: 7,
                 surface_id,
                 symbol_key: "BTC".to_string(),
+                builder_code: Default::default(),
                 action_index: 0,
                 action,
             });
@@ -248,6 +254,7 @@ mod tests {
             chart_id,
             surface_id,
             symbol_key: "ETH".to_string(),
+            builder_code: Default::default(),
             action_index: 0,
             action,
         });
@@ -280,6 +287,7 @@ mod tests {
             chart_id,
             surface_id,
             symbol_key: "BTC".to_string(),
+            builder_code: Default::default(),
             action_index: 0,
             action: QuickTradeActionConfig {
                 side: QuickTradeSide::Sell,
@@ -295,5 +303,43 @@ mod tests {
                 .is_some_and(|(message, is_error)| *is_error && message.contains("action changed"))
         );
         assert!(terminal.pending_order_action.is_none());
+    }
+
+    #[test]
+    fn changed_builder_snapshot_rejects_quick_trade_before_signing() {
+        let mut terminal = TradingTerminal::boot().0;
+        let action = QuickTradeActionConfig {
+            side: QuickTradeSide::Buy,
+            quantity: 1.0,
+            denomination: QuickTradeDenomination::Coin,
+        };
+        let surface_id = ChartSurfaceId::Docked(7);
+        let mut instance = ChartInstance::new(7, "BTC".into(), Timeframe::H1);
+        instance.chart.set_surface_id(surface_id);
+        instance.quick_trade_actions.push(action.clone());
+        terminal.charts.insert(7, instance);
+        let request = QuickTradeOrderRequest {
+            chart_id: 7,
+            surface_id,
+            symbol_key: "BTC".into(),
+            builder_code: terminal.builder_codes.config.clone(),
+            action_index: 0,
+            action,
+        };
+        terminal.builder_codes.config.enabled = true;
+
+        let task = terminal.handle_submit_quick_trade_order(request);
+
+        assert_eq!(task.units(), 0);
+        assert!(terminal.pending_order_action.is_none());
+        assert!(terminal.pending_order_indicators.is_empty());
+        assert!(
+            terminal
+                .order_status
+                .as_ref()
+                .is_some_and(|(message, error)| {
+                    *error && message.contains("Quick Trade builder settings changed")
+                })
+        );
     }
 }

@@ -415,6 +415,14 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         Message::OpenSettingsWindow
         | Message::OpenIntegrationsSettings
         | Message::HyperliquidProxyInputChanged(_)
+        | Message::BuilderAddressChanged(_)
+        | Message::BuilderFeeChanged(_)
+        | Message::SaveBuilderCode
+        | Message::SetBuilderCodeEnabled(_)
+        | Message::CheckBuilderApproval
+        | Message::ApproveBuilderInWallet
+        | Message::BuilderApprovalChecked(_, _)
+        | Message::BuilderWalletApprovalFinished(_, _)
         | Message::AddHyperliquidProxy
         | Message::RemoveHyperliquidProxy(_)
         | Message::SetHyperliquidProxiesEnabled(_)

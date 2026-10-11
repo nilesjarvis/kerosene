@@ -37,6 +37,7 @@ impl TradingTerminal {
         };
 
         config::KeroseneConfig {
+            builder_code: self.builder_codes.config.clone(),
             saved_layouts: self.saved_layouts_config_values(),
             active_layout_name: self.active_layout_name.clone(),
             app_onboarding_dismissed: self.app_onboarding_dismissed,

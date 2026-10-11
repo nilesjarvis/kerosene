@@ -161,6 +161,16 @@ pub async fn place_order_with_cloid(
     agent_key: CapturedAgentKey,
     request: PlaceOrderRequest,
 ) -> Result<ExchangeResponse, String> {
+    let builder_routing = match agent_key.validate_builder_routing() {
+        Ok(routing) => routing,
+        Err(error) => return Ok(ExchangeResponse::local_rejection(error)),
+    };
+    if let Some((account_address, builder)) = builder_routing
+        && let Err(error) =
+            crate::builder_codes::check_order_approval(account_address, builder).await
+    {
+        return Ok(ExchangeResponse::local_rejection(error));
+    }
     let action = HyperliquidL1Action::order_with_cloid(
         request.asset,
         request.is_buy,
@@ -169,8 +179,18 @@ pub async fn place_order_with_cloid(
         request.order_kind,
         request.reduce_only,
         request.cloid,
-    );
-    sign_and_post(agent_key, &action).await
+    )
+    .with_builder(agent_key.builder_fee());
+    let builder_context =
+        builder_routing.map(|(account, builder)| (account.to_string(), builder.clone()));
+    let response = sign_and_post(agent_key, &action).await?;
+    if response.is_error()
+        && let Some((account, builder)) = builder_context
+    {
+        // A revoked or reduced approval must not be kept warm by retries.
+        crate::builder_codes::invalidate_order_approval(&account, &builder);
+    }
+    Ok(response)
 }
 
 /// Cancel an order on the exchange.
@@ -203,6 +223,11 @@ pub async fn modify_order(
     size: String,
     reduce_only: bool,
 ) -> Result<ExchangeResponse, String> {
+    if agent_key.builder_configured() {
+        return Ok(ExchangeResponse::local_rejection(
+            "Cancel and replace the order to preserve builder attribution; direct modification is unavailable with builder codes enabled",
+        ));
+    }
     let action = HyperliquidL1Action::modify(oid, asset, is_buy, price, size, reduce_only);
     sign_and_post(agent_key, &action).await
 }

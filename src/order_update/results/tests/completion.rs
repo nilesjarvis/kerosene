@@ -29,6 +29,14 @@ fn serialized_placement_results_preserve_cleanup_account_gates_and_context() {
                 false,
                 true,
             ),
+            (
+                Ok(ExchangeResponse::local_rejection(
+                    "Builder fee is not approved",
+                )),
+                false,
+                true,
+                true,
+            ),
             (Ok(malformed_ok_response()), true, true, true),
             (Err("transport failed".to_string()), true, true, true),
         ] {
@@ -103,6 +111,68 @@ fn serialized_placement_results_preserve_cleanup_account_gates_and_context() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn local_builder_rejection_refreshes_spot_balances_without_unknown_order_reconciliation() {
+    for surface in [
+        OrderSurface::Ticket,
+        OrderSurface::QuickOrder,
+        OrderSurface::QuickTrade,
+        OrderSurface::Hud,
+    ] {
+        let mut terminal = terminal_with_connected_account();
+        let mut data = account_data_with_open_orders(Vec::new());
+        data.mark_spot_balances_fetched_at(TradingTerminal::now_ms());
+        terminal.account_data = Some(data);
+        terminal.invalidate_spot_balances_after_exchange_dispatch(TEST_ACCOUNT, MarketType::Spot);
+        let context = OneShotPlacementContext {
+            symbol_key: "@1".into(),
+            surface,
+            ..one_shot_context()
+        };
+        let result = Ok(ExchangeResponse::local_rejection(
+            "Builder fee is not approved",
+        ));
+
+        let task = match surface {
+            OrderSurface::QuickOrder => {
+                terminal.handle_quick_order_result(None, context, None, result)
+            }
+            OrderSurface::QuickTrade => {
+                terminal.handle_quick_trade_order_result(None, context, result)
+            }
+            OrderSurface::Hud => terminal.handle_hud_order_result(None, None, context, result),
+            _ => terminal.handle_order_result(None, context, result),
+        };
+
+        assert!(task.units() > 0);
+        assert!(terminal.account_loading);
+        assert!(terminal.account_reconciliation_required);
+        assert!(terminal.pending_one_shot_status_requests.is_empty());
+        assert!(
+            !terminal
+                .account_data
+                .as_ref()
+                .expect("account snapshot")
+                .completeness
+                .spot_balances_complete
+        );
+
+        // Read completion, rather than the rejection itself, restores freshness.
+        let mut fresh = account_data_with_open_orders(Vec::new());
+        fresh.mark_spot_balances_fetched_at(TradingTerminal::now_ms());
+        let refresh_context = terminal.current_account_data_request_context();
+        let _ = terminal.apply_account_data_loaded(TEST_ACCOUNT.into(), refresh_context, Ok(fresh));
+        assert!(
+            terminal
+                .account_data
+                .as_ref()
+                .expect("fresh snapshot")
+                .completeness
+                .spot_balances_complete
+        );
     }
 }
 

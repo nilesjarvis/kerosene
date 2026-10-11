@@ -566,6 +566,13 @@ Do not assume all market symbols are main-dex perpetuals.
 
 ## Security Boundaries
 
+[Custom builder codes](../builder-codes.md) are captured with the account's
+signing context and attached at the common placement boundary. The feature
+includes approval checks, per-side fee estimates and definitive local
+rejections. Cancellation and leverage remain available independently of builder
+approval. Chase, manual modifications and subaccounts are gated while builder
+routing is enabled until their attribution semantics are verified.
+
 - Agent keys are secret-bearing and zeroized.
 - Signing happens only in `signing/`.
 - Config snapshots intentionally blank agent/API key fields.

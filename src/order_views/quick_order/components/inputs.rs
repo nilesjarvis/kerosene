@@ -101,20 +101,27 @@ impl TradingTerminal {
 
         match self.quick_order_fee_inputs(chart_id, form) {
             Some((px, qty, is_spot)) => {
-                let m_text = if let Some((fee_amt, _)) = self.estimate_fee(px, qty, true, is_spot) {
-                    format!("Maker: ${fee_amt:.2}")
-                } else {
-                    "Maker: \u{2014}".to_string()
+                let fee_for_side = |is_maker, is_buy| {
+                    self.estimate_fee(px, qty, is_maker, is_spot, is_buy)
+                        .map(|(amount, _)| format!("${amount:.2}"))
+                        .unwrap_or_else(|| "\u{2014}".to_string())
                 };
-
-                let t_text = if let Some((fee_amt, _)) = self.estimate_fee(px, qty, false, is_spot)
-                {
-                    format!("Taker: ${fee_amt:.2}")
+                let fee_text = if is_spot && self.builder_codes.config.enabled {
+                    format!(
+                        "Est. Buy fees: Maker {} | Taker {}\nEst. Sell fees: Maker {} | Taker {}",
+                        fee_for_side(true, true),
+                        fee_for_side(false, true),
+                        fee_for_side(true, false),
+                        fee_for_side(false, false),
+                    )
                 } else {
-                    "Taker: \u{2014}".to_string()
+                    format!(
+                        "Est. Fees: Maker: {} | Taker: {}",
+                        fee_for_side(true, true),
+                        fee_for_side(false, true)
+                    )
                 };
-
-                text(format!("Est. Fees: {m_text} | {t_text}"))
+                text(fee_text)
                     .size(9)
                     .color(theme.extended_palette().background.weak.text)
                     .into()

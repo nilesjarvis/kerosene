@@ -663,6 +663,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) portfolio: PortfolioState,
     pub(crate) income: IncomeState,
     pub(crate) hyperliquid_proxies: crate::settings_state::HyperliquidProxySettings,
+    pub(crate) builder_codes: crate::settings_state::BuilderCodeSettings,
     pub(crate) settings_active_tab: SettingsTab,
     pub(crate) settings_theme_page: ThemeSettingsPage,
     // Custom Themes

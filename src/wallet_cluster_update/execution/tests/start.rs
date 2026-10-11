@@ -159,3 +159,51 @@ fn cluster_dispatch_rejects_empty_preparation_without_allocating_an_execution() 
         Some(("No eligible cluster members to submit".into(), true))
     );
 }
+
+#[test]
+fn cluster_builder_preflight_rejects_all_legs_before_any_dispatch() {
+    for malformed in [false, true] {
+        let mut terminal = terminal_with_execution();
+        let next_id = terminal.wallet_clusters.next_execution_id;
+        let revision = terminal.spot_balances_revision;
+        let first = prepared_leg("first", ADDRESS, MarketType::Spot);
+        let mut second = prepared_leg("second", SECOND, MarketType::Spot);
+        second.member.agent_key =
+            CapturedAgentKey::for_account(Zeroizing::new("synthetic-invalid-key".into()), None)
+                .expect("master key")
+                .with_builder_config(
+                    &crate::builder_codes::BuilderCodeConfig {
+                        enabled: true,
+                        address: if malformed {
+                            "invalid builder".into()
+                        } else {
+                            "0x3333333333333333333333333333333333333333".into()
+                        },
+                        fee_tenths_bps: 1,
+                    },
+                    SECOND,
+                );
+
+        let task = terminal.start_wallet_cluster_execution(
+            WalletCluster::default(),
+            WalletClusterExecutionKind::Order,
+            "BTC".into(),
+            OrderKind::Limit,
+            vec![first, second],
+        );
+
+        assert_eq!(task.units(), 0);
+        assert_eq!(terminal.wallet_clusters.next_execution_id, next_id);
+        assert_eq!(terminal.wallet_clusters.executions.len(), 1);
+        assert_eq!(terminal.spot_balances_revision, revision);
+        assert!(
+            terminal
+                .wallet_clusters
+                .status
+                .as_ref()
+                .is_some_and(|(message, error)| {
+                    *error && message.starts_with("Member second:")
+                })
+        );
+    }
+}

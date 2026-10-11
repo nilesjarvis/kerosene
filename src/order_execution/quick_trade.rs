@@ -1,3 +1,4 @@
+use crate::builder_codes::BuilderCodeConfig;
 use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::config::QuickTradeActionConfig;
 
@@ -12,6 +13,7 @@ pub(crate) struct QuickTradeOrderRequest {
     pub(crate) chart_id: ChartId,
     pub(crate) surface_id: ChartSurfaceId,
     pub(crate) symbol_key: String,
+    pub(crate) builder_code: BuilderCodeConfig,
     pub(crate) action_index: usize,
     pub(crate) action: QuickTradeActionConfig,
 }
@@ -22,6 +24,7 @@ impl fmt::Debug for QuickTradeOrderRequest {
             .field("chart_id", &self.chart_id)
             .field("surface_id", &self.surface_id)
             .field("symbol_key", &format_args!("<redacted>"))
+            .field("builder_code", &self.builder_code)
             .field("action_index", &self.action_index)
             .field("action", &format_args!("<redacted>"))
             .finish()
@@ -39,6 +42,7 @@ mod tests {
             chart_id: 7,
             surface_id: ChartSurfaceId::Docked(7),
             symbol_key: "SECRETCOIN".to_string(),
+            builder_code: Default::default(),
             action_index: 2,
             action: QuickTradeActionConfig {
                 side: QuickTradeSide::Buy,

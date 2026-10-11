@@ -1,3 +1,4 @@
+use crate::builder_codes::BuilderCodeConfig;
 use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::order_pending_indicators::PENDING_ORDER_INDICATOR_TTL_MS;
 use std::collections::BTreeMap;
@@ -31,6 +32,8 @@ pub(crate) struct HudOrderRequest {
     pub(crate) chart_id: ChartId,
     pub(crate) surface_id: ChartSurfaceId,
     pub(crate) symbol_key: String,
+    /// Filled by the rendered chart's message adapter before reaching update.
+    pub(crate) builder_code: Option<BuilderCodeConfig>,
     pub(crate) price: f64,
     pub(crate) quantity: String,
     pub(crate) order_type: HudOrderType,
@@ -48,6 +51,7 @@ impl fmt::Debug for HudOrderRequest {
             .field("chart_id", &self.chart_id)
             .field("surface_id", &self.surface_id)
             .field("symbol_key", &format_args!("<redacted>"))
+            .field("builder_code", &self.builder_code)
             .field("price", &format_args!("<redacted>"))
             .field("quantity", &format_args!("<redacted>"))
             .field("order_type", &self.order_type)
@@ -171,6 +175,7 @@ mod tests {
             chart_id: 1,
             surface_id: ChartSurfaceId::Docked(1),
             symbol_key: "SECRETCOIN".to_string(),
+            builder_code: Some(Default::default()),
             price: 98765.4321,
             quantity: "quantity-secret".to_string(),
             order_type: HudOrderType::Limit,

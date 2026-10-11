@@ -9,6 +9,7 @@ use super::{
 use std::sync::atomic::{AtomicU64, Ordering};
 use zeroize::Zeroizing;
 
+mod builder_codes;
 mod subaccounts;
 
 const TEST_PRIVATE_KEY: &str = "0000000000000000000000000000000000000000000000000000000000000001";

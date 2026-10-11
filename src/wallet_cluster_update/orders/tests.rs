@@ -84,6 +84,55 @@ fn prepared_cluster_leg_keeps_request_fields_context_and_captured_member_target(
 const ADDRESS: &str = "0x1111111111111111111111111111111111111111";
 
 #[test]
+fn cluster_member_capture_pins_builder_for_each_members_account() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.builder_codes.config = crate::builder_codes::BuilderCodeConfig {
+        enabled: true,
+        address: "0x3333333333333333333333333333333333333333".into(),
+        fee_tenths_bps: 10,
+    };
+    let addresses = [ADDRESS, "0x2222222222222222222222222222222222222222"];
+    terminal.accounts = addresses
+        .iter()
+        .enumerate()
+        .map(|(index, address)| crate::config::AccountProfile {
+            master_address: None,
+            secret_id: format!("member-{index}"),
+            name: format!("Member {index}"),
+            wallet_address: (*address).into(),
+            agent_key: "agent-key".to_string().into(),
+            hydromancer_api_key: String::new().into(),
+        })
+        .collect();
+    let cluster = WalletCluster {
+        id: "test".into(),
+        name: "Test".into(),
+        members: (0..2)
+            .map(|index| WalletClusterMember {
+                profile_secret_id: format!("member-{index}"),
+                weight: 1.0,
+                weight_input: "1".into(),
+            })
+            .collect(),
+    };
+
+    let members = terminal
+        .cluster_trading_members(&cluster, true)
+        .expect("members");
+    terminal.builder_codes.config.enabled = false;
+    for (member, expected) in members.iter().zip(addresses) {
+        let (account, builder) = member
+            .agent_key
+            .validate_builder_routing()
+            .expect("valid member routing")
+            .expect("builder enabled");
+        assert_eq!(account, expected);
+        assert_eq!(member.address, expected);
+        assert_eq!(builder.fee_tenths_bps(), 10);
+    }
+}
+
+#[test]
 fn cluster_trading_members_excludes_zero_weight_members_when_required() {
     use crate::config::AccountProfile;
     use crate::wallet_cluster_state::{WalletCluster, WalletClusterMember};

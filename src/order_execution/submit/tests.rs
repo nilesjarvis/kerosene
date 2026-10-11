@@ -224,6 +224,7 @@ fn ticket_order_submission_snapshot_debug_redacts_order_inputs() {
         quantity_is_usd: true,
         reduce_only: true,
         market_universe: Default::default(),
+        builder_code: Default::default(),
     };
 
     let debug = format!("{snapshot:?}");
@@ -332,6 +333,25 @@ fn execute_order_from_snapshot_rejects_stale_symbol_submit_message() {
     assert_eq!(status, "Order form changed; review and submit again");
     assert_eq!(terminal.pending_order_action, None);
     assert!(terminal.pending_order_indicators.is_empty());
+}
+
+#[test]
+fn changed_builder_fee_rejects_queued_ticket_before_dispatch() {
+    let mut terminal = terminal_for_percentage_order(percentage_account_data());
+    terminal.order_kind = OrderKind::Market;
+    terminal.order_quantity = "1".into();
+    let snapshot = terminal.ticket_order_submission_snapshot();
+    terminal.builder_codes.config.fee_tenths_bps = 10;
+
+    let task = terminal.execute_order_from_snapshot(true, snapshot);
+
+    assert_eq!(task.units(), 0);
+    assert!(terminal.pending_order_action.is_none());
+    assert!(terminal.pending_order_indicators.is_empty());
+    assert_eq!(
+        order_status_or_panic(&terminal),
+        ("Order form changed; review and submit again", true)
+    );
 }
 
 fn perp_symbol(key: &str) -> ExchangeSymbol {

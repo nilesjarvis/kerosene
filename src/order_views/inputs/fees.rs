@@ -25,12 +25,20 @@ impl TradingTerminal {
                 .and_then(|symbol| symbol.outcome.as_ref())
                 .map(|info| info.fee_terms_label())
                 .unwrap_or_else(|| "Outcome fee terms unavailable".to_string());
-            return form.push(
+            let form = form.push(
                 text(terms)
                     .size(11)
                     .color(theme.extended_palette().background.weak.text)
                     .width(Fill),
             );
+            return match self.builder_codes.config.resolve() {
+                Ok(Some(builder)) => form.push(order_detail_row(
+                    "Builder fee on sells",
+                    format!("{} bps", builder.fee_bps_text()),
+                    &theme,
+                )),
+                _ => form,
+            };
         }
 
         let fee_price = match self.order_kind {
@@ -53,14 +61,25 @@ impl TradingTerminal {
             )
         });
 
-        let fee_text = |is_maker| {
+        let fee_text_for_side = |is_maker, is_buy| {
             fee_price
                 .zip(fee_qty)
                 .and_then(|(price, quantity)| {
-                    self.estimate_fee(price, quantity, is_maker, active_is_spot)
+                    self.estimate_fee(price, quantity, is_maker, active_is_spot, is_buy)
                 })
                 .map(|(amount, _)| format!("${amount:.2}"))
                 .unwrap_or_else(|| "\u{2014}".to_string())
+        };
+        let fee_text = |is_maker| {
+            if active_is_spot && self.builder_codes.config.enabled {
+                format!(
+                    "Buy {} / Sell {}",
+                    fee_text_for_side(is_maker, true),
+                    fee_text_for_side(is_maker, false)
+                )
+            } else {
+                fee_text_for_side(is_maker, true)
+            }
         };
         if matches!(self.order_kind, OrderKind::Market | OrderKind::LimitIoc) {
             form.push(order_detail_row("Est. taker fee", fee_text(false), &theme))

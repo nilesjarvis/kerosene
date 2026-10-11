@@ -26,6 +26,7 @@ pub(in crate::order_execution::twap) fn twap_place_result_refresh_policy(
 ) -> TwapAccountRefresh {
     match result {
         Err(_) => TwapAccountRefresh::Immediate,
+        Ok(response) if response.is_local_rejection() => TwapAccountRefresh::Immediate,
         Ok(response) if response.is_ambiguous_order_result() => TwapAccountRefresh::Immediate,
         Ok(response) if response.is_error() => TwapAccountRefresh::None,
         Ok(_) => TwapAccountRefresh::OnTerminal,

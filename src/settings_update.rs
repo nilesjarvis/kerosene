@@ -1,3 +1,4 @@
+mod builder;
 mod proxy;
 
 use crate::app_state::TradingTerminal;
@@ -10,6 +11,16 @@ use zeroize::Zeroize;
 impl TradingTerminal {
     pub(crate) fn update_settings(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::BuilderAddressChanged(_)
+            | Message::BuilderFeeChanged(_)
+            | Message::SaveBuilderCode
+            | Message::SetBuilderCodeEnabled(_)
+            | Message::CheckBuilderApproval
+            | Message::ApproveBuilderInWallet
+            | Message::BuilderApprovalChecked(_, _)
+            | Message::BuilderWalletApprovalFinished(_, _) => {
+                return self.update_builder_codes(message);
+            }
             Message::HyperliquidProxyInputChanged(_)
             | Message::AddHyperliquidProxy
             | Message::RemoveHyperliquidProxy(_)

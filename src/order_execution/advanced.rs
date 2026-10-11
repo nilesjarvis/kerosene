@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::builder_codes::BuilderCodeConfig;
 use crate::config::MarketUniverseConfig;
 use crate::signing::CapturedAgentKey;
 use crate::signing::OrderKind;
@@ -45,6 +46,7 @@ pub(crate) struct AdvancedOrderStartSnapshot {
     pub(crate) quantity_is_usd: bool,
     pub(crate) reduce_only: bool,
     pub(crate) market_universe: MarketUniverseConfig,
+    pub(crate) builder_code: BuilderCodeConfig,
 }
 
 impl fmt::Debug for AdvancedOrderStartSnapshot {
@@ -56,6 +58,7 @@ impl fmt::Debug for AdvancedOrderStartSnapshot {
             .field("quantity_is_usd", &self.quantity_is_usd)
             .field("reduce_only", &self.reduce_only)
             .field("market_universe", &self.market_universe)
+            .field("builder_code", &self.builder_code)
             .finish()
     }
 }
@@ -84,6 +87,7 @@ impl TradingTerminal {
             quantity_is_usd: self.order_quantity_is_usd,
             reduce_only: self.order_reduce_only,
             market_universe: self.market_universe.clone(),
+            builder_code: self.builder_codes.config.clone(),
         }
     }
 
@@ -104,6 +108,7 @@ impl TradingTerminal {
             && self.order_quantity_is_usd == snapshot.quantity_is_usd
             && self.order_reduce_only == snapshot.reduce_only
             && self.market_universe == snapshot.market_universe
+            && self.builder_codes.config == snapshot.builder_code
     }
 
     pub(crate) fn twap_order_start_snapshot_matches(
@@ -158,6 +163,14 @@ impl TradingTerminal {
     }
 
     fn reject_if_advanced_order_start_blocked(&mut self, kind: AdvancedOrderKind) -> bool {
+        if kind == AdvancedOrderKind::Chase && self.builder_codes.config.enabled {
+            self.order_status = Some((
+                "Chase is unavailable while builder routing is enabled; use a limit order or TWAP"
+                    .into(),
+                true,
+            ));
+            return true;
+        }
         if self.active_advanced_order_count() >= MAX_ACTIVE_ADVANCED_ORDERS {
             self.order_status = Some((
                 format!(

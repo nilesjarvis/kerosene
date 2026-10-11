@@ -89,7 +89,15 @@ impl TradingTerminal {
                     ));
                     twap.retry_slice = None;
                 } else if response.is_error() {
-                    match classify_twap_exchange_error(&summary_text) {
+                    // Local preflight failed before submission. Stop for user
+                    // review instead of consuming a scheduled slice or applying
+                    // exchange retry heuristics to approval/configuration text.
+                    let error_action = if response.is_local_rejection() {
+                        TwapExchangeErrorAction::Terminal
+                    } else {
+                        classify_twap_exchange_error(&summary_text)
+                    };
+                    match error_action {
                         TwapExchangeErrorAction::Retry(reason) => {
                             refresh_policy = TwapAccountRefresh::None;
                             let retry_count = pending.retry_count.saturating_add(1);

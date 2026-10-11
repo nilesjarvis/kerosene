@@ -347,7 +347,8 @@ impl TradingTerminal {
             if profile.agent_key.trim().is_empty() {
                 return Err(format!("{} needs a committed agent key", profile.name));
             }
-            let agent_key = Self::capture_profile_signing_key(profile)?;
+            let agent_key = Self::capture_profile_signing_key(profile)?
+                .with_builder_config(&self.builder_codes.config, &address);
             let label = if profile.name.trim().is_empty() {
                 self.wallet_display(&address).primary
             } else {

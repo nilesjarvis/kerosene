@@ -397,3 +397,27 @@ fn handle_move_order_rejects_fractional_outcome_size() {
             .contains_key(&move_key("#670"))
     );
 }
+
+#[test]
+fn handle_move_order_with_builder_routing_does_not_modify_or_cancel_existing_order() {
+    let mut terminal = terminal_with_move_order("BTC", "BTC", 100.0);
+    terminal.builder_codes.config.enabled = true;
+
+    let task = terminal.handle_move_order("BTC".into(), 42, 101.0);
+
+    assert_eq!(task.units(), 0);
+    assert!(terminal.pending_move_order_contexts.is_empty());
+    assert!(terminal.pending_order_indicators.is_empty());
+    assert_eq!(
+        terminal
+            .account_data
+            .as_ref()
+            .expect("account")
+            .open_orders
+            .len(),
+        1
+    );
+    let (message, is_error) = order_status_or_panic(&terminal);
+    assert!(is_error);
+    assert!(message.contains("Moving orders is unavailable while builder routing is enabled"));
+}

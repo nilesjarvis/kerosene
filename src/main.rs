@@ -30,6 +30,7 @@ mod app_state;
 mod app_theme;
 mod app_time;
 mod app_update;
+mod builder_codes;
 mod calendar_state;
 mod calendar_update;
 mod calendar_views;

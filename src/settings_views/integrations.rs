@@ -1,10 +1,11 @@
+mod builder;
 mod remote_wallet_database;
 
 use crate::app_state::TradingTerminal;
 use crate::config::ReadDataProvider;
 use crate::helpers;
 use crate::message::Message;
-use iced::widget::{button, checkbox, column, pick_list, row, rule, text, text_input};
+use iced::widget::{button, checkbox, column, pick_list, row, rule, scrollable, text, text_input};
 use iced::{Alignment, Element, Fill, Length};
 
 impl TradingTerminal {
@@ -63,10 +64,12 @@ impl TradingTerminal {
         let realtime_position_pnl_toggle = hydromancer_key_configured
             .then_some(Message::ToggleHydromancerRealtimePositionPnl as fn(bool) -> Message);
 
-        column![
+        scrollable(column![
             text("Integrations")
                 .size(16)
                 .color(current_theme.palette().text),
+            rule::horizontal(1),
+            self.view_builder_code_settings(),
             rule::horizontal(1),
             self.view_remote_wallet_database_settings(),
             rule::horizontal(1),
@@ -232,7 +235,8 @@ impl TradingTerminal {
             ]
             .spacing(8),
         ]
-        .spacing(12)
+        .spacing(12))
+        .height(Fill)
         .into()
     }
 }

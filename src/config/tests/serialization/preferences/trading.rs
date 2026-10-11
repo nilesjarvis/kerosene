@@ -4,6 +4,29 @@ use super::{
 };
 
 #[test]
+fn builder_configuration_round_trips_and_defaults_disabled_for_legacy() {
+    let mut value = default_config_value();
+    remove_field(&mut value, "builder_code", "config object");
+    let legacy: KeroseneConfig = value_from_json(value, "legacy builder defaults");
+    assert!(!legacy.builder_code.enabled);
+    assert!(legacy.builder_code.resolve().expect("disabled").is_none());
+    let mut config = legacy;
+    config.builder_code = crate::builder_codes::BuilderCodeConfig {
+        enabled: true,
+        address: "0x2222222222222222222222222222222222222222".into(),
+        fee_tenths_bps: 15,
+    };
+    let restored: KeroseneConfig =
+        value_from_str(&json_string(&config, "builder config"), "round trip");
+    assert_eq!(restored.builder_code, config.builder_code);
+    config.builder_code.address = "invalid".into();
+    let restored: KeroseneConfig =
+        value_from_str(&json_string(&config, "invalid builder"), "preserve invalid");
+    assert!(restored.builder_code.enabled);
+    assert!(restored.builder_code.resolve().is_err());
+}
+
+#[test]
 fn legacy_config_without_market_slippage_uses_default() {
     let mut value = default_config_value();
     remove_field(

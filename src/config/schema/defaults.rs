@@ -378,6 +378,7 @@ impl Default for KeroseneConfig {
             x_oauth_client_id: String::new().into(),
             x_refresh_token: String::new().into(),
             openrouter_api_key: String::new().into(),
+            builder_code: Default::default(),
             hyperliquid_proxies_enabled: false,
             hyperliquid_proxy_urls: Vec::new(),
             openrouter_model: String::new(),

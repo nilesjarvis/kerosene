@@ -197,6 +197,7 @@ impl CandlestickChart {
                     chart_id: self.id,
                     surface_id: self.surface_id,
                     symbol_key: self.symbol_key.clone(),
+                    builder_code: None,
                     price,
                     quantity: hud_order_quantity(state),
                     order_type,

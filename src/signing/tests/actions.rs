@@ -5,6 +5,7 @@ use crate::signing::actions::{
     build_order_action, build_order_action_with_cloid, build_update_leverage_action,
 };
 
+mod builder_codes;
 mod cancel_modify;
 mod constructors;
 mod orders;

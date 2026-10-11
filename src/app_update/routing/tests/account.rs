@@ -93,6 +93,7 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
             chart_id: 7,
             surface_id: crate::chart_state::ChartSurfaceId::Docked(7),
             symbol_key: "BTC".to_string(),
+            builder_code: Default::default(),
             action_index: 0,
             action: crate::config::QuickTradeActionConfig {
                 side: crate::config::QuickTradeSide::Buy,

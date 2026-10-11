@@ -43,6 +43,13 @@ and `settings_views/network.rs`.
 
 ## Preferences Update Flow
 
+Settings > Integrations owns [custom builder codes](../builder-codes.md): a
+global builder address, explicit fee and enable switch, with per-account
+approval checks and a main-wallet browser approval flow. Builder settings
+messages route to `settings_update/builder.rs`; callbacks bind to the account,
+builder and generation. Integrations content scrolls to keep the settings
+usable in the standard window size.
+
 Preference changes usually follow this shape:
 
 ```text

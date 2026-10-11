@@ -25,6 +25,24 @@ impl TradingTerminal {
             self.set_wallet_cluster_status("No eligible cluster members to submit", true);
             return Task::none();
         }
+        // Preflight every member before allocating an execution or dispatching
+        // any leg. A missing approval must never create a partial cluster trade.
+        for leg in &prepared {
+            let approval = leg
+                .member
+                .agent_key
+                .validate_builder_routing()
+                .and_then(|routing| match routing {
+                    Some((account, builder)) => {
+                        crate::builder_codes::cached_order_approval(account, builder)
+                    }
+                    None => Ok(()),
+                });
+            if let Err(error) = approval {
+                self.set_wallet_cluster_status(format!("{}: {error}", leg.member.label), true);
+                return Task::none();
+            }
+        }
         let execution_id = self.wallet_clusters.next_execution_id;
         self.wallet_clusters.next_execution_id =
             self.wallet_clusters.next_execution_id.wrapping_add(1);
@@ -93,6 +111,13 @@ impl TradingTerminal {
         let Some(profile_secret_id) = profile_secret_id else {
             return Task::none();
         };
+        // Cluster member snapshots are separate from the connected account's
+        // spot balances. A local rejection emits no exchange stream update to
+        // repair the connected snapshot invalidated when this leg was queued.
+        let refresh_connected = result
+            .as_ref()
+            .is_ok_and(ExchangeResponse::is_local_rejection)
+            && self.connected_order_account_matches(&context.account_address);
         let outcome = classify_execution_result(result);
         if matches!(
             outcome.kind,
@@ -152,9 +177,14 @@ impl TradingTerminal {
         let refresh = outcome
             .refresh_account
             .then(|| self.refresh_wallet_cluster_member(profile_secret_id));
+        let connected_refresh = if refresh_connected {
+            self.refresh_account_data()
+        } else {
+            Task::none()
+        };
         self.finish_wallet_cluster_execution_update(
             execution_id,
-            refresh.unwrap_or_else(Task::none),
+            Task::batch([refresh.unwrap_or_else(Task::none), connected_refresh]),
         )
     }
 

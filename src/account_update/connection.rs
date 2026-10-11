@@ -280,6 +280,7 @@ impl TradingTerminal {
             let _ = self.stop_twap_with_reason(id, "TWAP stopped: wallet address changed", false);
         }
         self.connected_address = Some(addr.clone());
+        self.builder_codes.invalidate();
         self.clear_percentage_order_quantity();
         self.bump_account_data_revision();
         self.account_data = None;
@@ -333,6 +334,9 @@ impl TradingTerminal {
             },
         );
         let mut tasks = vec![account_task];
+        if self.builder_codes.config.enabled {
+            tasks.push(self.refresh_builder_approval());
+        }
         tasks.push(stop_chase_task);
         tasks.push(self.refresh_transfer_history());
         tasks.push(self.start_portfolio_refresh_for_address(addr));
@@ -377,6 +381,7 @@ impl TradingTerminal {
         self.clear_percentage_order_quantity();
         self.bump_account_data_revision();
         self.connected_address = None;
+        self.builder_codes.invalidate();
         self.account_data = None;
         self.account_data_address = None;
         self.pending_order_indicators.clear();

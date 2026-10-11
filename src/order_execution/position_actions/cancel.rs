@@ -211,6 +211,29 @@ mod tests {
         terminal
     }
 
+    #[test]
+    fn invalid_builder_settings_do_not_block_cancellation_for_master_or_subaccount() {
+        for parent in [
+            None,
+            Some("0xdef0000000000000000000000000000000000000".into()),
+        ] {
+            let mut terminal = terminal_with_cancelable_order();
+            terminal.accounts[0].master_address = parent;
+            terminal.builder_codes.config.enabled = true;
+            terminal.builder_codes.config.address = "invalid builder".into();
+
+            // Inspect the task without polling: no exchange request is made.
+            let task = terminal.execute_cancel("BTC", 42);
+
+            assert_eq!(task.units(), 1);
+            assert!(terminal.pending_cancel_status_request.is_some());
+            assert_eq!(
+                terminal.order_status,
+                Some(("Cancelling order...".into(), false))
+            );
+        }
+    }
+
     fn one_shot_context() -> OneShotPlacementContext {
         OneShotPlacementContext {
             account_address: TEST_ACCOUNT.to_string(),

@@ -2,6 +2,19 @@ use super::ExchangeResponse;
 use serde_json::{Value, json};
 
 #[test]
+fn only_local_constructor_marks_a_rejection_as_preflight() {
+    let local = ExchangeResponse::local_rejection("Builder fee is not approved");
+    assert!(local.is_local_rejection());
+    assert!(local.clone().is_local_rejection());
+    let external: ExchangeResponse = serde_json::from_value(json!({
+        "status": "err", "response": "Builder fee is not approved", "local_rejection": true
+    }))
+    .expect("exchange rejection");
+    assert!(!external.is_local_rejection());
+    assert!(external.is_error());
+}
+
+#[test]
 fn deserialization_preserves_typed_fields_and_exact_fallback_bodies() {
     let statuses = vec![
         Value::Null,

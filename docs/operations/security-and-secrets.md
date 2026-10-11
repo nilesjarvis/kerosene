@@ -301,6 +301,16 @@ Use focused tests in:
 For any storage or signing change, inspect generated config output and ensure
 secret fields remain empty or encrypted.
 
+## Builder Wallet Approval
+
+Custom builder settings use a public address and explicit integer fee; address
+Debug/Message output remains redacted. Main-wallet approval uses an expiring
+loopback browser session with strict request validation and no third-party
+scripts. Main-wallet keys stay in the injected wallet, and signatures go from
+the browser directly to Hyperliquid. Local callbacks trigger an independent
+approval read and cannot activate trading by themselves. See
+[Custom Builder Codes](../builder-codes.md) for the signing and account boundaries.
+
 ## Proxy Credentials
 
 `api::proxy::ProxyUrl` wraps a zeroizing URL with redacted Debug output. Settings

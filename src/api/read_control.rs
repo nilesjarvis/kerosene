@@ -36,6 +36,7 @@ impl RequestCost {
             critical: matches!(
                 body["type"].as_str().unwrap_or(""),
                 "orderStatus"
+                    | "maxBuilderFee"
                     | "clearinghouseState"
                     | "spotClearinghouseState"
                     | "openOrders"

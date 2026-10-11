@@ -159,11 +159,22 @@ impl TradingTerminal {
             let header = self.view_chart_header(chart_id, instance, surface_id);
             let toolbar = self.view_chart_toolbar(chart_id, instance, surface_id);
             let quick_order_on_surface = self.chart_surface_has_quick_order(chart_id, surface_id);
-            let chart_canvas = crate::chart_screenshot::ScreenshotCanvas::new(
-                &instance.chart,
-                Self::chart_screenshot_canvas_id(surface_id),
-            )
-            .into();
+            let chart_canvas: Element<'_, Message> =
+                crate::chart_screenshot::ScreenshotCanvas::new(
+                    &instance.chart,
+                    Self::chart_screenshot_canvas_id(surface_id),
+                )
+                .into();
+            // Canvas requests carry click-time chart inputs; bind the global
+            // fee policy to the same rendered view before the event is queued.
+            let builder_code = self.builder_codes.config.clone();
+            let chart_canvas = chart_canvas.map(move |message| match message {
+                Message::SubmitHudOrder(mut request) => {
+                    request.builder_code = Some(builder_code.clone());
+                    Message::SubmitHudOrder(request)
+                }
+                message => message,
+            });
             let mut canvas_layers = vec![chart_canvas];
             if let Some(indicator_badges) = self.view_chart_indicator_badges(chart_id, instance) {
                 canvas_layers.push(indicator_badges);

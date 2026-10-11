@@ -43,6 +43,7 @@ fn advanced_snapshot() -> AdvancedOrderStartSnapshot {
         quantity_is_usd: true,
         reduce_only: true,
         market_universe: MarketUniverseConfig::hip3_dex("secret-dex"),
+        builder_code: Default::default(),
     }
 }
 
@@ -248,5 +249,53 @@ fn advanced_order_start_preflight_rejects_active_wallet_mismatch() {
                 .to_string(),
             true
         ))
+    );
+}
+
+#[test]
+fn builder_changes_invalidate_queued_advanced_starts() {
+    let mut terminal = TradingTerminal::boot().0;
+    let snapshot = terminal.advanced_order_start_snapshot();
+    let twap_snapshot = terminal.twap_order_start_snapshot();
+    terminal.builder_codes.config.enabled = true;
+
+    assert!(!terminal.advanced_order_start_snapshot_matches(&snapshot));
+    assert!(!terminal.twap_order_start_snapshot_matches(&twap_snapshot));
+    assert!(terminal.reject_stale_twap_order_start_snapshot(&twap_snapshot));
+
+    let snapshot = terminal.advanced_order_start_snapshot();
+    terminal.builder_codes.config.fee_tenths_bps = 5;
+    assert!(!terminal.advanced_order_start_snapshot_matches(&snapshot));
+    let snapshot = terminal.advanced_order_start_snapshot();
+    terminal.builder_codes.config.address = TEST_ACCOUNT.into();
+    assert!(!terminal.advanced_order_start_snapshot_matches(&snapshot));
+}
+
+#[test]
+fn builder_enabled_chase_is_blocked_before_starting_exchange_work() {
+    let mut terminal = TradingTerminal::boot().0;
+    connect_test_account(&mut terminal);
+    terminal.set_committed_agent_key_for_test("agent-key");
+    terminal.builder_codes.config.enabled = true;
+
+    assert!(
+        terminal
+            .advanced_order_start_context(AdvancedOrderKind::Chase)
+            .is_none()
+    );
+    assert!(!terminal.advanced_order_start_preflight_ready(AdvancedOrderKind::Chase));
+    assert!(terminal.chase_orders.is_empty());
+    assert!(
+        terminal
+            .order_status
+            .as_ref()
+            .is_some_and(|(message, error)| {
+                *error && message.contains("Chase is unavailable while builder routing is enabled")
+            })
+    );
+    assert!(
+        terminal
+            .advanced_order_start_context(AdvancedOrderKind::Twap)
+            .is_some()
     );
 }

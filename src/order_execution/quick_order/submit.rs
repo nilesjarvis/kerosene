@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::builder_codes::BuilderCodeConfig;
 use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::config::MarketUniverseConfig;
 use crate::message::Message;
@@ -23,6 +24,7 @@ pub(crate) struct QuickOrderSubmissionSnapshot {
     pub(crate) form: QuickOrderForm,
     pub(crate) reduce_only: bool,
     pub(crate) market_universe: MarketUniverseConfig,
+    pub(crate) builder_code: BuilderCodeConfig,
 }
 
 impl fmt::Debug for QuickOrderSubmissionSnapshot {
@@ -33,6 +35,7 @@ impl fmt::Debug for QuickOrderSubmissionSnapshot {
             .field("form", &self.form)
             .field("reduce_only", &self.reduce_only)
             .field("market_universe", &self.market_universe)
+            .field("builder_code", &self.builder_code)
             .finish()
     }
 }
@@ -54,6 +57,7 @@ impl TradingTerminal {
             form: form.clone(),
             reduce_only: self.order_reduce_only,
             market_universe: self.market_universe.clone(),
+            builder_code: self.builder_codes.config.clone(),
         }
     }
 
@@ -69,6 +73,7 @@ impl TradingTerminal {
             && instance.quick_order.as_ref() == Some(&snapshot.form)
             && self.order_reduce_only == snapshot.reduce_only
             && self.market_universe == snapshot.market_universe
+            && self.builder_codes.config == snapshot.builder_code
             && self.chart_surface_has_quick_order(chart_id, snapshot.surface_id)
     }
 

@@ -16,6 +16,9 @@ pub struct ExchangeResponse {
     pub status: String,
     pub response: Option<ExchangeResponseInner>,
     raw_response: Option<Value>,
+    // Local preflight failures may need to refresh optimistic client state,
+    // but can never require exchange order-status reconciliation.
+    local_rejection: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -56,6 +59,7 @@ impl<'de> Deserialize<'de> for ExchangeResponse {
             status: wire.status,
             response,
             raw_response,
+            local_rejection: false,
         })
     }
 }

@@ -52,7 +52,12 @@ pub(crate) fn classify_execution_result(
                 kind,
                 status,
                 is_error,
-                refresh_account: !response_is_error || response_may_have_committed_order,
+                // Placement admission invalidates spot balances before async
+                // preflight. Refresh those snapshots even when nothing was
+                // posted; never promote a local rejection to an unknown order.
+                refresh_account: response.is_local_rejection()
+                    || !response_is_error
+                    || response_may_have_committed_order,
             }
         }
         Err(error) => ExecutionOutcome {
@@ -68,7 +73,11 @@ pub(in crate::order_update) fn result_requires_account_refresh(
     result: &Result<ExchangeResponse, String>,
 ) -> bool {
     match result {
-        Ok(response) => !response.is_error() || response.has_potential_order_effect(),
+        Ok(response) => {
+            response.is_local_rejection()
+                || !response.is_error()
+                || response.has_potential_order_effect()
+        }
         // Signed exchange requests can fail locally after the exchange has
         // already accepted the action. Reconcile account state on transport,
         // response-body, or parse failures so basic order paths fail closed

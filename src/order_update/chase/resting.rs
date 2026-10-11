@@ -59,6 +59,14 @@ impl TradingTerminal {
             self.toast_order_status();
             return Task::none();
         };
+        if key.builder_configured() {
+            self.set_order_status(
+                "Chase is unavailable while builder routing is enabled; use a limit order or TWAP"
+                    .into(),
+                true,
+            );
+            return Task::none();
+        }
         if self.symbol_key_is_hidden(&coin) {
             self.set_order_status("Order ticker is hidden in Settings > Risk".into(), true);
             return Task::none();

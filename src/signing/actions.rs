@@ -1,5 +1,8 @@
 use super::model::ExchangeOrderKind;
-use wire::{CancelAction, CancelByCloidAction, ModifyAction, OrderAction, UpdateLeverageAction};
+use crate::builder_codes::BuilderFee;
+use wire::{
+    BuilderWire, CancelAction, CancelByCloidAction, ModifyAction, OrderAction, UpdateLeverageAction,
+};
 
 mod builders;
 mod wire;
@@ -34,6 +37,16 @@ pub(super) enum HyperliquidL1Action {
 }
 
 impl HyperliquidL1Action {
+    pub(super) fn with_builder(mut self, builder: Option<&BuilderFee>) -> Self {
+        if let Self::Order(action) = &mut self {
+            action.builder = builder.map(|builder| BuilderWire {
+                b: builder.address().to_string(),
+                f: builder.fee_tenths_bps(),
+            });
+        }
+        self
+    }
+
     #[cfg(test)]
     pub(super) fn order(
         asset: u32,

@@ -54,3 +54,5 @@ impl HyperliquidProxySettings {
         }
     }
 }
+mod builder;
+pub(crate) use builder::{BuilderApprovalRequest, BuilderCodeSettings};

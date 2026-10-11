@@ -32,6 +32,7 @@ impl TradingTerminal {
         self.clear_percentage_order_quantity();
         self.bump_account_data_revision();
         self.connected_address = None;
+        self.builder_codes.invalidate();
         self.account_data = None;
         self.account_data_address = None;
         self.pending_order_indicators.clear();

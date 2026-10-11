@@ -63,6 +63,12 @@ Related storage:
 
 It should not store raw active secret values.
 
+`builder_code` persists the optional global builder address, enable flag and
+integer fee in tenths of a basis point. Legacy configs default to disabled;
+invalid enabled values block new orders rather than dropping attribution.
+Approval cache, settings drafts and browser sessions are runtime-only. See
+[custom builder codes](../builder-codes.md) for the account and signing rules.
+
 Account profiles optionally persist `master_address` for existing subaccounts.
 Their `wallet_address` is the child address; missing/null parent metadata keeps
 legacy main-account behavior. Profile snapshots preserve this field, and secure

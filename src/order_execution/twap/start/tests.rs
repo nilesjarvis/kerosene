@@ -185,6 +185,29 @@ fn started_twap_or_panic(terminal: &TradingTerminal) -> &TwapOrder {
     }
 }
 
+#[test]
+fn twap_builder_routing_remains_captured_after_global_settings_change() {
+    let mut terminal = twap_ready_terminal();
+    terminal.builder_codes.config = crate::builder_codes::BuilderCodeConfig {
+        enabled: true,
+        address: "0x1111111111111111111111111111111111111111".into(),
+        fee_tenths_bps: 10,
+    };
+
+    let _task = terminal.start_twap(true);
+    terminal.builder_codes.config.enabled = false;
+    terminal.builder_codes.config.fee_tenths_bps = 50;
+
+    let twap = started_twap_or_panic(&terminal);
+    let (account, builder) = twap
+        .agent_key
+        .validate_builder_routing()
+        .expect("valid routing")
+        .expect("captured builder");
+    assert_eq!(account, TEST_ACCOUNT);
+    assert_eq!(builder.fee_tenths_bps(), 10);
+}
+
 fn parse_schedule_or_panic(duration_minutes: &str, slices: &str) -> TwapStartSchedule {
     match parse_twap_start_schedule(duration_minutes, slices) {
         Ok(schedule) => schedule,

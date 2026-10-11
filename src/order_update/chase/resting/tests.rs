@@ -102,6 +102,35 @@ fn terminal_with_open_order(order: OpenOrder) -> TradingTerminal {
 }
 
 #[test]
+fn builder_routing_blocks_chase_adoption_without_cancelling_the_order() {
+    let mut terminal = terminal_with_open_order(open_order(42));
+    terminal.builder_codes.config.enabled = true;
+
+    let task = terminal.handle_chase_resting_order("BTC".into(), 42);
+
+    assert_eq!(task.units(), 0);
+    assert!(terminal.chase_orders.is_empty());
+    assert!(terminal.pending_order_indicators.is_empty());
+    assert_eq!(
+        terminal
+            .account_data
+            .as_ref()
+            .expect("account")
+            .open_orders
+            .len(),
+        1
+    );
+    assert!(
+        terminal
+            .order_status
+            .as_ref()
+            .is_some_and(|(message, error)| {
+                *error && message.contains("Chase is unavailable while builder routing is enabled")
+            })
+    );
+}
+
+#[test]
 fn resting_chase_preserves_known_perp_reduce_only_metadata() {
     assert_eq!(
         chase_resting_reduce_only(MarketType::Perp, Some(true)),
