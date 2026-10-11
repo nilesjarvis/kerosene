@@ -43,7 +43,7 @@ pub(in crate::market_views::positioning_info) fn positioning_live_unrealized_pnl
 ) -> Option<f64> {
     let mark = positive_finite_value(live_mark?)?;
     if position.size.is_finite() && positive_finite_value(position.entry_price).is_some() {
-        Some(position.size * (mark - position.entry_price))
+        finite_value(position.size * (mark - position.entry_price))
     } else {
         None
     }

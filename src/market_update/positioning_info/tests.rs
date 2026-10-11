@@ -417,6 +417,36 @@ fn positioning_asset_ctx_accepts_current_hydromancer_generation() {
 }
 
 #[test]
+fn positioning_asset_ctx_partial_updates_keep_the_last_mark_and_timestamp() {
+    let mut terminal = positioning_asset_ctx_terminal();
+    let context = source_context(&terminal, None);
+    let _task = terminal.update_positioning_info_market(Message::PositioningInfoWsAssetCtxUpdate(
+        "HYPE".to_string(),
+        context,
+        asset_ctx("100"),
+    ));
+    let timestamp = terminal.positioning_infos[&1].asset_ctx_updated_at_ms;
+
+    let mut partial = asset_ctx("bad");
+    partial.mid_px = Some("101".to_string());
+    let _task = terminal.update_positioning_info_market(Message::PositioningInfoWsAssetCtxUpdate(
+        "HYPE".to_string(),
+        context,
+        partial,
+    ));
+
+    let instance = &terminal.positioning_infos[&1];
+    assert_eq!(instance.asset_ctx_updated_at_ms, timestamp);
+    assert_eq!(
+        instance
+            .asset_ctx
+            .as_ref()
+            .and_then(|ctx| ctx.mark_px.as_deref()),
+        Some("100")
+    );
+}
+
+#[test]
 fn positioning_asset_ctx_lag_clears_current_context_and_timestamp() {
     let mut terminal = positioning_asset_ctx_terminal();
     terminal.read_data_provider = ReadDataProvider::Hydromancer;

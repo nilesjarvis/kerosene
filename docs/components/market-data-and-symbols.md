@@ -534,6 +534,10 @@ Key modules:
 
 Positioning requests use request keys for dedupe and stale-response protection.
 Asset-context streams update live mark/mid metadata for matching panes.
+Once a mark is available, partial or invalid pushes retain that mark and its
+original freshness timestamp instead of temporarily switching to the mid price.
+Positions uPnL uses the live valuation only; a missing or expired price shows an
+unavailable value instead of reverting to the older HyperDash snapshot uPnL.
 
 The change-flow view composes the responsive canvas and trader-action overlay
 in `market_views/positioning_info/flow.rs`. Its `chart.rs` child owns prepared

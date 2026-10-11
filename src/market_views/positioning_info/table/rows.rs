@@ -47,15 +47,20 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
     let side = position_side_label(position.size);
     let side_color = position_side_color(position.size, theme);
     let notional = positioning_live_notional(position, live_mark).unwrap_or(position.notional_size);
-    let unrealized_pnl =
-        positioning_live_unrealized_pnl(position, live_mark).unwrap_or(position.unrealized_pnl);
-    let pnl_color = signed_value_color(unrealized_pnl, theme);
+    let unrealized_pnl = positioning_live_unrealized_pnl(position, live_mark);
+    let pnl_color = unrealized_pnl
+        .map(|pnl| signed_value_color(pnl, theme))
+        .unwrap_or(theme.extended_palette().background.weak.text);
     let funding_color = signed_value_color(position.funding_pnl, theme);
-    let pnl_text = if columns.compact_money {
-        format_signed_usd_compact(unrealized_pnl, denomination)
-    } else {
-        format_signed_usd(unrealized_pnl, denomination)
-    };
+    let pnl_text = unrealized_pnl
+        .map(|pnl| {
+            if columns.compact_money {
+                format_signed_usd_compact(pnl, denomination)
+            } else {
+                format_signed_usd(pnl, denomination)
+            }
+        })
+        .unwrap_or_else(|| "-".to_string());
     let funding_text = if columns.compact_money {
         format_signed_usd_compact(position.funding_pnl, denomination)
     } else {

@@ -1,5 +1,6 @@
 use crate::account::AssetContext;
 use crate::config;
+use crate::helpers::parse_positive_finite_number;
 use crate::hyperdash_api::{PerpDeltas, TickerPositions};
 
 use super::{
@@ -85,6 +86,36 @@ impl PositioningInfoInstance {
             last_fetch_ms: None,
             pending_key: None,
         }
+    }
+
+    /// Keep a known mark through partial pushes without renewing its freshness.
+    /// Switching to a mid price or an invalid context would change the valuation
+    /// basis between otherwise identical position rows.
+    pub(crate) fn update_asset_context(&mut self, ctx: AssetContext, now_ms: u64) {
+        let has_mark = ctx
+            .mark_px
+            .as_deref()
+            .and_then(parse_positive_finite_number)
+            .is_some();
+        if !has_mark {
+            let had_mark = self
+                .asset_ctx
+                .as_ref()
+                .and_then(|previous| previous.mark_px.as_deref())
+                .and_then(parse_positive_finite_number)
+                .is_some();
+            let has_mid = ctx
+                .mid_px
+                .as_deref()
+                .and_then(parse_positive_finite_number)
+                .is_some();
+            if had_mark || !has_mid {
+                return;
+            }
+        }
+
+        self.asset_ctx = Some(ctx);
+        self.asset_ctx_updated_at_ms = Some(now_ms);
     }
 
     pub(crate) fn has_active_filters(&self) -> bool {

@@ -8,6 +8,7 @@ mod change;
 mod columns;
 mod formatting;
 mod live;
+mod upnl;
 
 fn sample_position() -> TickerPositionEntry {
     TickerPositionEntry {

@@ -164,8 +164,7 @@ impl TradingTerminal {
                     .values_mut()
                     .filter(|instance| instance.symbol == symbol)
                 {
-                    instance.asset_ctx = Some(ctx.clone());
-                    instance.asset_ctx_updated_at_ms = Some(now_ms);
+                    instance.update_asset_context(ctx.clone(), now_ms);
                 }
                 Task::none()
             }
