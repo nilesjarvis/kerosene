@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -88,13 +88,13 @@ pub struct IncomeHourlyPayment {
 }
 
 /// Parsed portfolio history for all supported windows.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PortfolioHistory {
     pub buckets: HashMap<String, PortfolioBucket>,
 }
 
 /// A single portfolio history bucket (e.g. `day`, `perpWeek`).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PortfolioBucket {
     pub account_value_history: Vec<(u64, f64)>,
     pub pnl_history: Vec<(u64, f64)>,

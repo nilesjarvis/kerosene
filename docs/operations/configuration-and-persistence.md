@@ -211,6 +211,22 @@ restrictive on Unix where supported.
 Do not put journal cache payloads inside `KeroseneConfig`; they can be large and
 wallet-specific.
 
+## Combined Portfolio Cache
+
+Combined Portfolio stores per-wallet history snapshots in
+`cache/v1/combined_portfolio_v1/<wallet-hash>.json` beneath the platform Kerosene
+config directory. The versioned envelope contains history buckets and the last
+successful fetch timestamp. Wallet addresses are normalized and hashed for cache
+keys; labels, credentials, and addresses are not included in the payload.
+Snapshots use the shared ordered background writer, atomic replacement, and
+owner-only file permissions on Unix. Missing/corrupt entries do not prevent
+network loading. Tests and `--test` mode disable platform cache access.
+
+History stays outside `config.json`. On opening, the saved snapshot is shown
+while the complete server snapshot is fetched, because the portfolio endpoint
+has no incremental timestamp query. Removing a wallet removes its snapshot;
+clearing app configuration includes the API cache directory.
+
 ## Assistant Sessions
 
 Assistant chats are stored in a separate, schema-versioned

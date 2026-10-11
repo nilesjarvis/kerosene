@@ -952,6 +952,11 @@ pub(crate) enum Message {
     CombinedPortfolioAddWallet,
     CombinedPortfolioRemoveWallet(RedactedAddress),
     CombinedPortfolioRefresh,
+    CombinedPortfolioCacheLoaded(
+        RedactedAddress,
+        u64,
+        Option<crate::api_cache::portfolio::CachedPortfolioHistory>,
+    ),
     CombinedPortfolioLoaded(RedactedAddress, u64, RedactedPortfolioHistoryResult),
     CombinedPortfolioScopeChanged(PortfolioScope),
     CombinedPortfolioWindowChanged(PortfolioWindow),
@@ -1985,6 +1990,7 @@ mod tests {
             Message::CombinedPortfolioAddressChanged(ADDRESS.into()),
             Message::CombinedPortfolioLabelChanged(ADDRESS.into()),
             Message::CombinedPortfolioRemoveWallet(ADDRESS.into()),
+            Message::CombinedPortfolioCacheLoaded(ADDRESS.into(), 1, None),
             Message::CombinedPortfolioLoaded(
                 ADDRESS.into(),
                 1,

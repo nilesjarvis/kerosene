@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod candles;
+pub(crate) mod portfolio;
 mod storage;
 mod writer;
 

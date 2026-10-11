@@ -105,6 +105,9 @@ impl CombinedPortfolioState {
             .wallets
             .iter_mut()
             .find(|wallet| wallet.address == address)?;
+        if wallet.loading {
+            return None;
+        }
         self.next_request_id = self.next_request_id.saturating_add(1);
         wallet.request_id = self.next_request_id;
         wallet.loading = true;
@@ -117,9 +120,9 @@ impl CombinedPortfolioState {
         address: &str,
         request_id: u64,
     ) -> Option<&mut CombinedPortfolioWallet> {
-        self.wallets
-            .iter_mut()
-            .find(|wallet| wallet.address == address && wallet.request_id == request_id)
+        self.wallets.iter_mut().find(|wallet| {
+            wallet.address == address && wallet.request_id == request_id && wallet.loading
+        })
     }
 }
 

@@ -510,9 +510,29 @@ explicit unavailable state.
 
 Combined Portfolio is an auxiliary watch-only window for viewing several
 wallets as one portfolio. Its wallet membership, labels, open state, and window
-geometry are persisted independently from Wallet Tracker. Opening or refreshing
-the window requests the public portfolio-history endpoint for every member in
-parallel.
+geometry are persisted independently from Wallet Tracker. Portfolio history is
+cached separately per wallet under the versioned API cache directory. On the
+first open after restart, an asynchronous cache read restores each wallet's
+history and last successful fetch time before requesting fresh data. Cached
+values remain visible while syncing, and failed refreshes retain them as stale.
+Wallet rows show the age of the last successful sync.
+
+Opening (including reopening/restoring at startup) or refreshing the window
+revalidates every wallet with the public portfolio-history endpoint in parallel.
+An in-flight request for the same wallet is reused. Hyperliquid's
+[`portfolio` request](https://hyperliquid.gitbook.io/Hyperliquid-docs/for-developers/api/info-endpoint#query-a-users-portfolio)
+accepts no start/end timestamp, so the saved fetch time is freshness metadata,
+not an incremental cursor. A successful response replaces all cached buckets;
+appending only newer samples would miss revised samples and retain expired
+day/week/month windows. The API's sample timestamps are preserved without
+inventing observations through the local current time. Timeframe/scope switches
+reuse the loaded history; there is no periodic Combined Portfolio polling.
+
+`CombinedPortfolioCacheLoaded` and network responses use the same per-wallet
+request identity; removed/re-added wallets and completed requests reject stale
+results. Only accepted network snapshots are queued to the shared disk writer.
+Missing, corrupt, incompatible, or future-dated cache files fall back to a
+network fetch. Removing a wallet also queues removal of its cached history.
 
 The combined chart normalizes each wallet's selected cumulative PnL series to
 its own period baseline and aligns the series on their union of timestamps.

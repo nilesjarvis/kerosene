@@ -541,6 +541,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::CombinedPortfolioAddWallet
         | Message::CombinedPortfolioRemoveWallet(_)
         | Message::CombinedPortfolioRefresh
+        | Message::CombinedPortfolioCacheLoaded(_, _, _)
         | Message::CombinedPortfolioLoaded(_, _, _)
         | Message::CombinedPortfolioScopeChanged(_)
         | Message::CombinedPortfolioWindowChanged(_) => UpdateRoute::CombinedPortfolio,

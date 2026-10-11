@@ -187,6 +187,10 @@ fn journal_spaghetti_and_wallet_tracker_routes_stay_on_feature_modules() {
         UpdateRoute::CombinedPortfolio,
     );
     assert_route(
+        Message::CombinedPortfolioCacheLoaded("0xabc".into(), 1, None),
+        UpdateRoute::CombinedPortfolio,
+    );
+    assert_route(
         Message::CombinedPortfolioWindowChanged(crate::portfolio_state::PortfolioWindow::AllTime),
         UpdateRoute::CombinedPortfolio,
     );

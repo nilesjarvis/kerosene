@@ -66,7 +66,7 @@ impl TradingTerminal {
             let noun = if failed == 1 { "wallet" } else { "wallets" };
             content = content
                 .push(combined_portfolio_warning_bar(format!(
-                    "{failed} {noun} could not be refreshed. Showing the remaining portfolio data."
+                    "{failed} {noun} could not be refreshed. Showing the last available portfolio data."
                 )))
                 .push(rule::horizontal(1).style(journal_rule_style));
         }
@@ -253,6 +253,13 @@ impl TradingTerminal {
             .count();
         let status = if loading > 0 {
             format!("{loading} syncing")
+        } else if self
+            .combined_portfolio
+            .wallets
+            .iter()
+            .any(|wallet| wallet.error.is_some())
+        {
+            "Stale".to_string()
         } else if aggregate.loaded_wallets > 0 {
             "Current".to_string()
         } else {
@@ -466,6 +473,17 @@ impl TradingTerminal {
             metrics
         ]
         .spacing(8);
+        if let Some(fetched_at_ms) = wallet.last_updated_ms {
+            content = content.push(
+                text(format!(
+                    "Synced {} ago",
+                    crate::helpers::format_relative_time(fetched_at_ms, self.status_bar_now_ms),
+                ))
+                .size(9)
+                .font(crate::app_fonts::monospace_font())
+                .color(journal_dim(&theme)),
+            );
+        }
         if let Some(error) = wallet.error.as_deref() {
             content = content.push(
                 text(format!("Refresh failed: {error}"))

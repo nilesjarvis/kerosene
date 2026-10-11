@@ -1,4 +1,5 @@
 use crate::account_analytics::fetch_portfolio_history;
+use crate::api_cache::portfolio::{self as portfolio_cache, CachedPortfolioHistory};
 use crate::app_state::TradingTerminal;
 use crate::combined_portfolio::CombinedPortfolioWallet;
 use crate::helpers::redact_sensitive_response_text;
@@ -26,6 +27,9 @@ impl TradingTerminal {
                 self.remove_combined_portfolio_wallet(address.into_string())
             }
             Message::CombinedPortfolioRefresh => self.refresh_combined_portfolio(),
+            Message::CombinedPortfolioCacheLoaded(address, request_id, cached) => {
+                self.apply_combined_portfolio_cache(address.into_string(), request_id, cached)
+            }
             Message::CombinedPortfolioLoaded(address, request_id, result) => self
                 .apply_combined_portfolio_result(
                     address.into_string(),
@@ -130,6 +134,7 @@ impl TradingTerminal {
             .wallets
             .retain(|wallet| wallet.address != address);
         if self.combined_portfolio.wallets.len() != original_len {
+            let _ = portfolio_cache::remove(&address);
             self.persist_config();
         }
         Task::none()
@@ -153,6 +158,52 @@ impl TradingTerminal {
         let Some(request_id) = self.combined_portfolio.begin_wallet_refresh(&address) else {
             return Task::none();
         };
+        if self
+            .combined_portfolio
+            .wallets
+            .iter()
+            .any(|wallet| wallet.address == address && wallet.history.is_none())
+            && !self.config_clear_requested
+            && !self.config_cleared_this_session
+        {
+            return Task::perform(portfolio_cache::load(address.clone()), move |cached| {
+                Message::CombinedPortfolioCacheLoaded(
+                    address.clone().into(),
+                    request_id,
+                    cached.ok().flatten(),
+                )
+            });
+        }
+        Self::fetch_combined_portfolio_wallet(address, request_id)
+    }
+
+    fn apply_combined_portfolio_cache(
+        &mut self,
+        address: String,
+        request_id: u64,
+        cached: Option<CachedPortfolioHistory>,
+    ) -> Task<Message> {
+        let Some(wallet) = self
+            .combined_portfolio
+            .wallet_mut_for_result(&address, request_id)
+        else {
+            return Task::none();
+        };
+        if !self.config_clear_requested
+            && !self.config_cleared_this_session
+            && wallet.history.is_none()
+            && let Some(cached) = cached
+        {
+            wallet.history = Some(cached.history);
+            wallet.last_updated_ms = Some(cached.fetched_at_ms);
+        }
+        // Always revalidate on opening, including recently saved snapshots:
+        // fetched_at_ms is not a server cursor. `portfolio` takes no startTime,
+        // and rolling buckets plus historical corrections require replacement.
+        Self::fetch_combined_portfolio_wallet(address, request_id)
+    }
+
+    fn fetch_combined_portfolio_wallet(address: String, request_id: u64) -> Task<Message> {
         let requested_address = address.clone();
         Task::perform(fetch_portfolio_history(address), move |result| {
             Message::CombinedPortfolioLoaded(
@@ -178,10 +229,17 @@ impl TradingTerminal {
 
         wallet.loading = false;
         match result {
-            Ok(history) => {
+            Ok(history) if portfolio_cache::valid_history(&history) => {
+                let fetched_at_ms = Self::now_ms();
+                if !self.config_clear_requested && !self.config_cleared_this_session {
+                    let _ = portfolio_cache::save(&address, &history, fetched_at_ms);
+                }
                 wallet.history = Some(history);
                 wallet.error = None;
-                wallet.last_updated_ms = Some(Self::now_ms());
+                wallet.last_updated_ms = Some(fetched_at_ms);
+            }
+            Ok(_) => {
+                wallet.error = Some("Invalid portfolio history response".to_string());
             }
             Err(error) => {
                 wallet.error = Some(redact_sensitive_response_text(&error));
@@ -198,9 +256,9 @@ mod tests {
 
     const ADDRESS: &str = "0x1111111111111111111111111111111111111111";
 
-    #[test]
-    fn stale_wallet_result_does_not_replace_newer_request() {
-        let (mut terminal, _) = TradingTerminal::boot();
+    fn terminal_with_wallet() -> TradingTerminal {
+        let (mut terminal, _) =
+            TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default());
         terminal
             .combined_portfolio
             .wallets
@@ -213,8 +271,40 @@ mod tests {
                 error: None,
                 last_updated_ms: None,
             });
+        terminal
+    }
+
+    fn cached() -> CachedPortfolioHistory {
+        CachedPortfolioHistory {
+            fetched_at_ms: 3_000,
+            history: PortfolioHistory {
+                buckets: ["day", "allTime"]
+                    .into_iter()
+                    .map(|key| {
+                        (
+                            key.to_string(),
+                            PortfolioBucket {
+                                account_value_history: vec![(1_000, 100.0), (2_000, 120.0)],
+                                pnl_history: vec![(1_000, 10.0), (2_000, 30.0)],
+                                ..PortfolioBucket::default()
+                            },
+                        )
+                    })
+                    .collect(),
+            },
+        }
+    }
+
+    #[test]
+    fn stale_wallet_result_does_not_replace_newer_request() {
+        let mut terminal = terminal_with_wallet();
         let _ = terminal.refresh_combined_portfolio_wallet(ADDRESS.to_string());
         let stale_request_id = terminal.combined_portfolio.wallets[0].request_id;
+        let _ = terminal.apply_combined_portfolio_result(
+            ADDRESS.to_string(),
+            stale_request_id,
+            Err("offline".into()),
+        );
         let _ = terminal.refresh_combined_portfolio_wallet(ADDRESS.to_string());
 
         let _ = terminal.apply_combined_portfolio_result(
@@ -230,5 +320,147 @@ mod tests {
 
         assert!(terminal.combined_portfolio.wallets[0].history.is_none());
         assert!(terminal.combined_portfolio.wallets[0].loading);
+    }
+
+    #[test]
+    fn cached_history_is_visible_while_syncing_and_replaced_by_current_snapshot() {
+        let mut terminal = terminal_with_wallet();
+        let _ = terminal.refresh_combined_portfolio_wallet(ADDRESS.into());
+        let request_id = terminal.combined_portfolio.wallets[0].request_id;
+        let fetch =
+            terminal.apply_combined_portfolio_cache(ADDRESS.into(), request_id, Some(cached()));
+        assert!(
+            fetch.units() > 0,
+            "a disk hit must still revalidate over the network"
+        );
+        let wallet = &terminal.combined_portfolio.wallets[0];
+        assert!(wallet.loading);
+        assert_eq!(wallet.last_updated_ms, Some(3_000));
+        assert_eq!(
+            wallet.history.as_ref().expect("cached history").buckets["day"]
+                .pnl_history
+                .len(),
+            2
+        );
+
+        let mut fresh = cached().history;
+        fresh.buckets.get_mut("day").expect("day").pnl_history = vec![(2_000, 35.0), (4_000, 50.0)];
+        let _ = terminal.apply_combined_portfolio_result(ADDRESS.into(), request_id, Ok(fresh));
+        let wallet = &terminal.combined_portfolio.wallets[0];
+        assert!(!wallet.loading);
+        assert!(wallet.error.is_none());
+        assert!(
+            wallet
+                .last_updated_ms
+                .is_some_and(|timestamp| timestamp > 3_000)
+        );
+        assert_eq!(
+            wallet.history.as_ref().expect("fresh history").buckets["day"].pnl_history,
+            vec![(2_000, 35.0), (4_000, 50.0)]
+        );
+        assert_eq!(
+            terminal
+                .apply_combined_portfolio_cache(ADDRESS.into(), request_id, Some(cached()))
+                .units(),
+            0
+        );
+
+        let _ = terminal.refresh_combined_portfolio();
+        assert!(
+            terminal.combined_portfolio.wallets[0].loading,
+            "reopening must sync even a recent snapshot"
+        );
+        assert!(terminal.combined_portfolio.wallets[0].request_id > request_id);
+    }
+
+    #[test]
+    fn failed_or_empty_sync_keeps_cached_history_and_its_original_timestamp() {
+        for result in [Err("offline".to_string()), Ok(PortfolioHistory::default())] {
+            let mut terminal = terminal_with_wallet();
+            let _ = terminal.refresh_combined_portfolio_wallet(ADDRESS.into());
+            let request_id = terminal.combined_portfolio.wallets[0].request_id;
+            let _ =
+                terminal.apply_combined_portfolio_cache(ADDRESS.into(), request_id, Some(cached()));
+            let _ = terminal.apply_combined_portfolio_result(ADDRESS.into(), request_id, result);
+            let wallet = &terminal.combined_portfolio.wallets[0];
+            assert!(!wallet.loading);
+            assert!(wallet.error.is_some());
+            assert_eq!(wallet.last_updated_ms, Some(3_000));
+            assert_eq!(
+                wallet.history.as_ref().expect("cached history").buckets["day"].pnl_history,
+                cached().history.buckets["day"].pnl_history
+            );
+        }
+    }
+
+    #[test]
+    fn missing_cache_still_fetches_and_repeated_refreshes_are_coalesced() {
+        let mut terminal = terminal_with_wallet();
+        let _ = terminal.refresh_combined_portfolio_wallet(ADDRESS.into());
+        let request_id = terminal.combined_portfolio.wallets[0].request_id;
+        assert_eq!(
+            terminal
+                .refresh_combined_portfolio_wallet(ADDRESS.into())
+                .units(),
+            0
+        );
+        assert_eq!(
+            terminal.combined_portfolio.wallets[0].request_id,
+            request_id
+        );
+        assert!(
+            terminal
+                .apply_combined_portfolio_cache(ADDRESS.into(), request_id, None)
+                .units()
+                > 0
+        );
+        assert!(terminal.combined_portfolio.wallets[0].loading);
+        assert!(terminal.combined_portfolio.wallets[0].history.is_none());
+    }
+
+    #[test]
+    fn removed_and_readded_wallet_rejects_old_cache_and_network_results() {
+        let mut terminal = terminal_with_wallet();
+        let _ = terminal.refresh_combined_portfolio_wallet(ADDRESS.into());
+        let request_id = terminal.combined_portfolio.wallets[0].request_id;
+        let wallet = terminal.combined_portfolio.wallets[0].clone();
+        let _ = terminal.remove_combined_portfolio_wallet(ADDRESS.into());
+        assert_eq!(
+            terminal
+                .apply_combined_portfolio_cache(ADDRESS.into(), request_id, Some(cached()))
+                .units(),
+            0
+        );
+        terminal
+            .combined_portfolio
+            .wallets
+            .push(CombinedPortfolioWallet {
+                loading: false,
+                ..wallet
+            });
+        let _ = terminal.refresh_combined_portfolio_wallet(ADDRESS.into());
+        assert_eq!(
+            terminal
+                .apply_combined_portfolio_cache(ADDRESS.into(), request_id, Some(cached()))
+                .units(),
+            0
+        );
+        let _ = terminal.apply_combined_portfolio_result(
+            ADDRESS.into(),
+            request_id,
+            Ok(cached().history),
+        );
+        assert!(terminal.combined_portfolio.wallets[0].history.is_none());
+        assert!(terminal.combined_portfolio.wallets[0].loading);
+    }
+
+    #[test]
+    fn config_clear_does_not_restore_an_inflight_disk_snapshot() {
+        let mut terminal = terminal_with_wallet();
+        let _ = terminal.refresh_combined_portfolio_wallet(ADDRESS.into());
+        let request_id = terminal.combined_portfolio.wallets[0].request_id;
+        terminal.config_clear_requested = true;
+        let _ = terminal.apply_combined_portfolio_cache(ADDRESS.into(), request_id, Some(cached()));
+        assert!(terminal.combined_portfolio.wallets[0].history.is_none());
     }
 }
