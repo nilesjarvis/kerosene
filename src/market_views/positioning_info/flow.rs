@@ -21,7 +21,6 @@ impl TradingTerminal {
         now_ms: u64,
     ) -> Element<'_, Message> {
         let live_mark = positioning_live_mark(instance, now_ms);
-        let denomination = self.display_denomination_context();
         let data = match &instance.change_data {
             Some(data) => {
                 positioning_flow_data(&data.deltas, live_mark, POSITIONING_FLOW_ROW_LIMIT)
@@ -31,7 +30,7 @@ impl TradingTerminal {
 
         // Resolve trader labels against the address book before handing pure
         // data to the canvas program.
-        let mut chart = PositioningFlowChart::new(&data, &denomination);
+        let mut chart = PositioningFlowChart::new(&data);
         for (row, source) in chart.rows.iter_mut().zip(data.rows.iter()) {
             row.label = self.wallet_display(&source.address).primary;
             row.hover_key = format!("positioning-flow:{}:{}", instance.id, source.address);

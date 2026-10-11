@@ -1,5 +1,6 @@
 use super::change::positioning_previous_change_size;
 use super::live::positioning_live_change_usd;
+use crate::helpers::positive_finite_value;
 use crate::hyperdash_api::PerpDeltaEntry;
 
 // ---------------------------------------------------------------------------
@@ -35,27 +36,19 @@ impl PositioningFlowKind {
 #[derive(Debug, Clone)]
 pub(in crate::market_views::positioning_info) struct PositioningFlowRow {
     pub(in crate::market_views::positioning_info) address: String,
-    /// Signed change in size over the timeframe (+ = more long).
-    pub(in crate::market_views::positioning_info) delta_size: f64,
-    /// Signed current size (+ = long).
-    pub(in crate::market_views::positioning_info) current_size: f64,
-    /// Signed previous size, when derivable.
-    pub(in crate::market_views::positioning_info) previous_size: Option<f64>,
+    /// Signed previous exposure valued at the live mark, in USD, when derivable.
+    pub(in crate::market_views::positioning_info) previous_usd: Option<f64>,
     /// Signed change valued at the live mark, in USD (+ = more long).
-    pub(in crate::market_views::positioning_info) delta_usd: Option<f64>,
+    pub(in crate::market_views::positioning_info) delta_usd: f64,
     /// Signed current exposure valued at the live mark, in USD.
     pub(in crate::market_views::positioning_info) current_usd: Option<f64>,
     pub(in crate::market_views::positioning_info) kind: PositioningFlowKind,
 }
 
 impl PositioningFlowRow {
-    /// Magnitude used for bar scaling and sorting. Prefers USD; falls back to
-    /// raw size when no live mark is available so the view still ranks moves.
+    /// USD magnitude used for bar scaling and sorting.
     pub(in crate::market_views::positioning_info) fn magnitude(&self) -> f64 {
-        match self.delta_usd {
-            Some(usd) if usd.is_finite() => usd.abs(),
-            _ => self.delta_size.abs(),
-        }
+        self.delta_usd.abs()
     }
 }
 
@@ -65,12 +58,12 @@ pub(in crate::market_views::positioning_info) struct PositioningFlowData {
     /// Largest row magnitude, used to scale bars. Always finite and > 0 when
     /// there is at least one row with a measurable move.
     pub(in crate::market_views::positioning_info) max_magnitude: f64,
-    /// Aggregate long-ward delta in USD (or size units when no mark).
+    /// Aggregate long-ward delta in USD.
     pub(in crate::market_views::positioning_info) long_flow: f64,
-    /// Aggregate short-ward delta in USD (or size units when no mark).
+    /// Aggregate short-ward delta in USD.
     pub(in crate::market_views::positioning_info) short_flow: f64,
-    /// True when magnitudes are expressed in USD rather than raw size.
-    pub(in crate::market_views::positioning_info) usd_scaled: bool,
+    /// False when there is no valid live mark to value the changes in USD.
+    pub(in crate::market_views::positioning_info) usd_available: bool,
 }
 
 fn classify_flow(previous: Option<f64>, current: f64, delta: f64) -> PositioningFlowKind {
@@ -100,7 +93,7 @@ pub(in crate::market_views::positioning_info) fn positioning_flow_data(
     live_mark: Option<f64>,
     limit: usize,
 ) -> PositioningFlowData {
-    let usd_scaled = live_mark.is_some();
+    let live_mark = live_mark.and_then(positive_finite_value);
     let mut rows: Vec<PositioningFlowRow> = Vec::with_capacity(deltas.len());
     let mut long_flow = 0.0;
     let mut short_flow = 0.0;
@@ -110,25 +103,23 @@ pub(in crate::market_views::positioning_info) fn positioning_flow_data(
             continue;
         }
         let previous_size = positioning_previous_change_size(entry);
-        let delta_usd = positioning_live_change_usd(entry.delta, live_mark);
+        let Some(delta_usd) = positioning_live_change_usd(entry.delta, live_mark) else {
+            continue;
+        };
         let current_usd = positioning_live_change_usd(entry.current, live_mark);
+        let previous_usd =
+            previous_size.and_then(|value| positioning_live_change_usd(value, live_mark));
         let kind = classify_flow(previous_size, entry.current, entry.delta);
 
-        let flow_value = match delta_usd {
-            Some(usd) if usd.is_finite() => usd,
-            _ => entry.delta,
-        };
-        if flow_value > 0.0 {
-            long_flow += flow_value;
-        } else if flow_value < 0.0 {
-            short_flow += flow_value.abs();
+        if delta_usd > 0.0 {
+            long_flow += delta_usd;
+        } else if delta_usd < 0.0 {
+            short_flow += delta_usd.abs();
         }
 
         rows.push(PositioningFlowRow {
             address: entry.address.clone(),
-            delta_size: entry.delta,
-            current_size: entry.current,
-            previous_size,
+            previous_usd,
             delta_usd,
             current_usd,
             kind,
@@ -153,6 +144,6 @@ pub(in crate::market_views::positioning_info) fn positioning_flow_data(
         max_magnitude,
         long_flow,
         short_flow,
-        usd_scaled,
+        usd_available: live_mark.is_some(),
     }
 }

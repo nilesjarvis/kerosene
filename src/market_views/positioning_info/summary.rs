@@ -1,5 +1,6 @@
 use super::metrics::*;
 use crate::app_state::TradingTerminal;
+use crate::denomination::DisplayDenominationContext;
 use crate::helpers;
 use crate::helpers::format_decimal_with_commas;
 use crate::hyperdash_api::{PerpDeltas, TickerPositions};
@@ -64,18 +65,25 @@ impl TradingTerminal {
         let totals = positioning_change_side_delta_totals(&data.deltas);
         let long_delta_color = positioning_side_delta_color(totals.long_delta, true, theme);
         let short_delta_color = positioning_side_delta_color(totals.short_delta, false, theme);
+        let live_mark = positioning_live_mark(instance, self.status_bar_now_ms);
+        let denomination = DisplayDenominationContext::usd();
+        let format_delta = |value| {
+            positioning_live_change_usd(value, live_mark)
+                .map(|usd| format_signed_usd_compact(usd, &denomination))
+                .unwrap_or_else(|| "-".to_string())
+        };
 
         row![
             helpers::label_value("Timeframe", instance.change_timeframe.label().to_string()),
             helpers::label_value("Rows", rows_label),
             helpers::label_value_colored(
                 "\u{0394} Long",
-                format_signed_size(totals.long_delta, true),
+                format_delta(totals.long_delta),
                 long_delta_color
             ),
             helpers::label_value_colored(
                 "\u{0394} Short",
-                format_signed_size(totals.short_delta, true),
+                format_delta(totals.short_delta),
                 short_delta_color
             ),
             text(format!("API: {}", data.timeframe))

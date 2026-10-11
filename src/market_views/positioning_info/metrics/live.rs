@@ -1,4 +1,4 @@
-use crate::helpers::{parse_positive_finite_number, positive_finite_value};
+use crate::helpers::{finite_value, parse_positive_finite_number, positive_finite_value};
 use crate::hyperdash_api::TickerPositionEntry;
 use crate::positioning_state::PositioningInfoInstance;
 
@@ -13,7 +13,8 @@ pub(in crate::market_views::positioning_info) fn positioning_live_mark(
     now_ms: u64,
 ) -> Option<f64> {
     let updated_at = instance.asset_ctx_updated_at_ms?;
-    if now_ms.checked_sub(updated_at)? > POSITIONING_LIVE_MARK_MAX_AGE_MS {
+    // Websocket receipts can be newer than the last status-bar clock tick.
+    if now_ms.saturating_sub(updated_at) > POSITIONING_LIVE_MARK_MAX_AGE_MS {
         return None;
     }
     let ctx = instance.asset_ctx.as_ref()?;
@@ -53,9 +54,5 @@ pub(in crate::market_views::positioning_info) fn positioning_live_change_usd(
     live_mark: Option<f64>,
 ) -> Option<f64> {
     let mark = positive_finite_value(live_mark?)?;
-    if value.is_finite() {
-        Some(value * mark)
-    } else {
-        None
-    }
+    finite_value(value * mark)
 }

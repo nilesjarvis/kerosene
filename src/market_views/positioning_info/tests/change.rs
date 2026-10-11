@@ -6,6 +6,7 @@ fn positioning_change_usd_uses_live_mark() {
     assert_eq!(positioning_live_change_usd(2.5, None), None);
     assert_eq!(positioning_live_change_usd(2.5, Some(0.0)), None);
     assert_eq!(positioning_live_change_usd(f64::NAN, Some(20.0)), None);
+    assert_eq!(positioning_live_change_usd(f64::MAX, Some(20.0)), None);
 }
 
 #[test]
@@ -53,20 +54,37 @@ fn positioning_flow_ranks_by_largest_usd_magnitude() {
     assert_eq!(data.rows[0].address, "0xccc");
     assert_eq!(data.rows[1].address, "0xbbb");
     assert_eq!(data.rows[2].address, "0xaaa");
-    assert!(data.usd_scaled);
+    assert!(data.usd_available);
     assert_eq!(data.max_magnitude, 750.0);
 }
 
 #[test]
-fn positioning_flow_falls_back_to_size_without_live_mark() {
+fn positioning_flow_never_falls_back_to_size_without_a_valid_mark() {
     let rows = vec![delta("0xaaa", 100.0, -5.0), delta("0xbbb", 10.0, 50.0)];
 
-    let data = positioning_flow_data(&rows, None, 10);
+    for mark in [
+        None,
+        Some(0.0),
+        Some(-1.0),
+        Some(f64::NAN),
+        Some(f64::INFINITY),
+    ] {
+        let data = positioning_flow_data(&rows, mark, 10);
+        assert!(!data.usd_available);
+        assert!(data.rows.is_empty());
+        assert_eq!(data.max_magnitude, 0.0);
+        assert_eq!(data.long_flow, 0.0);
+        assert_eq!(data.short_flow, 0.0);
+    }
+}
 
-    assert!(!data.usd_scaled);
-    // Ranked by raw |delta|: 50 > 5.
-    assert_eq!(data.rows[0].address, "0xbbb");
-    assert_eq!(data.max_magnitude, 50.0);
+#[test]
+fn positioning_flow_skips_overflow_instead_of_using_raw_size() {
+    let rows = [delta("synthetic-trader", 1.0, f64::MAX)];
+    let data = positioning_flow_data(&rows, Some(10.0), 10);
+    assert!(data.rows.is_empty());
+    assert_eq!(data.long_flow, 0.0);
+    assert_eq!(data.short_flow, 0.0);
 }
 
 #[test]

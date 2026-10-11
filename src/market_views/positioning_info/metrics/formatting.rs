@@ -115,23 +115,6 @@ pub(in crate::market_views::positioning_info) fn format_price_number(
     }
 }
 
-pub(in crate::market_views::positioning_info) fn format_signed_size(
-    value: f64,
-    plus_for_positive: bool,
-) -> String {
-    if !value.is_finite() {
-        return "-".to_string();
-    }
-    let size = helpers::format_size(value.abs());
-    if value > 0.0 && plus_for_positive {
-        format!("+{size}")
-    } else if value < 0.0 {
-        format!("-{size}")
-    } else {
-        size
-    }
-}
-
 fn format_compact_display_amount(value: f64) -> String {
     if !value.is_finite() {
         return "-".to_string();

@@ -1,6 +1,6 @@
-use super::super::super::metrics::{format_signed_size, positioning_flow_data};
+use super::super::super::metrics::positioning_flow_data;
 use super::super::POSITIONING_FLOW_ROW_LIMIT;
-use super::formatting::compact_size;
+use super::formatting::signed_compact_usd;
 use super::*;
 use crate::hyperdash_api::PerpDeltaEntry;
 use iced::advanced::graphics::geometry::Renderer as _;
@@ -23,24 +23,24 @@ fn chart(mark: Option<f64>, empty: bool) -> PositioningFlowChart {
             .collect()
     };
     let data = positioning_flow_data(&deltas, mark, POSITIONING_FLOW_ROW_LIMIT);
-    PositioningFlowChart::new(&data, &DisplayDenominationContext::usd())
+    PositioningFlowChart::new(&data)
 }
 
 #[test]
-fn flow_labels_preserve_signs_rounding_and_units() {
+fn flow_labels_and_tooltips_only_show_usd() {
     for (value, expected) in [
         (f64::NAN, "-"),
         (f64::INFINITY, "-"),
         (f64::NEG_INFINITY, "-"),
-        (-0.0, "0.0000"),
-        (0.00001, "+0.0000"),
-        (-0.00001, "-0.0000"),
-        (1.25, "+1.25"),
-        (-125.0, "-125.0"),
-        (10_000.0, "+10.0K"),
-        (1_000_000.0, "+1.0M"),
+        (-0.0, "$0"),
+        (0.00001, "+$0"),
+        (-0.00001, "-$0"),
+        (1.25, "+$1.25"),
+        (-125.0, "-$125"),
+        (10_000.0, "+$10k"),
+        (1_000_000.0, "+$1m"),
     ] {
-        assert_eq!(format_signed_size(value, true), expected);
+        assert_eq!(signed_compact_usd(value), expected);
     }
     for (value, expected) in [
         (0.0, "0"),
@@ -53,8 +53,8 @@ fn flow_labels_preserve_signs_rounding_and_units() {
         (1_000_000.0, "1m"),
         (1_000_000_000.0, "1b"),
     ] {
-        assert_eq!(compact_size(value), expected);
-        assert_eq!(compact_size(-value), expected);
+        assert_eq!(compact_usd(value), format!("${expected}"));
+        assert_eq!(compact_usd(-value), format!("${expected}"));
     }
     let usd = chart(Some(10.0), false);
     assert_eq!(usd.content_height(), 112.0);
@@ -64,12 +64,44 @@ fn flow_labels_preserve_signs_rounding_and_units() {
     );
     assert_eq!(usd.rows[0].value_text, "-$500");
     assert_eq!(usd.rows[0].tooltip[0], ("Kind".into(), "Cut".into()));
-    assert_eq!(usd.rows[0].tooltip[1], ("Prev".into(), "+60.00".into()));
-    assert_eq!(usd.rows[0].tooltip.len(), 6);
-    let raw = chart(None, false);
-    assert_eq!(raw.net_label, "NET +5");
-    assert_eq!(raw.rows[0].value_text, "-50");
-    assert_eq!(raw.rows[0].tooltip.len(), 4);
+    assert_eq!(usd.rows[0].tooltip[1], ("Prev".into(), "+$600.00".into()));
+    assert_eq!(usd.rows[0].tooltip[2], ("Now".into(), "+$100.00".into()));
+    assert_eq!(usd.rows[0].tooltip[3], ("Change".into(), "-$500.00".into()));
+    assert_eq!(usd.rows[0].tooltip.len(), 4);
+}
+
+#[test]
+fn flow_waits_for_a_price_instead_of_showing_coin_units() {
+    for mark in [
+        None,
+        Some(0.0),
+        Some(f64::NAN),
+        Some(10.0),
+        None,
+        Some(20.0),
+    ] {
+        let chart = chart(mark, false);
+        if mark.is_some_and(|value| value.is_finite() && value > 0.0) {
+            assert!(chart.long_label.starts_with('$'));
+            assert!(chart.short_label.starts_with('$'));
+            assert!(chart.net_label.contains('$'));
+            for row in &chart.rows {
+                assert!(row.value_text.contains('$'));
+                assert!(
+                    row.tooltip
+                        .iter()
+                        .skip(1)
+                        .all(|(_, value)| value.contains('$'))
+                );
+            }
+        } else {
+            assert!(chart.rows.is_empty());
+            assert_eq!(chart.long_label, "-");
+            assert_eq!(chart.short_label, "-");
+            assert_eq!(chart.net_label, "NET -");
+            assert_eq!(chart.empty_text, "Waiting for live price");
+        }
+    }
 }
 
 #[test]
@@ -145,8 +177,8 @@ async fn flow_canvas_renders_responsive_units_empty_and_hover_states() {
             let bounds = Rectangle::with_size(Size::new(width as f32, height as f32));
             for (case, mark, empty) in [
                 ("usd", Some(10.0), false),
-                ("size", None, false),
-                ("empty", None, true),
+                ("waiting", None, false),
+                ("empty", Some(10.0), true),
             ] {
                 for (hover, progress, actions) in [
                     ("none", 0.0, false),

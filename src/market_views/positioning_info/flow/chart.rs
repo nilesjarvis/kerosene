@@ -1,10 +1,9 @@
 use super::super::metrics::{PositioningFlowData, PositioningFlowKind};
-use crate::denomination::DisplayDenominationContext;
 use crate::helpers::ease_out_cubic;
 use crate::message::Message;
 
 use drawing::{FlowLayout, axis_color, draw_tooltip};
-use formatting::{build_chart_row, compact_size, compact_usd};
+use formatting::{build_chart_row, compact_usd};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::canvas::{self, Frame, Path, Stroke, Text};
 use iced::{Point, Rectangle, Renderer, Theme, mouse, time};
@@ -122,43 +121,28 @@ pub(in crate::market_views::positioning_info) struct PositioningFlowChart {
 }
 
 impl PositioningFlowChart {
-    pub(in crate::market_views::positioning_info) fn new(
-        data: &PositioningFlowData,
-        denomination: &DisplayDenominationContext,
-    ) -> Self {
-        let rows = data
-            .rows
-            .iter()
-            .map(|row| build_chart_row(row, data.usd_scaled, denomination))
-            .collect();
+    pub(in crate::market_views::positioning_info) fn new(data: &PositioningFlowData) -> Self {
+        let rows = data.rows.iter().map(build_chart_row).collect();
 
         let net = data.long_flow - data.short_flow;
-        let (long_label, short_label, net_label) = if data.usd_scaled {
+        let (long_label, short_label, net_label) = if data.usd_available {
             (
-                compact_usd(data.long_flow, denomination),
-                compact_usd(data.short_flow, denomination),
+                compact_usd(data.long_flow),
+                compact_usd(data.short_flow),
                 format!(
                     "{} {}",
                     if net >= 0.0 { "NET +" } else { "NET -" },
-                    compact_usd(net.abs(), denomination)
+                    compact_usd(net.abs())
                 ),
             )
         } else {
-            (
-                compact_size(data.long_flow),
-                compact_size(data.short_flow),
-                format!(
-                    "NET {}{}",
-                    if net >= 0.0 { "+" } else { "-" },
-                    compact_size(net.abs())
-                ),
-            )
+            ("-".to_string(), "-".to_string(), "NET -".to_string())
         };
 
-        let empty_text = if data.usd_scaled {
+        let empty_text = if data.usd_available {
             "No measurable position changes".to_string()
         } else {
-            "Awaiting live mark for USD scaling".to_string()
+            "Waiting for live price".to_string()
         };
 
         Self {

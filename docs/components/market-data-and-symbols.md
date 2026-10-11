@@ -538,10 +538,13 @@ Asset-context streams update live mark/mid metadata for matching panes.
 The change-flow view composes the responsive canvas and trader-action overlay
 in `market_views/positioning_info/flow.rs`. Its `chart.rs` child owns prepared
 rows and hover animation; `chart/drawing.rs` holds layout and painting, and
-`chart/formatting.rs` prepares labels and tooltip values. Flow size labels reuse
-the positioning signed-size helper while retaining their own compact-money
-precision. Table cells consume formatted strings, and symbol controls borrow
-display text while keeping owned selection messages.
+`chart/formatting.rs` prepares labels and tooltip values. The Change view uses
+USD values throughout the chart, summary, and tooltips, regardless of the global
+display denomination. Without a valid fresh mark, the view waits for a price
+instead of falling back to coin units. Fresh websocket receipts newer than the
+cached view clock remain usable until that clock catches up. Table cells consume
+formatted strings, and symbol controls borrow display text while keeping owned
+selection messages.
 
 `PositioningInfoInstance::from_config` restores saved filters and normalizes
 removed sort options. Startup and layout loading share
