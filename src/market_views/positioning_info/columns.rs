@@ -1,3 +1,5 @@
+use super::{POSITIONING_PAGE_PADDING, POSITIONING_SCROLLBAR_SPACING, POSITIONING_SCROLLBAR_WIDTH};
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PositioningInfoColumns {
     pub(super) trader_width: f32,
@@ -17,8 +19,6 @@ pub(super) struct PositioningInfoColumns {
     pub(super) compact_money: bool,
 }
 
-const POSITIONING_TABLE_CONTENT_PADDING: f32 = 20.0;
-const POSITIONING_TABLE_SCROLLBAR_RESERVE: f32 = 14.0;
 pub(super) const POSITIONING_TABLE_CELL_PADDING: f32 = 16.0;
 pub(super) const POSITIONING_TABLE_COLUMN_SPACING: f32 = 6.0;
 pub(super) const POSITIONING_TRADER_MIN_WIDTH: f32 = 124.0;
@@ -104,7 +104,10 @@ impl PositioningInfoColumns {
 
     pub(super) fn available_content_width(width: f32) -> f32 {
         if width.is_finite() {
-            (width - POSITIONING_TABLE_CONTENT_PADDING - POSITIONING_TABLE_SCROLLBAR_RESERVE)
+            (width
+                - 2.0 * POSITIONING_PAGE_PADDING
+                - POSITIONING_SCROLLBAR_WIDTH
+                - POSITIONING_SCROLLBAR_SPACING)
                 .max(0.0)
         } else {
             0.0

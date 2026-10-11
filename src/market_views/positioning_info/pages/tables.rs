@@ -8,7 +8,7 @@ use super::super::metrics::{positioning_live_mark, positioning_live_notional};
 use super::super::table::{
     PositioningRowContext, positioning_position_row, positioning_table_header,
 };
-use iced::widget::{Column, container, rule, scrollable, text};
+use iced::widget::{Column, container, rule, text};
 use iced::{Element, Fill, Theme};
 
 // ---------------------------------------------------------------------------
@@ -73,6 +73,6 @@ impl TradingTerminal {
             }
         }
 
-        scrollable(rows).width(Fill).height(Fill).into()
+        rows.width(Fill).into()
     }
 }

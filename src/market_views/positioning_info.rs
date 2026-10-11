@@ -13,6 +13,10 @@ mod pages;
 mod summary;
 mod table;
 
+const POSITIONING_PAGE_PADDING: f32 = 10.0;
+const POSITIONING_SCROLLBAR_WIDTH: f32 = 6.0;
+const POSITIONING_SCROLLBAR_SPACING: f32 = 8.0;
+
 #[cfg(test)]
 use crate::positioning_state::PositioningInfoInstance;
 #[cfg(test)]

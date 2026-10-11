@@ -9,7 +9,7 @@ use crate::positioning_state::{
 };
 
 use iced::widget::{column, row, text};
-use iced::{Alignment, Element, Theme};
+use iced::{Alignment, Color, Element, Fill, Theme};
 
 // ---------------------------------------------------------------------------
 // Positioning Information Summaries
@@ -19,8 +19,6 @@ impl TradingTerminal {
     pub(super) fn view_positioning_info_summary(
         &self,
         data: &TickerPositions,
-        instance: &PositioningInfoInstance,
-        now_ms: u64,
         theme: &Theme,
     ) -> Element<'static, Message> {
         let net_notional = data.total_long_notional - data.total_short_notional;
@@ -31,43 +29,23 @@ impl TradingTerminal {
         } else {
             data.positions.len().to_string()
         };
-        let updated = format_positioning_timestamp(&data.timestamp);
-        let last_fetch = instance
-            .last_fetch_ms
-            .map(|last| format!("{} ago", helpers::format_relative_time(last, now_ms)))
-            .unwrap_or_else(|| "-".to_string());
-
-        column![
-            row![
-                helpers::label_value(
-                    "Long",
-                    format_usd_number(data.total_long_notional, &denomination)
-                ),
-                helpers::label_value(
-                    "Short",
-                    format_usd_number(data.total_short_notional, &denomination)
-                ),
-                helpers::label_value_colored(
-                    "Net",
-                    format_signed_usd(net_notional, &denomination),
-                    net_color
-                ),
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center),
-            row![
-                helpers::label_value(
-                    "Traders",
-                    format_decimal_with_commas(data.total_count as f64, 0),
-                ),
-                helpers::label_value("Rows", rows_label),
-                helpers::label_value("Updated", updated),
-                helpers::label_value("Fetched", last_fetch),
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center),
+        row![
+            view_positioning_summary_metric(
+                "Net",
+                format_signed_usd_compact(net_notional, &denomination),
+                net_color,
+                theme,
+            ),
+            view_positioning_summary_metric(
+                "Traders",
+                format_decimal_with_commas(data.total_count as f64, 0),
+                theme.palette().text,
+                theme,
+            ),
+            view_positioning_summary_metric("Rows", rows_label, theme.palette().text, theme),
         ]
-        .spacing(4)
+        .spacing(16)
+        .width(Fill)
         .into()
     }
 
@@ -75,13 +53,8 @@ impl TradingTerminal {
         &self,
         data: &PerpDeltas,
         instance: &PositioningInfoInstance,
-        now_ms: u64,
         theme: &Theme,
     ) -> Element<'static, Message> {
-        let last_fetch = instance
-            .change_last_fetch_ms
-            .map(|last| format!("{} ago", helpers::format_relative_time(last, now_ms)))
-            .unwrap_or_else(|| "-".to_string());
         let shown = data.deltas.len().min(POSITIONING_CHANGE_ROW_LIMIT);
         let rows_label = if shown < data.deltas.len() {
             format!("Showing {shown} of {}", data.deltas.len())
@@ -105,13 +78,34 @@ impl TradingTerminal {
                 format_signed_size(totals.short_delta, true),
                 short_delta_color
             ),
-            helpers::label_value("Fetched", last_fetch),
             text(format!("API: {}", data.timeframe))
                 .size(10)
                 .color(theme.extended_palette().background.weak.text),
         ]
         .spacing(12)
         .align_y(Alignment::Center)
+        .wrap()
         .into()
     }
+}
+
+fn view_positioning_summary_metric(
+    label: &'static str,
+    value: String,
+    value_color: Color,
+    theme: &Theme,
+) -> Element<'static, Message> {
+    column![
+        text(label)
+            .size(10)
+            .color(theme.extended_palette().background.weak.text),
+        text(value)
+            .size(12)
+            .font(crate::app_fonts::monospace_font())
+            .color(value_color)
+            .width(Fill),
+    ]
+    .spacing(4)
+    .width(Fill)
+    .into()
 }

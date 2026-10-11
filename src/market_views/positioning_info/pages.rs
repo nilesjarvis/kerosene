@@ -1,3 +1,4 @@
+use super::{POSITIONING_PAGE_PADDING, POSITIONING_SCROLLBAR_SPACING, POSITIONING_SCROLLBAR_WIDTH};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::positioning_state::PositioningInfoInstance;
@@ -41,7 +42,7 @@ impl TradingTerminal {
         if let Some(data) = &instance.data {
             content = content
                 .push(rule::horizontal(1))
-                .push(self.view_positioning_info_summary(data, instance, now_ms, theme))
+                .push(self.view_positioning_info_summary(data, theme))
                 .push(rule::horizontal(1))
                 .push(self.view_positioning_info_table(
                     data,
@@ -77,11 +78,7 @@ impl TradingTerminal {
                 .push(container(status).width(Fill).height(Fill).center(Fill));
         }
 
-        container(scrollable(content))
-            .width(Fill)
-            .height(Fill)
-            .padding(10)
-            .into()
+        view_positioning_page_scroll(content)
     }
 
     pub(super) fn view_positioning_info_change_page<'a>(
@@ -112,7 +109,7 @@ impl TradingTerminal {
         if let Some(data) = &instance.change_data {
             content = content
                 .push(rule::horizontal(1))
-                .push(self.view_positioning_info_change_summary(data, instance, now_ms, theme))
+                .push(self.view_positioning_info_change_summary(data, instance, theme))
                 .push(rule::horizontal(1))
                 .push(self.view_positioning_info_flow(instance, now_ms));
         } else {
@@ -142,10 +139,26 @@ impl TradingTerminal {
                 .push(container(status).width(Fill).height(Fill).center(Fill));
         }
 
-        container(scrollable(content))
-            .width(Fill)
-            .height(Fill)
-            .padding(10)
-            .into()
+        view_positioning_page_scroll(content)
     }
+}
+
+fn view_positioning_page_scroll<'a>(
+    content: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    container(
+        scrollable(content)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(POSITIONING_SCROLLBAR_WIDTH)
+                    .scroller_width(POSITIONING_SCROLLBAR_WIDTH),
+            ))
+            .spacing(POSITIONING_SCROLLBAR_SPACING)
+            .width(Fill)
+            .height(Fill),
+    )
+    .width(Fill)
+    .height(Fill)
+    .padding(POSITIONING_PAGE_PADDING)
+    .into()
 }

@@ -1,3 +1,4 @@
+use super::super::metrics::format_positioning_timestamp;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
@@ -143,7 +144,37 @@ impl TradingTerminal {
             tooltip::Position::Top,
         );
 
-        row![symbol_row.width(Fill), refresh]
+        let fetched = last_fetch_ms
+            .map(|last| {
+                format!(
+                    "Fetched {} ago",
+                    helpers::format_relative_time(last, now_ms)
+                )
+            })
+            .unwrap_or_else(|| "Not fetched".to_string());
+        let fetched = text(fetched).size(10).color(muted.scale_alpha(0.7));
+        let fetched: Element<'_, Message> = if instance.page == PositioningInfoPage::Positions
+            && let Some(data) = &instance.data
+        {
+            tooltip(
+                fetched,
+                container(
+                    text(format!(
+                        "Data updated {}",
+                        format_positioning_timestamp(&data.timestamp)
+                    ))
+                    .size(10),
+                )
+                .padding([4, 8])
+                .style(container::rounded_box),
+                tooltip::Position::Top,
+            )
+            .into()
+        } else {
+            fetched.into()
+        };
+
+        row![symbol_row.width(Fill), fetched, refresh]
             .spacing(8)
             .align_y(Alignment::Center)
             .into()
