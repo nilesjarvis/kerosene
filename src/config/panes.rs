@@ -2,6 +2,8 @@ mod chart;
 mod order_book;
 mod positioning;
 mod session_data;
+mod trade_feed;
+pub use trade_feed::TradeFeedConfig;
 mod spaghetti;
 mod x_feed;
 

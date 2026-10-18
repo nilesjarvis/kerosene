@@ -18,6 +18,7 @@ pub(super) enum UpdateRoute {
     CombinedPortfolio,
     Console,
     Feed,
+    TradeFeed,
     Hyperdash,
     Journal,
     Layout,
@@ -38,6 +39,11 @@ pub(super) enum UpdateRoute {
 
 pub(super) fn message_route(message: &Message) -> UpdateRoute {
     match message {
+        Message::AddTradeFeedPane
+        | Message::TradeFeedTogglePicker(_)
+        | Message::TradeFeedSearchChanged(_, _)
+        | Message::TradeFeedSetMode(_, _)
+        | Message::TradeFeedStream(_, _, _, _) => UpdateRoute::TradeFeed,
         Message::OpenConsoleWindow
         | Message::ConsoleTick
         | Message::ConsoleTogglePause

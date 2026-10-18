@@ -20,6 +20,7 @@ pub(crate) enum PaneKind {
     CompactWalletTracker(CompactWalletTrackerId),
     PositioningInfo(PositioningInfoId),
     SessionData(SessionDataId),
+    TradeFeed(crate::trade_feed_state::TradeFeedId),
     XFeed(XFeedId),
 
     Portfolio,

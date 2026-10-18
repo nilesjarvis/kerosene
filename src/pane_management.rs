@@ -21,6 +21,7 @@ pub(crate) enum AddWidgetKind {
     ComparisonChart,
     PairRatioChart,
     SessionData,
+    TradeFeed,
     PositionsHistory,
     Portfolio,
     Income,
@@ -49,6 +50,7 @@ impl AddWidgetKind {
             Self::ComparisonChart => "Comparison Chart",
             Self::PairRatioChart => "Pair Ratio",
             Self::SessionData => "Session Data",
+            Self::TradeFeed => "Trade Feed",
             Self::PositionsHistory => "Positions / History",
             Self::Portfolio => "Portfolio",
             Self::Income => "Income",
@@ -184,6 +186,7 @@ impl TradingTerminal {
                     | AddWidgetKind::ComparisonChart
                     | AddWidgetKind::PairRatioChart
                     | AddWidgetKind::SessionData
+                    | AddWidgetKind::TradeFeed
                     | AddWidgetKind::XFeed
                     | AddWidgetKind::OrderBook
                     | AddWidgetKind::CompactWalletTracker

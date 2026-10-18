@@ -144,6 +144,7 @@ pub(super) fn add_widget_message(
         AddWidgetKind::ComparisonChart => Message::AddComparisonChart,
         AddWidgetKind::PairRatioChart => Message::AddPairRatioChart,
         AddWidgetKind::SessionData => Message::AddSessionDataPane,
+        AddWidgetKind::TradeFeed => Message::AddTradeFeedPane,
         AddWidgetKind::PositionsHistory => Message::AddPositionsHistoryPane,
         AddWidgetKind::Portfolio => Message::AddPortfolioPane,
         AddWidgetKind::Income => Message::AddIncomePane,

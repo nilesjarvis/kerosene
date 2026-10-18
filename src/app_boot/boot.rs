@@ -150,6 +150,7 @@ impl TradingTerminal {
         state.boot_order_book_instances(&cfg, &muted_tickers);
         state.boot_positioning_info_instances(&cfg, &muted_tickers);
         state.boot_session_data_instances(&cfg, &muted_tickers);
+        state.restore_trade_feeds(&cfg.trade_feeds);
         let book_task = state.boot_order_book_tasks();
         let positioning_task = state.boot_positioning_info_tasks();
 

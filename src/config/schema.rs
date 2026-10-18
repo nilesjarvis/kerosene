@@ -317,6 +317,8 @@ pub struct KeroseneConfig {
     #[serde(default)]
     pub session_data: Vec<SessionDataConfig>,
     #[serde(default)]
+    pub trade_feeds: Vec<super::TradeFeedConfig>,
+    #[serde(default)]
     pub x_feeds: Vec<XFeedConfig>,
 
     /// Whether the favourites ticker tape is visible below the account bar.

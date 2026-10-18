@@ -11,6 +11,7 @@ pub fn pane_title(kind: &PaneKind) -> String {
             format!("Chart #{id}")
         }
         PaneKind::OrderBook(_) => "Order Book".to_string(),
+        PaneKind::TradeFeed(_) => "Trade Feed".to_string(),
         PaneKind::Watchlist => "Symbol Search".to_string(),
         PaneKind::Portfolio => "Portfolio".to_string(),
         PaneKind::Income => "Income".to_string(),

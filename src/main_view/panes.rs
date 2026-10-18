@@ -24,6 +24,7 @@ impl TradingTerminal {
             PaneKind::CompactWalletTracker(id) => self.view_compact_wallet_tracker(*id),
             PaneKind::PositioningInfo(id) => self.view_positioning_info(*id),
             PaneKind::SessionData(id) => self.view_session_data(*id),
+            PaneKind::TradeFeed(id) => self.view_trade_feed(*id),
             PaneKind::XFeed(id) => self.view_x_feed(*id),
             PaneKind::Watchlist => self.view_watchlist(),
             PaneKind::Portfolio => self.view_portfolio(),

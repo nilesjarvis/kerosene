@@ -30,6 +30,7 @@ pub use hydromancer::{
     ws_hydromancer_liquidations, ws_hydromancer_spaghetti_candle_stream,
     ws_hydromancer_tracked_trades,
 };
+pub(crate) use market_streams::ws_trade_feed;
 pub use market_streams::{
     KeyedAssetContextStreamEvent, KeyedBookStreamEvent, KeyedCandleStreamEvent,
     SpaghettiCandleStreamEvent, SymbolAssetContextStreamEvent, ws_asset_ctx_stream_keyed,

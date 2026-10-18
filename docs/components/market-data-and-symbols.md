@@ -7,6 +7,39 @@ HYPE-specific informational panes.
 It bridges REST snapshots, websocket streams, user preferences, hidden-symbol
 risk filters, and pure iced views.
 
+## Trade Feed
+
+The **Trade Feed** widget is available under Widgets > Feeds and in Alfred.
+Click its asset name to search and pin a market, or choose **Follow active** to
+track the terminal's active asset, including changes made by clicking charts.
+Each pane has independent selection settings and works in Canvas workspaces.
+
+The compact tape shows UTC time, exact execution price, and base size; wider
+panes also show value in the market's quote currency. Buy executions use the
+theme's success color and sells use its danger color. Background intensity grows
+with execution notional relative to the largest of the 500 retained prints.
+Only rows that fit the pane are rendered, newest first.
+
+`trade_feed_state.rs`, `trade_feed_update.rs`, and `trade_feed_views.rs` own the
+model, lifecycle, messages, and view. `subscription_state/trade_feed.rs` uses the
+shared native Hyperliquid websocket manager's per-coin `trades` subscriptions,
+independently of the optional read provider. No integration key is required.
+`ws/market_streams/trades.rs` validates and batches prints at 50ms intervals
+(flushing early at 512 prints), without replacing intermediate executions.
+Participant addresses and transaction hashes are not retained in widget state.
+
+The tape deduplicates by `(time, tid)` within its selected coin and bounds its
+seen-key history to 4096 entries. Asset and layout changes increment subscription
+generations and clear old rows; late messages from retired streams are ignored.
+Risk-hidden assets have no trade subscription. Native disconnects and consumer
+lag mark a history gap; reconnect snapshots are not treated as complete backfill.
+
+`PaneKind::TradeFeed(TradeFeedId)` persists through `PaneKindConfig::TradeFeed`.
+The defaulted `trade_feeds` list in config and saved layouts stores only IDs and
+`Active`/`Fixed(symbol)` modes, never tape history. Older layouts need no migration;
+missing per-pane settings default to following the active asset. Duplicate IDs
+are repaired with the other multi-instance widget IDs on load/import.
+
 ## Component Map
 
 | Component | Key files | Responsibility |

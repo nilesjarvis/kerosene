@@ -313,3 +313,21 @@ fn ema_cloud_actions_reach_chart_route() {
         assert_route(message, UpdateRoute::Chart);
     }
 }
+
+#[test]
+fn trade_feed_messages_reach_the_trade_feed_route() {
+    for message in [
+        Message::AddTradeFeedPane,
+        Message::TradeFeedTogglePicker(1),
+        Message::TradeFeedSearchChanged(1, "BTC".into()),
+        Message::TradeFeedSetMode(1, crate::config::OrderBookSymbolModeConfig::Active),
+        Message::TradeFeedStream(
+            1,
+            2,
+            "BTC".into(),
+            crate::trade_feed_state::TradeFeedEvent::Reconnecting,
+        ),
+    ] {
+        assert_route(message, UpdateRoute::TradeFeed);
+    }
+}

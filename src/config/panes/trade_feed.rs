@@ -1,0 +1,10 @@
+use super::OrderBookSymbolModeConfig;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct TradeFeedConfig {
+    #[serde(default)]
+    pub id: u64,
+    #[serde(default)]
+    pub mode: OrderBookSymbolModeConfig,
+}

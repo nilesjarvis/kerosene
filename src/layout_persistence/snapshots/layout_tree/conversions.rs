@@ -38,6 +38,7 @@ pub(super) fn pane_kind_to_config(kind: &PaneKind) -> PaneKindConfig {
         PaneKind::CompactWalletTracker(id) => PaneKindConfig::CompactWalletTracker { id: *id },
         PaneKind::PositioningInfo(id) => PaneKindConfig::PositioningInfo { id: *id },
         PaneKind::SessionData(id) => PaneKindConfig::SessionData { id: *id },
+        PaneKind::TradeFeed(id) => PaneKindConfig::TradeFeed { id: *id },
         PaneKind::XFeed(id) => PaneKindConfig::XFeed { id: *id },
 
         PaneKind::Watchlist => PaneKindConfig::Watchlist,
@@ -71,6 +72,7 @@ pub(super) fn pane_kind_from_config(kind: &PaneKindConfig) -> Option<PaneKind> {
         PaneKindConfig::CompactWalletTracker { id } => Some(PaneKind::CompactWalletTracker(*id)),
         PaneKindConfig::PositioningInfo { id } => Some(PaneKind::PositioningInfo(*id)),
         PaneKindConfig::SessionData { id } => Some(PaneKind::SessionData(*id)),
+        PaneKindConfig::TradeFeed { id } => Some(PaneKind::TradeFeed(*id)),
         PaneKindConfig::XFeed { id } => Some(PaneKind::XFeed(*id)),
 
         PaneKindConfig::Watchlist => Some(PaneKind::Watchlist),

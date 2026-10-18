@@ -205,6 +205,7 @@ pub(crate) fn normalize_imported_saved_layout(layout: &mut SavedLayout) {
         &mut layout.live_watchlists,
         &mut layout.positioning_infos,
         &mut layout.session_data,
+        &mut layout.trade_feeds,
         &mut layout.x_feeds,
         layout.pane_layout.as_mut(),
         &mut layout.canvases,
@@ -628,6 +629,7 @@ struct NonChartWidgetIds {
     live_watchlists: BTreeSet<u64>,
     positioning_infos: BTreeSet<u64>,
     session_data: BTreeSet<u64>,
+    trade_feeds: BTreeSet<u64>,
     x_feeds: BTreeSet<u64>,
     compact_wallet_trackers: BTreeSet<u64>,
 }
@@ -638,6 +640,7 @@ fn repair_duplicate_non_chart_widget_ids(config: &mut KeroseneConfig) {
         &mut config.live_watchlists,
         &mut config.positioning_infos,
         &mut config.session_data,
+        &mut config.trade_feeds,
         &mut config.x_feeds,
         config.pane_layout.as_mut(),
         &mut config.canvases,
@@ -649,6 +652,7 @@ fn repair_duplicate_non_chart_widget_ids(config: &mut KeroseneConfig) {
             &mut layout.live_watchlists,
             &mut layout.positioning_infos,
             &mut layout.session_data,
+            &mut layout.trade_feeds,
             &mut layout.x_feeds,
             layout.pane_layout.as_mut(),
             &mut layout.canvases,
@@ -663,11 +667,13 @@ fn repair_duplicate_non_chart_widget_ids(config: &mut KeroseneConfig) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn repair_duplicate_non_chart_widget_ids_for_layout(
     order_books: &mut [crate::config::OrderBookConfig],
     live_watchlists: &mut [crate::config::LiveWatchlistConfig],
     positioning_infos: &mut [crate::config::PositioningInfoConfig],
     session_data: &mut [crate::config::SessionDataConfig],
+    trade_feeds: &mut [crate::config::TradeFeedConfig],
     x_feeds: &mut [crate::config::XFeedConfig],
     pane_layout: Option<&mut PaneLayoutConfig>,
     canvases: &mut [crate::config::CanvasConfig],
@@ -680,12 +686,15 @@ fn repair_duplicate_non_chart_widget_ids_for_layout(
         repair_duplicate_ids(positioning_infos, |config| &mut config.id);
     let (session_data_repaired, session_data_ids) =
         repair_duplicate_ids(session_data, |config| &mut config.id);
+    let (trade_feeds_repaired, trade_feed_ids) =
+        repair_duplicate_ids(trade_feeds, |config| &mut config.id);
     let (x_feeds_repaired, x_feed_ids) = repair_duplicate_ids(x_feeds, |config| &mut config.id);
 
     let mut repaired_any = order_books_repaired
         || live_watchlists_repaired
         || positioning_infos_repaired
         || session_data_repaired
+        || trade_feeds_repaired
         || x_feeds_repaired;
 
     let mut seen = NonChartWidgetIds::default();
@@ -694,6 +703,7 @@ fn repair_duplicate_non_chart_widget_ids_for_layout(
         live_watchlists: live_watchlist_ids,
         positioning_infos: positioning_info_ids,
         session_data: session_data_ids,
+        trade_feeds: trade_feed_ids,
         x_feeds: x_feed_ids,
         compact_wallet_trackers: BTreeSet::new(),
     };
@@ -760,6 +770,9 @@ fn repair_duplicate_non_chart_leaf_id(
             &mut seen.positioning_infos,
             &mut reserved.positioning_infos,
         ),
+        PaneKindConfig::TradeFeed { id } => {
+            repair_duplicate_leaf_id(id, &mut seen.trade_feeds, &mut reserved.trade_feeds)
+        }
         PaneKindConfig::SessionData { id } => {
             repair_duplicate_leaf_id(id, &mut seen.session_data, &mut reserved.session_data)
         }

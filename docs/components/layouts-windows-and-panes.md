@@ -31,6 +31,7 @@ instance-aware variants for multi-instance widgets:
 - `CompactWalletTracker(CompactWalletTrackerId)`
 - `PositioningInfo(PositioningInfoId)`
 - `SessionData(SessionDataId)`
+- `TradeFeed(TradeFeedId)`
 - `SpaghettiChart(SpaghettiChartId)`
 
 It also includes singleton pane types:

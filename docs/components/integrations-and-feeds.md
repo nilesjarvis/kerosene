@@ -94,6 +94,7 @@ JSON into typed data:
 - all-mids
 - open orders
 - fills
+- public per-asset trade prints (Trade Feed widget, native Hyperliquid)
 - account/user data
 
 Typed decoding borrows the routed JSON directly and creates owned results.
@@ -103,6 +104,12 @@ still include every accepted entry in order. Only the main clearinghouse state
 needs a second owned copy for its separate result field.
 
 Subscriptions are added from `subscription_state/`, not from views.
+
+Trade Feed uses `trades` independently of the selected read provider. It shares
+upstream subscriptions between panes, preserves executions while batching UI
+delivery, and consumes the manager's internal disconnect notification to mark
+history gaps. See [Trade Feed](market-data-and-symbols.md#trade-feed) for selection,
+rendering, persistence, and recovery behavior.
 
 ## Hydromancer
 

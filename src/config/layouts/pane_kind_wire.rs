@@ -12,6 +12,7 @@ enum KnownPaneKindConfig {
     CompactWalletTracker { id: u64 },
     PositioningInfo { id: u64 },
     SessionData { id: u64 },
+    TradeFeed { id: u64 },
     XFeed { id: u64 },
 
     Portfolio,
@@ -50,6 +51,7 @@ impl From<KnownPaneKindConfig> for PaneKindConfig {
             KnownPaneKindConfig::CompactWalletTracker { id } => Self::CompactWalletTracker { id },
             KnownPaneKindConfig::PositioningInfo { id } => Self::PositioningInfo { id },
             KnownPaneKindConfig::SessionData { id } => Self::SessionData { id },
+            KnownPaneKindConfig::TradeFeed { id } => Self::TradeFeed { id },
             KnownPaneKindConfig::XFeed { id } => Self::XFeed { id },
             KnownPaneKindConfig::Portfolio => Self::Portfolio,
             KnownPaneKindConfig::Income => Self::Income,
@@ -141,6 +143,12 @@ impl Serialize for PaneKindConfig {
             PaneKindConfig::SessionData { id } => {
                 let mut variant =
                     serializer.serialize_struct_variant("PaneKindConfig", 6, "SessionData", 1)?;
+                variant.serialize_field("id", id)?;
+                variant.end()
+            }
+            PaneKindConfig::TradeFeed { id } => {
+                let mut variant =
+                    serializer.serialize_struct_variant("PaneKindConfig", 28, "TradeFeed", 1)?;
                 variant.serialize_field("id", id)?;
                 variant.end()
             }

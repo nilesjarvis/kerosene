@@ -570,6 +570,7 @@ impl TradingTerminal {
         snapshot.live_watchlists.clear();
         snapshot.positioning_infos.clear();
         snapshot.session_data.clear();
+        snapshot.trade_feeds.clear();
         snapshot.x_feeds.clear();
         snapshot.spaghetti_charts.clear();
         snapshot.widget_padding.overrides.clear();

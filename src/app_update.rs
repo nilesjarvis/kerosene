@@ -8,7 +8,8 @@ use self::routing::{UpdateRoute, message_route};
 
 impl TradingTerminal {
     pub(crate) fn update(&mut self, message: Message) -> Task<Message> {
-        match message_route(&message) {
+        let task = match message_route(&message) {
+            UpdateRoute::TradeFeed => self.update_trade_feed(message),
             UpdateRoute::Console => self.update_console(message),
             UpdateRoute::Agent => self.update_agent(message),
             UpdateRoute::Alfred => self.update_alfred(message),
@@ -37,6 +38,8 @@ impl TradingTerminal {
             UpdateRoute::Feed => self.update_feed(message),
             UpdateRoute::Hyperdash => self.update_hyperdash(message),
             UpdateRoute::OpenRouter => self.update_openrouter(message),
-        }
+        };
+        self.sync_trade_feeds();
+        task
     }
 }

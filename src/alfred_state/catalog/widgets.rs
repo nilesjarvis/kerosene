@@ -70,6 +70,16 @@ impl TradingTerminal {
             )
             .disabled_if(!can_add_pane, no_pane_reason),
             AlfredCommand::new(
+                AlfredCommandId::AddTradeFeedPane,
+                "Trade Feed",
+                "Live trades for an asset",
+                "Pane",
+                AlfredCommandKind::AddWidget,
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::TradeFeed)),
+                &["trades", "tape", "feed", "executions", "widget", "add"],
+            )
+            .disabled_if(!can_add_pane, no_pane_reason),
+            AlfredCommand::new(
                 AlfredCommandId::AddSessionDataPane,
                 "Session Data",
                 "Market session returns pane",

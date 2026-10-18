@@ -1,6 +1,8 @@
 use super::recovery::emit_after_reconnect;
 mod asset_context;
 mod books;
+mod trades;
+pub(crate) use trades::ws_trade_feed;
 mod candles;
 
 use crate::account::AssetContext;

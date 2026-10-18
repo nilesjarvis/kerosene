@@ -133,6 +133,9 @@ pub enum PaneKindConfig {
     SessionData {
         id: u64,
     },
+    TradeFeed {
+        id: u64,
+    },
     XFeed {
         id: u64,
     },
@@ -173,6 +176,7 @@ pub enum WidgetPaddingTargetConfig {
     CompactWalletTracker { id: u64 },
     PositioningInfo { id: u64 },
     SessionData { id: u64 },
+    TradeFeed { id: u64 },
     XFeed { id: u64 },
 
     Portfolio,
@@ -362,6 +366,8 @@ pub struct SavedLayout {
     pub positioning_infos: Vec<PositioningInfoConfig>,
     #[serde(default)]
     pub session_data: Vec<super::SessionDataConfig>,
+    #[serde(default)]
+    pub trade_feeds: Vec<super::TradeFeedConfig>,
     #[serde(default)]
     pub x_feeds: Vec<super::XFeedConfig>,
     #[serde(default)]

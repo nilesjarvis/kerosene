@@ -132,6 +132,7 @@ impl TradingTerminal {
             watchlist_presets: self.watchlist_presets.clone(),
             positioning_infos: layout_snapshot.positioning_infos,
             session_data: layout_snapshot.session_data,
+            trade_feeds: layout_snapshot.trade_feeds,
             x_feeds: layout_snapshot.x_feeds,
 
             ticker_tape_enabled: layout_snapshot.ticker_tape_enabled,

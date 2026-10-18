@@ -192,6 +192,9 @@ impl TradingTerminal {
                             PaneKind::OrderBook(id) => {
                                 self.order_books.remove(&id);
                             }
+                            PaneKind::TradeFeed(id) => {
+                                self.trade_feeds.instances.remove(&id);
+                            }
                             PaneKind::SessionData(id) => {
                                 self.session_data.remove(&id);
                             }

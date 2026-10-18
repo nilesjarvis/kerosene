@@ -60,6 +60,7 @@ impl<'de> Visitor<'de> for WidgetPaddingTargetVisitor {
             | "LiveWatchlist"
             | "PositioningInfo"
             | "SessionData"
+            | "TradeFeed"
             | "XFeed"
             | "SpaghettiChart"
             | "CompactWalletTracker" => Err(E::custom(format!(
@@ -127,6 +128,14 @@ impl<'de> Visitor<'de> for WidgetPaddingTargetVisitor {
                 }
                 let payload = map.next_value::<Payload>()?;
                 known(WidgetPaddingTargetConfig::SessionData { id: payload.id })
+            }
+            "TradeFeed" => {
+                #[derive(Deserialize)]
+                struct Payload {
+                    id: u64,
+                }
+                let payload = map.next_value::<Payload>()?;
+                known(WidgetPaddingTargetConfig::TradeFeed { id: payload.id })
             }
             "XFeed" => {
                 #[derive(Deserialize)]

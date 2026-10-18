@@ -507,6 +507,7 @@ async fn ws_manager_task_with_options(
         }
 
         coalescer.flush_all();
+        coalescer.submit("keroseneDisconnected".into(), Arc::new(Value::Null));
         telemetry_on_disconnect();
         record_ws_lifecycle(Provider::Hyperliquid, ActivityKind::WsDisconnected);
         let (delay_secs, next_delay_secs) =

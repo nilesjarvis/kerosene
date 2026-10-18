@@ -6,6 +6,7 @@ mod hydromancer;
 mod market;
 mod telegram;
 mod timers;
+mod trade_feed;
 mod user_data;
 
 impl TradingTerminal {
@@ -18,6 +19,7 @@ impl TradingTerminal {
             );
         }
         self.push_market_subscriptions(&mut subs);
+        self.push_trade_feed_subscriptions(&mut subs);
         self.push_user_data_subscriptions(&mut subs);
         self.push_hydromancer_subscriptions(&mut subs);
         self.push_telegram_subscriptions(&mut subs);

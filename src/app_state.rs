@@ -678,6 +678,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) positioning_info_pending: HashMap<String, Vec<PositioningInfoId>>,
     pub(crate) session_data: HashMap<SessionDataId, SessionDataInstance>,
     pub(crate) next_session_data_id: SessionDataId,
+    pub(crate) trade_feeds: crate::trade_feed_state::TradeFeedsState,
 
     pub(crate) live_watchlist_ctxs: HashMap<String, crate::api::WatchlistContext>,
     pub(crate) live_watchlist_ema: crate::market_state::LiveWatchlistEmaState,

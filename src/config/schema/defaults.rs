@@ -367,6 +367,7 @@ impl Default for KeroseneConfig {
             watchlist_presets: Vec::new(),
             positioning_infos: Vec::new(),
             session_data: Vec::new(),
+            trade_feeds: Vec::new(),
             x_feeds: Vec::new(),
             ticker_tape_enabled: false,
             favourite_symbols: Vec::new(),

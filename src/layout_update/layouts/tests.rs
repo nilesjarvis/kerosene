@@ -85,6 +85,7 @@ fn saved_layout(name: &str) -> SavedLayout {
         live_watchlists: cfg.live_watchlists,
         positioning_infos: cfg.positioning_infos,
         session_data: cfg.session_data,
+        trade_feeds: cfg.trade_feeds,
         x_feeds: cfg.x_feeds,
         spaghetti_charts: cfg.spaghetti_charts,
         widget_padding: cfg.widget_padding,

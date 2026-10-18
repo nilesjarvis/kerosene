@@ -1188,3 +1188,20 @@ fn linked_comparison_chart_uses_preset_symbols_during_normalization() {
     assert_eq!(config.spaghetti_charts[0].symbols, ["BTC", "ETH"]);
     assert_eq!(config.spaghetti_charts[0].watchlist_preset_id, Some(8));
 }
+
+#[test]
+fn trade_feed_duplicate_ids_are_repaired_for_imported_layouts() {
+    let mut layout: crate::config::SavedLayout = serde_json::from_value(serde_json::json!({
+        "name":"Trade tapes", "trade_feeds":[{"id":4},{"id":4}],
+        "pane_layout":{"Split":{"axis":"Vertical","ratio":0.5,
+            "a":{"Leaf":{"TradeFeed":{"id":4}}}, "b":{"Leaf":{"TradeFeed":{"id":4}}}
+        }}
+    }))
+    .expect("layout");
+    normalize_imported_saved_layout(&mut layout);
+    assert_ne!(layout.trade_feeds[0].id, layout.trade_feeds[1].id);
+    let Some(crate::config::PaneLayoutConfig::Split { a, b, .. }) = layout.pane_layout else {
+        panic!("split");
+    };
+    assert_ne!(a, b);
+}

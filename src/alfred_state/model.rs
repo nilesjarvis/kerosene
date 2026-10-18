@@ -32,6 +32,7 @@ pub(crate) enum AlfredCommandId {
     AddComparisonChart,
     AddPairRatioChart,
     AddSessionDataPane,
+    AddTradeFeedPane,
     AddPositionsHistoryPane,
     AddPortfolioPane,
     AddIncomePane,

@@ -23,6 +23,7 @@ impl WidgetPaddingTargetConfig {
             PaneKind::CompactWalletTracker(id) => Self::CompactWalletTracker { id: *id },
             PaneKind::PositioningInfo(id) => Self::PositioningInfo { id: *id },
             PaneKind::SessionData(id) => Self::SessionData { id: *id },
+            PaneKind::TradeFeed(id) => Self::TradeFeed { id: *id },
             PaneKind::XFeed(id) => Self::XFeed { id: *id },
             PaneKind::Portfolio => Self::Portfolio,
             PaneKind::Income => Self::Income,
