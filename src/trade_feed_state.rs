@@ -1,4 +1,5 @@
 use crate::config::OrderBookSymbolModeConfig;
+use crate::message::RedactedAddress;
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -6,7 +7,7 @@ pub(crate) type TradeFeedId = u64;
 pub(crate) const TRADE_FEED_CAPACITY: usize = 500;
 const SEEN_CAPACITY: usize = 4096;
 
-/// Public execution data only; participant addresses and hashes are not retained.
+/// Public execution data. The initiating trader is redacted in diagnostics.
 #[derive(Debug, Clone)]
 pub(crate) struct TradePrint {
     pub(crate) time_ms: u64,
@@ -15,6 +16,7 @@ pub(crate) struct TradePrint {
     pub(crate) price: String,
     pub(crate) size: String,
     pub(crate) value: f64,
+    pub(crate) trader: Option<RedactedAddress>,
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +45,7 @@ pub(crate) struct TradeFeedInstance {
     pub(crate) trades: VecDeque<TradePrint>,
     pub(crate) status: &'static str,
     pub(crate) has_gap: bool,
+    held_trades: Option<VecDeque<TradePrint>>,
     seen: HashSet<(u64, u64)>,
     seen_order: VecDeque<(u64, u64)>,
 }
@@ -58,6 +61,7 @@ impl TradeFeedInstance {
             trades: VecDeque::new(),
             status: "Waiting for trades",
             has_gap: false,
+            held_trades: None,
             seen: HashSet::new(),
             seen_order: VecDeque::new(),
         }
@@ -71,6 +75,34 @@ impl TradeFeedInstance {
         self.seen_order.clear();
         self.status = "Waiting for trades";
         self.has_gap = false;
+        self.held_trades = None;
+    }
+
+    pub(crate) fn visible_trades(&self) -> &VecDeque<TradePrint> {
+        self.held_trades.as_ref().unwrap_or(&self.trades)
+    }
+
+    pub(crate) fn address_hover_key(&self, id: TradeFeedId, trade: &TradePrint) -> String {
+        format!(
+            "trade-feed:{id}:{}:{}:{}",
+            self.generation, trade.time_ms, trade.tid
+        )
+    }
+
+    /// Keep action targets stationary while ingestion continues into the live buffer.
+    pub(crate) fn sync_address_hover(&mut self, id: TradeFeedId, hovered_key: Option<&str>) {
+        let prefix = format!("trade-feed:{id}:{}:", self.generation);
+        if hovered_key.is_some_and(|key| key.starts_with(&prefix)) {
+            if self.held_trades.is_none() {
+                self.held_trades = Some(self.trades.clone());
+            }
+        } else {
+            self.held_trades = None;
+        }
+    }
+
+    pub(crate) fn is_held(&self) -> bool {
+        self.held_trades.is_some()
     }
 
     pub(crate) fn apply(&mut self, event: TradeFeedEvent) {

@@ -14,9 +14,14 @@ Click its asset name to search and pin a market, or choose **Follow active** to
 track the terminal's active asset, including changes made by clicking charts.
 Each pane has independent selection settings and works in Canvas workspaces.
 
-The compact tape shows UTC time, exact execution price, and base size; wider
-panes also show value in the market's quote currency. Buy executions use the
-theme's success color and sells use its danger color. Background intensity grows
+The compact tape shows the initiating trader, exact execution price, and base
+size; wider panes also show UTC time and value in the market's quote currency.
+The trader column uses the shared wallet address cell, including address-book
+labels and Copy, Open Wallet, and Ghost actions on hover. Rows stay stationary
+while an address menu is open; ingestion continues and the view catches up on
+exit. Hover identity includes the pane, subscription generation, and execution.
+Buy executions use the theme's success color and sells use its danger color.
+Background intensity grows
 with execution notional relative to the largest of the 500 retained prints.
 Only rows that fit the pane are rendered, newest first.
 
@@ -26,7 +31,11 @@ shared native Hyperliquid websocket manager's per-coin `trades` subscriptions,
 independently of the optional read provider. No integration key is required.
 `ws/market_streams/trades.rs` validates and batches prints at 50ms intervals
 (flushing early at 512 prints), without replacing intermediate executions.
-Participant addresses and transaction hashes are not retained in widget state.
+The native `users` array is ordered `[buyer, seller]`; the trader is the buyer for
+`B` executions and the seller for `A` executions. Only that address is retained,
+as `RedactedAddress`, so stream/message debug output cannot expose it. Missing or
+invalid addresses show a dash without dropping the execution. Transaction hashes
+are not retained. See the [native trade schema](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions).
 
 The tape deduplicates by `(time, tid)` within its selected coin and bounds its
 seen-key history to 4096 entries. Asset and layout changes increment subscription

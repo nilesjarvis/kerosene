@@ -122,6 +122,9 @@ impl TradingTerminal {
                 feed.reset(symbol, self.trade_feeds.generation);
             }
         }
+        for (&id, feed) in &mut self.trade_feeds.instances {
+            feed.sync_address_hover(id, self.hovered_wallet_address_actions.as_deref());
+        }
     }
 
     pub(crate) fn restore_trade_feeds(&mut self, configs: &[TradeFeedConfig]) {

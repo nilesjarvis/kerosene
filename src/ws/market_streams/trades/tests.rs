@@ -1,19 +1,82 @@
 use super::*;
 use serde_json::json;
 
+const BUYER: &str = "0x1111111111111111111111111111111111111111";
+const SELLER: &str = "0x2222222222222222222222222222222222222222";
+
 fn fixture() -> Value {
-    json!({"coin":"xyz:BTC", "side":"B", "px":"123.456", "sz":"0.012", "time": 1234, "tid": 42, "users":["private-buyer", "private-seller"]})
+    json!({"coin":"xyz:BTC", "side":"B", "px":"123.456", "sz":"0.012", "time": 1234, "tid": 42, "users":[BUYER, SELLER]})
 }
 
 #[test]
-fn trade_parser_preserves_precision_and_omits_participants() {
+fn trade_parser_preserves_precision_and_selects_initiating_trader() {
     let trade = parse_trade(&fixture(), "xyz:BTC").expect("valid trade");
     assert!(trade.is_buy);
     assert_eq!(trade.price, "123.456");
     assert_eq!(trade.size, "0.012");
     assert!((trade.value - 1.481472).abs() < 1e-9);
-    assert!(!format!("{trade:?}").contains("private-"));
+    assert_eq!(trade.trader.as_deref(), Some(BUYER));
     assert!(parse_trade(&fixture(), "BTC").is_none());
+    let mut sell = fixture();
+    sell["side"] = json!("A");
+    let trade = parse_trade(&sell, "xyz:BTC").expect("valid sell");
+    assert!(!trade.is_buy);
+    assert_eq!(trade.trader.as_deref(), Some(SELLER));
+}
+
+#[test]
+fn trade_feed_missing_or_invalid_traders_do_not_drop_executions() {
+    for users in [
+        Value::Null,
+        json!([]),
+        json!([BUYER]),
+        json!([BUYER, SELLER, BUYER]),
+        json!([null, SELLER]),
+        json!([42, SELLER]),
+        json!(["invalid-address", SELLER]),
+        json!([format!("0x{}", "g".repeat(40)), SELLER]),
+        json!(["a".repeat(100_000), SELLER]),
+    ] {
+        let mut value = fixture();
+        value["users"] = users;
+        let trade = parse_trade(&value, "xyz:BTC").expect("execution remains visible");
+        assert!(trade.trader.is_none());
+    }
+    let mut value = fixture();
+    value.as_object_mut().expect("object").remove("users");
+    assert!(
+        parse_trade(&value, "xyz:BTC")
+            .expect("no users")
+            .trader
+            .is_none()
+    );
+    value["users"] = json!(["0xABCDEFabcdefABCDEFabcdefABCDEFabcdefABCD", SELLER]);
+    assert_eq!(
+        parse_trade(&value, "xyz:BTC")
+            .expect("mixed case")
+            .trader
+            .as_deref(),
+        Some("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd")
+    );
+}
+
+#[test]
+fn trade_feed_stream_debug_redacts_trader_addresses() {
+    let mut sell = fixture();
+    sell["side"] = json!("A");
+    let message = crate::message::Message::TradeFeedStream(
+        9,
+        3,
+        "xyz:BTC".into(),
+        TradeFeedEvent::Trades(vec![
+            parse_trade(&fixture(), "xyz:BTC").expect("buy"),
+            parse_trade(&sell, "xyz:BTC").expect("sell"),
+        ]),
+    );
+    let debug = format!("{message:?}");
+    assert!(!debug.contains(BUYER));
+    assert!(!debug.contains(SELLER));
+    assert!(debug.contains("Address(<redacted>)"));
 }
 
 #[test]

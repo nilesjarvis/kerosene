@@ -2,9 +2,20 @@ use crate::app_state::TradingTerminal;
 use crate::config::OrderBookSymbolModeConfig;
 use crate::helpers;
 use crate::message::Message;
-use crate::trade_feed_state::{TradeFeedId, trade_feed_symbol_rank, trade_shading};
+use crate::trade_feed_state::{
+    TradeFeedId, TradeFeedInstance, TradePrint, trade_feed_symbol_rank, trade_shading,
+};
+use crate::wallet_views::{WalletAddressActionCell, wallet_address_action_cell};
 use iced::widget::{Column, button, column, container, responsive, row, rule, text, text_input};
 use iced::{Alignment, Color, Element, Fill, Length, Theme};
+
+const TRADER_WIDTH: f32 = 112.0;
+
+#[derive(Clone, Copy)]
+struct TapeRowLayout {
+    show_time: bool,
+    show_value: bool,
+}
 
 impl TradingTerminal {
     pub(crate) fn view_trade_feed(&self, id: TradeFeedId) -> Element<'_, Message> {
@@ -92,18 +103,37 @@ impl TradingTerminal {
             } else {
                 status.to_string()
             };
+            let status = if feed.is_held() {
+                format!("{status} · rows held")
+            } else {
+                status
+            };
             content = content.push(text(status).size(11).color(muted));
-            let wide = size.width >= 420.0;
-            let header = tape_row("Time (UTC)", "Price", "Size", "Value", wide, muted);
-            content = content.push(header).push(rule::horizontal(1));
+            let layout = TapeRowLayout {
+                show_time: size.width >= 400.0,
+                show_value: size.width >= 540.0,
+            };
+            let header = tape_row(
+                "Time (UTC)",
+                "Price",
+                "Size",
+                "Value",
+                text("Trader")
+                    .size(12)
+                    .color(muted)
+                    .width(TRADER_WIDTH)
+                    .into(),
+                layout,
+                muted,
+            );
+            content = content
+                .push(container(header).padding([0, 4]))
+                .push(rule::horizontal(1));
             let available = size.height - if feed.picker_open { 255.0 } else { 80.0 };
-            let row_count = ((available.max(0.0) / 24.0) as usize).min(100);
-            let largest = feed
-                .trades
-                .iter()
-                .map(|trade| trade.value)
-                .fold(0.0, f64::max);
-            for trade in feed.trades.iter().take(row_count) {
+            let row_count = ((available.max(0.0) / 26.0) as usize).min(100);
+            let trades = feed.visible_trades();
+            let largest = trades.iter().map(|trade| trade.value).fold(0.0, f64::max);
+            for trade in trades.iter().take(row_count) {
                 let seconds = trade.time_ms / 1000;
                 let time = format!(
                     "{:02}:{:02}:{:02}",
@@ -124,10 +154,11 @@ impl TradingTerminal {
                         &trade.price,
                         &trade.size,
                         &value,
-                        wide,
+                        self.view_trade_feed_trader(id, feed, trade, &theme),
+                        layout,
                         theme.palette().text,
                     ))
-                    .height(20)
+                    .height(22)
                     .padding([1, 4])
                     .style(move |_theme: &Theme| container::Style {
                         background: Some(
@@ -153,6 +184,38 @@ impl TradingTerminal {
         .height(Fill)
         .into()
     }
+
+    fn view_trade_feed_trader(
+        &self,
+        id: TradeFeedId,
+        feed: &TradeFeedInstance,
+        trade: &TradePrint,
+        theme: &Theme,
+    ) -> Element<'static, Message> {
+        let Some(address) = &trade.trader else {
+            return text("—")
+                .size(12)
+                .color(theme.extended_palette().background.weak.text)
+                .width(TRADER_WIDTH)
+                .into();
+        };
+        let display = self.wallet_display(address.as_str());
+        let tooltip_label = if display.has_label {
+            format!("{} ({})", display.primary, address.as_str())
+        } else {
+            format!("Copy {}", address.as_str())
+        };
+        wallet_address_action_cell(WalletAddressActionCell {
+            address: address.as_str().to_owned(),
+            label: display.primary,
+            tooltip_label,
+            hover_key: feed.address_hover_key(id, trade),
+            hovered_key: self.hovered_wallet_address_actions.as_deref(),
+            width: TRADER_WIDTH,
+            text_size: 12,
+            text_color: theme.palette().primary,
+        })
+    }
 }
 
 fn tape_row(
@@ -160,7 +223,8 @@ fn tape_row(
     price: &str,
     size: &str,
     value: &str,
-    wide: bool,
+    trader: Element<'static, Message>,
+    layout: TapeRowLayout,
     color: Color,
 ) -> Element<'static, Message> {
     let cell = |value: &str, portions, right| {
@@ -175,13 +239,15 @@ fn tape_row(
             text
         }
     };
-    let mut cells = row![
-        cell(time, 2, false),
-        cell(price, 3, true),
-        cell(size, 3, true)
-    ]
-    .spacing(8);
-    if wide {
+    let mut cells = row![].spacing(8);
+    if layout.show_time {
+        cells = cells.push(cell(time, 2, false));
+    }
+    cells = cells
+        .push(trader)
+        .push(cell(price, 3, true))
+        .push(cell(size, 3, true));
+    if layout.show_value {
         cells = cells.push(cell(value, 3, true));
     }
     cells.align_y(Alignment::Center).into()

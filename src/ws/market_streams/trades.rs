@@ -1,5 +1,6 @@
 use crate::helpers::parse_finite_number;
 use crate::trade_feed_state::{TradeFeedEvent, TradeFeedId, TradePrint};
+use crate::wallet_state::address_book::normalize_wallet_address_value;
 use crate::ws::manager::WsRoutedMessage;
 use crate::ws::{SubscriptionGuard, WsCommand, WsCommandSender, WsStream, get_manager};
 use futures::SinkExt;
@@ -44,6 +45,16 @@ pub(crate) fn parse_trade(value: &Value, coin: &str) -> Option<TradePrint> {
         price: price.to_owned(),
         size: size.to_owned(),
         value: notional,
+        // Hyperliquid orders users as [buyer, seller], not [maker, taker].
+        // Select the initiating side; missing addresses must not discard the print.
+        trader: value
+            .get("users")
+            .and_then(Value::as_array)
+            .filter(|users| users.len() == 2)
+            .and_then(|users| users[usize::from(!is_buy)].as_str())
+            .filter(|address| address.len() == 42)
+            .and_then(normalize_wallet_address_value)
+            .map(Into::into),
     })
 }
 

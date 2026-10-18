@@ -24,6 +24,7 @@ fn incoming(generation: u64, symbol: &str) -> Message {
             price: "1".into(),
             size: "2".into(),
             value: 2.0,
+            trader: None,
         }]),
     )
 }
@@ -103,4 +104,50 @@ fn trade_feed_config_defaults_and_round_trip() {
         serde_json::from_str::<TradeFeedConfig>(&json).expect("deserialize"),
         config
     );
+}
+
+#[test]
+fn trade_feed_address_hover_holds_rows_while_ingestion_continues_and_resumes_on_exit() {
+    let mut terminal = terminal(Default::default());
+    let generation = terminal.trade_feeds.instances[&7].generation;
+    let _ = terminal.update(incoming(generation, "BTC"));
+    let feed = &terminal.trade_feeds.instances[&7];
+    let key = feed.address_hover_key(7, &feed.trades[0]);
+    let _ = terminal.update(Message::WalletAddressActionsHovered(key.clone().into()));
+    assert!(terminal.trade_feeds.instances[&7].is_held());
+    let mut next = incoming(generation, "BTC");
+    if let Message::TradeFeedStream(_, _, _, TradeFeedEvent::Trades(trades)) = &mut next {
+        trades[0].time_ms += 1;
+        trades[0].tid += 1;
+    }
+    let _ = terminal.update(next);
+    let feed = &terminal.trade_feeds.instances[&7];
+    assert_eq!(feed.trades[0].tid, 2);
+    assert_eq!(feed.visible_trades()[0].tid, 1);
+    // An exit from another row must not release this menu's stable target.
+    let _ = terminal.update(Message::WalletAddressActionsExited("another-row".into()));
+    assert!(terminal.trade_feeds.instances[&7].is_held());
+    let _ = terminal.update(Message::WalletAddressActionsExited(key.into()));
+    let feed = &terminal.trade_feeds.instances[&7];
+    assert!(!feed.is_held());
+    assert_eq!(feed.visible_trades()[0].tid, 2);
+}
+
+#[test]
+fn trade_feed_address_hover_is_scoped_to_pane_and_subscription_generation() {
+    let mut terminal = terminal(Default::default());
+    let generation = terminal.trade_feeds.instances[&7].generation;
+    let _ = terminal.update(incoming(generation, "BTC"));
+    let feed = &terminal.trade_feeds.instances[&7];
+    let own_key = feed.address_hover_key(7, &feed.trades[0]);
+    let other_key = feed.address_hover_key(8, &feed.trades[0]);
+    let _ = terminal.update(Message::WalletAddressActionsHovered(other_key.into()));
+    assert!(!terminal.trade_feeds.instances[&7].is_held());
+    let _ = terminal.update(Message::WalletAddressActionsHovered(own_key.into()));
+    assert!(terminal.trade_feeds.instances[&7].is_held());
+    terminal.apply_active_symbol_selection("ETH".into(), "ETH".into());
+    terminal.sync_trade_feeds();
+    let feed = &terminal.trade_feeds.instances[&7];
+    assert!(!feed.is_held());
+    assert!(feed.visible_trades().is_empty());
 }
