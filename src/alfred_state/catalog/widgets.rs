@@ -24,6 +24,7 @@ impl TradingTerminal {
         let income_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Income));
         let outcomes_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Outcomes));
         let listings_open = self.pane_is_open(|kind| matches!(kind, PaneKind::NewListings));
+        let updates_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Updates));
         let hype_etfs_open = self.pane_is_open(|kind| matches!(kind, PaneKind::HypeEtfs));
         let hype_unstaking_queue_open =
             self.pane_is_open(|kind| matches!(kind, PaneKind::HypeUnstakingQueue));
@@ -156,6 +157,25 @@ impl TradingTerminal {
                 Some(Message::BeginWidgetPlacement(AddWidgetKind::NewListings)),
                 &[
                     "listings", "new", "markets", "perps", "spot", "feed", "widget", "add",
+                ],
+            )
+            .disabled_if(!can_add_pane, no_pane_reason),
+            AlfredCommand::new(
+                AlfredCommandId::AddUpdatesPane,
+                "Updates",
+                "Market parameter and open interest cap changes",
+                open_tag(updates_open, "Pane"),
+                AlfredCommandKind::AddWidget,
+                Some(Message::BeginWidgetPlacement(AddWidgetKind::Updates)),
+                &[
+                    "parameters",
+                    "oi",
+                    "caps",
+                    "leverage",
+                    "margin",
+                    "feed",
+                    "widget",
+                    "add",
                 ],
             )
             .disabled_if(!can_add_pane, no_pane_reason),

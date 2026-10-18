@@ -8,4 +8,5 @@ mod outcomes;
 mod positioning_info;
 mod session_data;
 mod ticker_tape;
+mod updates;
 mod watchlist;

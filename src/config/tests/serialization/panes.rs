@@ -8,6 +8,26 @@ use crate::config::{
 use crate::session_data_state::SessionDataLookback;
 
 #[test]
+fn updates_layout_and_padding_round_trip() {
+    let layout = PaneLayoutConfig::Leaf(PaneKindConfig::Updates);
+    let wire = serde_json::to_value(&layout).expect("serialize updates pane");
+    assert_eq!(wire, serde_json::json!({"Leaf":"Updates"}));
+    assert_eq!(
+        serde_json::from_value::<PaneLayoutConfig>(wire).expect("restore updates pane"),
+        layout
+    );
+    let padding: WidgetPaddingConfig = serde_json::from_value(serde_json::json!({
+        "overrides":[{"target":"Updates", "padding_px":8.0}]
+    }))
+    .expect("restore updates padding");
+    assert_eq!(padding.overrides.len(), 1);
+    assert_eq!(
+        padding.overrides[0].target,
+        WidgetPaddingTargetConfig::Updates
+    );
+}
+
+#[test]
 fn new_listings_layout_and_padding_round_trip() {
     let layout = PaneLayoutConfig::Leaf(PaneKindConfig::NewListings);
     let wire = serde_json::to_value(&layout).expect("serialize listings pane");

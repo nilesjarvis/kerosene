@@ -2,6 +2,7 @@ pub(crate) mod book_inspector;
 mod dom_ladder;
 pub(crate) mod listings;
 mod live_watchlist;
+pub(crate) mod updates;
 pub(crate) use live_watchlist::ema::{LiveWatchlistEmaKey, LiveWatchlistEmaState};
 mod mids;
 mod symbol_search;

@@ -234,6 +234,17 @@ impl TradingTerminal {
                 );
                 return self.request_listings_refresh(true);
             }
+            Message::AddUpdatesPane => {
+                self.add_widget_menu_open = false;
+                self.add_or_focus_singleton_pane(
+                    workspace,
+                    self.add_widget_axis(),
+                    PaneKind::Updates,
+                    "Updates",
+                    |kind| matches!(kind, PaneKind::Updates),
+                );
+                return self.request_updates_refresh(true);
+            }
             Message::AddHypeEtfsPane => {
                 self.add_widget_menu_open = false;
                 let outcome = self.add_or_focus_singleton_pane(

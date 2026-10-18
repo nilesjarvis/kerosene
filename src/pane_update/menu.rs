@@ -150,6 +150,7 @@ pub(super) fn add_widget_message(
         AddWidgetKind::Income => Message::AddIncomePane,
         AddWidgetKind::Outcomes => Message::AddOutcomesPane,
         AddWidgetKind::NewListings => Message::AddNewListingsPane,
+        AddWidgetKind::Updates => Message::AddUpdatesPane,
         AddWidgetKind::HypeEtfs => Message::AddHypeEtfsPane,
         AddWidgetKind::HypeUnstakingQueue => Message::AddHypeUnstakingQueuePane,
         AddWidgetKind::Liquidations => Message::AddLiquidationsPane,

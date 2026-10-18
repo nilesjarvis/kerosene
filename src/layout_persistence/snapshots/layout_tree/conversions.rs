@@ -58,6 +58,7 @@ pub(super) fn pane_kind_to_config(kind: &PaneKind) -> PaneKindConfig {
         PaneKind::TelegramFeed => PaneKindConfig::TelegramFeed,
         PaneKind::Outcomes => PaneKindConfig::Outcomes,
         PaneKind::NewListings => PaneKindConfig::NewListings,
+        PaneKind::Updates => PaneKindConfig::Updates,
         PaneKind::HypeEtfs => PaneKindConfig::HypeEtfs,
         PaneKind::HypeUnstakingQueue => PaneKindConfig::HypeUnstakingQueue,
     }
@@ -94,6 +95,7 @@ pub(super) fn pane_kind_from_config(kind: &PaneKindConfig) -> Option<PaneKind> {
         PaneKindConfig::TelegramFeed => Some(PaneKind::TelegramFeed),
         PaneKindConfig::Outcomes => Some(PaneKind::Outcomes),
         PaneKindConfig::NewListings => Some(PaneKind::NewListings),
+        PaneKindConfig::Updates => Some(PaneKind::Updates),
         PaneKindConfig::HypeEtfs => Some(PaneKind::HypeEtfs),
         PaneKindConfig::HypeUnstakingQueue => Some(PaneKind::HypeUnstakingQueue),
         PaneKindConfig::Unsupported | PaneKindConfig::Unknown(_) => None,
@@ -103,6 +105,16 @@ pub(super) fn pane_kind_from_config(kind: &PaneKindConfig) -> Option<PaneKind> {
 #[cfg(test)]
 mod transfer_tests {
     use super::*;
+
+    #[test]
+    fn updates_pane_converts_to_and_from_saved_layout() {
+        let config = pane_kind_to_config(&PaneKind::Updates);
+        assert_eq!(config, PaneKindConfig::Updates);
+        assert!(matches!(
+            pane_kind_from_config(&config),
+            Some(PaneKind::Updates)
+        ));
+    }
 
     #[test]
     fn transfers_tab_round_trips_through_layout_config() {

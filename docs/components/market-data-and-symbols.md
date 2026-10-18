@@ -185,6 +185,56 @@ The first installation starts with an empty feed. The view is in
 `market_views/listings.rs`; `Listings*` messages route through
 `market_update/listings.rs` and trigger a symbol-universe refresh on additions.
 
+## Updates Feed
+
+**Updates** is a singleton pane under Add Widget > Feeds and Alfred. It monitors
+native and HIP-3 maximum leverage, margin tiers, and margin mode, plus published
+HIP-3 per-asset OI caps. Filters select change type, DEX, asset text, and favourite
+symbols. Hidden markets are omitted. Rows group changes for one asset in one
+scan; Details exposes exact cap values and old/new margin tiers. Symbol buttons
+use the existing selection route when the market is available.
+
+`api/updates.rs` requests public `allPerpMetas` and `perpDexs` every 30 seconds
+while the pane exists in a workspace. `UpdatesTick` runs every second to update
+display time and check the cooldown. Metadata reads share in-flight requests and
+a five-second cache with symbol discovery, New Listings, and other metadata
+consumers. The existing Hyperliquid read gate/proxy path handles admission;
+neither a wallet nor third-party credentials are needed. Manual refresh has a
+five-second cooldown; failures back off to five minutes. Requests carry IDs and
+only one scan can run at a time. There are no per-asset subscriptions or requests.
+
+The parser validates each complete source independently. It retains inactive
+assets, resolves `marginTableId` to the DEX's table contents, and supports implicit
+flat tables whose IDs encode leverage. Canonical decimal strings preserve exact
+cap and tier-threshold comparisons. Legacy `onlyIsolated=true` without an explicit
+`marginMode` does not establish a specific margin-mode baseline. Numeric cap
+coverage uses `assetToStreamingOiCap` and preserves DEX-qualified symbols; native
+caps and unpublished limits are never inferred. At-cap status, funding settings,
+fee changes, and listings are outside this initial feed's event types.
+
+`market_state/updates.rs` compares successful snapshots against independent
+parameter/cap baselines. The first observation of an asset or newly published
+field seeds silently. Missing caps never mean zero or unlimited; their comparison
+baseline is dropped until published again. Failed sources retain their prior
+baseline. Changes found after a restart, failed read, or observation interval over
+90 seconds are marked as observed after a gap. Times mean locally detected, not
+exchange execution times; intermediate changes between observations cannot be
+recovered. Flat-table leverage changes produce one leverage event, while actual
+tier changes compare thresholds and leverage values rather than table IDs.
+
+`config/updates.rs` defines typed snapshots and events. A versioned
+`<config-dir>/cache/v1/updates.json` stores the baselines, observation times, and
+latest 500 grouped events through `config_persistence/updates.rs`. Writes use the
+atomic cache writer on a blocking worker. Failed saves retry at most every 30
+seconds, never block polling, and retain changes received during an in-flight
+save. Tests and `--test` use no real user history. Clearing the cache resets the
+baseline. Filters and expansion state are session-only; the pane and padding
+target persist as `Updates`, preserving existing layout wire values.
+
+`Updates*` and `RefreshUpdates` messages route through the market updater into
+`market_update/updates.rs`; `AddUpdatesPane` follows normal pane creation. Views
+live in `market_views/updates.rs` and do not fetch data or read the clock.
+
 ## Spot Metadata And Identity Safety
 
 Perpetual, spot, and outcome metadata families are fetched independently, so a

@@ -34,6 +34,7 @@ impl TradingTerminal {
             | Message::AddOrderEntryPane
             | Message::AddOutcomesPane
             | Message::AddNewListingsPane
+            | Message::AddUpdatesPane
             | Message::AddHypeEtfsPane
             | Message::AddHypeUnstakingQueuePane => self.add_widget_pane(message),
             _ => Task::none(),

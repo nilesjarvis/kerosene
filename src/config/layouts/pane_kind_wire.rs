@@ -29,6 +29,7 @@ enum KnownPaneKindConfig {
     TelegramFeed,
     Outcomes,
     NewListings,
+    Updates,
     HypeEtfs,
     HypeUnstakingQueue,
 }
@@ -69,6 +70,7 @@ impl From<KnownPaneKindConfig> for PaneKindConfig {
             KnownPaneKindConfig::TelegramFeed => Self::TelegramFeed,
             KnownPaneKindConfig::Outcomes => Self::Outcomes,
             KnownPaneKindConfig::NewListings => Self::NewListings,
+            KnownPaneKindConfig::Updates => Self::Updates,
             KnownPaneKindConfig::HypeEtfs => Self::HypeEtfs,
             KnownPaneKindConfig::HypeUnstakingQueue => Self::HypeUnstakingQueue,
         }
@@ -218,6 +220,9 @@ impl Serialize for PaneKindConfig {
             }
             PaneKindConfig::NewListings => {
                 serializer.serialize_unit_variant("PaneKindConfig", 27, "NewListings")
+            }
+            PaneKindConfig::Updates => {
+                serializer.serialize_unit_variant("PaneKindConfig", 29, "Updates")
             }
             PaneKindConfig::Unknown(raw) => raw.serialize(serializer),
         }

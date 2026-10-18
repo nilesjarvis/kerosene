@@ -16,6 +16,7 @@ mod schema;
 mod screenshot;
 mod secrets;
 mod themes;
+pub(crate) mod updates;
 mod wallets;
 
 pub use clear::{ClearConfigSummary, clear_all_configs};

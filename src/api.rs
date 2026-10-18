@@ -13,6 +13,7 @@ pub(crate) mod proxy;
 mod read_control;
 mod sec;
 mod shared_reads;
+mod updates;
 mod user_fills;
 mod watchlist;
 
@@ -46,6 +47,7 @@ pub(crate) use sec::{
 };
 #[cfg(test)]
 pub(crate) use sec::{SecEarningsMetric, SecStructuredEarnings};
+pub(crate) use updates::fetch_updates_snapshot;
 pub use user_fills::{UserFill, UserFillsPage, UserFillsRequest, fetch_user_fills};
 pub use watchlist::{
     WatchlistContext, WatchlistContextsResponse, fetch_screener_history, fetch_watchlist_contexts,

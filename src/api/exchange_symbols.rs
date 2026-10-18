@@ -183,7 +183,11 @@ async fn post_info_value(
     client: &reqwest::Client,
     request_type: &'static str,
 ) -> Result<Value, String> {
-    post_info_typed(client, request_type).await
+    if matches!(request_type, "allPerpMetas" | "perpDexs") {
+        super::shared_reads::public_info(info_request_payload(request_type)).await
+    } else {
+        post_info_typed(client, request_type).await
+    }
 }
 
 async fn post_info_typed<T: DeserializeOwned>(

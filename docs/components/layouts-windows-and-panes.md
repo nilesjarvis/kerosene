@@ -50,6 +50,7 @@ It also includes singleton pane types:
 - `TelegramFeed`
 - `Outcomes`
 - `NewListings`
+- `Updates` (market parameter and HIP-3 OI cap changes; shared singleton history)
 - `HypeEtfs`
 - `HypeUnstakingQueue`
 

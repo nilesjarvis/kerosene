@@ -135,6 +135,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddXFeedPane
         | Message::AddOutcomesPane
         | Message::AddNewListingsPane
+        | Message::AddUpdatesPane
         | Message::AddHypeEtfsPane
         | Message::AddHypeUnstakingQueuePane => UpdateRoute::Panes,
 
@@ -308,6 +309,15 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ListingsFilterChanged(_)
         | Message::ListingsLoaded(_, _)
         | Message::ListingsSaved(_)
+        | Message::UpdatesTick
+        | Message::RefreshUpdates
+        | Message::UpdatesFilterChanged(_)
+        | Message::UpdatesVenueChanged(_)
+        | Message::UpdatesSearchChanged(_)
+        | Message::UpdatesFavouritesChanged(_)
+        | Message::UpdatesToggleDetails(_, _)
+        | Message::UpdatesLoaded(_, _)
+        | Message::UpdatesSaved(_)
         | Message::RefreshHypeEtfs
         | Message::HypeEtfsRefreshTick
         | Message::HypeEtfsViewChanged(_)

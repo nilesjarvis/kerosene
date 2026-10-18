@@ -65,11 +65,12 @@ pub(super) async fn public_info(body: Value) -> Result<Value, String> {
     let kind = body["type"].as_str().unwrap_or("");
     if !matches!(
         kind,
-        "metaAndAssetCtxs" | "spotMetaAndAssetCtxs" | "perpDexs"
+        "metaAndAssetCtxs" | "spotMetaAndAssetCtxs" | "perpDexs" | "allPerpMetas"
     ) {
         return Err("Unsupported shared public read".to_string());
     }
-    let ttl = Duration::from_secs(if kind == "perpDexs" { 60 } else { 5 });
+    // Metadata includes mutable OI caps and margin settings, so keep it short-lived too.
+    let ttl = Duration::from_secs(5);
     CONTEXTS
         .get(body.to_string(), ttl, async {
             super::CLIENT

@@ -1,6 +1,31 @@
 use super::*;
 
 #[test]
+fn updates_messages_reach_market_and_pane_routes() {
+    use crate::market_state::updates::{UpdatesFilter, UpdatesSnapshot, UpdatesVenue};
+    assert_route(Message::AddUpdatesPane, UpdateRoute::Panes);
+    for message in [
+        Message::UpdatesTick,
+        Message::RefreshUpdates,
+        Message::UpdatesFilterChanged(UpdatesFilter::All),
+        Message::UpdatesVenueChanged(UpdatesVenue::Native),
+        Message::UpdatesSearchChanged("BTC".into()),
+        Message::UpdatesFavouritesChanged(true),
+        Message::UpdatesToggleDetails(1_000, "BTC".into()),
+        Message::UpdatesLoaded(
+            7,
+            Box::new(UpdatesSnapshot {
+                parameters: Err("offline".into()),
+                caps: Err("offline".into()),
+            }),
+        ),
+        Message::UpdatesSaved(Ok(())),
+    ] {
+        assert_route(message, UpdateRoute::Market);
+    }
+}
+
+#[test]
 fn listings_messages_reach_the_market_and_pane_routes() {
     assert_route(Message::AddNewListingsPane, UpdateRoute::Panes);
     for message in [

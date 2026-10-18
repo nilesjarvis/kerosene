@@ -478,6 +478,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) outcome_expanded_rules: HashSet<u32>,
     pub(crate) outcome_collapsed_market_groups: HashSet<String>,
     pub(crate) listings: crate::market_state::listings::ListingsState,
+    pub(crate) updates: crate::market_state::updates::UpdatesState,
     pub(crate) hype_etfs: HypeEtfState,
     pub(crate) hype_unstaking_queue: HypeUnstakingQueueState,
     pub(crate) display_denomination: config::DisplayDenominationConfig,

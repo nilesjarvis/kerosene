@@ -139,6 +139,12 @@ impl TradingTerminal {
                 .map(|_| Message::ExchangeSymbolsRefreshTick),
         );
 
+        if self.pane_is_open(|kind| matches!(kind, PaneKind::Updates)) {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::UpdatesTick),
+            );
+        }
+
         if self.pane_is_open(|kind| matches!(kind, PaneKind::NewListings)) {
             subs.push(
                 iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::ListingsTick),

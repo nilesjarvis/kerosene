@@ -43,6 +43,7 @@ impl TradingTerminal {
             PaneKind::TelegramFeed => self.view_telegram_feed(),
             PaneKind::Outcomes => self.view_outcomes(),
             PaneKind::NewListings => self.view_new_listings(),
+            PaneKind::Updates => self.view_updates(),
             PaneKind::HypeEtfs => self.view_hype_etfs(),
             PaneKind::HypeUnstakingQueue => self.view_hype_unstaking_queue(),
         }

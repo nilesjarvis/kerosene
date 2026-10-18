@@ -8,6 +8,7 @@ mod positioning_info;
 mod session_data;
 mod symbols;
 mod ticker_tape;
+mod updates;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -32,6 +33,15 @@ impl TradingTerminal {
             | Message::SymbolSelected(_)) => {
                 return self.update_symbol_search_market(message);
             }
+            message @ (Message::UpdatesTick
+            | Message::RefreshUpdates
+            | Message::UpdatesFilterChanged(_)
+            | Message::UpdatesVenueChanged(_)
+            | Message::UpdatesSearchChanged(_)
+            | Message::UpdatesFavouritesChanged(_)
+            | Message::UpdatesToggleDetails(_, _)
+            | Message::UpdatesLoaded(_, _)
+            | Message::UpdatesSaved(_)) => return self.update_parameters_market(message),
             message @ (Message::ListingsTick
             | Message::RefreshListings
             | Message::ListingsFilterChanged(_)
