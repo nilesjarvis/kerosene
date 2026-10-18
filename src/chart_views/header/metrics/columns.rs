@@ -6,7 +6,7 @@ use crate::message::Message;
 
 use chrono::Timelike;
 use iced::Theme;
-use iced::widget::{Row, button, column, text};
+use iced::widget::{Row, button, column, text, tooltip};
 
 mod formatting;
 
@@ -138,6 +138,7 @@ pub(super) fn push_perp_metric_columns<'a>(
     asset_volume_as_notional: bool,
     open_interest_as_notional: bool,
     visibility: ChartHeaderMetricVisibility,
+    open_interest_cap: Option<f64>,
 ) -> Row<'a, Message> {
     let mark = parse_ctx_f64(ctx.mark_px.as_deref());
     let oracle = parse_ctx_f64(ctx.oracle_px.as_deref());
@@ -174,16 +175,48 @@ pub(super) fn push_perp_metric_columns<'a>(
     }
 
     if visibility.show_open_interest {
-        header_row = header_row.push(clickable_metric_column(
-            open_interest_label(open_interest_as_notional),
-            format_open_interest(oi, chart_price, open_interest_as_notional),
-            theme.palette().text,
+        header_row = header_row.push(open_interest_column(
             theme,
-            Message::ToggleOpenInterestNotional(chart_id),
+            chart_id,
+            oi,
+            chart_price,
+            open_interest_as_notional,
+            open_interest_cap,
         ));
     }
 
     header_row
+}
+
+fn open_interest_column(
+    theme: &Theme,
+    chart_id: ChartId,
+    oi: Option<f64>,
+    chart_price: f64,
+    as_notional: bool,
+    cap: Option<f64>,
+) -> iced::Element<'static, Message> {
+    let metric = clickable_metric_column(
+        open_interest_label(as_notional),
+        format_open_interest(oi, chart_price, as_notional),
+        theme.palette().text,
+        theme,
+        Message::ToggleOpenInterestNotional(chart_id),
+    );
+    let Some(cap) = cap.filter(|cap| cap.is_finite() && *cap >= 0.0) else {
+        return metric;
+    };
+    tooltip(
+        metric,
+        text(format!(
+            "Open interest cap: {}",
+            crate::denomination::format_compact_usd(cap)
+        ))
+        .size(11),
+        tooltip::Position::Bottom,
+    )
+    .style(iced::widget::container::rounded_box)
+    .into()
 }
 
 pub(in crate::chart_views::header) fn funding_column(

@@ -161,6 +161,7 @@ impl TradingTerminal {
                 instance.open_interest_as_notional,
                 metric_visibility,
                 is_perp,
+                self.chart_open_interest_cap(&instance.symbol, now_ms),
             );
         }
 

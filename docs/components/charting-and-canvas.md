@@ -207,6 +207,23 @@ and can be resized through chart messages.
 
 ## Asset Context And Header Metrics
 
+Hovering the perpetual chart header's Open Interest field shows the market's
+USD notional cap when Hyperliquid publishes one. Clicking still toggles between
+coin and USD open interest; the cap remains denominated in USD in either mode.
+`api/open_interest_caps.rs` reads the per-asset `coinToOiCap` limits from
+[`perpDexLimits`](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-builder-deployed-perp-market-limits),
+which supports builder DEXes only. Native perpetuals and missing limits do not
+show a numeric cap; a missing limit is never treated as unlimited.
+
+`chart_state/open_interest_caps.rs` owns runtime-only limits in
+`TradingTerminal::chart_open_interest_caps`. The status tick calls
+`chart_update/open_interest_caps.rs` to refresh once per minute, sharing one
+request per DEX across expanded chart headers in open workspaces and detached
+windows. `ChartOpenInterestCapsLoaded` routes results to the chart updater.
+Failed reads clear the displayed caps and back off up to five minutes; snapshots
+older than two minutes are hidden. Limits use Hyperliquid's public read path
+independently of the candle provider and are not persisted.
+
 Chart headers and overlays always use Hyperliquid's native `activeAssetCtx`
 stream for mark/oracle/mid prices, open interest, and current funding, including
 when Hydromancer is the selected read provider. Hydromancer's documented

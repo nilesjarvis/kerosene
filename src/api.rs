@@ -5,6 +5,7 @@ mod exchange_stats;
 mod exchange_symbols;
 mod hype_etfs;
 mod hype_unstaking_queue;
+mod open_interest_caps;
 mod order_book;
 mod order_status;
 mod outcome_volume;
@@ -33,6 +34,7 @@ pub use exchange_symbols::{
 };
 pub(crate) use hype_etfs::fetch_hype_etfs;
 pub(crate) use hype_unstaking_queue::fetch_hype_unstaking_queue;
+pub(crate) use open_interest_caps::fetch_open_interest_caps;
 pub use order_book::{BookLevel, OrderBook, fetch_order_book, parse_ws_book};
 pub(crate) use order_status::{
     OrderStatusResult, fetch_order_status_by_cloid, fetch_order_status_by_oid,

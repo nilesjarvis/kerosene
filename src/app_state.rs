@@ -10,8 +10,8 @@ use crate::canvas_state::{CanvasId, CanvasState, WorkspaceId};
 use crate::chart::ChartViewport;
 use crate::chart_screenshot::ChartScreenshotState;
 use crate::chart_state::{
-    ChartId, ChartInstance, ChartPriceChangeHistory, ChartSurfaceId, DetachedChartWindowState,
-    QuickTradeEditorState,
+    ChartId, ChartInstance, ChartOpenInterestCaps, ChartPriceChangeHistory, ChartSurfaceId,
+    DetachedChartWindowState, QuickTradeEditorState,
 };
 use crate::combined_portfolio::CombinedPortfolioState;
 use crate::hype_etf_state::HypeEtfState;
@@ -399,6 +399,7 @@ pub(crate) struct TradingTerminal {
     // Multi-chart state: each chart pane has its own instance
     pub(crate) charts: HashMap<ChartId, ChartInstance>,
     pub(crate) chart_price_change_history: ChartPriceChangeHistory,
+    pub(crate) chart_open_interest_caps: ChartOpenInterestCaps,
     pub(crate) next_chart_id: ChartId,
     // Primary chart ID - this chart follows watchlist symbol changes
     pub(crate) primary_chart_id: Option<ChartId>,

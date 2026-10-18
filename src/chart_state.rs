@@ -3,6 +3,7 @@ mod editor;
 mod funding;
 mod heatmap;
 mod model;
+mod open_interest_caps;
 mod overlays;
 mod price_change;
 mod quick_trade;
@@ -15,6 +16,7 @@ pub(crate) use self::model::{
     DetachedChartWindowState, FundingFetchMode, FundingFetchRequest, PriceFlash,
     PriceFlashDirection,
 };
+pub(crate) use self::open_interest_caps::{ChartOpenInterestCaps, OPEN_INTEREST_CAP_REFRESH_MS};
 pub(crate) use self::price_change::{
     ChartPriceChangeHistory, PRICE_CHANGE_DAY_MS, PRICE_CHANGE_HISTORY_AHEAD_MS,
     PRICE_CHANGE_MINUTE_MS, PRICE_CHANGE_PREFETCH_MS, PriceChangeHistoryEntry,

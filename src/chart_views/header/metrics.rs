@@ -29,6 +29,7 @@ pub(super) fn push_asset_context_columns<'a>(
     open_interest_as_notional: bool,
     visibility: ChartHeaderMetricVisibility,
     is_perp: bool,
+    open_interest_cap: Option<f64>,
 ) -> Row<'a, Message> {
     if is_perp {
         push_perp_metric_columns(
@@ -41,6 +42,7 @@ pub(super) fn push_asset_context_columns<'a>(
             asset_volume_as_notional,
             open_interest_as_notional,
             visibility,
+            open_interest_cap,
         )
     } else {
         push_spot_metric_columns(

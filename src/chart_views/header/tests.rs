@@ -1,6 +1,7 @@
 use super::feedback::{chart_header_changed_text, format_signed_usd_change};
 
 mod funding;
+mod open_interest_caps;
 
 #[test]
 fn changed_text_highlights_only_changed_decimal_digit() {

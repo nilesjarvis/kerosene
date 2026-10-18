@@ -12,6 +12,7 @@ mod earnings;
 mod editor;
 mod ema_clouds;
 mod macro_indicators;
+mod open_interest_caps;
 mod price_change;
 mod quick_trade;
 
@@ -78,6 +79,9 @@ impl TradingTerminal {
 
     pub(crate) fn update_chart(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::ChartOpenInterestCapsLoaded(dex, result) => {
+                self.apply_chart_open_interest_caps(&dex, result, Self::now_ms());
+            }
             Message::ChartPriceChangeHistoryLoaded(request, result) => {
                 self.apply_chart_price_change_history(request, result, Self::now_ms());
             }

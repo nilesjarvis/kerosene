@@ -120,6 +120,10 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
     assert_route(Message::QuickTradeActionAdded, UpdateRoute::Chart);
     assert_route(Message::SaveQuickTradeActions, UpdateRoute::Chart);
     assert_route(
+        Message::ChartOpenInterestCapsLoaded("xyz".to_string(), Ok(Default::default())),
+        UpdateRoute::Chart,
+    );
+    assert_route(
         Message::ChartWsAssetCtxLagged(7, "BTC".to_string(), source_context, 9),
         UpdateRoute::Chart,
     );

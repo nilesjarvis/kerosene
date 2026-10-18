@@ -19,6 +19,7 @@ impl TradingTerminal {
             self.sync_outcome_volume_demand(),
         ];
         tasks.extend(self.queue_chart_asset_context_rest_fetches(now_ms));
+        tasks.extend(self.queue_chart_open_interest_caps(now_ms));
         tasks.extend(self.queue_chart_price_change_history(now_ms));
 
         let chart_retries: Vec<_> = self
