@@ -84,6 +84,13 @@ pub(super) fn hydromancer_unsubscribe_payload(payload: &Value) -> Value {
         return serde_json::json!({ "type": "unsubscribe" });
     };
 
+    let mut subscription = subscription.clone();
+    if subscription.get("type").and_then(Value::as_str) == Some("l4BookUpdates")
+        && let Some(object) = subscription.as_object_mut()
+    {
+        // L4 merge is subscribe-only; echoing it makes unsubscribe fail.
+        object.remove("merge");
+    }
     serde_json::json!({
         "type": "unsubscribe",
         "subscription": subscription,
@@ -197,5 +204,15 @@ mod tests {
         let rendered = redact_hydromancer_error("HTTP 401 Unauthorized", "hydro-secret");
 
         assert_eq!(rendered, "HTTP 401 Unauthorized");
+    }
+
+    #[test]
+    fn l4_unsubscribe_omits_subscribe_only_merge_option() {
+        let payload = serde_json::json!({"method":"subscribe","subscription":{"type":"l4BookUpdates","coins":["BTC"],"merge":false}});
+        let unsubscribe = super::hydromancer_unsubscribe_payload(&payload);
+        assert_eq!(
+            unsubscribe,
+            serde_json::json!({"type":"unsubscribe","subscription":{"type":"l4BookUpdates","coins":["BTC"]}})
+        );
     }
 }

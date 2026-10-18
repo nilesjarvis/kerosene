@@ -1,3 +1,4 @@
+pub(crate) mod l4_book;
 use crate::api::proxy::HyperliquidRequestExt;
 use crate::{api::CLIENT, helpers::sensitive_response_snippet};
 use reqwest::header::USER_AGENT;

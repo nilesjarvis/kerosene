@@ -178,6 +178,9 @@ impl TradingTerminal {
     }
 
     pub(crate) fn bump_hydromancer_key_generation(&mut self) {
+        if let Some(state) = &mut self.book_inspector {
+            state.restart();
+        }
         self.hydromancer_key_generation = self.hydromancer_key_generation.wrapping_add(1);
         self.invalidate_portfolio_income_refreshes();
         if self.read_data_provider == config::ReadDataProvider::Hydromancer {
@@ -478,6 +481,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) hype_etfs: HypeEtfState,
     pub(crate) hype_unstaking_queue: HypeUnstakingQueueState,
     pub(crate) display_denomination: config::DisplayDenominationConfig,
+    pub(crate) book_inspector: Option<crate::market_state::book_inspector::BookInspectorState>,
     // L2 order books
     pub(crate) order_books: HashMap<OrderBookId, OrderBookInstance>,
     pub(crate) next_order_book_id: OrderBookId,

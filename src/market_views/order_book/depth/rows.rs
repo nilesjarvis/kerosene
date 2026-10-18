@@ -81,23 +81,29 @@ pub(super) fn depth_ask_column(
         col = col.push(placeholder_book_row());
     }
     rows.iter().copied().fold(col, |col, (px, size, cum)| {
-        col.push(book_row(
-            BookRowData {
-                px,
-                sz: size,
-                cum,
-                has_user_order: user_order_levels.has_ask_at_price(px, context.tick),
-                whole_contracts: context.whole_contracts,
-            },
-            context.max_cum,
-            context.max_sz,
-            context.decimals,
-            false,
-            context.reverse_side,
-            Message::OrderBookPriceSelected {
-                id: context.id,
-                price: format!("{:.decimals$}", px, decimals = context.decimals),
-            },
+        col.push(crate::helpers::inspectable_book_row(
+            book_row(
+                BookRowData {
+                    px,
+                    sz: size,
+                    cum,
+                    has_user_order: user_order_levels.has_ask_at_price(px, context.tick),
+                    whole_contracts: context.whole_contracts,
+                },
+                context.max_cum,
+                context.max_sz,
+                context.decimals,
+                false,
+                context.reverse_side,
+                Message::OrderBookPriceSelected {
+                    id: context.id,
+                    price: format!("{:.decimals$}", px, decimals = context.decimals),
+                },
+            ),
+            context.id,
+            px,
+            context.tick,
+            Some(false),
         ))
     })
 }
@@ -112,23 +118,29 @@ pub(super) fn depth_bid_column(
         .iter()
         .copied()
         .fold(Column::new().spacing(0), |col, (px, size, cum)| {
-            col.push(book_row(
-                BookRowData {
-                    px,
-                    sz: size,
-                    cum,
-                    has_user_order: user_order_levels.has_bid_at_price(px, context.tick),
-                    whole_contracts: context.whole_contracts,
-                },
-                context.max_cum,
-                context.max_sz,
-                context.decimals,
-                true,
-                context.reverse_side,
-                Message::OrderBookPriceSelected {
-                    id: context.id,
-                    price: format!("{:.decimals$}", px, decimals = context.decimals),
-                },
+            col.push(crate::helpers::inspectable_book_row(
+                book_row(
+                    BookRowData {
+                        px,
+                        sz: size,
+                        cum,
+                        has_user_order: user_order_levels.has_bid_at_price(px, context.tick),
+                        whole_contracts: context.whole_contracts,
+                    },
+                    context.max_cum,
+                    context.max_sz,
+                    context.decimals,
+                    true,
+                    context.reverse_side,
+                    Message::OrderBookPriceSelected {
+                        id: context.id,
+                        price: format!("{:.decimals$}", px, decimals = context.decimals),
+                    },
+                ),
+                context.id,
+                px,
+                context.tick,
+                Some(true),
             ))
         });
     // Bids render best-at-top, so filler rows go below the data.

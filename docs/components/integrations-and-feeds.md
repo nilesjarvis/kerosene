@@ -558,3 +558,13 @@ Use focused tests in:
 - `src/calendar_*` tests
 
 For integration changes, test both missing-key and configured-key paths.
+
+
+### Hydromancer L4 order inspection
+
+The order-book wallet inspector uses the existing Hydromancer key and shared
+connection manager with a dedicated L4 socket for `l4BookUpdates`, and `l4Book` REST snapshots for bootstrap
+and recovery. It works even when the main read provider is Hyperliquid. See
+[Order Book Wallet Inspector](market-data-and-symbols.md#order-book-wallet-inspector)
+for lifecycle, limits, recovery, and module ownership. Network activity records
+only the L4 operation names, never order payloads or wallet addresses.

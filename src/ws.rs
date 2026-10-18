@@ -1,3 +1,4 @@
+pub(crate) use hydromancer::{InspectorStreamConfig, ws_book_inspector};
 mod coalescer;
 mod connect;
 mod hydromancer;

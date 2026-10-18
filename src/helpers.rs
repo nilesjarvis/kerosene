@@ -1,3 +1,5 @@
+pub(crate) use order_book::book_bucket_key;
+pub(crate) use order_book::inspectable_book_row;
 mod aggregation;
 mod fees;
 mod formatting;

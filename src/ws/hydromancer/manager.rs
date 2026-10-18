@@ -123,10 +123,16 @@ struct HydromancerManager {
     msg_rx: broadcast::Receiver<HydromancerRoutedMessage>,
 }
 
-// None owns general streams; each L2 precision has its own socket because
-// book frames may omit precision. The first key component retains key-rotation
-// ownership so reconnect and eviction always cover the entire provider.
-type HydromancerManagerKey = (u64, Option<L2BookSigfigs>);
+// Separate high-volume books from account/fill streams. Key rotation and
+// reconnect still own all scopes through the first component of the pool key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum HydromancerManagerScope {
+    General,
+    L2Book(L2BookSigfigs),
+    L4Book,
+}
+
+type HydromancerManagerKey = (u64, HydromancerManagerScope);
 type HydromancerManagerPool = std::sync::Mutex<HashMap<HydromancerManagerKey, HydromancerManager>>;
 static HYDROMANCER_MANAGERS: OnceLock<HydromancerManagerPool> = OnceLock::new();
 static NEXT_HYDROMANCER_MANAGER_TASK_ID: AtomicU64 = AtomicU64::new(1);
@@ -237,7 +243,12 @@ fn spawn_hydromancer_manager(
     api_key: Zeroizing<String>,
 ) -> HydromancerManager {
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-    let (msg_tx, msg_rx) = broadcast::channel(10000);
+    let capacity = if manager_id.1 == HydromancerManagerScope::L4Book {
+        256
+    } else {
+        10000
+    };
+    let (msg_tx, msg_rx) = broadcast::channel(capacity);
     let task_id = next_hydromancer_manager_task_id();
     let reconnect_gate = HydromancerReconnectGate::default();
     let command_sender = HydromancerCommandSender::new(cmd_tx, reconnect_gate.clone());
@@ -274,7 +285,7 @@ pub(super) fn get_hydromancer_manager(
     HydromancerCommandSender,
     broadcast::Receiver<HydromancerRoutedMessage>,
 ) {
-    get_hydromancer_manager_for_scope(stream_key, None)
+    get_hydromancer_manager_for_scope(stream_key, HydromancerManagerScope::General)
 }
 
 pub(super) fn get_hydromancer_book_manager(
@@ -284,12 +295,21 @@ pub(super) fn get_hydromancer_book_manager(
     HydromancerCommandSender,
     broadcast::Receiver<HydromancerRoutedMessage>,
 ) {
-    get_hydromancer_manager_for_scope(stream_key, Some(sigfigs))
+    get_hydromancer_manager_for_scope(stream_key, HydromancerManagerScope::L2Book(sigfigs))
+}
+
+pub(super) fn get_hydromancer_l4_manager(
+    stream_key: HydromancerStreamKey,
+) -> (
+    HydromancerCommandSender,
+    broadcast::Receiver<HydromancerRoutedMessage>,
+) {
+    get_hydromancer_manager_for_scope(stream_key, HydromancerManagerScope::L4Book)
 }
 
 fn get_hydromancer_manager_for_scope(
     stream_key: HydromancerStreamKey,
-    scope: Option<L2BookSigfigs>,
+    scope: HydromancerManagerScope,
 ) -> (
     HydromancerCommandSender,
     broadcast::Receiver<HydromancerRoutedMessage>,
@@ -330,7 +350,7 @@ pub(crate) fn hydromancer_manager_reconnect_sent_for_test(
     stream_key: HydromancerStreamKey,
     action: impl FnOnce(),
 ) -> bool {
-    let manager_id = (stream_key.manager_id(), None);
+    let manager_id = (stream_key.manager_id(), HydromancerManagerScope::General);
     let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
     let cmd_tx = HydromancerCommandSender::new_for_test(cmd_tx);

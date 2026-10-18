@@ -1,5 +1,7 @@
+mod book_inspector;
 use super::recovery::emit_after_reconnect;
 use crate::network_activity::HttpRequestExt as _;
+pub(crate) use book_inspector::{InspectorStreamConfig, ws_book_inspector};
 mod capacity;
 mod fill_stream;
 mod liquidations;

@@ -51,6 +51,7 @@ grammers-session = "0.9"
 k256 = { version = "0.13", features = ["ecdsa"] }
 sha3 = "0.10"
 rmp-serde = "1"
+zstd = { version = "0.13", default-features = false }
 hex = "0.4"
 # Config persistence
 dirs = "6"

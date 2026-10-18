@@ -1,3 +1,4 @@
+pub(crate) mod book_inspector;
 mod dom_ladder;
 pub(crate) mod listings;
 mod live_watchlist;

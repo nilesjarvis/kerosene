@@ -333,6 +333,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::OrderBookWsAssetCtxLagged { .. }
         | Message::WsBookUpdate { .. }
         | Message::OrderBookWsBookLagged { .. }
+        | Message::InspectBookBlock { .. }
+        | Message::BookInspectorEvent(..)
+        | Message::BookInspectorPage(..)
+        | Message::RetryBookInspector(_)
         | Message::SetBookTickSize(_, _)
         | Message::ToggleOrderBookSettings(_)
         | Message::ToggleOrderBookCenterOnMid(_)

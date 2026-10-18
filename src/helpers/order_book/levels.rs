@@ -41,7 +41,7 @@ const GRID_SNAP_TOLERANCE: f64 = 1e-6;
 
 /// Integer bucket key for a price at the given tick: grid-aligned prices snap
 /// to their exact key; off-grid prices round down (bids) or up (asks).
-fn bucket_key(px: f64, tick: f64, is_bid: bool) -> i64 {
+pub(crate) fn book_bucket_key(px: f64, tick: f64, is_bid: bool) -> i64 {
     let scaled = px / tick;
     let nearest = scaled.round();
     let key = if (scaled - nearest).abs() <= GRID_SNAP_TOLERANCE {
@@ -60,7 +60,7 @@ pub fn aggregate_levels(levels: &[BookLevel], tick: f64, is_bid: bool) -> Vec<(f
 
     for lvl in levels {
         *buckets
-            .entry(bucket_key(lvl.px, tick, is_bid))
+            .entry(book_bucket_key(lvl.px, tick, is_bid))
             .or_insert(0.0) += lvl.sz;
     }
 

@@ -46,6 +46,13 @@ impl TradingTerminal {
                 }
             }
             Message::WindowClosed(id) => {
+                if self
+                    .book_inspector
+                    .as_ref()
+                    .is_some_and(|state| state.window_id == id)
+                {
+                    self.book_inspector = None;
+                }
                 if Some(id) == self.main_window_id {
                     self.close_agent_session();
                     return self.flush_pending_config_save_and_exit();

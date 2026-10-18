@@ -465,3 +465,144 @@ fn click(
     }
     messages
 }
+
+#[tokio::test]
+async fn book_inspector_hover_action_does_not_select_an_order_price() {
+    let mut renderer = iced::Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+        .await
+        .expect("renderer");
+    for reversed in [false, true] {
+        let base = crate::helpers::book_row(
+            crate::helpers::BookRowData {
+                px: 100.0,
+                sz: 2.0,
+                cum: 2.0,
+                has_user_order: false,
+                whole_contracts: false,
+            },
+            2.0,
+            2.0,
+            1,
+            true,
+            reversed,
+            Message::OrderBookPriceSelected {
+                id: 7,
+                price: "100".into(),
+            },
+        );
+        let mut view = crate::helpers::inspectable_book_row(base, 7, 100.0, 1.0, Some(true));
+        let size = Size::new(400.0, crate::helpers::BOOK_ROW_HEIGHT);
+        let (mut tree, node) = render(
+            &mut view,
+            &mut renderer,
+            &Theme::Dark,
+            size,
+            "inspector-hover",
+        );
+        let messages = click(
+            &mut view,
+            &mut tree,
+            &node,
+            &mut renderer,
+            size,
+            Point::new(392.0, 10.0),
+        );
+        assert_eq!(messages.len(), 1);
+        assert!(
+            matches!(&messages[0], Message::InspectBookBlock { id:7, selection } if selection.price == 100.0 && selection.is_bid == Some(true))
+        );
+        let messages = click(
+            &mut view,
+            &mut tree,
+            &node,
+            &mut renderer,
+            size,
+            Point::new(100.0, 10.0),
+        );
+        assert_eq!(messages.len(), 1);
+        assert!(matches!(
+            &messages[0],
+            Message::OrderBookPriceSelected { id: 7, .. }
+        ));
+    }
+}
+
+#[tokio::test]
+async fn book_inspector_window_renders_empty_live_stale_and_missing_key_states() {
+    use crate::market_state::book_inspector::{
+        BookInspectorState, InspectorStatus, Page, RestingOrder, SCALE, Selection,
+    };
+    let mut renderer = iced::Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+        .await
+        .expect("renderer");
+    let mut terminal = TradingTerminal::boot_from_config(KeroseneConfig::default()).0;
+    let id = iced::window::Id::unique();
+    terminal.hydromancer_api_key = "synthetic-key".to_string().into();
+    terminal.book_inspector = Some(BookInspectorState::new(
+        id,
+        "BTC".into(),
+        Selection {
+            price: 100.0,
+            tick: 1.0,
+            is_bid: Some(true),
+            page: 0,
+            revision: 0,
+        },
+    ));
+    for populated in [false, true] {
+        for stale in [false, true] {
+            let state = terminal.book_inspector.as_mut().expect("inspector");
+            state.status = stale
+                .then(|| InspectorStatus::Recovering("Stream interrupted; reconnecting".into()));
+            let orders = if populated {
+                vec![RestingOrder {
+                    oid: 123456,
+                    wallet: "0x1111111111111111111111111111111111111111".into(),
+                    is_bid: true,
+                    price: 100 * SCALE,
+                    size: 2 * SCALE,
+                }]
+            } else {
+                vec![]
+            };
+            state.page = Some(Page {
+                revision: 0,
+                height: 123,
+                timestamp_ms: 1_700_000_000_000,
+                orders,
+                total_orders: usize::from(populated),
+                wallets: usize::from(populated),
+                total_size: 2.0,
+                notional: 200.0,
+                page: 0,
+            });
+            for (name, theme) in [("dark", Theme::Dark), ("light", Theme::Light)] {
+                let mut view = terminal.view_book_inspector();
+                let size = Size::new(760.0, 460.0);
+                let _ = render(
+                    &mut view,
+                    &mut renderer,
+                    &theme,
+                    size,
+                    &format!("inspector-{name}-{populated}-{stale}"),
+                );
+                let mut tree = Tree::new(view.as_widget());
+                let small = Size::new(580.0, 280.0);
+                let _ = view.as_widget_mut().layout(
+                    &mut tree,
+                    &renderer,
+                    &layout::Limits::new(small, small),
+                );
+            }
+        }
+    }
+    terminal.hydromancer_api_key = String::new().into();
+    let mut view = terminal.view_book_inspector();
+    let _ = render(
+        &mut view,
+        &mut renderer,
+        &Theme::Dark,
+        Size::new(760.0, 460.0),
+        "inspector-missing-key",
+    );
+}

@@ -265,6 +265,7 @@ impl TradingTerminal {
             hype_etfs: crate::hype_etf_state::HypeEtfState::default(),
             hype_unstaking_queue: crate::hype_unstaking_state::HypeUnstakingQueueState::default(),
             display_denomination: cfg.display_denomination.clone().normalized(),
+            book_inspector: None,
             order_books: HashMap::new(),
             next_order_book_id: 0,
             accounts: cfg.accounts.clone(),

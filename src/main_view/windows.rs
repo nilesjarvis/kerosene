@@ -13,7 +13,13 @@ impl TradingTerminal {
             return self.view_main_window(window_id);
         }
 
-        let content = if Some(window_id) == self.wallet_tracker.window_id {
+        let content = if self
+            .book_inspector
+            .as_ref()
+            .is_some_and(|state| state.window_id == window_id)
+        {
+            self.view_book_inspector()
+        } else if Some(window_id) == self.wallet_tracker.window_id {
             self.view_wallet_tracker()
         } else if Some(window_id) == self.combined_portfolio.window_id {
             self.view_combined_portfolio()
@@ -73,6 +79,16 @@ impl TradingTerminal {
     }
 
     pub(crate) fn window_title(&self, window_id: window::Id) -> String {
+        if let Some(state) = self
+            .book_inspector
+            .as_ref()
+            .filter(|state| state.window_id == window_id)
+        {
+            return format!(
+                "Kerosene Orders — {}",
+                self.display_name_for_symbol(&state.coin)
+            );
+        }
         if Some(window_id) == self.wallet_tracker.window_id {
             "Kerosene Wallet Tracker".to_string()
         } else if Some(window_id) == self.combined_portfolio.window_id {

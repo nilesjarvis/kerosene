@@ -1,3 +1,4 @@
+mod inspector;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::market_state::{OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode};

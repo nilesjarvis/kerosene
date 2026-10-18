@@ -1,3 +1,6 @@
+mod inspector;
+pub(crate) use inspector::inspectable_book_row;
+pub(crate) use levels::book_bucket_key;
 mod levels;
 mod row;
 mod ticks;

@@ -331,3 +331,30 @@ fn trade_feed_messages_reach_the_trade_feed_route() {
         assert_route(message, UpdateRoute::TradeFeed);
     }
 }
+
+#[test]
+fn book_inspector_actions_and_stream_results_reach_market_route() {
+    let id = iced::window::Id::unique();
+    let selection = crate::market_state::book_inspector::Selection {
+        price: 100.0,
+        tick: 1.0,
+        is_bid: Some(true),
+        page: 0,
+        revision: 0,
+    };
+    for message in [
+        Message::InspectBookBlock { id: 7, selection },
+        Message::BookInspectorPage(id, 1),
+        Message::RetryBookInspector(id),
+        Message::BookInspectorEvent(
+            id,
+            0,
+            0,
+            crate::market_state::book_inspector::InspectorEvent::Status(
+                crate::market_state::book_inspector::InspectorStatus::Synchronizing,
+            ),
+        ),
+    ] {
+        assert_route(message, UpdateRoute::Market);
+    }
+}

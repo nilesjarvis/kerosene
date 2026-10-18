@@ -1593,6 +1593,18 @@ pub(crate) enum Message {
         source_context: MarketDataSourceContext,
         skipped: u64,
     },
+    InspectBookBlock {
+        id: OrderBookId,
+        selection: crate::market_state::book_inspector::Selection,
+    },
+    BookInspectorEvent(
+        window::Id,
+        u64,
+        u64,
+        crate::market_state::book_inspector::InspectorEvent,
+    ),
+    BookInspectorPage(window::Id, usize),
+    RetryBookInspector(window::Id),
     SetBookTickSize(OrderBookId, f64),
     ToggleOrderBookCenterOnMid(OrderBookId),
     ToggleOrderBookReverseSide(OrderBookId),

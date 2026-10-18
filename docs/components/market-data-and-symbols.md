@@ -834,3 +834,51 @@ Use focused tests in these areas:
 
 Run broader checks when market data changes affect order sizing, active symbol
 resolution, chart subscriptions, or hidden-symbol filtering.
+
+
+## Order Book Wallet Inspector
+
+Depth-list and populated DOM rows reveal an inspect button on hover. The button
+opens a compact, reusable window pinned to the selected market, side, and rendered
+price bucket. Row clicks still select an order-ticket price. The inspector groups
+individual resting orders by wallet and displays exact price, remaining size,
+quote-denominated notional, and order ID. Wallet buttons open the existing wallet
+details window. Results use 50-order pages, with totals for the entire bucket.
+
+This feature requires a configured Hydromancer key with L4 access, independently
+of the selected L2 read provider. There is no native Hyperliquid L2 substitute for
+wallet attribution. Explicit market keys preserve HIP-3, spot, and outcome market
+identities; unavailable markets and denied subscriptions are surfaced in the
+window. Untriggered stop-loss and take-profit orders are outside the resting book.
+The inspector is transient and does not submit, cancel, or persist orders.
+
+Implementation boundaries:
+
+- `market_state/book_inspector*`: selection, page, status, and exact fixed-point
+  reconstruction, including matching and price-time/`insertBefore` priority.
+- `hydromancer_api/l4_book*`: bounded binary snapshot decoding, REST errors, and
+  a process-wide snapshot budget (31-second minimum spacing, plus HTTP 429 backoff).
+- `ws/hydromancer/book_inspector*`: subscribe before fetching, buffer updates,
+  apply only blocks after the snapshot, and reject gaps, lag, reconnects, stale
+  timestamps, malformed data, or buffer overflow. Full books stay in the worker;
+  only a bounded page reaches the UI, at most four times per second. L4 uses a
+  separate socket scope with a 256-frame broadcast buffer so its volume and
+  recovery cannot interfere with account/fill streams.
+- `subscription_state/market/book_inspector.rs`: demand follows the window and
+  key generation. Price and page changes use a watch channel and reuse the book;
+  market changes, Retry, and key rotation replace the stream. Closing the window
+  drops the subscription. Subscribe-only `merge` is removed on unsubscribe.
+- `market_update/order_book/inspector*`, `market_views/order_book/inspector.rs`,
+  `message.rs`, `app_update/routing.rs`, and window routing own the UI lifecycle.
+  Window/run/key/selection identities reject late results. Recovery marks retained
+  rows stale; only a current synchronized page restores Live status.
+
+The inspector uses the same side-specific bucket function as L2 aggregation,
+including its floating-point grid tolerance, while prices and sizes in the L4
+book use eight-decimal fixed-point integers. Limits are 200,000 resting orders,
+32 MiB compressed snapshots, and 64 MiB decompressed snapshots; exceeding a limit
+produces an unavailable/recovery state instead of showing partial attribution.
+
+Protocol references: [L4 snapshots](https://docs.hydromancer.xyz/readme/rest-api/market-data/l4book),
+[L4 updates](https://docs.hydromancer.xyz/readme/websocket/orderbook-streaming/l4bookupdates),
+and [reconstruction](https://docs.hydromancer.xyz/readme/builder-guides/l4-orderbook-streaming).

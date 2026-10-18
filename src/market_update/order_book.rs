@@ -6,6 +6,7 @@ use crate::message::Message;
 use iced::Task;
 
 mod book_data;
+mod inspector;
 mod panes;
 mod ws_updates;
 
@@ -17,6 +18,10 @@ use ws_updates::order_book_tracks_coin;
 impl TradingTerminal {
     pub(crate) fn update_order_book_market(&mut self, message: Message) -> Task<Message> {
         match message {
+            message @ (Message::InspectBookBlock { .. }
+            | Message::BookInspectorEvent(..)
+            | Message::BookInspectorPage(..)
+            | Message::RetryBookInspector(_)) => self.update_book_inspector(message),
             Message::AddOrderBookPane => self.add_order_book_pane(),
             Message::BookLoaded {
                 request_id,

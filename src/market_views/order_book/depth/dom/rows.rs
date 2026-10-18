@@ -91,13 +91,22 @@ fn dom_row(
     .height(BOOK_ROW_HEIGHT)
     .into();
 
-    clickable_book_row(
+    let content = clickable_book_row(
         content,
         Message::OrderBookPriceSelected {
             id: context.id,
             price: format!("{:.decimals$}", row_data.price, decimals = context.decimals),
         },
-    )
+    );
+    let side = match (row_data.bid_size.is_some(), row_data.ask_size.is_some()) {
+        (true, false) => Some(true),
+        (false, true) => Some(false),
+        _ => None,
+    };
+    if row_data.bid_size.is_none() && row_data.ask_size.is_none() {
+        return content;
+    }
+    crate::helpers::inspectable_book_row(content, context.id, row_data.price, context.tick, side)
 }
 
 fn dom_value_cell(

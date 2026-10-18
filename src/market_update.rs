@@ -141,6 +141,10 @@ fn is_order_book_market_message(message: &Message) -> bool {
             | Message::OrderBookWsAssetCtxLagged { .. }
             | Message::WsBookUpdate { .. }
             | Message::OrderBookWsBookLagged { .. }
+            | Message::InspectBookBlock { .. }
+            | Message::BookInspectorEvent(..)
+            | Message::BookInspectorPage(..)
+            | Message::RetryBookInspector(_)
             | Message::SetBookTickSize(_, _)
             | Message::ToggleOrderBookSettings(_)
             | Message::ToggleOrderBookCenterOnMid(_)

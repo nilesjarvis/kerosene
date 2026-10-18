@@ -307,6 +307,8 @@ fn safe_operation(value: &str) -> &'static str {
         "candleSnapshot",
         "candle",
         "l2Book",
+        "l4Book",
+        "l4BookUpdates",
         "trades",
         "activeAssetCtx",
         "activeSpotAssetCtx",
