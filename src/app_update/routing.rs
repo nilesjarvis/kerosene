@@ -694,6 +694,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartSecondaryEditorSearchChanged(_, _)
         | Message::ChartSecondaryEditorSubmit(_)
         | Message::OpenDetachedChart(_)
+        | Message::OpenDetachedChartForSymbol(_)
         | Message::AddChart(_, _) => UpdateRoute::Chart,
 
         Message::PositionsSortChanged(_)

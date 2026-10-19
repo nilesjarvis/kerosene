@@ -2,6 +2,7 @@ mod controls;
 mod footer;
 mod layout;
 mod rows;
+mod ticker_clicks;
 
 use crate::app_state::TradingTerminal;
 use crate::feed_state::liquidation_feed_scroll_id;
@@ -22,7 +23,7 @@ impl TradingTerminal {
             );
         }
 
-        container(responsive(move |size| {
+        let content = container(responsive(move |size| {
             self.view_liquidations_sized(
                 now_ms,
                 (size.width - 2.0 * LIQUIDATIONS_CONTENT_HORIZONTAL_PADDING).max(0.0),
@@ -35,8 +36,9 @@ impl TradingTerminal {
             right: 0.0,
             bottom: 0.0,
             left: 0.0,
-        })
-        .into()
+        });
+
+        ticker_clicks::with_ticker_clicks(content.into())
     }
 
     fn view_liquidations_sized(&self, now_ms: u64, available_width: f32) -> Element<'_, Message> {

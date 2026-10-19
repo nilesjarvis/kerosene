@@ -306,6 +306,13 @@ Key modules:
 The feed is subscribed only when the pane is open and a Hydromancer key is
 available.
 
+Clicking a ticker selects the active symbol. Ctrl-click opens that market in a
+dedicated candlestick chart window without changing existing workspace charts
+or the active symbol. `feed_views/liquidations/ticker_clicks.rs` tracks modifiers
+for the feed, including rows arriving while Ctrl is held, and maps the click to
+`OpenDetachedChartForSymbol` on the chart update route. Losing window focus
+clears the modifier state. This interaction does not depend on hotkey settings.
+
 Live updates and history rebuilding use the same minute/second bucket
 accumulation helper. Live updates prune old buckets and cap the event deque;
 rebuilding clears and replays all retained events without age pruning.

@@ -105,6 +105,10 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
     );
     assert_route(Message::OpenDetachedChart(7), UpdateRoute::Chart);
     assert_route(
+        Message::OpenDetachedChartForSymbol("ETH".into()),
+        UpdateRoute::Chart,
+    );
+    assert_route(
         Message::ChartWsCandleUnavailable(
             7,
             "BTC".into(),

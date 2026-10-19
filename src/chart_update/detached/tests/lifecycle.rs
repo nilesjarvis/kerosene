@@ -112,6 +112,74 @@ fn open_detached_chart_window_can_create_multiple_independent_windows() {
 }
 
 #[test]
+fn open_detached_chart_for_symbol_preserves_workspace_and_fetches_requested_market() {
+    let chart_id = 7;
+    let mut terminal = terminal_with_chart(chart_id);
+    terminal.primary_chart_id = Some(chart_id);
+    terminal.active_symbol = "BTC".into();
+    terminal.exchange_symbols = vec![exchange_symbol("BTC"), exchange_symbol("xyz:ETH")];
+    let pane_count = terminal.panes.len();
+
+    let _task = terminal.update(Message::OpenDetachedChartForSymbol("xyz:ETH".into()));
+    let (window_id, detached_chart_id) = first_detached_window(&terminal);
+    let detached = chart_instance(&terminal, detached_chart_id);
+
+    assert_eq!(terminal.active_symbol, "BTC");
+    assert_eq!(terminal.primary_chart_id, Some(chart_id));
+    assert_eq!(terminal.panes.len(), pane_count);
+    assert_eq!(chart_instance(&terminal, chart_id).symbol, "BTC");
+    assert_eq!(terminal.charts.len(), 2);
+    assert_eq!(detached.symbol, "xyz:ETH");
+    assert_eq!(
+        detached.chart.surface_id(),
+        ChartSurfaceId::Detached(window_id)
+    );
+    assert!(!detached.editor_open);
+    let request = detached
+        .candle_fetch_request
+        .as_ref()
+        .expect("candle fetch queued");
+    assert_eq!(request.symbol, "xyz:ETH");
+
+    terminal.remove_detached_chart_window_state(window_id);
+    assert_eq!(terminal.charts.len(), 1);
+    assert!(terminal.charts.contains_key(&chart_id));
+}
+
+#[test]
+fn open_detached_chart_for_symbol_works_without_a_chart_pane_or_symbol_change() {
+    let mut terminal =
+        TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default()).0;
+    terminal.charts.clear();
+    terminal.detached_chart_windows.clear();
+    terminal.primary_chart_id = None;
+    terminal.panes = pane_grid::State::new(PaneKind::Liquidations).0;
+    terminal.active_symbol = "ETH".into();
+
+    let _task = terminal.update(Message::OpenDetachedChartForSymbol("ETH".into()));
+    let (_, detached_chart_id) = first_detached_window(&terminal);
+
+    assert_eq!(terminal.charts.len(), 1);
+    assert_eq!(chart_instance(&terminal, detached_chart_id).symbol, "ETH");
+    assert_eq!(terminal.active_symbol, "ETH");
+    assert_eq!(terminal.primary_chart_id, None);
+    assert_eq!(terminal.panes.len(), 1);
+}
+
+#[test]
+fn open_detached_chart_for_hidden_or_empty_symbol_leaves_no_window_or_chart() {
+    let mut terminal = terminal_with_chart(7);
+    terminal.muted_tickers.insert("ETH".into());
+
+    for symbol in ["ETH", ""] {
+        let _task = terminal.update(Message::OpenDetachedChartForSymbol(symbol.into()));
+        assert!(terminal.detached_chart_windows.is_empty());
+        assert_eq!(terminal.charts.len(), 1);
+        assert_eq!(chart_instance(&terminal, 7).symbol, "BTC");
+    }
+}
+
+#[test]
 fn closing_detached_chart_window_removes_only_detached_chart_clone() {
     let chart_id = 7;
     let mut terminal = terminal_with_chart(chart_id);

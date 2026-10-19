@@ -142,6 +142,9 @@ impl TradingTerminal {
                 return self.update_chart_editor(message);
             }
             Message::OpenDetachedChart(id) => return self.open_detached_chart_window(id),
+            Message::OpenDetachedChartForSymbol(symbol) => {
+                return self.open_detached_chart_for_symbol(symbol);
+            }
             Message::ToggleChartHeaderCollapsed(id) => {
                 if let Some(instance) = self.charts.get_mut(&id) {
                     instance.header_collapsed = !instance.header_collapsed;

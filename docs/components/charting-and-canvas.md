@@ -573,6 +573,12 @@ selectable, while the editing handlers enforce their locks.
 Detached charts are opened from chart controls and rendered by
 `main_view/windows.rs`.
 
+Ctrl-clicking a liquidation-feed ticker also opens a dedicated window through
+`OpenDetachedChartForSymbol`. It creates a fresh chart with the default timeframe
+and current chart appearance, reuses chart symbol validation and candle loading,
+and leaves the active symbol and workspace chart selection unchanged. No existing
+chart pane is required.
+
 They reuse:
 
 - the same `ChartInstance`

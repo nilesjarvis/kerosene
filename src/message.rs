@@ -1474,6 +1474,7 @@ pub(crate) enum Message {
     ToggleChartHeaderCollapsed(ChartId),
     ToggleChartDrawingToolbar(ChartId),
     OpenDetachedChart(ChartId),
+    OpenDetachedChartForSymbol(String),
     ChartOpenEditor(ChartId),
     ChartCloseEditor(ChartId),
     ChartEditorSearchChanged(ChartId, String),

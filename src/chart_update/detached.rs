@@ -1,11 +1,35 @@
 use crate::app_state::TradingTerminal;
-use crate::chart_state::{ChartId, ChartSurfaceId, DetachedChartWindowState};
+use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId, DetachedChartWindowState};
 use crate::message::Message;
 use iced::{Task, window};
 
 mod surface_state;
 
 impl TradingTerminal {
+    pub(super) fn open_detached_chart_for_symbol(&mut self, symbol: String) -> Task<Message> {
+        if symbol.is_empty() {
+            return Task::none();
+        }
+
+        // Select on a fresh instance so chart validation, cached candles, and
+        // account overlays follow the usual path without retargeting a workspace.
+        let chart_id = self.alloc_chart_id();
+        let mut instance = ChartInstance::new_empty(chart_id);
+        self.apply_chart_appearance_settings(&mut instance.chart);
+        self.charts.insert(chart_id, instance);
+        let select_task = self.update_chart(Message::ChartSymbolSelected(chart_id, symbol));
+        let Some(instance) = self.charts.remove(&chart_id) else {
+            return select_task;
+        };
+        if instance.symbol.is_empty() {
+            return select_task;
+        }
+
+        self.close_chart_header_menus();
+        self.add_widget_menu_open = false;
+        Task::batch([select_task, self.open_chart_instance_window(instance)])
+    }
+
     pub(super) fn open_detached_chart_window(&mut self, chart_id: ChartId) -> Task<Message> {
         self.close_chart_header_menus();
         self.add_widget_menu_open = false;
@@ -19,7 +43,7 @@ impl TradingTerminal {
         }
 
         let detached_chart_id = self.alloc_chart_id();
-        let (detached_symbol, detached_interval, detached_last_time, mut detached_instance) = {
+        let (detached_symbol, detached_interval, detached_last_time, detached_instance) = {
             let Some(source) = self.charts.get(&chart_id) else {
                 self.push_toast(
                     "Chart window unavailable: chart not found".to_string(),
@@ -35,24 +59,7 @@ impl TradingTerminal {
             )
         };
 
-        let state = DetachedChartWindowState::new(detached_chart_id);
-        let settings = window::Settings {
-            size: state.size(),
-            position: state.position(),
-            ..crate::window_chrome::settings(
-                self.custom_window_chrome_active,
-                self.window_background_blur_enabled,
-            )
-        };
-        let (window_id, task) = window::open(settings);
-        detached_instance
-            .chart
-            .set_surface_id(ChartSurfaceId::Detached(window_id));
-        self.charts.insert(detached_chart_id, detached_instance);
-        self.detached_chart_windows.insert(window_id, state);
-        self.persist_config();
-
-        let mut tasks = vec![task.map(Message::WindowOpened)];
+        let mut tasks = vec![self.open_chart_instance_window(detached_instance)];
         if !detached_symbol.is_empty()
             && self.charts.get(&detached_chart_id).is_some_and(|instance| {
                 instance.chart.candles.is_empty()
@@ -77,6 +84,26 @@ impl TradingTerminal {
         }
 
         Task::batch(tasks)
+    }
+
+    fn open_chart_instance_window(&mut self, mut instance: ChartInstance) -> Task<Message> {
+        let state = DetachedChartWindowState::new(instance.id);
+        let settings = window::Settings {
+            size: state.size(),
+            position: state.position(),
+            ..crate::window_chrome::settings(
+                self.custom_window_chrome_active,
+                self.window_background_blur_enabled,
+            )
+        };
+        let (window_id, task) = window::open(settings);
+        instance
+            .chart
+            .set_surface_id(ChartSurfaceId::Detached(window_id));
+        self.charts.insert(instance.id, instance);
+        self.detached_chart_windows.insert(window_id, state);
+        self.persist_config();
+        task.map(Message::WindowOpened)
     }
 }
 

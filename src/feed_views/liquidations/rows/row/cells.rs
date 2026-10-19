@@ -7,6 +7,9 @@ use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, row, text, tooltip};
 use iced::{Element, Theme};
 
+#[cfg(test)]
+mod tests;
+
 impl TradingTerminal {
     pub(super) fn view_liquidated_user_cell(
         &self,
