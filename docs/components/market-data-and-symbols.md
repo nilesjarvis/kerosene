@@ -84,6 +84,16 @@ Background intensity grows
 with execution notional relative to the largest of the 500 retained prints.
 Only rows that fit the pane are rendered, newest first.
 
+A pinned bottom summary shares the Liquidations footer's 1m, 5m, 15m, and 1H
+layout, with total notional, buy (`B`) / sell (`S`) amounts, and proportion bars.
+Narrow panes wrap the timeframes into fewer columns. Amounts use the market's
+quote currency. Each pane accumulates minute buckets
+independently of the 500-row tape, including the current minute as Liquidations
+does. Grouping, minimum filters, and address holds do not change these live totals.
+Buckets age out using the UI clock and reset with the asset/provider generation
+or layout; only received trades are counted, so the existing history-gap status
+also applies to the summary. Summary history is not persisted.
+
 `trade_feed_state.rs`, `trade_feed_update.rs`, and `trade_feed_views.rs` own the
 model, lifecycle, messages, and view. `subscription_state/trade_feed.rs` selects
 native per-coin `trades` or optional Hydromancer `allFills` independently of the

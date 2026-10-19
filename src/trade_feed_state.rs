@@ -2,9 +2,10 @@ use crate::config::OrderBookSymbolModeConfig;
 use crate::feed_state::TrackedTradeIntent;
 use crate::message::RedactedAddress;
 use std::cmp::Reverse;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 mod aggregation;
+mod summary;
 
 pub(crate) type TradeFeedId = u64;
 pub(crate) const TRADE_FEED_CAPACITY: usize = 500;
@@ -67,6 +68,8 @@ pub(crate) struct TradeFeedInstance {
     pub(crate) trades: VecDeque<TradePrint>,
     pub(crate) status: &'static str,
     pub(crate) has_gap: bool,
+    /// Minute buckets keep buy/sell totals independently of the bounded tape.
+    summary_buckets: BTreeMap<u64, (f64, f64)>,
     held_trades: Option<VecDeque<TradePrint>>,
     seen: HashSet<(u64, u64)>,
     seen_order: VecDeque<(u64, u64)>,
@@ -90,6 +93,7 @@ impl TradeFeedInstance {
             trades: VecDeque::new(),
             status: "Waiting for trades",
             has_gap: false,
+            summary_buckets: BTreeMap::new(),
             held_trades: None,
             seen: HashSet::new(),
             seen_order: VecDeque::new(),
@@ -100,6 +104,7 @@ impl TradeFeedInstance {
         self.symbol = symbol;
         self.generation = generation;
         self.trades.clear();
+        self.summary_buckets.clear();
         self.seen.clear();
         self.seen_order.clear();
         self.status = "Waiting for trades";
@@ -147,6 +152,7 @@ impl TradeFeedInstance {
                 for trade in trades {
                     let key = (trade.time_ms, trade.tid);
                     if !retained.contains(&key) && self.seen.insert(key) {
+                        self.add_to_summary(&trade);
                         self.seen_order.push_back(key);
                         self.trades.push_front(trade);
                     }
@@ -157,6 +163,7 @@ impl TradeFeedInstance {
                     .make_contiguous()
                     .sort_by_key(|trade| Reverse(trade.time_ms));
                 self.trades.truncate(TRADE_FEED_CAPACITY);
+                self.prune_summary();
                 while self.seen_order.len() > SEEN_CAPACITY {
                     if let Some(key) = self.seen_order.pop_front() {
                         self.seen.remove(&key);

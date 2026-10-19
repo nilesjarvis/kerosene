@@ -15,6 +15,7 @@ use iced::widget::{
 use iced::{Alignment, Color, Element, Fill, Length, Theme};
 
 mod colors;
+mod summary;
 
 use colors::TraderColors;
 
@@ -38,6 +39,20 @@ impl TradingTerminal {
                 .into();
         };
         container(responsive(move |size| {
+            self.view_trade_feed_sized(id, feed, size.width)
+        }))
+        .width(Fill)
+        .height(Fill)
+        .into()
+    }
+
+    fn view_trade_feed_sized<'a>(
+        &'a self,
+        id: TradeFeedId,
+        feed: &'a TradeFeedInstance,
+        width: f32,
+    ) -> Element<'a, Message> {
+        let tape = container(responsive(move |size| {
             let requested = match &feed.mode {
                 OrderBookSymbolModeConfig::Active => &self.active_symbol,
                 OrderBookSymbolModeConfig::Fixed(key) => key,
@@ -262,6 +277,16 @@ impl TradingTerminal {
             content.width(Fill).into()
         }))
         .padding(8)
+        .width(Fill)
+        .height(Fill)
+        .clip(true);
+
+        column![
+            tape,
+            helpers::section_separator(),
+            self.view_trade_feed_summary(feed, width),
+        ]
+        .spacing(0)
         .width(Fill)
         .height(Fill)
         .into()
