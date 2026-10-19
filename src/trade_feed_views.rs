@@ -114,7 +114,7 @@ impl TradingTerminal {
                 show_value: size.width >= 540.0,
             };
             let header = tape_row(
-                "Time (UTC)",
+                "Time",
                 "Price",
                 "Size",
                 "Value",
@@ -134,13 +134,7 @@ impl TradingTerminal {
             let trades = feed.visible_trades();
             let largest = trades.iter().map(|trade| trade.value).fold(0.0, f64::max);
             for trade in trades.iter().take(row_count) {
-                let seconds = trade.time_ms / 1000;
-                let time = format!(
-                    "{:02}:{:02}:{:02}",
-                    seconds / 3600 % 24,
-                    seconds / 60 % 60,
-                    seconds % 60
-                );
+                let time = trade_age_label(trade.time_ms, self.status_bar_now_ms);
                 let value = helpers::format_size(trade.value);
                 let accent = if trade.is_buy {
                     theme.palette().success
@@ -241,7 +235,7 @@ fn tape_row(
     };
     let mut cells = row![].spacing(8);
     if layout.show_time {
-        cells = cells.push(cell(time, 2, false));
+        cells = cells.push(cell(time, 4, false));
     }
     cells = cells
         .push(trader)
@@ -251,4 +245,45 @@ fn tape_row(
         cells = cells.push(cell(value, 3, true));
     }
     cells.align_y(Alignment::Center).into()
+}
+
+fn trade_age_label(time_ms: u64, now_ms: u64) -> String {
+    let seconds = now_ms.saturating_sub(time_ms) / 1_000;
+    let (count, unit) = match seconds {
+        0 => return "just now".into(),
+        1..60 => (seconds, "second"),
+        60..3_600 => (seconds / 60, "minute"),
+        3_600..86_400 => (seconds / 3_600, "hour"),
+        _ => (seconds / 86_400, "day"),
+    };
+    let plural = if count == 1 { "" } else { "s" };
+    format!("{count} {unit}{plural} ago")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::trade_age_label;
+
+    #[test]
+    fn trade_feed_age_uses_whole_units_and_handles_clock_skew() {
+        let time_ms = 10_000;
+        for (age_ms, expected) in [
+            (0, "just now"),
+            (999, "just now"),
+            (1_000, "1 second ago"),
+            (10_000, "10 seconds ago"),
+            (59_999, "59 seconds ago"),
+            (60_000, "1 minute ago"),
+            (119_999, "1 minute ago"),
+            (180_000, "3 minutes ago"),
+            (3_599_999, "59 minutes ago"),
+            (3_600_000, "1 hour ago"),
+            (7_200_000, "2 hours ago"),
+            (86_400_000, "1 day ago"),
+            (172_800_000, "2 days ago"),
+        ] {
+            assert_eq!(trade_age_label(time_ms, time_ms + age_ms), expected);
+        }
+        assert_eq!(trade_age_label(time_ms, time_ms - 1_000), "just now");
+    }
 }

@@ -15,7 +15,9 @@ track the terminal's active asset, including changes made by clicking charts.
 Each pane has independent selection settings and works in Canvas workspaces.
 
 The compact tape shows the initiating trader, exact execution price, and base
-size; wider panes also show UTC time and value in the market's quote currency.
+size; wider panes also show relative trade age (for example, "10 seconds ago" or
+"3 minutes ago") and value in the market's quote currency. Ages refresh with the
+existing one-second UI clock, including while the feed is quiet or rows are held.
 The trader column uses the shared wallet address cell, including address-book
 labels and Copy, Open Wallet, and Ghost actions on hover. Rows stay stationary
 while an address menu is open; ingestion continues and the view catches up on
