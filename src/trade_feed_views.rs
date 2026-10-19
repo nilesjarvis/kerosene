@@ -6,7 +6,9 @@ use crate::trade_feed_state::{
     TradeFeedId, TradeFeedInstance, TradePrint, trade_feed_symbol_rank, trade_shading,
 };
 use crate::wallet_views::{WalletAddressActionCell, wallet_address_action_cell};
-use iced::widget::{Column, button, column, container, responsive, row, rule, text, text_input};
+use iced::widget::{
+    Column, button, column, container, responsive, row, rule, text, text_input, tooltip,
+};
 use iced::{Alignment, Color, Element, Fill, Length, Theme};
 
 mod colors;
@@ -14,6 +16,7 @@ mod colors;
 use colors::TraderColors;
 
 const TRADER_WIDTH: f32 = 112.0;
+const GROUP_COUNT_WIDTH: f32 = 32.0;
 
 #[derive(Clone, Copy)]
 struct TapeRowLayout {
@@ -57,6 +60,13 @@ impl TradingTerminal {
                     } else {
                         button::text
                     }),
+                tooltip(
+                    button(text("Group trades").size(11))
+                        .on_press(Message::TradeFeedToggleGrouping(id))
+                        .style(if feed.group_trades { button::primary } else { button::text }),
+                    text("Same trader and side within 1 second; total size and weighted average price").size(11),
+                    tooltip::Position::Bottom,
+                ),
             ]
             .spacing(4)
             .align_y(Alignment::Center);
@@ -115,18 +125,18 @@ impl TradingTerminal {
             };
             content = content.push(text(status).size(11).color(muted));
             let layout = TapeRowLayout {
-                show_time: size.width >= 400.0,
-                show_value: size.width >= 540.0,
+                show_time: size.width >= if feed.group_trades { 432.0 } else { 400.0 },
+                show_value: size.width >= if feed.group_trades { 572.0 } else { 540.0 },
             };
             let header = tape_row(
                 "Time",
-                "Price",
+                if feed.group_trades { "Avg price" } else { "Price" },
                 "Size",
                 "Value",
                 text("Trader")
                     .size(12)
                     .color(muted)
-                    .width(TRADER_WIDTH)
+                    .width(TRADER_WIDTH + if feed.group_trades { GROUP_COUNT_WIDTH } else { 0.0 })
                     .into(),
                 layout,
                 muted,
@@ -136,24 +146,30 @@ impl TradingTerminal {
                 .push(rule::horizontal(1));
             let available = size.height - if feed.picker_open { 255.0 } else { 80.0 };
             let row_count = ((available.max(0.0) / 26.0) as usize).min(100);
-            let trades = feed.visible_trades();
-            let largest = trades.iter().map(|trade| trade.value).fold(0.0, f64::max);
-            for trade in trades.iter().take(row_count) {
+            let rows = feed.visible_rows();
+            let largest = rows.iter().map(|row| row.value).fold(0.0, f64::max);
+            for item in rows.iter().take(row_count) {
+                let trade = item.latest;
                 let time = trade_age_label(trade.time_ms, self.status_bar_now_ms);
-                let value = helpers::format_size(trade.value);
+                let value = helpers::format_size(item.value);
                 let accent = if trade.is_buy {
                     theme.palette().success
                 } else {
                     theme.palette().danger
                 };
-                let shading = trade_shading(trade.value, largest);
+                let shading = trade_shading(item.value, largest);
+                let mut trader = row![self.view_trade_feed_trader(id, feed, trade, &theme, &trader_colors)]
+                    .align_y(Alignment::Center);
+                if feed.group_trades {
+                    trader = trader.push(text(format!("×{}", item.count)).size(11).color(muted).width(GROUP_COUNT_WIDTH));
+                }
                 content = content.push(
                     container(tape_row(
                         &time,
-                        &trade.price,
-                        &trade.size,
+                        &item.price_label(),
+                        &item.size_label(),
                         &value,
-                        self.view_trade_feed_trader(id, feed, trade, &theme, &trader_colors),
+                        trader.into(),
                         layout,
                         theme.palette().text,
                     ))

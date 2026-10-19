@@ -3,6 +3,8 @@ use crate::message::RedactedAddress;
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet, VecDeque};
 
+mod aggregation;
+
 pub(crate) type TradeFeedId = u64;
 pub(crate) const TRADE_FEED_CAPACITY: usize = 500;
 const SEEN_CAPACITY: usize = 4096;
@@ -38,6 +40,7 @@ pub(crate) struct TradeFeedsState {
 
 pub(crate) struct TradeFeedInstance {
     pub(crate) mode: OrderBookSymbolModeConfig,
+    pub(crate) group_trades: bool,
     pub(crate) symbol: Option<String>,
     pub(crate) generation: u64,
     pub(crate) picker_open: bool,
@@ -54,6 +57,7 @@ impl TradeFeedInstance {
     pub(crate) fn new(mode: OrderBookSymbolModeConfig) -> Self {
         Self {
             mode,
+            group_trades: false,
             symbol: None,
             generation: 0,
             picker_open: false,

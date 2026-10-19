@@ -7,4 +7,6 @@ pub struct TradeFeedConfig {
     pub id: u64,
     #[serde(default)]
     pub mode: OrderBookSymbolModeConfig,
+    #[serde(default)]
+    pub group_trades: bool,
 }

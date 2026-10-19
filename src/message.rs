@@ -872,6 +872,7 @@ pub(crate) enum Message {
     AddHypeUnstakingQueuePane,
     AddTradeFeedPane,
     TradeFeedTogglePicker(crate::trade_feed_state::TradeFeedId),
+    TradeFeedToggleGrouping(crate::trade_feed_state::TradeFeedId),
     TradeFeedSearchChanged(crate::trade_feed_state::TradeFeedId, String),
     TradeFeedSetMode(
         crate::trade_feed_state::TradeFeedId,

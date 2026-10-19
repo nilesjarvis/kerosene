@@ -47,6 +47,12 @@ impl TradingTerminal {
                     feed.search = query;
                 }
             }
+            Message::TradeFeedToggleGrouping(id) => {
+                if let Some(feed) = self.trade_feeds.instances.get_mut(&id) {
+                    feed.group_trades = !feed.group_trades;
+                    self.persist_config();
+                }
+            }
             Message::TradeFeedSetMode(id, mode) => {
                 let mode = match mode {
                     OrderBookSymbolModeConfig::Fixed(key) => {
@@ -138,14 +144,11 @@ impl TradingTerminal {
             })
             .collect();
         for id in ids {
-            let mode = configs
-                .iter()
-                .find(|config| config.id == id)
-                .map(|config| config.mode.clone())
-                .unwrap_or_default();
-            self.trade_feeds
-                .instances
-                .insert(id, TradeFeedInstance::new(mode));
+            let config = configs.iter().find(|config| config.id == id);
+            let mode = config.map(|config| config.mode.clone()).unwrap_or_default();
+            let mut feed = TradeFeedInstance::new(mode);
+            feed.group_trades = config.is_some_and(|config| config.group_trades);
+            self.trade_feeds.instances.insert(id, feed);
             self.trade_feeds.next_id = self.trade_feeds.next_id.max(id.saturating_add(1));
         }
         self.sync_trade_feeds();
@@ -159,6 +162,7 @@ impl TradingTerminal {
             .map(|(&id, feed)| TradeFeedConfig {
                 id,
                 mode: feed.mode.clone(),
+                group_trades: feed.group_trades,
             })
             .collect();
         configs.sort_by_key(|config| config.id);

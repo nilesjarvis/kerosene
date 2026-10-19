@@ -6,7 +6,11 @@ fn terminal(mode: OrderBookSymbolModeConfig) -> TradingTerminal {
     let config = KeroseneConfig {
         active_symbol: "BTC".into(),
         pane_layout: Some(PaneLayoutConfig::Leaf(PaneKindConfig::TradeFeed { id: 7 })),
-        trade_feeds: vec![TradeFeedConfig { id: 7, mode }],
+        trade_feeds: vec![TradeFeedConfig {
+            id: 7,
+            mode,
+            ..Default::default()
+        }],
         ..Default::default()
     };
     TradingTerminal::boot_from_config(config).0
@@ -95,15 +99,42 @@ fn trade_feed_missing_config_defaults_to_active_and_closed_pane_releases_state()
 fn trade_feed_config_defaults_and_round_trip() {
     let config: TradeFeedConfig = serde_json::from_str(r#"{"id":4}"#).expect("legacy defaults");
     assert_eq!(config.mode, OrderBookSymbolModeConfig::Active);
+    assert!(!config.group_trades);
     let config = TradeFeedConfig {
         id: 4,
         mode: OrderBookSymbolModeConfig::Fixed("@107".into()),
+        group_trades: true,
     };
     let json = serde_json::to_string(&config).expect("serialize");
     assert_eq!(
         serde_json::from_str::<TradeFeedConfig>(&json).expect("deserialize"),
         config
     );
+}
+
+#[test]
+fn trade_feed_grouping_toggle_is_per_pane_and_survives_layout_restore() {
+    let mut terminal = terminal(Default::default());
+    let generation = terminal.trade_feeds.instances[&7].generation;
+    let _ = terminal.update(incoming(generation, "BTC"));
+    terminal
+        .trade_feeds
+        .instances
+        .insert(8, TradeFeedInstance::new(Default::default()));
+    let _ = terminal.update_trade_feed(Message::TradeFeedToggleGrouping(7));
+    assert!(terminal.trade_feeds.instances[&7].group_trades);
+    assert!(!terminal.trade_feeds.instances[&8].group_trades);
+    assert_eq!(terminal.trade_feeds.instances[&7].generation, generation);
+    assert_eq!(terminal.trade_feeds.instances[&7].trades.len(), 1);
+    let snapshot = terminal.saved_layout_snapshot("Grouped tape".into());
+    let json = serde_json::to_string(&snapshot).expect("serialize grouped layout");
+    let snapshot = serde_json::from_str(&json).expect("deserialize grouped layout");
+    let _ = terminal.apply_layout(snapshot);
+    assert!(terminal.trade_feeds.instances[&7].group_trades);
+    assert!(terminal.trade_feeds.instances[&7].trades.is_empty());
+    let _ = terminal.update(Message::TradeFeedToggleGrouping(7));
+    assert!(!terminal.trade_feeds.instances[&7].group_trades);
+    assert!(!terminal.trade_feed_configs_snapshot()[0].group_trades);
 }
 
 #[test]

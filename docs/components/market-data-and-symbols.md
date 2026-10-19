@@ -14,6 +14,15 @@ Click its asset name to search and pin a market, or choose **Follow active** to
 track the terminal's active asset, including changes made by clicking charts.
 Each pane has independent selection settings and works in Canvas workspaces.
 
+**Group trades** optionally combines executions from the same trader and side
+within a one-second span, including interleaved prints from other traders. Each
+group shows a trade count (`×N`), summed base size and quote value, size-weighted
+average price, and the age of its newest execution. Groups remain ordered by
+their newest execution; missing trader addresses remain separate. The grouping
+is derived from the retained 500 prints, so switching it off restores individual
+executions. Address hover holds the grouped rows while ingestion continues.
+Grouping defaults off and is saved independently for each pane and layout.
+
 The compact tape shows the initiating trader, exact execution price, and base
 size; wider panes also show relative trade age (for example, "10 seconds ago" or
 "3 minutes ago") and value in the market's quote currency. Ages refresh with the
@@ -50,8 +59,9 @@ Risk-hidden assets have no trade subscription. Native disconnects and consumer
 lag mark a history gap; reconnect snapshots are not treated as complete backfill.
 
 `PaneKind::TradeFeed(TradeFeedId)` persists through `PaneKindConfig::TradeFeed`.
-The defaulted `trade_feeds` list in config and saved layouts stores only IDs and
-`Active`/`Fixed(symbol)` modes, never tape history. Older layouts need no migration;
+The defaulted `trade_feeds` list in config and saved layouts stores IDs,
+`Active`/`Fixed(symbol)` modes, and `group_trades`, never tape history.
+Older layouts need no migration;
 missing per-pane settings default to following the active asset. Duplicate IDs
 are repaired with the other multi-instance widget IDs on load/import.
 
