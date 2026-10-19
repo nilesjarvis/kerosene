@@ -1,5 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::trade_feed_state::TradeFeedSource;
+use crate::ws::HydromancerStreamKey;
 use iced::Subscription;
 
 impl TradingTerminal {
@@ -9,15 +11,27 @@ impl TradingTerminal {
     ) {
         for (&id, feed) in &self.trade_feeds.instances {
             if let Some(symbol) = &feed.symbol {
-                subscriptions.push(
-                    Subscription::run_with(
+                let subscription = match feed.source {
+                    TradeFeedSource::Hyperliquid => Subscription::run_with(
                         (id, feed.generation, symbol.clone()),
                         crate::ws::ws_trade_feed,
-                    )
-                    .map(|(id, generation, coin, event)| {
-                        Message::TradeFeedStream(id, generation, coin, event)
-                    }),
-                );
+                    ),
+                    TradeFeedSource::Hydromancer { key_generation } => Subscription::run_with(
+                        (
+                            HydromancerStreamKey::new(
+                                self.hydromancer_api_key.trim(),
+                                key_generation,
+                            ),
+                            id,
+                            feed.generation,
+                            symbol.clone(),
+                        ),
+                        crate::ws::ws_hydromancer_trade_feed,
+                    ),
+                };
+                subscriptions.push(subscription.map(|(id, generation, coin, event)| {
+                    Message::TradeFeedStream(id, generation, coin, event)
+                }));
             }
         }
     }

@@ -23,6 +23,32 @@ is derived from the retained 500 prints, so switching it off restores individual
 executions. Address hover holds the grouped rows while ingestion continues.
 Grouping defaults off and is saved independently for each pane and layout.
 
+**Context** optionally switches that pane to Hydromancer's per-asset `allFills`
+stream and shows **Open**, **Add**, **Reduce**, **Close**, or **Flip** for the
+initiating trader's perpetual position. Only taker fills (`crossed: true`) are
+displayed, so buyer/seller counterpart fills do not double the tape's volume.
+Each action is calculated from the fill's finite starting position, side, and
+size; unknown directions, missing position data, and non-perpetual markets show
+a dash. Grouping never combines different actions.
+In narrow panes, Context prioritizes trader, action, and size; price reappears
+when the pane has enough width for it.
+
+Context defaults off; Hyperliquid remains available without any integration key.
+With Context enabled but no Hydromancer key, the native tape continues with
+context unavailable. A rejection, subscription timeout, disconnect, or lag also
+switches the pane back to Hyperliquid and marks a history gap. **Retry**, changing
+the asset, toggling Context, or rotating the key can retry Hydromancer. Failures
+do not trigger repeated subscription attempts. Provider, key-generation, and
+asset changes invalidate old streams and clear their rows and address holds.
+
+Hydromancer requests always contain a nonempty `coins` filter and set
+`aggregateByTime: false`; no exchange-wide stream, extra all-coins permission,
+or per-trader REST lookup is used. A dedicated shared Hydromancer connection
+keeps these fills separate from tracked-wallet feeds. Panes on the same asset
+share one upstream coin subscription with reference-counted release. Opening an
+additional pane re-sends the idempotent filtered subscribe to obtain an ack even
+when the market is quiet. See [the per-asset allFills contract](https://docs.hydromancer.xyz/readme/websocket/allfills).
+
 The compact tape shows the initiating trader, exact execution price, and base
 size; wider panes also show relative trade age (for example, "10 seconds ago" or
 "3 minutes ago") and value in the market's quote currency. Ages refresh with the
@@ -46,9 +72,10 @@ with execution notional relative to the largest of the 500 retained prints.
 Only rows that fit the pane are rendered, newest first.
 
 `trade_feed_state.rs`, `trade_feed_update.rs`, and `trade_feed_views.rs` own the
-model, lifecycle, messages, and view. `subscription_state/trade_feed.rs` uses the
-shared native Hyperliquid websocket manager's per-coin `trades` subscriptions,
-independently of the optional read provider. No integration key is required.
+model, lifecycle, messages, and view. `subscription_state/trade_feed.rs` selects
+native per-coin `trades` or optional Hydromancer `allFills` independently of the
+global read provider. `TradeFeedToggleContext` and `TradeFeedRetryContext` route
+through the Trade Feed update module. No key is required for native trades.
 `ws/market_streams/trades.rs` validates and batches prints at 50ms intervals
 (flushing early at 512 prints), without replacing intermediate executions.
 The native `users` array is ordered `[buyer, seller]`; the trader is the buyer for
@@ -65,8 +92,8 @@ lag mark a history gap; reconnect snapshots are not treated as complete backfill
 
 `PaneKind::TradeFeed(TradeFeedId)` persists through `PaneKindConfig::TradeFeed`.
 The defaulted `trade_feeds` list in config and saved layouts stores IDs,
-`Active`/`Fixed(symbol)` modes, `group_trades`, and `size_in_notional`, never tape
-history.
+`Active`/`Fixed(symbol)` modes, `group_trades`, `size_in_notional`, and
+`show_context`, never tape history, position data, or provider errors.
 Older layouts need no migration;
 missing per-pane settings default to following the active asset. Duplicate IDs
 are repaired with the other multi-instance widget IDs on load/import.

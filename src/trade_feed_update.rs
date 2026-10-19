@@ -2,7 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::config::{OrderBookSymbolModeConfig, TradeFeedConfig};
 use crate::message::Message;
 use crate::pane_state::PaneKind;
-use crate::trade_feed_state::TradeFeedInstance;
+use crate::trade_feed_state::{TradeFeedInstance, TradeFeedSource};
 use iced::Task;
 
 impl TradingTerminal {
@@ -81,6 +81,18 @@ impl TradingTerminal {
                     self.persist_config();
                 }
             }
+            Message::TradeFeedToggleContext(id) => {
+                if let Some(feed) = self.trade_feeds.instances.get_mut(&id) {
+                    feed.show_context = !feed.show_context;
+                    feed.failed_context_generation = None;
+                    self.persist_config();
+                }
+            }
+            Message::TradeFeedRetryContext(id) => {
+                if let Some(feed) = self.trade_feeds.instances.get_mut(&id) {
+                    feed.failed_context_generation = None;
+                }
+            }
             Message::TradeFeedStream(id, generation, coin, event) => {
                 if let Some(feed) = self.trade_feeds.instances.get_mut(&id)
                     && feed.generation == generation
@@ -108,7 +120,7 @@ impl TradingTerminal {
                 if !self.pane_is_open(
                     |kind| matches!(kind, PaneKind::TradeFeed(pane_id) if *pane_id == id),
                 ) {
-                    return Some((id, None, true));
+                    return Some((id, None, TradeFeedSource::Hyperliquid, true));
                 }
                 let requested = match &feed.mode {
                     OrderBookSymbolModeConfig::Active => &self.active_symbol,
@@ -122,16 +134,32 @@ impl TradingTerminal {
                     && canonical != "@0"
                     && !self.symbol_key_is_hidden(canonical))
                 .then_some(canonical);
-                (feed.symbol.as_deref() != symbol || feed.generation == 0)
-                    .then(|| (id, symbol.map(str::to_owned), false))
+                let source = if feed.show_context
+                    && !self.hydromancer_api_key.trim().is_empty()
+                    && (feed.symbol.as_deref() != symbol
+                        || feed.failed_context_generation != Some(self.hydromancer_key_generation))
+                {
+                    TradeFeedSource::Hydromancer {
+                        key_generation: self.hydromancer_key_generation,
+                    }
+                } else {
+                    TradeFeedSource::Hyperliquid
+                };
+                (feed.symbol.as_deref() != symbol || feed.source != source || feed.generation == 0)
+                    .then(|| (id, symbol.map(str::to_owned), source, false))
             })
             .collect();
-        for (id, symbol, remove) in updates {
+        for (id, symbol, source, remove) in updates {
             if remove {
                 self.trade_feeds.instances.remove(&id);
             } else if let Some(feed) = self.trade_feeds.instances.get_mut(&id) {
+                if feed.symbol != symbol || matches!(source, TradeFeedSource::Hydromancer { .. }) {
+                    feed.failed_context_generation = None;
+                }
                 self.trade_feeds.generation = self.trade_feeds.generation.wrapping_add(1);
                 feed.reset(symbol, self.trade_feeds.generation);
+                feed.source = source;
+                feed.has_gap = feed.failed_context_generation.is_some();
             }
         }
         for (&id, feed) in &mut self.trade_feeds.instances {
@@ -155,6 +183,7 @@ impl TradingTerminal {
             let mut feed = TradeFeedInstance::new(mode);
             feed.group_trades = config.is_some_and(|config| config.group_trades);
             feed.size_in_notional = config.is_some_and(|config| config.size_in_notional);
+            feed.show_context = config.is_some_and(|config| config.show_context);
             self.trade_feeds.instances.insert(id, feed);
             self.trade_feeds.next_id = self.trade_feeds.next_id.max(id.saturating_add(1));
         }
@@ -171,6 +200,7 @@ impl TradingTerminal {
                 mode: feed.mode.clone(),
                 group_trades: feed.group_trades,
                 size_in_notional: feed.size_in_notional,
+                show_context: feed.show_context,
             })
             .collect();
         configs.sort_by_key(|config| config.id);

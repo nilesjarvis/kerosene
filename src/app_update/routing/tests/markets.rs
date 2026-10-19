@@ -356,6 +356,8 @@ fn trade_feed_messages_reach_the_trade_feed_route() {
         Message::TradeFeedTogglePicker(1),
         Message::TradeFeedToggleGrouping(1),
         Message::TradeFeedToggleSizeUnit(1),
+        Message::TradeFeedToggleContext(1),
+        Message::TradeFeedRetryContext(1),
         Message::TradeFeedSearchChanged(1, "BTC".into()),
         Message::TradeFeedSetMode(1, crate::config::OrderBookSymbolModeConfig::Active),
         Message::TradeFeedStream(

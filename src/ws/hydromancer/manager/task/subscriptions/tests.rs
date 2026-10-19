@@ -208,3 +208,38 @@ fn later_charts_fall_back_without_reclaiming_capacity_but_new_manager_can_retry(
             .is_some()
     );
 }
+
+#[test]
+fn trade_feed_assets_share_references_and_release_only_the_closed_asset() {
+    let mut subscriptions = ActiveHydromancerSubscriptions::default();
+    let btc = json!({"type":"subscribe","subscription":{"type":"allFills","coins":["BTC"],"aggregateByTime":false}});
+    let eth = json!({"type":"subscribe","subscription":{"type":"allFills","coins":["ETH"],"aggregateByTime":false}});
+    assert_eq!(
+        subscriptions.subscribe("allFills:BTC".into(), btc.clone()),
+        Some(btc.clone())
+    );
+    assert_eq!(
+        subscriptions.subscribe("allFills:BTC".into(), btc.clone()),
+        Some(btc.clone())
+    );
+    assert_eq!(
+        subscriptions.subscribe("allFills:ETH".into(), eth.clone()),
+        Some(eth.clone())
+    );
+    assert_eq!(subscriptions.payloads().count(), 2);
+    assert_eq!(
+        subscriptions.unsubscribe("allFills:BTC".into(), btc.clone()),
+        HydromancerUnsubscribeResult::StillActive
+    );
+    assert_eq!(
+        subscriptions.unsubscribe("allFills:BTC".into(), btc.clone()),
+        HydromancerUnsubscribeResult::Removed {
+            payload: btc,
+            became_empty: false
+        }
+    );
+    assert_eq!(
+        subscriptions.payloads().cloned().collect::<Vec<_>>(),
+        vec![eth]
+    );
+}

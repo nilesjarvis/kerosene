@@ -8,6 +8,7 @@ fn trade(time_ms: u64, tid: u64) -> TradePrint {
         price: "100".into(),
         size: "2".into(),
         value: 200.0,
+        intent: crate::feed_state::TrackedTradeIntent::Unknown,
         trader: None,
     }
 }

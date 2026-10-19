@@ -15,6 +15,7 @@ fn trade(
     TradePrint {
         time_ms,
         tid,
+        intent: crate::feed_state::TrackedTradeIntent::Unknown,
         trader: trader.map(Into::into),
         is_buy,
         price: price.into(),
@@ -126,4 +127,23 @@ fn trade_feed_grouping_uses_deduplicated_prints_and_holds_aggregates_during_hove
     feed.reset(Some("ETH".into()), 1);
     assert!(feed.visible_rows().is_empty());
     assert!(feed.group_trades);
+}
+
+#[test]
+fn trade_feed_grouping_keeps_different_position_actions_separate() {
+    use crate::feed_state::TrackedTradeIntent;
+    let mut open = trade(1000, 1, Some(FIRST), true, "10", "1");
+    open.intent = TrackedTradeIntent::Opening;
+    let mut add = trade(1100, 2, Some(FIRST), true, "20", "1");
+    add.intent = TrackedTradeIntent::Increasing;
+    let mut more = trade(1200, 3, Some(FIRST), true, "30", "1");
+    more.intent = TrackedTradeIntent::Increasing;
+    let feed = feed(vec![open, add, more]);
+    let rows = feed.visible_rows();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].latest.intent, TrackedTradeIntent::Increasing);
+    assert_eq!(rows[0].count, 2);
+    assert_eq!(rows[0].value, 50.0);
+    assert_eq!(rows[1].latest.intent, TrackedTradeIntent::Opening);
+    assert_eq!(rows[1].count, 1);
 }

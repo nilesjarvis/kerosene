@@ -23,6 +23,7 @@ pub(crate) use telemetry::{
 
 #[cfg(test)]
 pub(crate) use hydromancer::hydromancer_manager_reconnect_sent_for_test;
+pub(crate) use hydromancer::ws_hydromancer_trade_feed;
 pub use hydromancer::{
     HydromancerStreamKey, HydromancerWsMessage, LiquidationEvent, TrackedTradeEvent,
     evict_hydromancer_manager, reconnect_hydromancer, ws_hydromancer_api_latency_probe,

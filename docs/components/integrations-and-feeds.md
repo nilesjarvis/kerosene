@@ -105,11 +105,18 @@ needs a second owned copy for its separate result field.
 
 Subscriptions are added from `subscription_state/`, not from views.
 
-Trade Feed uses `trades` independently of the selected read provider. It shares
+Trade Feed defaults to `trades` independently of the selected read provider. It shares
 upstream subscriptions between panes, preserves executions while batching UI
 delivery, and consumes the manager's internal disconnect notification to mark
 history gaps. See [Trade Feed](market-data-and-symbols.md#trade-feed) for selection,
 rendering, persistence, and recovery behavior.
+
+Its optional **Context** mode uses Hydromancer's asset-filtered `allFills` stream
+instead, with the existing integration key. A separate shared Trade Feed manager
+scope isolates its volume and failures from wallet/account feeds; key eviction
+and reconnect controls still cover every scope. Missing keys and unavailable
+context fall back to native Hyperliquid, and users can disable Context per pane.
+The subscription is always coin-filtered and never requests the all-coins add-on.
 
 ## Hydromancer
 

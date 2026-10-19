@@ -11,4 +11,6 @@ pub struct TradeFeedConfig {
     pub group_trades: bool,
     #[serde(default)]
     pub size_in_notional: bool,
+    #[serde(default)]
+    pub show_context: bool,
 }

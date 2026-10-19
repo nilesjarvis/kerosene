@@ -28,6 +28,7 @@ fn incoming(generation: u64, symbol: &str) -> Message {
             price: "1".into(),
             size: "2".into(),
             value: 2.0,
+            intent: crate::feed_state::TrackedTradeIntent::Unknown,
             trader: None,
         }]),
     )
@@ -101,11 +102,13 @@ fn trade_feed_config_defaults_and_round_trip() {
     assert_eq!(config.mode, OrderBookSymbolModeConfig::Active);
     assert!(!config.group_trades);
     assert!(!config.size_in_notional);
+    assert!(!config.show_context);
     let config = TradeFeedConfig {
         id: 4,
         mode: OrderBookSymbolModeConfig::Fixed("@107".into()),
         group_trades: true,
         size_in_notional: true,
+        show_context: true,
     };
     let json = serde_json::to_string(&config).expect("serialize");
     assert_eq!(
@@ -222,4 +225,144 @@ fn trade_feed_address_hover_is_scoped_to_pane_and_subscription_generation() {
     let feed = &terminal.trade_feeds.instances[&7];
     assert!(!feed.is_held());
     assert!(feed.visible_trades().is_empty());
+}
+
+#[test]
+fn trade_feed_context_defaults_native_and_no_key_keeps_native_stream() {
+    let mut terminal = terminal(Default::default());
+    let native_generation = terminal.trade_feeds.instances[&7].generation;
+    assert_eq!(
+        terminal.trade_feeds.instances[&7].source,
+        TradeFeedSource::Hyperliquid
+    );
+    let _ = terminal.update(Message::TradeFeedToggleContext(7));
+    let feed = &terminal.trade_feeds.instances[&7];
+    assert!(feed.show_context);
+    assert_eq!(feed.source, TradeFeedSource::Hyperliquid);
+    assert_eq!(feed.generation, native_generation);
+    let _ = terminal.update(incoming(native_generation, "BTC"));
+    assert_eq!(terminal.trade_feeds.instances[&7].trades.len(), 1);
+    assert_eq!(
+        terminal.trade_feeds.instances[&7].trades[0].intent,
+        crate::feed_state::TrackedTradeIntent::Unknown
+    );
+}
+
+#[test]
+fn trade_feed_context_provider_and_key_changes_invalidate_old_stream_events() {
+    let mut terminal = terminal(Default::default());
+    terminal.hydromancer_api_key = "synthetic-key".into();
+    terminal.hydromancer_key_generation = 5;
+    let native_generation = terminal.trade_feeds.instances[&7].generation;
+    let _ = terminal.update(Message::TradeFeedToggleContext(7));
+    let first = terminal.trade_feeds.instances[&7].generation;
+    assert_ne!(native_generation, first);
+    assert_eq!(
+        terminal.trade_feeds.instances[&7].source,
+        TradeFeedSource::Hydromancer { key_generation: 5 }
+    );
+    let _ = terminal.update(incoming(native_generation, "BTC"));
+    assert!(terminal.trade_feeds.instances[&7].trades.is_empty());
+    let _ = terminal.update(incoming(first, "BTC"));
+    assert_eq!(terminal.trade_feeds.instances[&7].trades.len(), 1);
+
+    terminal.hydromancer_api_key = "rotated-synthetic-key".into();
+    terminal.hydromancer_key_generation = 6;
+    terminal.sync_trade_feeds();
+    let second = terminal.trade_feeds.instances[&7].generation;
+    assert_ne!(first, second);
+    assert_eq!(
+        terminal.trade_feeds.instances[&7].source,
+        TradeFeedSource::Hydromancer { key_generation: 6 }
+    );
+    let _ = terminal.update(incoming(first, "BTC"));
+    assert!(terminal.trade_feeds.instances[&7].trades.is_empty());
+    terminal.hydromancer_api_key = "".into();
+    terminal.hydromancer_key_generation = 7;
+    terminal.sync_trade_feeds();
+    assert_eq!(
+        terminal.trade_feeds.instances[&7].source,
+        TradeFeedSource::Hyperliquid
+    );
+    let _ = terminal.update(incoming(second, "BTC"));
+    assert!(terminal.trade_feeds.instances[&7].trades.is_empty());
+    assert!(terminal.trade_feeds.instances[&7].show_context);
+}
+
+#[test]
+fn trade_feed_context_failure_falls_back_without_retry_loops_and_explicit_retry_recovers() {
+    let mut terminal = terminal(Default::default());
+    terminal.hydromancer_api_key = "synthetic-key".into();
+    let _ = terminal.update(Message::TradeFeedToggleContext(7));
+    let hydro = terminal.trade_feeds.instances[&7].generation;
+    let _ = terminal.update(Message::TradeFeedStream(
+        7,
+        hydro,
+        "BTC".into(),
+        TradeFeedEvent::ContextUnavailable,
+    ));
+    let native = terminal.trade_feeds.instances[&7].generation;
+    assert_ne!(native, hydro);
+    assert_eq!(
+        terminal.trade_feeds.instances[&7].source,
+        TradeFeedSource::Hyperliquid
+    );
+    assert!(terminal.trade_feeds.instances[&7].has_gap);
+    terminal.sync_trade_feeds();
+    assert_eq!(terminal.trade_feeds.instances[&7].generation, native);
+    let _ = terminal.update(incoming(native, "BTC"));
+    assert_eq!(terminal.trade_feeds.instances[&7].trades.len(), 1);
+    let _ = terminal.update(incoming(hydro, "BTC"));
+    assert_eq!(terminal.trade_feeds.instances[&7].trades.len(), 1);
+    let _ = terminal.update(Message::TradeFeedRetryContext(7));
+    assert!(matches!(
+        terminal.trade_feeds.instances[&7].source,
+        TradeFeedSource::Hydromancer { .. }
+    ));
+    assert!(
+        terminal.trade_feeds.instances[&7]
+            .failed_context_generation
+            .is_none()
+    );
+    assert!(terminal.trade_feeds.instances[&7].trades.is_empty());
+    let retried = terminal.trade_feeds.instances[&7].generation;
+    let _ = terminal.update(Message::TradeFeedToggleContext(7));
+    assert_eq!(
+        terminal.trade_feeds.instances[&7].source,
+        TradeFeedSource::Hyperliquid
+    );
+    assert_ne!(terminal.trade_feeds.instances[&7].generation, retried);
+}
+
+#[test]
+fn trade_feed_context_setting_is_per_pane_and_restores_without_requiring_a_key() {
+    let mut terminal = terminal(Default::default());
+    let pane = *terminal.panes.iter().next().expect("feed pane").0;
+    terminal
+        .panes
+        .split(
+            iced::widget::pane_grid::Axis::Vertical,
+            pane,
+            PaneKind::TradeFeed(8),
+        )
+        .expect("second feed");
+    terminal
+        .trade_feeds
+        .instances
+        .insert(8, TradeFeedInstance::new(Default::default()));
+    let _ = terminal.update(Message::TradeFeedToggleContext(7));
+    assert!(terminal.trade_feeds.instances[&7].show_context);
+    assert!(!terminal.trade_feeds.instances[&8].show_context);
+    let json = serde_json::to_string(&terminal.saved_layout_snapshot("Context".into()))
+        .expect("serialize layout");
+    let _ = terminal.apply_layout(serde_json::from_str(&json).expect("restore layout"));
+    assert!(terminal.trade_feeds.instances[&7].show_context);
+    assert!(!terminal.trade_feeds.instances[&8].show_context);
+    assert_eq!(
+        terminal.trade_feeds.instances[&7].source,
+        TradeFeedSource::Hyperliquid
+    );
+    terminal.apply_active_symbol_selection("ETH".into(), "ETH".into());
+    terminal.sync_trade_feeds();
+    assert!(terminal.trade_feeds.instances[&7].show_context);
 }

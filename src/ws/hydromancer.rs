@@ -10,6 +10,8 @@ mod market_streams;
 mod parsing;
 mod recent;
 mod tracked_trades;
+mod trade_feed;
+pub(crate) use trade_feed::ws_hydromancer_trade_feed;
 
 use super::WsStream;
 use super::telemetry::{

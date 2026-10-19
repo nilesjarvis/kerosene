@@ -2,6 +2,7 @@ use super::recovery::emit_after_reconnect;
 mod asset_context;
 mod books;
 mod trades;
+pub(in crate::ws) use trades::parse_trade;
 pub(crate) use trades::ws_trade_feed;
 mod candles;
 mod open_interest_caps;

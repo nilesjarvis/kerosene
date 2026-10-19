@@ -91,6 +91,11 @@ pub(super) fn hydromancer_unsubscribe_payload(payload: &Value) -> Value {
         // L4 merge is subscribe-only; echoing it makes unsubscribe fail.
         object.remove("merge");
     }
+    if subscription.get("type").and_then(Value::as_str) == Some("allFills")
+        && let Some(object) = subscription.as_object_mut()
+    {
+        object.remove("aggregateByTime");
+    }
     serde_json::json!({
         "type": "unsubscribe",
         "subscription": subscription,
@@ -213,6 +218,17 @@ mod tests {
         assert_eq!(
             unsubscribe,
             serde_json::json!({"type":"unsubscribe","subscription":{"type":"l4BookUpdates","coins":["BTC"]}})
+        );
+    }
+
+    #[test]
+    fn trade_feed_unsubscribe_retains_the_coin_filter() {
+        let payload = serde_json::json!({"type":"subscribe","subscription":{
+            "type":"allFills","coins":["BTC"],"aggregateByTime":false
+        }});
+        assert_eq!(
+            super::hydromancer_unsubscribe_payload(&payload),
+            serde_json::json!({"type":"unsubscribe","subscription":{"type":"allFills","coins":["BTC"]}})
         );
     }
 }

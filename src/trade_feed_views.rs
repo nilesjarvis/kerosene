@@ -1,10 +1,12 @@
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::config::OrderBookSymbolModeConfig;
+use crate::feed_state::TrackedTradeIntent;
 use crate::helpers;
 use crate::message::Message;
 use crate::trade_feed_state::{
-    TradeFeedId, TradeFeedInstance, TradePrint, trade_feed_symbol_rank, trade_shading,
+    TradeFeedId, TradeFeedInstance, TradeFeedSource, TradePrint, trade_feed_symbol_rank,
+    trade_shading,
 };
 use crate::wallet_views::{WalletAddressActionCell, wallet_address_action_cell};
 use iced::widget::{
@@ -19,10 +21,12 @@ use colors::TraderColors;
 const TIME_WIDTH: f32 = 112.0;
 const TRADER_WIDTH: f32 = 112.0;
 const GROUP_COUNT_WIDTH: f32 = 32.0;
+const CONTEXT_WIDTH: f32 = 44.0;
 
 #[derive(Clone, Copy)]
 struct TapeRowLayout {
     show_time: bool,
+    show_price: bool,
     show_value: bool,
 }
 
@@ -125,11 +129,48 @@ impl TradingTerminal {
             } else {
                 status
             };
-            content = content.push(text(status).size(11).color(muted));
+            let provider = match feed.source {
+                TradeFeedSource::Hydromancer { .. } => "Hydromancer",
+                TradeFeedSource::Hyperliquid => "Hyperliquid",
+            };
+            let context_hint = if self.hydromancer_api_key.trim().is_empty() {
+                "Trade context requires a Hydromancer key in Settings > Integrations. Using Hyperliquid."
+            } else if feed.failed_context_generation.is_some() {
+                "Hydromancer context unavailable. Using Hyperliquid; Retry to reconnect."
+            } else {
+                "Show Open / Add / Reduce / Close / Flip using Hydromancer. Off uses Hyperliquid."
+            };
+            let status_label = if feed.show_context && matches!(feed.source, TradeFeedSource::Hyperliquid) {
+                format!("{status} · {provider} · no context")
+            } else {
+                format!("{status} · {provider}")
+            };
+            let mut controls = row![
+                text(status_label).size(11).color(muted).wrapping(text::Wrapping::None).width(Fill),
+                tooltip(
+                    button(text("Context").size(11))
+                        .padding([2, 4])
+                        .on_press(Message::TradeFeedToggleContext(id))
+                        .style(if feed.show_context { button::primary } else { button::text }),
+                    container(text(context_hint).size(11))
+                        .padding([5, 8]).max_width(280).style(container::rounded_box),
+                    tooltip::Position::Bottom,
+                ),
+            ].spacing(4).align_y(Alignment::Center);
+            if feed.show_context && feed.failed_context_generation.is_some()
+                && !self.hydromancer_api_key.trim().is_empty()
+            {
+                controls = controls.push(button(text("Retry").size(11)).padding([2, 4])
+                    .style(button::text).on_press(Message::TradeFeedRetryContext(id)));
+            }
+            content = content.push(controls);
+            let context_width = if feed.show_context { CONTEXT_WIDTH } else { 0.0 };
             let layout = TapeRowLayout {
-                show_time: size.width >= if feed.group_trades { 432.0 } else { 400.0 },
+                show_time: size.width >= context_width + if feed.group_trades { 432.0 } else { 400.0 },
+                show_price: !feed.show_context
+                    || size.width >= if feed.group_trades { 388.0 } else { 356.0 },
                 show_value: !feed.size_in_notional
-                    && size.width >= if feed.group_trades { 572.0 } else { 540.0 },
+                    && size.width >= context_width + if feed.group_trades { 572.0 } else { 540.0 },
             };
             let quote = trade_quote_currency(self.exchange_symbol_for_key(requested));
             let size_header = tooltip(
@@ -137,23 +178,24 @@ impl TradingTerminal {
                 text(if feed.size_in_notional { "Show asset quantity" } else { "Show notional value" }).size(11),
                 tooltip::Position::Bottom,
             );
+            let mut trader_header = row![text("Trader").size(12).color(muted)
+                .width(TRADER_WIDTH + if feed.group_trades { GROUP_COUNT_WIDTH } else { 0.0 })];
+            if feed.show_context {
+                trader_header = trader_header.push(text("Action").size(11).color(muted).width(CONTEXT_WIDTH));
+            }
             let header = tape_row(
                 "Time",
                 if feed.group_trades { "Avg price" } else { "Price" },
                 size_header.into(),
                 "Value",
-                text("Trader")
-                    .size(12)
-                    .color(muted)
-                    .width(TRADER_WIDTH + if feed.group_trades { GROUP_COUNT_WIDTH } else { 0.0 })
-                    .into(),
+                trader_header.into(),
                 layout,
                 muted,
             );
             content = content
                 .push(container(header).padding([0, 4]))
                 .push(rule::horizontal(1));
-            let available = size.height - if feed.picker_open { 255.0 } else { 80.0 };
+            let available = size.height - if feed.picker_open { 265.0 } else { 90.0 };
             let row_count = ((available.max(0.0) / 26.0) as usize).min(100);
             let rows = feed.visible_rows();
             let largest = rows.iter().map(|row| row.value).fold(0.0, f64::max);
@@ -176,6 +218,10 @@ impl TradingTerminal {
                     .align_y(Alignment::Center);
                 if feed.group_trades {
                     trader = trader.push(text(format!("×{}", item.count)).size(11).color(muted).width(GROUP_COUNT_WIDTH));
+                }
+                if feed.show_context {
+                    trader = trader.push(text(trade_intent_label(trade.intent)).size(11)
+                        .color(muted).width(CONTEXT_WIDTH).wrapping(text::Wrapping::None));
                 }
                 content = content.push(
                     container(tape_row(
@@ -282,7 +328,11 @@ fn tape_row(
                 .align_x(Alignment::End),
         );
     }
-    cells = cells.push(trader).push(cell(price, 3, true)).push(size);
+    cells = cells.push(trader);
+    if layout.show_price {
+        cells = cells.push(cell(price, 3, true));
+    }
+    cells = cells.push(size);
     if layout.show_value {
         cells = cells.push(cell(value, 3, true));
     }
@@ -321,6 +371,17 @@ fn trade_quote_currency(symbol: Option<&ExchangeSymbol>) -> &str {
         })
         .filter(|quote| !quote.is_empty())
         .unwrap_or("quote")
+}
+
+fn trade_intent_label(intent: TrackedTradeIntent) -> &'static str {
+    match intent {
+        TrackedTradeIntent::Opening => "Open",
+        TrackedTradeIntent::Increasing => "Add",
+        TrackedTradeIntent::Reducing => "Reduce",
+        TrackedTradeIntent::Closing => "Close",
+        TrackedTradeIntent::Reversing => "Flip",
+        TrackedTradeIntent::Unknown => "—",
+    }
 }
 
 fn trade_notional_label(value: f64, quote: &str) -> String {

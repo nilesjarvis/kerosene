@@ -1,4 +1,5 @@
 use crate::config::OrderBookSymbolModeConfig;
+use crate::feed_state::TrackedTradeIntent;
 use crate::message::RedactedAddress;
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -19,6 +20,7 @@ pub(crate) struct TradePrint {
     pub(crate) size: String,
     pub(crate) value: f64,
     pub(crate) trader: Option<RedactedAddress>,
+    pub(crate) intent: TrackedTradeIntent,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +30,16 @@ pub(crate) enum TradeFeedEvent {
     Reconnecting,
     Lagged,
     Unavailable,
+    ContextUnavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum TradeFeedSource {
+    #[default]
+    Hyperliquid,
+    Hydromancer {
+        key_generation: u64,
+    },
 }
 
 #[derive(Default)]
@@ -42,6 +54,10 @@ pub(crate) struct TradeFeedInstance {
     pub(crate) mode: OrderBookSymbolModeConfig,
     pub(crate) group_trades: bool,
     pub(crate) size_in_notional: bool,
+    pub(crate) show_context: bool,
+    pub(crate) source: TradeFeedSource,
+    /// Latch failures until an explicit retry, asset change, or key rotation.
+    pub(crate) failed_context_generation: Option<u64>,
     pub(crate) symbol: Option<String>,
     pub(crate) generation: u64,
     pub(crate) picker_open: bool,
@@ -60,6 +76,9 @@ impl TradeFeedInstance {
             mode,
             group_trades: false,
             size_in_notional: false,
+            show_context: false,
+            source: TradeFeedSource::Hyperliquid,
+            failed_context_generation: None,
             symbol: None,
             generation: 0,
             picker_open: false,
@@ -151,6 +170,12 @@ impl TradeFeedInstance {
                 self.has_gap = true;
             }
             TradeFeedEvent::Unavailable => self.status = "Feed unavailable",
+            TradeFeedEvent::ContextUnavailable => {
+                if let TradeFeedSource::Hydromancer { key_generation } = self.source {
+                    self.failed_context_generation = Some(key_generation);
+                    self.has_gap = true;
+                }
+            }
         }
     }
 }

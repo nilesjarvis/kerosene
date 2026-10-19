@@ -126,6 +126,16 @@ impl ActiveHydromancerSubscriptions {
             .find(|entry| entry.topic == topic && entry.payload == payload)
         {
             entry.count += 1;
+            // allFills coin sets merge idempotently upstream. Refresh the
+            // acknowledgement for a newly opened pane even on a quiet market;
+            // it cannot have received the original pane's earlier ack.
+            if payload
+                .pointer("/subscription/type")
+                .and_then(Value::as_str)
+                == Some("allFills")
+            {
+                return Some(payload);
+            }
             return None;
         }
 

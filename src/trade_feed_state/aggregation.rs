@@ -28,7 +28,10 @@ impl<'a> TradeFeedRow<'a> {
 
     fn try_add(&mut self, trade: &TradePrint) -> bool {
         // Anchor to the newest execution, so adjacent gaps cannot chain forever.
-        if self.latest.time_ms.abs_diff(trade.time_ms) > GROUP_WINDOW_MS || self.size <= 0.0 {
+        if self.latest.time_ms.abs_diff(trade.time_ms) > GROUP_WINDOW_MS
+            || self.size <= 0.0
+            || self.latest.intent != trade.intent
+        {
             return false;
         }
         let Some(size) = parse_positive_finite_number(&trade.size) else {

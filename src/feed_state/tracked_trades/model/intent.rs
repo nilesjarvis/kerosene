@@ -16,6 +16,28 @@ pub(crate) enum TrackedTradeIntent {
 }
 
 impl TrackedTradeIntent {
+    /// Classify an individual fill by comparing its size with the starting
+    /// position directly; subtraction tolerances can mislabel tiny remainders.
+    pub(crate) fn from_fill(start_position: Option<f64>, is_buy: bool, size: f64) -> Self {
+        let Some(start) = start_position.filter(|start| start.is_finite()) else {
+            return Self::Unknown;
+        };
+        if !size.is_finite() || size <= 0.0 {
+            return Self::Unknown;
+        }
+        if start == 0.0 {
+            Self::Opening
+        } else if (start > 0.0) == is_buy {
+            Self::Increasing
+        } else if size < start.abs() {
+            Self::Reducing
+        } else if size == start.abs() {
+            Self::Closing
+        } else {
+            Self::Reversing
+        }
+    }
+
     pub(crate) fn from_positions(start_position: Option<f64>, signed_size_delta: f64) -> Self {
         let Some(start) = start_position else {
             return Self::Unknown;

@@ -45,6 +45,7 @@ pub(crate) fn parse_trade(value: &Value, coin: &str) -> Option<TradePrint> {
         price: price.to_owned(),
         size: size.to_owned(),
         value: notional,
+        intent: crate::feed_state::TrackedTradeIntent::Unknown,
         // Hyperliquid orders users as [buyer, seller], not [maker, taker].
         // Select the initiating side; missing addresses must not discard the print.
         trader: value

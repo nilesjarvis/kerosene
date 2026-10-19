@@ -130,6 +130,7 @@ enum HydromancerManagerScope {
     General,
     L2Book(L2BookSigfigs),
     L4Book,
+    TradeFeed,
 }
 
 type HydromancerManagerKey = (u64, HydromancerManagerScope);
@@ -305,6 +306,17 @@ pub(super) fn get_hydromancer_l4_manager(
     broadcast::Receiver<HydromancerRoutedMessage>,
 ) {
     get_hydromancer_manager_for_scope(stream_key, HydromancerManagerScope::L4Book)
+}
+
+/// Keep per-asset fills and their access failures separate from wallet feeds.
+/// All Trade Feed panes share this scope, including per-coin reference counts.
+pub(super) fn get_hydromancer_trade_feed_manager(
+    stream_key: HydromancerStreamKey,
+) -> (
+    HydromancerCommandSender,
+    broadcast::Receiver<HydromancerRoutedMessage>,
+) {
+    get_hydromancer_manager_for_scope(stream_key, HydromancerManagerScope::TradeFeed)
 }
 
 fn get_hydromancer_manager_for_scope(
