@@ -210,6 +210,11 @@ and can be resized through chart messages.
 Hovering the perpetual chart header's Open Interest field shows the market's
 USD notional cap when Hyperliquid publishes one. Clicking still toggles between
 coin and USD open interest; the cap remains denominated in USD in either mode.
+Perpetual USD open interest uses `openInterest * markPx` from the same asset
+context, matching the cap's mark-price basis. A missing or invalid mark shows
+"Invalid data" in USD mode while coin-denominated OI remains available. The
+displayed value can exceed the cap and is never clamped to it. Outcome USD OI
+continues to use the latest candle close.
 When Hyperliquid reports the market at its open-interest cap, the label and value
 turn red and a warning triangle appears beside the value. The tooltip also says
 "At open interest cap". This uses the exchange's cap status for native and

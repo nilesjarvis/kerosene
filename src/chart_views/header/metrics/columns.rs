@@ -118,7 +118,7 @@ pub(in crate::chart_views::header) fn push_outcome_asset_context_columns<'a>(
     if visibility.show_open_interest {
         header_row = header_row.push(clickable_metric_column(
             open_interest_label(open_interest_as_notional),
-            format_open_interest(oi, chart_price, open_interest_as_notional),
+            format_open_interest(oi, Some(chart_price), open_interest_as_notional),
             theme.palette().text,
             theme,
             Message::ToggleOpenInterestNotional(chart_id),
@@ -135,7 +135,6 @@ pub(super) fn push_perp_metric_columns<'a>(
     chart_id: ChartId,
     ctx: &'a AssetContext,
     symbol_display: &str,
-    chart_price: f64,
     asset_volume_as_notional: bool,
     open_interest_as_notional: bool,
     visibility: ChartHeaderMetricVisibility,
@@ -177,11 +176,12 @@ pub(super) fn push_perp_metric_columns<'a>(
     }
 
     if visibility.show_open_interest {
+        // Value perpetual OI using the same context's mark, matching the cap's basis.
         header_row = header_row.push(open_interest_column(
             theme,
             chart_id,
             oi,
-            chart_price,
+            mark,
             open_interest_as_notional,
             open_interest_cap,
             at_open_interest_cap,
@@ -195,13 +195,13 @@ fn open_interest_column(
     theme: &Theme,
     chart_id: ChartId,
     oi: Option<f64>,
-    chart_price: f64,
+    mark_price: Option<f64>,
     as_notional: bool,
     cap: Option<f64>,
     at_cap: bool,
 ) -> iced::Element<'static, Message> {
     let label = open_interest_label(as_notional);
-    let value = format_open_interest(oi, chart_price, as_notional);
+    let value = format_open_interest(oi, mark_price, as_notional);
     let content = if at_cap {
         // Custom themes can use a neutral bearish/danger color. Cap warnings
         // stay red, using the built-in danger palette for the background.

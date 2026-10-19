@@ -156,7 +156,6 @@ impl TradingTerminal {
                 chart_id,
                 ctx,
                 &instance.symbol_display,
-                last.close,
                 instance.asset_volume_as_notional,
                 instance.open_interest_as_notional,
                 metric_visibility,

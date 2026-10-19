@@ -14,11 +14,18 @@ pub(super) fn open_interest_label(as_notional: bool) -> String {
     }
 }
 
-pub(super) fn format_open_interest(oi: Option<f64>, price: f64, as_notional: bool) -> String {
+pub(super) fn format_open_interest(
+    oi: Option<f64>,
+    price: Option<f64>,
+    as_notional: bool,
+) -> String {
     let Some(oi) = oi else {
         return invalid_data_placeholder();
     };
     if as_notional {
+        let Some(price) = price else {
+            return invalid_data_placeholder();
+        };
         return format_open_interest_notional(oi, price);
     }
     if oi >= 1_000_000.0 {

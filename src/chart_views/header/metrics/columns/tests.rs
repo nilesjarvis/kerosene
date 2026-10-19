@@ -19,25 +19,32 @@ fn context_number_parser_rejects_missing_malformed_or_nonfinite_values() {
 #[test]
 fn header_metric_formatters_mark_invalid_values() {
     assert_eq!(format_volume(None), "Invalid data");
-    assert_eq!(format_open_interest(None, 100.0, false), "Invalid data");
+    assert_eq!(
+        format_open_interest(None, Some(100.0), false),
+        "Invalid data"
+    );
     assert_eq!(format_funding_pct(None), "Invalid data");
     assert_eq!(format_volume(Some(1_500.0)), "$1.5K");
-    assert_eq!(
-        format_open_interest(Some(1_500_000.0), 100.0, false),
-        "1.5M"
-    );
+    assert_eq!(format_open_interest(Some(1_500_000.0), None, false), "1.5M");
     assert_eq!(format_funding_pct(Some(0.0001)), "0.0100%");
 }
 
 #[test]
-fn open_interest_notional_formats_from_chart_price() {
-    assert_eq!(format_open_interest(Some(1_500.0), 2_000.0, true), "$3.00M");
+fn open_interest_notional_requires_a_valid_price() {
+    assert_eq!(
+        format_open_interest(Some(1_500.0), Some(2_000.0), true),
+        "$3.00M"
+    );
     assert_eq!(
         format_open_interest_notional(2_000_000.0, 2_000.0),
         "$4.00B"
     );
     assert_eq!(
-        format_open_interest(Some(1_500.0), 0.0, true),
+        format_open_interest(Some(1_500.0), Some(0.0), true),
+        "Invalid data"
+    );
+    assert_eq!(
+        format_open_interest(Some(1_500.0), None, true),
         "Invalid data"
     );
     assert_eq!(open_interest_label(false), "Open Interest");
