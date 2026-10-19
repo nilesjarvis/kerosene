@@ -22,6 +22,10 @@ The trader column uses the shared wallet address cell, including address-book
 labels and Copy, Open Wallet, and Ghost actions on hover. Rows stay stationary
 while an address menu is open; ingestion continues and the view catches up on
 exit. Hover identity includes the pane, subscription generation, and execution.
+Trader labels use a stable color derived from the full, case-insensitive wallet
+address. Repeated traders keep their color across rows, assets, panes, and app
+restarts. Colors come from the active theme, with contrast adjusted for buy/sell
+row shading; the finite palette can be shared by different traders.
 Buy executions use the theme's success color and sells use its danger color.
 Background intensity grows
 with execution notional relative to the largest of the 500 retained prints.

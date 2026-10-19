@@ -9,6 +9,10 @@ use crate::wallet_views::{WalletAddressActionCell, wallet_address_action_cell};
 use iced::widget::{Column, button, column, container, responsive, row, rule, text, text_input};
 use iced::{Alignment, Color, Element, Fill, Length, Theme};
 
+mod colors;
+
+use colors::TraderColors;
+
 const TRADER_WIDTH: f32 = 112.0;
 
 #[derive(Clone, Copy)]
@@ -36,6 +40,7 @@ impl TradingTerminal {
             };
             let follows = matches!(feed.mode, OrderBookSymbolModeConfig::Active);
             let theme = self.theme();
+            let trader_colors = TraderColors::new(&theme);
             let muted = theme.extended_palette().background.weak.text;
             let title = row![
                 button(text(label).size(13).wrapping(text::Wrapping::None))
@@ -148,7 +153,7 @@ impl TradingTerminal {
                         &trade.price,
                         &trade.size,
                         &value,
-                        self.view_trade_feed_trader(id, feed, trade, &theme),
+                        self.view_trade_feed_trader(id, feed, trade, &theme, &trader_colors),
                         layout,
                         theme.palette().text,
                     ))
@@ -185,6 +190,7 @@ impl TradingTerminal {
         feed: &TradeFeedInstance,
         trade: &TradePrint,
         theme: &Theme,
+        colors: &TraderColors,
     ) -> Element<'static, Message> {
         let Some(address) = &trade.trader else {
             return text("—")
@@ -207,7 +213,7 @@ impl TradingTerminal {
             hovered_key: self.hovered_wallet_address_actions.as_deref(),
             width: TRADER_WIDTH,
             text_size: 12,
-            text_color: theme.palette().primary,
+            text_color: colors.for_address(address.as_str()),
         })
     }
 }
