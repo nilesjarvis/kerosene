@@ -1,4 +1,5 @@
 use super::{TradeFeedInstance, TradePrint};
+use crate::denomination::format_compact;
 use crate::helpers::{parse_positive_finite_number, trim_decimal_zeros};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -62,7 +63,9 @@ impl<'a> TradeFeedRow<'a> {
     }
 
     pub(crate) fn size_label(&self) -> Cow<'a, str> {
-        if self.count == 1 {
+        if self.size >= 1_000.0 {
+            Cow::Owned(format_compact(self.size))
+        } else if self.count == 1 {
             Cow::Borrowed(&self.latest.size)
         } else {
             Cow::Owned(format_number(self.size, self.size_decimals))

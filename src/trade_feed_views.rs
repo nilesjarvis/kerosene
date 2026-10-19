@@ -202,7 +202,7 @@ impl TradingTerminal {
             for item in rows.iter().take(row_count) {
                 let trade = item.latest;
                 let time = trade_age_label(trade.time_ms, self.status_bar_now_ms);
-                let value = helpers::format_size(item.value);
+                let value = trade_value_label(item.value);
                 let size_label = if feed.size_in_notional {
                     trade_notional_label(item.value, quote)
                 } else {
@@ -385,11 +385,19 @@ fn trade_intent_label(intent: TrackedTradeIntent) -> &'static str {
 }
 
 fn trade_notional_label(value: f64, quote: &str) -> String {
-    let amount = helpers::format_size(value);
+    let amount = trade_value_label(value);
     if matches!(quote, "USD" | "USDC" | "USDE" | "USDT0" | "USDH") {
         format!("${amount}")
     } else {
         format!("{amount} {quote}")
+    }
+}
+
+fn trade_value_label(value: f64) -> String {
+    if value >= 1_000.0 {
+        crate::denomination::format_compact(value)
+    } else {
+        helpers::format_size(value)
     }
 }
 
@@ -413,9 +421,13 @@ mod tests {
     #[test]
     fn trade_feed_notional_keeps_the_quote_currency_and_formats_dollars_compactly() {
         for quote in ["USD", "USDC", "USDE", "USDT0", "USDH"] {
+            assert_eq!(trade_notional_label(1_000.0, quote), "$1.0K");
             assert_eq!(trade_notional_label(12_500.0, quote), "$12.5K");
+            assert_eq!(trade_notional_label(1_250_000.0, quote), "$1.25M");
+            assert_eq!(trade_notional_label(2_500_000_000.0, quote), "$2.50B");
             assert_eq!(trade_notional_label(0.125, quote), "$0.1250");
         }
+        assert_eq!(trade_notional_label(12_500.0, "UBTC"), "12.5K UBTC");
         assert_eq!(trade_notional_label(0.125, "UBTC"), "0.1250 UBTC");
         assert_eq!(trade_quote_currency(None), "quote");
         assert_eq!(

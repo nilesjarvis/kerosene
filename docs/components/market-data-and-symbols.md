@@ -58,6 +58,9 @@ notional value. USD-quoted markets show dollar amounts; other quotes retain thei
 currency label. Grouped rows use their summed execution notional. The redundant
 Value column hides while notional is selected. The choice defaults to quantity
 and is saved per pane, including in layouts.
+Quantities and notional values of 1,000 or more use compact K/M/B labels, including
+grouped totals. Smaller asset quantities preserve their original precision;
+formatting does not change retained executions or aggregation calculations.
 The trader column uses the shared wallet address cell, including address-book
 labels and Copy, Open Wallet, and Ghost actions on hover. Rows stay stationary
 while an address menu is open; ingestion continues and the view catches up on

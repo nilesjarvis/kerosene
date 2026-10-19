@@ -33,6 +33,34 @@ fn feed(trades: Vec<TradePrint>) -> TradeFeedInstance {
 }
 
 #[test]
+fn trade_feed_sizes_compact_large_quantities_and_preserve_small_prints() {
+    for (size, expected) in [
+        ("0.00000001", "0.00000001"),
+        ("0.100", "0.100"),
+        ("999.99", "999.99"),
+        ("1000", "1.0K"),
+        ("12500", "12.5K"),
+        ("1250000", "1.25M"),
+        ("2500000000", "2.50B"),
+    ] {
+        let print = trade(1000, 1, Some(FIRST), true, "1", size);
+        assert_eq!(TradeFeedRow::new(&print).size_label(), expected);
+        assert_eq!(print.size, size);
+    }
+    let mut feed = feed(vec![
+        trade(1000, 1, Some(FIRST), true, "1", "600.25"),
+        trade(999, 2, Some(FIRST), true, "1", "649.75"),
+    ]);
+    let rows = feed.visible_rows();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].size_label(), "1.2K");
+    assert_eq!(rows[0].value, 1250.0);
+    feed.group_trades = false;
+    assert_eq!(feed.visible_rows()[0].size_label(), "600.25");
+    assert_eq!(feed.visible_rows()[1].size_label(), "649.75");
+}
+
+#[test]
 fn trade_feed_grouping_combines_interleaved_same_side_trades_and_weights_price_by_size() {
     let feed = feed(vec![
         trade(10_000, 1, Some(FIRST), true, "100", "1"),

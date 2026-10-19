@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 mod formatting;
 
-pub(crate) use self::formatting::format_compact_usd;
+pub(crate) use self::formatting::{format_compact, format_compact_usd};
 
 // ---------------------------------------------------------------------------
 // Display Denomination
