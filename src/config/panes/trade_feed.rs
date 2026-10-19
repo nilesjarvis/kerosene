@@ -9,4 +9,6 @@ pub struct TradeFeedConfig {
     pub mode: OrderBookSymbolModeConfig,
     #[serde(default)]
     pub group_trades: bool,
+    #[serde(default)]
+    pub size_in_notional: bool,
 }

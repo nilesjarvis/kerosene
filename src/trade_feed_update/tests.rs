@@ -100,16 +100,57 @@ fn trade_feed_config_defaults_and_round_trip() {
     let config: TradeFeedConfig = serde_json::from_str(r#"{"id":4}"#).expect("legacy defaults");
     assert_eq!(config.mode, OrderBookSymbolModeConfig::Active);
     assert!(!config.group_trades);
+    assert!(!config.size_in_notional);
     let config = TradeFeedConfig {
         id: 4,
         mode: OrderBookSymbolModeConfig::Fixed("@107".into()),
         group_trades: true,
+        size_in_notional: true,
     };
     let json = serde_json::to_string(&config).expect("serialize");
     assert_eq!(
         serde_json::from_str::<TradeFeedConfig>(&json).expect("deserialize"),
         config
     );
+}
+
+#[test]
+fn trade_feed_size_toggle_is_per_pane_and_survives_asset_and_layout_changes() {
+    let mut terminal = terminal(Default::default());
+    let pane = *terminal.panes.iter().next().expect("trade feed pane").0;
+    terminal
+        .panes
+        .split(
+            iced::widget::pane_grid::Axis::Vertical,
+            pane,
+            PaneKind::TradeFeed(8),
+        )
+        .expect("second trade feed pane");
+    terminal
+        .trade_feeds
+        .instances
+        .insert(8, TradeFeedInstance::new(Default::default()));
+    terminal.sync_trade_feeds();
+    let generation = terminal.trade_feeds.instances[&7].generation;
+    let _ = terminal.update(incoming(generation, "BTC"));
+    let _ = terminal.update(Message::TradeFeedToggleSizeUnit(7));
+    assert!(terminal.trade_feeds.instances[&7].size_in_notional);
+    assert!(!terminal.trade_feeds.instances[&8].size_in_notional);
+    assert_eq!(terminal.trade_feeds.instances[&7].generation, generation);
+    assert_eq!(terminal.trade_feeds.instances[&7].trades.len(), 1);
+
+    terminal.apply_active_symbol_selection("ETH".into(), "ETH".into());
+    terminal.sync_trade_feeds();
+    assert!(terminal.trade_feeds.instances[&7].size_in_notional);
+    let snapshot = terminal.saved_layout_snapshot("Notional tape".into());
+    let json = serde_json::to_string(&snapshot).expect("serialize notional layout");
+    let snapshot = serde_json::from_str(&json).expect("deserialize notional layout");
+    let _ = terminal.apply_layout(snapshot);
+    assert!(terminal.trade_feeds.instances[&7].size_in_notional);
+    assert!(!terminal.trade_feeds.instances[&8].size_in_notional);
+    let _ = terminal.update(Message::TradeFeedToggleSizeUnit(7));
+    assert!(!terminal.trade_feeds.instances[&7].size_in_notional);
+    assert!(!terminal.trade_feed_configs_snapshot()[0].size_in_notional);
 }
 
 #[test]

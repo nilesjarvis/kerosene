@@ -1,3 +1,4 @@
+use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::config::OrderBookSymbolModeConfig;
 use crate::helpers;
@@ -127,12 +128,19 @@ impl TradingTerminal {
             content = content.push(text(status).size(11).color(muted));
             let layout = TapeRowLayout {
                 show_time: size.width >= if feed.group_trades { 432.0 } else { 400.0 },
-                show_value: size.width >= if feed.group_trades { 572.0 } else { 540.0 },
+                show_value: !feed.size_in_notional
+                    && size.width >= if feed.group_trades { 572.0 } else { 540.0 },
             };
+            let quote = trade_quote_currency(self.exchange_symbol_for_key(requested));
+            let size_header = tooltip(
+                view_trade_size_cell(id, if feed.size_in_notional { "Notional" } else { "Size" }, muted),
+                text(if feed.size_in_notional { "Show asset quantity" } else { "Show notional value" }).size(11),
+                tooltip::Position::Bottom,
+            );
             let header = tape_row(
                 "Time",
                 if feed.group_trades { "Avg price" } else { "Price" },
-                "Size",
+                size_header.into(),
                 "Value",
                 text("Trader")
                     .size(12)
@@ -153,6 +161,11 @@ impl TradingTerminal {
                 let trade = item.latest;
                 let time = trade_age_label(trade.time_ms, self.status_bar_now_ms);
                 let value = helpers::format_size(item.value);
+                let size_label = if feed.size_in_notional {
+                    trade_notional_label(item.value, quote)
+                } else {
+                    item.size_label().into_owned()
+                };
                 let accent = if trade.is_buy {
                     theme.palette().success
                 } else {
@@ -168,7 +181,7 @@ impl TradingTerminal {
                     container(tape_row(
                         &time,
                         &item.price_label(),
-                        &item.size_label(),
+                        view_trade_size_cell(id, &size_label, theme.palette().text),
                         &value,
                         trader.into(),
                         layout,
@@ -238,7 +251,7 @@ impl TradingTerminal {
 fn tape_row(
     time: &str,
     price: &str,
-    size: &str,
+    size: Element<'static, Message>,
     value: &str,
     trader: Element<'static, Message>,
     layout: TapeRowLayout,
@@ -269,14 +282,54 @@ fn tape_row(
                 .align_x(Alignment::End),
         );
     }
-    cells = cells
-        .push(trader)
-        .push(cell(price, 3, true))
-        .push(cell(size, 3, true));
+    cells = cells.push(trader).push(cell(price, 3, true)).push(size);
     if layout.show_value {
         cells = cells.push(cell(value, 3, true));
     }
     cells.align_y(Alignment::Center).into()
+}
+
+fn view_trade_size_cell(id: TradeFeedId, label: &str, color: Color) -> Element<'static, Message> {
+    button(
+        text(label.to_owned())
+            .size(12)
+            .wrapping(text::Wrapping::None)
+            .color(color)
+            .width(Fill)
+            .align_x(Alignment::End),
+    )
+    .padding(0)
+    .width(Length::FillPortion(3))
+    .on_press(Message::TradeFeedToggleSizeUnit(id))
+    .style(button::text)
+    .into()
+}
+
+fn trade_quote_currency(symbol: Option<&ExchangeSymbol>) -> &str {
+    symbol
+        .and_then(|symbol| match symbol.market_type {
+            MarketType::Perp => Some("USD"),
+            MarketType::Spot => symbol
+                .display_name
+                .as_deref()
+                .and_then(|display| display.rsplit_once('/'))
+                .map(|(_, quote)| quote),
+            MarketType::Outcome => symbol
+                .outcome
+                .as_ref()
+                .map(|info| info.quote_symbol.as_str()),
+        })
+        .filter(|quote| !quote.is_empty())
+        .unwrap_or("quote")
+}
+
+fn trade_notional_label(value: f64, quote: &str) -> String {
+    let amount = helpers::format_size(value);
+    if matches!(quote, "USD" | "USDC" | "USDE" | "USDT0" | "USDH") {
+        format!("${amount}")
+    } else {
+        format!("{amount} {quote}")
+    }
 }
 
 fn trade_age_label(time_ms: u64, now_ms: u64) -> String {
@@ -294,7 +347,46 @@ fn trade_age_label(time_ms: u64, now_ms: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::trade_age_label;
+    use super::*;
+
+    #[test]
+    fn trade_feed_notional_keeps_the_quote_currency_and_formats_dollars_compactly() {
+        for quote in ["USD", "USDC", "USDE", "USDT0", "USDH"] {
+            assert_eq!(trade_notional_label(12_500.0, quote), "$12.5K");
+            assert_eq!(trade_notional_label(0.125, quote), "$0.1250");
+        }
+        assert_eq!(trade_notional_label(0.125, "UBTC"), "0.1250 UBTC");
+        assert_eq!(trade_quote_currency(None), "quote");
+        assert_eq!(
+            trade_notional_label(12.5, trade_quote_currency(None)),
+            "12.50 quote"
+        );
+
+        let mut symbol = ExchangeSymbol {
+            key: "BTC".into(),
+            ticker: "BTC".into(),
+            category: "crypto".into(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: None,
+            sz_decimals: 5,
+            max_leverage: 40,
+            only_isolated: false,
+            growth_mode: false,
+            market_type: MarketType::Perp,
+            outcome: None,
+        };
+        assert_eq!(trade_quote_currency(Some(&symbol)), "USD");
+        symbol.market_type = MarketType::Spot;
+        assert_eq!(trade_quote_currency(Some(&symbol)), "quote");
+        symbol.display_name = Some("UETH/UBTC".into());
+        assert_eq!(trade_quote_currency(Some(&symbol)), "UBTC");
+        symbol.display_name = Some("HYPE/USDC".into());
+        assert_eq!(trade_quote_currency(Some(&symbol)), "USDC");
+        symbol.market_type = MarketType::Outcome;
+        assert_eq!(trade_quote_currency(Some(&symbol)), "quote");
+    }
 
     #[test]
     fn trade_feed_age_uses_whole_units_and_handles_clock_skew() {

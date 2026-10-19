@@ -42,6 +42,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         Message::AddTradeFeedPane
         | Message::TradeFeedTogglePicker(_)
         | Message::TradeFeedToggleGrouping(_)
+        | Message::TradeFeedToggleSizeUnit(_)
         | Message::TradeFeedSearchChanged(_, _)
         | Message::TradeFeedSetMode(_, _)
         | Message::TradeFeedStream(_, _, _, _) => UpdateRoute::TradeFeed,

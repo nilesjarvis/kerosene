@@ -53,6 +53,12 @@ impl TradingTerminal {
                     self.persist_config();
                 }
             }
+            Message::TradeFeedToggleSizeUnit(id) => {
+                if let Some(feed) = self.trade_feeds.instances.get_mut(&id) {
+                    feed.size_in_notional = !feed.size_in_notional;
+                    self.persist_config();
+                }
+            }
             Message::TradeFeedSetMode(id, mode) => {
                 let mode = match mode {
                     OrderBookSymbolModeConfig::Fixed(key) => {
@@ -148,6 +154,7 @@ impl TradingTerminal {
             let mode = config.map(|config| config.mode.clone()).unwrap_or_default();
             let mut feed = TradeFeedInstance::new(mode);
             feed.group_trades = config.is_some_and(|config| config.group_trades);
+            feed.size_in_notional = config.is_some_and(|config| config.size_in_notional);
             self.trade_feeds.instances.insert(id, feed);
             self.trade_feeds.next_id = self.trade_feeds.next_id.max(id.saturating_add(1));
         }
@@ -163,6 +170,7 @@ impl TradingTerminal {
                 id,
                 mode: feed.mode.clone(),
                 group_trades: feed.group_trades,
+                size_in_notional: feed.size_in_notional,
             })
             .collect();
         configs.sort_by_key(|config| config.id);

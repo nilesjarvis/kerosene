@@ -41,6 +41,7 @@ pub(crate) struct TradeFeedsState {
 pub(crate) struct TradeFeedInstance {
     pub(crate) mode: OrderBookSymbolModeConfig,
     pub(crate) group_trades: bool,
+    pub(crate) size_in_notional: bool,
     pub(crate) symbol: Option<String>,
     pub(crate) generation: u64,
     pub(crate) picker_open: bool,
@@ -58,6 +59,7 @@ impl TradeFeedInstance {
         Self {
             mode,
             group_trades: false,
+            size_in_notional: false,
             symbol: None,
             generation: 0,
             picker_open: false,

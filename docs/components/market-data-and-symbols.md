@@ -27,6 +27,11 @@ The compact tape shows the initiating trader, exact execution price, and base
 size; wider panes also show relative trade age (for example, "10 seconds ago" or
 "3 minutes ago") and value in the market's quote currency. Ages refresh with the
 existing one-second UI clock, including while the feed is quiet or rows are held.
+Click the **Size** header or any size cell to toggle between asset quantity and
+notional value. USD-quoted markets show dollar amounts; other quotes retain their
+currency label. Grouped rows use their summed execution notional. The redundant
+Value column hides while notional is selected. The choice defaults to quantity
+and is saved per pane, including in layouts.
 The trader column uses the shared wallet address cell, including address-book
 labels and Copy, Open Wallet, and Ghost actions on hover. Rows stay stationary
 while an address menu is open; ingestion continues and the view catches up on
@@ -60,7 +65,8 @@ lag mark a history gap; reconnect snapshots are not treated as complete backfill
 
 `PaneKind::TradeFeed(TradeFeedId)` persists through `PaneKindConfig::TradeFeed`.
 The defaulted `trade_feeds` list in config and saved layouts stores IDs,
-`Active`/`Fixed(symbol)` modes, and `group_trades`, never tape history.
+`Active`/`Fixed(symbol)` modes, `group_trades`, and `size_in_notional`, never tape
+history.
 Older layouts need no migration;
 missing per-pane settings default to following the active asset. Duplicate IDs
 are repaired with the other multi-instance widget IDs on load/import.
