@@ -5,8 +5,12 @@ use crate::account::{
 };
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
+use crate::canvas_state::WorkspaceId;
 use crate::config::{self, AccountProfile};
+use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
+use crate::pane_management::AddWidgetKind;
+use crate::pane_state::PaneKind;
 
 const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
 const OTHER_ACCOUNT: &str = "0xdef0000000000000000000000000000000000000";
@@ -221,6 +225,49 @@ fn alfred_catalog_includes_positions_history_widget() {
     assert_eq!(command.title, "Positions / History");
     assert_eq!(command.kind, AlfredCommandKind::AddWidget);
     assert!(command.message.is_some());
+}
+
+#[test]
+fn alfred_order_entry_search_reopens_or_focuses_widget() {
+    for already_open in [false, true] {
+        let mut terminal = TradingTerminal::boot_from_config(config::KeroseneConfig::default()).0;
+        let order_entry = terminal
+            .find_pane_matching(|kind| matches!(kind, PaneKind::OrderEntry))
+            .expect("default Order Entry pane");
+        if !already_open {
+            let _task = terminal.update(Message::ClosePane(WorkspaceId::Main, order_entry));
+        }
+        terminal.focus = terminal.chart_anchor_pane();
+        let pane_count = terminal.workspace_pane_kinds().count();
+
+        let _task = terminal.update(Message::ToggleAlfred);
+        for query in [
+            "order entry",
+            "  ORDER  ENTRY ",
+            "order ticket",
+            "add entry",
+        ] {
+            let _task = terminal.update(Message::AlfredQueryChanged(query.to_string()));
+            let commands = terminal.alfred_filtered_commands();
+            assert_eq!(commands.len(), 1, "{query:?}");
+            let command = &commands[0];
+            assert_eq!(command.id, AlfredCommandId::AddOrderEntryPane);
+            assert_eq!(command.kind, AlfredCommandKind::AddWidget);
+            assert_eq!(command.tag, if already_open { "Open" } else { "Pane" });
+            assert!(command.enabled);
+        }
+
+        let _task = terminal.update(Message::AlfredSubmit);
+
+        assert!(!terminal.alfred.open);
+        assert_eq!(terminal.workspace_pane_kinds().count(), pane_count);
+        if already_open {
+            assert_eq!(terminal.focus, Some(order_entry));
+            assert_eq!(terminal.placing_widget, None);
+        } else {
+            assert_eq!(terminal.placing_widget, Some(AddWidgetKind::OrderEntry));
+        }
+    }
 }
 
 #[test]

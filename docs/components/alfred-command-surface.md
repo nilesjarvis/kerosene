@@ -63,6 +63,11 @@ Catalog filtering trims and lowercases the query once, then matches its tokens
 against each command's existing search text in catalog order. Dynamic trading
 queries are resolved before this normalization.
 
+Order Entry is available in the Widgets dropdown under Tools and in Alfred by
+searching `order entry` or `order ticket`. Both use the same placement flow when
+closed and focus the existing pane when it is already open. Catalog consistency
+tests compare both message variants and widget kinds to catch missing entries.
+
 ## Trading Parser
 
 Trade and close intents share token trimming and symbol normalization in

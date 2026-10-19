@@ -8,9 +8,9 @@
 //! menu entry but was never added to the Alfred catalog. This test locks the
 //! two registries to the same set of command messages.
 //!
-//! Mechanism: both registries reference each command as a `Message::<Variant>`
-//! literal (and, today, reference no other messages), so we compare the set of
-//! `Message::` identifiers that appear in each registry's source text. The
+//! Mechanism: both registries reference commands as `Message::<Variant>` and
+//! pane-placement targets as `AddWidgetKind::<Variant>`. Compare both sets so
+//! widgets sharing `BeginWidgetPlacement` cannot silently go missing. The
 //! sources are embedded at compile time with `include_str!`, so the test is
 //! hermetic and needs no `TradingTerminal` instance.
 
@@ -48,20 +48,21 @@ const SECTIONS_MODULE: &str = include_str!("../../add_widget_menu/body/sections.
 // Alfred command catalog sources (widgets + windows).
 const CATALOG_SOURCES: &[&str] = &[include_str!("widgets.rs"), include_str!("windows.rs")];
 
-/// Collect every `Message::<Variant>` identifier that appears in `src`.
-fn message_variants(src: &str) -> BTreeSet<String> {
-    const MARKER: &str = "Message::";
+/// Collect command messages and widget kinds referenced by a registry.
+fn command_references(src: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    let mut rest = src;
-    while let Some(pos) = rest.find(MARKER) {
-        let after = &rest[pos + MARKER.len()..];
-        let ident: String = after
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .collect();
-        rest = &after[ident.len()..];
-        if !ident.is_empty() {
-            out.insert(ident);
+    for marker in ["Message::", "AddWidgetKind::"] {
+        let mut rest = src;
+        while let Some(pos) = rest.find(marker) {
+            let after = &rest[pos + marker.len()..];
+            let ident: String = after
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            rest = &after[ident.len()..];
+            if !ident.is_empty() {
+                out.insert(format!("{marker}{ident}"));
+            }
         }
     }
     out
@@ -85,11 +86,11 @@ fn menu_sections_cover_all_section_modules() {
 fn add_widget_menu_and_alfred_catalog_expose_the_same_commands() {
     let menu: BTreeSet<String> = MENU_SECTIONS
         .iter()
-        .flat_map(|(_, src)| message_variants(src))
+        .flat_map(|(_, src)| command_references(src))
         .collect();
     let catalog: BTreeSet<String> = CATALOG_SOURCES
         .iter()
-        .flat_map(|src| message_variants(src))
+        .flat_map(|src| command_references(src))
         .collect();
 
     let menu_only: Vec<&String> = menu.difference(&catalog).collect();
