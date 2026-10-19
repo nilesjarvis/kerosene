@@ -1,44 +1,28 @@
 use crate::api;
 use crate::app_state::TradingTerminal;
-use crate::canvas_state::WorkspaceId;
-use crate::chart_state::OPEN_INTEREST_CAP_REFRESH_MS;
+use crate::chart_state::{OPEN_INTEREST_CAP_REFRESH_MS, OpenInterestCapStreamEvent};
 use crate::message::Message;
+#[cfg(test)]
 use crate::pane_state::PaneKind;
 use iced::Task;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 impl TradingTerminal {
     pub(crate) fn queue_chart_open_interest_caps(&mut self, now_ms: u64) -> Vec<Task<Message>> {
-        let dexes: BTreeSet<String> = self
-            .workspace_pane_kinds()
-            .filter(|(workspace, _, _)| match workspace {
-                WorkspaceId::Main => true,
-                WorkspaceId::Canvas(id) => self
-                    .canvases
-                    .get(id)
-                    .is_some_and(|canvas| canvas.window_id.is_some()),
-            })
-            .filter_map(|(_, _, kind)| match kind {
-                PaneKind::Chart(id) => Some(*id),
-                _ => None,
-            })
-            .chain(
-                self.detached_chart_windows
-                    .values()
-                    .map(|window| window.chart_id),
-            )
-            .filter_map(|id| self.charts.get(&id))
-            .filter(|chart| {
-                !chart.header_collapsed
-                    && self.is_perp_coin(&chart.symbol)
-                    && !self.symbol_key_is_hidden(&chart.symbol)
-            })
-            .filter_map(|chart| match chart.symbol.split_once(':') {
-                Some((dex, coin)) if !dex.is_empty() && !coin.is_empty() => Some(dex.to_string()),
-                Some(_) => None,
-                None => Some(String::new()),
-            })
-            .collect();
+        let dexes = self.chart_open_interest_cap_dexes();
+        if dexes.is_empty()
+            || self
+                .chart_open_interest_caps
+                .live
+                .as_ref()
+                .is_some_and(|snapshot| !snapshot.is_fresh(now_ms))
+        {
+            self.apply_chart_open_interest_cap_stream(
+                OpenInterestCapStreamEvent::Unavailable,
+                now_ms,
+            );
+        }
+        let live = self.chart_open_interest_caps.live.is_some();
 
         // Keep pending entries until completion, even if their last chart closes.
         // Reopening a chart then shares that request instead of racing a late result.
@@ -52,8 +36,9 @@ impl TradingTerminal {
                 .dexes
                 .entry(dex.clone())
                 .or_default();
-            if !entry.status.in_flight && now_ms >= entry.status.next_attempt_ms {
+            if !live && !entry.status.in_flight && now_ms >= entry.status.next_attempt_ms {
                 entry.status.in_flight = true;
+                entry.status.requested_at_ms = Some(now_ms);
                 let status_dex = dex.clone();
                 tasks.push(Task::perform(
                     api::fetch_perps_at_open_interest_cap(status_dex.clone()),
@@ -106,6 +91,43 @@ impl TradingTerminal {
         entry.next_attempt_ms = now_ms.saturating_add(delay);
     }
 
+    pub(crate) fn apply_chart_open_interest_cap_stream(
+        &mut self,
+        event: OpenInterestCapStreamEvent,
+        now_ms: u64,
+    ) {
+        match event {
+            OpenInterestCapStreamEvent::Snapshot(snapshot) => {
+                if !snapshot.is_fresh(now_ms) || self.chart_open_interest_cap_dexes().is_empty() {
+                    return;
+                }
+                if self
+                    .chart_open_interest_caps
+                    .live
+                    .as_ref()
+                    .is_some_and(|current| snapshot.server_time_ms < current.server_time_ms)
+                {
+                    return;
+                }
+                self.chart_open_interest_caps.last_live_update_ms = Some(now_ms);
+                self.chart_open_interest_caps.live = Some(snapshot);
+                for entry in self.chart_open_interest_caps.dexes.values_mut() {
+                    entry.status.coins.clear();
+                    entry.status.updated_at_ms = None;
+                    entry.status.failures = 0;
+                    entry.status.next_attempt_ms = now_ms;
+                }
+            }
+            OpenInterestCapStreamEvent::Unavailable => {
+                if self.chart_open_interest_caps.live.take().is_some() {
+                    for entry in self.chart_open_interest_caps.dexes.values_mut() {
+                        entry.status.next_attempt_ms = now_ms;
+                    }
+                }
+            }
+        }
+    }
+
     pub(crate) fn apply_chart_open_interest_cap_status(
         &mut self,
         dex: &str,
@@ -120,6 +142,16 @@ impl TradingTerminal {
             return;
         }
         status.in_flight = false;
+        let requested_at_ms = status.requested_at_ms.take();
+        if self
+            .chart_open_interest_caps
+            .last_live_update_ms
+            .is_some_and(|last| requested_at_ms.is_none_or(|requested| requested <= last))
+        {
+            // An HTTP request begun before a live push must not resurrect its older list.
+            status.next_attempt_ms = now_ms;
+            return;
+        }
         let delay = match result {
             Ok(coins) => {
                 status.coins = coins;

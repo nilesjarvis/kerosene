@@ -11,6 +11,7 @@ use iced::Subscription;
 mod book_inspector;
 mod chart;
 mod chase;
+mod open_interest_caps;
 mod order_book;
 mod position_pnl;
 mod positioning_info;
@@ -46,6 +47,7 @@ impl TradingTerminal {
         }
 
         self.push_chart_market_subscriptions(subs);
+        self.push_chart_open_interest_cap_subscription(subs);
         self.push_spaghetti_market_subscriptions(subs);
         self.push_order_book_subscriptions(subs);
         self.push_book_inspector_subscription(subs);

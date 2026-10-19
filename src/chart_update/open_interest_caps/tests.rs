@@ -1,5 +1,6 @@
 use super::*;
 use crate::chart_state::ChartInstance;
+use crate::chart_state::OpenInterestCapSnapshot;
 use crate::timeframe::Timeframe;
 use iced::widget::pane_grid;
 
@@ -26,6 +27,127 @@ fn terminal_with_charts(symbols: &[&str]) -> TradingTerminal {
 
 fn caps(symbol: &str, cap: f64) -> HashMap<String, f64> {
     HashMap::from([(symbol.to_string(), cap)])
+}
+
+fn live_snapshot(coins: &[&str], time_ms: u64) -> OpenInterestCapStreamEvent {
+    OpenInterestCapStreamEvent::Snapshot(OpenInterestCapSnapshot {
+        coins: coins.iter().map(|coin| (*coin).to_string()).collect(),
+        server_time_ms: time_ms,
+        received_at_ms: time_ms,
+    })
+}
+
+#[test]
+fn open_interest_cap_stream_updates_all_dexes_and_clears_removed_warnings() {
+    let mut terminal = terminal_with_charts(&["BTC", "xyz:AAPL", "abc:AAPL"]);
+    terminal.apply_chart_open_interest_cap_stream(live_snapshot(&["BTC", "xyz:AAPL"], 1), 1);
+    assert_eq!(terminal.chart_is_at_open_interest_cap("BTC", 1), Some(true));
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("xyz:AAPL", 1),
+        Some(true)
+    );
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("abc:AAPL", 1),
+        Some(false)
+    );
+    assert_eq!(terminal.chart_is_at_open_interest_cap("@107", 1), None);
+    // Live status suppresses per-DEX HTTP status reads; numeric caps still load.
+    assert_eq!(terminal.queue_chart_open_interest_caps(1).len(), 2);
+    terminal.apply_chart_open_interest_cap_stream(live_snapshot(&["abc:AAPL"], 5_000), 5_000);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("xyz:AAPL", 5_000),
+        Some(false)
+    );
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("BTC", 5_000),
+        Some(false)
+    );
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("abc:AAPL", 5_000),
+        Some(true)
+    );
+    terminal.apply_chart_open_interest_cap_stream(live_snapshot(&[], 10_000), 10_000);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("abc:AAPL", 10_000),
+        Some(false)
+    );
+}
+
+#[test]
+fn open_interest_cap_stream_cannot_be_overwritten_by_an_older_http_request() {
+    let mut terminal = terminal_with_charts(&["BTC"]);
+    assert_eq!(terminal.queue_chart_open_interest_caps(0).len(), 1);
+    terminal.apply_chart_open_interest_cap_stream(live_snapshot(&["BTC"], 10), 10);
+    terminal.apply_chart_open_interest_cap_status("", Ok(HashSet::new()), 20);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("BTC", 20),
+        Some(true)
+    );
+    terminal.apply_chart_open_interest_cap_stream(OpenInterestCapStreamEvent::Unavailable, 30);
+    // The old HTTP result must not reappear as a confirmed below-cap status.
+    assert_eq!(terminal.chart_is_at_open_interest_cap("BTC", 30), None);
+    assert_eq!(terminal.queue_chart_open_interest_caps(30).len(), 1);
+    terminal.apply_chart_open_interest_cap_status("", Ok(HashSet::new()), 40);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("BTC", 40),
+        Some(false)
+    );
+    terminal.apply_chart_open_interest_cap_stream(live_snapshot(&["BTC"], 50), 50);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("BTC", 50),
+        Some(true)
+    );
+}
+
+#[test]
+fn open_interest_cap_stream_disconnect_does_not_accept_late_pre_stream_http_data() {
+    let mut terminal = terminal_with_charts(&["BTC"]);
+    let _ = terminal.queue_chart_open_interest_caps(0);
+    terminal.apply_chart_open_interest_cap_stream(live_snapshot(&[], 10), 10);
+    terminal.apply_chart_open_interest_cap_stream(OpenInterestCapStreamEvent::Unavailable, 20);
+    terminal.apply_chart_open_interest_cap_status("", Ok(HashSet::from(["BTC".to_string()])), 30);
+    assert_eq!(terminal.chart_is_at_open_interest_cap("BTC", 30), None);
+    assert_eq!(terminal.queue_chart_open_interest_caps(30).len(), 1);
+}
+
+#[test]
+fn open_interest_cap_stream_expires_and_retries_without_waiting_a_minute() {
+    let mut terminal = terminal_with_charts(&["BTC"]);
+    let _ = terminal.queue_chart_open_interest_caps(0);
+    terminal.apply_chart_open_interest_cap_status("", Ok(HashSet::new()), 1);
+    terminal.apply_chart_open_interest_cap_stream(live_snapshot(&["BTC"], 10), 10);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("BTC", 15_009),
+        Some(true)
+    );
+    assert_eq!(terminal.chart_is_at_open_interest_cap("BTC", 15_010), None);
+    assert_eq!(terminal.queue_chart_open_interest_caps(15_010).len(), 1);
+    terminal.apply_chart_open_interest_cap_status("", Ok(HashSet::new()), 15_020);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("BTC", 15_020),
+        Some(false)
+    );
+}
+
+#[test]
+fn open_interest_cap_stream_rejects_old_snapshots_and_releases_unused_state() {
+    let mut terminal = terminal_with_charts(&["BTC"]);
+    terminal.apply_chart_open_interest_cap_stream(live_snapshot(&["BTC"], 20_000), 20_000);
+    terminal.apply_chart_open_interest_cap_stream(live_snapshot(&[], 19_000), 20_001);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("BTC", 20_001),
+        Some(true)
+    );
+    terminal.apply_chart_open_interest_cap_stream(live_snapshot(&[], 1), 20_002);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("BTC", 20_002),
+        Some(true)
+    );
+    terminal.charts.get_mut(&0).expect("chart").header_collapsed = true;
+    assert!(terminal.queue_chart_open_interest_caps(20_003).is_empty());
+    assert_eq!(terminal.chart_is_at_open_interest_cap("BTC", 20_003), None);
+    terminal.apply_chart_open_interest_cap_stream(live_snapshot(&["BTC"], 20_004), 20_004);
+    assert_eq!(terminal.chart_is_at_open_interest_cap("BTC", 20_004), None);
 }
 
 #[test]

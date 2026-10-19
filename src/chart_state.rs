@@ -16,7 +16,10 @@ pub(crate) use self::model::{
     DetachedChartWindowState, FundingFetchMode, FundingFetchRequest, PriceFlash,
     PriceFlashDirection,
 };
-pub(crate) use self::open_interest_caps::{ChartOpenInterestCaps, OPEN_INTEREST_CAP_REFRESH_MS};
+pub(crate) use self::open_interest_caps::{
+    ChartOpenInterestCaps, OPEN_INTEREST_CAP_REFRESH_MS, OPEN_INTEREST_CAP_STREAM_MAX_AGE_MS,
+    OpenInterestCapSnapshot, OpenInterestCapStreamEvent,
+};
 pub(crate) use self::price_change::{
     ChartPriceChangeHistory, PRICE_CHANGE_DAY_MS, PRICE_CHANGE_HISTORY_AHEAD_MS,
     PRICE_CHANGE_MINUTE_MS, PRICE_CHANGE_PREFETCH_MS, PriceChangeHistoryEntry,

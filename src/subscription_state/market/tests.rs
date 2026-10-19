@@ -19,6 +19,7 @@ use std::hash::Hasher as _;
 
 mod automation;
 mod charts;
+mod open_interest_caps;
 mod order_books;
 mod position_pnl;
 mod positioning_info;

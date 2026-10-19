@@ -31,13 +31,13 @@ pub use hydromancer::{
     ws_hydromancer_liquidations, ws_hydromancer_spaghetti_candle_stream,
     ws_hydromancer_tracked_trades,
 };
-pub(crate) use market_streams::ws_trade_feed;
 pub use market_streams::{
     KeyedAssetContextStreamEvent, KeyedBookStreamEvent, KeyedCandleStreamEvent,
     SpaghettiCandleStreamEvent, SymbolAssetContextStreamEvent, ws_asset_ctx_stream_keyed,
     ws_asset_ctx_stream_symbol, ws_book_stream_keyed_events, ws_candle_stream_keyed,
     ws_spaghetti_candle_stream,
 };
+pub(crate) use market_streams::{ws_open_interest_caps, ws_trade_feed};
 pub use user_streams::{
     WsUserData, WsUserDataStreamParams, WsUserDataStreamPurpose, ws_user_data_stream,
 };

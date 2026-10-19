@@ -1424,6 +1424,7 @@ pub(crate) enum Message {
     ChartPriceChangeHistoryLoaded(PriceChangeHistoryRequest, Result<Vec<Candle>, String>),
     ChartOpenInterestCapsLoaded(String, Result<HashMap<String, f64>, String>),
     ChartOpenInterestCapStatusLoaded(String, Result<HashSet<String>, String>),
+    ChartOpenInterestCapStream(crate::chart_state::OpenInterestCapStreamEvent),
     ChartSecondaryCandlesLoaded(CandleFetchRequest, Result<Vec<Candle>, String>),
     ChartFundingHistoryLoaded(
         FundingFetchRequest,

@@ -648,6 +648,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartPriceChangeHistoryLoaded(_, _)
         | Message::ChartOpenInterestCapsLoaded(_, _)
         | Message::ChartOpenInterestCapStatusLoaded(_, _)
+        | Message::ChartOpenInterestCapStream(_)
         | Message::ChartSecondaryCandlesLoaded(_, _)
         | Message::ChartFundingHistoryLoaded(_, _)
         | Message::ChartWsCandleUpdate(_, _, _, _, _)

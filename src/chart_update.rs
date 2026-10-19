@@ -85,6 +85,11 @@ impl TradingTerminal {
             Message::ChartOpenInterestCapStatusLoaded(dex, result) => {
                 self.apply_chart_open_interest_cap_status(&dex, result, Self::now_ms());
             }
+            Message::ChartOpenInterestCapStream(event) => {
+                let now_ms = Self::now_ms();
+                self.apply_chart_open_interest_cap_stream(event, now_ms);
+                return Task::batch(self.queue_chart_open_interest_caps(now_ms));
+            }
             Message::ChartPriceChangeHistoryLoaded(request, result) => {
                 self.apply_chart_price_change_history(request, result, Self::now_ms());
             }

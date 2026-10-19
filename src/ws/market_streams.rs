@@ -4,6 +4,8 @@ mod books;
 mod trades;
 pub(crate) use trades::ws_trade_feed;
 mod candles;
+mod open_interest_caps;
+pub(crate) use open_interest_caps::ws_open_interest_caps;
 
 use crate::account::AssetContext;
 use crate::api::Candle;
