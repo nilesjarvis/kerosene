@@ -218,6 +218,49 @@ fn adds_papertrade_to_existing_config_once_and_preserves_customizations() {
 }
 
 #[test]
+fn adds_papertrade_uwu_to_existing_config_once_and_preserves_customizations() {
+    let mut config = KeroseneConfig {
+        active_theme: "Custom: Papertrade".to_string(),
+        custom_themes: Vec::new(),
+        ..KeroseneConfig::default()
+    };
+
+    normalize_loaded_config(&mut config);
+
+    let papertrade_uwu = config
+        .custom_themes
+        .iter_mut()
+        .find(|theme| theme.name == "Papertrade UwU")
+        .expect("Papertrade UwU theme should be added to older configs");
+    assert_eq!(papertrade_uwu.background, "#0D1229");
+    assert_eq!(papertrade_uwu.chart_bull.as_deref(), Some("#82DEB0"));
+    assert_eq!(papertrade_uwu.chart_bear.as_deref(), Some("#FF91A7"));
+    assert_eq!(papertrade_uwu.chart_line.as_deref(), Some("#F1F3FF"));
+    assert_eq!(
+        papertrade_uwu.chart_line_gradient.as_deref(),
+        Some("#DCE5FF")
+    );
+    papertrade_uwu.primary = "#123456".to_string();
+    papertrade_uwu.chart_bull = Some("#ABCDEF".to_string());
+    papertrade_uwu.chart_line = Some("#FEDCBA".to_string());
+    papertrade_uwu.chart_line_gradient = Some("#AABBCC".to_string());
+    let customized = papertrade_uwu.clone();
+
+    let serialized = serde_json::to_string(&config).expect("config serializes");
+    let mut reloaded: KeroseneConfig =
+        serde_json::from_str(&serialized).expect("config deserializes");
+    normalize_loaded_config(&mut reloaded);
+
+    let papertrade_uwu_themes: Vec<_> = reloaded
+        .custom_themes
+        .iter()
+        .filter(|theme| theme.name == "Papertrade UwU")
+        .collect();
+    assert_eq!(papertrade_uwu_themes, vec![&customized]);
+    assert_eq!(reloaded.active_theme, "Custom: Papertrade");
+}
+
+#[test]
 fn normalizes_out_of_range_market_slippage() {
     let mut value =
         serde_json::to_value(KeroseneConfig::default()).expect("default config serializes");

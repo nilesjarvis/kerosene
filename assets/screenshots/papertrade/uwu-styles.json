@@ -1,0 +1,65 @@
+{
+  "url": "https://exchange.papertrade.xyz/trade/btc",
+  "theme": "dark",
+  "font": "Inter, system-ui, -apple-system, sans-serif",
+  "variables": {
+    "--font-ui": "Inter,system-ui,-apple-system,sans-serif",
+    "--pt-body": "rgb(13,18,41)",
+    "--pt-page": "rgb(13,18,41)",
+    "--pt-panel": "rgb(23,29,61)",
+    "--pt-panel-raised": "rgb(39,47,90)",
+    "--pt-panel-sunken": "rgb(8,12,29)",
+    "--pt-border": "rgb(70,83,130)",
+    "--pt-ink": "rgb(244,234,242)",
+    "--pt-ink-muted": "rgb(199,196,216)",
+    "--pt-accent-warm": "#e4b4ce",
+    "--pt-pos": "rgb(145,216,189)",
+    "--pt-neg": "rgb(240,160,178)",
+    "--pt-warning": "rgb(156,106,0)",
+    "--pt-on-ink": "rgb(14,19,41)",
+    "--pt-star": "rgb(184,197,255)",
+    "--pt-header": "rgb(17,24,50)",
+    "--pt-chart-plot": "#0d1430",
+    "--pt-chart-gutter": "#151e3d",
+    "--pt-chart-ink": "#f1f3ff",
+    "--pt-chart-area": "#dce5ff",
+    "--pt-chart-accent": "#f0b5d0",
+    "--pt-chart-warning": "#f0d09a",
+    "--pt-chart-ok": "#82deb0",
+    "--pt-chart-danger": "#ff91a7",
+    "--pt-buy-action": "linear-gradient(135deg,rgb(145,216,189),#c5c9f2)",
+    "--pt-sell-action": "linear-gradient(135deg,rgb(240,160,178),#c5c9f2)",
+    "--pt-auth-action": "linear-gradient(135deg,#e4b4ce,#c5c9f2)",
+    "--pt-ink-faint": "#a4accb",
+    "--pt-chart-ok-hover": "#a8e7d1"
+  },
+  "loadedFonts": [
+    {
+      "family": "Inter",
+      "weight": "100 700"
+    }
+  ],
+  "stylesheetUrls": [
+    "https://exchange.papertrade.xyz/assets/WalletConnectButton-BAmT-YaK.css",
+    "https://exchange.papertrade.xyz/assets/RollingNumber-BX0WXMCZ.css",
+    "https://exchange.papertrade.xyz/assets/useTradingNetwork-CnnRrHhB.css",
+    "https://exchange.papertrade.xyz/assets/QueuedIntentLabel-BL-igUHQ.css",
+    "https://exchange.papertrade.xyz/assets/app-DdeGo5yi.css",
+    "https://exchange.papertrade.xyz/assets/ChartDropdown-MV9SO6dB.css",
+    "https://exchange.papertrade.xyz/assets/ShareTradeLink-DgkKorSr.css",
+    "https://exchange.papertrade.xyz/assets/TradeChart-BjcV17xX.css",
+    "https://exchange.papertrade.xyz/assets/useChainPressure-B7dwR0IQ.css",
+    "https://exchange.papertrade.xyz/assets/trade-DFqIdexG.css",
+    "https://exchange.papertrade.xyz/assets/share-entry-b9UyZcjg.css",
+    "https://exchange.papertrade.xyz/assets/LanguageMenu-BfeATPSd.css",
+    "https://exchange.papertrade.xyz/assets/uwu-controls-Dt4f3Qvn.css",
+    "https://exchange.papertrade.xyz/assets/uwu-chart-CRMNqtuu.css"
+  ],
+  "captured": "2026-10-19",
+  "viewport": {
+    "width": 1600,
+    "height": 1000,
+    "deviceScaleFactor": 1
+  },
+  "navigation": "Settings > UwU Mode; UwU-less Mode retains the palette and starfield."
+}

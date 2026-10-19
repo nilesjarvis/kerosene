@@ -148,6 +148,30 @@ Settings > Themes > Fonts > Display Font, then restart. The separate
 Monospace Font selector also offers Inter for matching numeric readouts, though
 Inter is proportional. Theme selection leaves both font preferences unchanged.
 
+**Papertrade UwU** is a separate preset in the same Custom Themes list, sampled
+from the exchange's Settings > UwU Mode on 2026-10-19. Its source palette uses
+`#0D1229` for the page, `#171D3D` for panels, `#272F5A` for raised surfaces,
+`#F4EAF2` for text, `#E4B4CE` for primary actions, and `#91D8BD` / `#F0A0B2`
+for buy/sell controls. `app_theme/papertrade_uwu.rs` preserves those surface
+shades and uses the gradient's lavender endpoint (`#C5C9F2`) for hovered primary
+controls. Iced palette pairs use solid colors, so the source's button gradients
+are represented by their endpoints. The site's illustrated scenes remain visual
+references; the preset applies its UI and chart colors.
+
+Chart candles use the source's brighter `#82DEB0` / `#FF91A7`, while line charts
+use `#F1F3FF` with a `#DCE5FF` fill. Warnings use the dark chart's `#F0D09A`
+instead of the light-mode ochre still inherited by the site's general warning
+token. Inter remains an independent, already bundled font choice. Older
+configurations gain the preset once, keeping the active theme and existing
+customizations. Base palette edits use the generated custom-theme shades.
+
+References: [UwU desktop](../../assets/screenshots/papertrade/uwu-desktop.png),
+[UwU-less desktop](../../assets/screenshots/papertrade/uwu-less-desktop.png), and
+[computed CSS tokens](../../assets/screenshots/papertrade/uwu-styles.json).
+Both captures use a fresh browser with no connected wallet.
+The [Kerosene UwU preview](../../assets/screenshots/papertrade/kerosene-uwu-preview.png)
+shows the preset and Inter in an isolated desktop smoke test.
+
 ### Window Transparency and Blur
 
 Appearance settings include an opt-in `Transparency` toggle and a background

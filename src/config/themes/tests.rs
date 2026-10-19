@@ -42,6 +42,7 @@ fn assert_theme_matches(themes: &[CustomThemeConfig], expected: ThemeExpectation
     let expected_line_gradient = match expected.name {
         "Bloomberg" => Some("#0054A6"),
         "Papertrade" => Some("#D4CBBA"),
+        "Papertrade UwU" => Some("#DCE5FF"),
         _ => None,
     };
     assert_eq!(theme.chart_line_gradient.as_deref(), expected_line_gradient);
