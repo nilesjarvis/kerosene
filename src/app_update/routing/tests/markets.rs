@@ -149,6 +149,10 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::Chart,
     );
     assert_route(
+        Message::ChartOpenInterestCapStatusLoaded("xyz".to_string(), Ok(Default::default())),
+        UpdateRoute::Chart,
+    );
+    assert_route(
         Message::ChartWsAssetCtxLagged(7, "BTC".to_string(), source_context, 9),
         UpdateRoute::Chart,
     );

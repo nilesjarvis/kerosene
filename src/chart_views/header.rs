@@ -162,6 +162,7 @@ impl TradingTerminal {
                 metric_visibility,
                 is_perp,
                 self.chart_open_interest_cap(&instance.symbol, now_ms),
+                self.chart_is_at_open_interest_cap(&instance.symbol, now_ms) == Some(true),
             );
         }
 

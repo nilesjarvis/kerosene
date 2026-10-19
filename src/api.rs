@@ -35,7 +35,7 @@ pub use exchange_symbols::{
 };
 pub(crate) use hype_etfs::fetch_hype_etfs;
 pub(crate) use hype_unstaking_queue::fetch_hype_unstaking_queue;
-pub(crate) use open_interest_caps::fetch_open_interest_caps;
+pub(crate) use open_interest_caps::{fetch_open_interest_caps, fetch_perps_at_open_interest_cap};
 pub use order_book::{BookLevel, OrderBook, fetch_order_book, parse_ws_book};
 pub(crate) use order_status::{
     OrderStatusResult, fetch_order_status_by_cloid, fetch_order_status_by_oid,

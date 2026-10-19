@@ -210,19 +210,30 @@ and can be resized through chart messages.
 Hovering the perpetual chart header's Open Interest field shows the market's
 USD notional cap when Hyperliquid publishes one. Clicking still toggles between
 coin and USD open interest; the cap remains denominated in USD in either mode.
+When Hyperliquid reports the market at its open-interest cap, the label and value
+turn red and a warning triangle appears beside the value. The tooltip also says
+"At open interest cap". This uses the exchange's
+[`perpsAtOpenInterestCap`](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#query-perps-at-open-interest-caps)
+status for native and builder perpetuals, never a comparison between displayed
+open interest and the numeric limit. A warning can appear without a published
+numeric cap.
 `api/open_interest_caps.rs` reads the per-asset `coinToOiCap` limits from
 [`perpDexLimits`](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-builder-deployed-perp-market-limits),
 which supports builder DEXes only. Native perpetuals and missing limits do not
 show a numeric cap; a missing limit is never treated as unlimited.
 
-`chart_state/open_interest_caps.rs` owns runtime-only limits in
+`chart_state/open_interest_caps.rs` owns runtime-only limits and cap status in
 `TradingTerminal::chart_open_interest_caps`. The status tick calls
 `chart_update/open_interest_caps.rs` to refresh once per minute, sharing one
-request per DEX across expanded chart headers in open workspaces and detached
-windows. `ChartOpenInterestCapsLoaded` routes results to the chart updater.
-Failed reads clear the displayed caps and back off up to five minutes; snapshots
-older than two minutes are hidden. Limits use Hyperliquid's public read path
-independently of the candle provider and are not persisted.
+request per endpoint per DEX across expanded chart headers in open workspaces
+and detached windows. Native perpetuals request only cap status.
+`ChartOpenInterestCapsLoaded` and `ChartOpenInterestCapStatusLoaded` route
+results to the chart updater. Limits and status refresh independently, so an
+unavailable numeric cap does not suppress a confirmed warning. Failed reads
+clear only the affected data and back off up to five minutes; snapshots older
+than two minutes are hidden. Missing, failed, or stale status is unknown, not
+confirmation that a market is below cap. Both endpoints use Hyperliquid's public
+read path independently of the candle provider and are not persisted.
 
 Chart headers and overlays always use Hyperliquid's native `activeAssetCtx`
 stream for mark/oracle/mid prices, open interest, and current funding, including

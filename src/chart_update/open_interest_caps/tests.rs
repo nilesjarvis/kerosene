@@ -32,7 +32,9 @@ fn caps(symbol: &str, cap: f64) -> HashMap<String, f64> {
 fn open_interest_caps_share_requests_and_refresh_without_asset_context() {
     let mut terminal =
         terminal_with_charts(&["xyz:AAPL", "xyz:NVDA", "abc:AAPL", "BTC", "@107", "#1"]);
-    assert_eq!(terminal.queue_chart_open_interest_caps(0).len(), 2);
+    assert_eq!(terminal.queue_chart_open_interest_caps(0).len(), 5);
+    assert!(!terminal.chart_open_interest_caps.dexes[""].in_flight);
+    assert!(terminal.chart_open_interest_caps.dexes[""].status.in_flight);
     assert!(terminal.queue_chart_open_interest_caps(1).is_empty());
     terminal.apply_chart_open_interest_caps("xyz", Ok(caps("xyz:AAPL", 25_000_000.0)), 10);
     assert_eq!(
@@ -76,20 +78,21 @@ fn open_interest_caps_keep_in_flight_requests_across_chart_symbol_changes() {
     let mut terminal = terminal_with_charts(&["xyz:AAPL"]);
     let _ = terminal.queue_chart_open_interest_caps(0);
     terminal.charts.get_mut(&0).expect("chart").symbol = "abc:AAPL".to_string();
-    assert_eq!(terminal.queue_chart_open_interest_caps(1).len(), 1);
+    assert_eq!(terminal.queue_chart_open_interest_caps(1).len(), 2);
     terminal.apply_chart_open_interest_caps("xyz", Ok(caps("xyz:AAPL", 1_000.0)), 2);
+    terminal.apply_chart_open_interest_cap_status("xyz", Ok(HashSet::new()), 2);
     assert_eq!(terminal.chart_open_interest_cap("abc:AAPL", 2), None);
     let _ = terminal.queue_chart_open_interest_caps(3);
     assert!(!terminal.chart_open_interest_caps.dexes.contains_key("xyz"));
     terminal.apply_chart_open_interest_caps("xyz", Ok(caps("xyz:AAPL", 2_000.0)), 4);
     assert!(!terminal.chart_open_interest_caps.dexes.contains_key("xyz"));
     terminal.charts.get_mut(&0).expect("chart").symbol = "xyz:AAPL".to_string();
-    assert_eq!(terminal.queue_chart_open_interest_caps(5).len(), 1);
+    assert_eq!(terminal.queue_chart_open_interest_caps(5).len(), 2);
 }
 
 #[test]
 fn open_interest_caps_skip_unused_charts_and_collapsed_headers() {
-    let mut terminal = terminal_with_charts(&["BTC"]);
+    let mut terminal = terminal_with_charts(&["@107"]);
     terminal.charts.insert(
         99,
         ChartInstance::new(99, "xyz:AAPL".to_string(), Timeframe::H1),
@@ -100,5 +103,101 @@ fn open_interest_caps_skip_unused_charts_and_collapsed_headers() {
     chart.header_collapsed = true;
     assert!(terminal.queue_chart_open_interest_caps(1).is_empty());
     terminal.charts.get_mut(&0).expect("chart").header_collapsed = false;
-    assert_eq!(terminal.queue_chart_open_interest_caps(2).len(), 1);
+    assert_eq!(terminal.queue_chart_open_interest_caps(2).len(), 2);
+}
+
+#[test]
+fn open_interest_cap_status_refreshes_independently_of_numeric_limits() {
+    let mut terminal = terminal_with_charts(&["xyz:AAPL", "xyz:NVDA", "BTC"]);
+    assert_eq!(terminal.queue_chart_open_interest_caps(0).len(), 3);
+    assert_eq!(terminal.chart_is_at_open_interest_cap("xyz:AAPL", 0), None);
+    terminal.apply_chart_open_interest_caps("xyz", Err("unavailable".to_string()), 10);
+    terminal.apply_chart_open_interest_cap_status(
+        "xyz",
+        Ok(HashSet::from(["xyz:AAPL".to_string()])),
+        10,
+    );
+    terminal.apply_chart_open_interest_cap_status("", Ok(HashSet::from(["BTC".to_string()])), 10);
+    for symbol in ["xyz:AAPL", "BTC"] {
+        assert_eq!(terminal.chart_open_interest_cap(symbol, 10), None);
+        assert_eq!(
+            terminal.chart_is_at_open_interest_cap(symbol, 10),
+            Some(true)
+        );
+    }
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("xyz:NVDA", 10),
+        Some(false)
+    );
+    assert_eq!(terminal.chart_is_at_open_interest_cap("abc:AAPL", 10), None);
+    assert_eq!(terminal.chart_is_at_open_interest_cap("@107", 10), None);
+    assert_eq!(terminal.chart_is_at_open_interest_cap("#1", 10), None);
+    assert!(terminal.queue_chart_open_interest_caps(60_009).is_empty());
+    assert_eq!(terminal.queue_chart_open_interest_caps(60_010).len(), 3);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("xyz:AAPL", 120_010),
+        None
+    );
+    assert_eq!(terminal.chart_is_at_open_interest_cap("BTC", 120_010), None);
+    terminal.apply_chart_open_interest_cap_status("xyz", Ok(HashSet::new()), 120_011);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("xyz:AAPL", 120_011),
+        Some(false)
+    );
+}
+
+#[test]
+fn open_interest_cap_status_clears_on_failure_and_backs_off_without_clearing_limits() {
+    let mut terminal = terminal_with_charts(&["xyz:AAPL"]);
+    let _ = terminal.queue_chart_open_interest_caps(0);
+    terminal.apply_chart_open_interest_caps("xyz", Ok(caps("xyz:AAPL", 1_000.0)), 0);
+    terminal.apply_chart_open_interest_cap_status(
+        "xyz",
+        Ok(HashSet::from(["xyz:AAPL".to_string()])),
+        0,
+    );
+    assert_eq!(terminal.queue_chart_open_interest_caps(60_000).len(), 2);
+    terminal.apply_chart_open_interest_cap_status("xyz", Err("offline".to_string()), 60_000);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("xyz:AAPL", 60_000),
+        None
+    );
+    assert_eq!(
+        terminal.chart_open_interest_cap("xyz:AAPL", 60_000),
+        Some(1_000.0)
+    );
+    assert!(terminal.queue_chart_open_interest_caps(119_999).is_empty());
+    assert_eq!(terminal.queue_chart_open_interest_caps(120_000).len(), 1);
+    terminal.apply_chart_open_interest_cap_status("xyz", Err("offline".to_string()), 120_000);
+    assert!(terminal.queue_chart_open_interest_caps(239_999).is_empty());
+    assert_eq!(terminal.queue_chart_open_interest_caps(240_000).len(), 1);
+    terminal.apply_chart_open_interest_cap_status("xyz", Ok(HashSet::new()), 240_000);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("xyz:AAPL", 240_000),
+        Some(false)
+    );
+    assert_eq!(terminal.queue_chart_open_interest_caps(300_000).len(), 1);
+}
+
+#[test]
+fn open_interest_cap_status_retains_pending_requests_and_ignores_late_results() {
+    let mut terminal = terminal_with_charts(&["BTC"]);
+    assert_eq!(terminal.queue_chart_open_interest_caps(0).len(), 1);
+    terminal.charts.get_mut(&0).expect("chart").symbol = "xyz:AAPL".to_string();
+    assert_eq!(terminal.queue_chart_open_interest_caps(1).len(), 2);
+    assert!(terminal.chart_open_interest_caps.dexes.contains_key(""));
+    terminal.charts.get_mut(&0).expect("chart").symbol = "BTC".to_string();
+    assert!(terminal.queue_chart_open_interest_caps(2).is_empty());
+    terminal.apply_chart_open_interest_cap_status("", Ok(HashSet::new()), 3);
+    // A duplicate completion cannot overwrite a settled snapshot.
+    terminal.apply_chart_open_interest_cap_status("", Ok(HashSet::from(["BTC".to_string()])), 4);
+    assert_eq!(
+        terminal.chart_is_at_open_interest_cap("BTC", 4),
+        Some(false)
+    );
+    terminal.charts.get_mut(&0).expect("chart").symbol = "xyz:AAPL".to_string();
+    let _ = terminal.queue_chart_open_interest_caps(5);
+    assert!(!terminal.chart_open_interest_caps.dexes.contains_key(""));
+    terminal.apply_chart_open_interest_cap_status("", Ok(HashSet::from(["BTC".to_string()])), 6);
+    assert_eq!(terminal.chart_is_at_open_interest_cap("BTC", 6), None);
 }

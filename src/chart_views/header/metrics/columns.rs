@@ -6,7 +6,7 @@ use crate::message::Message;
 
 use chrono::Timelike;
 use iced::Theme;
-use iced::widget::{Row, button, column, text, tooltip};
+use iced::widget::{Row, button, column, row, svg, text, tooltip};
 
 mod formatting;
 
@@ -24,6 +24,7 @@ const HIDE_MARK_ORACLE_BELOW: f32 = 720.0;
 const HIDE_OPEN_INTEREST_BELOW: f32 = 560.0;
 const HIDE_24H_VOLUME_BELOW: f32 = 420.0;
 const HIDE_24H_CHANGE_BELOW: f32 = 340.0;
+const CAP_WARNING_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.5 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.5a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></svg>"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ChartHeaderMetricVisibility {
@@ -139,6 +140,7 @@ pub(super) fn push_perp_metric_columns<'a>(
     open_interest_as_notional: bool,
     visibility: ChartHeaderMetricVisibility,
     open_interest_cap: Option<f64>,
+    at_open_interest_cap: bool,
 ) -> Row<'a, Message> {
     let mark = parse_ctx_f64(ctx.mark_px.as_deref());
     let oracle = parse_ctx_f64(ctx.oracle_px.as_deref());
@@ -182,6 +184,7 @@ pub(super) fn push_perp_metric_columns<'a>(
             chart_price,
             open_interest_as_notional,
             open_interest_cap,
+            at_open_interest_cap,
         ));
     }
 
@@ -195,28 +198,60 @@ fn open_interest_column(
     chart_price: f64,
     as_notional: bool,
     cap: Option<f64>,
+    at_cap: bool,
 ) -> iced::Element<'static, Message> {
-    let metric = clickable_metric_column(
-        open_interest_label(as_notional),
-        format_open_interest(oi, chart_price, as_notional),
-        theme.palette().text,
-        theme,
-        Message::ToggleOpenInterestNotional(chart_id),
-    );
-    let Some(cap) = cap.filter(|cap| cap.is_finite() && *cap >= 0.0) else {
-        return metric;
+    let label = open_interest_label(as_notional);
+    let value = format_open_interest(oi, chart_price, as_notional);
+    let content = if at_cap {
+        // Custom themes can use a neutral bearish/danger color. Cap warnings
+        // stay red, using the built-in danger palette for the background.
+        let danger = if theme.extended_palette().is_dark {
+            Theme::Dark.palette().danger
+        } else {
+            Theme::Light.palette().danger
+        };
+        column![
+            text(label).size(9).color(danger),
+            row![
+                svg(svg::Handle::from_memory(CAP_WARNING_SVG.as_bytes()))
+                    .width(12)
+                    .height(12)
+                    .style(move |_: &Theme, _| svg::Style {
+                        color: Some(danger)
+                    }),
+                text(value)
+                    .size(12)
+                    .font(crate::app_fonts::monospace_font())
+                    .color(danger),
+            ]
+            .spacing(3)
+            .align_y(iced::Alignment::Center)
+        ]
+        .spacing(2)
+    } else {
+        metric_column(label, value, theme.palette().text, theme)
     };
-    tooltip(
-        metric,
-        text(format!(
+    let metric = clickable_metric_button(content, Message::ToggleOpenInterestNotional(chart_id));
+    let mut hint = if at_cap {
+        "At open interest cap".to_string()
+    } else {
+        String::new()
+    };
+    if let Some(cap) = cap.filter(|cap| cap.is_finite() && *cap >= 0.0) {
+        if !hint.is_empty() {
+            hint.push('\n');
+        }
+        hint.push_str(&format!(
             "Open interest cap: {}",
             crate::denomination::format_compact_usd(cap)
-        ))
-        .size(11),
-        tooltip::Position::Bottom,
-    )
-    .style(iced::widget::container::rounded_box)
-    .into()
+        ));
+    }
+    if hint.is_empty() {
+        return metric;
+    }
+    tooltip(metric, text(hint).size(11), tooltip::Position::Bottom)
+        .style(iced::widget::container::rounded_box)
+        .into()
 }
 
 pub(in crate::chart_views::header) fn funding_column(
@@ -303,7 +338,14 @@ fn clickable_metric_column(
     theme: &Theme,
     message: Message,
 ) -> iced::Element<'static, Message> {
-    button(metric_column(label, value, value_color, theme))
+    clickable_metric_button(metric_column(label, value, value_color, theme), message)
+}
+
+fn clickable_metric_button(
+    content: iced::widget::Column<'static, Message>,
+    message: Message,
+) -> iced::Element<'static, Message> {
+    button(content)
         .on_press(message)
         .padding(0)
         .style(|theme: &Theme, status| {

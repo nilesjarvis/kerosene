@@ -71,7 +71,7 @@ use crate::x_feed::{
 };
 use iced::widget::pane_grid;
 use iced::{Point, Size, window};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -1421,6 +1421,7 @@ pub(crate) enum Message {
     ChartCandlesLoaded(CandleFetchRequest, Result<Vec<Candle>, String>),
     ChartPriceChangeHistoryLoaded(PriceChangeHistoryRequest, Result<Vec<Candle>, String>),
     ChartOpenInterestCapsLoaded(String, Result<HashMap<String, f64>, String>),
+    ChartOpenInterestCapStatusLoaded(String, Result<HashSet<String>, String>),
     ChartSecondaryCandlesLoaded(CandleFetchRequest, Result<Vec<Candle>, String>),
     ChartFundingHistoryLoaded(
         FundingFetchRequest,

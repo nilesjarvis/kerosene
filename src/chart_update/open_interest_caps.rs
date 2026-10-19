@@ -5,7 +5,7 @@ use crate::chart_state::OPEN_INTEREST_CAP_REFRESH_MS;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 use iced::Task;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 impl TradingTerminal {
     pub(crate) fn queue_chart_open_interest_caps(&mut self, now_ms: u64) -> Vec<Task<Message>> {
@@ -33,16 +33,18 @@ impl TradingTerminal {
                     && self.is_perp_coin(&chart.symbol)
                     && !self.symbol_key_is_hidden(&chart.symbol)
             })
-            .filter_map(|chart| chart.symbol.split_once(':'))
-            .filter(|(dex, coin)| !dex.is_empty() && !coin.is_empty())
-            .map(|(dex, _)| dex.to_string())
+            .filter_map(|chart| match chart.symbol.split_once(':') {
+                Some((dex, coin)) if !dex.is_empty() && !coin.is_empty() => Some(dex.to_string()),
+                Some(_) => None,
+                None => Some(String::new()),
+            })
             .collect();
 
         // Keep pending entries until completion, even if their last chart closes.
         // Reopening a chart then shares that request instead of racing a late result.
         self.chart_open_interest_caps
             .dexes
-            .retain(|dex, entry| entry.in_flight || dexes.contains(dex));
+            .retain(|dex, entry| entry.in_flight || entry.status.in_flight || dexes.contains(dex));
         let mut tasks = Vec::new();
         for dex in dexes {
             let entry = self
@@ -50,14 +52,24 @@ impl TradingTerminal {
                 .dexes
                 .entry(dex.clone())
                 .or_default();
-            if entry.in_flight || now_ms < entry.next_attempt_ms {
-                continue;
+            if !entry.status.in_flight && now_ms >= entry.status.next_attempt_ms {
+                entry.status.in_flight = true;
+                let status_dex = dex.clone();
+                tasks.push(Task::perform(
+                    api::fetch_perps_at_open_interest_cap(status_dex.clone()),
+                    move |result| {
+                        Message::ChartOpenInterestCapStatusLoaded(status_dex.clone(), result)
+                    },
+                ));
             }
-            entry.in_flight = true;
-            tasks.push(Task::perform(
-                api::fetch_open_interest_caps(dex.clone()),
-                move |result| Message::ChartOpenInterestCapsLoaded(dex.clone(), result),
-            ));
+            // Native perpetuals expose cap status, but no numeric limit endpoint.
+            if !dex.is_empty() && !entry.in_flight && now_ms >= entry.next_attempt_ms {
+                entry.in_flight = true;
+                tasks.push(Task::perform(
+                    api::fetch_open_interest_caps(dex.clone()),
+                    move |result| Message::ChartOpenInterestCapsLoaded(dex.clone(), result),
+                ));
+            }
         }
         tasks
     }
@@ -92,6 +104,39 @@ impl TradingTerminal {
             }
         };
         entry.next_attempt_ms = now_ms.saturating_add(delay);
+    }
+
+    pub(crate) fn apply_chart_open_interest_cap_status(
+        &mut self,
+        dex: &str,
+        result: Result<HashSet<String>, String>,
+        now_ms: u64,
+    ) {
+        let Some(entry) = self.chart_open_interest_caps.dexes.get_mut(dex) else {
+            return;
+        };
+        let status = &mut entry.status;
+        if !status.in_flight {
+            return;
+        }
+        status.in_flight = false;
+        let delay = match result {
+            Ok(coins) => {
+                status.coins = coins;
+                status.updated_at_ms = Some(now_ms);
+                status.failures = 0;
+                OPEN_INTEREST_CAP_REFRESH_MS
+            }
+            Err(_) => {
+                status.coins.clear();
+                status.updated_at_ms = None;
+                status.failures = status.failures.saturating_add(1);
+                OPEN_INTEREST_CAP_REFRESH_MS
+                    .saturating_mul(1 << status.failures.saturating_sub(1).min(3))
+                    .min(5 * OPEN_INTEREST_CAP_REFRESH_MS)
+            }
+        };
+        status.next_attempt_ms = now_ms.saturating_add(delay);
     }
 }
 

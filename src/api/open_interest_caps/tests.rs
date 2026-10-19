@@ -1,5 +1,48 @@
-use super::parse_open_interest_caps;
+use super::{parse_open_interest_caps, parse_perps_at_open_interest_cap};
 use serde_json::json;
+use std::collections::HashSet;
+
+#[test]
+fn cap_status_normalizes_native_and_builder_symbols() {
+    for (dex, response, expected) in [
+        ("", json!(["BTC", "ETH", "BTC"]), vec!["BTC", "ETH"]),
+        (
+            "xyz",
+            json!(["AAPL", "xyz:NVDA", "xyz:AAPL"]),
+            vec!["xyz:AAPL", "xyz:NVDA"],
+        ),
+        ("xyz", json!([]), vec![]),
+    ] {
+        assert_eq!(
+            parse_perps_at_open_interest_cap(&response, dex).expect("valid cap status"),
+            expected
+                .into_iter()
+                .map(str::to_string)
+                .collect::<HashSet<_>>()
+        );
+    }
+}
+
+#[test]
+fn invalid_cap_status_is_not_treated_as_confirmation_markets_are_below_cap() {
+    for response in [
+        json!(null),
+        json!({}),
+        json!([null]),
+        json!(["BTC", 42]),
+        json!([""]),
+    ] {
+        assert!(parse_perps_at_open_interest_cap(&response, "").is_err());
+    }
+    for (dex, response) in [
+        ("", json!(["xyz:AAPL"])),
+        ("xyz", json!(["abc:AAPL"])),
+        ("xyz", json!(["xyz:"])),
+        ("xyz", json!(["xyz:abc:AAPL"])),
+    ] {
+        assert!(parse_perps_at_open_interest_cap(&response, dex).is_err());
+    }
+}
 
 #[test]
 fn caps_use_per_asset_limits_and_normalize_builder_symbols() {
