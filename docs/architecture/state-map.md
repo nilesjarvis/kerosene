@@ -95,6 +95,9 @@ Representative fields:
 
 - `active_symbol`, `active_symbol_display`
 - `exchange_symbols`, symbol search query/sort/filter state
+- `market_browser`: runtime-only per-picker venue choices and a separately cached
+  public Papertrade catalog; defaults to Hyperliquid and never changes account or
+  execution routing
 - market universe and HIP-3/outcome filters
 - favourites, muted tickers, ticker tape state
 - `all_mids`, `all_mids_updated_at_ms`, live price flashes

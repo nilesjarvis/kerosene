@@ -236,6 +236,7 @@ impl TradingTerminal {
             spot_asset_context_rest_next_attempt_at_ms: None,
             outcome_display_labels: cfg.outcome_display_labels.clone(),
             symbol_search_query: String::new(),
+            market_browser: Default::default(),
             symbol_search_sort_mode: SymbolSearchSortMode::from_config_str(
                 &cfg.symbol_search_sort_mode,
             ),

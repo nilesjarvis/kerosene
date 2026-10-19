@@ -1,6 +1,6 @@
 # Integrations And Feeds
 
-Kerosene integrates with Hyperliquid, Hydromancer, HyperDash, OpenRouter,
+Kerosene integrates with Hyperliquid, Papertrade, Hydromancer, HyperDash, OpenRouter,
 Telegram, X, ForexFactory-style calendar data, SEC APIs, HYPE ETF endpoints, and
 Hypurrscan-style unstaking data. Integrations enter the app as REST tasks,
 websocket subscriptions, timer-driven refreshes, or optional authenticated
@@ -12,6 +12,7 @@ streams.
 | --- | --- | --- |
 | Hyperliquid REST | `src/api.rs`, `src/api/` | Shared HTTP client, info API calls, candles, symbols, books, fills, order status. |
 | Hyperliquid websocket | `src/ws.rs`, `src/ws/manager.rs`, `src/ws/market_streams/`, `src/ws/user_streams/` | Singleton exchange websocket, subscriptions, coalescing, routed market/user streams. |
+| Papertrade | `src/papertrade.rs`, `src/papertrade/markets.rs` | Public market catalog for browse-only symbol picker previews. |
 | Hydromancer | `src/hydromancer_api.rs`, `src/ws/hydromancer/`, `src/feed_update/connection.rs` | Funding history, authenticated liquidation/tracked-trade feeds, optional read-data provider. |
 | HyperDash | `src/hyperdash_api.rs`, `src/hyperdash_api/`, `src/hyperdash_update/` | GraphQL liquidation heatmaps, liquidation levels, positioning info, liquidation distribution. |
 | OpenRouter | `src/openrouter_api.rs`, `src/openrouter_api/`, `src/openrouter_update.rs`, `src/agent_*` | AI completion foundation plus the Pi-backed Kerosene Assistant; key validation and default-model selection. |
@@ -34,6 +35,16 @@ No admin credentials or remote records are persisted. Read failures retain the
 last complete in-memory snapshot and surface stale status in settings/tracker.
 The [README](../../README.md#remote-wallet-label-database) defines the collection
 schema, permissions, polling behavior, bounds, and local/remote precedence.
+
+## Papertrade Market Discovery
+
+The separate Papertrade integration currently reads only its public market
+catalog. `papertrade.rs` owns bounded HTTP reads and `papertrade/markets.rs`
+validates schema-v1 instrument tuples. It loads on demand from the venue switch
+in symbol pickers and records only provider/operation metadata in Console.
+Account credentials, live account streams, and signed intents are not part of
+this groundwork. See [market browsing](market-data-and-symbols.md#symbol-universe)
+for cache lifecycle, routing, and UI boundaries.
 
 ## Hyperliquid REST
 

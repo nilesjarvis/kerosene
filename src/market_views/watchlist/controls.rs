@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers;
+use crate::market_state::market_browser::{MarketPicker, MarketVenue};
 use crate::market_state::{
     SYMBOL_SEARCH_ALL_HIP3_DEXES, SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
@@ -18,6 +19,15 @@ impl TradingTerminal {
             .on_input(Message::SymbolSearchChanged)
             .size(12)
             .padding([5, 8]);
+
+        let header = column![
+            search_bar,
+            self.view_market_venue_switch(MarketPicker::Symbols)
+        ]
+        .spacing(4);
+        if self.market_browser.venue(MarketPicker::Symbols) == MarketVenue::Papertrade {
+            return header;
+        }
 
         let market_picker = pick_list(
             SymbolSearchMarketFilter::ALL.as_ref(),
@@ -41,7 +51,7 @@ impl TradingTerminal {
             .spacing(4)
             .align_y(iced::Alignment::Center);
 
-        let mut header_content = column![search_bar, controls].spacing(4);
+        let mut header_content = header.push(controls);
 
         if self.symbol_search_market_filter == SymbolSearchMarketFilter::Hip3 {
             let dex_options: Vec<_> = std::iter::once(SYMBOL_SEARCH_ALL_HIP3_DEXES)

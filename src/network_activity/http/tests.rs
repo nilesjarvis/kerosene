@@ -1,6 +1,25 @@
 use super::*;
 
 #[test]
+fn papertrade_metadata_identifies_public_catalog_without_capturing_private_paths() {
+    for (path, expected) in [
+        ("/state/trading", "markets"),
+        ("/accounts/PRIVATE", "request"),
+    ] {
+        let request = Client::new()
+            .get(format!(
+                "https://exchange.papertrade.xyz{path}?token=PRIVATE"
+            ))
+            .build()
+            .expect("request");
+        let entry = request_metadata(&request, false);
+        assert_eq!(entry.provider, Provider::Papertrade);
+        assert_eq!(entry.operation, expected);
+        assert!(!format!("{entry:?}").contains("PRIVATE"));
+    }
+}
+
+#[test]
 fn http_metadata_retains_only_allowlisted_operation_and_provider() {
     let client = Client::new();
     let request = client

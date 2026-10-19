@@ -2,6 +2,7 @@ use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::liquidations_distribution_state::LIQUIDATION_DISTRIBUTION_ZOOM_STEP;
+use crate::market_state::market_browser::{MarketPicker, MarketVenue};
 use crate::message::Message;
 use iced::widget::{button, column, container, row, text, text_input, tooltip};
 use iced::{Alignment, Color, Element, Fill, Theme};
@@ -141,19 +142,30 @@ impl TradingTerminal {
             results = results.push(self.view_liquidations_distribution_symbol_row(symbol, theme));
         }
 
-        container(column![search, results].spacing(5).padding(6))
-            .width(Fill)
-            .style(|theme: &Theme| container::Style {
-                background: Some(theme.extended_palette().background.strong.color.into()),
-                text_color: Some(theme.palette().text),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 1.0,
-                    color: theme.extended_palette().background.weak.color,
-                },
-                ..Default::default()
-            })
-            .into()
+        let picker = MarketPicker::LiquidationDistribution;
+        let results: Element<'_, Message> =
+            if self.market_browser.venue(picker) == MarketVenue::Papertrade {
+                self.view_papertrade_markets(&state.symbol_search_query)
+            } else {
+                results.into()
+            };
+        container(
+            column![search, self.view_market_venue_switch(picker), results]
+                .spacing(5)
+                .padding(6),
+        )
+        .width(Fill)
+        .style(|theme: &Theme| container::Style {
+            background: Some(theme.extended_palette().background.strong.color.into()),
+            text_color: Some(theme.palette().text),
+            border: iced::Border {
+                radius: 4.0.into(),
+                width: 1.0,
+                color: theme.extended_palette().background.weak.color,
+            },
+            ..Default::default()
+        })
+        .into()
     }
 
     fn view_liquidations_distribution_symbol_row<'a>(

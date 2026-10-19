@@ -300,6 +300,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::LiveWatchlistContextsLoaded(_, _, _, _)
         | Message::LiveWatchlistHistoryLoaded(_, _, _, _)
         | Message::SymbolSearchChanged(_)
+        | Message::MarketPickerVenueChanged(_, _)
+        | Message::RefreshPapertradeMarkets
+        | Message::PapertradeMarketsLoaded(_, _)
         | Message::SymbolSearchSortChanged(_)
         | Message::SymbolSearchMarketFilterChanged(_)
         | Message::SymbolSearchHip3DexFilterChanged(_)

@@ -158,6 +158,47 @@ budgets, thresholds and remaining architectural tradeoffs.
 
 ## Symbol Universe
 
+Symbol pickers include a compact **Hyperliquid / Papertrade** venue switch below
+the search input. Hyperliquid is the default. Each chart editor (including its
+comparison editor), comparison chart, order/depth book, live watchlist,
+positioning pane, session-data pane, and trade feed has an independent browsing
+choice; the symbol-search pane and liquidation-distribution picker also expose
+the switch. Choices are runtime-only and reset on layout/config restoration.
+
+Papertrade currently supports **market browsing only**. Its rows show instrument
+names, maximum leverage, and market status; they cannot select a chart, alter the
+active symbol, add a watchlist symbol, connect an account, or submit an order.
+The Preview tooltip explains this boundary. Chart Enter/arrow navigation cannot
+select the hidden Hyperliquid results while Papertrade is displayed. Switching
+back preserves Hyperliquid query, market filters, favourites, and row actions.
+Muted tickers remain hidden in the Papertrade catalog.
+
+`papertrade.rs` and `papertrade/markets.rs` fetch and validate the public
+`GET https://exchange.papertrade.xyz/state/trading` schema-v1 catalog. Papertrade
+instrument IDs are a distinct type and never enter `exchange_symbols`, existing
+Hyperliquid subscriptions, or signing. The catalog uses the shared HTTP client,
+bounded response reads, and metadata-only Console entries under **Papertrade**.
+Only opening Papertrade browsing or explicitly refreshing requests this catalog;
+there is no startup fetch or background polling. Picker requests coalesce, fresh
+results are reused for 60 seconds, and automatic attempts are at least 5 seconds
+apart. Explicit Refresh/Retry bypasses that cooldown while retaining the
+single-request guard.
+Failures retain the previous catalog with a cached-data notice and Retry.
+
+`market_state/market_browser.rs` owns picker preferences and catalog lifecycle.
+`MarketPickerVenueChanged`, `RefreshPapertradeMarkets`, and
+`PapertradeMarketsLoaded` route through `market_update/market_browser.rs`.
+Request IDs reject late/duplicate completions and survive config-clear
+invalidation. `market_views/market_browser.rs` supplies the shared switch and
+preview. Venue browsing is independent of account identity and `ReadDataProvider`;
+Papertrade account/session signing, chart data, and execution remain future work.
+
+Local HTTP fixtures exercise status errors, stalled headers/bodies, truncated or
+malformed bodies, and the streamed 1 MiB response limit without external access.
+Software-rendered interaction tests cover every venue picker, including compact
+and wide non-chart panes, loading/error states, Refresh/Retry, and switching back
+to selectable Hyperliquid results.
+
 `api::fetch_exchange_symbols` loads the exchange symbol universe. Symbols are
 represented by `ExchangeSymbol` and include:
 

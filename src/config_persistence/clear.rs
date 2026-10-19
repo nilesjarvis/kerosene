@@ -448,6 +448,7 @@ impl TradingTerminal {
         self.preset_is_usd = defaults.preset_is_usd;
         self.favourite_symbols.clear();
         self.symbol_search_result_indices.clear();
+        self.market_browser.clear();
         self.symbol_search_favourite_count = 0;
         self.muted_tickers.clear();
         self.muted_ticker_input.clear();

@@ -24,6 +24,7 @@ fn request_metadata(request: &Request, proxied: bool) -> ActivityEntry {
     let url = request.url();
     let provider = match url.host_str().unwrap_or_default() {
         "api.hyperliquid.xyz" | "api.hyperliquid-testnet.xyz" => Provider::Hyperliquid,
+        "exchange.papertrade.xyz" => Provider::Papertrade,
         "api.hydromancer.xyz" => Provider::Hydromancer,
         "api.hyperdash.com" => Provider::Hyperdash,
         "api.hypurrscan.io" => Provider::Hypurrscan,
@@ -37,6 +38,7 @@ fn request_metadata(request: &Request, proxied: bool) -> ActivityEntry {
         _ => Provider::Other,
     };
     let operation = match (provider, url.path()) {
+        (Provider::Papertrade, "/state/trading") => "markets",
         (Provider::Hyperliquid | Provider::Hydromancer, "/info" | "/exchange") => {
             let operation = request
                 .body()

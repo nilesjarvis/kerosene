@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::market_state::market_browser::{MarketPicker, MarketVenue};
 use crate::message::Message;
 
 use iced::Task;
@@ -42,6 +43,21 @@ impl TradingTerminal {
         }
         if modifiers.control() || modifiers.alt() || modifiers.logo() {
             return None;
+        }
+
+        if self
+            .market_browser
+            .venue(MarketPicker::chart(editor_id, secondary))
+            == MarketVenue::Papertrade
+        {
+            return match key {
+                iced::keyboard::Key::Named(
+                    iced::keyboard::key::Named::ArrowDown
+                    | iced::keyboard::key::Named::ArrowUp
+                    | iced::keyboard::key::Named::Enter,
+                ) => Some(Task::none()),
+                _ => None,
+            };
         }
 
         match key {

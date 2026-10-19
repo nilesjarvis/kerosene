@@ -1,8 +1,9 @@
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartInstance};
 use crate::helpers;
+use crate::market_state::market_browser::MarketPicker;
 use crate::message::Message;
-use iced::widget::{button, row, text, text_input};
+use iced::widget::{button, column, row, text, text_input};
 use iced::{Element, Theme, color};
 
 impl TradingTerminal {
@@ -92,10 +93,11 @@ impl TradingTerminal {
             controls = controls.push(remove_btn);
         }
 
-        controls
-            .push(close_btn)
-            .spacing(4)
-            .align_y(iced::Alignment::Center)
-            .into()
+        column![
+            controls.push(close_btn),
+            self.view_market_venue_switch(MarketPicker::chart(chart_id, secondary))
+        ]
+        .spacing(4)
+        .into()
     }
 }

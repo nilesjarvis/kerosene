@@ -3,6 +3,7 @@ mod hype_etfs;
 mod hype_unstaking_queue;
 mod listings;
 mod live_watchlist;
+mod market_browser;
 mod order_book;
 mod positioning_info;
 mod session_data;
@@ -17,6 +18,11 @@ use iced::Task;
 impl TradingTerminal {
     pub(crate) fn update_market(&mut self, message: Message) -> Task<Message> {
         match message {
+            message @ (Message::MarketPickerVenueChanged(_, _)
+            | Message::RefreshPapertradeMarkets
+            | Message::PapertradeMarketsLoaded(_, _)) => {
+                return self.update_market_browser(message);
+            }
             message @ (Message::ToggleFavourite(_)
             | Message::SymbolsLoaded(_)
             | Message::ExchangeSymbolsRefreshTick

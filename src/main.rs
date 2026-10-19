@@ -92,6 +92,7 @@ mod pane_interaction_update;
 mod pane_management;
 mod pane_state;
 mod pane_update;
+mod papertrade;
 mod pnl_card;
 mod portfolio_state;
 mod portfolio_update;

@@ -3,6 +3,7 @@ mod hype_unstaking_queue;
 mod liquidations_distribution;
 mod listings;
 mod live_watchlist;
+mod market_browser;
 mod order_book;
 mod outcomes;
 mod positioning_info;

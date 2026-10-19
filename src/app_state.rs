@@ -454,6 +454,7 @@ pub(crate) struct TradingTerminal {
     /// expired or not-yet-loaded HIP-4 markets keep their human-readable names.
     pub(crate) outcome_display_labels: HashMap<String, String>,
     pub(crate) symbol_search_query: String,
+    pub(crate) market_browser: crate::market_state::market_browser::MarketBrowserState,
     pub(crate) symbol_search_sort_mode: SymbolSearchSortMode,
     pub(crate) market_universe: config::MarketUniverseConfig,
     pub(crate) symbol_search_market_filter: SymbolSearchMarketFilter,

@@ -3,6 +3,7 @@ use crate::app_state::TradingTerminal;
 use crate::config::OrderBookSymbolModeConfig;
 use crate::feed_state::TrackedTradeIntent;
 use crate::helpers;
+use crate::market_state::market_browser::{MarketPicker, MarketVenue};
 use crate::message::Message;
 use crate::trade_feed_state::{
     TradeFeedId, TradeFeedInstance, TradeFeedSource, TradePrint, parse_trade_feed_minimum,
@@ -99,6 +100,7 @@ impl TradingTerminal {
                         .padding(5)
                         .on_input(move |query| Message::TradeFeedSearchChanged(id, query)),
                 );
+                content = content.push(self.view_market_venue_switch(MarketPicker::TradeFeed(id)));
                 let query = feed.search.to_lowercase();
                 let mut results = Column::new().spacing(2);
                 let mut matches: Vec<_> = self
@@ -127,6 +129,11 @@ impl TradingTerminal {
                             .style(button::text),
                     );
                 }
+                let results: Element<'_, Message> = if self.market_browser.venue(MarketPicker::TradeFeed(id)) == MarketVenue::Papertrade {
+                    self.view_papertrade_markets(&feed.search)
+                } else {
+                    results.into()
+                };
                 content = content.push(container(results).height(140).clip(true));
             }
             let status = if feed.symbol.is_none() {
@@ -213,7 +220,7 @@ impl TradingTerminal {
             content = content
                 .push(container(header).padding([0, 4]))
                 .push(rule::horizontal(1));
-            let available = size.height - if feed.picker_open { 265.0 } else { 90.0 }
+            let available = size.height - if feed.picker_open { 291.0 } else { 90.0 }
                 - if feed.group_trades { 28.0 } else { 0.0 };
             let row_count = ((available.max(0.0) / 26.0) as usize).min(100);
             let rows = feed.visible_rows();

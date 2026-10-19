@@ -21,6 +21,7 @@ pub(crate) enum Provider {
     #[default]
     All,
     Hyperliquid,
+    Papertrade,
     Hydromancer,
     Hyperdash,
     Hypurrscan,
@@ -35,9 +36,10 @@ pub(crate) enum Provider {
 }
 
 impl Provider {
-    pub(crate) const ALL: [Self; 13] = [
+    pub(crate) const ALL: [Self; 14] = [
         Self::All,
         Self::Hyperliquid,
+        Self::Papertrade,
         Self::Hydromancer,
         Self::Hyperdash,
         Self::Hypurrscan,
@@ -57,6 +59,7 @@ impl fmt::Display for Provider {
         f.write_str(match self {
             Self::All => "All providers",
             Self::Hyperliquid => "Hyperliquid",
+            Self::Papertrade => "Papertrade",
             Self::Hydromancer => "Hydromancer",
             Self::Hyperdash => "HyperDash",
             Self::Hypurrscan => "Hypurrscan",

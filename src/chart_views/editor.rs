@@ -3,6 +3,7 @@ mod top_bar;
 
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartInstance};
+use crate::market_state::market_browser::{MarketPicker, MarketVenue};
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{Column, button, column, container, responsive, rule, scrollable, stack, text};
@@ -55,7 +56,13 @@ impl TradingTerminal {
             &instance.editor_search_query
         };
 
-        let content = if self.exchange_symbols.is_empty() {
+        let content = if self
+            .market_browser
+            .venue(MarketPicker::chart(chart_id, secondary))
+            == MarketVenue::Papertrade
+        {
+            column![top_bar, self.view_papertrade_markets(query)].spacing(4)
+        } else if self.exchange_symbols.is_empty() {
             column![
                 top_bar,
                 container(

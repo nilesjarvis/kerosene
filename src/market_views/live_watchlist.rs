@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::market_state::LiveWatchlistId;
+use crate::market_state::market_browser::MarketPicker;
 use crate::message::Message;
 use iced::widget::{
     Column, Space, column, container, float, responsive, row, rule, scrollable, stack, text,
@@ -55,6 +56,7 @@ impl TradingTerminal {
 
         let mut content = column![top_controls].spacing(8);
         if !settings_open {
+            content = content.push(self.view_market_venue_switch(MarketPicker::LiveWatchlist(id)));
             content = content.push(self.view_live_watchlist_autocomplete(id, &wl.search_query));
         }
         if let Some((status, is_error)) = &self.live_watchlist_status {

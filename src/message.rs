@@ -1558,6 +1558,15 @@ pub(crate) enum Message {
     SymbolsLoaded(Result<api::ExchangeSymbolsPayload, String>),
     ExchangeSymbolsRefreshTick,
     SymbolSearchChanged(String),
+    MarketPickerVenueChanged(
+        crate::market_state::market_browser::MarketPicker,
+        crate::market_state::market_browser::MarketVenue,
+    ),
+    RefreshPapertradeMarkets,
+    PapertradeMarketsLoaded(
+        u64,
+        Box<Result<crate::papertrade::PapertradeMarkets, String>>,
+    ),
     SymbolSearchSortChanged(SymbolSearchSortMode),
     SymbolSearchMarketFilterChanged(SymbolSearchMarketFilter),
     SymbolSearchHip3DexFilterChanged(String),

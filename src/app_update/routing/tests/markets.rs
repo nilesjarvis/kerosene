@@ -1,6 +1,18 @@
 use super::*;
 
 #[test]
+fn papertrade_market_browser_messages_reach_market_route() {
+    use crate::market_state::market_browser::{MarketPicker, MarketVenue};
+    for message in [
+        Message::MarketPickerVenueChanged(MarketPicker::Chart(7), MarketVenue::Papertrade),
+        Message::RefreshPapertradeMarkets,
+        Message::PapertradeMarketsLoaded(7, Box::new(Err("offline".into()))),
+    ] {
+        assert_route(message, UpdateRoute::Market);
+    }
+}
+
+#[test]
 fn order_book_total_unit_toggle_reaches_market_route() {
     assert_route(Message::ToggleOrderBookTotalUnit(7), UpdateRoute::Market);
 }

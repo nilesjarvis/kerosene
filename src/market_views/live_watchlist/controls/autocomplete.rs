@@ -2,6 +2,7 @@ use super::super::symbol_cell::view_live_watchlist_symbol_cell;
 use crate::api::ExchangeSymbol;
 use crate::app_state::TradingTerminal;
 use crate::market_state::LiveWatchlistId;
+use crate::market_state::market_browser::{MarketPicker, MarketVenue};
 use crate::message::Message;
 use iced::widget::{Column, button, container, scrollable, text};
 use iced::{Element, Fill, Length, Theme};
@@ -14,6 +15,9 @@ impl TradingTerminal {
         id: LiveWatchlistId,
         search_query: &str,
     ) -> Element<'a, Message> {
+        if self.market_browser.venue(MarketPicker::LiveWatchlist(id)) == MarketVenue::Papertrade {
+            return self.view_papertrade_markets(search_query);
+        }
         let theme = self.theme();
         let query = search_query.to_lowercase();
         let mut autocomplete = Column::new();

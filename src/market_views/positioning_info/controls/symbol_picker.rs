@@ -1,6 +1,7 @@
 use super::super::metrics::format_positioning_timestamp;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
+use crate::market_state::market_browser::{MarketPicker, MarketVenue};
 use crate::message::Message;
 use crate::positioning_state::{PositioningInfoInstance, PositioningInfoPage};
 
@@ -191,10 +192,18 @@ impl TradingTerminal {
             .on_input(move |q| Message::PositioningInfoSearchChanged(instance.id, q))
             .size(12)
             .padding([5, 8]);
-        let autocomplete =
-            self.view_positioning_info_autocomplete(instance.id, &instance.search_query, theme);
+        let picker = MarketPicker::Positioning(instance.id);
+        let autocomplete: Element<'_, Message> =
+            if self.market_browser.venue(picker) == MarketVenue::Papertrade {
+                self.view_papertrade_markets(&instance.search_query)
+            } else {
+                self.view_positioning_info_autocomplete(instance.id, &instance.search_query, theme)
+                    .into()
+            };
 
-        let content = column![search, autocomplete].spacing(5).padding(6);
+        let content = column![search, self.view_market_venue_switch(picker), autocomplete]
+            .spacing(5)
+            .padding(6);
 
         container(content)
             .width(Fill)

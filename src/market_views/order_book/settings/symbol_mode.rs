@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::market_state::market_browser::{MarketPicker, MarketVenue};
 use crate::market_state::{OrderBookId, OrderBookInstance, OrderBookSymbolMode};
 use crate::message::Message;
 use iced::widget::{Column, button, column, container, text, text_input};
@@ -24,14 +25,20 @@ impl TradingTerminal {
                 OrderBookSymbolMode::Active
             )));
 
-        let search_col = column![
-            active_btn,
-            text_input("Search fixed asset...", &inst.search_query)
-                .on_input(move |q| Message::OrderBookSearchChanged(id, q))
-                .padding(5)
-                .size(12)
-        ]
-        .spacing(4);
+        let search = text_input("Search fixed asset...", &inst.search_query)
+            .on_input(move |q| Message::OrderBookSearchChanged(id, q))
+            .padding(5)
+            .size(12);
+        let venue_switch = self.view_market_venue_switch(MarketPicker::OrderBook(id));
+        if self.market_browser.venue(MarketPicker::OrderBook(id)) == MarketVenue::Papertrade {
+            return column![
+                search,
+                venue_switch,
+                self.view_papertrade_markets(&inst.search_query)
+            ]
+            .spacing(4);
+        }
+        let search_col = column![active_btn, search, venue_switch].spacing(4);
 
         let mut results = Column::new().spacing(4);
         let query_lower = inst.search_query.to_lowercase();

@@ -7,6 +7,45 @@ use crate::pane_state::PaneKind;
 use crate::timeframe::Timeframe;
 use crate::{config, message::Message};
 
+#[test]
+fn papertrade_chart_keyboard_does_not_select_hidden_hyperliquid_results() {
+    use crate::market_state::market_browser::{MarketPicker, MarketVenue};
+    let mut terminal = TradingTerminal::boot_from_config(config::KeroseneConfig::default()).0;
+    let id = 900;
+    terminal.exchange_symbols = vec![symbol("ETH")];
+    terminal
+        .charts
+        .insert(id, ChartInstance::new(id, "BTC".into(), Timeframe::H1));
+    for secondary in [false, true] {
+        let instance = terminal.charts.get_mut(&id).expect("chart");
+        instance.editor_open = !secondary;
+        instance.secondary_editor_open = secondary;
+        instance.editor_search_query = "ETH".into();
+        instance.secondary_editor_search_query = "ETH".into();
+        terminal
+            .market_browser
+            .venues
+            .insert(MarketPicker::chart(id, secondary), MarketVenue::Papertrade);
+        for key in [
+            iced::keyboard::key::Named::ArrowDown,
+            iced::keyboard::key::Named::ArrowUp,
+            iced::keyboard::key::Named::Enter,
+        ] {
+            let task = terminal.handle_chart_editor_keyboard_for_chart(
+                id,
+                iced::keyboard::Key::Named(key),
+                iced::keyboard::Modifiers::default(),
+            );
+            assert!(task.is_some());
+            let instance = &terminal.charts[&id];
+            assert!(instance.editor_selected_index.is_none());
+            assert!(instance.secondary_editor_selected_index.is_none());
+            assert_eq!(instance.symbol, "BTC");
+            assert!(instance.secondary_symbol.is_none());
+        }
+    }
+}
+
 fn key_pressed(
     key: iced::keyboard::Key,
     modifiers: iced::keyboard::Modifiers,

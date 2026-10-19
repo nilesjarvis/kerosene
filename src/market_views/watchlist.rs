@@ -6,6 +6,7 @@ mod tests;
 
 use crate::app_state::TradingTerminal;
 use crate::market_state::SymbolSearchSortMode;
+use crate::market_state::market_browser::{MarketPicker, MarketVenue};
 use crate::message::Message;
 use iced::widget::{container, row, rule, scrollable, text};
 use iced::{Element, Fill, color};
@@ -14,6 +15,14 @@ impl TradingTerminal {
     pub(crate) fn view_watchlist(&self) -> Element<'_, Message> {
         let theme = self.theme();
         let mut header_content = self.view_symbol_search_controls();
+        if self.market_browser.venue(MarketPicker::Symbols) == MarketVenue::Papertrade {
+            return container(
+                header_content.push(self.view_papertrade_markets(&self.symbol_search_query)),
+            )
+            .width(Fill)
+            .height(Fill)
+            .into();
+        }
         let status: Option<Element<'_, Message>> =
             self.symbol_search_status
                 .as_ref()

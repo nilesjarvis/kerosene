@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::market_state::market_browser::{MarketPicker, MarketVenue};
 use crate::message::Message;
 use iced::Task;
 
@@ -47,6 +48,9 @@ impl TradingTerminal {
                 return Self::scroll_chart_symbol_search_results_to(id, 0.0);
             }
             Message::ChartEditorSubmit(id) => {
+                if self.market_browser.venue(MarketPicker::Chart(id)) == MarketVenue::Papertrade {
+                    return Task::none();
+                }
                 let (query, selected_index) = self
                     .charts
                     .get(&id)
@@ -102,6 +106,11 @@ impl TradingTerminal {
                 return Self::scroll_chart_secondary_symbol_search_results_to(id, 0.0);
             }
             Message::ChartSecondaryEditorSubmit(id) => {
+                if self.market_browser.venue(MarketPicker::ChartSecondary(id))
+                    == MarketVenue::Papertrade
+                {
+                    return Task::none();
+                }
                 let (query, selected_index) = self
                     .charts
                     .get(&id)

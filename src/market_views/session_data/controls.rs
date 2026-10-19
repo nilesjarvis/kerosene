@@ -2,6 +2,7 @@ use super::tooltips::tooltip_body;
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
+use crate::market_state::market_browser::{MarketPicker, MarketVenue};
 use crate::message::Message;
 use crate::session_data_state::{SessionDataId, SessionDataInstance, SessionDataLookback};
 
@@ -174,19 +175,30 @@ impl TradingTerminal {
             );
         }
 
-        container(column![search, results].spacing(6).padding(6))
-            .width(Fill)
-            .style(|theme: &Theme| container::Style {
-                background: Some(theme.extended_palette().background.strong.color.into()),
-                text_color: Some(theme.palette().text),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 1.0,
-                    color: theme.extended_palette().background.weak.color,
-                },
-                ..Default::default()
-            })
-            .into()
+        let picker = MarketPicker::SessionData(instance.id);
+        let results: Element<'_, Message> =
+            if self.market_browser.venue(picker) == MarketVenue::Papertrade {
+                self.view_papertrade_markets(&instance.search_query)
+            } else {
+                results.into()
+            };
+        container(
+            column![search, self.view_market_venue_switch(picker), results]
+                .spacing(6)
+                .padding(6),
+        )
+        .width(Fill)
+        .style(|theme: &Theme| container::Style {
+            background: Some(theme.extended_palette().background.strong.color.into()),
+            text_color: Some(theme.palette().text),
+            border: iced::Border {
+                radius: 4.0.into(),
+                width: 1.0,
+                color: theme.extended_palette().background.weak.color,
+            },
+            ..Default::default()
+        })
+        .into()
     }
 }
 

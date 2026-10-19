@@ -5,6 +5,7 @@ mod top_bar;
 
 use crate::api::ExchangeSymbol;
 use crate::app_state::TradingTerminal;
+use crate::market_state::market_browser::{MarketPicker, MarketVenue};
 use crate::message::Message;
 use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
 use iced::widget::{Column, column, container, rule, scrollable, text};
@@ -18,6 +19,18 @@ impl TradingTerminal {
     ) -> Element<'_, Message> {
         let theme = self.theme();
         let top_bar = self.view_spaghetti_editor_top_bar(id, inst);
+        let venue_switch = self.view_market_venue_switch(MarketPicker::Spaghetti(id));
+        if self.market_browser.venue(MarketPicker::Spaghetti(id)) == MarketVenue::Papertrade {
+            return column![
+                top_bar,
+                venue_switch,
+                self.view_papertrade_markets(&inst.editor_search_query)
+            ]
+            .spacing(4)
+            .width(Fill)
+            .height(Fill)
+            .into();
+        }
 
         let link_label = inst
             .watchlist_preset_id
@@ -80,7 +93,7 @@ impl TradingTerminal {
             col.push(self.view_spaghetti_editor_symbol_row(sid, sym, is_added, &theme))
         });
 
-        let mut content = column![top_bar].spacing(4);
+        let mut content = column![top_bar, venue_switch].spacing(4);
         if !inst.pair_mode {
             content = content.push(self.view_spaghetti_watchlist_preset_controls(id, inst));
         }
