@@ -54,19 +54,22 @@ pub(crate) fn book_bucket_key(px: f64, tick: f64, is_bid: bool) -> i64 {
     key as i64
 }
 
-/// Aggregate raw book levels into buckets at the given tick size.
-pub fn aggregate_levels(levels: &[BookLevel], tick: f64, is_bid: bool) -> Vec<(f64, f64)> {
-    let mut buckets: BTreeMap<i64, f64> = BTreeMap::new();
+/// Bucket sizes and notionals using each source level's price, before rounding
+/// prices onto the display grid. Returns `(price, size, notional)` per bucket.
+pub fn aggregate_levels(levels: &[BookLevel], tick: f64, is_bid: bool) -> Vec<(f64, f64, f64)> {
+    let mut buckets: BTreeMap<i64, (f64, f64)> = BTreeMap::new();
 
     for lvl in levels {
-        *buckets
+        let bucket = buckets
             .entry(book_bucket_key(lvl.px, tick, is_bid))
-            .or_insert(0.0) += lvl.sz;
+            .or_default();
+        bucket.0 += lvl.sz;
+        bucket.1 += lvl.px * lvl.sz;
     }
 
-    let mut result: Vec<(f64, f64)> = buckets
+    let mut result: Vec<(f64, f64, f64)> = buckets
         .into_iter()
-        .map(|(k, sz)| (k as f64 * tick, sz))
+        .map(|(k, (sz, notional))| (k as f64 * tick, sz, notional))
         .collect();
 
     if is_bid {

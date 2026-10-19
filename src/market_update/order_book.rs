@@ -214,6 +214,13 @@ impl TradingTerminal {
                 }
                 Task::none()
             }
+            Message::ToggleOrderBookTotalUnit(id) => {
+                if let Some(inst) = self.order_books.get_mut(&id) {
+                    inst.total_in_notional = !inst.total_in_notional;
+                    self.persist_config();
+                }
+                Task::none()
+            }
             Message::ToggleOrderBookReverseSide(id) => {
                 if let Some(inst) = self.order_books.get_mut(&id) {
                     inst.reverse_side = !inst.reverse_side;

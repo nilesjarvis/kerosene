@@ -11,31 +11,60 @@ use std::borrow::Cow;
 
 impl TradingTerminal {
     pub(in crate::market_views::order_book) fn view_order_book_header(
+        id: OrderBookId,
         reverse_side: bool,
+        total_in_notional: bool,
     ) -> Element<'static, Message> {
-        let labels = if reverse_side {
-            ["Total", "Size", "Price"]
+        let total = Self::view_order_book_total_header(id, "Total", total_in_notional, 12);
+        let headers = if reverse_side {
+            row![total, header_cell("Size"), header_cell("Price")]
         } else {
-            ["Price", "Size", "Total"]
+            row![header_cell("Price"), header_cell("Size"), total]
         };
 
         // Mirror the data rows' insets (4px row padding, plus the 15px
         // scrollbar gutter on the right) so the labels sit exactly over the
         // columns they name.
-        container(
-            row![
-                header_cell(labels[0]),
-                header_cell(labels[1]),
-                header_cell(labels[2]),
-            ]
-            .spacing(4),
+        container(headers.spacing(4))
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 19.0,
+                bottom: 0.0,
+                left: 4.0,
+            })
+            .into()
+    }
+
+    pub(in crate::market_views::order_book) fn view_order_book_total_header(
+        id: OrderBookId,
+        label: &'static str,
+        total_in_notional: bool,
+        size: u32,
+    ) -> Element<'static, Message> {
+        let label = if total_in_notional {
+            format!("{label} ($)")
+        } else {
+            label.to_string()
+        };
+        tooltip(
+            button(
+                text(label)
+                    .size(size)
+                    .width(Fill)
+                    .align_x(iced::alignment::Horizontal::Right),
+            )
+            .width(Fill)
+            .padding(0)
+            .style(button::text)
+            .on_press(Message::ToggleOrderBookTotalUnit(id)),
+            text(if total_in_notional {
+                "Show totals in base units"
+            } else {
+                "Show totals in USD"
+            })
+            .size(11),
+            tooltip::Position::Bottom,
         )
-        .padding(iced::Padding {
-            top: 0.0,
-            right: 19.0,
-            bottom: 0.0,
-            left: 4.0,
-        })
         .into()
     }
 

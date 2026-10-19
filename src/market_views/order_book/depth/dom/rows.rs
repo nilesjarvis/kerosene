@@ -1,6 +1,6 @@
 use super::super::super::UserOrderBookLevels;
 use crate::helpers::{
-    BOOK_ROW_HEIGHT, clickable_book_row, format_book_size, format_decimal_with_commas,
+    BOOK_ROW_HEIGHT, clickable_book_row, format_book_total, format_decimal_with_commas,
     user_order_price_marker,
 };
 use crate::market_state::{DomLadderRow, OrderBookId};
@@ -22,6 +22,7 @@ pub(super) struct DomRowContext {
     pub(super) decimals: usize,
     pub(super) tick: f64,
     pub(super) whole_contracts: bool,
+    pub(super) total_in_notional: bool,
     pub(super) reverse_side: bool,
 }
 
@@ -58,6 +59,7 @@ fn dom_row(
         true,
         true,
         whole_contracts,
+        context.total_in_notional,
     );
     let bid_size = dom_value_cell(
         row_data.bid_size,
@@ -65,6 +67,7 @@ fn dom_row(
         true,
         false,
         whole_contracts,
+        false,
     );
     let price = price_cell(row_data, context.decimals, user_order_side);
     let ask_size = dom_value_cell(
@@ -73,6 +76,7 @@ fn dom_row(
         false,
         false,
         whole_contracts,
+        false,
     );
     let ask_total = dom_value_cell(
         row_data.ask_cumulative,
@@ -80,6 +84,7 @@ fn dom_row(
         false,
         true,
         whole_contracts,
+        context.total_in_notional,
     );
 
     let content: Element<'static, Message> = if context.reverse_side {
@@ -115,9 +120,10 @@ fn dom_value_cell(
     is_bid: bool,
     is_cumulative: bool,
     whole_contracts: bool,
+    total_in_notional: bool,
 ) -> Element<'static, Message> {
     let label = value
-        .map(|value| format_book_size(value, whole_contracts))
+        .map(|value| format_book_total(value, whole_contracts, total_in_notional))
         .unwrap_or_default();
     // Same square-root heat curve as the depth list, so medium orders stay
     // visible instead of being flattened by one wall in the window.

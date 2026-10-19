@@ -3,6 +3,32 @@ use super::lvl;
 use crate::api::OrderBook;
 
 #[test]
+fn order_book_total_unit_invalidates_both_caches_without_a_market_update() {
+    let mut inst = OrderBookInstance::new(7, OrderBookSymbolMode::Active, 1.0);
+    inst.set_book(OrderBook {
+        bids: vec![lvl(99.75, 2.0), lvl(97.75, 4.0)],
+        asks: vec![lvl(100.25, 2.0), lvl(102.25, 4.0)],
+    });
+
+    for notional in [false, true, false] {
+        inst.total_in_notional = notional;
+        let expected_bid = if notional { 590.5 } else { 6.0 };
+        let expected_ask = if notional { 609.5 } else { 6.0 };
+        for _ in 0..2 {
+            let depth = inst.aggregated_depth_with_totals(1.0, notional);
+            assert_eq!(depth.bids[1].2, expected_bid);
+            assert_eq!(depth.asks[1].2, expected_ask);
+            assert_eq!(depth.bids[1].1, 4.0);
+            let dom = inst.dom_ladder_rows(1.0, 3);
+            assert_eq!(dom.bids[2].bid_cumulative, Some(expected_bid));
+            assert_eq!(dom.asks[0].ask_cumulative, Some(expected_ask));
+        }
+        // Depth charts continue to request base-unit depth.
+        assert_eq!(inst.aggregated_depth(1.0).bids[1].2, 6.0);
+    }
+}
+
+#[test]
 fn aggregated_depth_cache_serves_repeated_reads_without_recomputing() {
     let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 0.5);
     inst.set_book(OrderBook {

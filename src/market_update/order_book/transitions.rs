@@ -30,6 +30,41 @@ fn terminal() -> TradingTerminal {
     terminal
 }
 
+#[test]
+fn order_book_total_unit_toggle_is_per_instance_and_survives_boot_and_layout_restore() {
+    let mut terminal = terminal();
+    terminal.order_books.insert(
+        8,
+        OrderBookInstance::new(8, OrderBookSymbolMode::Active, 1.0),
+    );
+    for notional in [true, false, true] {
+        terminal.config_save_due_at = None;
+        let task = terminal.update(Message::ToggleOrderBookTotalUnit(7));
+        assert_eq!(task.units(), 0);
+        assert_eq!(terminal.order_books[&7].total_in_notional, notional);
+        assert!(!terminal.order_books[&8].total_in_notional);
+        assert!(terminal.config_save_due_at.is_some());
+
+        let config = KeroseneConfig {
+            order_books: terminal.order_book_configs_snapshot(),
+            ..KeroseneConfig::default()
+        };
+        let restored = TradingTerminal::boot_from_config(config).0;
+        assert_eq!(restored.order_books[&7].total_in_notional, notional);
+        assert!(!restored.order_books[&8].total_in_notional);
+
+        let layout = terminal.saved_layout_snapshot("Units".to_string());
+        let mut restored = TradingTerminal::boot_from_config(KeroseneConfig::default()).0;
+        let _task = restored.apply_layout(layout);
+        assert_eq!(restored.order_books[&7].total_in_notional, notional);
+        assert!(!restored.order_books[&8].total_in_notional);
+    }
+    terminal.config_save_due_at = None;
+    let _task = terminal.update(Message::ToggleOrderBookTotalUnit(99));
+    assert!(terminal.config_save_due_at.is_none());
+    assert!(!terminal.order_books.contains_key(&99));
+}
+
 fn deliver(terminal: &mut TradingTerminal, id: u64, tick: f64) {
     let _ = terminal.update_order_book_market(Message::WsBookUpdate {
         id,

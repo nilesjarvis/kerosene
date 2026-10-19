@@ -31,8 +31,11 @@ fn empty_levels_aggregate_to_empty_buckets() {
 fn single_level_emits_one_bucket() {
     let asks = [lvl(100.5, 2.0)];
     let bids = [lvl(99.5, 2.0)];
-    assert_eq!(aggregate_levels(&asks, 0.5, false), vec![(100.5, 2.0)]);
-    assert_eq!(aggregate_levels(&bids, 0.5, true), vec![(99.5, 2.0)]);
+    assert_eq!(
+        aggregate_levels(&asks, 0.5, false),
+        vec![(100.5, 2.0, 201.0)]
+    );
+    assert_eq!(aggregate_levels(&bids, 0.5, true), vec![(99.5, 2.0, 199.0)]);
 }
 
 #[test]

@@ -12,16 +12,28 @@ impl OrderBookInstance {
     /// attached per level. Recomputed when the book revision or tick size
     /// differs from what's stored in the cache.
     pub fn aggregated_depth(&self, tick: f64) -> Ref<'_, AggregatedDepth> {
+        self.aggregated_depth_with_totals(tick, false)
+    }
+
+    /// Select the cumulative total's unit while retaining base-unit level sizes.
+    pub(crate) fn aggregated_depth_with_totals(
+        &self,
+        tick: f64,
+        total_in_notional: bool,
+    ) -> Ref<'_, AggregatedDepth> {
         let needs_refresh = {
             let cache = self.aggregated.borrow();
-            cache.book_revision != self.book_revision || cache.tick_bits != tick.to_bits()
+            cache.book_revision != self.book_revision
+                || cache.tick_bits != tick.to_bits()
+                || cache.total_in_notional != total_in_notional
         };
         if needs_refresh {
             let mut cache = self.aggregated.borrow_mut();
-            cache.asks = aggregate_with_cumulative(&self.book.asks, tick, false);
-            cache.bids = aggregate_with_cumulative(&self.book.bids, tick, true);
+            cache.asks = aggregate_with_cumulative(&self.book.asks, tick, false, total_in_notional);
+            cache.bids = aggregate_with_cumulative(&self.book.bids, tick, true, total_in_notional);
             cache.book_revision = self.book_revision;
             cache.tick_bits = tick.to_bits();
+            cache.total_in_notional = total_in_notional;
         }
         self.aggregated.borrow()
     }
@@ -36,6 +48,7 @@ impl OrderBookInstance {
             book_revision: self.book_revision,
             tick_bits: tick.to_bits(),
             side_rows,
+            total_in_notional: self.total_in_notional,
         };
         let needs_refresh = {
             let cache = self.dom_ladder.borrow();
@@ -43,7 +56,7 @@ impl OrderBookInstance {
         };
         if needs_refresh {
             let mut cache = self.dom_ladder.borrow_mut();
-            cache.rows = build_dom_ladder_rows(&self.book, tick, side_rows);
+            cache.rows = build_dom_ladder_rows(&self.book, tick, side_rows, self.total_in_notional);
             cache.key = key;
             cache.populated = true;
         }

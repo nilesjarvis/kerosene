@@ -35,7 +35,7 @@ impl TradingTerminal {
     ) -> Element<'static, Message> {
         let decimals = tick_decimals(tick);
 
-        let depth = inst.aggregated_depth(tick);
+        let depth = inst.aggregated_depth_with_totals(tick, inst.total_in_notional);
 
         // Asks come out of the cache in ascending price (inside-out); the
         // display wants worst-at-top, best-at-bottom above the spread line.
@@ -66,6 +66,7 @@ impl TradingTerminal {
             decimals,
             whole_contracts,
             reverse_side: inst.reverse_side,
+            total_in_notional: inst.total_in_notional,
         };
         if inst.center_on_mid {
             let centered_asks = ask_rows;
@@ -164,8 +165,12 @@ impl TradingTerminal {
         )
     }
 
-    pub(super) fn view_order_book_dom_header(reverse_side: bool) -> Element<'static, Message> {
-        dom::view_order_book_dom_header(reverse_side)
+    pub(super) fn view_order_book_dom_header(
+        id: OrderBookId,
+        reverse_side: bool,
+        total_in_notional: bool,
+    ) -> Element<'static, Message> {
+        dom::view_order_book_dom_header(id, reverse_side, total_in_notional)
     }
 
     pub(super) fn view_order_book_depth_chart(

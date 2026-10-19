@@ -1,6 +1,11 @@
 use super::*;
 
 #[test]
+fn order_book_total_unit_toggle_reaches_market_route() {
+    assert_route(Message::ToggleOrderBookTotalUnit(7), UpdateRoute::Market);
+}
+
+#[test]
 fn updates_messages_reach_market_and_pane_routes() {
     use crate::market_state::updates::{UpdatesFilter, UpdatesSnapshot, UpdatesVenue};
     assert_route(Message::AddUpdatesPane, UpdateRoute::Panes);

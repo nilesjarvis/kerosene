@@ -413,8 +413,18 @@ Order books support:
 - center-on-mid behavior
 - reverse-side layout
 - regular depth rows, DOM ladder, or depth chart display
+- clickable total-column headers in Book and DOM views to switch cumulative
+  totals between base units and USD notional
 - optional spread chart
 - user open-order overlays
+
+The per-widget `OrderBookConfig.total_in_notional` preference is saved with
+startup config and layouts; older configs default to base units. USD totals
+sum each source level's price times size before display tick grouping, while
+the Size columns retain base units. `ToggleOrderBookTotalUnit` routes through
+the market update handler. Both projection caches include the total unit in
+their keys, so toggling updates the display without waiting for market data.
+The depth chart continues to use base-unit cumulative depth.
 
 Key modules:
 

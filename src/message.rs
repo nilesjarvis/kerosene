@@ -1625,6 +1625,7 @@ pub(crate) enum Message {
     SetBookTickSize(OrderBookId, f64),
     ToggleOrderBookCenterOnMid(OrderBookId),
     ToggleOrderBookReverseSide(OrderBookId),
+    ToggleOrderBookTotalUnit(OrderBookId),
     ToggleOrderBookSettings(OrderBookId),
     ToggleOrderBookSpreadChart(OrderBookId),
     OrderBookSpreadChartResize(OrderBookId, f32),

@@ -31,7 +31,12 @@ pub struct DomLadderRows {
     pub max_cumulative: f64,
 }
 
-pub fn build_dom_ladder_rows(book: &OrderBook, tick: f64, side_rows: usize) -> DomLadderRows {
+pub fn build_dom_ladder_rows(
+    book: &OrderBook,
+    tick: f64,
+    side_rows: usize,
+    total_in_notional: bool,
+) -> DomLadderRows {
     if !valid_book_tick_size(tick) || side_rows == 0 {
         return DomLadderRows {
             asks: Vec::new(),
@@ -43,16 +48,16 @@ pub fn build_dom_ladder_rows(book: &OrderBook, tick: f64, side_rows: usize) -> D
 
     let ask_levels = aggregate_levels(&book.asks, tick, false);
     let bid_levels = aggregate_levels(&book.bids, tick, true);
-    let ask_map = level_map(&ask_levels, tick);
-    let bid_map = level_map(&bid_levels, tick);
+    let ask_map = level_map(&ask_levels, tick, total_in_notional);
+    let bid_map = level_map(&bid_levels, tick, total_in_notional);
 
     let asks = ask_levels
         .first()
-        .map(|(best_ask, _)| ask_rows(&ask_map, price_key(*best_ask, tick), tick, side_rows))
+        .map(|(best_ask, _, _)| ask_rows(&ask_map, price_key(*best_ask, tick), tick, side_rows))
         .unwrap_or_default();
     let bids = bid_levels
         .first()
-        .map(|(best_bid, _)| bid_rows(&bid_map, price_key(*best_bid, tick), tick, side_rows))
+        .map(|(best_bid, _, _)| bid_rows(&bid_map, price_key(*best_bid, tick), tick, side_rows))
         .unwrap_or_default();
 
     let max_size = asks
@@ -76,10 +81,19 @@ pub fn build_dom_ladder_rows(book: &OrderBook, tick: f64, side_rows: usize) -> D
     }
 }
 
-fn level_map(levels: &[(f64, f64)], tick: f64) -> std::collections::BTreeMap<i64, f64> {
+fn level_map(
+    levels: &[(f64, f64, f64)],
+    tick: f64,
+    total_in_notional: bool,
+) -> std::collections::BTreeMap<i64, (f64, f64)> {
     levels
         .iter()
-        .map(|(price, size)| (price_key(*price, tick), *size))
+        .map(|&(price, size, notional)| {
+            (
+                price_key(price, tick),
+                (size, if total_in_notional { notional } else { size }),
+            )
+        })
         .collect()
 }
 
@@ -88,7 +102,7 @@ fn price_key(price: f64, tick: f64) -> i64 {
 }
 
 fn ask_rows(
-    ask_map: &std::collections::BTreeMap<i64, f64>,
+    ask_map: &std::collections::BTreeMap<i64, (f64, f64)>,
     best_ask_key: i64,
     tick: f64,
     side_rows: usize,
@@ -97,15 +111,15 @@ fn ask_rows(
     let mut cumulative = 0.0;
     for offset in 0..side_rows {
         let key = best_ask_key + offset as i64;
-        let size = ask_map.get(&key).copied();
-        if let Some(size) = size {
-            cumulative += size;
+        let level = ask_map.get(&key).copied();
+        if let Some((_, total)) = level {
+            cumulative += total;
         }
         rows.push(DomLadderRow {
             price: key as f64 * tick,
             bid_size: None,
             bid_cumulative: None,
-            ask_size: size,
+            ask_size: level.map(|(size, _)| size),
             ask_cumulative: (cumulative > 0.0).then_some(cumulative),
             is_best_bid: false,
             is_best_ask: offset == 0,
@@ -116,7 +130,7 @@ fn ask_rows(
 }
 
 fn bid_rows(
-    bid_map: &std::collections::BTreeMap<i64, f64>,
+    bid_map: &std::collections::BTreeMap<i64, (f64, f64)>,
     best_bid_key: i64,
     tick: f64,
     side_rows: usize,
@@ -125,13 +139,13 @@ fn bid_rows(
     let mut cumulative = 0.0;
     for offset in 0..side_rows {
         let key = best_bid_key - offset as i64;
-        let size = bid_map.get(&key).copied();
-        if let Some(size) = size {
-            cumulative += size;
+        let level = bid_map.get(&key).copied();
+        if let Some((_, total)) = level {
+            cumulative += total;
         }
         rows.push(DomLadderRow {
             price: key as f64 * tick,
-            bid_size: size,
+            bid_size: level.map(|(size, _)| size),
             bid_cumulative: (cumulative > 0.0).then_some(cumulative),
             ask_size: None,
             ask_cumulative: None,
@@ -143,13 +157,14 @@ fn bid_rows(
 }
 
 /// Cache key for the DOM-ladder derivation. The view path looks up the
-/// cached rows via this triple; a mismatch on any field invalidates and
+/// cached rows via these settings; a mismatch on any field invalidates and
 /// recomputes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct DomLadderCacheKey {
     pub(crate) book_revision: u64,
     pub(crate) tick_bits: u64,
     pub(crate) side_rows: usize,
+    pub(crate) total_in_notional: bool,
 }
 
 #[derive(Debug, Default)]

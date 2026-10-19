@@ -67,12 +67,16 @@ impl TradingTerminal {
         let tick = Self::resolved_order_book_tick(inst, &tick_options);
         let tick_buttons = Self::view_order_book_tick_buttons(id, &tick_options, tick);
         let header = match inst.display_mode {
-            OrderBookDisplayMode::DepthList => {
-                Some(Self::view_order_book_header(inst.reverse_side))
-            }
-            OrderBookDisplayMode::DomLadder => {
-                Some(Self::view_order_book_dom_header(inst.reverse_side))
-            }
+            OrderBookDisplayMode::DepthList => Some(Self::view_order_book_header(
+                id,
+                inst.reverse_side,
+                inst.total_in_notional,
+            )),
+            OrderBookDisplayMode::DomLadder => Some(Self::view_order_book_dom_header(
+                id,
+                inst.reverse_side,
+                inst.total_in_notional,
+            )),
             // The depth chart draws its own axis labels on the canvas.
             OrderBookDisplayMode::DepthChart => None,
         };

@@ -16,6 +16,19 @@ pub fn format_book_size(size: f64, whole_contracts: bool) -> String {
     }
 }
 
+pub fn format_book_total(total: f64, whole_contracts: bool, total_in_notional: bool) -> String {
+    if total_in_notional {
+        let amount = if total >= 10_000.0 {
+            format_size(total)
+        } else {
+            format_decimal_with_commas(total, 2)
+        };
+        format!("${amount}")
+    } else {
+        format_book_size(total, whole_contracts)
+    }
+}
+
 pub(super) fn price_cell(
     px: f64,
     decimals: usize,
@@ -59,9 +72,13 @@ pub(super) fn size_cell(sz: f64, alpha: f32, whole_contracts: bool) -> Element<'
         .into()
 }
 
-pub(super) fn total_cell(cum: f64, whole_contracts: bool) -> Element<'static, Message> {
+pub(super) fn total_cell(
+    cum: f64,
+    whole_contracts: bool,
+    total_in_notional: bool,
+) -> Element<'static, Message> {
     container(
-        text(format_book_size(cum, whole_contracts))
+        text(format_book_total(cum, whole_contracts, total_in_notional))
             .size(12)
             .font(crate::app_fonts::monospace_font())
             .align_x(iced::alignment::Horizontal::Right)

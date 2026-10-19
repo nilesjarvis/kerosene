@@ -144,6 +144,44 @@ fn book() -> OrderBook {
 }
 
 #[tokio::test]
+async fn order_book_total_headers_toggle_units_in_both_orientations_and_views() {
+    let mut renderer = iced::Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+        .await
+        .expect("software renderer");
+    let size = Size::new(500.0, 35.0);
+    for dom in [false, true] {
+        for reversed in [false, true] {
+            for notional in [false, true] {
+                let mut header = if dom {
+                    TradingTerminal::view_order_book_dom_header(91, reversed, notional)
+                } else {
+                    TradingTerminal::view_order_book_header(91, reversed, notional)
+                };
+                let (mut tree, node) = render(
+                    &mut header,
+                    &mut renderer,
+                    &Theme::Dark,
+                    size,
+                    &format!("total-header-{dom}-{reversed}-{notional}"),
+                );
+                let points = if dom {
+                    vec![Point::new(50.0, 8.0), Point::new(450.0, 8.0)]
+                } else {
+                    vec![Point::new(if reversed { 50.0 } else { 450.0 }, 8.0)]
+                };
+                for point in points {
+                    let messages = click(&mut header, &mut tree, &node, &mut renderer, size, point);
+                    assert!(
+                        matches!(messages.as_slice(), [Message::ToggleOrderBookTotalUnit(91)]),
+                        "dom={dom}, reversed={reversed}, notional={notional}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn denomination_switches_keep_row_geometry_and_one_sided_depth_visible() {
     let mut renderer = iced::Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
         .await
@@ -320,11 +358,14 @@ async fn book_rows_preserve_price_actions_through_centering_and_orientation() {
     for (theme_name, theme) in [("dark", Theme::Dark), ("light", Theme::Light)] {
         for dom in [false, true] {
             for centered in [false, true] {
-                for reversed in [false, true] {
+                for (reversed, notional) in
+                    [(false, false), (true, false), (false, true), (true, true)]
+                {
                     let mut inst = OrderBookInstance::new(91, OrderBookSymbolMode::Active, 1.0);
                     inst.set_book(book());
                     inst.center_on_mid = centered;
                     inst.reverse_side = reversed;
+                    inst.total_in_notional = notional;
                     let mut view = if dom {
                         TradingTerminal::view_order_book_dom_ladder(
                             91,
@@ -350,7 +391,7 @@ async fn book_rows_preserve_price_actions_through_centering_and_orientation() {
                         &mut renderer,
                         &theme,
                         size,
-                        &format!("rows-{theme_name}-{dom}-{centered}-{reversed}"),
+                        &format!("rows-{theme_name}-{dom}-{centered}-{reversed}-{notional}"),
                     );
                     let mut prices = BTreeSet::new();
                     for y in (5..355).step_by(10) {
@@ -477,6 +518,7 @@ async fn book_inspector_hover_action_does_not_select_an_order_price() {
                 px: 100.0,
                 sz: 2.0,
                 cum: 2.0,
+                total_in_notional: false,
                 has_user_order: false,
                 whole_contracts: false,
             },

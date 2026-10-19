@@ -356,6 +356,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleOrderBookSettings(_)
         | Message::ToggleOrderBookCenterOnMid(_)
         | Message::ToggleOrderBookReverseSide(_)
+        | Message::ToggleOrderBookTotalUnit(_)
         | Message::ToggleOrderBookSpreadChart(_)
         | Message::OrderBookSpreadChartResize(_, _)
         | Message::OrderBookSearchChanged(_, _)

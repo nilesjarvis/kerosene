@@ -124,6 +124,9 @@ pub struct OrderBookConfig {
     pub center_on_mid: bool,
     #[serde(default)]
     pub reverse_side: bool,
+    /// Display cumulative totals as USD notional instead of base units.
+    #[serde(default)]
+    pub total_in_notional: bool,
     #[serde(default)]
     pub show_spread_chart: bool,
     #[serde(default = "default_spread_chart_height")]
@@ -141,6 +144,20 @@ fn default_center_on_mid() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn order_book_total_unit_defaults_to_base_units_and_round_trips() {
+        let mut config: OrderBookConfig =
+            serde_json::from_str(r#"{"id":7}"#).expect("legacy order book config");
+        assert!(!config.total_in_notional);
+        for notional in [true, false] {
+            config.total_in_notional = notional;
+            let encoded = serde_json::to_string(&config).expect("serialize book config");
+            let decoded: OrderBookConfig =
+                serde_json::from_str(&encoded).expect("deserialize book config");
+            assert_eq!(decoded, config);
+        }
+    }
 
     #[test]
     fn center_on_mid_defaults_to_true_for_configs_predating_the_field() {

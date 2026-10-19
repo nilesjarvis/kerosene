@@ -1,5 +1,6 @@
 use self::rows::{DomRowContext, dom_rows_column};
 use super::super::UserOrderBookLevels;
+use crate::app_state::TradingTerminal;
 use crate::helpers::{nice_step_ceil, tick_decimals};
 use crate::market_state::{OrderBookId, OrderBookInstance};
 use crate::message::Message;
@@ -32,6 +33,7 @@ pub(super) fn view_order_book_dom_ladder(
         decimals,
         tick,
         whole_contracts,
+        total_in_notional: inst.total_in_notional,
         reverse_side: inst.reverse_side,
     };
 
@@ -96,7 +98,11 @@ pub(super) fn view_order_book_dom_ladder(
     .into()
 }
 
-pub(super) fn view_order_book_dom_header(reverse_side: bool) -> Element<'static, Message> {
+pub(super) fn view_order_book_dom_header(
+    id: OrderBookId,
+    reverse_side: bool,
+    total_in_notional: bool,
+) -> Element<'static, Message> {
     let labels = if reverse_side {
         ["Ask Total", "Ask Size", "Price", "Bid Size", "Bid Total"]
     } else {
@@ -107,11 +113,25 @@ pub(super) fn view_order_book_dom_header(reverse_side: bool) -> Element<'static,
     // horizontal padding per cell) so the labels line up with the numbers.
     container(
         row![
-            header_cell(labels[0]),
+            container(TradingTerminal::view_order_book_total_header(
+                id,
+                labels[0],
+                total_in_notional,
+                11
+            ))
+            .width(Fill)
+            .padding([0, 4]),
             header_cell(labels[1]),
             header_cell(labels[2]),
             header_cell(labels[3]),
-            header_cell(labels[4]),
+            container(TradingTerminal::view_order_book_total_header(
+                id,
+                labels[4],
+                total_in_notional,
+                11
+            ))
+            .width(Fill)
+            .padding([0, 4]),
         ]
         .spacing(3),
     )

@@ -12,7 +12,7 @@ proptest! {
         let tick = 10f64.powi(tick_exp);
         let aggregated = aggregate_levels(&levels, tick, is_bid);
         let input_total: f64 = levels.iter().map(|l| l.sz).sum();
-        let bucketed_total: f64 = aggregated.iter().map(|(_, sz)| sz).sum();
+        let bucketed_total: f64 = aggregated.iter().map(|(_, sz, _)| sz).sum();
         let diff = (input_total - bucketed_total).abs();
         // Relative tolerance: f64 sums of ~32 levels lose a few ULPs.
         let tolerance = (input_total.abs() * 1e-9).max(1e-9);
@@ -20,6 +20,10 @@ proptest! {
             diff <= tolerance,
             "mass leak: input {input_total}, bucketed {bucketed_total}, diff {diff}"
         );
+        let input_notional: f64 = levels.iter().map(|level| level.px * level.sz).sum();
+        let bucketed_notional: f64 = aggregated.iter().map(|(_, _, notional)| notional).sum();
+        let tolerance = (input_notional.abs() * 1e-9).max(1e-9);
+        prop_assert!((input_notional - bucketed_notional).abs() <= tolerance);
     }
 
     /// Asks emerge from `aggregate_levels` in ascending price order;
@@ -60,7 +64,7 @@ proptest! {
     ) {
         let tick = 10f64.powi(tick_exp);
         let aggregated = aggregate_levels(&levels, tick, is_bid);
-        for (price, _) in &aggregated {
+        for (price, _, _) in &aggregated {
             let key = (price / tick).round();
             let reconstructed = key * tick;
             let diff = (price - reconstructed).abs();
@@ -87,7 +91,7 @@ proptest! {
         let aggregated = aggregate_levels(&levels, tick, false);
         let slack = tick * 1e-5;
         for input in &levels {
-            let found = aggregated.iter().any(|(p, _)| {
+            let found = aggregated.iter().any(|(p, _, _)| {
                 *p >= input.px - slack && *p < input.px + tick + slack
             });
             prop_assert!(

@@ -159,6 +159,7 @@ fn is_order_book_market_message(message: &Message) -> bool {
             | Message::ToggleOrderBookSettings(_)
             | Message::ToggleOrderBookCenterOnMid(_)
             | Message::ToggleOrderBookReverseSide(_)
+            | Message::ToggleOrderBookTotalUnit(_)
             | Message::ToggleOrderBookSpreadChart(_)
             | Message::OrderBookSpreadChartResize(_, _)
             | Message::OrderBookSearchChanged(_, _)

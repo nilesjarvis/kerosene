@@ -76,6 +76,7 @@ pub struct OrderBookInstance {
     pub book_failure_toasted: bool,
     pub center_on_mid: bool,
     pub reverse_side: bool,
+    pub total_in_notional: bool,
     pub show_spread_chart: bool,
     pub spread_history: VecDeque<(Instant, f64)>,
     pub spread_chart_height: f32,
@@ -108,6 +109,7 @@ impl OrderBookInstance {
         };
         instance.center_on_mid = config.center_on_mid;
         instance.reverse_side = config.reverse_side;
+        instance.total_in_notional = config.total_in_notional;
         instance.show_spread_chart = config.show_spread_chart;
         instance.set_spread_chart_height(config.spread_chart_height);
         instance.book_loading = true;
@@ -134,6 +136,7 @@ impl OrderBookInstance {
             // Center-toggle away.
             center_on_mid: true,
             reverse_side: false,
+            total_in_notional: false,
             show_spread_chart: false,
             spread_history: VecDeque::new(),
             spread_chart_height: DEFAULT_ORDER_BOOK_SPREAD_CHART_HEIGHT,
