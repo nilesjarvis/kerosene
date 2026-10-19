@@ -15,6 +15,7 @@ mod colors;
 
 use colors::TraderColors;
 
+const TIME_WIDTH: f32 = 112.0;
 const TRADER_WIDTH: f32 = 112.0;
 const GROUP_COUNT_WIDTH: f32 = 32.0;
 
@@ -257,7 +258,16 @@ fn tape_row(
     };
     let mut cells = row![].spacing(8);
     if layout.show_time {
-        cells = cells.push(cell(time, 4, false));
+        // Anchor the suffix while the counter gains digits (for example, 9 → 10).
+        cells = cells.push(
+            text(time.to_owned())
+                .size(12)
+                .font(crate::app_fonts::monospace_font())
+                .wrapping(text::Wrapping::None)
+                .color(color)
+                .width(TIME_WIDTH)
+                .align_x(Alignment::End),
+        );
     }
     cells = cells
         .push(trader)
