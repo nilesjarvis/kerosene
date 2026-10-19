@@ -2,7 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::config::{OrderBookSymbolModeConfig, TradeFeedConfig};
 use crate::message::Message;
 use crate::pane_state::PaneKind;
-use crate::trade_feed_state::{TradeFeedInstance, TradeFeedSource};
+use crate::trade_feed_state::{TradeFeedInstance, TradeFeedSource, parse_trade_feed_minimum};
 use iced::Task;
 
 impl TradingTerminal {
@@ -57,6 +57,20 @@ impl TradingTerminal {
                 if let Some(feed) = self.trade_feeds.instances.get_mut(&id) {
                     feed.size_in_notional = !feed.size_in_notional;
                     self.persist_config();
+                }
+            }
+            Message::TradeFeedMinimumChanged(id, input) => {
+                if input.len() <= 64
+                    && let Some(feed) = self.trade_feeds.instances.get_mut(&id)
+                {
+                    let minimum = parse_trade_feed_minimum(&input);
+                    feed.min_group_notional_input = input;
+                    if let Some(minimum) = minimum
+                        && feed.min_group_notional != minimum
+                    {
+                        feed.min_group_notional = minimum;
+                        self.persist_config();
+                    }
                 }
             }
             Message::TradeFeedSetMode(id, mode) => {
@@ -182,6 +196,16 @@ impl TradingTerminal {
             let mode = config.map(|config| config.mode.clone()).unwrap_or_default();
             let mut feed = TradeFeedInstance::new(mode);
             feed.group_trades = config.is_some_and(|config| config.group_trades);
+            feed.min_group_notional = config
+                .map(|config| config.min_group_notional)
+                .filter(|minimum| minimum.is_finite() && *minimum > 0.0)
+                .unwrap_or_default();
+            if feed.min_group_notional > 0.0 {
+                feed.min_group_notional_input = feed.min_group_notional.to_string();
+                if feed.min_group_notional_input.len() > 64 {
+                    feed.min_group_notional_input = format!("{:e}", feed.min_group_notional);
+                }
+            }
             feed.size_in_notional = config.is_some_and(|config| config.size_in_notional);
             feed.show_context = config.is_some_and(|config| config.show_context);
             self.trade_feeds.instances.insert(id, feed);
@@ -199,6 +223,7 @@ impl TradingTerminal {
                 id,
                 mode: feed.mode.clone(),
                 group_trades: feed.group_trades,
+                min_group_notional: feed.min_group_notional,
                 size_in_notional: feed.size_in_notional,
                 show_context: feed.show_context,
             })

@@ -96,6 +96,11 @@ impl TradeFeedInstance {
             }
             rows.push(TradeFeedRow::new(trade));
         }
+        // Filter only after grouping, so smaller constituent fills can combine
+        // into a qualifying group. Raw prints remain available when cleared.
+        if self.group_trades && self.min_group_notional > 0.0 {
+            rows.retain(|row| row.value >= self.min_group_notional);
+        }
         rows
     }
 }

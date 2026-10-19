@@ -23,6 +23,16 @@ is derived from the retained 500 prints, so switching it off restores individual
 executions. Address hover holds the grouped rows while ingestion continues.
 Grouping defaults off and is saved independently for each pane and layout.
 
+With grouping enabled, **Min $** filters rows by their combined execution
+notional after aggregation, before the visible-row limit. Enter `10000`,
+`10,000`, or `10k` to show groups worth at least $10,000; M/B suffixes and decimals
+are also supported. Blank, zero, or **Clear** removes the filter. Other quote
+currencies show their own unit instead of `$`, matching the notional column.
+Changing the Size/Notional display does not affect the threshold. Disabling
+grouping bypasses the filter while remembering its value. Filtering retains
+raw prints and adds no API traffic. Invalid edits are marked and keep the last
+valid minimum; only the valid numeric threshold is saved per pane and layout.
+
 **Context** optionally switches that pane to Hydromancer's per-asset `allFills`
 stream and shows **Open**, **Add**, **Reduce**, **Close**, or **Flip** for the
 initiating trader's perpetual position. Only taker fills (`crossed: true`) are
@@ -77,8 +87,9 @@ Only rows that fit the pane are rendered, newest first.
 `trade_feed_state.rs`, `trade_feed_update.rs`, and `trade_feed_views.rs` own the
 model, lifecycle, messages, and view. `subscription_state/trade_feed.rs` selects
 native per-coin `trades` or optional Hydromancer `allFills` independently of the
-global read provider. `TradeFeedToggleContext` and `TradeFeedRetryContext` route
-through the Trade Feed update module. No key is required for native trades.
+global read provider. `TradeFeedToggleContext`, `TradeFeedRetryContext`, and
+`TradeFeedMinimumChanged` route through the Trade Feed update module.
+No key is required for native trades.
 `ws/market_streams/trades.rs` validates and batches prints at 50ms intervals
 (flushing early at 512 prints), without replacing intermediate executions.
 The native `users` array is ordered `[buyer, seller]`; the trader is the buyer for
@@ -95,8 +106,9 @@ lag mark a history gap; reconnect snapshots are not treated as complete backfill
 
 `PaneKind::TradeFeed(TradeFeedId)` persists through `PaneKindConfig::TradeFeed`.
 The defaulted `trade_feeds` list in config and saved layouts stores IDs,
-`Active`/`Fixed(symbol)` modes, `group_trades`, `size_in_notional`, and
-`show_context`, never tape history, position data, or provider errors.
+`Active`/`Fixed(symbol)` modes, `group_trades`, `min_group_notional`,
+`size_in_notional`, and `show_context`, never tape history, position data, or
+provider errors. The minimum defaults to zero (unfiltered).
 Older layouts need no migration;
 missing per-pane settings default to following the active asset. Duplicate IDs
 are repaired with the other multi-instance widget IDs on load/import.

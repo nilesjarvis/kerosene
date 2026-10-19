@@ -1,5 +1,30 @@
 use super::*;
 
+#[test]
+fn trade_feed_minimum_parses_compact_values_and_rejects_invalid_input() {
+    for (input, expected) in [
+        ("", 0.0),
+        ("  ", 0.0),
+        ("0", 0.0),
+        ("10000", 10_000.0),
+        ("10,000.50", 10_000.5),
+        ("10k", 10_000.0),
+        (" $10K ", 10_000.0),
+        ("2.5m", 2_500_000.0),
+        ("1B", 1_000_000_000.0),
+        ("1e4", 10_000.0),
+        ("0.00000001", 0.00000001),
+    ] {
+        assert_eq!(parse_trade_feed_minimum(input), Some(expected), "{input}");
+    }
+    for invalid in [
+        "$", "10,", "10,00", "1,00,000", "-1", "-2k", "NaN", "inf", "1e309", "1e308B", "ten", "k",
+    ] {
+        assert_eq!(parse_trade_feed_minimum(invalid), None, "{invalid}");
+    }
+    assert_eq!(parse_trade_feed_minimum(&"1".repeat(65)), None);
+}
+
 fn trade(time_ms: u64, tid: u64) -> TradePrint {
     TradePrint {
         time_ms,

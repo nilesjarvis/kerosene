@@ -5,8 +5,8 @@ use crate::feed_state::TrackedTradeIntent;
 use crate::helpers;
 use crate::message::Message;
 use crate::trade_feed_state::{
-    TradeFeedId, TradeFeedInstance, TradeFeedSource, TradePrint, trade_feed_symbol_rank,
-    trade_shading,
+    TradeFeedId, TradeFeedInstance, TradeFeedSource, TradePrint, parse_trade_feed_minimum,
+    trade_feed_symbol_rank, trade_shading,
 };
 use crate::wallet_views::{WalletAddressActionCell, wallet_address_action_cell};
 use iced::widget::{
@@ -164,6 +164,10 @@ impl TradingTerminal {
                     .style(button::text).on_press(Message::TradeFeedRetryContext(id)));
             }
             content = content.push(controls);
+            let quote = trade_quote_currency(self.exchange_symbol_for_key(requested));
+            if feed.group_trades {
+                content = content.push(view_trade_feed_minimum(id, feed, quote));
+            }
             let context_width = if feed.show_context { CONTEXT_WIDTH } else { 0.0 };
             let layout = TapeRowLayout {
                 show_time: size.width >= context_width + if feed.group_trades { 432.0 } else { 400.0 },
@@ -172,7 +176,6 @@ impl TradingTerminal {
                 show_value: !feed.size_in_notional
                     && size.width >= context_width + if feed.group_trades { 572.0 } else { 540.0 },
             };
-            let quote = trade_quote_currency(self.exchange_symbol_for_key(requested));
             let size_header = tooltip(
                 view_trade_size_cell(id, if feed.size_in_notional { "Notional" } else { "Size" }, muted),
                 text(if feed.size_in_notional { "Show asset quantity" } else { "Show notional value" }).size(11),
@@ -195,9 +198,13 @@ impl TradingTerminal {
             content = content
                 .push(container(header).padding([0, 4]))
                 .push(rule::horizontal(1));
-            let available = size.height - if feed.picker_open { 265.0 } else { 90.0 };
+            let available = size.height - if feed.picker_open { 265.0 } else { 90.0 }
+                - if feed.group_trades { 28.0 } else { 0.0 };
             let row_count = ((available.max(0.0) / 26.0) as usize).min(100);
             let rows = feed.visible_rows();
+            if rows.is_empty() && feed.group_trades && feed.min_group_notional > 0.0 {
+                content = content.push(text("No groups meet the minimum").size(12).color(muted));
+            }
             let largest = rows.iter().map(|row| row.value).fold(0.0, f64::max);
             for item in rows.iter().take(row_count) {
                 let trade = item.latest;
@@ -294,6 +301,65 @@ impl TradingTerminal {
     }
 }
 
+fn view_trade_feed_minimum(
+    id: TradeFeedId,
+    feed: &TradeFeedInstance,
+    quote: &str,
+) -> Element<'static, Message> {
+    let invalid = parse_trade_feed_minimum(&feed.min_group_notional_input).is_none();
+    let unit = if trade_uses_dollar_quote(quote) {
+        "$"
+    } else {
+        quote
+    };
+    let hint = if invalid {
+        format!(
+            "Invalid amount. Current minimum: {}. Use 10000, 10,000, or 10k.",
+            trade_notional_label(feed.min_group_notional, quote)
+        )
+    } else {
+        "Minimum combined notional per group. Use 10000, 10,000, or 10k. Blank or 0 shows all."
+            .into()
+    };
+    let input = text_input("0 (all)", &feed.min_group_notional_input)
+        .size(11)
+        .padding([2, 4])
+        .width(110)
+        .on_input(move |value| Message::TradeFeedMinimumChanged(id, value))
+        .style(move |theme: &Theme, status| {
+            let mut style = text_input::default(theme, status);
+            if invalid {
+                style.border.color = theme.palette().danger;
+            }
+            style
+        });
+    let mut controls = row![
+        text(format!("Min {unit}")).size(11),
+        tooltip(
+            input,
+            container(text(hint).size(11))
+                .padding([5, 8])
+                .max_width(280)
+                .style(container::rounded_box),
+            tooltip::Position::Bottom
+        ),
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center);
+    if !feed.min_group_notional_input.is_empty() {
+        controls = controls.push(
+            button(text("Clear").size(11))
+                .padding([2, 4])
+                .style(button::text)
+                .on_press(Message::TradeFeedMinimumChanged(id, String::new())),
+        );
+    }
+    if invalid {
+        controls = controls.push(text("Invalid amount").size(11).style(text::danger));
+    }
+    container(controls).height(24).width(Fill).into()
+}
+
 fn tape_row(
     time: &str,
     price: &str,
@@ -386,11 +452,15 @@ fn trade_intent_label(intent: TrackedTradeIntent) -> &'static str {
 
 fn trade_notional_label(value: f64, quote: &str) -> String {
     let amount = trade_value_label(value);
-    if matches!(quote, "USD" | "USDC" | "USDE" | "USDT0" | "USDH") {
+    if trade_uses_dollar_quote(quote) {
         format!("${amount}")
     } else {
         format!("{amount} {quote}")
     }
+}
+
+fn trade_uses_dollar_quote(quote: &str) -> bool {
+    matches!(quote, "USD" | "USDC" | "USDE" | "USDT0" | "USDH")
 }
 
 fn trade_value_label(value: f64) -> String {

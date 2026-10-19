@@ -101,12 +101,14 @@ fn trade_feed_config_defaults_and_round_trip() {
     let config: TradeFeedConfig = serde_json::from_str(r#"{"id":4}"#).expect("legacy defaults");
     assert_eq!(config.mode, OrderBookSymbolModeConfig::Active);
     assert!(!config.group_trades);
+    assert_eq!(config.min_group_notional, 0.0);
     assert!(!config.size_in_notional);
     assert!(!config.show_context);
     let config = TradeFeedConfig {
         id: 4,
         mode: OrderBookSymbolModeConfig::Fixed("@107".into()),
         group_trades: true,
+        min_group_notional: 10_000.5,
         size_in_notional: true,
         show_context: true,
     };
@@ -115,6 +117,111 @@ fn trade_feed_config_defaults_and_round_trip() {
         serde_json::from_str::<TradeFeedConfig>(&json).expect("deserialize"),
         config
     );
+}
+
+#[test]
+fn trade_feed_minimum_is_per_pane_preserves_stream_and_round_trips_in_layouts() {
+    let mut terminal = terminal(Default::default());
+    let pane = *terminal.panes.iter().next().expect("trade feed pane").0;
+    terminal
+        .panes
+        .split(
+            iced::widget::pane_grid::Axis::Vertical,
+            pane,
+            PaneKind::TradeFeed(8),
+        )
+        .expect("second feed");
+    terminal
+        .trade_feeds
+        .instances
+        .insert(8, TradeFeedInstance::new(Default::default()));
+    terminal.sync_trade_feeds();
+    let generation = terminal.trade_feeds.instances[&7].generation;
+    let _ = terminal.update(incoming(generation, "BTC"));
+    let _ = terminal.update(Message::TradeFeedToggleGrouping(7));
+    let _ = terminal.update(Message::TradeFeedMinimumChanged(7, "10k".into()));
+    let feed = &terminal.trade_feeds.instances[&7];
+    assert_eq!(feed.min_group_notional, 10_000.0);
+    assert_eq!(feed.generation, generation);
+    assert_eq!(feed.trades.len(), 1);
+    assert!(feed.visible_rows().is_empty());
+    assert_eq!(terminal.trade_feeds.instances[&8].min_group_notional, 0.0);
+
+    for invalid in ["10,", "NaN", "-10"] {
+        let _ = terminal.update(Message::TradeFeedMinimumChanged(7, invalid.into()));
+        assert_eq!(
+            terminal.trade_feeds.instances[&7].min_group_notional_input,
+            invalid
+        );
+        assert_eq!(
+            terminal.trade_feed_configs_snapshot()[0].min_group_notional,
+            10_000.0
+        );
+    }
+    let _ = terminal.update(Message::TradeFeedMinimumChanged(7, "1".repeat(65)));
+    assert_eq!(
+        terminal.trade_feeds.instances[&7].min_group_notional_input,
+        "-10"
+    );
+    let _ = terminal.update(Message::TradeFeedToggleGrouping(7));
+    assert_eq!(terminal.trade_feeds.instances[&7].visible_rows().len(), 1);
+    let _ = terminal.update(Message::TradeFeedToggleGrouping(7));
+    let _ = terminal.update(Message::TradeFeedToggleSizeUnit(7));
+    assert!(terminal.trade_feeds.instances[&7].visible_rows().is_empty());
+
+    terminal.apply_active_symbol_selection("ETH".into(), "ETH".into());
+    terminal.sync_trade_feeds();
+    assert_eq!(
+        terminal.trade_feeds.instances[&7].min_group_notional,
+        10_000.0
+    );
+    let snapshot = terminal.saved_layout_snapshot("Filtered tape".into());
+    let json = serde_json::to_string(&snapshot).expect("serialize filtered layout");
+    let _ = terminal.apply_layout(serde_json::from_str(&json).expect("restore layout"));
+    assert_eq!(
+        terminal.trade_feeds.instances[&7].min_group_notional,
+        10_000.0
+    );
+    assert_eq!(
+        terminal.trade_feeds.instances[&7].min_group_notional_input,
+        "10000"
+    );
+    assert_eq!(terminal.trade_feeds.instances[&8].min_group_notional, 0.0);
+    let _ = terminal.update(Message::TradeFeedMinimumChanged(7, String::new()));
+    assert_eq!(
+        terminal.trade_feed_configs_snapshot()[0].min_group_notional,
+        0.0
+    );
+}
+
+#[test]
+fn trade_feed_minimum_restore_validates_thresholds_and_keeps_inputs_editable() {
+    let mut terminal = terminal(Default::default());
+    for minimum in [-1.0, f64::NAN, f64::INFINITY] {
+        terminal.restore_trade_feeds(&[TradeFeedConfig {
+            id: 7,
+            group_trades: true,
+            min_group_notional: minimum,
+            ..Default::default()
+        }]);
+        assert_eq!(terminal.trade_feeds.instances[&7].min_group_notional, 0.0);
+        assert!(
+            terminal.trade_feeds.instances[&7]
+                .min_group_notional_input
+                .is_empty()
+        );
+    }
+    for minimum in [1e100, 1e-100, 10_000.5] {
+        terminal.restore_trade_feeds(&[TradeFeedConfig {
+            id: 7,
+            min_group_notional: minimum,
+            ..Default::default()
+        }]);
+        assert_eq!(
+            parse_trade_feed_minimum(&terminal.trade_feeds.instances[&7].min_group_notional_input),
+            Some(minimum)
+        );
+    }
 }
 
 #[test]

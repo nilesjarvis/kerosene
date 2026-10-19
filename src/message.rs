@@ -873,6 +873,7 @@ pub(crate) enum Message {
     AddTradeFeedPane,
     TradeFeedTogglePicker(crate::trade_feed_state::TradeFeedId),
     TradeFeedToggleGrouping(crate::trade_feed_state::TradeFeedId),
+    TradeFeedMinimumChanged(crate::trade_feed_state::TradeFeedId, String),
     TradeFeedToggleSizeUnit(crate::trade_feed_state::TradeFeedId),
     TradeFeedToggleContext(crate::trade_feed_state::TradeFeedId),
     TradeFeedRetryContext(crate::trade_feed_state::TradeFeedId),

@@ -33,6 +33,54 @@ fn feed(trades: Vec<TradePrint>) -> TradeFeedInstance {
 }
 
 #[test]
+fn trade_feed_minimum_filters_combined_notional_after_grouping_without_losing_prints() {
+    let mut feed = feed(vec![
+        trade(1000, 1, Some(FIRST), true, "100", "60"),
+        trade(999, 2, Some(FIRST), true, "200", "20"),
+        trade(998, 3, Some(SECOND), true, "1", "9999.99"),
+        trade(997, 4, None, true, "100", "110"),
+    ]);
+    feed.min_group_notional = 10_000.0;
+    let rows = feed.visible_rows();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].latest.tid, 1);
+    assert_eq!(rows[0].count, 2);
+    assert_eq!(rows[0].value, 10_000.0);
+    assert_eq!(rows[0].size_label(), "80");
+    assert_eq!(rows[1].latest.tid, 4);
+    feed.size_in_notional = true;
+    assert_eq!(feed.visible_rows().len(), 2);
+    feed.min_group_notional = 0.0;
+    assert_eq!(feed.visible_rows().len(), 3);
+    feed.min_group_notional = 10_000.0;
+    feed.group_trades = false;
+    assert_eq!(feed.visible_rows().len(), 4);
+    assert_eq!(feed.trades.len(), 4);
+}
+
+#[test]
+fn trade_feed_minimum_respects_held_rows_and_separate_context_actions() {
+    let mut feed = feed(vec![trade(1000, 1, Some(FIRST), true, "100", "60")]);
+    feed.min_group_notional = 10_000.0;
+    let key = feed.address_hover_key(7, &feed.trades[0]);
+    feed.sync_address_hover(7, Some(&key));
+    feed.apply(TradeFeedEvent::Trades(vec![trade(
+        1001,
+        2,
+        Some(FIRST),
+        true,
+        "100",
+        "60",
+    )]));
+    assert!(feed.visible_rows().is_empty());
+    feed.sync_address_hover(7, None);
+    assert_eq!(feed.visible_rows().len(), 1);
+    feed.trades[0].intent = crate::feed_state::TrackedTradeIntent::Increasing;
+    feed.trades[1].intent = crate::feed_state::TrackedTradeIntent::Opening;
+    assert!(feed.visible_rows().is_empty());
+}
+
+#[test]
 fn trade_feed_sizes_compact_large_quantities_and_preserve_small_prints() {
     for (size, expected) in [
         ("0.00000001", "0.00000001"),

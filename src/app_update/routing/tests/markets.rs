@@ -355,6 +355,7 @@ fn trade_feed_messages_reach_the_trade_feed_route() {
         Message::AddTradeFeedPane,
         Message::TradeFeedTogglePicker(1),
         Message::TradeFeedToggleGrouping(1),
+        Message::TradeFeedMinimumChanged(1, "10k".into()),
         Message::TradeFeedToggleSizeUnit(1),
         Message::TradeFeedToggleContext(1),
         Message::TradeFeedRetryContext(1),

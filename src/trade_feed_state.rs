@@ -53,6 +53,8 @@ pub(crate) struct TradeFeedsState {
 pub(crate) struct TradeFeedInstance {
     pub(crate) mode: OrderBookSymbolModeConfig,
     pub(crate) group_trades: bool,
+    pub(crate) min_group_notional: f64,
+    pub(crate) min_group_notional_input: String,
     pub(crate) size_in_notional: bool,
     pub(crate) show_context: bool,
     pub(crate) source: TradeFeedSource,
@@ -75,6 +77,8 @@ impl TradeFeedInstance {
         Self {
             mode,
             group_trades: false,
+            min_group_notional: 0.0,
+            min_group_notional_input: String::new(),
             size_in_notional: false,
             show_context: false,
             source: TradeFeedSource::Hyperliquid,
@@ -178,6 +182,26 @@ impl TradeFeedInstance {
             }
         }
     }
+}
+
+/// Blank/zero disables the filter; support the same compact units shown on tape.
+pub(crate) fn parse_trade_feed_minimum(input: &str) -> Option<f64> {
+    if input.len() > 64 {
+        return None;
+    }
+    let input = input.trim();
+    if input.is_empty() {
+        return Some(0.0);
+    }
+    let input = input.strip_prefix('$').unwrap_or(input).trim();
+    let (number, multiplier) = match input.as_bytes().last()? {
+        b'k' | b'K' => (&input[..input.len() - 1], 1_000.0),
+        b'm' | b'M' => (&input[..input.len() - 1], 1_000_000.0),
+        b'b' | b'B' => (&input[..input.len() - 1], 1_000_000_000.0),
+        _ => (input, 1.0),
+    };
+    let minimum = crate::helpers::parse_number(number)? * multiplier;
+    (minimum.is_finite() && minimum >= 0.0).then_some(minimum)
 }
 
 /// Relative notional keeps the emphasis useful across differently priced assets.
