@@ -3,7 +3,7 @@ use crate::account_views::table_helpers::{account_table_scroll, empty_account_ta
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use iced::widget::{Column, column, row, rule, text};
-use iced::{Element, Fill};
+use iced::{Element, Fill, Length};
 
 #[path = "orders/row.rs"]
 mod order_row;
@@ -26,7 +26,7 @@ impl TradingTerminal {
             header_txt("Symbol"),
             header_txt("Side"),
             header_txt("Price"),
-            header_txt("Size"),
+            header_txt("Size").width(Length::FillPortion(2)),
             text("").width(120),
         ]
         .spacing(4);

@@ -8,7 +8,7 @@ use crate::order_pending_indicators::{OptimisticOrderRowState, PendingOrderIndic
 
 use iced::widget::text::Wrapping;
 use iced::widget::{Space, container, row, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::{Color, Element, Fill, Length, Theme};
 
 impl TradingTerminal {
     pub(super) fn view_open_order_row<'a>(
@@ -117,11 +117,11 @@ impl TradingTerminal {
                 .width(Fill)
                 .wrapping(Wrapping::None),
             price_cell,
-            text(format_open_order_size(sz, &order.sz))
+            text(format_open_order_size(sz, &order.sz, limit_px))
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
                 .color(optional_value_color(sz, weak_color, invalid_color))
-                .width(Fill)
+                .width(Length::FillPortion(2))
                 .wrapping(Wrapping::None),
             container(row![chase_cell, cancel_cell].spacing(4)).width(120),
         ]
@@ -181,12 +181,16 @@ impl TradingTerminal {
             .color(weak_color)
             .width(Fill)
             .wrapping(Wrapping::None),
-            text(indicator.size.clone())
-                .size(12)
-                .font(crate::app_fonts::monospace_font())
-                .color(weak_color)
-                .width(Fill)
-                .wrapping(Wrapping::None),
+            text(format_open_order_size(
+                parse_open_order_positive(&indicator.size),
+                &indicator.size,
+                limit_px,
+            ))
+            .size(12)
+            .font(crate::app_fonts::monospace_font())
+            .color(weak_color)
+            .width(Length::FillPortion(2))
+            .wrapping(Wrapping::None),
             container(
                 text("Placing\u{2026}")
                     .size(12)
@@ -253,9 +257,16 @@ fn format_open_order_price(
         .unwrap_or_else(invalid_account_data)
 }
 
-fn format_open_order_size(sz: Option<f64>, raw_sz: &str) -> String {
-    sz.map(|_| raw_sz.to_string())
-        .unwrap_or_else(invalid_account_data)
+fn format_open_order_size(sz: Option<f64>, raw_sz: &str, limit_px: Option<f64>) -> String {
+    let Some(sz) = sz else {
+        return invalid_account_data();
+    };
+    let usd_value = limit_px
+        .map(|price| sz * price)
+        .filter(|value| value.is_finite())
+        .map(|value| helpers::format_usd(&format!("{value:.2}")))
+        .unwrap_or_else(invalid_account_data);
+    format!("{raw_sz} ({usd_value})")
 }
 
 #[cfg(test)]

@@ -40,8 +40,37 @@ fn open_order_formatters_mark_invalid_values() {
         format_open_order_price(None, false, &denomination),
         "Invalid data"
     );
-    assert_eq!(format_open_order_size(Some(2.0), "2.0000"), "2.0000");
-    assert_eq!(format_open_order_size(None, "bad"), "Invalid data");
+    assert_eq!(
+        format_open_order_size(None, "bad", Some(100.0)),
+        "Invalid data"
+    );
+}
+
+#[test]
+fn open_order_size_includes_usd_value_and_preserves_coin_precision() {
+    for (raw_size, price, expected) in [
+        ("2.0000", 100.0, "2.0000 ($200.00)"),
+        ("0.12345", 65_000.0, "0.12345 ($8,024.25)"),
+        ("10000", 0.0004123, "10000 ($4.12)"),
+        ("5", 0.42, "5 ($2.10)"),
+    ] {
+        assert_eq!(
+            format_open_order_size(parse_open_order_positive(raw_size), raw_size, Some(price)),
+            expected
+        );
+    }
+}
+
+#[test]
+fn open_order_size_preserves_coin_amount_when_usd_value_is_invalid() {
+    assert_eq!(
+        format_open_order_size(Some(2.0), "2.0000", None),
+        "2.0000 (Invalid data)"
+    );
+    assert_eq!(
+        format_open_order_size(Some(2.0), "2.0000", Some(f64::MAX)),
+        "2.0000 (Invalid data)"
+    );
 }
 
 #[test]
