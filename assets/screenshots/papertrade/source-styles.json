@@ -1,0 +1,117 @@
+{
+  "captured": "2026-10-19",
+  "browser": "Chromium, device scale 1",
+  "landing": {
+    "url": "https://papertrade.xyz/",
+    "variables": {
+      "--cream": "#f4ecd8",
+      "--cream-2": "#efe4ca",
+      "--ink": "#36342cdb",
+      "--ink-soft": "#424038ad",
+      "--tape-bg": "#f4ecd87a",
+      "--tape-border": "#58544a1f"
+    },
+    "elements": [
+      {
+        "selector": "body",
+        "font": "\"Times New Roman\"",
+        "color": "rgb(0, 0, 0)",
+        "background": "rgb(244, 236, 216)",
+        "border": "rgb(0, 0, 0)"
+      },
+      {
+        "selector": ".hero-copy",
+        "font": "\"Times New Roman\"",
+        "color": "rgba(54, 52, 44, 0.86)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(54, 52, 44, 0.86)"
+      },
+      {
+        "selector": ".lede",
+        "font": "Inter, system-ui, -apple-system, sans-serif",
+        "color": "rgb(93, 82, 70)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(93, 82, 70)"
+      },
+      {
+        "selector": ".action",
+        "font": "Inter, system-ui, -apple-system, sans-serif",
+        "color": "rgba(55, 53, 47, 0.32)",
+        "background": "rgba(245, 237, 218, 0.18)",
+        "border": "rgba(84, 79, 68, 0.14)"
+      },
+      {
+        "selector": ".ticker-track",
+        "font": "Inter, system-ui, -apple-system, sans-serif",
+        "color": "rgba(59, 58, 53, 0.8)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(59, 58, 53, 0.8)"
+      }
+    ],
+    "fonts": [
+      {
+        "family": "Inter",
+        "weight": "400",
+        "status": "loaded"
+      },
+      {
+        "family": "Inter",
+        "weight": "500",
+        "status": "loaded"
+      }
+    ]
+  },
+  "exchange": {
+    "url": "https://exchange.papertrade.xyz/trade/btc",
+    "variables": {
+      "--font-ui": "Inter,system-ui,-apple-system,sans-serif",
+      "--pt-body": "rgb(244,236,216)",
+      "--pt-page": "rgb(237,229,208)",
+      "--pt-panel": "rgb(244,236,216)",
+      "--pt-panel-raised": "rgb(250,246,237)",
+      "--pt-panel-sunken": "#e8dec8",
+      "--pt-surface-input": "#fbf8f1",
+      "--pt-border": "rgb(212,203,186)",
+      "--pt-ink": "rgb(42,37,32)",
+      "--pt-ink-muted": "rgb(122,112,96)",
+      "--pt-ink-faint": "#5f564b",
+      "--pt-accent-warm": "rgb(122,98,53)",
+      "--pt-auth-action": "rgb(122,98,53)",
+      "--pt-pos": "rgb(45,95,58)",
+      "--pt-neg": "rgb(139,32,32)",
+      "--pt-warning": "rgb(156,106,0)",
+      "--pt-buy-selected": "rgba(45,95,58,.15)",
+      "--pt-sell-selected": "rgba(139,32,32,.15)",
+      "--pt-staking-btn-go-hover-surface": "#234b2d",
+      "--pt-resize-handle-hover-surface": "#b8ad92",
+      "--pt-chart-plot": "#f4ecd8",
+      "--pt-chart-ink": "#2a2520",
+      "--pt-chart-area": "#d4cbba"
+    },
+    "body": {
+      "tag": "BODY",
+      "text": "[omitted]",
+      "font": "Inter, system-ui, -apple-system, sans-serif",
+      "color": "rgb(42, 37, 32)",
+      "background": "rgb(244, 236, 216)",
+      "border": "rgb(42, 37, 32)"
+    },
+    "stylesheets": [
+      "https://exchange.papertrade.xyz/assets/WalletConnectButton-BAmT-YaK.css",
+      "https://exchange.papertrade.xyz/assets/RollingNumber-BX0WXMCZ.css",
+      "https://exchange.papertrade.xyz/assets/useTradingNetwork-CnnRrHhB.css",
+      "https://exchange.papertrade.xyz/assets/QueuedIntentLabel-BL-igUHQ.css",
+      "https://exchange.papertrade.xyz/assets/app-DdeGo5yi.css",
+      "https://exchange.papertrade.xyz/assets/ChartDropdown-MV9SO6dB.css",
+      "https://exchange.papertrade.xyz/assets/ShareTradeLink-DgkKorSr.css",
+      "https://exchange.papertrade.xyz/assets/TradeChart-BjcV17xX.css",
+      "https://exchange.papertrade.xyz/assets/useChainPressure-B7dwR0IQ.css",
+      "https://exchange.papertrade.xyz/assets/trade-DFqIdexG.css",
+      "https://exchange.papertrade.xyz/assets/share-entry-b9UyZcjg.css",
+      "https://exchange.papertrade.xyz/assets/LanguageMenu-BfeATPSd.css"
+    ],
+    "font_faces": [
+      "@font-face { font-family: Inter; font-style: normal; font-weight: 100 700; font-display: swap; src: url(\"/assets/inter-v20-latin-Dx4kXJAl.woff2\") format(\"woff2\"); unicode-range: U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304, U+308, U+329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }"
+    ]
+  }
+}

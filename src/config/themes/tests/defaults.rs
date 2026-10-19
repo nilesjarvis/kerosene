@@ -5,7 +5,7 @@ fn default_theme_is_kerosene() {
     assert_eq!(default_theme(), "Custom: Kerosene");
 }
 
-fn default_theme_expectations() -> [ThemeExpectation<'static>; 16] {
+fn default_theme_expectations() -> [ThemeExpectation<'static>; 17] {
     [
         ThemeExpectation {
             name: "Kerosene",
@@ -78,6 +78,18 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 16] {
             chart_bull: Some("#26A69A"),
             chart_bear: Some("#EF5350"),
             chart_line: Some("#2962FF"),
+        },
+        ThemeExpectation {
+            name: "Papertrade",
+            background: "#F4ECD8",
+            text: "#2A2520",
+            primary: "#7A6235",
+            success: "#2D5F3A",
+            warning: "#9C6A00",
+            danger: "#8B2020",
+            chart_bull: Some("#2D5F3A"),
+            chart_bear: Some("#8B2020"),
+            chart_line: Some("#2A2520"),
         },
         ThemeExpectation {
             name: "XYZ",

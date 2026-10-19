@@ -14,6 +14,7 @@ mod hyperliquid;
 mod ibkr_dark;
 mod kraken;
 mod kwenta;
+mod papertrade;
 mod tradingview;
 mod ubuntu;
 
@@ -110,6 +111,8 @@ impl TradingTerminal {
             theme_name == "Custom: kwenta" && Self::palette_matches_kwenta_source(palette);
         let use_tradingview_source_palette = theme_name == "Custom: TradingView"
             && Self::palette_matches_tradingview_source(palette);
+        let use_papertrade_source_palette =
+            theme_name == "Custom: Papertrade" && Self::palette_matches_papertrade_source(palette);
         let use_ubuntu_source_palette =
             theme_name == "Custom: ubuntu" && Self::palette_matches_ubuntu_source(palette);
 
@@ -167,6 +170,11 @@ impl TradingTerminal {
                     && TradingTerminal::palette_matches_tradingview_source(p)
                 {
                     return TradingTerminal::tradingview_source_extended_palette();
+                }
+                if use_papertrade_source_palette
+                    && TradingTerminal::palette_matches_papertrade_source(p)
+                {
+                    return TradingTerminal::papertrade_source_extended_palette();
                 }
                 if use_ubuntu_source_palette && TradingTerminal::palette_matches_ubuntu_source(p) {
                     return TradingTerminal::ubuntu_source_extended_palette();

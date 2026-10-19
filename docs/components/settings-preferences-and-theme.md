@@ -107,6 +107,47 @@ shades. Config normalization adds the preset to older configurations once,
 preserves existing customizations, and keeps the active theme unchanged. The
 screenshot is a visual reference, not a bundled application asset.
 
+The bundled **Papertrade** preset reproduces the light palette of
+[papertrade.xyz](https://papertrade.xyz/) and its
+[exchange](https://exchange.papertrade.xyz/), sampled on 2026-10-19. Select it
+under Settings > Themes > Custom Themes. `app_theme/papertrade.rs` maps the
+source's cream surfaces, warm brown labels, ochre actions, forest green buys,
+and burgundy sells to iced's extended palette. Pane and chart backgrounds stay
+cream instead of using generated gray shades. Line charts use the source's
+dark ink and beige area fill; candles retain green/red direction semantics.
+Editing any base palette color returns to normal custom-theme shade generation.
+Existing configurations receive the preset without changing their active theme
+or overwriting a customized Papertrade preset.
+
+| Papertrade CSS token | Kerosene role | Color |
+| --- | --- | --- |
+| `--pt-body`, `--pt-panel`, `--pt-chart-plot` | Background / pane bodies | `#F4ECD8` |
+| `--pt-page`, `--pt-header` | Recessed surfaces | `#EDE5D0` |
+| `--pt-panel-raised` | Raised controls | `#FAF6ED` |
+| `--pt-ink`, `--pt-chart-ink` | Text / chart line | `#2A2520` |
+| `--pt-ink-muted` | Secondary labels | `#7A7060` |
+| `--pt-border`, `--pt-chart-area` | Borders / chart area fill | `#D4CBBA` |
+| `--pt-auth-action`, `--pt-accent-warm` | Primary actions | `#7A6235` |
+| `--pt-pos` / `--pt-neg` | Buy / sell | `#2D5F3A` / `#8B2020` |
+| `--pt-warning` | Warning | `#9C6A00` |
+
+Reference captures are saved with the project:
+[landing desktop](../../assets/screenshots/papertrade/landing-desktop.png),
+[landing mobile](../../assets/screenshots/papertrade/landing-mobile.png), and
+[exchange desktop](../../assets/screenshots/papertrade/exchange-desktop.png).
+The exchange was captured in a fresh browser without a connected wallet.
+[Source styles](../../assets/screenshots/papertrade/source-styles.json) record
+computed CSS tokens, font declarations, and source stylesheet URLs.
+The [Kerosene preview](../../assets/screenshots/papertrade/kerosene-preview.png)
+shows the theme with Inter in an isolated, wallet-free desktop smoke test.
+
+Both sites use **Inter** for UI text; the landing wordmark is an SVG, not a
+separate text font. Kerosene already embeds `assets/fonts/Inter-Variable.ttf`
+with its SIL Open Font License. To match the typography, select **Inter** under
+Settings > Themes > Fonts > Display Font, then restart. The separate
+Monospace Font selector also offers Inter for matching numeric readouts, though
+Inter is proportional. Theme selection leaves both font preferences unchanged.
+
 ### Window Transparency and Blur
 
 Appearance settings include an opt-in `Transparency` toggle and a background

@@ -178,6 +178,46 @@ fn adds_tradingview_to_existing_config_once_and_preserves_customizations() {
 }
 
 #[test]
+fn adds_papertrade_to_existing_config_once_and_preserves_customizations() {
+    let mut config = KeroseneConfig {
+        active_theme: "Dark".to_string(),
+        custom_themes: Vec::new(),
+        ..KeroseneConfig::default()
+    };
+
+    normalize_loaded_config(&mut config);
+
+    let papertrade = config
+        .custom_themes
+        .iter_mut()
+        .find(|theme| theme.name == "Papertrade")
+        .expect("Papertrade theme should be added to older configs");
+    assert_eq!(papertrade.background, "#F4ECD8");
+    assert_eq!(papertrade.chart_bull.as_deref(), Some("#2D5F3A"));
+    assert_eq!(papertrade.chart_bear.as_deref(), Some("#8B2020"));
+    assert_eq!(papertrade.chart_line.as_deref(), Some("#2A2520"));
+    assert_eq!(papertrade.chart_line_gradient.as_deref(), Some("#D4CBBA"));
+    papertrade.primary = "#123456".to_string();
+    papertrade.chart_bull = Some("#ABCDEF".to_string());
+    papertrade.chart_line = Some("#FEDCBA".to_string());
+    papertrade.chart_line_gradient = Some("#AABBCC".to_string());
+    let customized = papertrade.clone();
+
+    let serialized = serde_json::to_string(&config).expect("config serializes");
+    let mut reloaded: KeroseneConfig =
+        serde_json::from_str(&serialized).expect("config deserializes");
+    normalize_loaded_config(&mut reloaded);
+
+    let papertrade_themes: Vec<_> = reloaded
+        .custom_themes
+        .iter()
+        .filter(|theme| theme.name == "Papertrade")
+        .collect();
+    assert_eq!(papertrade_themes, vec![&customized]);
+    assert_eq!(reloaded.active_theme, "Dark");
+}
+
+#[test]
 fn normalizes_out_of_range_market_slippage() {
     let mut value =
         serde_json::to_value(KeroseneConfig::default()).expect("default config serializes");

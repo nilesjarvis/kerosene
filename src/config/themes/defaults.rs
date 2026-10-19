@@ -128,6 +128,15 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
             }),
         },
         ThemeSpec {
+            name: "Papertrade",
+            colors: [
+                "#F4ECD8", "#2A2520", "#7A6235", "#2D5F3A", "#9C6A00", "#8B2020",
+            ],
+            chart: Some(ChartThemeSpec::candles_and_line_gradient(
+                "#2D5F3A", "#8B2020", "#2A2520", "#D4CBBA",
+            )),
+        },
+        ThemeSpec {
             name: "XYZ",
             colors: [
                 "#11151B", "#E8E8E8", "#FFC028", "#08A088", "#D8A828", "#FF3848",

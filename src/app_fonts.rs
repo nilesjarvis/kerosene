@@ -9,6 +9,7 @@ use std::sync::{OnceLock, RwLock};
 // ---------------------------------------------------------------------------
 
 const ROBOTO_BYTES: &[u8] = include_bytes!("../assets/fonts/Roboto-Variable.ttf");
+// Also used by papertrade.xyz; keep font selection independent from its theme.
 const INTER_BYTES: &[u8] = include_bytes!("../assets/fonts/Inter-Variable.ttf");
 const DM_SANS_BYTES: &[u8] = include_bytes!("../assets/fonts/DMSans-Variable.ttf");
 const ROBOTO_MONO_BYTES: &[u8] = include_bytes!("../assets/fonts/RobotoMono-Variable.ttf");
@@ -116,4 +117,45 @@ fn set_monospace_font(font: Font) {
 
 fn leak_font_family_name(family: &str) -> &'static str {
     Box::leak(family.to_string().into_boxed_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn papertrade_inter_font_is_embedded_and_optional() {
+        let config = config::KeroseneConfig {
+            active_theme: "Custom: Papertrade".to_string(),
+            ..config::KeroseneConfig::default()
+        };
+        let original_font = settings_from_config(&config).default_font;
+        assert_eq!(
+            original_font.family,
+            Family::Name(config::QUANTICO_FONT_FAMILY)
+        );
+
+        let selected = config::KeroseneConfig {
+            display_font: config::DisplayFontConfig::Custom {
+                family: config::INTER_FONT_FAMILY.to_string(),
+            },
+            ..config
+        };
+        let settings = settings_from_config(&selected);
+        assert_eq!(settings.default_font.family, Family::Name("Inter"));
+
+        // Parse the actual embedded fonts so a mislabeled or missing asset fails.
+        let mut database = fontdb::Database::new();
+        for bytes in settings.fonts {
+            database.load_font_data(bytes.into_owned());
+        }
+        assert!(
+            database
+                .query(&fontdb::Query {
+                    families: &[fontdb::Family::Name("Inter")],
+                    ..fontdb::Query::default()
+                })
+                .is_some()
+        );
+    }
 }
