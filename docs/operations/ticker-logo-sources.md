@@ -1,5 +1,19 @@
 # Ticker logo sources
 
+## XYZ100 index (2026-10-19)
+
+`XYZ100.svg` uses the official gold "100" numeral path from
+[Hyperliquid's XYZ100 market SVG](https://app.hyperliquid.xyz/coins/xyz:XYZ100.svg),
+also shown in [TradeXYZ's market icon](https://app.trade.xyz/markets/100.png).
+The numeral geometry is unchanged; the navy background and circular mask are
+removed, the `viewBox` is cropped to the numerals, and the fill is black for the
+app's theme tint. The background and zero counters remain transparent, with no
+embedded raster images or external resources.
+
+The existing ticker filename resolver in `src/helpers/symbols.rs` automatically
+embeds the asset and resolves both `XYZ100` and `xyz:XYZ100`, including pair
+suffixes. The mark belongs to its respective owner.
+
 ## Crypto additions (2026-10-01)
 
 `PUMP.svg`, `MON.svg`, and `ZRO.svg` use vector paths from the projects' official
