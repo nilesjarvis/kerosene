@@ -5,8 +5,9 @@ use super::super::model::{CandlestickChart, HudSelectorKind};
 use super::super::state::{ChartState, HudMarketSide, HudOrderKind};
 use super::{
     CrosshairOverlayContext, HUD_CHAR_WIDTH, HUD_SHADOW, HUD_WARNING_YELLOW, draw_hud_text,
-    format_hud_clock_time, hud_display_size,
+    format_hud_clock_time, hud_display_size, parse_hud_size_value, positive_finite_value,
 };
+use crate::helpers::format_with_commas;
 use iced::widget::canvas;
 use iced::{Color, Point, Rectangle, Size, alignment};
 
@@ -27,6 +28,7 @@ const STATION_MARGIN: f32 = 8.0;
 const STATION_WIDTH: f32 = 158.0;
 const STATION_PAD: f32 = 7.0;
 const STATION_ROW_H: f32 = 13.0;
+const STATION_NOTIONAL_ROW_H: f32 = 14.0;
 const STATION_COMPACT_WIDTH: f32 = 140.0;
 const STATION_MIN_W: f32 = 200.0;
 const STATION_MIN_H: f32 = 120.0;
@@ -402,10 +404,20 @@ pub(in crate::chart) fn hud_station_metrics(
 
     let compact = chart_w < STATION_FULL_MIN_W || price_h < STATION_FULL_MIN_H;
     let (width, height) = if compact {
-        (STATION_COMPACT_WIDTH, 2.0 * STATION_ROW_H + 10.0)
+        (
+            STATION_COMPACT_WIDTH,
+            STATION_NOTIONAL_ROW_H + 2.0 * STATION_ROW_H + 10.0,
+        )
     } else {
-        // pad + size row + rule + equipped row + hint row + rule + safety + pad
-        let height = STATION_PAD * 2.0 + 18.0 + 11.0 + STATION_ROW_H + 11.0 + 11.0 + 14.0;
+        // pad + notional + size + rule + equipped + hint + rule + safety + pad
+        let height = STATION_PAD * 2.0
+            + STATION_NOTIONAL_ROW_H
+            + 18.0
+            + 11.0
+            + STATION_ROW_H
+            + 11.0
+            + 11.0
+            + 14.0;
         (STATION_WIDTH, height)
     };
 
@@ -448,6 +460,50 @@ pub(in crate::chart) fn hud_selector_bounds(
 }
 
 impl CandlestickChart {
+    fn hud_size_notional(&self, state: &ChartState, hover_price: Option<f64>) -> Option<f64> {
+        let size = parse_hud_size_value(hud_display_size(state))?;
+        let market_price = self
+            .market_reference_price
+            .and_then(positive_finite_value)
+            .or_else(|| {
+                self.candles
+                    .last()
+                    .and_then(|candle| positive_finite_value(candle.close))
+            });
+        let price = match state.hud_order_kind {
+            HudOrderKind::Limit => hover_price.and_then(positive_finite_value).or(market_price),
+            HudOrderKind::Market | HudOrderKind::Chase => market_price,
+        }?;
+        let notional = size * price;
+        notional.is_finite().then_some(notional)
+    }
+
+    fn draw_hud_station_notional<PriceToY>(
+        &self,
+        ctx: &mut CrosshairOverlayContext<'_, PriceToY>,
+        position: Point,
+        align_x: alignment::Horizontal,
+    ) where
+        PriceToY: Fn(f64) -> f32,
+    {
+        let hover_price = ctx.state.cursor_position.and_then(|cursor| {
+            (cursor.y >= 0.0 && cursor.y <= ctx.price_h && ctx.price_range > 0.0)
+                .then(|| self.y_to_price_with(cursor.y, ctx.price_hi, ctx.price_range, ctx.price_h))
+        });
+        let label = format_hud_notional(self.hud_size_notional(ctx.state, hover_price));
+        draw_hud_text_sized(
+            ctx.frame,
+            &label,
+            position,
+            Color {
+                a: 0.90,
+                ..ctx.theme.palette().text
+            },
+            align_x,
+            10.0,
+        );
+    }
+
     fn draw_hud_weapon_station<PriceToY>(
         &self,
         ctx: &mut CrosshairOverlayContext<'_, PriceToY>,
@@ -489,6 +545,9 @@ impl CandlestickChart {
         let left = bounds.x + STATION_PAD;
         let right = bounds.x + bounds.width - STATION_PAD;
         let mut y = bounds.y + STATION_PAD + 9.0;
+
+        self.draw_hud_station_notional(ctx, Point::new(right, y), alignment::Horizontal::Right);
+        y += STATION_NOTIONAL_ROW_H;
 
         // Size ("ammo") row.
         let editing = ctx.state.hud_size_editing;
@@ -669,7 +728,9 @@ impl CandlestickChart {
         let left = bounds.x + STATION_PAD;
         let right = bounds.x + bounds.width - STATION_PAD;
         let summary = hud_station_compact_summary(ctx.state);
-        let y = bounds.y + 5.0 + 6.0;
+        let mut y = bounds.y + 5.0 + 6.0;
+        self.draw_hud_station_notional(ctx, Point::new(left, y), alignment::Horizontal::Left);
+        y += STATION_NOTIONAL_ROW_H;
         draw_hud_text(
             ctx.frame,
             &summary,
@@ -766,6 +827,24 @@ impl CandlestickChart {
             (self.clock_now_ms / 1_000).is_multiple_of(2)
         }
     }
+}
+
+fn format_hud_notional(notional: Option<f64>) -> String {
+    let Some(mut value) = notional.filter(|value| value.is_finite() && *value >= 0.0) else {
+        return "$--".to_string();
+    };
+    if value > 0.0 && value < 0.01 {
+        return "<$0.01".to_string();
+    }
+
+    let suffixes = ["", "K", "M", "B", "T"];
+    let mut suffix = 0;
+    // Promote values that would round up to 1,000 in the smaller unit.
+    while value >= 999.995 && suffix < suffixes.len() - 1 {
+        value /= 1_000.0;
+        suffix += 1;
+    }
+    format!("${}{}", format_with_commas(value), suffixes[suffix])
 }
 
 /// Shrinks the ammo value (and drops the COIN unit) so long sizes never run
@@ -1249,6 +1328,113 @@ pub(super) fn fill_triangle(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::Candle;
+
+    #[test]
+    fn size_notional_uses_limit_price_or_market_reference_for_the_order_mode() {
+        let mut chart = CandlestickChart::new(1);
+        chart.set_market_reference_price(Some(50_000.0));
+        let mut state = ChartState {
+            hud_size_input: "0.25".to_string(),
+            hud_size_editing: true,
+            ..ChartState::default()
+        };
+
+        for (kind, expected) in [
+            (HudOrderKind::Limit, 10_000.0),
+            (HudOrderKind::Market, 12_500.0),
+            (HudOrderKind::Chase, 12_500.0),
+        ] {
+            state.hud_order_kind = kind;
+            state.hud_size_input = "0.25".to_string();
+            assert_eq!(
+                chart.hud_size_notional(&state, Some(40_000.0)),
+                Some(expected)
+            );
+            state.hud_size_input = "0.5".to_string();
+            assert_eq!(
+                chart.hud_size_notional(&state, Some(40_000.0)),
+                Some(expected * 2.0)
+            );
+            state.hud_size_editing = false;
+            assert_eq!(
+                chart.hud_size_notional(&state, Some(40_000.0)),
+                Some(expected * 2.0)
+            );
+        }
+    }
+
+    #[test]
+    fn size_notional_falls_back_to_latest_price_without_a_limit_hover() {
+        let mut chart = CandlestickChart::new(1);
+        chart.set_candles(vec![Candle::test_ohlcv(
+            1_000,
+            1_999,
+            [25.0, 26.0, 24.0, 25.0],
+            10.0,
+        )]);
+        let mut state = ChartState {
+            hud_size_input: "2.5".to_string(),
+            ..ChartState::default()
+        };
+        for kind in [
+            HudOrderKind::Limit,
+            HudOrderKind::Market,
+            HudOrderKind::Chase,
+        ] {
+            state.hud_order_kind = kind;
+            assert_eq!(chart.hud_size_notional(&state, None), Some(62.5));
+            assert_eq!(chart.hud_size_notional(&state, Some(f64::NAN)), Some(62.5));
+        }
+    }
+
+    #[test]
+    fn size_notional_handles_missing_prices_and_partial_or_invalid_input() {
+        let mut chart = CandlestickChart::new(1);
+        let mut state = ChartState {
+            hud_order_kind: HudOrderKind::Market,
+            ..ChartState::default()
+        };
+        assert_eq!(chart.hud_size_notional(&state, Some(100.0)), None);
+        chart.set_market_reference_price(Some(100.0));
+        for (input, expected) in [
+            ("", Some(0.0)),
+            ("0", Some(0.0)),
+            ("0.", Some(0.0)),
+            ("2.", Some(200.0)),
+            ("-1", None),
+            ("NaN", None),
+            ("inf", None),
+            ("invalid", None),
+            ("1e308", None),
+        ] {
+            state.hud_size_input = input.to_string();
+            assert_eq!(chart.hud_size_notional(&state, None), expected, "{input}");
+        }
+    }
+
+    #[test]
+    fn notional_labels_stay_readable_from_cents_to_trillions() {
+        for (value, expected) in [
+            (0.0, "$0.00"),
+            (0.001, "<$0.01"),
+            (0.25, "$0.25"),
+            (12.5, "$12.50"),
+            (999.99, "$999.99"),
+            (999.999, "$1.00K"),
+            (1_000.0, "$1.00K"),
+            (12_345.0, "$12.35K"),
+            (999_999.0, "$1.00M"),
+            (1_250_000.0, "$1.25M"),
+            (2_500_000_000.0, "$2.50B"),
+            (1_250_000_000_000.0, "$1.25T"),
+        ] {
+            assert_eq!(format_hud_notional(Some(value)), expected, "{value}");
+        }
+        for value in [None, Some(-1.0), Some(f64::NAN), Some(f64::INFINITY)] {
+            assert_eq!(format_hud_notional(value), "$--");
+        }
+    }
 
     #[test]
     fn pulse_wave_stays_normalized() {

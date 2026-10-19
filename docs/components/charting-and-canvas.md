@@ -360,6 +360,12 @@ and `H` selects Chase. Market and Chase use the `Y`/`X` side selector; Limit
 infers its side from the clicked price. An armed Chase click routes through the
 normal client-side Chase lifecycle for the chart's symbol.
 
+The HUD size panel shows compact USD notional above the coin quantity, including
+while editing with `S`. Limit notional uses the hovered order price, falling back
+to the market reference/latest candle when outside the price plot; Market and
+Chase use the market reference/latest candle. The readout updates with size and
+price changes, uses `K`/`M`/`B`/`T` suffixes, and shows `$--` without a valid price.
+
 Changing the chart symbol disarms HUD trading and resets its coin size to `1`,
 including any in-progress size edit. The reset applies before the next canvas
 interaction can submit an order. Timeframe changes and ordinary view resets
