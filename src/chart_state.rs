@@ -8,6 +8,7 @@ mod overlays;
 mod price_change;
 mod quick_trade;
 mod spaghetti_fetch;
+mod timeframes;
 
 pub(crate) use self::candles::CANDLE_FETCH_MAX_ATTEMPTS;
 pub(crate) use self::model::{

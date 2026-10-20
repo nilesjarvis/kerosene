@@ -12,6 +12,9 @@ use iced::Task;
 impl TradingTerminal {
     pub(super) fn update_chart_candles(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::AllChartsSwitchTimeframe(timeframe) => {
+                self.switch_all_chart_timeframes(timeframe)
+            }
             Message::ChartReload(id) => self.reload_chart_candles(id),
             Message::ChartSwitchTimeframe(id, timeframe) => {
                 self.switch_chart_candle_timeframe(id, timeframe)

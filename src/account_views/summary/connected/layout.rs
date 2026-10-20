@@ -274,7 +274,7 @@ impl TradingTerminal {
             .push(self.summary_settings_button())
             .spacing(6)
             .align_y(iced::Alignment::Center);
-        self.push_summary_status_toggles(actions)
+        self.push_summary_controls(actions)
     }
 
     fn mask_connected_summary_usd(&self, value: &str) -> String {

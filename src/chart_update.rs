@@ -168,6 +168,7 @@ impl TradingTerminal {
             }
             message @ (Message::ChartReload(_)
             | Message::ChartSwitchTimeframe(_, _)
+            | Message::AllChartsSwitchTimeframe(_)
             | Message::ChartCandlesLoaded(_, _)
             | Message::ChartSecondaryCandlesLoaded(_, _)
             | Message::ChartFundingHistoryLoaded(_, _)

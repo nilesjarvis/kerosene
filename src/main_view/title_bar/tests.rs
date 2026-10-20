@@ -142,6 +142,11 @@ async fn native_chrome_keeps_status_actions_in_every_account_summary_state() {
         .await
         .expect("software renderer");
     let mut terminal = TradingTerminal::boot_from_config(KeroseneConfig::default()).0;
+    terminal.active_layout_name = Some("Top 8 by 24h volume".into());
+    terminal.charts.insert(
+        99,
+        crate::chart_state::ChartInstance::new(99, "ETH".into(), crate::timeframe::Timeframe::M15),
+    );
     for (theme_name, theme) in [("dark", Theme::Dark), ("light", Theme::Light)] {
         for width in [600.0, 1000.0, 1600.0] {
             terminal.main_window_size = Some(Size::new(width, 800.0));

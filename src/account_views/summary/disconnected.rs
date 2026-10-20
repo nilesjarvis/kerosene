@@ -35,7 +35,7 @@ impl TradingTerminal {
         ]
         .spacing(8)
         .align_y(iced::Alignment::Center);
-        let actions = self.push_summary_status_toggles(actions);
+        let actions = self.push_summary_controls(actions);
 
         if available_width
             < self.account_summary_action_breakpoint(CONNECTED_STATUS_ACTION_BREAKPOINT)

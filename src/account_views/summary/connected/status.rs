@@ -96,6 +96,6 @@ impl TradingTerminal {
         ]
         .spacing(6)
         .align_y(iced::Alignment::Center);
-        self.push_summary_status_toggles(actions)
+        self.push_summary_controls(actions)
     }
 }

@@ -50,6 +50,16 @@ differ between startup and runtime layout changes.
 
 ## Chart Surfaces
 
+The account summary bar's **All charts** picker sends
+`Message::AllChartsSwitchTimeframe` through the chart update route. It applies
+the existing per-instance timeframe handlers to all open candle and comparison
+charts, including canvas workspaces and detached windows. Comparison charts
+anchored to a market session retain their existing session granularity limits.
+The picker derives its value from current chart intervals and shows **Mixed**
+when they differ. This is a one-time bulk action: individual timeframe controls
+remain independent, and each chart's interval persists through the existing
+chart configuration. Saved layout templates and defaults are not rewritten.
+
 One chart can be rendered in different surfaces:
 
 - inline pane surface

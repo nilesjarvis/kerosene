@@ -20,6 +20,7 @@ const ACCOUNT_SUMMARY_DEFAULT_HEIGHT: f32 = 54.0;
 const ACCOUNT_SUMMARY_WRAPPED_HEIGHT: f32 = 104.0;
 const ACCOUNT_SUMMARY_HORIZONTAL_PADDING: f32 = 24.0;
 const ACCOUNT_SUMMARY_STATUS_SPACING: f32 = 8.0;
+const ACCOUNT_SUMMARY_TIMEFRAME_WIDTH: f32 = 64.0;
 const ACCOUNT_SUMMARY_BORDER_WIDTH: f32 = 1.0;
 const PANE_GRID_MIN_SIZE: f32 = 50.0;
 
@@ -42,10 +43,13 @@ impl TradingTerminal {
         self.view_account_summary_with_menus(content)
     }
 
-    pub(super) fn push_summary_status_toggles<'a>(
+    pub(super) fn push_summary_controls<'a>(
         &self,
-        actions: Row<'a, Message>,
+        mut actions: Row<'a, Message>,
     ) -> Row<'a, Message> {
+        if self.has_open_timeframe_charts() {
+            actions = actions.push(self.view_summary_timeframe_picker());
+        }
         if self.custom_window_chrome_active {
             actions
         } else {
@@ -54,6 +58,11 @@ impl TradingTerminal {
     }
 
     pub(super) fn account_summary_action_breakpoint(&self, breakpoint: f32) -> f32 {
+        let breakpoint = if self.has_open_timeframe_charts() {
+            breakpoint + ACCOUNT_SUMMARY_TIMEFRAME_WIDTH + ACCOUNT_SUMMARY_STATUS_SPACING
+        } else {
+            breakpoint
+        };
         // Allow room for all three status controls and the action row's gap
         // when native decorations replace the custom title bar.
         if self.custom_window_chrome_active {
@@ -166,7 +175,7 @@ mod tests {
     fn loading_bar_height_pre_matches_populated_metrics_breakpoint() {
         // While loading (no snapshot yet) the bar must already size to the
         // metrics breakpoint so the no-data -> data flip never changes height.
-        // Below 1180 this is WRAPPED; the old status breakpoint (820) would
+        // Below the metrics breakpoint this is WRAPPED; the status breakpoint would
         // have reported DEFAULT here and caused a jump when data arrived.
         let mut narrow = connected_terminal(Some(1000.0));
         narrow.account_loading = true;
@@ -175,7 +184,7 @@ mod tests {
             ACCOUNT_SUMMARY_WRAPPED_HEIGHT
         );
 
-        let mut wide = connected_terminal(Some(1200.0));
+        let mut wide = connected_terminal(Some(1400.0));
         wide.account_loading = true;
         assert_eq!(
             wide.account_summary_bar_height(),
@@ -203,17 +212,13 @@ mod tests {
         terminal.connected_address = None;
         terminal.account_loading = false;
         terminal.account_connect_pending = false;
+        let breakpoint =
+            terminal.account_summary_action_breakpoint(CONNECTED_STATUS_ACTION_BREAKPOINT);
 
         for (content_width, expected_height) in [
             (None, ACCOUNT_SUMMARY_DEFAULT_HEIGHT),
-            (
-                Some(CONNECTED_STATUS_ACTION_BREAKPOINT - 1.0),
-                ACCOUNT_SUMMARY_WRAPPED_HEIGHT,
-            ),
-            (
-                Some(CONNECTED_STATUS_ACTION_BREAKPOINT),
-                ACCOUNT_SUMMARY_DEFAULT_HEIGHT,
-            ),
+            (Some(breakpoint - 1.0), ACCOUNT_SUMMARY_WRAPPED_HEIGHT),
+            (Some(breakpoint), ACCOUNT_SUMMARY_DEFAULT_HEIGHT),
             (Some(1200.0), ACCOUNT_SUMMARY_DEFAULT_HEIGHT),
         ] {
             terminal.main_window_size = content_width
@@ -252,18 +257,53 @@ mod tests {
                     } else {
                         STATUS_TOGGLES_WIDTH + ACCOUNT_SUMMARY_STATUS_SPACING
                     };
+                    let timeframe_width = if terminal.has_open_timeframe_charts() {
+                        ACCOUNT_SUMMARY_TIMEFRAME_WIDTH + ACCOUNT_SUMMARY_STATUS_SPACING
+                    } else {
+                        0.0
+                    };
                     for (offset, expected_height) in [
                         (-1.0, ACCOUNT_SUMMARY_WRAPPED_HEIGHT),
                         (0.0, ACCOUNT_SUMMARY_DEFAULT_HEIGHT),
                     ] {
                         terminal.main_window_size = Some(iced::Size::new(
-                            breakpoint + ACCOUNT_SUMMARY_HORIZONTAL_PADDING + status_width + offset,
+                            breakpoint
+                                + ACCOUNT_SUMMARY_HORIZONTAL_PADDING
+                                + status_width
+                                + timeframe_width
+                                + offset,
                             800.0,
                         ));
                         assert_eq!(terminal.account_summary_bar_height(), expected_height);
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn timeframe_picker_reserves_space_only_when_charts_are_open() {
+        let mut terminal =
+            TradingTerminal::boot_from_config(crate::config::KeroseneConfig::default()).0;
+        terminal.charts.clear();
+        terminal.spaghetti_charts.clear();
+        for custom_chrome in [false, true] {
+            terminal.custom_window_chrome_active = custom_chrome;
+            let empty_breakpoint =
+                terminal.account_summary_action_breakpoint(CONNECTED_STATUS_ACTION_BREAKPOINT);
+            terminal.charts.insert(
+                7,
+                crate::chart_state::ChartInstance::new(
+                    7,
+                    "BTC".into(),
+                    crate::timeframe::Timeframe::H1,
+                ),
+            );
+            assert_eq!(
+                terminal.account_summary_action_breakpoint(CONNECTED_STATUS_ACTION_BREAKPOINT),
+                empty_breakpoint + ACCOUNT_SUMMARY_TIMEFRAME_WIDTH + ACCOUNT_SUMMARY_STATUS_SPACING,
+            );
+            terminal.charts.clear();
         }
     }
 }

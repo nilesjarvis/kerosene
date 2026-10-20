@@ -331,6 +331,14 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
 }
 
 #[test]
+fn global_chart_timeframe_reaches_chart_route() {
+    assert_route(
+        Message::AllChartsSwitchTimeframe(crate::timeframe::Timeframe::H4),
+        UpdateRoute::Chart,
+    );
+}
+
+#[test]
 fn moving_average_period_edits_reach_chart_route() {
     assert_route(
         Message::ChartMovingAveragePeriodChanged(

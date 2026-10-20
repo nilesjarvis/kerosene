@@ -623,6 +623,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartReload(_)
         | Message::ChartResetView(_, _)
         | Message::ChartSwitchTimeframe(_, _)
+        | Message::AllChartsSwitchTimeframe(_)
         | Message::ToggleMacroMenu(_)
         | Message::ChartEmaCloudAdded(_)
         | Message::ChartEmaCloudRemoved(_, _)

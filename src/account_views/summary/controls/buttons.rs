@@ -1,7 +1,9 @@
+use super::super::ACCOUNT_SUMMARY_TIMEFRAME_WIDTH;
 use crate::app_state::TradingTerminal;
 use crate::canvas_state::WorkspaceId;
 use crate::message::Message;
-use iced::widget::{button, pick_list, row, text};
+use crate::timeframe::chart_timeframe_options;
+use iced::widget::{button, column, pick_list, row, text, tooltip};
 use iced::{Element, Length, Theme};
 
 const DROPDOWN_CHEVRON_UP: &str = "\u{25B4}";
@@ -12,6 +14,29 @@ const DROPDOWN_CHEVRON_DOWN: &str = "\u{25BE}";
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    pub(crate) fn view_summary_timeframe_picker(&self) -> Element<'static, Message> {
+        let options = chart_timeframe_options(!self.hydromancer_api_key.trim().is_empty());
+        let picker = pick_list(
+            options,
+            self.common_chart_timeframe(),
+            Message::AllChartsSwitchTimeframe,
+        )
+        .placeholder("Mixed")
+        .padding([4, 8])
+        .text_size(10)
+        .width(ACCOUNT_SUMMARY_TIMEFRAME_WIDTH);
+
+        tooltip(
+            column![text("All charts").size(10), picker]
+                .spacing(2)
+                .align_x(iced::Alignment::Center)
+                .width(ACCOUNT_SUMMARY_TIMEFRAME_WIDTH),
+            text("Set timeframe for all open charts").size(10),
+            tooltip::Position::Bottom,
+        )
+        .into()
+    }
+
     pub(crate) fn summary_market_universe_picker(&self) -> Element<'_, Message> {
         let (options, selected) = self.market_universe_picker_options();
 

@@ -7,6 +7,22 @@ use crate::timeframe::Timeframe;
 use iced::Task;
 
 impl TradingTerminal {
+    pub(super) fn switch_all_chart_timeframes(&mut self, tf: Timeframe) -> Task<Message> {
+        // Instance maps include main panes, canvas workspaces, and detached charts.
+        // Reuse the individual handlers so caches, stale requests, and persistence
+        // follow the same path as a chart's own timeframe control.
+        let chart_ids: Vec<_> = self.charts.keys().copied().collect();
+        let spaghetti_ids: Vec<_> = self.spaghetti_charts.keys().copied().collect();
+        let mut tasks = Vec::with_capacity(chart_ids.len() + spaghetti_ids.len());
+        for id in chart_ids {
+            tasks.push(self.switch_chart_candle_timeframe(id, tf));
+        }
+        for id in spaghetti_ids {
+            tasks.push(self.update_spaghetti(Message::SpaghettiSwitchTimeframe(id, tf)));
+        }
+        Task::batch(tasks)
+    }
+
     pub(in crate::chart_update) fn switch_chart_candle_timeframe(
         &mut self,
         id: ChartId,
@@ -122,8 +138,157 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chart_state::ChartInstance;
-    use crate::config::ChartCrosshairStyle;
+    use crate::api::Candle;
+    use crate::chart_state::{ChartInstance, DetachedChartWindowState};
+    use crate::config::{ChartCrosshairStyle, KeroseneConfig};
+    use crate::pane_state::PaneKind;
+    use crate::spaghetti_state::SpaghettiChartInstance;
+
+    fn empty_terminal() -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot_from_config(KeroseneConfig::default()).0;
+        terminal.charts.clear();
+        terminal.spaghetti_charts.clear();
+        terminal.config_save_due_at = None;
+        terminal
+    }
+
+    #[test]
+    fn global_timeframe_updates_all_workspaces_and_keeps_individual_controls_independent() {
+        let mut terminal = empty_terminal();
+        for (id, symbol, timeframe) in [
+            (1, "BTC", Timeframe::M5),
+            (2, "ETH", Timeframe::H1),
+            (3, "SOL", Timeframe::D1),
+        ] {
+            let mut instance = ChartInstance::new(id, symbol.into(), timeframe);
+            instance.chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+            instance.chart.set_hud_armed_at(true, 1_000);
+            terminal.charts.insert(id, instance);
+        }
+        terminal.insert_test_canvas_pane(7, PaneKind::Chart(2));
+        terminal
+            .detached_chart_windows
+            .insert(iced::window::Id::unique(), DetachedChartWindowState::new(3));
+        terminal
+            .spaghetti_charts
+            .insert(4, SpaghettiChartInstance::new_pair(4));
+        let mut anchored = SpaghettiChartInstance::new_empty(5);
+        anchored.canvas.active_session = Some(crate::spaghetti::Session::UtcDay);
+        terminal.spaghetti_charts.insert(5, anchored);
+        terminal.status_bar_now_ms = TradingTerminal::now_ms();
+        assert_eq!(terminal.common_chart_timeframe(), None);
+
+        let _task = terminal.update(Message::AllChartsSwitchTimeframe(Timeframe::H4));
+
+        for instance in terminal.charts.values() {
+            assert_eq!(instance.interval, Timeframe::H4);
+            assert!(!instance.chart.hud_armed());
+            assert_eq!(
+                instance.candle_fetch_request.as_ref().map(|r| r.timeframe),
+                Some(Timeframe::H4),
+            );
+        }
+        assert_eq!(terminal.spaghetti_charts[&4].interval, Timeframe::H4);
+        assert_eq!(
+            terminal.spaghetti_charts[&5].canvas.active_session,
+            Some(crate::spaghetti::Session::UtcDay),
+        );
+        assert_eq!(
+            terminal.spaghetti_charts[&5].session_granularity,
+            Some(Timeframe::H4),
+        );
+        assert_eq!(terminal.common_chart_timeframe(), Some(Timeframe::H4));
+        assert!(terminal.config_save_due_at.is_some());
+        assert!(
+            terminal
+                .chart_configs_snapshot()
+                .iter()
+                .all(|config| { config.timeframe == Timeframe::H4.config_str() })
+        );
+
+        let _task = terminal.update(Message::ChartSwitchTimeframe(2, Timeframe::M15));
+        assert_eq!(terminal.charts[&2].interval, Timeframe::M15);
+        assert_eq!(terminal.charts[&1].interval, Timeframe::H4);
+        assert_eq!(terminal.charts[&3].interval, Timeframe::H4);
+        assert_eq!(terminal.spaghetti_charts[&4].interval, Timeframe::H4);
+        assert_eq!(terminal.common_chart_timeframe(), None);
+
+        let _task = terminal.update(Message::AllChartsSwitchTimeframe(Timeframe::D1));
+        assert_eq!(terminal.common_chart_timeframe(), Some(Timeframe::D1));
+    }
+
+    #[test]
+    fn global_timeframe_replaces_primary_and_secondary_requests_and_rejects_old_results() {
+        let mut terminal = empty_terminal();
+        let mut instance = ChartInstance::new(1, "BTC".into(), Timeframe::H1);
+        instance.set_secondary_symbol_identity("ETH".into(), "ETH".into());
+        terminal.charts.insert(1, instance);
+        let _task = terminal.update(Message::ChartSwitchTimeframe(1, Timeframe::M5));
+        let old_primary = terminal.charts[&1]
+            .candle_fetch_request
+            .clone()
+            .expect("primary request");
+        let old_secondary = terminal.charts[&1]
+            .secondary_candle_fetch_request
+            .clone()
+            .expect("secondary request");
+
+        let _task = terminal.update(Message::AllChartsSwitchTimeframe(Timeframe::H4));
+        let primary = terminal.charts[&1].candle_fetch_request.clone();
+        let secondary = terminal.charts[&1].secondary_candle_fetch_request.clone();
+        assert_eq!(primary.as_ref().map(|r| r.timeframe), Some(Timeframe::H4));
+        assert_eq!(secondary.as_ref().map(|r| r.timeframe), Some(Timeframe::H4));
+
+        let _task = terminal.update(Message::ChartCandlesLoaded(
+            old_primary,
+            Err("old timeframe failure".into()),
+        ));
+        let _task = terminal.update(Message::ChartSecondaryCandlesLoaded(
+            old_secondary,
+            Err("old timeframe failure".into()),
+        ));
+        let instance = &terminal.charts[&1];
+        assert_eq!(instance.candle_fetch_request, primary);
+        assert_eq!(instance.secondary_candle_fetch_request, secondary);
+        assert!(instance.candle_fetch_error.is_none());
+        assert!(instance.secondary_candle_fetch_error.is_none());
+    }
+
+    #[test]
+    fn global_timeframe_preserves_loaded_charts_already_at_the_requested_interval() {
+        let mut terminal = empty_terminal();
+        let mut instance = ChartInstance::new(1, "BTC".into(), Timeframe::H4);
+        instance.chart.set_candles(vec![Candle::test_ohlcv(
+            Timeframe::H4.duration_ms(),
+            2 * Timeframe::H4.duration_ms(),
+            [100.0, 101.0, 99.0, 100.0],
+            1.0,
+        )]);
+        assert_eq!(instance.chart.candles.len(), 1);
+        instance.chart.status = ChartStatus::Loaded;
+        terminal.charts.insert(1, instance);
+
+        let _task = terminal.update(Message::AllChartsSwitchTimeframe(Timeframe::H4));
+
+        assert_eq!(terminal.charts[&1].chart.candles.len(), 1);
+        assert!(matches!(
+            terminal.charts[&1].chart.status,
+            ChartStatus::Loaded
+        ));
+        assert!(terminal.charts[&1].candle_fetch_request.is_none());
+        assert!(terminal.config_save_due_at.is_none());
+    }
+
+    #[test]
+    fn global_timeframe_with_no_charts_is_a_noop() {
+        let mut terminal = empty_terminal();
+
+        let _task = terminal.update(Message::AllChartsSwitchTimeframe(Timeframe::H4));
+
+        assert!(!terminal.has_open_timeframe_charts());
+        assert_eq!(terminal.common_chart_timeframe(), None);
+        assert!(terminal.config_save_due_at.is_none());
+    }
 
     #[test]
     fn timeframe_switch_disarms_hud_trading() {

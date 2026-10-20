@@ -1413,6 +1413,7 @@ pub(crate) enum Message {
         coin: String,
         oid: u64,
     },
+    AllChartsSwitchTimeframe(Timeframe),
     // Per-chart messages (keyed by ChartId)
     ChartFocused(ChartId),
     ChartSwitchTimeframe(ChartId, Timeframe),
