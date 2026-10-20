@@ -320,6 +320,14 @@ missing context shows `-` rather than hiding funding or selecting spot metrics.
 The current rate comes from asset context independently of the optional funding
 history indicator and its Hydromancer integration.
 
+Hovering the header funding metric shows a compact funding projection only when
+the connected account holds a nonzero position in that exact perpetual market.
+The 1d/7d/30d/1y amounts use the current hourly rate and oracle price, holding
+position size constant without compounding (365 days for 1y). Positive amounts
+are earnings and negative amounts are payments. The tooltip uses the chart's
+display denomination and masks amounts with the PnL privacy setting; missing or
+invalid inputs and mismatched account snapshots suppress it.
+
 The opt-in live regression test exercises the production subscription through
 header layout for a native perp and a HIP-3 perp with Hydromancer selected:
 `cargo test --bin kerosene live_native_funding_reaches_chart_header_with_hydromancer_selected -- --ignored --nocapture`.

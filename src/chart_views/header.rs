@@ -1,12 +1,13 @@
 mod actions;
 mod feedback;
+mod funding;
 mod metrics;
 mod symbol;
 
 use self::feedback::format_signed_usd_change;
 use self::metrics::{
-    ChartHeaderMetricVisibility, funding_column, push_asset_context_columns,
-    push_outcome_asset_context_columns, push_outcome_volume_column,
+    ChartHeaderMetricVisibility, push_asset_context_columns, push_outcome_asset_context_columns,
+    push_outcome_volume_column,
 };
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
@@ -58,8 +59,7 @@ impl TradingTerminal {
         let mut header_row = row![sym_btn].spacing(16).align_y(iced::Alignment::Center);
         let is_perp = self.is_perp_coin(&instance.symbol);
         if is_perp {
-            header_row =
-                header_row.push(funding_column(&theme, instance.asset_ctx.as_ref(), now_ms));
+            header_row = header_row.push(self.view_chart_funding(instance, &theme, now_ms));
         }
 
         if metric_visibility.show_24h_change {
