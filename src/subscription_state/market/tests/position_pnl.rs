@@ -64,6 +64,70 @@ fn connect_with_positions(terminal: &mut TradingTerminal, positions: Vec<AssetPo
 }
 
 #[test]
+fn close_preview_subscribes_only_to_hovered_position_and_restarts_after_reentry() {
+    let mut terminal = TradingTerminal::boot_from_config(Default::default()).0;
+    terminal.exchange_symbols = vec![exchange_symbol("BTC", MarketType::Perp)];
+    connect_with_positions(&mut terminal, vec![position("BTC", "1")]);
+    let hashes = |terminal: &TradingTerminal| {
+        let mut subs = Vec::new();
+        terminal.push_position_close_preview_subscription(&mut subs);
+        subscription_hashes(Subscription::batch(subs))
+    };
+    assert!(hashes(&terminal).is_empty());
+    let _ = terminal.update_account(Message::PositionClosePreviewHovered("BTC".into(), true));
+    let original = hashes(&terminal);
+    assert_eq!(original.len(), 1);
+    assert_eq!(hashes(&terminal), original);
+    let _ = terminal.update_account(Message::PositionClosePreviewHovered("BTC".into(), false));
+    assert!(hashes(&terminal).is_empty());
+    let _ = terminal.update_account(Message::PositionClosePreviewHovered("BTC".into(), true));
+    assert_ne!(hashes(&terminal), original);
+    terminal.hide_pnl = true;
+    assert!(hashes(&terminal).is_empty());
+    terminal.hide_pnl = false;
+    terminal.connected_address = None;
+    assert!(hashes(&terminal).is_empty());
+}
+
+#[test]
+fn close_preview_stream_maps_depth_and_lag_with_generation_and_source() {
+    let terminal = TradingTerminal::boot_from_config(Default::default()).0;
+    let source_context = terminal.market_data_source_context();
+    for event in [
+        KeyedBookStreamEvent::Item(
+            42,
+            "BTC".into(),
+            (None, None),
+            None,
+            crate::api::OrderBook::empty(),
+        ),
+        KeyedBookStreamEvent::Lagged {
+            id: 42,
+            coin: "BTC".into(),
+            sigfigs: (None, None),
+            hydromancer_key_generation: None,
+            skipped: 3,
+        },
+    ] {
+        let lagged = matches!(event, KeyedBookStreamEvent::Lagged { .. });
+        match super::super::close_preview::position_close_book_message((source_context, event)) {
+            Message::PositionCloseBook {
+                generation,
+                coin,
+                source_context: actual_source,
+                book,
+            } => {
+                assert_eq!(generation, 42);
+                assert_eq!(coin, "BTC");
+                assert_eq!(actual_source, source_context);
+                assert_eq!(book.is_none(), lagged);
+            }
+            _ => panic!("expected close preview book event"),
+        }
+    }
+}
+
+#[test]
 fn position_pnl_subscriptions_require_toggle_key_and_open_positions() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.exchange_symbols = vec![exchange_symbol("BTC", MarketType::Perp)];

@@ -1,4 +1,5 @@
 mod cells;
+mod close_preview;
 mod display_values;
 mod formatting;
 #[cfg(test)]
@@ -118,6 +119,7 @@ impl TradingTerminal {
             theme,
         );
         let upnl_cell = position_upnl_cell(&pos.coin, pnl_displays.upnl, pnl_color);
+        let upnl_cell = self.view_position_close_preview(upnl_cell, &data, theme);
 
         // Optimistic account updates: annotate the size with the projected
         // value while market orders for this symbol are in flight. A position

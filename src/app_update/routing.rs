@@ -740,6 +740,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AccountRefreshBackoffElapsed(_)
         | Message::AllMidsBootstrapLoaded(_, _)
         | Message::PositionPnlWsBookUpdate { .. }
+        | Message::PositionClosePreviewHovered(_, _)
+        | Message::PositionCloseBook { .. }
+        | Message::PositionCloseFeeLoaded { .. }
         | Message::PositionPnlWsBookLagged { .. }
         | Message::WsUserDataUpdate(_, _) => UpdateRoute::Account,
 

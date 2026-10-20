@@ -219,6 +219,35 @@ Features include:
 - summary rows and account-value calculations
 - per-position PnL and funding metrics
 - PnL card export entry point
+- hover uPnL for a live full-position market-close estimate
+
+The uPnL hover popup walks unaggregated bids for a long or asks for a short,
+including a partial fill of the final price level. It shows estimated PnL after
+closing fees, average exit price, gross closing PnL, fees, and depth consumed.
+The estimate concerns the remaining position relative to its displayed cost
+basis; it does not add funding or separately subtract fees already paid.
+Clicking uPnL still opens the PnL card. Hiding PnL disables the popup.
+
+`account_state/close_preview.rs` owns transient hover state and the pure book
+calculation. `PositionClosePreviewHovered`, `PositionCloseBook`, and
+`PositionCloseFeeLoaded` route through `account_update/close_preview.rs`.
+`subscription_state/market/close_preview.rs` subscribes only to the hovered
+position, using the selected provider at full price precision. Hover generations
+reject late events after leaving, re-entering, or changing accounts; source
+generations reject old provider/key events. Lag clears the book, and snapshots
+older than ten seconds cannot produce estimates. Account/position freshness,
+pending position changes, missing fees/cost basis, insufficient visible depth,
+and the configured market-order slippage cap also gate estimates. Visible depth
+is bounded by the provider; the calculation never extrapolates beyond it.
+
+Closing fees use the account taker rate, its separately reported referral
+discount, and configured builder fees. HIP-3 markets fetch current deployer
+and growth-mode multipliers on hover. Non-USDC dollar-stable quotes/collateral
+also query `alignedQuoteTokenInfo`; stable spot pairs apply their reduced rate.
+These follow the [exchange fee formula](https://hyperliquid.gitbook.io/hyperliquid-docs/trading/fees).
+Outcome fees, non-dollar collateral, and missing market fee terms show an
+unavailable state. Referral terms are transient account data with redacted Debug
+output; they do not change persisted config or existing order-ticket estimates.
 
 Hidden positions are scoped by account and persisted. Hidden/muted exposure is
 a trading risk boundary and must be considered by close/NUKE/order automation.

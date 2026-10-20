@@ -28,6 +28,7 @@ fn terminal_with_fees() -> TradingTerminal {
             user_add_rate: "0.0001".into(),
             user_spot_cross_rate: "0.0005".into(),
             user_spot_add_rate: "0.0002".into(),
+            active_referral_discount: None,
         },
         completeness: Default::default(),
         fetched_at_ms: 1,

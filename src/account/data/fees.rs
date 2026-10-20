@@ -10,6 +10,9 @@ mod tests;
 
 pub(super) fn user_fee_rates_from_value(raw: &Value) -> UserFeeRates {
     UserFeeRates {
+        active_referral_discount: raw
+            .get("activeReferralDiscount")
+            .map(|value| value.as_str().unwrap_or("").to_string()),
         user_cross_rate: raw
             .get("userCrossRate")
             .and_then(|value| value.as_str())

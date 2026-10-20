@@ -38,6 +38,27 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
         hydromancer_key_generation: Some(7),
     };
     assert_route(
+        Message::PositionClosePreviewHovered("BTC".into(), true),
+        UpdateRoute::Account,
+    );
+    assert_route(
+        Message::PositionCloseBook {
+            generation: 1,
+            coin: "BTC".into(),
+            source_context,
+            book: Some(crate::api::OrderBook::empty()),
+        },
+        UpdateRoute::Account,
+    );
+    assert_route(
+        Message::PositionCloseFeeLoaded {
+            generation: 1,
+            coin: "BTC".into(),
+            result: Ok(1.0),
+        },
+        UpdateRoute::Account,
+    );
+    assert_route(
         Message::PositionPnlWsBookLagged {
             coin: "BTC".to_string(),
             sigfigs: (None, None),

@@ -314,6 +314,7 @@ impl TradingTerminal {
             liquidation_feed_following: true,
             liquidation_chart_buckets: BTreeMap::new(),
             connected_address: None,
+            position_close_preview: Default::default(),
             transfer_history: Default::default(),
             account_data: None,
             account_data_address: None,

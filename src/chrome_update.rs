@@ -150,6 +150,7 @@ impl TradingTerminal {
                 self.persist_config();
             }
             Message::ToggleHidePnl => {
+                self.position_close_preview.clear();
                 self.hide_pnl = !self.hide_pnl;
                 self.persist_config();
             }

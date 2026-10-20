@@ -1,4 +1,5 @@
 mod add_window;
+mod close_preview;
 mod connection;
 mod position_pnl;
 mod profile;
@@ -13,6 +14,20 @@ use iced::Task;
 impl TradingTerminal {
     pub(crate) fn update_account(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::PositionClosePreviewHovered(coin, hovered) => {
+                self.hover_position_close_preview(coin, hovered)
+            }
+            Message::PositionCloseBook {
+                generation,
+                coin,
+                source_context,
+                book,
+            } => self.apply_position_close_book(generation, coin, source_context, book),
+            Message::PositionCloseFeeLoaded {
+                generation,
+                coin,
+                result,
+            } => self.apply_position_close_fee(generation, coin, result),
             Message::PositionsSortChanged(col) => self.update_positions_sort(col),
             Message::ToggleHiddenPosition(coin) => self.toggle_hidden_position(coin),
             Message::ToggleShowHiddenPositions => self.toggle_show_hidden_positions(),

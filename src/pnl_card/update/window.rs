@@ -11,6 +11,7 @@ use iced::{Size, Task, window};
 
 impl TradingTerminal {
     pub(crate) fn open_pnl_card_window(&mut self, target: PnlCardTarget) -> Task<Message> {
+        self.position_close_preview.clear();
         let Some(account_address) = self.current_pnl_card_account_address() else {
             self.push_toast(
                 "Connect an account before opening a PnL card".to_string(),

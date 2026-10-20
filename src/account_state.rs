@@ -1,4 +1,5 @@
 mod add_window;
+pub(crate) mod close_preview;
 mod journal;
 mod persistence;
 mod picker;

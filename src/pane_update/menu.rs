@@ -10,6 +10,7 @@ impl TradingTerminal {
     pub(super) fn update_pane_menu(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::SwitchBottomTab(workspace, pane, tab) => {
+                self.position_close_preview.clear();
                 if let Some(PaneKind::BottomTabs { active_tab }) = self
                     .workspace_panes_mut(workspace)
                     .and_then(|panes| panes.get_mut(pane))

@@ -117,6 +117,7 @@ impl TradingTerminal {
                 }
             }
             Message::ClosePane(workspace, pane) => {
+                self.position_close_preview.clear();
                 let can_close_pane = self
                     .workspace_panes(workspace)
                     .and_then(|panes| panes.get(pane))

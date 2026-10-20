@@ -1636,6 +1636,18 @@ pub(crate) enum Message {
     SetOrderBookDisplayMode(OrderBookId, OrderBookDisplayMode),
     HydromancerKeyInputChanged(SecretInput),
     SaveHydromancerKey,
+    PositionClosePreviewHovered(String, bool),
+    PositionCloseBook {
+        generation: u64,
+        coin: String,
+        source_context: MarketDataSourceContext,
+        book: Option<OrderBook>,
+    },
+    PositionCloseFeeLoaded {
+        generation: u64,
+        coin: String,
+        result: Result<f64, String>,
+    },
     PositionPnlWsBookUpdate {
         coin: String,
         sigfigs: (Option<u8>, Option<u8>),
