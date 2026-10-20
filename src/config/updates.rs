@@ -3,6 +3,8 @@ use std::{cmp::Ordering, collections::BTreeMap};
 
 pub(crate) const MAX_UPDATE_EVENTS: usize = 500;
 pub(crate) const MAX_UPDATE_ASSETS: usize = 20_000;
+/// Maximum number of margin tiers retained across a parameter snapshot.
+pub(crate) const MAX_UPDATE_MARGIN_TIERS: usize = 50_000;
 
 /// Canonical nonnegative decimal; comparisons never round API values through f64.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
