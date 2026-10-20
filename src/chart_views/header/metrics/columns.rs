@@ -20,7 +20,7 @@ use formatting::{
     outcome_volume_label, parse_ctx_f64, spot_base_ticker,
 };
 
-const HIDE_MARK_ORACLE_BELOW: f32 = 720.0;
+const HIDE_ORACLE_BELOW: f32 = 720.0;
 const HIDE_OPEN_INTEREST_BELOW: f32 = 560.0;
 const HIDE_24H_VOLUME_BELOW: f32 = 420.0;
 const HIDE_24H_CHANGE_BELOW: f32 = 340.0;
@@ -30,7 +30,7 @@ const CAP_WARNING_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="
 pub(crate) struct ChartHeaderMetricVisibility {
     pub(crate) show_24h_change: bool,
     pub(crate) show_24h_volume: bool,
-    pub(crate) show_mark_oracle: bool,
+    pub(crate) show_oracle: bool,
     pub(crate) show_open_interest: bool,
 }
 
@@ -40,7 +40,7 @@ impl ChartHeaderMetricVisibility {
         Self {
             show_24h_change: width >= HIDE_24H_CHANGE_BELOW,
             show_24h_volume: width >= HIDE_24H_VOLUME_BELOW,
-            show_mark_oracle: width >= HIDE_MARK_ORACLE_BELOW,
+            show_oracle: width >= HIDE_ORACLE_BELOW,
             show_open_interest: width >= HIDE_OPEN_INTEREST_BELOW,
         }
     }
@@ -162,14 +162,10 @@ pub(super) fn push_perp_metric_columns<'a>(
         ));
     }
 
-    if visibility.show_mark_oracle {
+    if visibility.show_oracle {
         header_row = header_row.push(metric_column(
-            "Mark / Oracle".to_string(),
-            format!(
-                "{} / {}",
-                format_metric_price(mark),
-                format_metric_price(oracle)
-            ),
+            "Oracle".to_string(),
+            format_metric_price(oracle),
             theme.palette().text,
             theme,
         ));
@@ -252,6 +248,24 @@ fn open_interest_column(
     tooltip(metric, text(hint).size(11), tooltip::Position::Bottom)
         .style(iced::widget::container::rounded_box)
         .into()
+}
+
+pub(in crate::chart_views::header) fn mark_price_column(
+    theme: &Theme,
+    ctx: Option<&AssetContext>,
+) -> iced::widget::Column<'static, Message> {
+    let raw_mark = ctx.and_then(|ctx| ctx.mark_px.as_deref());
+    let mark = parse_ctx_f64(raw_mark).filter(|mark| *mark > 0.0);
+    metric_column(
+        "Mark".to_string(),
+        if raw_mark.is_some() {
+            format_metric_price(mark)
+        } else {
+            "-".to_string()
+        },
+        theme.palette().text,
+        theme,
+    )
 }
 
 pub(in crate::chart_views::header) fn funding_column(

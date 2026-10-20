@@ -52,8 +52,8 @@ fn context(funding: Option<&str>) -> AssetContext {
     serde_json::from_value(json!({
         "funding": funding,
         "openInterest": "1234",
-        "markPx": "100",
-        "oraclePx": "100",
+        "markPx": "102.5",
+        "oraclePx": "101",
         "dayBaseVlm": "10000",
         "dayNtlVlm": "1000000"
     }))
@@ -61,11 +61,13 @@ fn context(funding: Option<&str>) -> AssetContext {
 }
 
 #[test]
-fn perpetual_funding_stays_visible_and_inside_narrow_headers() {
+fn perpetual_mark_and_funding_stay_visible_and_inside_narrow_headers() {
     for symbol in ["BTC", "xyz:NVDA"] {
-        for width in [240.0, 320.0, 420.0, 459.0, 460.0, 520.0, 760.0, 1200.0] {
+        for width in [
+            240.0, 320.0, 420.0, 459.0, 460.0, 520.0, 719.0, 720.0, 760.0, 1200.0,
+        ] {
             let text = header_text(symbol, Some(context(Some("0.0000125"))), width);
-            for expected in ["Funding (", "0.0013%"] {
+            for expected in ["Mark", "102.50", "Funding (", "0.0013%"] {
                 let (_, bounds) = text
                     .0
                     .iter()
@@ -74,6 +76,26 @@ fn perpetual_funding_stays_visible_and_inside_narrow_headers() {
                 assert!(bounds.width > 0.0 && bounds.height > 0.0);
                 assert!(bounds.x >= 0.0 && bounds.x + bounds.width <= width + 0.1);
             }
+            assert_eq!(
+                text.0.iter().filter(|(value, _)| value == "Mark").count(),
+                1
+            );
+            let (_, mark_bounds) = text
+                .0
+                .iter()
+                .find(|(value, _)| value == "Mark")
+                .expect("mark label");
+            let (_, funding_bounds) = text
+                .0
+                .iter()
+                .find(|(value, _)| value.starts_with("Funding ("))
+                .expect("funding label");
+            assert_eq!(mark_bounds.y, funding_bounds.y);
+            assert!(mark_bounds.x + mark_bounds.width < funding_bounds.x);
+            assert_eq!(
+                text.0.iter().any(|(value, _)| value == "Oracle"),
+                width >= 720.0
+            );
         }
     }
 }
@@ -88,7 +110,9 @@ fn missing_funding_does_not_hide_perpetual_metrics() {
     );
     assert!(text.0.iter().any(|(value, _)| value == "-"));
     assert!(text.0.iter().any(|(value, _)| value == "Open Interest"));
-    assert!(text.0.iter().any(|(value, _)| value == "Mark / Oracle"));
+    assert!(text.0.iter().any(|(value, _)| value == "Mark"));
+    assert!(text.0.iter().any(|(value, _)| value == "102.50"));
+    assert!(text.0.iter().any(|(value, _)| value == "Oracle"));
 
     let text = header_text("xyz:NVDA", None, 320.0);
     assert!(
@@ -97,18 +121,48 @@ fn missing_funding_does_not_hide_perpetual_metrics() {
             .any(|(value, _)| value.starts_with("Funding ("))
     );
     assert!(text.0.iter().any(|(value, _)| value == "-"));
+    assert!(text.0.iter().any(|(value, _)| value == "Mark"));
 }
 
 #[test]
-fn spot_and_outcome_headers_do_not_show_funding() {
+fn spot_and_outcome_headers_do_not_show_perpetual_metrics() {
     for symbol in ["@107", "PURR/USDC", "#1"] {
         let text = header_text(symbol, Some(context(Some("0.0000125"))), 1200.0);
         assert!(
             !text
                 .0
                 .iter()
-                .any(|(value, _)| value.starts_with("Funding ("))
+                .any(|(value, _)| value.starts_with("Funding (")
+                    || value == "Mark"
+                    || value == "Oracle")
         );
+    }
+}
+
+#[test]
+fn missing_or_invalid_mark_does_not_fall_back_to_oracle_or_candle_price() {
+    for symbol in ["BTC", "xyz:NVDA"] {
+        for (mark, expected) in [
+            (None, "-"),
+            (Some("bad"), "Invalid data"),
+            (Some("NaN"), "Invalid data"),
+            (Some("inf"), "Invalid data"),
+            (Some("0"), "Invalid data"),
+            (Some("-1"), "Invalid data"),
+            (Some("98765.4"), "98,765.4"),
+            (Some("0.001234"), "0.001234"),
+        ] {
+            let mut ctx = context(Some("0.0000125"));
+            ctx.mark_px = mark.map(str::to_string);
+            let text = header_text(symbol, Some(ctx), 320.0);
+            assert!(
+                text.0
+                    .windows(2)
+                    .any(|pair| pair[0].0 == "Mark" && pair[1].0 == expected),
+                "wrong mark display for {symbol} with mark {mark:?}"
+            );
+            assert!(text.0.iter().any(|(value, _)| value == "0.0013%"));
+        }
     }
 }
 

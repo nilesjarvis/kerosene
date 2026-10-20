@@ -313,10 +313,13 @@ removed when the symbol no longer has an open, unhidden chart.
 Header metric display modes can show values as raw or USD notional depending on
 the market and user preference.
 
-Expanded perpetual chart headers always include the current hourly funding
-rate and countdown beside the symbol, including in narrow panes. The header
-wraps metrics when needed. Market identity determines whether funding applies;
-missing context shows `-` rather than hiding funding or selecting spot metrics.
+Expanded perpetual chart headers always include the mark price and current
+hourly funding rate with countdown beside the symbol, including in narrow panes
+and for HIP-3 markets. Mark uses the asset context's `markPx`; it does not fall
+back to the candle close or oracle price. Oracle remains a separate metric in
+wide panes. The header wraps metrics when needed. Market identity determines
+whether these perpetual metrics apply; missing context shows `-` rather than
+hiding them or selecting spot metrics. Invalid mark prices show `Invalid data`.
 The current rate comes from asset context independently of the optional funding
 history indicator and its Hydromancer integration.
 

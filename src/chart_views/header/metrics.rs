@@ -1,8 +1,8 @@
 mod columns;
 
 pub(super) use self::columns::{
-    ChartHeaderMetricVisibility, funding_column, push_outcome_asset_context_columns,
-    push_outcome_volume_column,
+    ChartHeaderMetricVisibility, funding_column, mark_price_column,
+    push_outcome_asset_context_columns, push_outcome_volume_column,
 };
 use self::columns::{push_perp_metric_columns, push_spot_metric_columns};
 

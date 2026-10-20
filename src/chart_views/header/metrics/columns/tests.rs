@@ -140,7 +140,7 @@ fn metric_visibility_collapses_in_priority_order() {
         ChartHeaderMetricVisibility {
             show_24h_change: true,
             show_24h_volume: true,
-            show_mark_oracle: true,
+            show_oracle: true,
             show_open_interest: true,
         }
     );
@@ -149,7 +149,7 @@ fn metric_visibility_collapses_in_priority_order() {
         ChartHeaderMetricVisibility {
             show_24h_change: true,
             show_24h_volume: true,
-            show_mark_oracle: false,
+            show_oracle: false,
             show_open_interest: true,
         }
     );
@@ -158,7 +158,7 @@ fn metric_visibility_collapses_in_priority_order() {
         ChartHeaderMetricVisibility {
             show_24h_change: true,
             show_24h_volume: true,
-            show_mark_oracle: false,
+            show_oracle: false,
             show_open_interest: false,
         }
     );
@@ -167,7 +167,7 @@ fn metric_visibility_collapses_in_priority_order() {
         ChartHeaderMetricVisibility {
             show_24h_change: true,
             show_24h_volume: true,
-            show_mark_oracle: false,
+            show_oracle: false,
             show_open_interest: false,
         }
     );
@@ -176,7 +176,7 @@ fn metric_visibility_collapses_in_priority_order() {
         ChartHeaderMetricVisibility {
             show_24h_change: false,
             show_24h_volume: false,
-            show_mark_oracle: false,
+            show_oracle: false,
             show_open_interest: false,
         }
     );
