@@ -1,6 +1,7 @@
 mod charts;
 mod contexts;
 mod controls;
+mod favourites;
 mod migration;
 mod outcome_volumes;
 mod refresh;

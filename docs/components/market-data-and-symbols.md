@@ -659,6 +659,13 @@ the live `dayNtlVlm` values from Hyperliquid's main-perp, HIP-3, and spot asset
 contexts. Notional open interest sums `openInterest * markPx` across main-perp
 and HIP-3 contexts; spot is excluded because it has no open interest.
 
+Live symbol refreshes remove delisted markets from favourites and saved-layout
+favourites, clear their ticker contexts, and persist the cleanup even when the
+tape is disabled. Only successfully loaded metadata families can remove entries;
+cached metadata, failed requests, search/risk filters, and missing price contexts
+do not establish delisting. Matching uses full market keys, including HIP-3 DEX
+prefixes, while retaining supported legacy spot aliases.
+
 State includes:
 
 - `ticker_tape_enabled`

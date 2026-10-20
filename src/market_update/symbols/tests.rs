@@ -20,6 +20,7 @@ use crate::timeframe::Timeframe;
 use std::collections::HashMap;
 
 mod contexts;
+mod favourites;
 mod migration;
 mod refresh;
 

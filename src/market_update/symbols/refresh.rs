@@ -146,6 +146,7 @@ impl TradingTerminal {
                 let perp_meta_failed = payload.perp_meta_failed;
                 let spot_meta_failed = payload.spot_meta_failed;
                 let outcome_meta_failed = payload.outcome_meta_failed;
+                let favourites_changed = self.prune_delisted_favourites(&payload);
                 let mut perp_dexes_changed = false;
                 if !perp_meta_failed && let Some(dexes) = payload.perp_dexes.take() {
                     perp_dexes_changed = self.perp_dexes != dexes;
@@ -216,6 +217,7 @@ impl TradingTerminal {
                 if !symbols_changed
                     && !perp_dexes_changed
                     && !market_universe_changed
+                    && !favourites_changed
                     && !self.exchange_symbols.is_empty()
                 {
                     self.symbols_loading = false;
