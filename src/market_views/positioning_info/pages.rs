@@ -1,5 +1,6 @@
 use super::{POSITIONING_PAGE_PADDING, POSITIONING_SCROLLBAR_SPACING, POSITIONING_SCROLLBAR_WIDTH};
 use crate::app_state::TradingTerminal;
+use crate::helpers::design::UiColors;
 use crate::message::Message;
 use crate::positioning_state::PositioningInfoInstance;
 
@@ -11,6 +12,25 @@ mod tables;
 // ---------------------------------------------------------------------------
 // Positioning Information Pages
 // ---------------------------------------------------------------------------
+
+/// Inline error notice: partial data keeps a warning tone, a failed load a
+/// critical tone (resolved against the pane surface).
+fn view_positioning_error_notice(error: &str, has_data: bool) -> Element<'static, Message> {
+    let error = error.to_string();
+    text(error)
+        .size(11)
+        .style(move |theme: &Theme| {
+            let colors = UiColors::new(theme);
+            text::Style {
+                color: Some(if has_data {
+                    colors.warning
+                } else {
+                    colors.negative
+                }),
+            }
+        })
+        .into()
+}
 
 impl TradingTerminal {
     pub(super) fn view_positioning_info_positions_page<'a>(
@@ -30,12 +50,9 @@ impl TradingTerminal {
         content = content.push(controls);
 
         if let Some(error) = &instance.error {
-            content = content.push(text(error.as_str()).size(11).color(
-                if instance.data.is_some() {
-                    theme.palette().warning
-                } else {
-                    theme.palette().danger
-                },
+            content = content.push(view_positioning_error_notice(
+                error.as_str(),
+                instance.data.is_some(),
             ));
         }
 
@@ -57,7 +74,9 @@ impl TradingTerminal {
                     self.view_spinner(18),
                     text("Loading positioning data...")
                         .size(12)
-                        .color(theme.extended_palette().background.weak.text),
+                        .style(move |theme: &Theme| text::Style {
+                            color: Some(UiColors::new(theme).muted),
+                        }),
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center)
@@ -65,12 +84,16 @@ impl TradingTerminal {
             } else if instance.error.is_none() {
                 text("No positioning data loaded")
                     .size(12)
-                    .color(theme.extended_palette().background.weak.text)
+                    .style(move |theme: &Theme| text::Style {
+                        color: Some(UiColors::new(theme).muted),
+                    })
                     .into()
             } else {
                 text("Positioning data unavailable")
                     .size(12)
-                    .color(theme.extended_palette().background.weak.text)
+                    .style(move |theme: &Theme| text::Style {
+                        color: Some(UiColors::new(theme).muted),
+                    })
                     .into()
             };
             content = content
@@ -97,12 +120,9 @@ impl TradingTerminal {
         content = content.push(controls);
 
         if let Some(error) = &instance.change_error {
-            content = content.push(text(error.as_str()).size(11).color(
-                if instance.change_data.is_some() {
-                    theme.palette().warning
-                } else {
-                    theme.palette().danger
-                },
+            content = content.push(view_positioning_error_notice(
+                error.as_str(),
+                instance.change_data.is_some(),
             ));
         }
 
@@ -118,7 +138,9 @@ impl TradingTerminal {
                     self.view_spinner(18),
                     text("Loading position changes...")
                         .size(12)
-                        .color(theme.extended_palette().background.weak.text),
+                        .style(move |theme: &Theme| text::Style {
+                            color: Some(UiColors::new(theme).muted),
+                        }),
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center)
@@ -126,12 +148,16 @@ impl TradingTerminal {
             } else if instance.change_error.is_none() {
                 text("No change data loaded")
                     .size(12)
-                    .color(theme.extended_palette().background.weak.text)
+                    .style(move |theme: &Theme| text::Style {
+                        color: Some(UiColors::new(theme).muted),
+                    })
                     .into()
             } else {
                 text("Change data unavailable")
                     .size(12)
-                    .color(theme.extended_palette().background.weak.text)
+                    .style(move |theme: &Theme| text::Style {
+                        color: Some(UiColors::new(theme).muted),
+                    })
                     .into()
             };
             content = content

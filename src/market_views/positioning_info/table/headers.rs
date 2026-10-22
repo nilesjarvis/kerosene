@@ -19,7 +19,7 @@ pub(in crate::market_views::positioning_info) fn positioning_table_header(
     columns: PositioningInfoColumns,
     theme: &Theme,
 ) -> Element<'static, Message> {
-    let muted = theme.extended_palette().background.weak.text;
+    let muted = crate::helpers::design::UiColors::new(theme).muted;
     let mut header = Row::new()
         .spacing(POSITIONING_TABLE_COLUMN_SPACING)
         .padding([0, 8])

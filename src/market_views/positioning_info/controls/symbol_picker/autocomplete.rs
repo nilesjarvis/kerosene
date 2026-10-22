@@ -2,6 +2,7 @@ use super::super::super::metrics::positioning_symbol_matches;
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::helpers;
+use crate::helpers::design::{UiColors, compact_button_style};
 use crate::message::Message;
 use crate::positioning_state::PositioningInfoId;
 
@@ -52,8 +53,10 @@ impl TradingTerminal {
         symbol: &'a ExchangeSymbol,
         theme: &Theme,
     ) -> Element<'a, Message> {
+        let pane_corner_radius = self.pane_corner_radius;
         let sym_key = &symbol.key;
         let display = symbol.display_name.as_deref().unwrap_or(&symbol.ticker);
+        // Identity order: logo, symbol, then secondary venue metadata.
         let mut coin_content = Row::new().spacing(6).align_y(Alignment::Center);
         if let Some(icon) = helpers::symbol_icon(sym_key, 14, theme.palette().text) {
             coin_content = coin_content.push(icon);
@@ -61,43 +64,37 @@ impl TradingTerminal {
         coin_content = coin_content.push(
             text(display)
                 .size(12)
-                .color(theme.palette().text)
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(UiColors::new(theme).text),
+                })
                 .width(Fill),
         );
         if let Some(dex) = helpers::hip3_dex(sym_key) {
-            coin_content = coin_content.push(
-                text(dex)
-                    .size(10)
-                    .color(theme.extended_palette().background.weak.text),
-            );
+            coin_content =
+                coin_content.push(text(dex).size(11).style(move |theme: &Theme| text::Style {
+                    color: Some(UiColors::new(theme).muted),
+                }));
         }
         if symbol.growth_mode {
             coin_content = coin_content.push(helpers::growth_mode_chip());
         }
-        coin_content = coin_content.push(
-            text("Select")
-                .size(10)
-                .color(theme.extended_palette().primary.base.color),
-        );
+        coin_content =
+            coin_content.push(
+                text("Select")
+                    .size(11)
+                    .style(move |theme: &Theme| text::Style {
+                        color: Some(UiColors::new(theme).muted),
+                    }),
+            );
 
         button(coin_content)
             .on_press(Message::PositioningInfoSymbolSelected(id, sym_key.clone()))
-            .padding([4, 8])
-            .style(|theme: &Theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => theme.extended_palette().background.strong.color,
-                    _ => theme.extended_palette().background.weak.color,
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    border: iced::Border {
-                        radius: 3.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }
-            })
+            .height(28)
+            .padding([0, 8])
             .width(Fill)
+            .style(move |theme: &Theme, status| {
+                compact_button_style(theme, status, false, pane_corner_radius)
+            })
             .into()
     }
 }

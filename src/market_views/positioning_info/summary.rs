@@ -2,6 +2,7 @@ use super::metrics::*;
 use crate::app_state::TradingTerminal;
 use crate::denomination::DisplayDenominationContext;
 use crate::helpers;
+use crate::helpers::design::UiColors;
 use crate::helpers::format_decimal_with_commas;
 use crate::hyperdash_api::{PerpDeltas, TickerPositions};
 use crate::message::Message;
@@ -87,8 +88,10 @@ impl TradingTerminal {
                 short_delta_color
             ),
             text(format!("API: {}", data.timeframe))
-                .size(10)
-                .color(theme.extended_palette().background.weak.text),
+                .size(11)
+                .style(move |t: &Theme| text::Style {
+                    color: Some(UiColors::new(t).muted),
+                }),
         ]
         .spacing(12)
         .align_y(Alignment::Center)
@@ -101,14 +104,16 @@ fn view_positioning_summary_metric(
     label: &'static str,
     value: String,
     value_color: Color,
-    theme: &Theme,
+    _theme: &Theme,
 ) -> Element<'static, Message> {
     column![
         text(label)
-            .size(10)
-            .color(theme.extended_palette().background.weak.text),
+            .size(11)
+            .style(move |theme: &Theme| text::Style {
+                color: Some(UiColors::new(theme).muted),
+            }),
         text(value)
-            .size(12)
+            .size(13)
             .font(crate::app_fonts::monospace_font())
             .color(value_color)
             .width(Fill),

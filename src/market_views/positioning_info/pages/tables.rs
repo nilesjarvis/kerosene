@@ -57,7 +57,9 @@ impl TradingTerminal {
                 container(
                     text("No positions found")
                         .size(12)
-                        .color(theme.extended_palette().background.weak.text),
+                        .style(move |theme: &Theme| text::Style {
+                            color: Some(crate::helpers::design::UiColors::new(theme).muted),
+                        }),
                 )
                 .width(Fill)
                 .padding([8, 0]),

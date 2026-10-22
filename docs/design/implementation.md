@@ -65,6 +65,21 @@ resolves muted/warning/negative tones (error, feed delayed, monitoring), and
 tooltips use the shared opaque overlay. Polling, backoff, persistence, filters,
 and expansion state are unchanged.
 
+### Positioning Information
+
+`src/market_views/positioning_info/**` consumes the shared recipes. Page
+navigation (Positions/Change) keeps the shared compact selected-toggle
+treatment with accent active labels; side and timeframe filters sit on shared
+inset segment tracks; entry-range fields use the shared compact input; the
+symbol picker button carries logo, symbol, and a vector chevron, with a
+vector refresh icon on a 24px target while loading. Error notices resolve
+warning (partial data) or negative (failed load) tones; empty/loading states
+are muted; tooltips use the shared opaque overlay. Summary metrics follow the
+metric-pair pattern (11px label, 13px numeric); autocomplete result rows are
+28px identity rows on the shared compact surface. Canvas flow bars, wallet
+action cells, sortable header cells, and per-pan filtering behavior are
+unchanged.
+
 ## Planned shared boundaries
 
 The following names are suggested implementation boundaries, not existing APIs:
