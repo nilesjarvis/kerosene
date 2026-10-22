@@ -51,6 +51,20 @@ depth gradients, DOM heat, scroll snapping, price-click selection, and
 inspector flow are unchanged behavior; the root keeps its 10px interior
 padding while the shell owns outer widget padding.
 
+### Updates
+
+`src/market_views/updates.rs` consumes the shared recipes. Pane chrome already
+titles the pane, so the body carries only a right-aligned compact ghost
+Refresh (unavailable while loading) instead of a repeated title. Filter and
+venue remain a balanced picker pair at 12px control size on default picker
+chrome; the asset field uses the shared compact input with a 12px Favourites
+checkbox. Event cards keep their grouping as inset surfaces with
+`effective_radius` 6px corners; keys follow the identity order — logo, symbol,
+metadata — with the key as a ghost navigation action. The footer status
+resolves muted/warning/negative tones (error, feed delayed, monitoring), and
+tooltips use the shared opaque overlay. Polling, backoff, persistence, filters,
+and expansion state are unchanged.
+
 ## Planned shared boundaries
 
 The following names are suggested implementation boundaries, not existing APIs:
