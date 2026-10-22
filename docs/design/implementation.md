@@ -36,6 +36,21 @@ The existing shared wallet action cell remains a 20px dense interaction inside
 the 24px tape row; its Copy/Open Wallet/Ghost behavior is retained. Global wallet
 cell styling and button keyboard-focus traversal remain separate migration work.
 
+### Order Book
+
+`src/market_views/order_book/**` consumes the shared recipes. Book/DOM/Depth
+and the tick-size selector are one segmented choice on a shared inset track
+using the compact selected-toggle treatment; the settings control is a
+monochrome vector icon (`src/helpers/ui/icons.rs`, the shared icon helper) on
+a 24px target with a tooltip; the stale indicator is an 11px soft-warning
+badge with an overlay tooltip; headers are 24px with 11px secondary labels;
+the mid/spread separator is a neutral inset band anchored by a 16px featured
+mid price with a compact Center toggle. The active/pinned symbol indicator
+uses labeled vector icons instead of font glyphs. The dense 20px ladder rows,
+depth gradients, DOM heat, scroll snapping, price-click selection, and
+inspector flow are unchanged behavior; the root keeps its 10px interior
+padding while the shell owns outer widget padding.
+
 ## Planned shared boundaries
 
 The following names are suggested implementation boundaries, not existing APIs:

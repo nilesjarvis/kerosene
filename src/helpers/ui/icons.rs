@@ -1,0 +1,70 @@
+//! Shared monochrome vector action icons.
+//!
+//! Inline SVG assets drawn with `currentColor` and tinted through resolved
+//! [`UiColors`] roles, per the design language's icon direction: one
+//! consistent vector family for app actions instead of font-dependent
+//! glyphs. Sizes are logical pixels at 100% UI scale.
+
+use crate::helpers::design::UiColors;
+use crate::message::Message;
+
+use iced::widget::svg;
+use iced::widget::svg::Handle as SvgHandle;
+use iced::{Element, Length, Theme};
+
+/// Settings "sliders" action.
+pub(crate) const SETTINGS: &[u8] = br#"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="round">
+  <path d="M4 8h16M4 16h16"/>
+  <circle cx="9" cy="8" r="2.4" fill="currentColor" stroke="none"/>
+  <circle cx="15" cy="16" r="2.4" fill="currentColor" stroke="none"/>
+</svg>
+"#;
+
+/// Map pin: a symbol pinned to one market instead of tracking the active one.
+pub(crate) const PIN: &[u8] = br#"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="round"
+     stroke-linejoin="round">
+  <path d="M12 21c-4-4.4-6-7.5-6-10a6 6 0 1 1 12 0c0 2.5-2 5.6-6 10z"/>
+  <circle cx="12" cy="11" r="2.2" fill="currentColor" stroke="none"/>
+</svg>
+"#;
+
+/// Solid status dot: the book is tracking the active (selected) symbol.
+pub(crate) const ACTIVE_DOT: &[u8] = br#"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <circle cx="12" cy="12" r="6" fill="currentColor"/>
+</svg>
+"#;
+
+/// Semantic tint for an icon, resolved against the active theme.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IconColor {
+    /// Secondary text: low-emphasis utilities and ghost actions.
+    Muted,
+    /// Accent: active tracking, selection, or focus.
+    Accent,
+}
+
+/// Render `icon` at `size` logical pixels, tinted by `role`.
+pub(crate) fn icon(icon: &'static [u8], size: f32, role: IconColor) -> Element<'static, Message> {
+    svg(SvgHandle::from_memory(icon))
+        .width(Length::Fixed(size))
+        .height(Length::Fixed(size))
+        .style(move |theme: &Theme, _status| svg::Style {
+            color: Some(role.resolve(theme)),
+        })
+        .into()
+}
+
+impl IconColor {
+    fn resolve(self, theme: &Theme) -> iced::Color {
+        let colors = UiColors::new(theme);
+        match self {
+            IconColor::Muted => colors.muted,
+            IconColor::Accent => colors.accent,
+        }
+    }
+}

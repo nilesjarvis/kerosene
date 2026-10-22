@@ -7,6 +7,7 @@ mod order_book;
 mod symbols;
 mod ui;
 pub(crate) use ui::design;
+pub(crate) use ui::icons;
 #[cfg(target_os = "windows")]
 mod windows_security;
 

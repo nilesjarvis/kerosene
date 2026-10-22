@@ -1,10 +1,12 @@
 use crate::app_state::TradingTerminal;
+use crate::config::effective_radius;
 use crate::helpers;
+use crate::helpers::design::{UiColors, compact_button_style};
 use crate::market_state::{OrderBookId, OrderBookInstance};
 use crate::message::Message;
 
-use iced::widget::{button, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::widget::{button, container, text};
+use iced::{Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(in crate::market_views::order_book) fn resolved_order_book_tick(
@@ -26,54 +28,43 @@ impl TradingTerminal {
     }
 
     pub(in crate::market_views::order_book) fn view_order_book_tick_buttons(
+        &self,
         id: OrderBookId,
         tick_options: &[f64],
         tick: f64,
     ) -> Element<'static, Message> {
-        tick_options
-            .iter()
-            .fold(iced::widget::Row::new().spacing(4), |row_w, &opt| {
-                let is_active = (opt - tick).abs() / opt.max(1e-12) < 0.01;
-                let label = helpers::format_tick(opt);
-                row_w.push(
-                    button(text(label).size(10).center().width(Fill))
-                        .on_press(Message::SetBookTickSize(id, opt))
-                        .padding([2, 6])
-                        .width(Fill)
-                        .style(move |theme: &Theme, status| {
-                            let bg = if is_active {
-                                theme.extended_palette().background.strong.color
-                            } else {
-                                match status {
-                                    button::Status::Hovered => {
-                                        theme.extended_palette().background.weak.color
-                                    }
-                                    _ => theme.extended_palette().background.base.color,
-                                }
-                            };
-                            button::Style {
-                                background: Some(bg.into()),
-                                text_color: if is_active {
-                                    theme.palette().text
-                                } else {
-                                    theme.extended_palette().background.weak.text
-                                },
-                                border: iced::Border {
-                                    radius: 2.0.into(),
-                                    width: 1.0,
-                                    color: if is_active {
-                                        Color {
-                                            a: 0.4,
-                                            ..theme.palette().primary
-                                        }
-                                    } else {
-                                        Color::TRANSPARENT
-                                    },
-                                },
-                                ..Default::default()
-                            }
-                        }),
-                )
+        let pane_corner_radius = self.pane_corner_radius;
+        // Tick-size choices are the same segmented control as the display
+        // modes: equal widths on a shared inset track, with the selected
+        // coarseness marked by the shared soft-accent recipe.
+        let segments =
+            tick_options
+                .iter()
+                .fold(iced::widget::Row::new().spacing(2), |row_w, &opt| {
+                    let is_active = (opt - tick).abs() / opt.max(1e-12) < 0.01;
+                    let label = helpers::format_tick(opt);
+                    row_w.push(
+                        button(text(label).size(12).center())
+                            .on_press(Message::SetBookTickSize(id, opt))
+                            .height(24)
+                            .padding([0, 6])
+                            .width(Fill)
+                            .style(move |theme: &Theme, status| {
+                                compact_button_style(theme, status, is_active, pane_corner_radius)
+                            }),
+                    )
+                });
+
+        container(segments)
+            .width(Fill)
+            .padding(2)
+            .style(move |theme: &Theme| container::Style {
+                background: Some(UiColors::new(theme).inset.into()),
+                border: iced::Border {
+                    radius: effective_radius(pane_corner_radius, 4.0).into(),
+                    ..Default::default()
+                },
+                ..Default::default()
             })
             .into()
     }

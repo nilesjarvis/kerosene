@@ -32,6 +32,7 @@ impl TradingTerminal {
         theme: &Theme,
         user_order_levels: UserOrderBookLevels,
         whole_contracts: bool,
+        pane_corner_radius: f32,
     ) -> Element<'static, Message> {
         let decimals = tick_decimals(tick);
 
@@ -57,7 +58,8 @@ impl TradingTerminal {
         let max_cum = nice_step_ceil(max_ask_cum.max(max_bid_cum));
         let max_sz = nice_step_ceil(max_level_size(&ask_rows, &bid_rows));
 
-        let spread_widget = Self::view_order_book_spread_widget(id, inst, theme);
+        let spread_widget =
+            Self::view_order_book_spread_widget(id, inst, theme, pane_corner_radius);
         let column_context = DepthColumnContext {
             id,
             tick,
@@ -153,8 +155,10 @@ impl TradingTerminal {
         theme: &Theme,
         user_order_levels: UserOrderBookLevels,
         whole_contracts: bool,
+        pane_corner_radius: f32,
     ) -> Element<'static, Message> {
-        let spread_widget = Self::view_order_book_spread_widget(id, inst, theme);
+        let spread_widget =
+            Self::view_order_book_spread_widget(id, inst, theme, pane_corner_radius);
         dom::view_order_book_dom_ladder(
             id,
             inst,

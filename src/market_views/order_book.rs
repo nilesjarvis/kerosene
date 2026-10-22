@@ -1,11 +1,12 @@
 mod inspector;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
+use crate::helpers::design::UiColors;
 use crate::market_state::{OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode};
 use crate::message::Message;
 
 use iced::widget::{column, container, row, rule, text};
-use iced::{Element, Fill, color};
+use iced::{Element, Fill};
 
 mod controls;
 mod depth;
@@ -19,7 +20,7 @@ impl TradingTerminal {
         let Some(inst) = self.order_books.get(&id) else {
             return container(text("Loading Order Book...").size(12).style(
                 move |t: &iced::Theme| text::Style {
-                    color: Some(t.extended_palette().background.weak.text),
+                    color: Some(UiColors::new(t).muted),
                 },
             ))
             .width(iced::Length::Fill)
@@ -29,6 +30,7 @@ impl TradingTerminal {
             .into();
         };
         let theme = self.theme();
+        let colors = UiColors::new(&theme);
         let tracking_symbol = match &inst.mode {
             OrderBookSymbolMode::Active => self.active_symbol.as_str(),
             OrderBookSymbolMode::Fixed(symbol) => symbol.as_str(),
@@ -47,14 +49,10 @@ impl TradingTerminal {
                 content = content.push(self.view_order_book_settings(id, inst));
             }
             content = content.push(
-                container(
-                    text(hidden_label)
-                        .size(12)
-                        .color(theme.extended_palette().background.weak.text),
-                )
-                .width(Fill)
-                .height(Fill)
-                .center(Fill),
+                container(text(hidden_label).size(12).color(colors.muted))
+                    .width(Fill)
+                    .height(Fill)
+                    .center(Fill),
             );
             return container(content)
                 .width(Fill)
@@ -65,7 +63,7 @@ impl TradingTerminal {
 
         let tick_options = helpers::book_tick_options(inst.tick_options_mid());
         let tick = Self::resolved_order_book_tick(inst, &tick_options);
-        let tick_buttons = Self::view_order_book_tick_buttons(id, &tick_options, tick);
+        let tick_buttons = self.view_order_book_tick_buttons(id, &tick_options, tick);
         let header = match inst.display_mode {
             OrderBookDisplayMode::DepthList => Some(Self::view_order_book_header(
                 id,
@@ -91,10 +89,8 @@ impl TradingTerminal {
                 column![
                     text("Order book unavailable")
                         .size(12)
-                        .color(color!(0xff5555)),
-                    text(error)
-                        .size(11)
-                        .color(theme.extended_palette().background.weak.text),
+                        .color(colors.negative),
+                    text(error).size(11).color(colors.muted),
                 ]
                 .spacing(4)
                 .into()
@@ -107,7 +103,7 @@ impl TradingTerminal {
                         "Loading order book..."
                     })
                     .size(12)
-                    .color(theme.extended_palette().background.weak.text),
+                    .color(colors.muted),
                 ]
                 .spacing(8)
                 .align_y(iced::Alignment::Center)
@@ -119,7 +115,7 @@ impl TradingTerminal {
                     "No order book data"
                 })
                 .size(12)
-                .color(theme.extended_palette().background.weak.text)
+                .color(colors.muted)
                 .into()
             }
         } else {
@@ -133,6 +129,7 @@ impl TradingTerminal {
                     &theme,
                     user_order_levels,
                     whole_contracts,
+                    self.pane_corner_radius,
                 ),
                 OrderBookDisplayMode::DomLadder => Self::view_order_book_dom_ladder(
                     id,
@@ -141,6 +138,7 @@ impl TradingTerminal {
                     &theme,
                     user_order_levels,
                     whole_contracts,
+                    self.pane_corner_radius,
                 ),
                 OrderBookDisplayMode::DepthChart => Self::view_order_book_depth_chart(
                     id,

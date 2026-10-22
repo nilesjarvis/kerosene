@@ -164,10 +164,13 @@ async fn order_book_total_headers_toggle_units_in_both_orientations_and_views() 
                     size,
                     &format!("total-header-{dom}-{reversed}-{notional}"),
                 );
+                // The 24px header centers its 11px label row inside this
+                // 35px fixture viewport, so aim at the row's vertical middle
+                // instead of the old top-aligned 12px text position.
                 let points = if dom {
-                    vec![Point::new(50.0, 8.0), Point::new(450.0, 8.0)]
+                    vec![Point::new(50.0, 17.0), Point::new(450.0, 17.0)]
                 } else {
-                    vec![Point::new(if reversed { 50.0 } else { 450.0 }, 8.0)]
+                    vec![Point::new(if reversed { 50.0 } else { 450.0 }, 17.0)]
                 };
                 for point in points {
                     let messages = click(&mut header, &mut tree, &node, &mut renderer, size, point);
@@ -374,6 +377,7 @@ async fn book_rows_preserve_price_actions_through_centering_and_orientation() {
                             &theme,
                             levels.clone(),
                             false,
+                            6.0,
                         )
                     } else {
                         TradingTerminal::view_order_book_rows(
@@ -383,6 +387,7 @@ async fn book_rows_preserve_price_actions_through_centering_and_orientation() {
                             &theme,
                             levels.clone(),
                             false,
+                            6.0,
                         )
                     };
                     let size = Size::new(600.0, 360.0);

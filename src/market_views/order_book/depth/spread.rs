@@ -1,16 +1,19 @@
 use crate::app_state::TradingTerminal;
+use crate::config::effective_radius;
 use crate::helpers;
+use crate::helpers::design::{UiColors, compact_button_style};
 use crate::market_state::{OrderBookId, OrderBookInstance};
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{button, container, row, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::{Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(in crate::market_views::order_book) fn view_order_book_spread_widget(
         id: OrderBookId,
         inst: &OrderBookInstance,
         theme: &Theme,
+        pane_corner_radius: f32,
     ) -> Element<'static, Message> {
         // Use the same top-of-book the rows render so the spread row never
         // disagrees with the levels directly above and below it.
@@ -37,8 +40,10 @@ impl TradingTerminal {
                 // Center toggle.
                 (
                     text("--")
-                        .size(11)
-                        .color(theme.extended_palette().background.weak.text)
+                        .size(16)
+                        .style(move |t: &Theme| text::Style {
+                            color: Some(UiColors::new(t).muted),
+                        })
                         .into(),
                     "-- (--%)".to_string(),
                 )
@@ -50,23 +55,32 @@ impl TradingTerminal {
                 container(
                     text(spread_text)
                         .size(11)
-                        .color(theme.extended_palette().background.weak.text),
+                        .style(move |t: &Theme| text::Style {
+                            color: Some(UiColors::new(t).muted),
+                        }),
                 )
                 .width(Fill)
                 .align_x(iced::alignment::Horizontal::Center),
-                container(center_order_book_button(id, inst.center_on_mid, theme))
-                    .width(Fill)
-                    .align_x(iced::alignment::Horizontal::Right),
+                container(center_order_book_button(
+                    id,
+                    inst.center_on_mid,
+                    theme,
+                    pane_corner_radius,
+                ))
+                .width(Fill)
+                .align_x(iced::alignment::Horizontal::Right),
             ]
             .spacing(6)
             .align_y(iced::Alignment::Center),
         )
         .width(Fill)
         .padding([3, 0])
-        .style(move |theme: &Theme| container_style::Style {
-            background: Some(theme.extended_palette().background.weak.color.into()),
+        // The mid/spread separator is a neutral inset band anchored by a
+        // stronger current price, not a large button (design language).
+        .style(move |t: &Theme| container_style::Style {
+            background: Some(UiColors::new(t).inset.into()),
             border: iced::Border {
-                radius: 2.0.into(),
+                radius: effective_radius(pane_corner_radius, 3.0).into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -78,69 +92,47 @@ impl TradingTerminal {
 fn center_order_book_button(
     id: OrderBookId,
     is_active: bool,
-    theme: &Theme,
+    _theme: &Theme,
+    pane_corner_radius: f32,
 ) -> button::Button<'static, Message> {
-    let text_color = if is_active {
-        theme.palette().primary
-    } else {
-        theme.extended_palette().background.weak.text
-    };
-
-    button(text("Center").size(10).color(text_color))
-        .padding([2, 4])
-        .style(move |theme: &Theme, status| {
-            let mut background = if is_active {
-                theme.palette().primary
-            } else {
-                Color::TRANSPARENT
-            };
-            background.a = match (is_active, status) {
-                (true, button::Status::Hovered) => 0.18,
-                (true, _) => 0.12,
-                (false, button::Status::Hovered) => 0.08,
-                (false, _) => 0.0,
-            };
-
-            let mut border_color = theme.palette().primary;
-            border_color.a = if is_active { 0.45 } else { 0.0 };
-
-            button::Style {
-                background: Some(background.into()),
-                border: iced::Border {
-                    width: 1.0,
-                    color: border_color,
-                    radius: 2.0.into(),
-                },
-                ..Default::default()
-            }
-        })
+    // Independent on/off toggle: the shared compact selected-toggle recipe,
+    // so the active state keeps a soft fill plus outline instead of a
+    // bespoke accent tint.
+    button(text("Center").size(12))
         .on_press(Message::ToggleOrderBookCenterOnMid(id))
+        .height(24)
+        .padding([2, 8])
+        .style(move |t: &Theme, status| {
+            compact_button_style(t, status, is_active, pane_corner_radius)
+        })
 }
 
 /// Current mid price colored by the short-term direction of travel, with an
 /// up/down arrow — the at-a-glance price readout between asks and bids.
+/// Featured-size (16px) so the mid stays the strongest number in the book.
 fn mid_price_readout(
     mid: f64,
     price_move: Option<f64>,
     decimals: usize,
     theme: &Theme,
 ) -> Element<'static, Message> {
-    let weak_text = theme.extended_palette().background.weak.text;
+    let colors = UiColors::new(theme);
+    let muted = colors.muted;
     let decimals = decimals.min(8);
 
-    let (arrow, color) = match price_move {
-        Some(price_move) if price_move > 0.0 => ("\u{2191} ", theme.palette().success),
-        Some(price_move) if price_move < 0.0 => ("\u{2193} ", theme.palette().danger),
-        Some(_) => ("\u{2192} ", weak_text),
-        None => ("", weak_text),
+    let (arrow, direction) = match price_move {
+        Some(price_move) if price_move > 0.0 => ("\u{2191} ", colors.positive),
+        Some(price_move) if price_move < 0.0 => ("\u{2193} ", colors.negative),
+        Some(_) => ("\u{2192} ", muted),
+        None => ("", muted),
     };
 
     text(format!(
         "{arrow}{}",
         helpers::format_decimal_with_commas(mid, decimals)
     ))
-    .size(11)
+    .size(16)
     .font(crate::app_fonts::monospace_font())
-    .color(color)
+    .color(direction)
     .into()
 }

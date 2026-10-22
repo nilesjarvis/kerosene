@@ -2,10 +2,12 @@
 mod symbol_mode;
 
 use crate::app_state::TradingTerminal;
+use crate::config::effective_radius;
+use crate::helpers::design::{UiColors, compact_button_style};
 use crate::market_state::{OrderBookDisplayMode, OrderBookId, OrderBookInstance};
 use crate::message::Message;
 use iced::widget::{Space, button, column, container, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::{Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(super) fn view_order_book_settings<'a>(
@@ -13,6 +15,7 @@ impl TradingTerminal {
         id: OrderBookId,
         inst: &'a OrderBookInstance,
     ) -> Element<'a, Message> {
+        let pane_corner_radius = self.pane_corner_radius;
         let search_col = self.view_order_book_symbol_mode_controls(id, inst);
         let show_chart_btn = settings_toggle(
             if inst.show_spread_chart {
@@ -22,6 +25,7 @@ impl TradingTerminal {
             },
             inst.show_spread_chart,
             Message::ToggleOrderBookSpreadChart(id),
+            pane_corner_radius,
         );
 
         let mut settings = column![search_col, Space::new().height(10.0)].spacing(4);
@@ -36,6 +40,7 @@ impl TradingTerminal {
                 },
                 inst.reverse_side,
                 Message::ToggleOrderBookReverseSide(id),
+                pane_corner_radius,
             ));
         }
         let settings = settings.push(show_chart_btn);
@@ -43,8 +48,11 @@ impl TradingTerminal {
         container(settings)
             .padding(8)
             .style(move |theme: &Theme| container::Style {
-                background: Some(theme.extended_palette().background.weak.color.into()),
-                border: iced::border::rounded(4),
+                background: Some(UiColors::new(theme).inset.into()),
+                border: iced::Border {
+                    radius: effective_radius(pane_corner_radius, 6.0).into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             })
             .into()
@@ -55,35 +63,16 @@ fn settings_toggle(
     label: &'static str,
     active: bool,
     message: Message,
+    pane_corner_radius: f32,
 ) -> Element<'static, Message> {
+    // Choice toggles use the shared compact selected-toggle recipe so the
+    // active option keeps its soft fill and outline in every state.
     button(text(label).size(12).center().width(Fill))
         .on_press(message)
+        .width(Fill)
+        .height(24)
         .style(move |theme: &Theme, status| {
-            let bg = if active {
-                theme.extended_palette().background.strong.color
-            } else {
-                match status {
-                    button::Status::Hovered => theme.extended_palette().background.strong.color,
-                    _ => theme.extended_palette().background.base.color,
-                }
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: theme.palette().text,
-                border: iced::Border {
-                    radius: 2.0.into(),
-                    width: if active { 1.0 } else { 0.0 },
-                    color: if active {
-                        Color {
-                            a: 0.5,
-                            ..theme.palette().primary
-                        }
-                    } else {
-                        Color::TRANSPARENT
-                    },
-                },
-                ..Default::default()
-            }
+            compact_button_style(theme, status, active, pane_corner_radius)
         })
         .into()
 }

@@ -1,6 +1,7 @@
 use self::rows::{DomRowContext, dom_rows_column};
 use super::super::UserOrderBookLevels;
 use crate::app_state::TradingTerminal;
+use crate::helpers::design::UiColors;
 use crate::helpers::{nice_step_ceil, tick_decimals};
 use crate::market_state::{OrderBookId, OrderBookInstance};
 use crate::message::Message;
@@ -117,7 +118,6 @@ pub(super) fn view_order_book_dom_header(
                 id,
                 labels[0],
                 total_in_notional,
-                11
             ))
             .width(Fill)
             .padding([0, 4]),
@@ -128,13 +128,15 @@ pub(super) fn view_order_book_dom_header(
                 id,
                 labels[4],
                 total_in_notional,
-                11
             ))
             .width(Fill)
             .padding([0, 4]),
         ]
-        .spacing(3),
+        .spacing(3)
+        .align_y(iced::Alignment::Center),
     )
+    .height(24)
+    .align_y(iced::alignment::Vertical::Center)
     .padding(super::order_book_row_padding())
     .into()
 }
@@ -144,7 +146,10 @@ fn header_cell(label: &'static str) -> Element<'static, Message> {
         text(label)
             .size(11)
             .width(Fill)
-            .align_x(iced::alignment::Horizontal::Right),
+            .align_x(iced::alignment::Horizontal::Right)
+            .style(move |theme: &iced::Theme| text::Style {
+                color: Some(UiColors::new(theme).muted),
+            }),
     )
     .width(Fill)
     .padding([0, 4])

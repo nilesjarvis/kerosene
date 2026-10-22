@@ -1,12 +1,15 @@
 use crate::app_state::TradingTerminal;
+use crate::config::effective_radius;
 use crate::helpers;
+use crate::helpers::design::{UiColors, compact_button_style, mix_color, readable_color};
+use crate::helpers::icons::{self, IconColor};
 use crate::market_state::{
     OrderBookDisplayMode, OrderBookId, OrderBookInstance, OrderBookSymbolMode,
 };
 use crate::message::Message;
 
 use iced::widget::{button, column, container, row, text, tooltip};
-use iced::{Color, Element, Fill, Theme};
+use iced::{Element, Fill, Theme};
 use std::borrow::Cow;
 
 impl TradingTerminal {
@@ -15,17 +18,21 @@ impl TradingTerminal {
         reverse_side: bool,
         total_in_notional: bool,
     ) -> Element<'static, Message> {
-        let total = Self::view_order_book_total_header(id, "Total", total_in_notional, 12);
+        let total = Self::view_order_book_total_header(id, "Total", total_in_notional);
         let headers = if reverse_side {
             row![total, header_cell("Size"), header_cell("Price")]
         } else {
             row![header_cell("Price"), header_cell("Size"), total]
-        };
+        }
+        .spacing(4)
+        .align_y(iced::Alignment::Center);
 
         // Mirror the data rows' insets (4px row padding, plus the 15px
         // scrollbar gutter on the right) so the labels sit exactly over the
         // columns they name.
-        container(headers.spacing(4))
+        container(headers)
+            .height(24)
+            .align_y(iced::alignment::Vertical::Center)
             .padding(iced::Padding {
                 top: 0.0,
                 right: 19.0,
@@ -39,7 +46,6 @@ impl TradingTerminal {
         id: OrderBookId,
         label: &'static str,
         total_in_notional: bool,
-        size: u32,
     ) -> Element<'static, Message> {
         let label = if total_in_notional {
             format!("{label} ($)")
@@ -49,13 +55,21 @@ impl TradingTerminal {
         tooltip(
             button(
                 text(label)
-                    .size(size)
+                    .size(11)
                     .width(Fill)
                     .align_x(iced::alignment::Horizontal::Right),
             )
             .width(Fill)
             .padding(0)
-            .style(button::text)
+            .style(|theme: &Theme, status| {
+                let colors = UiColors::new(theme);
+                button::Style {
+                    background: (status == button::Status::Hovered)
+                        .then_some(mix_color(colors.panel, colors.text, 0.05).into()),
+                    text_color: colors.muted,
+                    ..Default::default()
+                }
+            })
             .on_press(Message::ToggleOrderBookTotalUnit(id)),
             text(if total_in_notional {
                 "Show totals in base units"
@@ -83,12 +97,32 @@ impl TradingTerminal {
         let book_has_rows = !inst.book.bids.is_empty() || !inst.book.asks.is_empty();
 
         let tracking_text = text(tracking_label)
-            .size(10)
+            .size(12)
             .style(move |theme: &Theme| text::Style {
-                color: Some(theme.extended_palette().background.strong.text),
+                color: Some(UiColors::new(theme).text),
             });
 
-        let title = row![active_indicator(is_active), tracking_text]
+        // The symbol-mode indicator carries its meaning in a tooltip: a
+        // filled dot tracks the active (flicking) symbol; a pin marks a
+        // symbol fixed to this book. The reserved 12px target keeps the
+        // title layout identical in both modes.
+        let symbol_mode_indicator: Element<'static, Message> = if is_active {
+            tooltip(
+                indicator_slot(icons::icon(icons::ACTIVE_DOT, 8.0, IconColor::Accent)),
+                text("Tracks the active (selected) symbol").size(11),
+                tooltip::Position::Bottom,
+            )
+            .into()
+        } else {
+            tooltip(
+                indicator_slot(icons::icon(icons::PIN, 12.0, IconColor::Muted)),
+                text("Pinned to this symbol").size(11),
+                tooltip::Position::Bottom,
+            )
+            .into()
+        };
+
+        let title = row![symbol_mode_indicator, tracking_text]
             .spacing(2)
             .align_y(iced::Alignment::Center);
 
@@ -101,42 +135,65 @@ impl TradingTerminal {
         if let Some(error) = &inst.book_error
             && book_has_rows
         {
-            status = status.push(stale_book_badge(error));
+            status = status.push(stale_book_badge(error, self.pane_corner_radius));
         }
 
+        let pane_corner_radius = self.pane_corner_radius;
+        // Book/DOM/Depth is one segmented choice on a shared inset track, so
+        // the three modes never change size, family, or density.
+        let mode_track = container(
+            row![
+                display_mode_button(
+                    id,
+                    inst.display_mode,
+                    OrderBookDisplayMode::DepthList,
+                    "Book",
+                    pane_corner_radius,
+                ),
+                display_mode_button(
+                    id,
+                    inst.display_mode,
+                    OrderBookDisplayMode::DomLadder,
+                    "DOM",
+                    pane_corner_radius,
+                ),
+                display_mode_button(
+                    id,
+                    inst.display_mode,
+                    OrderBookDisplayMode::DepthChart,
+                    "Depth",
+                    pane_corner_radius,
+                ),
+            ]
+            .spacing(2),
+        )
+        .padding(2)
+        .style(move |theme: &Theme| segment_track_style(theme, pane_corner_radius));
+
+        let settings_button = button(icons::icon(icons::SETTINGS, 14.0, IconColor::Muted))
+            .on_press(Message::ToggleOrderBookSettings(id))
+            .width(24)
+            .height(24)
+            .padding(0)
+            .style(move |theme: &Theme, status| {
+                compact_button_style(theme, status, false, pane_corner_radius)
+            });
+
         title
-            .push(container(status).width(44).height(16).center_y(16))
+            .push(
+                container(status)
+                    .width(56)
+                    .height(18)
+                    .align_y(iced::alignment::Vertical::Center),
+            )
             .push(iced::widget::Space::new().width(Fill))
-            .push(Element::from(display_mode_button(
-                id,
-                inst.display_mode,
-                OrderBookDisplayMode::DepthList,
-                "Book",
-            )))
-            .push(Element::from(display_mode_button(
-                id,
-                inst.display_mode,
-                OrderBookDisplayMode::DomLadder,
-                "DOM",
-            )))
-            .push(Element::from(display_mode_button(
-                id,
-                inst.display_mode,
-                OrderBookDisplayMode::DepthChart,
-                "Depth",
-            )))
-            .push(Element::from(
-                button(
-                    text("\u{2699}")
-                        .size(12)
-                        .style(move |theme: &Theme| text::Style {
-                            color: Some(theme.extended_palette().background.weak.text),
-                        }),
-                )
-                .style(button::text)
-                .on_press(Message::ToggleOrderBookSettings(id))
-                .padding(2),
+            .push(mode_track)
+            .push(tooltip(
+                settings_button,
+                text("Book settings").size(11),
+                tooltip::Position::Bottom,
             ))
+            .align_y(iced::Alignment::Center)
             .into()
     }
 
@@ -147,7 +204,6 @@ impl TradingTerminal {
     ) -> Option<Element<'static, Message>> {
         let exchange_symbol = self.exchange_symbols.iter().find(|sym| sym.key == symbol)?;
         let info = exchange_symbol.outcome.as_ref()?;
-        let theme = self.theme();
         let condition = info.side_condition_label_with_countdown(self.status_bar_now_ms);
         let probability = inst
             .current_mid_price()
@@ -170,48 +226,55 @@ impl TradingTerminal {
             row![
                 text(format!("{}: {condition}", info.side_name))
                     .size(11)
-                    .color(theme.palette().text)
+                    .style(move |theme: &Theme| text::Style {
+                        color: Some(UiColors::new(theme).text),
+                    })
                     .width(Fill),
                 text(probability)
                     .size(11)
                     .font(crate::app_fonts::monospace_font())
-                    .color(theme.palette().primary),
+                    .style(move |theme: &Theme| text::Style {
+                        color: Some(UiColors::new(theme).text),
+                    }),
             ]
             .spacing(6)
             .align_y(iced::Alignment::Center),
             text(detail)
-                .size(10)
-                .color(theme.extended_palette().background.weak.text),
+                .size(11)
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(UiColors::new(theme).muted),
+                }),
         ]
         .spacing(2);
         if let Some(reason) = info.trading_block_reason(self.status_bar_now_ms) {
-            metadata = metadata.push(
-                text(reason.to_string())
-                    .size(11)
-                    .color(theme.palette().danger),
-            );
+            metadata = metadata.push(text(reason.to_string()).size(11).style(
+                move |theme: &Theme| text::Style {
+                    color: Some(UiColors::new(theme).negative),
+                },
+            ));
         }
         if let Some(source) = info.settlement_source_label() {
-            metadata = metadata.push(
-                text(source)
-                    .size(10)
-                    .color(theme.extended_palette().background.weak.text),
-            );
+            metadata =
+                metadata.push(
+                    text(source)
+                        .size(11)
+                        .style(move |theme: &Theme| text::Style {
+                            color: Some(UiColors::new(theme).muted),
+                        }),
+                );
         }
 
+        let pane_corner_radius = self.pane_corner_radius;
         Some(
             container(metadata)
                 .width(Fill)
                 .padding([4, 6])
                 .style(move |theme: &Theme| container::Style {
-                    background: Some(theme.extended_palette().background.weak.color.into()),
+                    background: Some(UiColors::new(theme).inset.into()),
                     border: iced::Border {
-                        radius: 3.0.into(),
+                        radius: effective_radius(pane_corner_radius, 6.0).into(),
                         width: 1.0,
-                        color: Color {
-                            a: 0.25,
-                            ..theme.palette().primary
-                        },
+                        color: UiColors::new(theme).divider,
                     },
                     ..Default::default()
                 })
@@ -239,60 +302,69 @@ impl TradingTerminal {
 
 fn header_cell(label: &'static str) -> Element<'static, Message> {
     text(label)
-        .size(12)
+        .size(11)
         .width(Fill)
         .align_x(iced::alignment::Horizontal::Right)
+        .style(move |theme: &Theme| text::Style {
+            color: Some(UiColors::new(theme).muted),
+        })
         .into()
 }
 
-/// Small colored dot that signals the order book is tracking the active
-/// (flicking) symbol rather than a pinned one.
-fn active_indicator(is_active: bool) -> Element<'static, Message> {
-    if !is_active {
-        return text("").into();
+/// Reserved, centered 12px slot for the symbol-mode indicator so the active
+/// dot and the pinned pin keep the title layout stable.
+fn indicator_slot(icon: Element<'static, Message>) -> Element<'static, Message> {
+    container(icon)
+        .width(12)
+        .align_x(iced::alignment::Horizontal::Center)
+        .into()
+}
+
+/// Inset track behind a segmented choice. Segments render their own
+/// selected, hover, and pressed surfaces on top of it.
+fn segment_track_style(theme: &Theme, pane_corner_radius: f32) -> container::Style {
+    container::Style {
+        background: Some(UiColors::new(theme).inset.into()),
+        border: iced::Border {
+            radius: effective_radius(pane_corner_radius, 4.0).into(),
+            ..Default::default()
+        },
+        ..Default::default()
     }
-    container(
-        text("\u{2022}")
-            .size(14)
-            .style(|theme: &Theme| text::Style {
-                color: Some(theme.palette().primary),
-            }),
-    )
-    .padding(iced::Padding::new(0.0).left(2.0))
-    .into()
 }
 
 /// Compact constant-size indicator that the displayed book is a stale
 /// snapshot; the full error message lives in the tooltip.
-fn stale_book_badge(error: &str) -> Element<'static, Message> {
-    tooltip(
-        container(
-            text("stale")
-                .size(9)
-                .style(move |theme: &Theme| text::Style {
-                    color: Some(theme.palette().danger),
-                }),
-        )
-        .padding([1, 4])
-        .style(move |theme: &Theme| container::Style {
+fn stale_book_badge(error: &str, pane_corner_radius: f32) -> Element<'static, Message> {
+    const SOFT_WARNING_FILL: f32 = 0.18;
+    let badge = container(text("Stale").size(11).style(move |theme: &Theme| {
+        let colors = UiColors::new(theme);
+        let fill = mix_color(colors.panel, colors.warning, SOFT_WARNING_FILL);
+        text::Style {
+            color: Some(readable_color(colors.warning, fill, 4.5)),
+        }
+    }))
+    .padding([1, 6])
+    .height(18)
+    .align_y(iced::alignment::Vertical::Center)
+    .style(move |theme: &Theme| {
+        let colors = UiColors::new(theme);
+        container::Style {
+            background: Some(mix_color(colors.panel, colors.warning, SOFT_WARNING_FILL).into()),
             border: iced::Border {
-                radius: 2.0.into(),
-                width: 1.0,
-                color: Color {
-                    a: 0.5,
-                    ..theme.palette().danger
-                },
+                radius: effective_radius(pane_corner_radius, 3.0).into(),
+                ..Default::default()
             },
             ..Default::default()
-        }),
-        container(text(format!("{error}; showing last snapshot")).size(10))
-            .padding([4, 6])
+        }
+    });
+
+    tooltip(
+        badge,
+        container(text(format!("{error}; showing last snapshot")).size(11))
+            .padding([6, 8])
             .max_width(280)
-            .style(move |theme: &Theme| container::Style {
-                background: Some(theme.extended_palette().background.strong.color.into()),
-                border: iced::border::rounded(3),
-                ..Default::default()
-            }),
+            .style(move |theme: &Theme| UiColors::new(theme).overlay(pane_corner_radius)),
         tooltip::Position::Bottom,
     )
     .into()
@@ -303,40 +375,14 @@ fn display_mode_button(
     active: OrderBookDisplayMode,
     mode: OrderBookDisplayMode,
     label: &'static str,
+    pane_corner_radius: f32,
 ) -> button::Button<'static, Message> {
     let is_active = active == mode;
-    button(text(label).size(10).center())
+    button(text(label).size(12).center())
         .on_press(Message::SetOrderBookDisplayMode(id, mode))
-        .padding([2, 6])
+        .height(24)
+        .padding([0, 6])
         .style(move |theme: &Theme, status| {
-            let bg = if is_active {
-                theme.extended_palette().background.strong.color
-            } else {
-                match status {
-                    button::Status::Hovered => theme.extended_palette().background.weak.color,
-                    _ => Color::TRANSPARENT,
-                }
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: if is_active {
-                    theme.palette().text
-                } else {
-                    theme.extended_palette().background.weak.text
-                },
-                border: iced::Border {
-                    radius: 2.0.into(),
-                    width: if is_active { 1.0 } else { 0.0 },
-                    color: if is_active {
-                        Color {
-                            a: 0.4,
-                            ..theme.palette().primary
-                        }
-                    } else {
-                        Color::TRANSPARENT
-                    },
-                },
-                ..Default::default()
-            }
+            compact_button_style(theme, status, is_active, pane_corner_radius)
         })
 }

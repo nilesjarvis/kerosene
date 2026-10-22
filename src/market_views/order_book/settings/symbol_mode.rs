@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::design::{compact_button_style, compact_input_style};
 use crate::market_state::{OrderBookId, OrderBookInstance, OrderBookSymbolMode};
 use crate::message::Message;
 use iced::widget::{Column, button, column, container, text, text_input};
@@ -19,17 +20,26 @@ impl TradingTerminal {
     ) -> Column<'a, Message> {
         let active_btn = button(text("Track Active Symbol").size(12).center().width(Fill))
             .on_press(Message::OrderBookSetMode(id, OrderBookSymbolMode::Active))
-            .style(symbol_mode_button_style(matches!(
-                inst.mode,
-                OrderBookSymbolMode::Active
-            )));
+            .width(Fill)
+            .height(24)
+            .style(move |theme: &Theme, status| {
+                compact_button_style(
+                    theme,
+                    status,
+                    matches!(inst.mode, OrderBookSymbolMode::Active),
+                    self.pane_corner_radius,
+                )
+            });
 
         let search_col = column![
             active_btn,
             text_input("Search fixed asset...", &inst.search_query)
                 .on_input(move |q| Message::OrderBookSearchChanged(id, q))
-                .padding(5)
+                .padding(8)
                 .size(12)
+                .style(move |theme: &Theme, status| {
+                    compact_input_style(theme, status, false, self.pane_corner_radius)
+                })
         ]
         .spacing(4);
 
@@ -55,7 +65,9 @@ impl TradingTerminal {
                         id,
                         OrderBookSymbolMode::Fixed(sym.key.clone()),
                     ))
-                    .style(symbol_mode_button_style(is_active));
+                    .style(move |theme: &Theme, status| {
+                        compact_button_style(theme, status, is_active, self.pane_corner_radius)
+                    });
                 results = results.push(btn);
                 matches += 1;
             }
@@ -66,20 +78,5 @@ impl TradingTerminal {
                 .width(Fill)
                 .height(SYMBOL_RESULTS_AREA_HEIGHT),
         )
-    }
-}
-
-fn symbol_mode_button_style(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
-    move |theme, status| {
-        let bg = if active || matches!(status, button::Status::Hovered) {
-            theme.extended_palette().background.strong.color
-        } else {
-            iced::Color::TRANSPARENT
-        };
-        button::Style {
-            background: Some(bg.into()),
-            text_color: theme.palette().text,
-            ..Default::default()
-        }
     }
 }
