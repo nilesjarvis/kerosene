@@ -5,6 +5,11 @@ persisted config, and chart/UI synchronization. This area includes themes,
 fonts, pane chrome, chart visuals, hotkeys, sounds, read-data provider, risk
 filters, secret storage controls, integrations, layouts, and notifications.
 
+For the target cross-theme appearance of controls and surfaces, see the
+[Kerosene Design Language](../design/README.md), especially its
+[theme role contract](../design/foundations.md). This component guide describes
+the current runtime and persistence behavior.
+
 ## Component Map
 
 | Component | Key files | Responsibility |

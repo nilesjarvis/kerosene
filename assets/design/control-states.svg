@@ -1,0 +1,312 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1596" height="1024" viewBox="0 0 1596 1024" role="img" aria-labelledby="title desc">
+<title id="title">Kerosene control state reference</title>
+<desc id="desc">Proposed button, selection, and input states in a dark and light palette. Focus rings and stable bounds are design targets, not a claim of existing keyboard support.</desc>
+<rect x="0" y="0" width="1596" height="1024" rx="0" fill="#e9e9e6" stroke="none" stroke-width="1"/>
+<text x="24" y="32" fill="#20252b" font-family="Inter, DejaVu Sans, sans-serif" font-size="22" font-weight="600" text-anchor="start">Kerosene / control states</text>
+<text x="24" y="55" fill="#4c535a" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Stable labels and geometry · selection persists through hover · focus is a separate indicator · synthetic examples</text>
+<rect x="24" y="80" width="762" height="900" rx="8" fill="#273035" stroke="none" stroke-width="1"/>
+<text x="40" y="110" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="18" font-weight="600" text-anchor="start">Dark teal</text>
+<text x="168" y="141" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Rest</text>
+<text x="268" y="141" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Hover</text>
+<text x="368" y="141" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Pressed</text>
+<text x="468" y="141" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Focus</text>
+<text x="568" y="141" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Disabled</text>
+<text x="668" y="141" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Busy</text>
+<text x="40" y="176" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Primary</text>
+<rect x="122" y="158" width="92" height="28" rx="4" fill="#50d2c1" stroke="none" stroke-width="1"/>
+<text x="168.0" y="176.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="222" y="158" width="92" height="28" rx="4" fill="#61d6c7" stroke="none" stroke-width="1"/>
+<text x="268.0" y="176.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="322" y="158" width="92" height="28" rx="4" fill="#45b5a6" stroke="none" stroke-width="1"/>
+<text x="368.0" y="176.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="419" y="155" width="98" height="34" rx="6" fill="#273035" stroke="#50d2c1" stroke-width="2"/>
+<rect x="422" y="158" width="92" height="28" rx="4" fill="#50d2c1" stroke="none" stroke-width="1"/>
+<text x="468.0" y="176.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="522" y="158" width="92" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="568.0" y="176.0" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="622" y="158" width="92" height="28" rx="4" fill="#50d2c1" stroke="none" stroke-width="1"/>
+<path d="M 639 172.0 A 4 4 0 1 0 635 176.0" fill="none" stroke="#101318" stroke-width="1.5"/>
+<text x="672.0" y="176.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<text x="40" y="228" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Secondary</text>
+<rect x="122" y="210" width="92" height="28" rx="4" fill="#344047" stroke="#485155" stroke-width="1"/>
+<text x="168.0" y="228.0" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="222" y="210" width="92" height="28" rx="4" fill="#444f56" stroke="#485155" stroke-width="1"/>
+<text x="268.0" y="228.0" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="322" y="210" width="92" height="28" rx="4" fill="#4f5b60" stroke="#485155" stroke-width="1"/>
+<text x="368.0" y="228.0" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="419" y="207" width="98" height="34" rx="6" fill="#273035" stroke="#50d2c1" stroke-width="2"/>
+<rect x="422" y="210" width="92" height="28" rx="4" fill="#344047" stroke="#485155" stroke-width="1"/>
+<text x="468.0" y="228.0" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="522" y="210" width="92" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="568.0" y="228.0" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="622" y="210" width="92" height="28" rx="4" fill="#344047" stroke="#485155" stroke-width="1"/>
+<path d="M 639 224.0 A 4 4 0 1 0 635 228.0" fill="none" stroke="#f6fefd" stroke-width="1.5"/>
+<text x="672.0" y="228.0" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<text x="40" y="280" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Ghost</text>
+<rect x="122" y="262" width="92" height="28" rx="4" fill="#273035" stroke="none" stroke-width="1"/>
+<text x="168.0" y="280.0" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset</text>
+<rect x="222" y="262" width="92" height="28" rx="4" fill="#384045" stroke="none" stroke-width="1"/>
+<text x="268.0" y="280.0" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset</text>
+<rect x="322" y="262" width="92" height="28" rx="4" fill="#444d51" stroke="none" stroke-width="1"/>
+<text x="368.0" y="280.0" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset</text>
+<rect x="419" y="259" width="98" height="34" rx="6" fill="#273035" stroke="#50d2c1" stroke-width="2"/>
+<rect x="422" y="262" width="92" height="28" rx="4" fill="#273035" stroke="none" stroke-width="1"/>
+<text x="468.0" y="280.0" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset</text>
+<rect x="522" y="262" width="92" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="568.0" y="280.0" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset</text>
+<rect x="622" y="262" width="92" height="28" rx="4" fill="#273035" stroke="none" stroke-width="1"/>
+<path d="M 639 276.0 A 4 4 0 1 0 635 280.0" fill="none" stroke="#b7c5c2" stroke-width="1.5"/>
+<text x="672.0" y="280.0" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset</text>
+<text x="40" y="332" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Destructive</text>
+<rect x="122" y="314" width="92" height="28" rx="4" fill="#3f383f" stroke="#ee8498" stroke-width="1"/>
+<text x="168.0" y="332.0" fill="#ee8498" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Remove</text>
+<rect x="222" y="314" width="92" height="28" rx="4" fill="#4e484e" stroke="#ee8498" stroke-width="1"/>
+<text x="268.0" y="332.0" fill="#f0a4b2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Remove</text>
+<rect x="322" y="314" width="92" height="28" rx="4" fill="#59545a" stroke="#ee8498" stroke-width="1"/>
+<text x="368.0" y="332.0" fill="#f2bcc6" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Remove</text>
+<rect x="419" y="311" width="98" height="34" rx="6" fill="#273035" stroke="#50d2c1" stroke-width="2"/>
+<rect x="422" y="314" width="92" height="28" rx="4" fill="#3f383f" stroke="#ee8498" stroke-width="1"/>
+<text x="468.0" y="332.0" fill="#ee8498" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Remove</text>
+<rect x="522" y="314" width="92" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="568.0" y="332.0" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Remove</text>
+<rect x="622" y="314" width="92" height="28" rx="4" fill="#3f383f" stroke="#ee8498" stroke-width="1"/>
+<path d="M 639 328.0 A 4 4 0 1 0 635 332.0" fill="none" stroke="#ee8498" stroke-width="1.5"/>
+<text x="672.0" y="332.0" fill="#ee8498" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Remove</text>
+<text x="40" y="384" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Buy</text>
+<rect x="122" y="366" width="92" height="28" rx="4" fill="#50d2c1" stroke="none" stroke-width="1"/>
+<text x="168.0" y="384.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">BUY</text>
+<rect x="222" y="366" width="92" height="28" rx="4" fill="#61d6c7" stroke="none" stroke-width="1"/>
+<text x="268.0" y="384.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">BUY</text>
+<rect x="322" y="366" width="92" height="28" rx="4" fill="#45b5a6" stroke="none" stroke-width="1"/>
+<text x="368.0" y="384.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">BUY</text>
+<rect x="419" y="363" width="98" height="34" rx="6" fill="#273035" stroke="#50d2c1" stroke-width="2"/>
+<rect x="422" y="366" width="92" height="28" rx="4" fill="#50d2c1" stroke="none" stroke-width="1"/>
+<text x="468.0" y="384.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">BUY</text>
+<rect x="522" y="366" width="92" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="568.0" y="384.0" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">BUY</text>
+<rect x="622" y="366" width="92" height="28" rx="4" fill="#50d2c1" stroke="none" stroke-width="1"/>
+<path d="M 639 380.0 A 4 4 0 1 0 635 384.0" fill="none" stroke="#101318" stroke-width="1.5"/>
+<text x="672.0" y="384.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">BUY</text>
+<text x="40" y="436" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Sell</text>
+<rect x="122" y="418" width="92" height="28" rx="4" fill="#ed7088" stroke="none" stroke-width="1"/>
+<text x="168.0" y="436.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SELL</text>
+<rect x="222" y="418" width="92" height="28" rx="4" fill="#ee7e94" stroke="none" stroke-width="1"/>
+<text x="268.0" y="436.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SELL</text>
+<rect x="322" y="418" width="92" height="28" rx="4" fill="#cc6075" stroke="none" stroke-width="1"/>
+<text x="368.0" y="436.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SELL</text>
+<rect x="419" y="415" width="98" height="34" rx="6" fill="#273035" stroke="#50d2c1" stroke-width="2"/>
+<rect x="422" y="418" width="92" height="28" rx="4" fill="#ed7088" stroke="none" stroke-width="1"/>
+<text x="468.0" y="436.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SELL</text>
+<rect x="522" y="418" width="92" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="568.0" y="436.0" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SELL</text>
+<rect x="622" y="418" width="92" height="28" rx="4" fill="#ed7088" stroke="none" stroke-width="1"/>
+<path d="M 639 432.0 A 4 4 0 1 0 635 436.0" fill="none" stroke="#101318" stroke-width="1.5"/>
+<text x="672.0" y="436.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SELL</text>
+<path d="M40 476 H770" fill="none" stroke="#485155" stroke-width="1"/>
+<text x="40" y="503" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">SELECTION  /  mode choices retain their indicator</text>
+<text x="40" y="528" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Unselected</text>
+<rect x="40" y="540" width="164" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="122.0" y="558" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<text x="224" y="528" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Selected</text>
+<rect x="224" y="540" width="164" height="28" rx="4" fill="#223b3d" stroke="#50d2c1" stroke-width="1"/>
+<text x="306.0" y="558" fill="#50d2c1" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<text x="408" y="528" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Selected + hover</text>
+<rect x="408" y="540" width="164" height="28" rx="4" fill="#31494a" stroke="#50d2c1" stroke-width="1"/>
+<text x="490.0" y="558" fill="#50d2c1" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<text x="592" y="528" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Selected + focus</text>
+<rect x="589" y="537" width="170" height="34" rx="6" fill="#273035" stroke="#50d2c1" stroke-width="2"/>
+<rect x="592" y="540" width="164" height="28" rx="4" fill="#223b3d" stroke="#50d2c1" stroke-width="1"/>
+<text x="674.0" y="558" fill="#50d2c1" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<path d="M40 590 H770" fill="none" stroke="#485155" stroke-width="1"/>
+<text x="40" y="618" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">FIELDS  /  28px frame · visible label · unit slot</text>
+<text x="40" y="646" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Rest</text>
+<rect x="40" y="658" width="220" height="28" rx="4" fill="#1b2429" stroke="#80949a" stroke-width="1"/>
+<text x="48" y="676" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">42.18</text>
+<text x="252" y="676" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<text x="284" y="646" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Focus</text>
+<rect x="281" y="655" width="226" height="34" rx="6" fill="#273035" stroke="#50d2c1" stroke-width="2"/>
+<rect x="284" y="658" width="220" height="28" rx="4" fill="#1b2429" stroke="#80949a" stroke-width="1"/>
+<text x="292" y="676" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">42.18</text>
+<text x="496" y="676" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<path d="M328.0 664 L328.0 680" fill="none" stroke="#f6fefd" stroke-width="1"/>
+<text x="528" y="646" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Invalid</text>
+<rect x="528" y="658" width="220" height="28" rx="4" fill="#1b2429" stroke="#ed7088" stroke-width="1"/>
+<text x="536" y="676" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">abc</text>
+<text x="740" y="676" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<text x="528" y="706" fill="#ed7088" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Enter a valid price</text>
+<text x="40" y="748" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Invalid + focus</text>
+<rect x="37" y="757" width="226" height="34" rx="6" fill="#273035" stroke="#50d2c1" stroke-width="2"/>
+<rect x="40" y="760" width="220" height="28" rx="4" fill="#1b2429" stroke="#ed7088" stroke-width="1"/>
+<text x="48" y="778" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">abc</text>
+<text x="252" y="778" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<path d="M69.6 766 L69.6 782" fill="none" stroke="#f6fefd" stroke-width="1"/>
+<text x="40" y="808" fill="#ed7088" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Enter a valid price</text>
+<text x="284" y="748" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Disabled</text>
+<rect x="284" y="760" width="220" height="28" rx="4" fill="#344047" stroke="#49555b" stroke-width="1"/>
+<text x="292" y="778" fill="#b7c5c2" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">42.18</text>
+<text x="496" y="778" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<text x="284" y="808" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Unavailable in this mode</text>
+<text x="528" y="748" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Read only</text>
+<rect x="528" y="760" width="220" height="28" rx="4" fill="#1b2429" stroke="#80949a" stroke-width="1"/>
+<text x="536" y="778" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">42.18</text>
+<text x="740" y="778" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<text x="528" y="808" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Readable, without edit affordance</text>
+<path d="M40 838 H770" fill="none" stroke="#485155" stroke-width="1"/>
+<text x="40" y="869" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="500" text-anchor="start">24px compact   /   28px standard   /   36px prominent</text>
+<text x="40" y="895" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">4px control corners · 1px boundary · 2px focus indicator</text>
+<text x="40" y="921" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Busy retains action context. Disabled controls do not activate.</text>
+<text x="40" y="947" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Focus support requires native widget/state work where missing.</text>
+<rect x="810" y="80" width="762" height="900" rx="8" fill="#f4ecd8" stroke="none" stroke-width="1"/>
+<text x="826" y="110" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="18" font-weight="600" text-anchor="start">Warm light</text>
+<text x="954" y="141" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Rest</text>
+<text x="1054" y="141" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Hover</text>
+<text x="1154" y="141" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Pressed</text>
+<text x="1254" y="141" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Focus</text>
+<text x="1354" y="141" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Disabled</text>
+<text x="1454" y="141" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Busy</text>
+<text x="826" y="176" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Primary</text>
+<rect x="908" y="158" width="92" height="28" rx="4" fill="#7a6235" stroke="none" stroke-width="1"/>
+<text x="954.0" y="176.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="1008" y="158" width="92" height="28" rx="4" fill="#725c33" stroke="none" stroke-width="1"/>
+<text x="1054.0" y="176.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="1108" y="158" width="92" height="28" rx="4" fill="#69542e" stroke="none" stroke-width="1"/>
+<text x="1154.0" y="176.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="1205" y="155" width="98" height="34" rx="6" fill="#f4ecd8" stroke="#7a6235" stroke-width="2"/>
+<rect x="1208" y="158" width="92" height="28" rx="4" fill="#7a6235" stroke="none" stroke-width="1"/>
+<text x="1254.0" y="176.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="1308" y="158" width="92" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="1354.0" y="176.0" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="1408" y="158" width="92" height="28" rx="4" fill="#7a6235" stroke="none" stroke-width="1"/>
+<path d="M 1425 172.0 A 4 4 0 1 0 1421 176.0" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+<text x="1458.0" y="176.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<text x="826" y="228" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Secondary</text>
+<rect x="908" y="210" width="92" height="28" rx="4" fill="#e8dec8" stroke="#d4ccbb" stroke-width="1"/>
+<text x="954.0" y="228.0" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="1008" y="210" width="92" height="28" rx="4" fill="#d9cfbb" stroke="#d4ccbb" stroke-width="1"/>
+<text x="1054.0" y="228.0" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="1108" y="210" width="92" height="28" rx="4" fill="#cdc4b0" stroke="#d4ccbb" stroke-width="1"/>
+<text x="1154.0" y="228.0" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="1205" y="207" width="98" height="34" rx="6" fill="#f4ecd8" stroke="#7a6235" stroke-width="2"/>
+<rect x="1208" y="210" width="92" height="28" rx="4" fill="#e8dec8" stroke="#d4ccbb" stroke-width="1"/>
+<text x="1254.0" y="228.0" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="1308" y="210" width="92" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="1354.0" y="228.0" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="1408" y="210" width="92" height="28" rx="4" fill="#e8dec8" stroke="#d4ccbb" stroke-width="1"/>
+<path d="M 1425 224.0 A 4 4 0 1 0 1421 228.0" fill="none" stroke="#2a2520" stroke-width="1.5"/>
+<text x="1458.0" y="228.0" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<text x="826" y="280" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Ghost</text>
+<rect x="908" y="262" width="92" height="28" rx="4" fill="#f4ecd8" stroke="none" stroke-width="1"/>
+<text x="954.0" y="280.0" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset</text>
+<rect x="1008" y="262" width="92" height="28" rx="4" fill="#e4dcc9" stroke="none" stroke-width="1"/>
+<text x="1054.0" y="280.0" fill="#696052" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset</text>
+<rect x="1108" y="262" width="92" height="28" rx="4" fill="#d8d0be" stroke="none" stroke-width="1"/>
+<text x="1154.0" y="280.0" fill="#61594b" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset</text>
+<rect x="1205" y="259" width="98" height="34" rx="6" fill="#f4ecd8" stroke="#7a6235" stroke-width="2"/>
+<rect x="1208" y="262" width="92" height="28" rx="4" fill="#f4ecd8" stroke="none" stroke-width="1"/>
+<text x="1254.0" y="280.0" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset</text>
+<rect x="1308" y="262" width="92" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="1354.0" y="280.0" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset</text>
+<rect x="1408" y="262" width="92" height="28" rx="4" fill="#f4ecd8" stroke="none" stroke-width="1"/>
+<path d="M 1425 276.0 A 4 4 0 1 0 1421 280.0" fill="none" stroke="#706757" stroke-width="1.5"/>
+<text x="1458.0" y="280.0" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset</text>
+<text x="826" y="332" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Destructive</text>
+<rect x="908" y="314" width="92" height="28" rx="4" fill="#e7d4c2" stroke="#8b2020" stroke-width="1"/>
+<text x="954.0" y="332.0" fill="#8b2020" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Remove</text>
+<rect x="1008" y="314" width="92" height="28" rx="4" fill="#d8c6b5" stroke="#8b2020" stroke-width="1"/>
+<text x="1054.0" y="332.0" fill="#8b2020" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Remove</text>
+<rect x="1108" y="314" width="92" height="28" rx="4" fill="#cdbcab" stroke="#8b2020" stroke-width="1"/>
+<text x="1154.0" y="332.0" fill="#8b2020" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Remove</text>
+<rect x="1205" y="311" width="98" height="34" rx="6" fill="#f4ecd8" stroke="#7a6235" stroke-width="2"/>
+<rect x="1208" y="314" width="92" height="28" rx="4" fill="#e7d4c2" stroke="#8b2020" stroke-width="1"/>
+<text x="1254.0" y="332.0" fill="#8b2020" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Remove</text>
+<rect x="1308" y="314" width="92" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="1354.0" y="332.0" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Remove</text>
+<rect x="1408" y="314" width="92" height="28" rx="4" fill="#e7d4c2" stroke="#8b2020" stroke-width="1"/>
+<path d="M 1425 328.0 A 4 4 0 1 0 1421 332.0" fill="none" stroke="#8b2020" stroke-width="1.5"/>
+<text x="1458.0" y="332.0" fill="#8b2020" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Remove</text>
+<text x="826" y="384" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Buy</text>
+<rect x="908" y="366" width="92" height="28" rx="4" fill="#2d5f3a" stroke="none" stroke-width="1"/>
+<text x="954.0" y="384.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">BUY</text>
+<rect x="1008" y="366" width="92" height="28" rx="4" fill="#2d5937" stroke="none" stroke-width="1"/>
+<text x="1054.0" y="384.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">BUY</text>
+<rect x="1108" y="366" width="92" height="28" rx="4" fill="#275232" stroke="none" stroke-width="1"/>
+<text x="1154.0" y="384.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">BUY</text>
+<rect x="1205" y="363" width="98" height="34" rx="6" fill="#f4ecd8" stroke="#7a6235" stroke-width="2"/>
+<rect x="1208" y="366" width="92" height="28" rx="4" fill="#2d5f3a" stroke="none" stroke-width="1"/>
+<text x="1254.0" y="384.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">BUY</text>
+<rect x="1308" y="366" width="92" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="1354.0" y="384.0" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">BUY</text>
+<rect x="1408" y="366" width="92" height="28" rx="4" fill="#2d5f3a" stroke="none" stroke-width="1"/>
+<path d="M 1425 380.0 A 4 4 0 1 0 1421 384.0" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+<text x="1458.0" y="384.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">BUY</text>
+<text x="826" y="436" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Sell</text>
+<rect x="908" y="418" width="92" height="28" rx="4" fill="#8b2020" stroke="none" stroke-width="1"/>
+<text x="954.0" y="436.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SELL</text>
+<rect x="1008" y="418" width="92" height="28" rx="4" fill="#812020" stroke="none" stroke-width="1"/>
+<text x="1054.0" y="436.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SELL</text>
+<rect x="1108" y="418" width="92" height="28" rx="4" fill="#781c1c" stroke="none" stroke-width="1"/>
+<text x="1154.0" y="436.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SELL</text>
+<rect x="1205" y="415" width="98" height="34" rx="6" fill="#f4ecd8" stroke="#7a6235" stroke-width="2"/>
+<rect x="1208" y="418" width="92" height="28" rx="4" fill="#8b2020" stroke="none" stroke-width="1"/>
+<text x="1254.0" y="436.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SELL</text>
+<rect x="1308" y="418" width="92" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="1354.0" y="436.0" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SELL</text>
+<rect x="1408" y="418" width="92" height="28" rx="4" fill="#8b2020" stroke="none" stroke-width="1"/>
+<path d="M 1425 432.0 A 4 4 0 1 0 1421 436.0" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+<text x="1458.0" y="436.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">SELL</text>
+<path d="M826 476 H1556" fill="none" stroke="#d4ccbb" stroke-width="1"/>
+<text x="826" y="503" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">SELECTION  /  mode choices retain their indicator</text>
+<text x="826" y="528" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Unselected</text>
+<rect x="826" y="540" width="164" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="908.0" y="558" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<text x="1010" y="528" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Selected</text>
+<rect x="1010" y="540" width="164" height="28" rx="4" fill="#e9e3d5" stroke="#7a6235" stroke-width="1"/>
+<text x="1092.0" y="558" fill="#7a6235" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<text x="1194" y="528" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Selected + hover</text>
+<rect x="1194" y="540" width="164" height="28" rx="4" fill="#dcd6c8" stroke="#705a32" stroke-width="1"/>
+<text x="1276.0" y="558" fill="#705a32" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<text x="1378" y="528" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Selected + focus</text>
+<rect x="1375" y="537" width="170" height="34" rx="6" fill="#f4ecd8" stroke="#7a6235" stroke-width="2"/>
+<rect x="1378" y="540" width="164" height="28" rx="4" fill="#e9e3d5" stroke="#7a6235" stroke-width="1"/>
+<text x="1460.0" y="558" fill="#7a6235" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<path d="M826 590 H1556" fill="none" stroke="#d4ccbb" stroke-width="1"/>
+<text x="826" y="618" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">FIELDS  /  28px frame · visible label · unit slot</text>
+<text x="826" y="646" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Rest</text>
+<rect x="826" y="658" width="220" height="28" rx="4" fill="#faf6ed" stroke="#877c68" stroke-width="1"/>
+<text x="834" y="676" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">42.18</text>
+<text x="1038" y="676" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<text x="1070" y="646" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Focus</text>
+<rect x="1067" y="655" width="226" height="34" rx="6" fill="#f4ecd8" stroke="#7a6235" stroke-width="2"/>
+<rect x="1070" y="658" width="220" height="28" rx="4" fill="#faf6ed" stroke="#877c68" stroke-width="1"/>
+<text x="1078" y="676" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">42.18</text>
+<text x="1282" y="676" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<path d="M1114.0 664 L1114.0 680" fill="none" stroke="#2a2520" stroke-width="1"/>
+<text x="1314" y="646" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Invalid</text>
+<rect x="1314" y="658" width="220" height="28" rx="4" fill="#faf6ed" stroke="#8b2020" stroke-width="1"/>
+<text x="1322" y="676" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">abc</text>
+<text x="1526" y="676" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<text x="1314" y="706" fill="#8b2020" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Enter a valid price</text>
+<text x="826" y="748" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Invalid + focus</text>
+<rect x="823" y="757" width="226" height="34" rx="6" fill="#f4ecd8" stroke="#7a6235" stroke-width="2"/>
+<rect x="826" y="760" width="220" height="28" rx="4" fill="#faf6ed" stroke="#8b2020" stroke-width="1"/>
+<text x="834" y="778" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">abc</text>
+<text x="1038" y="778" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<path d="M855.6 766 L855.6 782" fill="none" stroke="#2a2520" stroke-width="1"/>
+<text x="826" y="808" fill="#8b2020" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Enter a valid price</text>
+<text x="1070" y="748" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Disabled</text>
+<rect x="1070" y="760" width="220" height="28" rx="4" fill="#e8dec8" stroke="#d5cbb6" stroke-width="1"/>
+<text x="1078" y="778" fill="#6a6253" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">42.18</text>
+<text x="1282" y="778" fill="#6a6253" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<text x="1070" y="808" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Unavailable in this mode</text>
+<text x="1314" y="748" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Read only</text>
+<rect x="1314" y="760" width="220" height="28" rx="4" fill="#faf6ed" stroke="#877c68" stroke-width="1"/>
+<text x="1322" y="778" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">42.18</text>
+<text x="1526" y="778" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<text x="1314" y="808" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Readable, without edit affordance</text>
+<path d="M826 838 H1556" fill="none" stroke="#d4ccbb" stroke-width="1"/>
+<text x="826" y="869" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="500" text-anchor="start">24px compact   /   28px standard   /   36px prominent</text>
+<text x="826" y="895" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">4px control corners · 1px boundary · 2px focus indicator</text>
+<text x="826" y="921" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Busy retains action context. Disabled controls do not activate.</text>
+<text x="826" y="947" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Focus support requires native widget/state work where missing.</text>
+<text x="24" y="1004" fill="#4c535a" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Static design reference. See docs/design/components.md for behavior, error precedence, keyboard focus, and responsive sizing.</text>
+</svg>

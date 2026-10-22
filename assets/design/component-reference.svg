@@ -1,0 +1,329 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1596" height="1158" viewBox="0 0 1596 1158" role="img" aria-labelledby="title desc">
+<title id="title">Kerosene cross-theme component reference</title>
+<desc id="desc">Proposed compact terminal controls in three theme-derived palettes. Identical geometry, synthetic data, no live account. This is a design specimen, not a native application screenshot.</desc>
+<rect x="0" y="0" width="1596" height="1158" rx="0" fill="#e9e9e6" stroke="none" stroke-width="1"/>
+<text x="24" y="32" fill="#20252b" font-family="Inter, DejaVu Sans, sans-serif" font-size="22" font-weight="600" text-anchor="start">Kerosene / one compact visual language</text>
+<text x="24" y="55" fill="#4c535a" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Proposed component reference · identical geometry across palettes · synthetic data · 100% logical scale</text>
+<rect x="24" y="80" width="500" height="1044" rx="8" fill="#0f1a1e" stroke="none" stroke-width="1"/>
+<text x="40" y="110" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="18" font-weight="600" text-anchor="start">Dark teal</text>
+<text x="40" y="131" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Hyperliquid-derived roles</text>
+<rect x="40" y="146" width="468" height="246" rx="6" fill="#273035" stroke="none" stroke-width="1"/>
+<text x="52" y="168" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">ACTIONS  /  28px · 4px corners</text>
+<rect x="52" y="180" width="144" height="28" rx="4" fill="#50d2c1" stroke="none" stroke-width="1"/>
+<text x="124.0" y="198.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="202" y="180" width="144" height="28" rx="4" fill="#344047" stroke="#485155" stroke-width="1"/>
+<text x="274.0" y="198.0" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="352" y="180" width="144" height="28" rx="4" fill="#273035" stroke="none" stroke-width="1"/>
+<text x="424.0" y="198.0" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset view</text>
+<text x="52" y="232" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">MODE  /  fixed type and selected outline</text>
+<rect x="52" y="244" width="108" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="106.0" y="262" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Market</text>
+<rect x="164" y="244" width="108" height="28" rx="4" fill="#223b3d" stroke="#50d2c1" stroke-width="1"/>
+<text x="218.0" y="262" fill="#50d2c1" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<rect x="276" y="244" width="108" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="330.0" y="262" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Chase</text>
+<rect x="388" y="244" width="108" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="442.0" y="262" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">TWAP</text>
+<text x="52" y="298" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">STATUS  /  18px badges · explicit meaning</text>
+<rect x="52" y="310" width="48" height="18" rx="3" fill="#2c4547" stroke="none" stroke-width="1"/>
+<text x="58" y="323" fill="#50d2c1" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Live</text>
+<rect x="108" y="310" width="82" height="18" rx="3" fill="#434137" stroke="none" stroke-width="1"/>
+<text x="114" y="323" fill="#ffb648" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Watch only</text>
+<rect x="198" y="310" width="68" height="18" rx="3" fill="#2c4547" stroke="none" stroke-width="1"/>
+<text x="204" y="323" fill="#50d2c1" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Pending</text>
+<rect x="274" y="310" width="54" height="18" rx="3" fill="#413840" stroke="none" stroke-width="1"/>
+<text x="280" y="323" fill="#ee859a" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Short</text>
+<text x="52" y="356" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">12px controls   ·   11px metadata   ·   13px pane titles</text>
+<rect x="40" y="408" width="468" height="186" rx="6" fill="#273035" stroke="#485155" stroke-width="1"/>
+<text x="48" y="425" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="500" text-anchor="start">Positions</text>
+<path d="M40 432 H508" fill="none" stroke="#485155" stroke-width="1"/>
+<path d="M492 417 L498 423" fill="none" stroke="#b7c5c2" stroke-width="1"/>
+<path d="M492 423 L498 417" fill="none" stroke="#b7c5c2" stroke-width="1"/>
+<text x="52" y="453" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Positions</text>
+<text x="149" y="453" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Open orders</text>
+<text x="269" y="453" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Balances</text>
+<path d="M40 460 H508" fill="none" stroke="#485155" stroke-width="1"/>
+<path d="M52 460 H119" fill="none" stroke="#50d2c1" stroke-width="2"/>
+<text x="52" y="478" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Symbol</text>
+<text x="212" y="478" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">Size</text>
+<text x="342" y="478" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">Price</text>
+<text x="492" y="478" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">PnL</text>
+<path d="M48 486 H500" fill="none" stroke="#485155" stroke-width="1"/>
+<rect x="44" y="488" width="460" height="24" rx="0" fill="#2b3f42" stroke="none" stroke-width="1"/>
+<rect x="44" y="488" width="2" height="24" rx="0" fill="#50d2c1" stroke="none" stroke-width="1"/>
+<text x="52" y="505" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="500" text-anchor="start">HYPE</text>
+<text x="212" y="505" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">2.000</text>
+<text x="342" y="505" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">42.18</text>
+<text x="492" y="505" fill="#50d2c1" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">+12.40</text>
+<text x="52" y="529" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="500" text-anchor="start">BTC</text>
+<text x="212" y="529" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">0.010</text>
+<text x="342" y="529" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">64,210.00</text>
+<text x="492" y="529" fill="#ed7088" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">−8.20</text>
+<text x="52" y="553" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="500" text-anchor="start">ETH</text>
+<text x="212" y="553" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">0.500</text>
+<text x="342" y="553" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">2,410.00</text>
+<text x="492" y="553" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">0.00</text>
+<text x="52" y="583" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Right-aligned values · neutral zero · persistent selection</text>
+<rect x="40" y="610" width="468" height="282" rx="6" fill="#273035" stroke="#485155" stroke-width="1"/>
+<text x="48" y="627" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="500" text-anchor="start">Order entry</text>
+<path d="M40 634 H508" fill="none" stroke="#485155" stroke-width="1"/>
+<path d="M492 619 L498 625" fill="none" stroke="#b7c5c2" stroke-width="1"/>
+<path d="M492 625 L498 619" fill="none" stroke="#b7c5c2" stroke-width="1"/>
+<text x="52" y="659" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="600" text-anchor="start">HYPE</text>
+<text x="496" y="659" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="16" font-weight="500" text-anchor="end">42.18</text>
+<text x="52" y="679" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Example account</text>
+<text x="496" y="679" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">Available  1,000.00 USD</text>
+<rect x="52" y="692" width="108" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="106.0" y="710" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Market</text>
+<rect x="164" y="692" width="108" height="28" rx="4" fill="#223b3d" stroke="#50d2c1" stroke-width="1"/>
+<text x="218.0" y="710" fill="#50d2c1" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<rect x="276" y="692" width="108" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="330.0" y="710" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Chase</text>
+<rect x="388" y="692" width="108" height="28" rx="4" fill="#1b2429" stroke="none" stroke-width="1"/>
+<text x="442.0" y="710" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">TWAP</text>
+<text x="52" y="740" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Price</text>
+<rect x="52" y="748" width="380" height="28" rx="4" fill="#1b2429" stroke="#80949a" stroke-width="1"/>
+<text x="60" y="766" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">42.18</text>
+<text x="424" y="766" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<rect x="440" y="748" width="56" height="28" rx="4" fill="#344047" stroke="#485155" stroke-width="1"/>
+<text x="468.0" y="766.0" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Mid</text>
+<text x="52" y="796" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Size</text>
+<rect x="52" y="804" width="444" height="28" rx="4" fill="#1b2429" stroke="#80949a" stroke-width="1"/>
+<text x="60" y="822" fill="#f6fefd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">2.000</text>
+<text x="488" y="822" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">HYPE</text>
+<rect x="52" y="844" width="218" height="36" rx="4" fill="#50d2c1" stroke="none" stroke-width="1"/>
+<text x="161.0" y="866.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="400" text-anchor="middle">BUY HYPE</text>
+<rect x="278" y="844" width="218" height="36" rx="4" fill="#ed7088" stroke="none" stroke-width="1"/>
+<text x="387.0" y="866.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="400" text-anchor="middle">SELL HYPE</text>
+<rect x="40" y="908" width="468" height="62" rx="6" fill="#273035" stroke="#485155" stroke-width="1"/>
+<rect x="52" y="920" width="50" height="18" rx="3" fill="#434137" stroke="none" stroke-width="1"/>
+<text x="58" y="933" fill="#ffb648" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Stale</text>
+<text x="112" y="933" fill="#f6fefd" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Last update 14:32:08</text>
+<text x="52" y="955" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Keep useful data visible while its freshness is clear.</text>
+<rect x="40" y="986" width="468" height="118" rx="6" fill="#273035" stroke="none" stroke-width="1"/>
+<text x="52" y="1007" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">SURFACES  /  color changes, hierarchy stays</text>
+<rect x="52" y="1020" width="104" height="36" rx="4" fill="#0f1a1e" stroke="#80949a" stroke-width="1"/>
+<text x="104" y="1042" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Workspace</text>
+<rect x="164" y="1020" width="104" height="36" rx="4" fill="#273035" stroke="#80949a" stroke-width="1"/>
+<text x="216" y="1042" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Panel</text>
+<rect x="276" y="1020" width="104" height="36" rx="4" fill="#1b2429" stroke="#80949a" stroke-width="1"/>
+<text x="328" y="1042" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Inset</text>
+<rect x="388" y="1020" width="104" height="36" rx="4" fill="#344047" stroke="#80949a" stroke-width="1"/>
+<text x="440" y="1042" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Raised</text>
+<text x="52" y="1086" fill="#b7c5c2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">4 / 8 / 12px rhythm · shared controls in every window</text>
+<rect x="548" y="80" width="500" height="1044" rx="8" fill="#ede5d0" stroke="none" stroke-width="1"/>
+<text x="564" y="110" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="18" font-weight="600" text-anchor="start">Warm light</text>
+<text x="564" y="131" fill="#6f6656" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Papertrade-derived roles</text>
+<rect x="564" y="146" width="468" height="246" rx="6" fill="#f4ecd8" stroke="none" stroke-width="1"/>
+<text x="576" y="168" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">ACTIONS  /  28px · 4px corners</text>
+<rect x="576" y="180" width="144" height="28" rx="4" fill="#7a6235" stroke="none" stroke-width="1"/>
+<text x="648.0" y="198.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="726" y="180" width="144" height="28" rx="4" fill="#e8dec8" stroke="#d4ccbb" stroke-width="1"/>
+<text x="798.0" y="198.0" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="876" y="180" width="144" height="28" rx="4" fill="#f4ecd8" stroke="none" stroke-width="1"/>
+<text x="948.0" y="198.0" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset view</text>
+<text x="576" y="232" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">MODE  /  fixed type and selected outline</text>
+<rect x="576" y="244" width="108" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="630.0" y="262" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Market</text>
+<rect x="688" y="244" width="108" height="28" rx="4" fill="#e9e3d5" stroke="#7a6235" stroke-width="1"/>
+<text x="742.0" y="262" fill="#7a6235" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<rect x="800" y="244" width="108" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="854.0" y="262" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Chase</text>
+<rect x="912" y="244" width="108" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="966.0" y="262" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">TWAP</text>
+<text x="576" y="298" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">STATUS  /  18px badges · explicit meaning</text>
+<rect x="576" y="310" width="48" height="18" rx="3" fill="#dadac3" stroke="none" stroke-width="1"/>
+<text x="582" y="323" fill="#2d5f3a" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Live</text>
+<rect x="632" y="310" width="82" height="18" rx="3" fill="#e6d9bc" stroke="none" stroke-width="1"/>
+<text x="638" y="323" fill="#825701" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Watch only</text>
+<rect x="722" y="310" width="68" height="18" rx="3" fill="#e4dac3" stroke="none" stroke-width="1"/>
+<text x="728" y="323" fill="#745d33" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Pending</text>
+<rect x="798" y="310" width="54" height="18" rx="3" fill="#e6d1c0" stroke="none" stroke-width="1"/>
+<text x="804" y="323" fill="#8b2020" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Short</text>
+<text x="576" y="356" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">12px controls   ·   11px metadata   ·   13px pane titles</text>
+<rect x="564" y="408" width="468" height="186" rx="6" fill="#f4ecd8" stroke="#d4ccbb" stroke-width="1"/>
+<text x="572" y="425" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="500" text-anchor="start">Positions</text>
+<path d="M564 432 H1032" fill="none" stroke="#d4ccbb" stroke-width="1"/>
+<path d="M1016 417 L1022 423" fill="none" stroke="#706757" stroke-width="1"/>
+<path d="M1016 423 L1022 417" fill="none" stroke="#706757" stroke-width="1"/>
+<text x="576" y="453" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Positions</text>
+<text x="673" y="453" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Open orders</text>
+<text x="793" y="453" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Balances</text>
+<path d="M564 460 H1032" fill="none" stroke="#d4ccbb" stroke-width="1"/>
+<path d="M576 460 H643" fill="none" stroke="#7a6235" stroke-width="2"/>
+<text x="576" y="478" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Symbol</text>
+<text x="736" y="478" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">Size</text>
+<text x="866" y="478" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">Price</text>
+<text x="1016" y="478" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">PnL</text>
+<path d="M572 486 H1024" fill="none" stroke="#d4ccbb" stroke-width="1"/>
+<rect x="568" y="488" width="460" height="24" rx="0" fill="#e9e0c9" stroke="none" stroke-width="1"/>
+<rect x="568" y="488" width="2" height="24" rx="0" fill="#786034" stroke="none" stroke-width="1"/>
+<text x="576" y="505" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="500" text-anchor="start">HYPE</text>
+<text x="736" y="505" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">2.000</text>
+<text x="866" y="505" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">42.18</text>
+<text x="1016" y="505" fill="#2d5f3a" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">+12.40</text>
+<text x="576" y="529" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="500" text-anchor="start">BTC</text>
+<text x="736" y="529" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">0.010</text>
+<text x="866" y="529" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">64,210.00</text>
+<text x="1016" y="529" fill="#8b2020" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">−8.20</text>
+<text x="576" y="553" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="500" text-anchor="start">ETH</text>
+<text x="736" y="553" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">0.500</text>
+<text x="866" y="553" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">2,410.00</text>
+<text x="1016" y="553" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">0.00</text>
+<text x="576" y="583" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Right-aligned values · neutral zero · persistent selection</text>
+<rect x="564" y="610" width="468" height="282" rx="6" fill="#f4ecd8" stroke="#d4ccbb" stroke-width="1"/>
+<text x="572" y="627" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="500" text-anchor="start">Order entry</text>
+<path d="M564 634 H1032" fill="none" stroke="#d4ccbb" stroke-width="1"/>
+<path d="M1016 619 L1022 625" fill="none" stroke="#706757" stroke-width="1"/>
+<path d="M1016 625 L1022 619" fill="none" stroke="#706757" stroke-width="1"/>
+<text x="576" y="659" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="600" text-anchor="start">HYPE</text>
+<text x="1020" y="659" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="16" font-weight="500" text-anchor="end">42.18</text>
+<text x="576" y="679" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Example account</text>
+<text x="1020" y="679" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">Available  1,000.00 USD</text>
+<rect x="576" y="692" width="108" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="630.0" y="710" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Market</text>
+<rect x="688" y="692" width="108" height="28" rx="4" fill="#e9e3d5" stroke="#7a6235" stroke-width="1"/>
+<text x="742.0" y="710" fill="#7a6235" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<rect x="800" y="692" width="108" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="854.0" y="710" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Chase</text>
+<rect x="912" y="692" width="108" height="28" rx="4" fill="#faf6ed" stroke="none" stroke-width="1"/>
+<text x="966.0" y="710" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">TWAP</text>
+<text x="576" y="740" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Price</text>
+<rect x="576" y="748" width="380" height="28" rx="4" fill="#faf6ed" stroke="#877c68" stroke-width="1"/>
+<text x="584" y="766" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">42.18</text>
+<text x="948" y="766" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<rect x="964" y="748" width="56" height="28" rx="4" fill="#e8dec8" stroke="#d4ccbb" stroke-width="1"/>
+<text x="992.0" y="766.0" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Mid</text>
+<text x="576" y="796" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Size</text>
+<rect x="576" y="804" width="444" height="28" rx="4" fill="#faf6ed" stroke="#877c68" stroke-width="1"/>
+<text x="584" y="822" fill="#2a2520" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">2.000</text>
+<text x="1012" y="822" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">HYPE</text>
+<rect x="576" y="844" width="218" height="36" rx="4" fill="#2d5f3a" stroke="none" stroke-width="1"/>
+<text x="685.0" y="866.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="400" text-anchor="middle">BUY HYPE</text>
+<rect x="802" y="844" width="218" height="36" rx="4" fill="#8b2020" stroke="none" stroke-width="1"/>
+<text x="911.0" y="866.0" fill="#ffffff" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="400" text-anchor="middle">SELL HYPE</text>
+<rect x="564" y="908" width="468" height="62" rx="6" fill="#f4ecd8" stroke="#d4ccbb" stroke-width="1"/>
+<rect x="576" y="920" width="50" height="18" rx="3" fill="#e6d9bc" stroke="none" stroke-width="1"/>
+<text x="582" y="933" fill="#825701" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Stale</text>
+<text x="636" y="933" fill="#2a2520" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Last update 14:32:08</text>
+<text x="576" y="955" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Keep useful data visible while its freshness is clear.</text>
+<rect x="564" y="986" width="468" height="118" rx="6" fill="#f4ecd8" stroke="none" stroke-width="1"/>
+<text x="576" y="1007" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">SURFACES  /  color changes, hierarchy stays</text>
+<rect x="576" y="1020" width="104" height="36" rx="4" fill="#ede5d0" stroke="#877c68" stroke-width="1"/>
+<text x="628" y="1042" fill="#6f6656" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Workspace</text>
+<rect x="688" y="1020" width="104" height="36" rx="4" fill="#f4ecd8" stroke="#877c68" stroke-width="1"/>
+<text x="740" y="1042" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Panel</text>
+<rect x="800" y="1020" width="104" height="36" rx="4" fill="#faf6ed" stroke="#877c68" stroke-width="1"/>
+<text x="852" y="1042" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Inset</text>
+<rect x="912" y="1020" width="104" height="36" rx="4" fill="#e8dec8" stroke="#877c68" stroke-width="1"/>
+<text x="964" y="1042" fill="#6a6253" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Raised</text>
+<text x="576" y="1086" fill="#706757" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">4 / 8 / 12px rhythm · shared controls in every window</text>
+<rect x="1072" y="80" width="500" height="1044" rx="8" fill="#0d1229" stroke="none" stroke-width="1"/>
+<text x="1088" y="110" fill="#f4eaf2" font-family="Inter, DejaVu Sans, sans-serif" font-size="18" font-weight="600" text-anchor="start">Pastel dark</text>
+<text x="1088" y="131" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Papertrade UwU-derived roles</text>
+<rect x="1088" y="146" width="468" height="246" rx="6" fill="#171d3d" stroke="none" stroke-width="1"/>
+<text x="1100" y="168" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">ACTIONS  /  28px · 4px corners</text>
+<rect x="1100" y="180" width="144" height="28" rx="4" fill="#e4b4ce" stroke="none" stroke-width="1"/>
+<text x="1172.0" y="198.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Save</text>
+<rect x="1250" y="180" width="144" height="28" rx="4" fill="#272f5a" stroke="#3a3e5a" stroke-width="1"/>
+<text x="1322.0" y="198.0" fill="#f4eaf2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Export</text>
+<rect x="1400" y="180" width="144" height="28" rx="4" fill="#171d3d" stroke="none" stroke-width="1"/>
+<text x="1472.0" y="198.0" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Reset view</text>
+<text x="1100" y="232" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">MODE  /  fixed type and selected outline</text>
+<rect x="1100" y="244" width="108" height="28" rx="4" fill="#111832" stroke="none" stroke-width="1"/>
+<text x="1154.0" y="262" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Market</text>
+<rect x="1212" y="244" width="108" height="28" rx="4" fill="#2c2c46" stroke="#e4b4ce" stroke-width="1"/>
+<text x="1266.0" y="262" fill="#e4b4ce" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<rect x="1324" y="244" width="108" height="28" rx="4" fill="#111832" stroke="none" stroke-width="1"/>
+<text x="1378.0" y="262" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Chase</text>
+<rect x="1436" y="244" width="108" height="28" rx="4" fill="#111832" stroke="none" stroke-width="1"/>
+<text x="1490.0" y="262" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">TWAP</text>
+<text x="1100" y="298" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">STATUS  /  18px badges · explicit meaning</text>
+<rect x="1100" y="310" width="48" height="18" rx="3" fill="#27354e" stroke="none" stroke-width="1"/>
+<text x="1106" y="323" fill="#91d8bd" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Live</text>
+<rect x="1156" y="310" width="82" height="18" rx="3" fill="#333449" stroke="none" stroke-width="1"/>
+<text x="1162" y="323" fill="#f0d09a" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Watch only</text>
+<rect x="1246" y="310" width="68" height="18" rx="3" fill="#323150" stroke="none" stroke-width="1"/>
+<text x="1252" y="323" fill="#e4b4ce" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Pending</text>
+<rect x="1322" y="310" width="54" height="18" rx="3" fill="#332e4c" stroke="none" stroke-width="1"/>
+<text x="1328" y="323" fill="#f0a0b2" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Short</text>
+<text x="1100" y="356" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">12px controls   ·   11px metadata   ·   13px pane titles</text>
+<rect x="1088" y="408" width="468" height="186" rx="6" fill="#171d3d" stroke="#3a3e5a" stroke-width="1"/>
+<text x="1096" y="425" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="500" text-anchor="start">Positions</text>
+<path d="M1088 432 H1556" fill="none" stroke="#3a3e5a" stroke-width="1"/>
+<path d="M1540 417 L1546 423" fill="none" stroke="#c7c4d8" stroke-width="1"/>
+<path d="M1540 423 L1546 417" fill="none" stroke="#c7c4d8" stroke-width="1"/>
+<text x="1100" y="453" fill="#f4eaf2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Positions</text>
+<text x="1197" y="453" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Open orders</text>
+<text x="1317" y="453" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Balances</text>
+<path d="M1088 460 H1556" fill="none" stroke="#3a3e5a" stroke-width="1"/>
+<path d="M1100 460 H1167" fill="none" stroke="#e4b4ce" stroke-width="2"/>
+<text x="1100" y="478" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Symbol</text>
+<text x="1260" y="478" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">Size</text>
+<text x="1390" y="478" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">Price</text>
+<text x="1540" y="478" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">PnL</text>
+<path d="M1096 486 H1548" fill="none" stroke="#3a3e5a" stroke-width="1"/>
+<rect x="1092" y="488" width="460" height="24" rx="0" fill="#292b4a" stroke="none" stroke-width="1"/>
+<rect x="1092" y="488" width="2" height="24" rx="0" fill="#e4b4ce" stroke="none" stroke-width="1"/>
+<text x="1100" y="505" fill="#f4eaf2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="500" text-anchor="start">HYPE</text>
+<text x="1260" y="505" fill="#f4eaf2" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">2.000</text>
+<text x="1390" y="505" fill="#f4eaf2" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">42.18</text>
+<text x="1540" y="505" fill="#91d8bd" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">+12.40</text>
+<text x="1100" y="529" fill="#f4eaf2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="500" text-anchor="start">BTC</text>
+<text x="1260" y="529" fill="#f4eaf2" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">0.010</text>
+<text x="1390" y="529" fill="#f4eaf2" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">64,210.00</text>
+<text x="1540" y="529" fill="#f0a0b2" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">−8.20</text>
+<text x="1100" y="553" fill="#f4eaf2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="500" text-anchor="start">ETH</text>
+<text x="1260" y="553" fill="#f4eaf2" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">0.500</text>
+<text x="1390" y="553" fill="#f4eaf2" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">2,410.00</text>
+<text x="1540" y="553" fill="#f4eaf2" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="end">0.00</text>
+<text x="1100" y="583" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Right-aligned values · neutral zero · persistent selection</text>
+<rect x="1088" y="610" width="468" height="282" rx="6" fill="#171d3d" stroke="#3a3e5a" stroke-width="1"/>
+<text x="1096" y="627" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="500" text-anchor="start">Order entry</text>
+<path d="M1088 634 H1556" fill="none" stroke="#3a3e5a" stroke-width="1"/>
+<path d="M1540 619 L1546 625" fill="none" stroke="#c7c4d8" stroke-width="1"/>
+<path d="M1540 625 L1546 619" fill="none" stroke="#c7c4d8" stroke-width="1"/>
+<text x="1100" y="659" fill="#f4eaf2" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="600" text-anchor="start">HYPE</text>
+<text x="1544" y="659" fill="#f4eaf2" font-family="DejaVu Sans Mono, monospace" font-size="16" font-weight="500" text-anchor="end">42.18</text>
+<text x="1100" y="679" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Example account</text>
+<text x="1544" y="679" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">Available  1,000.00 USD</text>
+<rect x="1100" y="692" width="108" height="28" rx="4" fill="#111832" stroke="none" stroke-width="1"/>
+<text x="1154.0" y="710" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Market</text>
+<rect x="1212" y="692" width="108" height="28" rx="4" fill="#2c2c46" stroke="#e4b4ce" stroke-width="1"/>
+<text x="1266.0" y="710" fill="#e4b4ce" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Limit</text>
+<rect x="1324" y="692" width="108" height="28" rx="4" fill="#111832" stroke="none" stroke-width="1"/>
+<text x="1378.0" y="710" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Chase</text>
+<rect x="1436" y="692" width="108" height="28" rx="4" fill="#111832" stroke="none" stroke-width="1"/>
+<text x="1490.0" y="710" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">TWAP</text>
+<text x="1100" y="740" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Price</text>
+<rect x="1100" y="748" width="380" height="28" rx="4" fill="#111832" stroke="#7c88b2" stroke-width="1"/>
+<text x="1108" y="766" fill="#f4eaf2" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">42.18</text>
+<text x="1472" y="766" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">USD</text>
+<rect x="1488" y="748" width="56" height="28" rx="4" fill="#272f5a" stroke="#3a3e5a" stroke-width="1"/>
+<text x="1516.0" y="766.0" fill="#f4eaf2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="middle">Mid</text>
+<text x="1100" y="796" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Size</text>
+<rect x="1100" y="804" width="444" height="28" rx="4" fill="#111832" stroke="#7c88b2" stroke-width="1"/>
+<text x="1108" y="822" fill="#f4eaf2" font-family="DejaVu Sans Mono, monospace" font-size="12" font-weight="400" text-anchor="start">2.000</text>
+<text x="1536" y="822" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="end">HYPE</text>
+<rect x="1100" y="844" width="218" height="36" rx="4" fill="#91d8bd" stroke="none" stroke-width="1"/>
+<text x="1209.0" y="866.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="400" text-anchor="middle">BUY HYPE</text>
+<rect x="1326" y="844" width="218" height="36" rx="4" fill="#f0a0b2" stroke="none" stroke-width="1"/>
+<text x="1435.0" y="866.0" fill="#101318" font-family="Inter, DejaVu Sans, sans-serif" font-size="13" font-weight="400" text-anchor="middle">SELL HYPE</text>
+<rect x="1088" y="908" width="468" height="62" rx="6" fill="#171d3d" stroke="#3a3e5a" stroke-width="1"/>
+<rect x="1100" y="920" width="50" height="18" rx="3" fill="#333449" stroke="none" stroke-width="1"/>
+<text x="1106" y="933" fill="#f0d09a" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Stale</text>
+<text x="1160" y="933" fill="#f4eaf2" font-family="Inter, DejaVu Sans, sans-serif" font-size="12" font-weight="400" text-anchor="start">Last update 14:32:08</text>
+<text x="1100" y="955" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Keep useful data visible while its freshness is clear.</text>
+<rect x="1088" y="986" width="468" height="118" rx="6" fill="#171d3d" stroke="none" stroke-width="1"/>
+<text x="1100" y="1007" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="500" text-anchor="start">SURFACES  /  color changes, hierarchy stays</text>
+<rect x="1100" y="1020" width="104" height="36" rx="4" fill="#0d1229" stroke="#7c88b2" stroke-width="1"/>
+<text x="1152" y="1042" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Workspace</text>
+<rect x="1212" y="1020" width="104" height="36" rx="4" fill="#171d3d" stroke="#7c88b2" stroke-width="1"/>
+<text x="1264" y="1042" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Panel</text>
+<rect x="1324" y="1020" width="104" height="36" rx="4" fill="#111832" stroke="#7c88b2" stroke-width="1"/>
+<text x="1376" y="1042" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Inset</text>
+<rect x="1436" y="1020" width="104" height="36" rx="4" fill="#272f5a" stroke="#7c88b2" stroke-width="1"/>
+<text x="1488" y="1042" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="middle">Raised</text>
+<text x="1100" y="1086" fill="#c7c4d8" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">4 / 8 / 12px rhythm · shared controls in every window</text>
+<text x="24" y="1144" fill="#4c535a" font-family="Inter, DejaVu Sans, sans-serif" font-size="11" font-weight="400" text-anchor="start">Design target, not current UI. Palette-derived foregrounds are adjusted for readable pairs; full specification: docs/design/README.md</text>
+</svg>

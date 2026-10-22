@@ -29,6 +29,14 @@ separate. The docs below describe where each concern belongs.
 7. Component guides for the feature area you are changing.
 8. [Testing, Validation, And Packaging](operations/testing-validation-packaging.md)
 
+## Design Language
+
+The [Kerosene Design Language](design/README.md) specifies the target visual
+system across themes: foundations, component states, screen patterns, a
+source-backed consistency audit, and an implementation/review checklist.
+Start there for application-wide UI polish; the component guides below explain
+feature ownership and runtime behavior.
+
 ## Architecture Guides
 
 | Guide | Purpose |
