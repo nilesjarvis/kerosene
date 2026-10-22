@@ -1,4 +1,8 @@
 use crate::app_state::TradingTerminal;
+use crate::config::effective_radius;
+use crate::helpers::design::{
+    UiColors, compact_button_style, compact_input_style, filled_action_pair, mix_color,
+};
 use crate::helpers::{
     self, format_usd, invalid_data_placeholder, optional_value_color, order_type_button,
     parse_finite_number,
@@ -7,7 +11,7 @@ use crate::message::Message;
 use crate::order_execution::OrderLeverageSubmissionSnapshot;
 use crate::signing::OrderKind;
 use iced::widget::{Space, button, column, container, row, text, text_input};
-use iced::{Color, Element, Fill, Length, Theme};
+use iced::{Element, Fill, Length, Theme};
 
 #[cfg(test)]
 mod tests;
@@ -31,7 +35,9 @@ impl TradingTerminal {
                         weight: iced::font::Weight::Bold,
                         ..iced::Font::DEFAULT
                     })
-                    .color(theme.palette().text),
+                    .style(move |theme: &Theme| text::Style {
+                        color: Some(UiColors::new(theme).text),
+                    }),
             )
             .align_y(iced::Alignment::Center);
 
@@ -58,6 +64,7 @@ impl TradingTerminal {
                 symbol_row = symbol_row.push(order_leverage_badge(
                     leverage_label,
                     self.order_leverage_dropdown_open,
+                    self.pane_corner_radius,
                 ));
             }
         }
@@ -69,7 +76,7 @@ impl TradingTerminal {
         &self,
         margin_used: Option<f64>,
         theme: &Theme,
-    ) -> Element<'static, Message> {
+    ) -> Element<'_, Message> {
         let available_margin = self
             .connected_order_account_snapshot()
             .map(|(_, data)| data)
@@ -96,10 +103,12 @@ impl TradingTerminal {
             }
             _ => format_optional_usd(available_margin),
         };
-        let weak_color = theme.extended_palette().background.weak.text;
-        let invalid_color = theme.palette().warning;
-        let available_color = optional_value_color(available_margin, weak_color, invalid_color);
-        let margin_used_color = optional_value_color(margin_used, weak_color, invalid_color);
+        // Missing account data is a freshness condition, so it keeps the
+        // warning treatment; present values resolve through shared roles.
+        let colors = UiColors::new(theme);
+        let invalid_color = colors.warning;
+        let available_color = optional_value_color(available_margin, colors.muted, invalid_color);
+        let margin_used_color = optional_value_color(margin_used, colors.muted, invalid_color);
 
         row![
             text(format!("Available: {available_label}"))
@@ -122,59 +131,86 @@ impl TradingTerminal {
         can_update: bool,
     ) -> Option<Element<'_, Message>> {
         let (max_leverage, cross_allowed) = self.active_order_leverage_constraints()?;
-        let theme = self.theme();
+        let pane_corner_radius = self.pane_corner_radius;
         let cross_selected = self.order_leverage_is_cross && cross_allowed;
         let isolated_selected = !cross_selected;
         let pending = self.pending_leverage_update.is_some();
         let can_apply = can_update && !pending && !self.order_leverage_input.is_empty();
 
         let mut input = text_input("", &self.order_leverage_input)
-            .style(helpers::text_input_style)
             .size(12)
-            .padding(5)
-            .width(Length::Fixed(46.0));
+            .line_height(iced::widget::text::LineHeight::Absolute(iced::Pixels(16.0)))
+            .padding([4, 8])
+            .width(Length::Fixed(46.0))
+            .style(move |theme, status| {
+                compact_input_style(theme, status, false, pane_corner_radius)
+            });
         if !pending {
             input = input.on_input(Message::OrderLeverageInputChanged);
         }
 
         let apply_button: Element<'_, Message> = if pending {
+            // Busy keeps the Apply frame: spinner inside the same primary
+            // surface instead of a differently sized container.
             container(self.view_spinner(12))
-                .padding([4, 8])
+                .height(24)
                 .width(Length::Fixed(58.0))
+                .center_y(24)
                 .center_x(Fill)
-                .style(leverage_apply_container_style)
+                .style(move |theme: &Theme| {
+                    let (fill, foreground) = filled_action_pair(theme.palette().primary);
+                    container::Style {
+                        background: Some(fill.into()),
+                        text_color: Some(foreground),
+                        border: iced::Border {
+                            radius: effective_radius(pane_corner_radius, 4.0).into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }
+                })
                 .into()
         } else {
-            leverage_apply_button(can_apply, self.order_leverage_submission_snapshot())
+            leverage_apply_button(
+                can_apply,
+                self.order_leverage_submission_snapshot(),
+                pane_corner_radius,
+            )
         };
 
         let mode_controls = row![
-            text("Leverage")
-                .size(12)
-                .color(theme.extended_palette().background.weak.text),
+            text("Leverage").size(12).style(move |theme: &Theme| {
+                text::Style {
+                    color: Some(UiColors::new(theme).muted),
+                }
+            }),
             leverage_mode_button(
                 "Cross",
                 cross_selected,
                 cross_allowed,
                 Message::SetOrderLeverageCross(true),
+                pane_corner_radius,
             ),
             leverage_mode_button(
                 "Isolated",
                 isolated_selected,
                 true,
                 Message::SetOrderLeverageCross(false),
+                pane_corner_radius,
             ),
         ]
         .spacing(6)
         .align_y(iced::Alignment::Center);
         let leverage_controls = row![
             input,
-            text("x")
-                .size(12)
-                .color(theme.extended_palette().background.weak.text),
+            text("x").size(12).style(move |theme: &Theme| text::Style {
+                color: Some(UiColors::new(theme).muted),
+            }),
             text(format!("Max {max_leverage}x"))
                 .size(11)
-                .color(theme.extended_palette().background.weak.text),
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(UiColors::new(theme).muted),
+                }),
             Space::new().width(Fill),
             apply_button,
         ]
@@ -185,37 +221,63 @@ impl TradingTerminal {
             container(column![mode_controls, leverage_controls].spacing(6))
                 .width(Fill)
                 .padding(8)
-                .style(leverage_dropdown_container_style)
+                .style(move |theme: &Theme| container::Style {
+                    background: Some(UiColors::new(theme).inset.into()),
+                    border: iced::Border {
+                        radius: effective_radius(pane_corner_radius, 6.0).into(),
+                        width: 1.0,
+                        color: UiColors::new(theme).divider,
+                    },
+                    ..Default::default()
+                })
                 .into(),
         )
     }
 
     pub(super) fn view_order_entry_type_row(&self) -> Element<'static, Message> {
+        let pane_corner_radius = self.pane_corner_radius;
         let limit_selected = matches!(self.order_kind, OrderKind::Limit | OrderKind::LimitIoc);
-        row![
+        // Order type is one segmented choice on the shared inset track:
+        // equal widths, fixed 12px labels, stable selection geometry.
+        let segments = row![
             order_type_button(
                 "Market",
                 self.order_kind == OrderKind::Market,
                 Message::SetOrderKind(OrderKind::Market),
+                pane_corner_radius,
             ),
             order_type_button(
                 "Limit",
                 limit_selected,
                 Message::SetOrderKind(OrderKind::Limit),
+                pane_corner_radius,
             ),
             order_type_button(
                 "Chase",
                 self.order_kind == OrderKind::Chase,
                 Message::SetOrderKind(OrderKind::Chase),
+                pane_corner_radius,
             ),
             order_type_button(
                 "TWAP",
                 self.order_kind == OrderKind::Twap,
                 Message::SetOrderKind(OrderKind::Twap),
+                pane_corner_radius,
             ),
         ]
-        .spacing(4)
-        .into()
+        .spacing(2);
+        container(segments)
+            .width(Fill)
+            .padding(2)
+            .style(move |theme: &Theme| container::Style {
+                background: Some(UiColors::new(theme).inset.into()),
+                border: iced::Border {
+                    radius: effective_radius(pane_corner_radius, 4.0).into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .into()
     }
 }
 
@@ -254,30 +316,17 @@ fn order_leverage_label(is_cross: bool, leverage: u32, is_actual: bool) -> Strin
     }
 }
 
-fn order_leverage_badge(label: String, open: bool) -> Element<'static, Message> {
-    button(text(label).size(11))
-        .padding([4, 6])
+fn order_leverage_badge(
+    label: String,
+    open: bool,
+    pane_corner_radius: f32,
+) -> Element<'static, Message> {
+    button(text(label).size(11).center())
+        .height(24)
+        .padding([0, 8])
         .on_press(Message::ToggleOrderLeverageDropdown)
         .style(move |theme: &Theme, status| {
-            let background = if matches!(status, button::Status::Hovered) {
-                theme.extended_palette().background.strong.color
-            } else {
-                theme.extended_palette().background.weak.color
-            };
-            button::Style {
-                background: Some(background.into()),
-                text_color: theme.palette().text,
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: if open { 1.0 } else { 0.0 },
-                    color: if open {
-                        theme.palette().primary
-                    } else {
-                        Color::TRANSPARENT
-                    },
-                },
-                ..Default::default()
-            }
+            compact_button_style(theme, status, open, pane_corner_radius)
         })
         .into()
 }
@@ -287,49 +336,14 @@ fn leverage_mode_button(
     active: bool,
     enabled: bool,
     msg: Message,
+    pane_corner_radius: f32,
 ) -> Element<'static, Message> {
-    let mut btn = button(text(label).size(11).center()).padding([4, 8]).style(
-        move |theme: &Theme, status| {
-            let palette = theme.palette();
-            let extended = theme.extended_palette();
-            let bg = if active {
-                Color {
-                    a: 0.15,
-                    ..palette.primary
-                }
-            } else if matches!(status, button::Status::Hovered) && enabled {
-                extended.background.strong.color
-            } else {
-                extended.background.weak.color
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: if active {
-                    palette.primary
-                } else if enabled {
-                    extended.background.weak.text
-                } else {
-                    Color {
-                        a: 0.45,
-                        ..extended.background.weak.text
-                    }
-                },
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: if active { 1.0 } else { 0.0 },
-                    color: if active {
-                        Color {
-                            a: 0.3,
-                            ..palette.primary
-                        }
-                    } else {
-                        Color::TRANSPARENT
-                    },
-                },
-                ..Default::default()
-            }
-        },
-    );
+    let mut btn = button(text(label).size(12).center())
+        .height(24)
+        .padding([0, 8])
+        .style(move |theme: &Theme, status| {
+            compact_button_style(theme, status, active, pane_corner_radius)
+        });
 
     if enabled {
         btn = btn.on_press(msg);
@@ -341,32 +355,28 @@ fn leverage_mode_button(
 fn leverage_apply_button(
     enabled: bool,
     snapshot: OrderLeverageSubmissionSnapshot,
+    pane_corner_radius: f32,
 ) -> Element<'static, Message> {
-    let mut btn = button(text("Apply").size(11).center())
-        .padding([4, 8])
+    // One leading non-trading action in this group: primary accent fill
+    // with a paired foreground; unavailable keeps the shared disabled look.
+    let mut btn = button(text("Apply").size(12).center())
+        .height(24)
         .width(Length::Fixed(58.0))
-        .style(|theme: &Theme, status| {
-            let palette = theme.palette();
-            let bg = match status {
-                button::Status::Hovered => Color {
-                    a: 0.85,
-                    ..palette.primary
-                },
-                button::Status::Disabled => theme.extended_palette().background.weak.color,
-                _ => palette.primary,
+        .style(move |theme: &Theme, status| {
+            if !enabled && status != button::Status::Hovered {
+                return compact_button_style(theme, status, false, pane_corner_radius);
+            }
+            let (fill, foreground) = filled_action_pair(theme.palette().primary);
+            let amount = match status {
+                button::Status::Hovered => 0.06,
+                button::Status::Pressed => 0.12,
+                _ => 0.0,
             };
             button::Style {
-                background: Some(bg.into()),
-                text_color: if matches!(status, button::Status::Disabled) {
-                    Color {
-                        a: 0.45,
-                        ..theme.extended_palette().background.weak.text
-                    }
-                } else {
-                    crate::helpers::text_color_for_bg(palette.primary)
-                },
+                background: Some(mix_color(fill, foreground, amount).into()),
+                text_color: foreground,
                 border: iced::Border {
-                    radius: 4.0.into(),
+                    radius: effective_radius(pane_corner_radius, 4.0).into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -378,30 +388,4 @@ fn leverage_apply_button(
     }
 
     btn.into()
-}
-
-fn leverage_apply_container_style(theme: &Theme) -> container::Style {
-    container::Style {
-        background: Some(theme.palette().primary.into()),
-        border: iced::Border {
-            radius: 4.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-}
-
-fn leverage_dropdown_container_style(theme: &Theme) -> container::Style {
-    container::Style {
-        background: Some(theme.extended_palette().background.weak.color.into()),
-        border: iced::Border {
-            radius: 4.0.into(),
-            width: 1.0,
-            color: Color {
-                a: 0.25,
-                ..theme.extended_palette().background.strong.text
-            },
-        },
-        ..Default::default()
-    }
 }

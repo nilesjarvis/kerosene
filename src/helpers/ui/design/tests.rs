@@ -119,3 +119,32 @@ fn derived_roles_preserve_surface_opacity_and_correct_low_contrast_custom_colors
         assert_eq!(readable.a, 1.0);
     }
 }
+
+#[test]
+fn filled_action_pairs_meet_contrast_across_all_themes() {
+    let (terminal, _) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+    let names: Vec<_> = Theme::ALL
+        .iter()
+        .map(ToString::to_string)
+        .chain(
+            terminal
+                .custom_themes
+                .iter()
+                .map(|t| format!("Custom: {}", t.name)),
+        )
+        .collect();
+    for name in names {
+        let theme = terminal.get_theme_by_name(&name);
+        let colors = UiColors::new(&theme);
+        for base in [
+            theme.palette().success,
+            theme.palette().danger,
+            theme.palette().primary,
+        ] {
+            let (fill, foreground) = filled_action_pair(base);
+            assert!(contrast_ratio(foreground, fill) >= 4.5, "{name}");
+            let (soft_fill, soft_foreground) = soft_action_pair(base, colors.panel);
+            assert!(contrast_ratio(soft_foreground, soft_fill) >= 4.5, "{name}");
+        }
+    }
+}

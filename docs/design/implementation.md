@@ -80,6 +80,23 @@ metric-pair pattern (11px label, 13px numeric); autocomplete result rows are
 action cells, sortable header cells, and per-pan filtering behavior are
 unchanged.
 
+### Order Entry
+
+`src/order_views/**` consumes the shared recipes. Market/Limit/Chase/TWAP is
+one segmented choice on the shared inset track with fixed 12px labels in
+every state (audit D01). Buy/sell, chase starts, and TWAP starts share one
+trade action component: 36px prominent frames, 13px labels, filled direction
+colors with contrast-checked paired foregrounds, and identical busy (spinner
+plus retained directional label) and unavailable (soft directional fill)
+presentations (audit D05). Price/size/TWAP fields use the shared compact
+input with Mid and denomination actions in reserved slots; 25/50/75/100
+presets are compact ghosts; the size slider uses the 4px rail and 12px
+thumb. The leverage dropdown, its mode segments, badge, and primary Apply
+follow the compact and filled recipes. Status dismiss uses a vector close
+icon; the leverage warning uses a soft-warning fill with a vector marker.
+Order construction, snapshots, redacted inputs, confirmation behavior, and
+pending-state machines are unchanged.
+
 ## Planned shared boundaries
 
 The following names are suggested implementation boundaries, not existing APIs:

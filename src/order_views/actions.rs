@@ -2,13 +2,11 @@ mod chase;
 mod twap;
 
 use crate::app_state::TradingTerminal;
-use crate::helpers::{buy_button, sell_button};
+use crate::helpers::{TradeAction, TradeSide, trade_action_button};
 use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
 use crate::signing::OrderKind;
-use iced::widget::container as container_style;
-use iced::widget::{Column, button, container, row, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::widget::{Column, row};
 
 // ---------------------------------------------------------------------------
 // Order Action Controls
@@ -39,80 +37,48 @@ impl TradingTerminal {
 
         let pending_buy = self.pending_order_action == Some(PendingOrderAction::Buy);
         let pending_sell = self.pending_order_action == Some(PendingOrderAction::Sell);
-        let pending_standard = pending_buy || pending_sell;
 
         let buy_label = format!("BUY {}", self.active_symbol_display.to_uppercase());
         let sell_label = format!("SELL {}", self.active_symbol_display.to_uppercase());
-        let palette = self.theme().palette();
         let snapshot = self.ticket_order_submission_snapshot();
-        let mut buy_btn: Element<'_, Message> = if pending_buy {
-            pending_order_button(self.view_spinner(14), &buy_label, palette.success)
-        } else {
-            buy_button(
-                buy_label.clone(),
-                Message::PlaceOrder {
+        let pane_corner_radius = self.pane_corner_radius;
+
+        // One action family across idle, busy, and unavailable: identical
+        // 36px frames, directional labels retained while busy, and quiet
+        // directional identity while trading is unavailable.
+        let buy_btn = trade_action_button(
+            TradeSide::Buy,
+            buy_label,
+            if pending_buy {
+                TradeAction::Busy
+            } else if can_trade {
+                TradeAction::Place(Box::new(Message::PlaceOrder {
                     is_buy: true,
                     snapshot: snapshot.clone(),
-                },
-            )
-        };
-        let mut sell_btn: Element<'_, Message> = if pending_sell {
-            pending_order_button(self.view_spinner(14), &sell_label, palette.danger)
-        } else {
-            sell_button(
-                sell_label.clone(),
-                Message::PlaceOrder {
+                }))
+            } else {
+                TradeAction::Unavailable
+            },
+            pending_buy.then(|| self.view_spinner(14)),
+            pane_corner_radius,
+        );
+        let sell_btn = trade_action_button(
+            TradeSide::Sell,
+            sell_label,
+            if pending_sell {
+                TradeAction::Busy
+            } else if can_trade {
+                TradeAction::Place(Box::new(Message::PlaceOrder {
                     is_buy: false,
                     snapshot,
-                },
-            )
-        };
+                }))
+            } else {
+                TradeAction::Unavailable
+            },
+            pending_sell.then(|| self.view_spinner(14)),
+            pane_corner_radius,
+        );
 
-        if !can_trade || pending_standard {
-            buy_btn = if pending_buy {
-                pending_order_button(self.view_spinner(14), &buy_label, palette.success)
-            } else {
-                disabled_order_button(buy_label)
-            };
-            sell_btn = if pending_sell {
-                pending_order_button(self.view_spinner(14), &sell_label, palette.danger)
-            } else {
-                disabled_order_button(sell_label)
-            };
-        }
         form.push(row![buy_btn, sell_btn].spacing(8))
     }
-}
-
-fn pending_order_button<'a>(
-    spinner: Element<'a, Message>,
-    label: &str,
-    background: Color,
-) -> Element<'a, Message> {
-    container(
-        row![spinner, text(label.to_string()).size(14)]
-            .spacing(6)
-            .align_y(iced::Alignment::Center),
-    )
-    .padding([8, 0])
-    .center_x(Fill)
-    .width(Fill)
-    .style(move |_theme: &Theme| container_style::Style {
-        background: Some(background.into()),
-        text_color: Some(crate::helpers::text_color_for_bg(background)),
-        border: iced::Border {
-            radius: 4.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    })
-    .into()
-}
-
-fn disabled_order_button(label: String) -> Element<'static, Message> {
-    button(text(label).size(14).center().width(Fill))
-        .padding([8, 16])
-        .width(Fill)
-        .style(button::secondary)
-        .into()
 }

@@ -25,9 +25,16 @@ impl TradingTerminal {
             return form;
         };
 
+        let pane_corner_radius = self.pane_corner_radius;
+        // Inline warning notice: shared soft-warning fill with a readable
+        // warning foreground and a vector state marker.
         let warning = container(
             row![
-                text("\u{26a0}\u{fe0f}").size(14),
+                crate::helpers::icons::icon(
+                    crate::helpers::icons::WARNING,
+                    14.0,
+                    crate::helpers::icons::IconColor::Warning,
+                ),
                 text(warning_text)
                     .size(11)
                     .color(warning_color)
@@ -41,23 +48,18 @@ impl TradingTerminal {
         )
         .width(Fill)
         .padding([6, 8])
-        .style(move |_theme: &Theme| container::Style {
-            background: Some(
-                Color {
-                    a: 0.1,
-                    ..warning_color
-                }
-                .into(),
-            ),
-            border: iced::Border {
-                radius: 4.0.into(),
-                width: 1.0,
-                color: Color {
-                    a: 0.5,
-                    ..warning_color
+        .style(move |theme: &Theme| {
+            let colors = crate::helpers::design::UiColors::new(theme);
+            container::Style {
+                background: Some(
+                    crate::helpers::design::mix_color(colors.panel, colors.warning, 0.14).into(),
+                ),
+                border: iced::Border {
+                    radius: crate::config::effective_radius(pane_corner_radius, 4.0).into(),
+                    ..Default::default()
                 },
-            },
-            ..Default::default()
+                ..Default::default()
+            }
         });
 
         form.push(warning)

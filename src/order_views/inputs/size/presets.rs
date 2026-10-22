@@ -6,7 +6,7 @@ pub(super) const SIZE_SLIDER_HEIGHT: f32 = 24.0;
 
 pub(super) fn size_slider_style(theme: &Theme, status: slider::Status) -> slider::Style {
     let mut style = slider::default(theme, status);
-    style.rail.width = 3.0;
+    style.rail.width = 4.0;
     style.rail.backgrounds = (
         theme.palette().primary.into(),
         Color {
@@ -15,6 +15,6 @@ pub(super) fn size_slider_style(theme: &Theme, status: slider::Status) -> slider
         }
         .into(),
     );
-    style.handle.shape = slider::HandleShape::Circle { radius: 5.0 };
+    style.handle.shape = slider::HandleShape::Circle { radius: 6.0 };
     style
 }

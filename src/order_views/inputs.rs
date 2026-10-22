@@ -53,12 +53,14 @@ impl TradingTerminal {
 fn order_detail_row(
     label: &'static str,
     value: String,
-    theme: &Theme,
+    _theme: &Theme,
 ) -> Element<'static, Message> {
     row![
         text(label)
             .size(11)
-            .color(theme.extended_palette().background.weak.text),
+            .style(move |theme: &Theme| text::Style {
+                color: Some(crate::helpers::design::UiColors::new(theme).muted),
+            }),
         Space::new().width(Fill),
         text(value)
             .size(11)

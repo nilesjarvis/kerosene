@@ -1,5 +1,5 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers;
+use crate::helpers::design::{UiColors, compact_button_style, compact_input_style};
 use crate::message::Message;
 use crate::signing::OrderKind;
 use calculations::{denomination_label, order_notional_text, parse_positive_finite};
@@ -9,7 +9,7 @@ use presets::{SIZE_PERCENT_LABEL_WIDTH, SIZE_SLIDER_HEIGHT, size_slider_style};
 use iced::widget::{
     Column, Space, button, checkbox, column, pick_list, row, slider, text, text_input,
 };
-use iced::{Fill, Length};
+use iced::{Fill, Length, Theme};
 
 mod calculations;
 mod components;
@@ -22,24 +22,27 @@ impl TradingTerminal {
         active_is_outcome: bool,
         wide: bool,
     ) -> (Column<'a, Message>, Option<f64>) {
-        let theme = self.theme();
+        let pane_corner_radius = self.pane_corner_radius;
         let qty_placeholder = if active_is_outcome {
             "Contracts"
         } else {
             "Quantity"
         };
         let qty_input = text_input(qty_placeholder, &self.order_quantity)
-            .style(helpers::text_input_style)
             .on_input(|value| Message::OrderQuantityChanged(value.into()))
-            .size(13)
-            .padding(6);
+            .size(12)
+            .line_height(iced::widget::text::LineHeight::Absolute(iced::Pixels(16.0)))
+            .padding([6, 8])
+            .style(move |theme, status| {
+                compact_input_style(theme, status, false, pane_corner_radius)
+            });
 
         let parsed_qty = parse_positive_finite(&self.order_quantity);
         let parsed_price = if matches!(self.order_kind, OrderKind::Limit | OrderKind::LimitIoc) {
             parse_positive_finite(&self.order_price)
         } else {
             self.resolve_mid_for_symbol(&self.active_symbol)
-                .and_then(helpers::positive_finite_value)
+                .and_then(crate::helpers::positive_finite_value)
         };
 
         let (notional_val, notional_text) = order_notional_text(
@@ -51,15 +54,20 @@ impl TradingTerminal {
         );
         let size_header = row![
             text("Size")
-                .size(12)
-                .color(theme.extended_palette().background.weak.text),
+                .size(11)
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(UiColors::new(theme).muted),
+                }),
             Space::new().width(Fill),
-            denomination_button(denomination_label(
-                self.order_quantity_is_usd,
-                active_is_outcome,
-                &self.active_symbol_display,
-                &self.outcome_quote_symbol_for_coin(&self.active_symbol),
-            )),
+            denomination_button(
+                denomination_label(
+                    self.order_quantity_is_usd,
+                    active_is_outcome,
+                    &self.active_symbol_display,
+                    &self.outcome_quote_symbol_for_coin(&self.active_symbol),
+                ),
+                pane_corner_radius,
+            ),
         ]
         .align_y(iced::Alignment::Center);
 
@@ -85,7 +93,9 @@ impl TradingTerminal {
             size = size.push(
                 text(notional_text)
                     .size(11)
-                    .color(theme.extended_palette().background.weak.text)
+                    .style(move |theme: &Theme| text::Style {
+                        color: Some(UiColors::new(theme).muted),
+                    })
                     .width(Fill)
                     .align_x(iced::alignment::Horizontal::Right),
             );
@@ -93,11 +103,14 @@ impl TradingTerminal {
         let mut percentages = row![].spacing(4);
         for pct in [25, 50, 75, 100] {
             percentages = percentages.push(
-                button(text(format!("{pct}%")).size(11).center())
+                button(text(format!("{pct}%")).size(12).center())
                     .on_press(Message::OrderPercentageChanged(pct as f32))
-                    .padding([2, 4])
+                    .height(24)
+                    .padding([0, 8])
                     .width(Fill)
-                    .style(button::text),
+                    .style(move |theme: &Theme, status| {
+                        compact_button_style(theme, status, false, pane_corner_radius)
+                    }),
             );
         }
         form = if wide && self.order_kind != OrderKind::Twap {
@@ -142,7 +155,9 @@ impl TradingTerminal {
                 row![
                     text("TIF")
                         .size(11)
-                        .color(self.theme().extended_palette().background.weak.text),
+                        .style(move |theme: &Theme| text::Style {
+                            color: Some(UiColors::new(theme).muted),
+                        }),
                     pick_list(["GTC", "IOC"], Some(selected), |value| {
                         Message::SetOrderKind(if value == "IOC" {
                             OrderKind::LimitIoc
@@ -150,8 +165,8 @@ impl TradingTerminal {
                             OrderKind::Limit
                         })
                     })
-                    .text_size(11)
-                    .padding([4, 6]),
+                    .text_size(12)
+                    .padding([4, 8]),
                 ]
                 .spacing(6)
                 .align_y(iced::Alignment::Center),

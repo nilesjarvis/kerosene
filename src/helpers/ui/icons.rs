@@ -60,6 +60,24 @@ pub(crate) const REFRESH: &[u8] = br#"
 </svg>
 "#;
 
+/// Close / dismiss action.
+pub(crate) const CLOSE: &[u8] = br#"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="round">
+  <path d="M6 6l12 12M18 6L6 18"/>
+</svg>
+"#;
+
+/// Warning state marker for inline notices.
+pub(crate) const WARNING: &[u8] = br#"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="round"
+     stroke-linejoin="round">
+  <path d="M12 3 2.5 19.5h19z"/>
+  <path d="M12 10v4"/>
+  <path d="M12 17.4v.1"/>
+</svg>
+"#;
 /// Solid status dot: the book is tracking the active (selected) symbol.
 pub(crate) const ACTIVE_DOT: &[u8] = br#"
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
@@ -74,6 +92,8 @@ pub(crate) enum IconColor {
     Muted,
     /// Accent: active tracking, selection, or focus.
     Accent,
+    /// Warning: stale, delayed, or attention-needed states.
+    Warning,
 }
 
 /// Render `icon` at `size` logical pixels, tinted by `role`.
@@ -93,6 +113,7 @@ impl IconColor {
         match self {
             IconColor::Muted => colors.muted,
             IconColor::Accent => colors.accent,
+            IconColor::Warning => colors.warning,
         }
     }
 }

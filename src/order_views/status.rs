@@ -1,4 +1,6 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::design::UiColors;
+use crate::helpers::icons::{self, IconColor};
 use crate::message::Message;
 use iced::widget::{Column, button, row, text};
 use iced::{Fill, Theme};
@@ -13,17 +15,28 @@ impl TradingTerminal {
             return form;
         };
 
+        let colors = UiColors::new(theme);
         let status_color = if *is_err {
-            theme.palette().danger
+            colors.negative
         } else {
-            theme.palette().success
+            colors.positive
         };
+        let pane_corner_radius = self.pane_corner_radius;
         let status_row = row![
             text(msg).size(11).color(status_color).width(Fill),
-            button(text("X").size(10))
+            button(icons::icon(icons::CLOSE, 12.0, IconColor::Muted))
                 .on_press(Message::DismissOrderStatus)
-                .padding([1, 4])
-                .style(button::text),
+                .width(24)
+                .height(24)
+                .padding(0)
+                .style(move |theme: &Theme, status| {
+                    crate::helpers::design::compact_button_style(
+                        theme,
+                        status,
+                        false,
+                        pane_corner_radius,
+                    )
+                }),
         ]
         .spacing(4)
         .align_y(iced::Alignment::Center);
@@ -32,7 +45,7 @@ impl TradingTerminal {
     }
 
     pub(super) fn push_order_entry_hint<'a>(
-        &self,
+        &'a self,
         form: Column<'a, Message>,
         active_is_outcome: bool,
         can_trade: bool,
@@ -43,8 +56,10 @@ impl TradingTerminal {
                 text(format!(
                     "Outcome orders use {quote_symbol} prices and whole-contract sizes"
                 ))
-                .size(10)
-                .color(self.theme().extended_palette().background.weak.text),
+                .size(11)
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(UiColors::new(theme).muted),
+                }),
             )
         } else if !can_trade {
             form.push(
@@ -55,8 +70,10 @@ impl TradingTerminal {
                 } else {
                     "Market unavailable for trading"
                 })
-                .size(10)
-                .color(self.theme().extended_palette().background.weak.text),
+                .size(11)
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(UiColors::new(theme).muted),
+                }),
             )
         } else {
             form

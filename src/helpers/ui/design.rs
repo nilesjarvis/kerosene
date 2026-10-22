@@ -190,5 +190,34 @@ pub(crate) fn compact_input_style(
     }
 }
 
+/// Filled directional action pair: a semantic color as the fill with a
+/// contrast-checked paired foreground (design language, audit D07). If
+/// neither black nor white reads on the fill, the fill moves toward the
+/// readable side in hue-preserving steps, so the pair always meets the
+/// project's 4.5:1 text target.
+pub(crate) fn filled_action_pair(base: Color) -> (Color, Color) {
+    let dark_on_base = contrast_ratio(Color::BLACK, base) >= contrast_ratio(Color::WHITE, base);
+    let foreground = if dark_on_base {
+        Color::BLACK
+    } else {
+        Color::WHITE
+    };
+    let mut fill = base;
+    let mut step = 0;
+    while contrast_ratio(foreground, fill) < 4.5 && step < 100 {
+        step += 1;
+        fill = mix_color(base, foreground, step as f32 / 100.0);
+    }
+    (fill, foreground)
+}
+
+/// Quiet directional pair for unavailable actions: a soft fill retains the
+/// side's identity while reading as inactive, with a readable foreground.
+pub(crate) fn soft_action_pair(base: Color, panel: Color) -> (Color, Color) {
+    let fill = mix_color(panel, base, 0.16);
+    let foreground = readable_color(base, fill, 4.5);
+    (fill, foreground)
+}
+
 #[cfg(test)]
 mod tests;

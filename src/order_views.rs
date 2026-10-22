@@ -60,8 +60,10 @@ impl TradingTerminal {
                 text(format!(
                     "{quote_symbol} outcome contract. Size is whole contracts."
                 ))
-                .size(10)
-                .color(theme.palette().primary),
+                .size(11)
+                .style(move |t: &iced::Theme| text::Style {
+                    color: Some(crate::helpers::design::UiColors::new(t).muted),
+                }),
             );
             if let Some(info) = self
                 .resolve_exchange_symbol_by_key_or_ticker(&self.active_symbol)
@@ -71,24 +73,28 @@ impl TradingTerminal {
                     form = form.push(text(question.clone()).size(11));
                 }
                 if let Some(reason) = info.trading_block_reason(self.status_bar_now_ms) {
-                    form = form.push(
-                        text(reason.to_string())
-                            .size(11)
-                            .color(theme.palette().danger),
-                    );
+                    form = form.push(text(reason.to_string()).size(11).style(
+                        move |t: &iced::Theme| text::Style {
+                            color: Some(crate::helpers::design::UiColors::new(t).negative),
+                        },
+                    ));
                 }
                 if let Some(deadline) = info.contract_deadline_label() {
-                    form = form.push(text(deadline).size(10));
+                    form = form.push(text(deadline).size(11).style(move |t: &iced::Theme| {
+                        text::Style {
+                            color: Some(crate::helpers::design::UiColors::new(t).muted),
+                        }
+                    }));
                 }
                 if let Some(venue) = info.venue_label() {
                     form = form.push(text(format!("Venue: {venue}")).size(11));
                 }
                 if let Some(source) = info.settlement_source_label() {
-                    form = form.push(
-                        text(source)
-                            .size(10)
-                            .color(theme.extended_palette().background.weak.text),
-                    );
+                    form = form.push(text(source).size(11).style(move |t: &iced::Theme| {
+                        text::Style {
+                            color: Some(crate::helpers::design::UiColors::new(t).muted),
+                        }
+                    }));
                 }
                 if let Some(rules) = &info.contract.rules {
                     let expanded = self.outcome_expanded_rules.contains(&info.outcome_id);
@@ -99,11 +105,19 @@ impl TradingTerminal {
                             } else {
                                 "Contract rules"
                             })
-                            .size(11),
+                            .size(12),
                         )
                         .on_press(Message::OutcomeRulesToggled(info.outcome_id))
-                        .style(button::text)
-                        .padding([2, 0]),
+                        .height(24)
+                        .padding([0, 8])
+                        .style(move |t: &iced::Theme, status| {
+                            crate::helpers::design::compact_button_style(
+                                t,
+                                status,
+                                false,
+                                self.pane_corner_radius,
+                            )
+                        }),
                     );
                     if expanded {
                         form = form.push(text(rules.clone()).size(11).width(Fill));

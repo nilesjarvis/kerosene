@@ -1,11 +1,12 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::design::{UiColors, soft_action_pair};
 use crate::helpers::format_price;
+use crate::helpers::{TradeAction, TradeSide, trade_action_button};
 use crate::message::Message;
-use crate::order_execution::{AdvancedOrderStartSnapshot, PendingOrderAction};
+use crate::order_execution::PendingOrderAction;
 use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
-use iced::widget::container as container_style;
-use iced::widget::{Column, button, container, row, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::widget::{Column, button, row, text};
+use iced::{Fill, Theme};
 
 // ---------------------------------------------------------------------------
 // Chase Controls
@@ -17,29 +18,62 @@ impl TradingTerminal {
         form: Column<'a, Message>,
         can_trade: bool,
     ) -> Column<'a, Message> {
-        let theme = self.theme();
         let pending_chase_buy = self.pending_order_action == Some(PendingOrderAction::ChaseBuy);
         let pending_chase_sell = self.pending_order_action == Some(PendingOrderAction::ChaseSell);
 
+        let pane_corner_radius = self.pane_corner_radius;
+        let symbol = self.active_symbol_display.to_uppercase();
+
         if pending_chase_buy || pending_chase_sell {
-            let chase_buy = self.pending_chase_control(true, pending_chase_buy);
-            let chase_sell = self.pending_chase_control(false, pending_chase_sell);
+            // Same action family while starting: the pending side keeps its
+            // directional label with the spinner; the other side is quietly
+            // unavailable instead of a differently sized container.
+            let chase_buy = trade_action_button(
+                TradeSide::Buy,
+                format!("CHASE BUY {symbol}"),
+                if pending_chase_buy {
+                    TradeAction::Busy
+                } else {
+                    TradeAction::Unavailable
+                },
+                pending_chase_buy.then(|| self.view_spinner(14)),
+                pane_corner_radius,
+            );
+            let chase_sell = trade_action_button(
+                TradeSide::Sell,
+                format!("CHASE SELL {symbol}"),
+                if pending_chase_sell {
+                    TradeAction::Busy
+                } else {
+                    TradeAction::Unavailable
+                },
+                pending_chase_sell.then(|| self.view_spinner(14)),
+                pane_corner_radius,
+            );
             return form.push(row![chase_buy, chase_sell].spacing(8));
         }
 
         if can_trade && self.active_advanced_order_count() < MAX_ACTIVE_ADVANCED_ORDERS {
             let snapshot = self.advanced_order_start_snapshot();
-            let chase_buy = chase_start_button(
-                format!("CHASE BUY {}", self.active_symbol_display.to_uppercase()),
-                true,
-                theme.palette().success,
-                snapshot.clone(),
+            let chase_buy = trade_action_button(
+                TradeSide::Buy,
+                format!("CHASE BUY {symbol}"),
+                TradeAction::Place(Box::new(Message::StartChase {
+                    is_buy: true,
+                    snapshot: snapshot.clone(),
+                })),
+                None,
+                pane_corner_radius,
             );
-            let chase_sell = chase_start_button(
-                format!("CHASE SELL {}", self.active_symbol_display.to_uppercase()),
-                false,
-                theme.palette().danger,
-                snapshot,
+            let chase_sell = trade_action_button(
+                TradeSide::Sell,
+                format!("CHASE SELL {symbol}"),
+                TradeAction::Place(Box::new(Message::StartChase {
+                    is_buy: false,
+                    snapshot,
+                })),
+                None,
+                pane_corner_radius,
             );
             form.push(row![chase_buy, chase_sell].spacing(8))
         } else if can_trade {
@@ -48,8 +82,10 @@ impl TradingTerminal {
                     "Maximum of {} active advanced orders reached",
                     MAX_ACTIVE_ADVANCED_ORDERS
                 ))
-                .size(10)
-                .color(theme.palette().danger),
+                .size(11)
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(UiColors::new(theme).negative),
+                }),
             )
         } else {
             form
@@ -66,7 +102,6 @@ impl TradingTerminal {
         ) {
             return form;
         }
-        let theme = self.theme();
         let mut form = form;
         if let Some(chase) = self.selected_chase() {
             let side_str = if chase.is_buy { "BUY" } else { "SELL" };
@@ -90,122 +125,33 @@ impl TradingTerminal {
                 self.active_advanced_order_count()
             ))
             .size(11)
-            .color(theme.palette().primary);
-            let stop_btn = button(
-                text("Stop Chase")
-                    .size(10)
-                    .center()
-                    .color(theme.palette().danger)
-                    .width(Fill),
-            )
-            .on_press(Message::StopChase)
-            .padding([4, 12])
-            .width(Fill)
-            .style(|theme: &Theme, status| {
-                let bg = Color {
-                    a: if matches!(status, button::Status::Hovered) {
-                        0.16
-                    } else {
-                        0.1
-                    },
-                    ..theme.palette().danger
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: theme.palette().danger,
-                    border: iced::Border {
-                        radius: 4.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }
+            .style(move |theme: &Theme| text::Style {
+                color: Some(UiColors::new(theme).muted),
             });
+            // Stopping an algorithm is visually distinct from starting one:
+            // a quiet destructive control, not another filled trade action.
+            let pane_corner_radius = self.pane_corner_radius;
+            let stop_btn = button(text("Stop Chase").size(12).center().width(Fill))
+                .on_press(Message::StopChase)
+                .height(24)
+                .padding([0, 8])
+                .width(Fill)
+                .style(move |theme: &Theme, _status| {
+                    let (fill, foreground) =
+                        soft_action_pair(theme.palette().danger, UiColors::new(theme).panel);
+                    button::Style {
+                        background: Some(fill.into()),
+                        text_color: foreground,
+                        border: iced::Border {
+                            radius: crate::config::effective_radius(pane_corner_radius, 4.0).into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }
+                });
             form = form.push(chase_info).push(stop_btn);
         }
 
         form
-    }
-
-    fn pending_chase_control(&self, is_buy: bool, is_pending: bool) -> Element<'_, Message> {
-        let theme = self.theme();
-        let accent = if is_buy {
-            theme.palette().success
-        } else {
-            theme.palette().danger
-        };
-        let label = format!(
-            "CHASE {} {}",
-            if is_buy { "BUY" } else { "SELL" },
-            self.active_symbol_display.to_uppercase()
-        );
-        let content = if is_pending {
-            row![self.view_spinner(14), text(label).size(10)]
-                .spacing(6)
-                .align_y(iced::Alignment::Center)
-        } else {
-            row![text(label).size(10)]
-        };
-        container(content)
-            .padding([6, 8])
-            .center_x(Fill)
-            .style(move |_theme: &Theme| muted_action_style(accent, 0.15))
-            .into()
-    }
-}
-
-fn chase_start_button(
-    label: String,
-    is_buy: bool,
-    accent: Color,
-    snapshot: AdvancedOrderStartSnapshot,
-) -> Element<'static, Message> {
-    let message = Message::StartChase { is_buy, snapshot };
-
-    button(
-        text(label)
-            .size(10)
-            .center()
-            .color(Color { a: 0.8, ..accent })
-            .width(Fill),
-    )
-    .on_press(message)
-    .padding([4, 8])
-    .width(Fill)
-    .style(move |_theme: &Theme, status| {
-        let bg = Color {
-            a: if matches!(status, button::Status::Hovered) {
-                0.16
-            } else {
-                0.1
-            },
-            ..accent
-        };
-        button::Style {
-            background: Some(bg.into()),
-            text_color: accent,
-            border: iced::Border {
-                radius: 4.0.into(),
-                width: 1.0,
-                color: Color { a: 0.15, ..accent },
-            },
-            ..Default::default()
-        }
-    })
-    .into()
-}
-
-fn muted_action_style(accent: Color, border_alpha: f32) -> container_style::Style {
-    container_style::Style {
-        background: Some(Color { a: 0.1, ..accent }.into()),
-        text_color: Some(accent),
-        border: iced::Border {
-            radius: 3.0.into(),
-            width: 1.0,
-            color: Color {
-                a: border_alpha,
-                ..accent
-            },
-        },
-        ..Default::default()
     }
 }

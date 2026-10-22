@@ -1,5 +1,5 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers;
+use crate::helpers::design::{UiColors, compact_button_style, compact_input_style};
 use crate::message::Message;
 use crate::signing::OrderKind;
 
@@ -31,28 +31,24 @@ impl TradingTerminal {
             OrderKind::Limit | OrderKind::LimitIoc => {}
         }
 
+        let pane_corner_radius = self.pane_corner_radius;
+        // Standard 28px field; the Mid action shares the field height in a
+        // reserved trailing slot so entering a value never moves it.
         let price_input = text_input("Price", &self.order_price)
-            .style(helpers::text_input_style)
             .on_input(|value| Message::OrderPriceChanged(value.into()))
-            .size(13)
-            .padding(6);
-        let mid_btn = button(text("Mid").size(10).center())
+            .size(12)
+            .line_height(iced::widget::text::LineHeight::Absolute(iced::Pixels(16.0)))
+            .padding([6, 8])
+            .width(Fill)
+            .style(move |theme, status| {
+                compact_input_style(theme, status, false, pane_corner_radius)
+            });
+        let mid_btn = button(text("Mid").size(12).center())
             .on_press(Message::SetMidPrice)
-            .padding([3, 8])
-            .style(|theme: &Theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => theme.extended_palette().background.strong.color,
-                    _ => theme.extended_palette().background.weak.color,
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: theme.palette().text,
-                    border: iced::Border {
-                        radius: 3.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }
+            .height(28)
+            .padding([0, 8])
+            .style(move |theme: &Theme, status| {
+                compact_button_style(theme, status, false, pane_corner_radius)
             });
         let price_row = row![price_input, mid_btn]
             .spacing(4)
@@ -70,13 +66,18 @@ impl TradingTerminal {
         };
         let label = row![
             text("Price")
-                .size(12)
-                .color(theme.extended_palette().background.weak.text),
+                .size(11)
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(UiColors::new(theme).muted),
+                }),
             Space::new().width(Fill),
             text(quote)
                 .size(11)
-                .color(theme.extended_palette().background.weak.text),
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(UiColors::new(theme).muted),
+                }),
         ];
+
         form.push(column![label, price_row].spacing(4))
     }
 }
@@ -84,7 +85,7 @@ impl TradingTerminal {
 fn market_price_label<'a>(
     mid: Option<f64>,
     slippage_pct: f64,
-    theme: &Theme,
+    _theme: &Theme,
 ) -> iced::widget::Text<'a> {
     let market_info = if let Some(mid) = mid {
         format!("Market (~${mid:.2} mid, {slippage_pct:.2}% slippage)")
@@ -94,10 +95,12 @@ fn market_price_label<'a>(
 
     text(market_info)
         .size(11)
-        .color(theme.extended_palette().background.weak.text)
+        .style(move |theme: &Theme| text::Style {
+            color: Some(UiColors::new(theme).muted),
+        })
 }
 
-fn chase_price_label<'a>(mid: Option<f64>, theme: &Theme) -> iced::widget::Text<'a> {
+fn chase_price_label<'a>(mid: Option<f64>, _theme: &Theme) -> iced::widget::Text<'a> {
     let chase_info = if let Some(mid) = mid {
         format!("Chase (~${mid:.2} mid)")
     } else {
@@ -106,5 +109,7 @@ fn chase_price_label<'a>(mid: Option<f64>, theme: &Theme) -> iced::widget::Text<
 
     text(chase_info)
         .size(11)
-        .color(theme.extended_palette().background.weak.text)
+        .style(move |theme: &Theme| text::Style {
+            color: Some(UiColors::new(theme).muted),
+        })
 }

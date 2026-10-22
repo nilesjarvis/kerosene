@@ -1,10 +1,10 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers;
+use crate::helpers::design::{UiColors, compact_input_style};
+use crate::helpers::{TradeAction, TradeSide, trade_action_button};
 use crate::message::{Message, RedactedOrderInput};
-use crate::order_execution::TwapOrderStartSnapshot;
 use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
-use iced::widget::{Column, button, checkbox, column, container, row, text, text_input};
-use iced::{Alignment, Color, Element, Fill, Theme};
+use iced::widget::{Column, checkbox, column, container, row, text, text_input};
+use iced::{Alignment, Element, Fill, Theme};
 
 // ---------------------------------------------------------------------------
 // TWAP Controls
@@ -16,24 +16,42 @@ impl TradingTerminal {
         form: Column<'a, Message>,
         can_trade: bool,
     ) -> Column<'a, Message> {
-        let theme = self.theme();
         let can_start =
             can_trade && self.active_advanced_order_count() < MAX_ACTIVE_ADVANCED_ORDERS;
 
+        let pane_corner_radius = self.pane_corner_radius;
+        let symbol = self.active_symbol_display.to_uppercase();
         let snapshot = self.twap_order_start_snapshot();
-        let buy = twap_start_button(
-            format!("TWAP BUY {}", self.active_symbol_display.to_uppercase()),
-            true,
-            theme.palette().success,
-            can_start,
-            snapshot.clone(),
+
+        // Starting a TWAP is the same prominent trade-action family as the
+        // ticket's buy/sell and chase starts; unavailable stays quiet.
+        let buy = trade_action_button(
+            TradeSide::Buy,
+            format!("TWAP BUY {symbol}"),
+            if can_start {
+                TradeAction::Place(Box::new(Message::StartTwap {
+                    is_buy: true,
+                    snapshot: snapshot.clone(),
+                }))
+            } else {
+                TradeAction::Unavailable
+            },
+            None,
+            pane_corner_radius,
         );
-        let sell = twap_start_button(
-            format!("TWAP SELL {}", self.active_symbol_display.to_uppercase()),
-            false,
-            theme.palette().danger,
-            can_start,
-            snapshot,
+        let sell = trade_action_button(
+            TradeSide::Sell,
+            format!("TWAP SELL {symbol}"),
+            if can_start {
+                TradeAction::Place(Box::new(Message::StartTwap {
+                    is_buy: false,
+                    snapshot,
+                }))
+            } else {
+                TradeAction::Unavailable
+            },
+            None,
+            pane_corner_radius,
         );
 
         let mut form = form;
@@ -43,8 +61,10 @@ impl TradingTerminal {
                 text(format!(
                     "Maximum of {MAX_ACTIVE_ADVANCED_ORDERS} active advanced orders reached"
                 ))
-                .size(10)
-                .color(theme.palette().danger),
+                .size(11)
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(UiColors::new(theme).negative),
+                }),
             );
         }
 
@@ -55,34 +75,45 @@ impl TradingTerminal {
         &'a self,
         form: Column<'a, Message>,
     ) -> Column<'a, Message> {
-        let theme = self.theme();
-        let weak_text = theme.extended_palette().background.weak.text;
+        let pane_corner_radius = self.pane_corner_radius;
 
         let duration = compact_input(
             "Min",
             &self.twap_form.duration_minutes,
             Message::TwapDurationChanged,
+            pane_corner_radius,
         );
-        let slices = compact_input("Slices", &self.twap_form.slices, Message::TwapSlicesChanged);
+        let slices = compact_input(
+            "Slices",
+            &self.twap_form.slices,
+            Message::TwapSlicesChanged,
+            pane_corner_radius,
+        );
         let min_price = compact_input(
             "Min px",
             &self.twap_form.min_price,
             Message::TwapMinPriceChanged,
+            pane_corner_radius,
         );
         let max_price = compact_input(
             "Max px",
             &self.twap_form.max_price,
             Message::TwapMaxPriceChanged,
+            pane_corner_radius,
         );
 
         let settings = column![
             row![
-                text("TWAP").size(11).color(weak_text),
+                text("TWAP")
+                    .size(11)
+                    .style(move |theme: &Theme| text::Style {
+                        color: Some(UiColors::new(theme).muted),
+                    }),
                 checkbox(self.twap_form.randomize)
                     .label("Randomize")
                     .on_toggle(Message::TwapRandomizeToggled)
                     .size(12)
-                    .text_size(11)
+                    .text_size(12)
                     .text_shaping(iced::widget::text::Shaping::Advanced)
             ]
             .spacing(8)
@@ -94,14 +125,14 @@ impl TradingTerminal {
 
         form.push(
             container(settings)
-                .padding([6, 7])
+                .padding(8)
                 .width(Fill)
-                .style(|theme: &Theme| iced::widget::container::Style {
-                    background: Some(theme.extended_palette().background.weak.color.into()),
+                .style(move |theme: &Theme| iced::widget::container::Style {
+                    background: Some(UiColors::new(theme).inset.into()),
                     border: iced::Border {
-                        radius: 4.0.into(),
+                        radius: crate::config::effective_radius(pane_corner_radius, 6.0).into(),
                         width: 1.0,
-                        color: theme.extended_palette().background.strong.color,
+                        color: UiColors::new(theme).divider,
                     },
                     ..Default::default()
                 }),
@@ -113,71 +144,15 @@ fn compact_input<'a>(
     placeholder: &'static str,
     value: &'a str,
     message: fn(RedactedOrderInput) -> Message,
+    pane_corner_radius: f32,
 ) -> Element<'a, Message> {
+    // Sensitive order input: the shared field frame keeps the redacted input
+    // wrapper; only the visual shell changes.
     text_input(placeholder, value)
-        .style(helpers::text_input_style)
         .on_input(move |value| message(value.into()))
         .size(12)
-        .padding([4, 6])
+        .line_height(iced::widget::text::LineHeight::Absolute(iced::Pixels(16.0)))
+        .padding([6, 8])
+        .style(move |theme, status| compact_input_style(theme, status, false, pane_corner_radius))
         .into()
-}
-
-fn twap_start_button(
-    label: String,
-    is_buy: bool,
-    accent: Color,
-    enabled: bool,
-    snapshot: TwapOrderStartSnapshot,
-) -> Element<'static, Message> {
-    let message = if is_buy {
-        Message::StartTwap {
-            is_buy: true,
-            snapshot,
-        }
-    } else {
-        Message::StartTwap {
-            is_buy: false,
-            snapshot,
-        }
-    };
-
-    let mut button = button(text(label).size(10).center().width(Fill))
-        .padding([4, 8])
-        .width(Fill)
-        .style(move |theme: &Theme, status| {
-            let bg = if enabled {
-                Color {
-                    a: if matches!(status, button::Status::Hovered) {
-                        0.16
-                    } else {
-                        0.1
-                    },
-                    ..accent
-                }
-            } else {
-                theme.extended_palette().background.weak.color
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: if enabled {
-                    accent
-                } else {
-                    theme.extended_palette().background.weak.text
-                },
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 1.0,
-                    color: Color {
-                        a: if enabled { 0.15 } else { 0.05 },
-                        ..accent
-                    },
-                },
-                ..Default::default()
-            }
-        });
-
-    if enabled {
-        button = button.on_press(message);
-    }
-    button.into()
 }

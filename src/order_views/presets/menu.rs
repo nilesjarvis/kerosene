@@ -11,32 +11,29 @@ impl TradingTerminal {
         mut form: Column<'a, Message>,
         active_is_outcome: bool,
     ) -> Column<'a, Message> {
+        let pane_corner_radius = self.pane_corner_radius;
         let presets_toggle = button(
-            text(if self.presets_menu_expanded {
-                "Quick trade presets  \u{2212}"
-            } else {
-                "Quick trade presets  +"
-            })
-            .size(11)
-            .center(),
+            row![
+                text("Quick trade presets").size(12),
+                crate::helpers::icons::icon(
+                    if self.presets_menu_expanded {
+                        crate::helpers::icons::CHEVRON_UP
+                    } else {
+                        crate::helpers::icons::CHEVRON_DOWN
+                    },
+                    10.0,
+                    crate::helpers::icons::IconColor::Muted,
+                ),
+            ]
+            .spacing(4)
+            .align_y(iced::Alignment::Center),
         )
         .on_press(Message::TogglePresetsMenu)
-        .padding([4, 8])
+        .height(24)
+        .padding([0, 8])
         .width(Fill)
-        .style(|theme: &Theme, status| {
-            let bg = match status {
-                button::Status::Hovered => theme.extended_palette().background.strong.color,
-                _ => theme.extended_palette().background.weak.color,
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: theme.palette().text,
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            }
+        .style(move |theme: &Theme, status| {
+            crate::helpers::design::compact_button_style(theme, status, false, pane_corner_radius)
         });
 
         form = form.push(presets_toggle);
