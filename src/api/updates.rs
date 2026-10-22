@@ -1,6 +1,7 @@
 use super::shared_reads::public_info;
 use crate::config::updates::{
-    AssetParameters, MAX_UPDATE_ASSETS, MarginTier, MarketMarginMode, ParameterDecimal,
+    AssetParameters, MAX_UPDATE_ASSETS, MAX_UPDATE_MARGIN_TIERS, MarginTier, MarketMarginMode,
+    ParameterDecimal,
 };
 use crate::market_state::updates::UpdatesSnapshot;
 use serde::Deserialize;
@@ -64,6 +65,7 @@ fn parse_parameters(raw: Value) -> Result<BTreeMap<String, AssetParameters>, Str
         return Err("Empty market parameter metadata".into());
     }
     let mut result = BTreeMap::new();
+    let mut tier_count = 0usize;
     for (dex_index, meta) in metas.into_iter().enumerate() {
         let mut tables = BTreeMap::new();
         for (id, table) in meta.margin_tables {
@@ -83,17 +85,39 @@ fn parse_parameters(raw: Value) -> Result<BTreeMap<String, AssetParameters>, Str
             }
             let table_id = asset.margin_table_id.unwrap_or(asset.max_leverage);
             let tiers = match tables.get(&table_id) {
-                Some(tiers) => tiers.clone(),
+                Some(tiers) => tiers,
                 // IDs <= 50 encode a flat leverage table, often omitted from marginTables.
-                None if table_id == asset.max_leverage && table_id <= 50 => vec![MarginTier {
-                    lower_bound: ParameterDecimal::try_from("0".to_string())?,
-                    max_leverage: asset.max_leverage,
-                }],
+                None if table_id == asset.max_leverage && table_id <= 50 => {
+                    tier_count = tier_count.saturating_add(1);
+                    if tier_count > MAX_UPDATE_MARGIN_TIERS {
+                        return Err("Market parameter tier budget exceeded".into());
+                    }
+                    let parameters = AssetParameters {
+                        max_leverage: asset.max_leverage,
+                        margin_tiers: vec![MarginTier {
+                            lower_bound: ParameterDecimal::try_from("0".to_string())?,
+                            max_leverage: asset.max_leverage,
+                        }],
+                        margin_mode: asset
+                            .margin_mode
+                            .or_else(|| (!asset.only_isolated).then_some(MarketMarginMode::Normal)),
+                    };
+                    if result.insert(asset.name, parameters).is_some()
+                        || result.len() > MAX_UPDATE_ASSETS
+                    {
+                        return Err("Duplicate or excessive market parameters".into());
+                    }
+                    continue;
+                }
                 None => return Err("Missing market margin table".into()),
             };
+            tier_count = tier_count.saturating_add(tiers.len());
+            if tier_count > MAX_UPDATE_MARGIN_TIERS {
+                return Err("Market parameter tier budget exceeded".into());
+            }
             let parameters = AssetParameters {
                 max_leverage: asset.max_leverage,
-                margin_tiers: tiers,
+                margin_tiers: tiers.clone(),
                 margin_mode: asset
                     .margin_mode
                     .or_else(|| (!asset.only_isolated).then_some(MarketMarginMode::Normal)),

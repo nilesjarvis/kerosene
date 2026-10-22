@@ -155,6 +155,9 @@ impl UpdatesState {
                                 changes,
                             },
                         );
+                        if events.len() > MAX_UPDATE_EVENTS {
+                            events.pop_last();
+                        }
                     }
                 }
             }
@@ -184,6 +187,9 @@ impl UpdatesState {
                         old: old.clone(),
                         new: new.clone(),
                     });
+                    if events.len() > MAX_UPDATE_EVENTS {
+                        events.pop_last();
+                    }
                 }
             }
             self.history.caps = caps;

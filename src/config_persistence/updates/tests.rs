@@ -51,3 +51,13 @@ fn updates_history_round_trips_baselines_and_events_with_atomic_replacement() {
 fn updates_tests_never_load_real_user_history() {
     assert_eq!(load().expect("isolated history"), UpdatesHistory::default());
 }
+
+#[test]
+fn updates_history_encoding_obeys_size_limit() {
+    let envelope = Envelope {
+        version: 1,
+        history: UpdatesHistory::default(),
+    };
+    let encoded = encode(&envelope, 1_024).expect("small history");
+    assert!(encode(&envelope, encoded.len() - 1).is_err());
+}
