@@ -1,4 +1,4 @@
-use crate::trade_feed_state::trade_shading;
+use crate::helpers::design::{UiColors, contrast_ratio as contrast, mix_color as mix};
 use iced::{Color, Theme};
 
 pub(super) struct TraderColors([Color; 8]);
@@ -6,6 +6,7 @@ pub(super) struct TraderColors([Color; 8]);
 impl TraderColors {
     pub(super) fn new(theme: &Theme) -> Self {
         let palette = theme.palette();
+        let ui = UiColors::new(theme);
         let colors = [
             palette.primary,
             mix(palette.primary, palette.success, 0.5),
@@ -16,27 +17,45 @@ impl TraderColors {
             palette.danger,
             mix(palette.danger, palette.primary, 0.5),
         ];
-        // One color per trader on both buy and sell rows, including maximum tint.
+        // Resolve one stable foreground per trader against the entire intensity
+        // range on both sides. The minimum luminance can lie between endpoints.
+        let backgrounds: Vec<_> = [palette.success, palette.danger]
+            .into_iter()
+            .flat_map(|tint| (0..=30).map(move |step| row_background(ui, tint, step as f32 * 0.01)))
+            .collect();
+        let by_luminance = |a: &&Color, b: &&Color| {
+            contrast(Color::BLACK, **a).total_cmp(&contrast(Color::BLACK, **b))
+        };
         let backgrounds = [
-            palette.background,
-            mix(palette.background, palette.success, trade_shading(1.0, 1.0)),
-            mix(palette.background, palette.danger, trade_shading(1.0, 1.0)),
+            backgrounds
+                .iter()
+                .min_by(by_luminance)
+                .copied()
+                .unwrap_or(ui.panel),
+            backgrounds
+                .iter()
+                .max_by(by_luminance)
+                .copied()
+                .unwrap_or(ui.panel),
         ];
-        let text = if backgrounds
-            .iter()
-            .all(|bg| contrast(palette.text, *bg) >= 4.5)
-        {
-            palette.text
+        let minimum = |color| {
+            backgrounds
+                .iter()
+                .map(|bg| contrast(color, *bg))
+                .fold(f32::INFINITY, f32::min)
+        };
+        let text = if minimum(Color::BLACK) > minimum(Color::WHITE) {
+            Color::BLACK
         } else {
-            crate::helpers::text_color_for_bg(palette.background)
+            Color::WHITE
         };
         Self(colors.map(|color| {
-            (0..=20)
-                .map(|step| mix(color, text, step as f32 / 20.0))
+            (0..=100)
+                .map(|step| mix(color, text, step as f32 / 100.0))
                 .find(|candidate| {
                     backgrounds
                         .iter()
-                        .all(|bg| contrast(*candidate, *bg) >= 4.5)
+                        .all(|bg| contrast(*candidate, *bg) >= 4.55)
                 })
                 .unwrap_or(text)
         }))
@@ -55,21 +74,14 @@ impl TraderColors {
     }
 }
 
-fn mix(a: Color, b: Color, amount: f32) -> Color {
-    Color::from_rgb(
-        a.r + (b.r - a.r) * amount,
-        a.g + (b.g - a.g) * amount,
-        a.b + (b.b - a.b) * amount,
-    )
-}
-
-fn contrast(a: Color, b: Color) -> f32 {
-    let luminance = |color: Color| {
-        let [r, g, b, _] = color.into_linear();
-        r * 0.2126 + g * 0.7152 + b * 0.0722
-    };
-    let (a, b) = (luminance(a), luminance(b));
-    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+pub(super) fn row_background(colors: UiColors, tint: Color, shading: f32) -> Color {
+    // Notional still determines intensity, bounded to a quiet 12% surface tint.
+    // Reduce it further if necessary to keep the primary foreground readable.
+    (0..=12)
+        .rev()
+        .map(|step| mix(colors.panel, tint, shading * 0.4 * step as f32 / 12.0))
+        .find(|background| contrast(colors.text, *background) >= 4.5)
+        .unwrap_or(colors.panel)
 }
 
 #[cfg(test)]
@@ -114,12 +126,60 @@ mod tests {
                 "collapsed colors in {theme:?}"
             );
             for color in colors.0 {
-                for tint in [theme.palette().success, theme.palette().danger] {
+                for buy in [true, false] {
                     for step in 0..=10 {
-                        let bg = mix(theme.palette().background, tint, 0.03 * step as f32);
+                        let bg = row_background(
+                            UiColors::new(&theme),
+                            if buy {
+                                theme.palette().success
+                            } else {
+                                theme.palette().danger
+                            },
+                            0.03 * step as f32,
+                        );
                         assert!(
                             contrast(color, bg) >= 4.5,
                             "unreadable trader color in {theme:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn trader_colors_cover_actual_panel_surfaces_in_every_theme() {
+        let (terminal, _) = crate::app_state::TradingTerminal::boot_from_config(
+            crate::config::KeroseneConfig::default(),
+        );
+        let names: Vec<_> = Theme::ALL
+            .iter()
+            .map(ToString::to_string)
+            .chain(
+                terminal
+                    .custom_themes
+                    .iter()
+                    .map(|theme| format!("Custom: {}", theme.name)),
+            )
+            .collect();
+        for name in names {
+            let theme = terminal.get_theme_by_name(&name);
+            let colors = TraderColors::new(&theme);
+            for buy in [true, false] {
+                for step in 0..=10 {
+                    let background = row_background(
+                        UiColors::new(&theme),
+                        if buy {
+                            theme.palette().success
+                        } else {
+                            theme.palette().danger
+                        },
+                        step as f32 * 0.03,
+                    );
+                    for color in colors.0 {
+                        assert!(
+                            contrast(color, background) >= 4.5,
+                            "{name}, buy={buy}, shade={step}"
                         );
                     }
                 }

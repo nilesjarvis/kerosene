@@ -14,6 +14,14 @@ Click its asset name to search and pin a market, or choose **Follow active** to
 track the terminal's active asset, including changes made by clicking charts.
 Each pane has independent selection settings and works in Canvas workspaces.
 
+The widget follows the [compact design language](../design/trade-feed.md):
+24px controls and rows, 28px fields, persistent outlines for selected toggles,
+explicit Buy/Sell labels, and theme-resolved text on quiet tinted surfaces.
+Live/waiting/reconnecting state, provider, history gaps, held rows, and missing
+context appear as compact status labels. Controls wrap in narrow panes; in short
+panes the controls and inline picker scroll while the table and summary remain
+separate. Invalid minimum input includes a readable explanation.
+
 **Group trades** optionally combines executions from the same trader and side
 within a one-second span, including interleaved prints from other traders. Each
 group shows a trade count (`×N`), summed base size and quote value, size-weighted
@@ -59,10 +67,12 @@ share one upstream coin subscription with reference-counted release. Opening an
 additional pane re-sends the idempotent filtered subscribe to obtain an ack even
 when the market is quiet. See [the per-asset allFills contract](https://docs.hydromancer.xyz/readme/websocket/allfills).
 
-The compact tape shows the initiating trader, exact execution price, and base
-size; wider panes also show relative trade age (for example, "10 seconds ago" or
-"3 minutes ago") and value in the market's quote currency. Ages refresh with the
-existing one-second UI clock, including while the feed is quiet or rows are held.
+The compact tape prioritizes side, initiating trader, optional action, and base
+size. Price, relative trade age (for example, "10 seconds ago" or
+"3 minutes ago"), and value in the market's quote currency are added as width
+permits. Header and data cells share one column layout; numeric values align
+right. Ages refresh with the existing one-second UI clock, including while the
+feed is quiet or rows are held.
 Click the **Size** header or any size cell to toggle between asset quantity and
 notional value. USD-quoted markets show dollar amounts; other quotes retain their
 currency label. Grouped rows use their summed execution notional. The redundant
@@ -80,14 +90,17 @@ address. Repeated traders keep their color across rows, assets, panes, and app
 restarts. Colors come from the active theme, with contrast adjusted for buy/sell
 row shading; the finite palette can be shared by different traders.
 Buy executions use the theme's success color and sells use its danger color.
-Background intensity grows
-with execution notional relative to the largest of the 500 retained prints.
-Only rows that fit the pane are rendered, newest first.
+Background intensity grows with execution notional relative to the largest
+visible aggregate, with tint capped at 12% and reduced when contrast requires it.
+Only complete rows that fit the measured table body are rendered, newest first,
+up to 100 rows. Grouped address labels retain their identifying suffix beside
+the count; full addresses and large numeric values remain available in tooltips.
 
-A pinned bottom summary shares the Liquidations footer's 1m, 5m, 15m, and 1H
-layout, with total notional, buy (`B`) / sell (`S`) amounts, and proportion bars.
-Narrow panes wrap the timeframes into fewer columns. Amounts use the market's
-quote currency. Each pane accumulates minute buckets
+A pinned bottom summary keeps the Liquidations footer's 1m, 5m, 15m, and 1H
+timeframes, with total notional, buy (`B`) / sell (`S`) amounts, and proportion bars.
+It uses four columns from 600px and two columns below that width. Zero totals use
+neutral text and an empty track; a one-sided interval has no opposite-side bar.
+Amounts use the market's quote currency. Each pane accumulates minute buckets
 independently of the 500-row tape, including the current minute as Liquidations
 does. Grouping, minimum filters, and address holds do not change these live totals.
 Buckets age out using the UI clock and reset with the asset/provider generation

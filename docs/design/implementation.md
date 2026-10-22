@@ -14,6 +14,30 @@ render and style widgets; feature views still supply labels, messages, instance
 IDs, availability, values, and domain meaning. Shared styles must not read the
 clock, perform I/O, access account state, or initiate trades.
 
+## Implemented feature passes
+
+### Trade Feed
+
+The [Trade Feed reference](trade-feed.md) records the native implementation,
+responsive behavior, synthetic captures, and verification. This feature adopts
+the compact control, field, table, status, and summary recipes. It does not mark
+the application-wide checklist below complete.
+
+`src/helpers/ui/design.rs` provides the first opt-in shared implementation:
+resolved panel/inset/text/semantic colors, readable foreground correction,
+compact ghost/selected buttons, fields, and opaque tooltip surfaces. Feature
+views still own composition and messages. It preserves source palettes,
+configured surface opacity, and square corners. Contrast tests measure resolved
+RGB pairs; arbitrary desktop content behind a transparent window cannot be
+certified by these tests.
+
+`src/trade_feed_views/{controls,layout,rows,summary}.rs` applies these recipes.
+The existing shared wallet action cell remains a 20px dense interaction inside
+the 24px tape row; its Copy/Open Wallet/Ghost behavior is retained. Global wallet
+cell styling and button keyboard-focus traversal remain separate migration work.
+
+## Planned shared boundaries
+
 The following names are suggested implementation boundaries, not existing APIs:
 
 | Location | Proposed responsibility |

@@ -1,5 +1,6 @@
 mod buttons;
 mod colors;
+pub(crate) mod design;
 mod inputs;
 mod labels;
 mod panes;

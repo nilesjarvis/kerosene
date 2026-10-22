@@ -9,8 +9,9 @@ This is the target specification for an application-wide visual consistency
 pass. It preserves the compact terminal direction confirmed by the project
 owner, with no reference theme elevated above the others. The specific sizes,
 recipes, and examples below are proposed design decisions. They are not a claim
-that the current application already implements them. Application behavior and
-source code are unchanged by this documentation.
+that the entire application already implements them. The
+[implementation guide](implementation.md#implemented-feature-passes) tracks
+adoption, starting with the [Trade Feed](trade-feed.md).
 
 ## Read the system
 
