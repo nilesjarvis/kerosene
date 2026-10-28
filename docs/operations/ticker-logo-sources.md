@@ -1,5 +1,15 @@
 # Ticker logo sources
 
+## Anthropic (2026-10-28)
+
+`ANT.svg` uses [Anthropic’s official pinned-tab SVG](https://www.anthropic.com/images/icons/safari-pinned-tab.svg),
+linked from [Anthropic’s website](https://www.anthropic.com/). The original
+vector paths, viewBox, and black fill are preserved; XML declarations, export
+metadata, and fixed point dimensions are removed. The background is transparent
+and the app applies its existing theme tint. The ticker filename resolver in
+`src/helpers/symbols.rs` automatically resolves `ANT` and `xyz:ANT`, including
+pair suffixes. The mark belongs to Anthropic.
+
 ## XYZ100 index (2026-10-19)
 
 `XYZ100.svg` uses the official gold "100" numeral path from
