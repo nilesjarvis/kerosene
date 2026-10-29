@@ -72,6 +72,33 @@ fn updates_parameters_reject_missing_invalid_and_duplicate_data_as_a_family() {
 }
 
 #[test]
+fn updates_parameters_reject_aggregate_tier_amplification() {
+    let tiers: Vec<_> = (0..100)
+        .map(|index| {
+            json!({
+                "lowerBound": index.to_string(),
+                "maxLeverage": 100 - index,
+            })
+        })
+        .collect();
+    let universe: Vec<_> = (0..=MAX_UPDATE_MARGIN_TIERS / tiers.len())
+        .map(|index| {
+            json!({
+                "name": format!("ASSET{index}"),
+                "maxLeverage": 100,
+                "marginTableId": 100,
+            })
+        })
+        .collect();
+    let raw = json!([{
+        "universe": universe,
+        "marginTables": [[100, {"marginTiers": tiers}]],
+    }]);
+
+    assert!(parse_parameters(raw).is_err());
+}
+
+#[test]
 fn updates_caps_preserve_dex_identity_and_normalize_decimals() {
     let parsed = parse_caps(json!([null,
         {"name":"xyz","assetToStreamingOiCap":[["BTC","100.00"]]},
