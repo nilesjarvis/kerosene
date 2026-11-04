@@ -11,7 +11,11 @@ mod chart;
 mod summary;
 
 impl TradingTerminal {
-    pub(crate) fn view_liquidations_bottom_content(&self, now_ms: u64) -> Element<'_, Message> {
+    pub(crate) fn view_liquidations_bottom_content(
+        &self,
+        now_ms: u64,
+        available_width: f32,
+    ) -> Element<'_, Message> {
         let mut bottom_content = Column::new().spacing(0).width(Fill);
 
         if self.liquidation_chart_enabled {
@@ -28,7 +32,7 @@ impl TradingTerminal {
                 bottom_content
                     .push(section_separator())
                     .push(liquidations_footer_section(
-                        self.view_liquidations_summary(now_ms),
+                        self.view_liquidations_summary(now_ms, available_width),
                     ));
         }
 

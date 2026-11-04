@@ -306,6 +306,11 @@ Key modules:
 The feed is subscribed only when the pane is open and a Hydromancer key is
 available.
 
+The summary footer hides timeframe columns as the pane narrows, working from
+the outside inward: 1H, then 1m, then 15m, retaining 5m at the smallest size.
+Each visible column reserves room for its long/short totals; an especially
+narrow single column uses compact amounts. Wider panes restore the columns.
+
 Clicking a ticker selects the active symbol. Ctrl-click opens that market in a
 dedicated candlestick chart window without changing existing workspace charts
 or the active symbol. `feed_views/liquidations/ticker_clicks.rs` tracks modifiers

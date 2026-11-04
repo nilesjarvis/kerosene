@@ -4,6 +4,7 @@ use iced::{Color, Element, Fill, Length, Theme};
 
 pub(crate) const FEED_SUMMARY_TIMEFRAMES: [(u64, &str); 4] =
     [(1, "1m"), (5, "5m"), (15, "15m"), (60, "1H")];
+pub(crate) const FEED_SUMMARY_COLUMN_SPACING: f32 = 16.0;
 
 /// Shared timeframe totals, side labels, and proportion bars for feed footers.
 pub(crate) fn view_feed_summary(
@@ -14,7 +15,7 @@ pub(crate) fn view_feed_summary(
     format_value: impl Fn(f64) -> String,
 ) -> Element<'static, Message> {
     let muted = theme.extended_palette().background.weak.text;
-    let mut summary = row![].spacing(16);
+    let mut summary = row![].spacing(FEED_SUMMARY_COLUMN_SPACING);
     for &(minutes, label) in timeframes {
         let (first, second) = totals(minutes);
         let total = first + second;

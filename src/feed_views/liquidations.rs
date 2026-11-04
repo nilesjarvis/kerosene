@@ -72,7 +72,7 @@ impl TradingTerminal {
                 .padding([0.0, LIQUIDATIONS_CONTENT_HORIZONTAL_PADDING])
                 .width(Fill)
                 .height(Fill),
-            self.view_liquidations_bottom_content(now_ms),
+            self.view_liquidations_bottom_content(now_ms, available_width),
         ]
         .spacing(0);
 
