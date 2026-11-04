@@ -202,6 +202,13 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::CancelResult { .. }
         | Message::CancelOrderStatusLoaded { .. }
         | Message::ToggleCloseMenu(_)
+        | Message::OpenPositionTpsl(..)
+        | Message::ClosePositionTpsl
+        | Message::PositionTpslInputChanged(..)
+        | Message::SubmitPositionTpsl
+        | Message::CheckPositionTpsl
+        | Message::PositionTpslResult { .. }
+        | Message::PositionTpslChecked { .. }
         | Message::ClosePosition { .. }
         | Message::ClosePositionResult { .. }
         | Message::NukePositions

@@ -16,6 +16,11 @@ impl TradingTerminal {
     }
 
     pub(crate) fn clear_workspace_transient_order_ui(&mut self, workspace: WorkspaceId) {
+        if let Some(form) = &mut self.position_tpsl.form
+            && form.workspace == workspace
+        {
+            form.visible = false;
+        }
         let chart_ids = self
             .workspace_panes(workspace)
             .into_iter()

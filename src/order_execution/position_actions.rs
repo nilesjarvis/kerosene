@@ -1,6 +1,11 @@
 mod cancel;
 mod close;
 mod nuke;
+mod tpsl;
+
+pub(crate) use tpsl::{
+    existing_tpsl_kind, position_tpsl_outcomes, position_trigger_order, submit_position_tpsl_orders,
+};
 
 use crate::account::AccountDataSection;
 use crate::app_state::TradingTerminal;

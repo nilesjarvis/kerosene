@@ -130,7 +130,8 @@ impl PendingLeverageUpdateContext {
 
 impl TradingTerminal {
     pub(crate) fn has_pending_trading_request(&self) -> bool {
-        self.pending_order_action.is_some()
+        self.position_tpsl.pending.is_some()
+            || self.pending_order_action.is_some()
             || self.pending_nuke_execution.is_some()
             || self.pending_leverage_update.is_some()
             || !self.pending_one_shot_status_requests.is_empty()
@@ -152,7 +153,8 @@ impl TradingTerminal {
     /// state (the in-flight tracker, its chart indicators, and HUD one-shot
     /// status checks) while still blocking on every other surface.
     fn has_pending_trading_request_blocking_hud_placement(&self) -> bool {
-        self.pending_order_action.is_some()
+        self.position_tpsl.pending.is_some()
+            || self.pending_order_action.is_some()
             || self.pending_nuke_execution.is_some()
             || self.pending_leverage_update.is_some()
             || self

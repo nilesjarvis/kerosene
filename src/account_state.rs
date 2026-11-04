@@ -3,6 +3,7 @@ pub(crate) mod close_preview;
 mod journal;
 mod persistence;
 mod picker;
+pub(crate) mod position_tpsl;
 mod subaccounts;
 mod switching;
 pub(crate) mod transfers;

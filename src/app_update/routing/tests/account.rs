@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn position_tpsl_routes_to_order_updates() {
+    for message in [
+        Message::OpenPositionTpsl(crate::canvas_state::WorkspaceId::Main, "BTC".into()),
+        Message::ClosePositionTpsl,
+        Message::PositionTpslInputChanged(crate::signing::TpslKind::TakeProfit, "110".into()),
+        Message::SubmitPositionTpsl,
+        Message::CheckPositionTpsl,
+        Message::PositionTpslResult {
+            id: 1,
+            result: Box::new(Err("test".into())),
+        },
+        Message::PositionTpslChecked {
+            id: 1,
+            outcomes: vec![],
+        },
+    ] {
+        assert_route(message, UpdateRoute::Order);
+    }
+}
+
+#[test]
 fn account_and_order_routes_cover_overlapping_user_actions() {
     let window_id = window_id();
 

@@ -36,6 +36,18 @@ impl TradingTerminal {
             return Task::none();
         };
 
+        if self
+            .position_tpsl
+            .form
+            .as_ref()
+            .is_some_and(|form| form.visible && Some(form.workspace) == workspace)
+        {
+            if key == iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape) {
+                return self.update_order(Message::ClosePositionTpsl);
+            }
+            return Task::none();
+        }
+
         if let Some(action) = self.recording_hotkey_for.clone() {
             return self.apply_recorded_hotkey(action, key, modifiers);
         }

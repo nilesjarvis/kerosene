@@ -60,6 +60,10 @@ impl TradingTerminal {
             layers.push(self.view_unlock_credentials_popup());
         }
 
+        if let Some(modal) = self.view_position_tpsl_modal(WorkspaceId::Main) {
+            layers.push(modal);
+        }
+
         let main_stack: Element<'_, Message> = stack(layers).width(Fill).height(Fill).into();
 
         container(

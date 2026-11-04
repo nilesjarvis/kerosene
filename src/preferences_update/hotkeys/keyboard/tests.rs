@@ -7,6 +7,49 @@ use crate::pane_state::PaneKind;
 use crate::timeframe::Timeframe;
 use crate::{config, message::Message};
 
+#[test]
+fn position_tpsl_modal_blocks_hotkeys_and_escape_dismisses_it() {
+    let mut terminal = TradingTerminal::boot_from_config(config::KeroseneConfig::default()).0;
+    let window = iced::window::Id::unique();
+    terminal.main_window_id = Some(window);
+    terminal.hotkeys = vec![config::HotkeyConfig {
+        action: config::HotkeyAction::OpenAlfred,
+        key: "K".into(),
+        shift: false,
+        ctrl: true,
+        alt: false,
+        logo: false,
+    }];
+    terminal.position_tpsl.form = Some(crate::account_state::position_tpsl::PositionTpslForm {
+        workspace: crate::canvas_state::WorkspaceId::Main,
+        visible: true,
+        account_address: "test-account".into(),
+        coin: "BTC".into(),
+        is_long: true,
+        take_profit: String::new(),
+        stop_loss: String::new(),
+        status: None,
+    });
+    let _ = terminal.handle_hotkey_keyboard_event(Message::KeyboardEvent(
+        window,
+        key_pressed(
+            iced::keyboard::Key::Character("k".into()),
+            iced::keyboard::Modifiers::CTRL,
+        ),
+        iced::event::Status::Ignored,
+    ));
+    assert!(!terminal.alfred.open);
+    let _ = terminal.handle_hotkey_keyboard_event(Message::KeyboardEvent(
+        window,
+        key_pressed(
+            iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+            iced::keyboard::Modifiers::empty(),
+        ),
+        iced::event::Status::Ignored,
+    ));
+    assert!(!terminal.position_tpsl.form.as_ref().expect("form").visible);
+}
+
 fn key_pressed(
     key: iced::keyboard::Key,
     modifiers: iced::keyboard::Modifiers,

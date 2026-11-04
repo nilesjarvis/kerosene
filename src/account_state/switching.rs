@@ -60,6 +60,7 @@ impl TradingTerminal {
     pub(crate) fn clear_account_scoped_chart_state(&mut self) {
         self.position_close_preview.clear();
         self.close_menu_coin = None;
+        self.position_tpsl.clear();
         self.nuke_confirmation = None;
         self.pending_nuke_execution = None;
         for instance in self.charts.values_mut() {

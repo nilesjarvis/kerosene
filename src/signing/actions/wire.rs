@@ -36,8 +36,29 @@ impl fmt::Debug for OrderWire {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(super) struct OrderTypeWire {
-    pub(super) limit: LimitOrderWire,
+#[serde(rename_all = "camelCase")]
+pub(super) enum OrderTypeWire {
+    Limit(LimitOrderWire),
+    Trigger(TriggerOrderWire),
+}
+
+// Python SDK order: isMarket, triggerPx, tpsl.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct TriggerOrderWire {
+    pub(super) is_market: bool,
+    pub(super) trigger_px: String,
+    pub(super) tpsl: crate::signing::TpslKind,
+}
+
+impl fmt::Debug for TriggerOrderWire {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TriggerOrderWire")
+            .field("is_market", &self.is_market)
+            .field("trigger_px", &"<redacted>")
+            .field("tpsl", &self.tpsl)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -143,7 +143,7 @@ async fn position_sections_preserve_grouping_and_own_action_messages() {
                 let closable = can_close && *symbol == "BTC";
                 let hide_point = if closable {
                     let controls: Vec<_> = controls.children().collect();
-                    assert_eq!(controls.len(), 2);
+                    assert_eq!(controls.len(), 3);
                     let messages = click(
                         &mut view,
                         &mut tree,
@@ -151,6 +151,17 @@ async fn position_sections_preserve_grouping_and_own_action_messages() {
                         &mut renderer,
                         size,
                         controls[1].bounds().center(),
+                    );
+                    assert!(
+                        matches!(messages.as_slice(), [Message::OpenPositionTpsl(_, actual)] if actual == symbol)
+                    );
+                    let messages = click(
+                        &mut view,
+                        &mut tree,
+                        &node,
+                        &mut renderer,
+                        size,
+                        controls[2].bounds().center(),
                     );
                     assert!(
                         matches!(messages.as_slice(), [Message::ToggleCloseMenu(actual)] if actual == symbol)

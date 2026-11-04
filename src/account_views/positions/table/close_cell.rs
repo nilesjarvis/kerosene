@@ -34,6 +34,12 @@ impl TradingTerminal {
 
         row![
             hide_button,
+            crate::account_views::style::compact_action_button(
+                "TP/SL",
+                theme.palette().primary,
+                // The bottom-tabs view supplies the owning workspace.
+                Message::OpenPositionTpsl(crate::canvas_state::WorkspaceId::Main, coin),
+            ),
             button::view_position_close_button(coin_for_close, theme)
         ]
         .spacing(4)

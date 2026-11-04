@@ -37,6 +37,31 @@ pub(super) enum HyperliquidL1Action {
 }
 
 impl HyperliquidL1Action {
+    pub(super) fn position_tpsl(orders: Vec<crate::signing::PositionTpslOrder>) -> Self {
+        Self::Order(OrderAction {
+            action_type: "order".into(),
+            orders: orders
+                .into_iter()
+                .map(|order| wire::OrderWire {
+                    a: order.asset,
+                    b: order.is_buy,
+                    p: order.price,
+                    // Zero is Hyperliquid's entire-position trigger sizing sentinel.
+                    s: "0".into(),
+                    r: true,
+                    t: wire::OrderTypeWire::Trigger(wire::TriggerOrderWire {
+                        is_market: true,
+                        trigger_px: order.trigger_px,
+                        tpsl: order.kind,
+                    }),
+                    c: Some(order.cloid),
+                })
+                .collect(),
+            grouping: "positionTpsl".into(),
+            builder: None,
+        })
+    }
+
     pub(super) fn with_builder(mut self, builder: Option<&BuilderFee>) -> Self {
         if let Self::Order(action) = &mut self {
             action.builder = builder.map(|builder| BuilderWire {

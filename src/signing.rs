@@ -3,6 +3,9 @@ mod client;
 mod crypto;
 mod model;
 mod numbers;
+mod position_tpsl;
+
+pub(crate) use position_tpsl::{PositionTpslOrder, TpslKind, place_position_tpsl};
 
 pub use client::{
     PlaceOrderRequest, cancel_order, cancel_order_by_cloid, modify_order, place_order_with_cloid,

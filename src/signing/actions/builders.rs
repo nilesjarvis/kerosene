@@ -23,11 +23,9 @@ fn build_order_wire(
         p: price,
         s: size,
         r: reduce_only,
-        t: OrderTypeWire {
-            limit: LimitOrderWire {
-                tif: order_kind.tif().to_string(),
-            },
-        },
+        t: OrderTypeWire::Limit(LimitOrderWire {
+            tif: order_kind.tif().to_string(),
+        }),
         c: cloid,
     }
 }

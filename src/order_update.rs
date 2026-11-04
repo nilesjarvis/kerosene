@@ -12,6 +12,7 @@ mod leverage;
 mod move_order;
 mod nuke;
 mod outcome;
+mod position_tpsl;
 mod presets;
 mod quick_order;
 mod quick_trade;
@@ -80,17 +81,23 @@ impl TradingTerminal {
                 context,
                 result,
             } => return self.handle_order_result(pending_indicator_id, context, *result),
-            Message::CancelOrder { coin, oid } => return self.execute_cancel(&coin, oid),
+            Message::CancelOrder { coin, oid } => {
+                let task = self.execute_cancel(&coin, oid);
+                self.sync_position_tpsl_order_status();
+                return task;
+            }
             Message::CancelResult {
                 account_address,
                 pending_indicator_id,
                 result,
             } => {
-                return self.handle_cancel_result(
+                let task = self.handle_cancel_result(
                     account_address.into_string(),
                     pending_indicator_id,
                     *result,
                 );
+                self.sync_position_tpsl_order_status();
+                return task;
             }
             Message::CancelOrderStatusLoaded {
                 account_address,
@@ -98,14 +105,40 @@ impl TradingTerminal {
                 symbol,
                 result,
             } => {
-                return self.handle_cancel_order_status_result(
+                let task = self.handle_cancel_order_status_result(
                     account_address.into_string(),
                     oid,
                     symbol,
                     *result,
                 );
+                self.sync_position_tpsl_order_status();
+                return task;
             }
             Message::ToggleCloseMenu(coin) => self.toggle_close_menu(coin),
+            Message::OpenPositionTpsl(workspace, coin) => {
+                return self.open_position_tpsl(workspace, coin);
+            }
+            Message::ClosePositionTpsl => {
+                if let Some(form) = &mut self.position_tpsl.form {
+                    form.visible = false;
+                }
+            }
+            Message::PositionTpslInputChanged(kind, value) => {
+                if self.position_tpsl.pending.is_none()
+                    && let Some(form) = &mut self.position_tpsl.form
+                {
+                    *form.input_mut(kind) = value.into_string();
+                    form.status = None;
+                }
+            }
+            Message::SubmitPositionTpsl => return self.submit_position_tpsl(),
+            Message::CheckPositionTpsl => return self.check_position_tpsl(),
+            Message::PositionTpslResult { id, result } => {
+                return self.handle_position_tpsl_result(id, *result);
+            }
+            Message::PositionTpslChecked { id, outcomes } => {
+                return self.handle_position_tpsl_checked(id, outcomes);
+            }
             Message::ClosePosition {
                 coin,
                 fraction,

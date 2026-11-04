@@ -6,6 +6,7 @@ mod income;
 mod orders;
 mod picker;
 mod portfolio;
+mod position_tpsl;
 mod positions;
 mod style;
 mod summary;

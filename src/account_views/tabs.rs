@@ -79,7 +79,10 @@ impl TradingTerminal {
         let tabs = bottom_tab_strip(tabs);
 
         let body: Element<Message> = match active_tab {
-            BottomTab::Positions => self.view_positions(),
+            BottomTab::Positions => self.view_positions().map(move |message| match message {
+                Message::OpenPositionTpsl(_, coin) => Message::OpenPositionTpsl(workspace, coin),
+                other => other,
+            }),
             BottomTab::OpenOrders => self.view_open_orders(),
             BottomTab::Balances => self.view_balances(),
             BottomTab::TradeHistory => self.view_trade_history(),

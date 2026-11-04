@@ -161,6 +161,22 @@ pub async fn place_order_with_cloid(
     agent_key: CapturedAgentKey,
     request: PlaceOrderRequest,
 ) -> Result<ExchangeResponse, String> {
+    let action = HyperliquidL1Action::order_with_cloid(
+        request.asset,
+        request.is_buy,
+        request.price,
+        request.size,
+        request.order_kind,
+        request.reduce_only,
+        request.cloid,
+    );
+    post_order_action(agent_key, action).await
+}
+
+pub(super) async fn post_order_action(
+    agent_key: CapturedAgentKey,
+    action: HyperliquidL1Action,
+) -> Result<ExchangeResponse, String> {
     let builder_routing = match agent_key.validate_builder_routing() {
         Ok(routing) => routing,
         Err(error) => return Ok(ExchangeResponse::local_rejection(error)),
@@ -171,16 +187,7 @@ pub async fn place_order_with_cloid(
     {
         return Ok(ExchangeResponse::local_rejection(error));
     }
-    let action = HyperliquidL1Action::order_with_cloid(
-        request.asset,
-        request.is_buy,
-        request.price,
-        request.size,
-        request.order_kind,
-        request.reduce_only,
-        request.cloid,
-    )
-    .with_builder(agent_key.builder_fee());
+    let action = action.with_builder(agent_key.builder_fee());
     let builder_context =
         builder_routing.map(|(account, builder)| (account.to_string(), builder.clone()));
     let response = sign_and_post(agent_key, &action).await?;

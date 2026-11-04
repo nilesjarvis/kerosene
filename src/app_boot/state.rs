@@ -333,6 +333,7 @@ impl TradingTerminal {
             all_mids_updated_at_ms: HashMap::new(),
             live_watchlist_flashes: HashMap::new(),
             close_menu_coin: None,
+            position_tpsl: Default::default(),
             nuke_confirmation: None,
             pending_nuke_execution: None,
             next_nuke_execution_id: 1,

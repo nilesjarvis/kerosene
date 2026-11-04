@@ -12,6 +12,27 @@ const OTHER_SUBACCOUNT: &str = "0xabcdef0123456789abcdef0123456789abcdef02";
 const CLOID: &str = "0x11111111111111111111111111111111";
 const NONCE: u64 = 1_700_000_000_000;
 
+#[test]
+fn position_tpsl_payload_binds_account_and_trigger_fields() {
+    let action = HyperliquidL1Action::position_tpsl(vec![crate::signing::PositionTpslOrder {
+        asset: 7,
+        is_buy: true,
+        price: "121".into(),
+        trigger_px: "110".into(),
+        kind: crate::signing::TpslKind::StopLoss,
+        cloid: CLOID.into(),
+    }]);
+    assert_account_targets(
+        action,
+        json!({
+            "type": "order", "orders": [{
+                "a": 7, "b": true, "p": "121", "s": "0", "r": true,
+                "t": {"trigger": {"isMarket": true, "triggerPx": "110", "tpsl": "sl"}}, "c": CLOID
+            }], "grouping": "positionTpsl"
+        }),
+    );
+}
+
 /// All action families must carry the captured target into both the signed
 /// bytes and the posted envelope. Changing accounts cannot reuse a signature.
 fn assert_account_targets(action: HyperliquidL1Action, expected_action: Value) {

@@ -6,6 +6,35 @@ use zeroize::Zeroizing;
 const ACCOUNT: &str = "0x1111111111111111111111111111111111111111";
 const BUILDER: &str = "0xabcdef0123456789abcdef0123456789abcdef01";
 
+#[tokio::test]
+async fn position_tpsl_preserves_builder_preflight_rejections() {
+    let key = CapturedAgentKey::new(Zeroizing::new("invalid-key".into()))
+        .expect("key")
+        .with_builder_config(
+            &BuilderCodeConfig {
+                enabled: true,
+                ..Default::default()
+            },
+            ACCOUNT,
+        );
+    let response = crate::signing::place_position_tpsl(
+        key,
+        vec![crate::signing::PositionTpslOrder {
+            asset: 7,
+            is_buy: false,
+            price: "99".into(),
+            trigger_px: "110".into(),
+            kind: crate::signing::TpslKind::TakeProfit,
+            cloid: "0x11111111111111111111111111111111".into(),
+        }],
+    )
+    .await
+    .expect("local response");
+    assert!(response.is_local_rejection());
+    assert!(response.summary().contains("Builder address"));
+    assert!(!response.has_potential_order_effect());
+}
+
 fn request() -> PlaceOrderRequest {
     PlaceOrderRequest {
         asset: 7,

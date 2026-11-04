@@ -566,6 +566,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) live_watchlist_flashes: HashMap<String, (u64, i8)>,
     // Close-position menu: which coin's menu is currently expanded (if any)
     pub(crate) close_menu_coin: Option<String>,
+    pub(crate) position_tpsl: crate::account_state::position_tpsl::PositionTpslState,
     pub(crate) nuke_confirmation: Option<NukeConfirmation>,
     pub(crate) pending_nuke_execution: Option<PendingNukeExecution>,
     pub(crate) next_nuke_execution_id: u64,

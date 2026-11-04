@@ -72,6 +72,10 @@ impl TradingTerminal {
             layers.push(alfred);
         }
 
+        if let Some(modal) = self.view_position_tpsl_modal(workspace) {
+            layers.push(modal);
+        }
+
         container(stack(layers))
             .width(Fill)
             .height(Fill)

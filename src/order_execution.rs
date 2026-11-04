@@ -8,6 +8,9 @@ mod hud;
 mod identities;
 mod pending;
 mod position_actions;
+pub(crate) use position_actions::{
+    existing_tpsl_kind, position_tpsl_outcomes, position_trigger_order, submit_position_tpsl_orders,
+};
 pub(crate) mod pricing;
 mod quick_order;
 mod quick_trade;

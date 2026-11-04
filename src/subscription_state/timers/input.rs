@@ -24,6 +24,11 @@ impl TradingTerminal {
         }
 
         if self.recording_hotkey_for.is_some()
+            || self
+                .position_tpsl
+                .form
+                .as_ref()
+                .is_some_and(|form| form.visible)
             || self.alfred.open
             || !self.hotkeys.is_empty()
             || self.chart_timeframe_hotkey_prefix.is_some()

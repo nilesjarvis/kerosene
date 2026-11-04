@@ -3,7 +3,7 @@
 Kerosene's trading system turns UI intent into signed Hyperliquid exchange
 actions. It supports standard ticket orders, presets, chart quick orders, chart
 Quick Trade actions, chart HUD orders, drag-to-move orders, close-position
-actions, NUKE, Chase, TWAP, and leverage updates. Wallet cluster orders reuse
+actions, position TP/SL, NUKE, Chase, TWAP, and leverage updates. Wallet cluster orders reuse
 the same execution boundary to submit one order leg per saved profile in the
 selected cluster.
 
@@ -48,6 +48,42 @@ task-key validation preserves its stricter policy: the trimmed current account
 must exactly match the captured account. Standard pending-request guards and HUD
 placement guards remain separate because HUD limit placements can overlap their
 own tracking, indicators, and status checks while other requests still block.
+
+## Position Take Profit / Stop Loss
+
+Each actionable perpetual row in Positions/History has a **TP/SL** button.
+It opens a compact modal in the owning main or canvas workspace. Either trigger
+price may be left blank. The submitted orders use native Hyperliquid
+`positionTpsl` grouping, reduce-only closing sides, market triggers, and size `0`
+for the entire position at trigger time. Execution prices carry the documented
+10% market TP/SL buffer. Triggers use the mark price, fetched for the exact
+market (including HIP-3) before signing. The terminal need not remain running
+after the exchange accepts the orders.
+
+Existing trigger orders appear with cancel controls; cancel an existing TP or
+SL before replacing that kind. Submission requires fresh, complete position
+and open-order data, the original account and position direction, valid price
+precision, and no other pending trading action. Unknown trigger metadata blocks
+duplicate placement conservatively. Spot holdings and closed trade-history
+rows do not expose this control.
+
+State lives in `account_state/position_tpsl.rs`, UI in
+`account_views/position_tpsl.rs`, planning in
+`order_execution/position_actions/tpsl.rs`, and lifecycle handling in
+`order_update/position_tpsl.rs`. The `OpenPositionTpsl`, input, submit, result,
+and status-check messages route through the order update module. Signing uses
+the existing account-bound L1 pipeline and builder approval checks.
+
+Each leg has a unique client order ID. Partial failures retain the failed input;
+transport or ambiguous results query `orderStatus` for unresolved legs and keep
+the trading guard active until resolved. **Check status** repeats that read
+without resubmitting. Closing the modal preserves unresolved submissions;
+account invalidation clears the form and rejects late results by generation
+and account. Trigger submission creates no optimistic position-size delta.
+These transient forms are not persisted.
+
+References: [exchange API](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint),
+[TP/SL behavior](https://hyperliquid.gitbook.io/hyperliquid-docs/trading/take-profit-and-stop-loss-orders-tp-sl).
 
 ## Order Surfaces
 
