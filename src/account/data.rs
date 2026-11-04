@@ -1,4 +1,5 @@
 mod bootstrap;
+mod chase;
 mod fees;
 mod merge;
 mod mids;
@@ -9,4 +10,5 @@ pub(crate) use bootstrap::{
     fetch_hydromancer_portfolio_state, fetch_hydromancer_portfolio_states,
     fetch_hydromancer_user_fills, hydromancer_portfolio_chunk_size,
 };
+pub(crate) use chase::{ChaseRepriceSnapshot, fetch_chase_reprice_snapshot};
 pub use mids::fetch_all_mids;

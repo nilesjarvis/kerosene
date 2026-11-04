@@ -1,6 +1,21 @@
 use super::*;
 
 #[test]
+fn chase_reprice_snapshot_routes_to_order_lifecycle() {
+    let terminal = crate::app_state::TradingTerminal::boot().0;
+    assert_route(
+        Message::ChaseRepriceSnapshotLoaded {
+            chase_id: 1,
+            oid: 42,
+            address: "test-account".to_string().into(),
+            context: terminal.current_account_data_request_context(),
+            result: Box::new(Err("read failed".into())),
+        },
+        UpdateRoute::Order,
+    );
+}
+
+#[test]
 fn alfred_screener_settings_and_window_routes_stay_on_feature_modules() {
     let window_id = window_id();
 

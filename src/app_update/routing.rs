@@ -239,6 +239,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChaseBookUpdate { .. }
         | Message::ChaseBookLagged { .. }
         | Message::ChaseRepriceTick
+        | Message::ChaseRepriceSnapshotLoaded { .. }
         | Message::ChasePlaceResult { .. }
         | Message::ChaseModifyResult { .. }
         | Message::ChaseCancelResult { .. }

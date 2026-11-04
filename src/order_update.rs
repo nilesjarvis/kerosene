@@ -288,6 +288,21 @@ impl TradingTerminal {
                 );
             }
             Message::ChaseRepriceTick => return self.handle_chase_reprice_tick(),
+            Message::ChaseRepriceSnapshotLoaded {
+                chase_id,
+                oid,
+                address,
+                context,
+                result,
+            } => {
+                return self.handle_chase_reprice_snapshot(
+                    chase_id,
+                    oid,
+                    address.into_string(),
+                    context,
+                    *result,
+                );
+            }
             Message::ChasePlaceResult { chase_id, result } => {
                 return self.handle_chase_place_result(chase_id, *result);
             }

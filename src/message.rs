@@ -1398,6 +1398,13 @@ pub(crate) enum Message {
         skipped: u64,
     },
     ChaseRepriceTick,
+    ChaseRepriceSnapshotLoaded {
+        chase_id: u64,
+        oid: u64,
+        address: RedactedAddress,
+        context: AccountDataRequestContext,
+        result: Box<Result<crate::account::ChaseRepriceSnapshot, String>>,
+    },
     ChasePlaceResult {
         chase_id: u64,
         result: Box<Result<ExchangeResponse, String>>,

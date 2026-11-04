@@ -25,6 +25,19 @@ pub(super) struct RequestCost {
 }
 
 impl RequestCost {
+    /// Only active trading reconciliation may promote fills into the account
+    /// queue. Ordinary journal/wallet history retains background admission.
+    pub(super) fn for_reconciliation(request: &Request) -> Self {
+        let mut cost = Self::from_request(request);
+        let is_fills = request
+            .body()
+            .and_then(|body| body.as_bytes())
+            .and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok())
+            .is_some_and(|body| body["type"] == "userFills");
+        cost.critical |= is_fills;
+        cost
+    }
+
     pub(super) fn from_request(request: &Request) -> Self {
         let body = request
             .body()
@@ -138,13 +151,25 @@ impl ReadGate {
     }
 
     pub(super) async fn acquire(&self, request: &Request) -> Result<OwnedSemaphorePermit, String> {
-        tokio::time::timeout(ADMISSION_TIMEOUT, self.acquire_inner(request))
+        self.acquire_with_cost(request, RequestCost::from_request(request))
+            .await
+    }
+
+    pub(super) async fn acquire_with_cost(
+        &self,
+        request: &Request,
+        cost: RequestCost,
+    ) -> Result<OwnedSemaphorePermit, String> {
+        tokio::time::timeout(ADMISSION_TIMEOUT, self.acquire_inner(request, cost))
             .await
             .map_err(|_| "Market data read budget busy; retry shortly".to_string())?
     }
 
-    async fn acquire_inner(&self, request: &Request) -> Result<OwnedSemaphorePermit, String> {
-        let cost = RequestCost::from_request(request);
+    async fn acquire_inner(
+        &self,
+        request: &Request,
+        cost: RequestCost,
+    ) -> Result<OwnedSemaphorePermit, String> {
         let weight = if request.url().host_str() == Some("api.hyperliquid.xyz") {
             cost.weight
         } else {
@@ -281,6 +306,32 @@ mod async_tests {
             .json(&serde_json::json!({"type": kind}))
             .build()
             .expect("request")
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn chase_fills_use_account_priority_without_reducing_weight_or_bypassing_cooldown() {
+        let gate = ReadGate::new();
+        gate.state
+            .lock()
+            .expect("budget")
+            .charge(Instant::now(), BACKGROUND_WEIGHT, false);
+        let request = info_request("userFills");
+        let mut history = Box::pin(gate.acquire(&request));
+        assert!(futures::poll!(&mut history).is_pending());
+        let cost = RequestCost::for_reconciliation(&request);
+        assert_eq!(cost.weight, 120);
+        assert!(cost.critical);
+        let permit = gate
+            .acquire_with_cost(&request, cost)
+            .await
+            .expect("account reserve");
+        assert_eq!(gate.critical.available_permits(), 1);
+        drop(permit);
+        assert!(futures::poll!(&mut history).is_pending());
+        gate.cool_down(Duration::from_secs(60));
+        let mut trading = Box::pin(gate.acquire_with_cost(&request, cost));
+        assert!(futures::poll!(&mut trading).is_pending());
+        assert!(!RequestCost::for_reconciliation(&info_request("userFillsByTime")).critical);
     }
 
     #[tokio::test(start_paused = true)]

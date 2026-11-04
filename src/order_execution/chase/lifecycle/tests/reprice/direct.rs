@@ -6,6 +6,45 @@ use crate::api::{BookLevel, OrderBook};
 use crate::config::ReadDataProvider;
 use crate::signing::ChaseStopPhase;
 
+#[test]
+fn chase_reprice_retains_latest_quote_during_modify_without_a_second_mutation() {
+    let mut terminal = exchange_ready_terminal();
+    let mut order = chase();
+    order.lifecycle = ChaseLifecycle::Modifying { oid: 42 };
+    order.desired_price = Some(101.0);
+    terminal.chase_orders.insert(1, order);
+    let _task = terminal.chase_reprice_to_best_price(1, 102.0);
+    let order = chase_by_id(&terminal, 1);
+    assert_eq!(order.lifecycle, ChaseLifecycle::Modifying { oid: 42 });
+    assert_eq!(order.desired_price, Some(102.0));
+    assert_eq!(order.current_price, 100.0);
+    assert_eq!(order.reprice_count, 0);
+    assert!(!terminal.account_loading);
+    let _task = terminal.chase_reprice_to_best_price(1, 99.0);
+    assert_eq!(chase_by_id(&terminal, 1).desired_price, None);
+    assert_eq!(
+        chase_by_id(&terminal, 1).lifecycle,
+        ChaseLifecycle::Modifying { oid: 42 }
+    );
+}
+
+#[test]
+fn chase_lag_clears_in_flight_quote_without_overwriting_the_pending_operation() {
+    let mut terminal = exchange_ready_terminal();
+    let mut order = chase();
+    order.lifecycle = ChaseLifecycle::Modifying { oid: 42 };
+    order.desired_price = Some(102.0);
+    terminal.chase_orders.insert(1, order);
+    let context = terminal.market_data_source_context();
+    let sigfigs = terminal.canonical_l2_book_sigfigs("BTC");
+    let _task = terminal.handle_chase_book_lagged(1, "BTC".into(), sigfigs, context, 3);
+    assert_eq!(chase_by_id(&terminal, 1).desired_price, None);
+    assert_eq!(
+        chase_by_id(&terminal, 1).lifecycle,
+        ChaseLifecycle::Modifying { oid: 42 }
+    );
+}
+
 fn source_context(
     terminal: &crate::app_state::TradingTerminal,
     hydromancer_key_generation: Option<u64>,

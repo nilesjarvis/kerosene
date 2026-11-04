@@ -108,14 +108,13 @@ impl TradingTerminal {
             let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
                 return Task::none();
             };
-            if chase.coin != coin
-                || chase.lifecycle.is_stopping()
-                || chase.has_pending_op()
-                || !chase.lifecycle.is_book_repriceable()
-            {
+            if chase.coin != coin || chase.lifecycle.is_stopping() {
                 return Task::none();
             }
             chase.desired_price = None;
+            if chase.has_pending_op() || !chase.lifecycle.is_book_repriceable() {
+                return Task::none();
+            }
             chase.current_oid
         };
 
@@ -302,7 +301,9 @@ impl TradingTerminal {
             self.remove_chase_order(chase_id);
             return Task::none();
         }
-        if !self.can_send_chase_exchange_request(now) {
+        if !self.can_send_chase_exchange_request(now)
+            || self.older_queued_chase_has_priority(chase_id, now)
+        {
             if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                 chase.desired_price = Some(rounded_best);
                 chase.lifecycle = ChaseLifecycle::Queued {

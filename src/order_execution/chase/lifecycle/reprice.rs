@@ -54,7 +54,7 @@ impl TradingTerminal {
         }
     }
 
-    fn update_verifying_chase_desired_price(
+    fn update_pending_chase_desired_price(
         &mut self,
         chase_id: u64,
         rounded_best: f64,
@@ -64,7 +64,10 @@ impl TradingTerminal {
         let Some(chase_snapshot) = self.chase_orders.get(&chase_id) else {
             return Task::none();
         };
-        if !matches!(chase_snapshot.lifecycle, ChaseLifecycle::Verifying { .. }) {
+        if !matches!(
+            chase_snapshot.lifecycle,
+            ChaseLifecycle::Verifying { .. } | ChaseLifecycle::Modifying { .. }
+        ) {
             return Task::none();
         }
         if price_wire == chase_snapshot.current_price_wire
@@ -114,7 +117,7 @@ impl TradingTerminal {
             return self.stop_chase_for_limit(chase_id, ChaseLimitReason::InvalidPrice);
         };
         if !chase_snapshot.lifecycle.is_book_repriceable() || chase_snapshot.has_pending_op() {
-            return self.update_verifying_chase_desired_price(
+            return self.update_pending_chase_desired_price(
                 chase_id,
                 rounded_best,
                 price_wire,
@@ -127,7 +130,10 @@ impl TradingTerminal {
             self.clear_chase_desired_price(chase_id);
             return Task::none();
         }
-        if !chase_snapshot.can_reprice_now(now) || !self.can_send_chase_exchange_request(now) {
+        if !chase_snapshot.can_reprice_now(now)
+            || !self.can_send_chase_exchange_request(now)
+            || self.older_queued_chase_has_priority(chase_id, now)
+        {
             if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                 chase.desired_price = Some(rounded_best);
                 chase.lifecycle = ChaseLifecycle::Queued {
@@ -150,7 +156,7 @@ impl TradingTerminal {
             "Chase verifying fills and open orders before modifying current order".into(),
             false,
         ));
-        self.refresh_account_data()
+        self.refresh_chase_reprice_data(chase_id)
     }
 
     pub(crate) fn chase_modify_for_current_price_reconciliation(
@@ -217,6 +223,11 @@ impl TradingTerminal {
                 return self.cancel_known_chase_order_for_safety(chase_id, oid, message, true);
             }
             return self.stop_chase_by_id_with_reason(chase_id, message, true);
+        }
+        // Verification can outlive the duration/drift/count check on the book
+        // event. Recheck at dispatch, including buffered in-flight quotes.
+        if let Some(reason) = chase_reprice_limit_reason(chase, rounded_best, now) {
+            return self.stop_chase_for_limit(chase_id, reason);
         }
 
         let Some(chase) = self.chase_orders.get_mut(&chase_id) else {

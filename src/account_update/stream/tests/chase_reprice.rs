@@ -5,6 +5,7 @@ use crate::signing::{ChaseLifecycle, ChaseOrder, ChaseVerificationReason};
 use crate::ws::WsUserData;
 
 mod account_refresh;
+mod scoped;
 mod websocket;
 
 const CONNECTED_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";

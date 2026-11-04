@@ -178,9 +178,22 @@ impl ProxyPool {
     }
 
     async fn send(&self, direct: Client, request: Request) -> Result<Response, String> {
+        self.send_with_priority(direct, request, false).await
+    }
+
+    async fn send_with_priority(
+        &self,
+        direct: Client,
+        request: Request,
+        reconciliation: bool,
+    ) -> Result<Response, String> {
         if !self.enabled || !is_official_info(&request) {
             let gate = super::read_control::gate(&request);
             let _permit = match gate {
+                Some(gate) if reconciliation => Some(
+                    gate.acquire_with_cost(&request, RequestCost::for_reconciliation(&request))
+                        .await?,
+                ),
                 Some(gate) => Some(gate.acquire(&request).await?),
                 None => None,
             };
@@ -194,10 +207,24 @@ impl ProxyPool {
             }
             return Ok(response);
         }
-        self.send_proxied(request).await
+        if reconciliation {
+            let cost = RequestCost::for_reconciliation(&request);
+            self.send_proxied_with_cost(request, cost).await
+        } else {
+            self.send_proxied(request).await
+        }
     }
 
     async fn send_proxied(&self, request: Request) -> Result<Response, String> {
+        let cost = RequestCost::from_request(&request);
+        self.send_proxied_with_cost(request, cost).await
+    }
+
+    async fn send_proxied_with_cost(
+        &self,
+        request: Request,
+        cost: RequestCost,
+    ) -> Result<Response, String> {
         let timeout = request
             .timeout()
             .copied()
@@ -208,7 +235,6 @@ impl ProxyPool {
         }
         let mut deadline = None;
         let admission_deadline = Instant::now() + ADMISSION_TIMEOUT;
-        let cost = RequestCost::from_request(&request);
         let mut attempted = Vec::new();
         let mut last_error =
             "Hyperliquid proxies unavailable or cooling down; retry shortly".to_string();
@@ -326,9 +352,18 @@ pub(crate) fn install(pool: ProxyPool) {
 
 pub(crate) trait HyperliquidRequestExt {
     fn send_info(self) -> impl Future<Output = Result<Response, String>> + Send;
+    fn send_info_for_reconciliation(self) -> impl Future<Output = Result<Response, String>> + Send;
 }
 
 impl HyperliquidRequestExt for RequestBuilder {
+    async fn send_info_for_reconciliation(self) -> Result<Response, String> {
+        let (client, request) = self.build_split();
+        let request =
+            request.map_err(|_| "Could not build trading reconciliation read".to_string())?;
+        let pool = POOL.read().unwrap_or_else(|e| e.into_inner()).clone();
+        pool.send_with_priority(client, request, true).await
+    }
+
     async fn send_info(self) -> Result<Response, String> {
         let (client, request) = self.build_split();
         let request =

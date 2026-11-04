@@ -103,12 +103,21 @@ impl TradingTerminal {
 
         let now = Instant::now();
         let mut apply_global_cooldown = false;
+        let mut refresh_size_correction_account = None;
         let stop_status = if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
             if retryable_exchange_error(&summary) {
                 let was_stopping = chase.lifecycle.is_stopping();
                 chase.last_reprice_at = Some(cooldown_marker(now, MIN_CHASE_REPRICE_INTERVAL));
                 if was_stopping {
                     chase.lifecycle = ChaseLifecycle::Resting;
+                } else if chase.desired_price.is_none() {
+                    // A newer book may have withdrawn the price target while
+                    // this modify was in flight. Verify any remaining size
+                    // correction instead of leaving an unserviceable queue.
+                    chase.lifecycle = ChaseLifecycle::Verifying {
+                        reason: ChaseVerificationReason::SizeCorrection,
+                    };
+                    refresh_size_correction_account = Some(chase.account_address.clone());
                 } else {
                     chase.lifecycle = ChaseLifecycle::Queued {
                         action: ChaseQueuedAction::Reprice,
@@ -149,6 +158,9 @@ impl TradingTerminal {
         }
 
         self.order_status = Some((format!("Chase modify delayed: {summary}"), true));
+        if let Some(address) = refresh_size_correction_account {
+            return self.refresh_account_data_for_order_account(&address);
+        }
         Task::none()
     }
 

@@ -4,6 +4,20 @@ use super::{
 };
 
 #[test]
+fn chase_buffered_quote_cannot_reverse_an_acknowledged_modify() {
+    for (is_buy, confirmed, queued) in [(true, "102", 101.0), (false, "98", 99.0)] {
+        let mut chase = chase_order();
+        chase.is_buy = is_buy;
+        chase.desired_price = Some(queued);
+        let mut order = open_order(42, Some(false));
+        order.side = if is_buy { "B" } else { "A" }.into();
+        order.limit_px = confirmed.into();
+        assert_eq!(apply_open_order_to_chase(&mut chase, &order), Ok(false));
+        assert_eq!(chase.desired_price, None);
+    }
+}
+
+#[test]
 fn open_order_sync_updates_chase_size_price_and_confirmation() {
     let mut chase = chase_order();
     let mut order = open_order(42, Some(false));

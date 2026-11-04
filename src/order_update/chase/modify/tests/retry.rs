@@ -5,6 +5,32 @@ use crate::signing::{ChaseLifecycle, ChaseQueuedAction};
 use std::time::{Duration, Instant};
 
 #[test]
+fn chase_retry_with_withdrawn_quote_still_reconciles_remaining_size() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some(super::fixtures::TEST_ACCOUNT.into());
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    let mut order = chase();
+    order.desired_price = None;
+    terminal.chase_orders.insert(1, order);
+    let _task = terminal.handle_chase_modify_result(
+        1,
+        42,
+        Ok(exchange_response(
+            serde_json::json!({"error": "rate limit"}),
+        )),
+    );
+    assert_eq!(
+        chase_by_id(&terminal, 1).lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: crate::signing::ChaseVerificationReason::SizeCorrection
+        }
+    );
+    assert!(terminal.account_loading && terminal.account_reconciliation_required);
+    assert!(!chase_by_id(&terminal, 1).can_reprice_now(Instant::now() + Duration::from_secs(4)));
+}
+
+#[test]
 fn chase_modify_rate_limit_keeps_target_queued_for_retry() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.chase_orders.insert(1, chase());

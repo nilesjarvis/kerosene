@@ -39,7 +39,9 @@ pub(super) fn apply_open_order_to_chase(
         if chase
             .desired_price
             .and_then(|price| chase.rounded_price(price))
-            .is_some_and(|(_, desired_wire)| desired_wire == chase.current_price_wire)
+            .is_some_and(|(desired, desired_wire)| {
+                desired_wire == chase.current_price_wire || !chase.price_moves_toward_fill(desired)
+            })
         {
             chase.desired_price = None;
         }

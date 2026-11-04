@@ -98,25 +98,54 @@ impl TradingTerminal {
     }
 
     fn next_queued_chase_reprice_action(&self, now: Instant) -> Option<(u64, ChaseQueuedAction)> {
-        self.chase_orders.iter().find_map(|(id, chase)| {
-            if chase.has_pending_op() {
-                return None;
-            }
-            if !chase.can_reprice_now(now) {
-                return None;
-            }
-            match chase.lifecycle {
-                ChaseLifecycle::Queued {
-                    action: ChaseQueuedAction::Place,
-                } if chase.desired_price.is_some() => Some((*id, ChaseQueuedAction::Place)),
-                ChaseLifecycle::Queued {
-                    action: ChaseQueuedAction::Reprice,
-                } if chase.desired_price.is_some() => Some((*id, ChaseQueuedAction::Reprice)),
-                ChaseLifecycle::Queued {
-                    action: ChaseQueuedAction::SizeCorrection,
-                } => Some((*id, ChaseQueuedAction::SizeCorrection)),
-                _ => None,
-            }
-        })
+        self.chase_orders
+            .iter()
+            .filter_map(|(id, chase)| {
+                if chase.has_pending_op() {
+                    return None;
+                }
+                if !chase.can_reprice_now(now) {
+                    return None;
+                }
+                match chase.lifecycle {
+                    ChaseLifecycle::Queued {
+                        action: ChaseQueuedAction::Place,
+                    } if chase.desired_price.is_some() => Some((*id, ChaseQueuedAction::Place)),
+                    ChaseLifecycle::Queued {
+                        action: ChaseQueuedAction::Reprice,
+                    } if chase.desired_price.is_some() => Some((*id, ChaseQueuedAction::Reprice)),
+                    ChaseLifecycle::Queued {
+                        action: ChaseQueuedAction::SizeCorrection,
+                    } => Some((*id, ChaseQueuedAction::SizeCorrection)),
+                    _ => None,
+                }
+            })
+            .min_by_key(|(id, _)| {
+                let chase = &self.chase_orders[id];
+                (chase.last_reprice_at.unwrap_or(chase.started_at), *id)
+            })
+    }
+
+    /// Book events use the same ordering as the queued dispatcher. Otherwise a
+    /// busy low-ID order can consume every newly available exchange slot.
+    pub(in crate::order_execution::chase::lifecycle) fn older_queued_chase_has_priority(
+        &self,
+        chase_id: u64,
+        now: Instant,
+    ) -> bool {
+        let Some(candidate) = self.chase_orders.get(&chase_id) else {
+            return false;
+        };
+        self.next_queued_chase_reprice_action(now)
+            .is_some_and(|(queued_id, _)| {
+                let queued = &self.chase_orders[&queued_id];
+                (
+                    queued.last_reprice_at.unwrap_or(queued.started_at),
+                    queued_id,
+                ) < (
+                    candidate.last_reprice_at.unwrap_or(candidate.started_at),
+                    chase_id,
+                )
+            })
     }
 }

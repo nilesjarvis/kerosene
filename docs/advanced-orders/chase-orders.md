@@ -68,6 +68,18 @@ Kerosene maintains a single resting exchange limit order per Chase order.
 - Reprices are throttled to avoid excessive exchange requests.
 - If a reprice is needed while throttled or while another exchange request is in flight, Kerosene stores a queued best price and handles it later. If the book moves away before the modify is sent, the queued target is cleared.
 
+Before modifying, Chase verifies fresh fills and open orders. With a healthy,
+fresh account snapshot, this uses two concurrent reads: account fills and open
+orders for the chased market's DEX. Any uncertainty falls back to a full account
+refresh. A missing order still requires the existing order-status reconciliation;
+the scoped read cannot authorize a replacement. Full account refreshes after
+order results continue to update balances and positions.
+
+Queued work wakes at its next throttle deadline and favors the least recently
+serviced Chase. The exchange-rate limits are unchanged. Quotes received during
+a modify are retained and checked against the confirmed order price before
+another modify can be sent.
+
 This means the Chase order is aggressive in the direction of getting filled, but conservative about moving away from the current working price.
 
 ### Partial fills and completion

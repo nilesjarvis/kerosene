@@ -42,6 +42,37 @@ fn chase_order() -> ChaseOrder {
     }
 }
 
+#[test]
+fn chase_wakeup_respects_both_throttles_and_the_retry_cooldown() {
+    let mut terminal = TradingTerminal::boot().0;
+    let now = Instant::now();
+    let mut chase = chase_order();
+    chase.lifecycle = ChaseLifecycle::Queued {
+        action: crate::signing::ChaseQueuedAction::Reprice,
+    };
+    chase.last_reprice_at = Some(now);
+    terminal.chase_orders.insert(7, chase);
+    terminal.last_advanced_exchange_request_at = Some(now);
+    assert_eq!(
+        terminal.chase_reprice_wakeup_at(),
+        Some(now + Duration::from_secs(1))
+    );
+    terminal.last_advanced_exchange_request_at = Some(now + Duration::from_secs(4));
+    assert_eq!(
+        terminal.chase_reprice_wakeup_at(),
+        Some(now + Duration::from_millis(4250))
+    );
+    terminal
+        .chase_orders
+        .get_mut(&7)
+        .expect("chase")
+        .last_reprice_at = Some(now + Duration::from_secs(4));
+    assert_eq!(
+        terminal.chase_reprice_wakeup_at(),
+        Some(now + Duration::from_secs(5))
+    );
+}
+
 fn twap_order() -> TwapOrder {
     TwapOrder::new(TwapOrderInit {
         id: 7,

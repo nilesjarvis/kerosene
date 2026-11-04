@@ -392,6 +392,30 @@ Uncertain children can trigger order-status checks or account refreshes.
 
 ## Chase Orders
 
+Pre-modify verification uses `account/data/chase.rs` to fetch the chased DEX's
+`frontendOpenOrders` and account `userFills` concurrently when the connected
+account already has a fresh, complete trading snapshot. These two reads use
+the selected read provider; fills receive account-priority admission without
+reducing their rate-limit weight. `ChaseRepriceSnapshotLoaded` routes through
+the order update module to `account_update/stream/chase/reprice.rs`.
+
+The scoped result only reconciles its original Chase/OID. It does not replace
+`AccountData`, advance balance/position freshness, confirm other Chases, or
+authorize a replacement placement. Account/provider generations, intervening
+full-refresh requests, stale account data, and request failures all retain the
+full account reconciliation path. Accepted order results still refresh the
+full account, including balances and positions.
+
+Queued requests prefer the least recently serviced Chase, including admission
+from book events. Their first timer wakeup follows the per-order/global
+eligibility deadline, with a 250 ms polling fallback for blocked states. The
+one-second per-order throttle, shared 250 ms exchange gate, and retry cooldown
+remain enforced. Quotes received during a modify can update `desired_price`
+without dispatching another mutation. Reconciliation compares that target to
+the confirmed order price, and dispatch rechecks duration, drift, and count
+limits. Market-data lag clears the queued target without replacing an in-flight
+operation's lifecycle state.
+
 Chase orders are client-side advanced orders that rest a limit order near the
 best bid/ask and reprice until filled, stopped, or expired.
 
