@@ -251,11 +251,10 @@ fn request_weight(body: &Value) -> u32 {
             20 + count.min(5000).div_ceil(60) as u32
         }
         // Conservatively reserve the maximum page cost before dispatch.
-        "userFills"
-        | "userFillsByTime"
-        | "historicalOrders"
-        | "userFunding"
-        | "userNonFundingLedgerUpdates" => 120,
+        "userFills" | "userFillsByTime" | "historicalOrders" | "userFunding" => 120,
+        // Non-funding ledger reads have the standard info weight, without
+        // the per-item surcharge charged to funding/fill history.
+        "userNonFundingLedgerUpdates" => 20,
         _ => 20,
     }
 }
@@ -294,6 +293,18 @@ mod tests {
             104
         );
     }
+
+    #[test]
+    fn non_funding_ledger_uses_standard_info_weight() {
+        assert_eq!(
+            request_weight(&serde_json::json!({"type": "userNonFundingLedgerUpdates"})),
+            20
+        );
+        assert_eq!(
+            request_weight(&serde_json::json!({"type": "userFunding"})),
+            120
+        );
+    }
 }
 
 #[cfg(test)]
@@ -306,6 +317,35 @@ mod async_tests {
             .json(&serde_json::json!({"type": kind}))
             .build()
             .expect("request")
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ledger_history_uses_remaining_budget_without_waiting_another_minute() {
+        let gate = ReadGate::new();
+        gate.state
+            .lock()
+            .expect("budget")
+            .charge(Instant::now(), 600, false);
+        let request = info_request("userNonFundingLedgerUpdates");
+        for _ in 0..5 {
+            let mut admission = Box::pin(gate.acquire(&request));
+            assert!(matches!(
+                futures::poll!(&mut admission),
+                std::task::Poll::Ready(Ok(_))
+            ));
+        }
+        let mut admission = Box::pin(gate.acquire(&request));
+        assert!(futures::poll!(&mut admission).is_pending());
+        assert_eq!(gate.background.available_permits(), 4);
+        tokio::time::advance(WINDOW).await;
+        let _permit = admission.await.expect("budget recovers");
+        let state = gate.state.lock().expect("budget");
+        assert_eq!(state.spent.len(), 1);
+        assert_eq!(state.spent[0].1, 20);
+        assert!(
+            !state.spent[0].2,
+            "ledger must keep the trading reserve free"
+        );
     }
 
     #[tokio::test(start_paused = true)]

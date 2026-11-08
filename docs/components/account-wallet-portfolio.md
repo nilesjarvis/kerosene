@@ -304,6 +304,8 @@ transfers; no TradeXYZ credentials or trading agent key are required.
   provider loading/error states, pagination, and expanded row.
 - `account_update/transfers.rs` handles `RefreshTransferHistory`,
   `TransferHistoryLoaded`, `TransferHistoryPage`, and `ToggleTransferDetails`.
+  Native reads stream each page through `TransferHistoryLoaded`; `has_more`
+  keeps that source in flight while its rows and continuation cursor are applied.
 - `account_views/history_tables/transfers.rs` renders 50 rows per page, newest
   first, with expandable wallet, bridge, fee, confirmation, and transaction
   details. Full addresses and references can be copied through redacted messages.
@@ -311,7 +313,10 @@ transfers; no TradeXYZ credentials or trading agent key are required.
 Opening the tab fetches both sources. A saved selected tab also loads on wallet
 connection, and `subscription_state/timers/analytics.rs` polls every 30 seconds
 while the tab is selected in an open workspace. A failed source retains its
-previous rows with an explicit warning; the other source remains usable.
+available rows with an explicit warning; the other source remains usable.
+Each native page appears immediately, including when later pages are waiting
+for the shared read budget. Both clients reuse the application's HTTP connection
+pool, with request timeouts of 20 seconds (Hyperliquid) and 25 seconds (Unit).
 Connect, disconnect, invalid-address reset, and account switching clear this
 runtime data and advance a generation so late replies cannot restore it.
 These reads always use their native APIs, independently of the selected market
@@ -381,9 +386,18 @@ Verified against primary sources on 2026-09-07:
   vault flows are excluded from both tabs.
 - Native history follows the documented inclusive timestamp pagination for
   **all** ledger categories, deduplicating the overlapping boundary. Each fetch
-  is bounded to 100 pages / 60 seconds; partial reads carry a warning and a
-  continuation cursor. Completed reads subsequently overlap the last minute.
-  A full page that cannot advance its timestamp is explicitly incomplete.
+  is bounded to 100 pages / 60 seconds. A response shorter than the documented
+  500-element page limit completes the range without a second boundary probe.
+  Pages are applied as they arrive; partial reads retain their rows and cursor
+  with a warning/error, even when earlier pages contained only filtered-out
+  ledger categories. Completed reads subsequently overlap the last minute.
+  A full page that cannot advance its timestamp is explicitly incomplete and
+  retains that cursor rather than restarting at zero.
+- The native ledger uses the standard **20-weight** info request admission,
+  per the [Hyperliquid rate limits](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/rate-limits-and-user-limits).
+  Unlike funding and fill history, `userNonFundingLedgerUpdates` is not listed
+  among endpoints with a per-item surcharge. It remains in the background queue
+  and respects the shared budget and cooldown; it does not use trading capacity.
 - The [ledger wire schema](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions)
   does not provide the external Arbitrum sender/recipient or delivery
   transaction. Native rows therefore expose the ledger hash separately and

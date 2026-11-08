@@ -129,7 +129,7 @@ fn source_warning(provider: TransferProvider, source: &TransferSourceState) -> O
             "{}: {error}{}",
             provider.label(),
             if source.loaded {
-                ". Showing previous data."
+                ". Showing available data."
             } else {
                 ""
             }

@@ -34,7 +34,7 @@ impl TradingTerminal {
         let end = Self::now_ms();
         let native_address = address.clone();
         Task::batch([
-            Task::perform(
+            Task::run(
                 fetch_ledger_history(address.clone(), start, end),
                 move |result| {
                     Message::TransferHistoryLoaded(

@@ -2,6 +2,7 @@ use super::{
     TransferDirection, TransferEntry, TransferProvider, TransferSnapshot, chain_label,
     decimal_units, nonempty,
 };
+use crate::api::CLIENT;
 use crate::network_activity::HttpRequestExt as _;
 use chrono::DateTime;
 use serde::Deserialize;
@@ -45,13 +46,10 @@ struct Operation {
 }
 
 pub(crate) async fn fetch_unit_history(address: String) -> Result<TransferSnapshot, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(25))
-        .build()
-        .map_err(|_| "Could not create Unit history client".to_string())?;
     // The URL contains the account address. Do not interpolate reqwest errors.
-    let response = client
+    let response = CLIENT
         .get(format!("{UNIT_API}/operations/{address}"))
+        .timeout(std::time::Duration::from_secs(25))
         .send_observed()
         .await
         .map_err(|_| "Unit history request failed".to_string())?;

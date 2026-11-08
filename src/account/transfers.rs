@@ -101,6 +101,9 @@ impl fmt::Debug for TransferEntry {
 pub(crate) struct TransferSnapshot {
     pub(crate) entries: Vec<TransferEntry>,
     pub(crate) warning: Option<String>,
+    /// More pages will arrive in this request generation. Rows and the cursor
+    /// are usable immediately, but the source remains in flight until finished.
+    pub(crate) has_more: bool,
     /// Inclusive next start time for native ledger reads. None restarts the
     /// complete history, e.g. after a partial initial read.
     pub(crate) next_start: Option<u64>,

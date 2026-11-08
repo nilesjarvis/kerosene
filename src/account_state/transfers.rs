@@ -117,6 +117,7 @@ impl TransferHistoryState {
         source.loading = false;
         match result {
             Ok(snapshot) => {
+                source.loading = snapshot.has_more;
                 source.loaded = true;
                 source.error = None;
                 source.warning = snapshot.warning;

@@ -93,6 +93,124 @@ fn providers_complete_independently_and_errors_retain_previous_success() {
 }
 
 #[test]
+fn streamed_pages_show_rows_while_loading_and_merge_overlapping_boundaries() {
+    let mut state = TransferHistoryState::default();
+    let generation = state.begin("account").expect("start");
+    state.apply(
+        "account",
+        generation,
+        TransferProvider::Unit,
+        Ok(TransferSnapshot::default()),
+    );
+    state.apply(
+        "account",
+        generation,
+        TransferProvider::Hyperliquid,
+        Ok(TransferSnapshot {
+            entries: vec![entry(TransferProvider::Hyperliquid, "hl:1", 100)],
+            next_start: Some(100),
+            has_more: true,
+            ..Default::default()
+        }),
+    );
+    assert!(state.native.loaded);
+    assert!(state.native.loading);
+    assert_eq!(state.entries.len(), 1);
+    assert!(
+        state.begin("account").is_none(),
+        "do not overlap a running stream"
+    );
+    state.apply(
+        "account",
+        generation,
+        TransferProvider::Hyperliquid,
+        Ok(TransferSnapshot {
+            entries: vec![
+                entry(TransferProvider::Hyperliquid, "hl:1", 100),
+                entry(TransferProvider::Hyperliquid, "hl:2", 200),
+            ],
+            next_start: Some(200),
+            ..Default::default()
+        }),
+    );
+    assert!(!state.loading());
+    assert_eq!(state.entries.len(), 2);
+    assert_eq!(state.entries[0].id, "hl:2");
+    assert_eq!(state.native.next_start, Some(200));
+}
+
+#[test]
+fn failed_continuation_retains_progress_even_without_matching_rows() {
+    for with_row in [false, true] {
+        let mut state = TransferHistoryState::default();
+        let generation = state.begin("account").expect("start");
+        state.apply(
+            "account",
+            generation,
+            TransferProvider::Unit,
+            Ok(TransferSnapshot::default()),
+        );
+        state.apply(
+            "account",
+            generation,
+            TransferProvider::Hyperliquid,
+            Ok(TransferSnapshot {
+                entries: if with_row {
+                    vec![entry(TransferProvider::Hyperliquid, "hl:1", 100)]
+                } else {
+                    Vec::new()
+                },
+                next_start: Some(500),
+                has_more: true,
+                ..Default::default()
+            }),
+        );
+        state.apply(
+            "account",
+            generation,
+            TransferProvider::Hyperliquid,
+            Err("Timed out".into()),
+        );
+        assert!(!state.loading());
+        assert_eq!(state.entries.len(), usize::from(with_row));
+        assert_eq!(state.native.next_start, Some(500));
+        assert!(state.native.error.is_some());
+        assert!(state.begin("account").is_some());
+        assert_eq!(state.native.next_start, Some(500));
+    }
+}
+
+#[test]
+fn late_stream_pages_cannot_restore_data_after_switching_accounts() {
+    let mut state = TransferHistoryState::default();
+    let old = state.begin("account-a").expect("start");
+    let snapshot = TransferSnapshot {
+        entries: vec![entry(TransferProvider::Hyperliquid, "hl:1", 100)],
+        next_start: Some(100),
+        has_more: true,
+        ..Default::default()
+    };
+    state.apply(
+        "account-a",
+        old,
+        TransferProvider::Hyperliquid,
+        Ok(snapshot.clone()),
+    );
+    let new = state.begin("account-b").expect("switch");
+    state.apply(
+        "account-a",
+        old,
+        TransferProvider::Hyperliquid,
+        Ok(snapshot),
+    );
+    assert_eq!(state.generation, new);
+    assert!(state.entries.is_empty());
+    assert!(state.native.loading);
+    assert!(!state.native.loaded);
+    assert_eq!(state.native.next_start, None);
+}
+
+#[test]
 fn native_boundaries_merge_and_unit_snapshots_replace_pending_operations() {
     let mut state = TransferHistoryState::default();
     let first = state.begin("account").expect("start");
