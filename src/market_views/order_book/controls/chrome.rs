@@ -75,8 +75,6 @@ impl TradingTerminal {
         tracking_symbol: &str,
         theme: &Theme,
     ) -> Element<'_, Message> {
-        let is_active = matches!(inst.mode, OrderBookSymbolMode::Active);
-
         let tracking_label: Cow<'_, str> = match &inst.mode {
             OrderBookSymbolMode::Active => Cow::Borrowed(&self.active_symbol_display),
             OrderBookSymbolMode::Fixed(symbol) => Cow::Owned(self.display_name_for_symbol(symbol)),
@@ -84,9 +82,7 @@ impl TradingTerminal {
 
         let book_has_rows = !inst.book.bids.is_empty() || !inst.book.asks.is_empty();
 
-        let mut title = row![active_indicator(is_active)]
-            .spacing(2)
-            .align_y(iced::Alignment::Center);
+        let mut title = row![].spacing(2).align_y(iced::Alignment::Center);
         if let Some(icon) = helpers::symbol_icon(tracking_symbol, 14, theme.palette().text)
             .or_else(|| helpers::symbol_icon(&tracking_label, 14, theme.palette().text))
         {
@@ -250,23 +246,6 @@ fn header_cell(label: &'static str) -> Element<'static, Message> {
         .width(Fill)
         .align_x(iced::alignment::Horizontal::Right)
         .into()
-}
-
-/// Small colored dot that signals the order book is tracking the active
-/// (flicking) symbol rather than a pinned one.
-fn active_indicator(is_active: bool) -> Element<'static, Message> {
-    if !is_active {
-        return text("").into();
-    }
-    container(
-        text("\u{2022}")
-            .size(14)
-            .style(|theme: &Theme| text::Style {
-                color: Some(theme.palette().primary),
-            }),
-    )
-    .padding(iced::Padding::new(0.0).left(2.0))
-    .into()
 }
 
 /// Compact constant-size indicator that the displayed book is a stale
