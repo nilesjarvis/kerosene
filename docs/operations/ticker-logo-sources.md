@@ -1,5 +1,10 @@
 # Ticker logo sources
 
+## Take-Two Interactive and Curve DAO (2026-11-19)
+
+- `TTWO.svg` uses the T2 mark for HIP-3 markets such as `xyz:TTWO`. The viewBox is cropped to the original path. [Simple Icons artwork](https://github.com/simple-icons/simple-icons/blob/43bd9740ffa347560d6477596a8b32361806315d/icons/taketwointeractivesoftware.svg) · [CC0 license](../../assets/licenses/simple-icons.txt)
+- `CRV.svg` uses the Curve DAO token mark for the `CRV` perp. The foreground path is cropped to its bounds, with both openings transparent so the mark can take the theme color. [Cryptocurrency Icons artwork](https://github.com/spothq/cryptocurrency-icons/blob/aab2734b99dd8ca05270e9ea31e23c00662a7c70/svg/color/crv.svg) · [CC0 license](https://github.com/spothq/cryptocurrency-icons/blob/aab2734b99dd8ca05270e9ea31e23c00662a7c70/LICENSE.md)
+
 ## Pearl (2026-11-19)
 
 `PRL.svg` and `PEARL.svg` are identical copies of the Pearl Research Labs
