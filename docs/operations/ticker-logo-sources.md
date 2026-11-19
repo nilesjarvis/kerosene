@@ -1,5 +1,12 @@
 # Ticker logo sources
 
+## Pearl (2026-11-19)
+
+`PRL.svg` and `PEARL.svg` are identical copies of the Pearl Research Labs
+wallet logo. The first filename resolves the [HIP-3 market key `io:PRL`](https://app.hyperliquid.xyz/trade/io:PRL).
+The second resolves the display name `PEARL`.
+[Original SVG](https://github.com/pearl-research-labs/pearl/blob/960681d48374a932feac456aef9fe0a645c405b0/apps/apps/pearl-desktop-wallet/resources/pearl-logo.svg) · [ISC license](../../assets/licenses/pearl.txt)
+
 ## Anthropic (2026-10-28)
 
 `ANT.svg` uses [Anthropic’s official pinned-tab SVG](https://www.anthropic.com/images/icons/safari-pinned-tab.svg),
