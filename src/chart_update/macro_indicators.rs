@@ -1,46 +1,60 @@
 use crate::app_state::TradingTerminal;
 use crate::chart_indicator::ChartIndicatorId;
 use crate::message::Message;
-use crate::timeframe::Timeframe;
 
 use iced::Task;
 
 impl TradingTerminal {
-    /// Extend history only when an enabled average needs more source candles.
+    pub(crate) fn ensure_chart_average_history(
+        &mut self,
+        id: crate::chart_state::ChartId,
+    ) -> Task<Message> {
+        let Some(inst) = self.charts.get(&id) else {
+            return Task::none();
+        };
+        let Some(period) = crate::chart_indicator::enabled_average_period(
+            &inst.macro_indicators,
+            "chart_timeframe",
+        ) else {
+            return Task::none();
+        };
+        let tf = inst.interval;
+        let span = crate::chart_indicator::average_history_span(tf, period);
+        if !tf.uses_candle_backfill()
+            || inst.symbol.is_empty()
+            || inst.symbol == "@0"
+            || self.symbol_key_is_hidden(&inst.symbol)
+            || inst.chart.candles.len() as u64 >= span / tf.duration_ms()
+            || inst.candle_fetch_request.as_ref().is_some_and(|req| {
+                req.mode == crate::chart_state::CandleFetchMode::Refresh
+                    && req.end_ms.saturating_sub(req.start_ms) >= span
+            })
+        {
+            return Task::none();
+        }
+        let symbol = inst.symbol.clone();
+        self.queue_candle_fetch_for(id, &symbol, tf, None)
+    }
+
     fn ensure_moving_average_history(
         &mut self,
         id: crate::chart_state::ChartId,
         key: ChartIndicatorId,
     ) -> Task<Message> {
-        let Some(inst) = self.charts.get(&id) else {
-            return Task::none();
-        };
-        let Some(period) = key.period(&inst.macro_indicators) else {
-            return Task::none();
-        };
-        if !key.is_enabled(inst)
-            || inst.symbol.is_empty()
-            || self.symbol_key_is_hidden(&inst.symbol)
-        {
+        if key.default_period().is_none() {
             return Task::none();
         }
-        let candles = match key.group() {
-            "chart_timeframe" => &inst.chart.candles,
-            "hourly" => &inst.chart.hourly_candles,
-            "daily" => &inst.chart.daily_candles,
-            "weekly" => &inst.chart.weekly_candles,
-            "monthly" => &inst.chart.monthly_candles,
-            _ => return Task::none(),
-        };
-        if candles.len() >= period {
-            return Task::none();
-        }
-        let symbol = inst.symbol.clone();
-        let timeframe = inst.interval;
         if key.group() == "chart_timeframe" {
-            self.queue_candle_fetch_for(id, &symbol, timeframe, None)
+            if self
+                .charts
+                .get(&id)
+                .is_some_and(|inst| key.is_enabled(inst))
+            {
+                return self.ensure_chart_average_history(id);
+            }
+            Task::none()
         } else {
-            Task::batch(self.queue_macro_candles_tasks(id, &symbol))
+            Task::batch(self.queue_macro_history(Self::now_ms()))
         }
     }
 
@@ -101,7 +115,6 @@ impl TradingTerminal {
             Message::ToggleMacroIndicator(id, key) => {
                 let hydromancer_key_missing = self.hydromancer_api_key.trim().is_empty();
                 let mut fetch_funding = false;
-                let mut macro_symbol = None;
                 let mut show_funding_key_prompt = false;
                 if let Some(inst) = self.charts.get_mut(&id) {
                     let enabled = !key.is_enabled(inst);
@@ -115,9 +128,6 @@ impl TradingTerminal {
                         }
                     }
                     if key.is_macro() {
-                        if enabled {
-                            macro_symbol = Some(inst.symbol.clone());
-                        }
                         inst.chart.macro_indicators = inst.macro_indicators.clone();
                     }
                     inst.chart.candle_cache.clear();
@@ -130,43 +140,17 @@ impl TradingTerminal {
                         true,
                     );
                 }
-                let mut tasks = macro_symbol
-                    .map(|symbol| self.queue_macro_candles_tasks(id, &symbol))
-                    .unwrap_or_default();
+                let mut tasks = vec![self.ensure_moving_average_history(id, key)];
                 if fetch_funding {
                     tasks.push(self.maybe_fetch_chart_funding(id));
                 }
-                if key.group() == "chart_timeframe" {
-                    tasks.push(self.ensure_moving_average_history(id, key));
-                }
                 return Task::batch(tasks);
             }
-            Message::MacroCandlesLoaded(id, request_id, symbol, tf, result) => {
-                if self.symbol_key_is_hidden(&symbol) {
-                    return Task::none();
-                }
-                if let Some(inst) = self.charts.get_mut(&id)
-                    && inst.macro_candles_request_id == request_id
-                    && inst.symbol == symbol
-                    && let Ok(candles) = result
-                {
-                    match tf {
-                        Timeframe::H1 => {
-                            inst.chart.hourly_candles = candles;
-                        }
-                        Timeframe::D1 => {
-                            inst.chart.daily_candles = candles;
-                        }
-                        Timeframe::W1 => {
-                            inst.chart.weekly_candles = candles;
-                        }
-                        Timeframe::Mo1 => {
-                            inst.chart.monthly_candles = candles;
-                        }
-                        _ => {}
-                    }
-                    inst.chart.candle_cache.clear();
-                }
+            Message::MacroCandlesCached(request, candles) => {
+                return self.apply_cached_macro_candles(request, candles);
+            }
+            Message::MacroCandlesLoaded(request, result) => {
+                return self.apply_macro_candles(request, result, Self::now_ms());
             }
             _ => {}
         }
@@ -178,7 +162,6 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::Candle;
     use crate::chart_state::ChartInstance;
     use crate::timeframe::Timeframe;
 
@@ -259,76 +242,6 @@ mod tests {
         }));
     }
 
-    #[test]
-    fn stale_macro_candle_result_does_not_overwrite_current_batch() {
-        let mut terminal = TradingTerminal::boot().0;
-        terminal.charts.clear();
-
-        let mut instance = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
-        instance.macro_candles_request_id = 2;
-        instance.chart.daily_candles = vec![Candle::test_flat(2_000, 200.0)];
-        terminal.charts.insert(7, instance);
-
-        let _task = terminal.update_chart_macro_indicators(Message::MacroCandlesLoaded(
-            7,
-            1,
-            "BTC".to_string(),
-            Timeframe::D1,
-            Ok(vec![Candle::test_flat(1_000, 100.0)]),
-        ));
-
-        let instance = terminal.charts.get(&7).expect("chart instance");
-        assert_eq!(instance.macro_candles_request_id, 2);
-        assert_eq!(instance.chart.daily_candles.len(), 1);
-        assert_eq!(instance.chart.daily_candles[0].open_time, 2_000);
-        assert_eq!(instance.chart.daily_candles[0].close, 200.0);
-    }
-
-    #[test]
-    fn current_macro_candle_result_updates_matching_batch() {
-        let mut terminal = TradingTerminal::boot().0;
-        terminal.charts.clear();
-
-        let mut instance = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
-        instance.macro_candles_request_id = 2;
-        terminal.charts.insert(7, instance);
-
-        let _task = terminal.update_chart_macro_indicators(Message::MacroCandlesLoaded(
-            7,
-            2,
-            "BTC".to_string(),
-            Timeframe::W1,
-            Ok(vec![Candle::test_flat(3_000, 300.0)]),
-        ));
-
-        let instance = terminal.charts.get(&7).expect("chart instance");
-        assert_eq!(instance.chart.weekly_candles.len(), 1);
-        assert_eq!(instance.chart.weekly_candles[0].open_time, 3_000);
-        assert_eq!(instance.chart.weekly_candles[0].close, 300.0);
-    }
-
-    #[test]
-    fn current_hourly_macro_candle_result_updates_hourly_batch() {
-        let mut terminal = TradingTerminal::boot().0;
-        terminal.charts.clear();
-
-        let mut instance = ChartInstance::new(7, "BTC".to_string(), Timeframe::H4);
-        instance.macro_candles_request_id = 2;
-        terminal.charts.insert(7, instance);
-
-        let _task = terminal.update_chart_macro_indicators(Message::MacroCandlesLoaded(
-            7,
-            2,
-            "BTC".to_string(),
-            Timeframe::H1,
-            Ok(vec![Candle::test_flat(4_000, 400.0)]),
-        ));
-
-        let instance = terminal.charts.get(&7).expect("chart instance");
-        assert_eq!(instance.chart.hourly_candles.len(), 1);
-        assert_eq!(instance.chart.hourly_candles[0].open_time, 4_000);
-        assert_eq!(instance.chart.hourly_candles[0].close, 400.0);
-    }
     #[test]
     fn moving_average_period_changes_update_only_target_chart_and_survive_restoration() {
         let mut terminal = TradingTerminal::boot().0;

@@ -45,18 +45,10 @@ impl TradingTerminal {
                     )
                     .with_moving_average_history(&inst.macro_indicators);
                     inst.candle_fetch_request = Some(request.clone());
-                    let mut chart_tasks = vec![Self::fetch_candles_task(
+                    tasks.push(Self::fetch_candles_task(
                         request,
                         hydromancer_api_key.clone(),
-                    )];
-                    let macro_request_id = inst.next_macro_candles_request_id();
-                    chart_tasks.extend(Self::fetch_macro_candles_tasks(
-                        *id,
-                        macro_request_id,
-                        &valid.key,
-                        &inst.macro_indicators,
                     ));
-                    tasks.push(Task::batch(chart_tasks));
                 }
             }
             if let Some(secondary_key) = inst.secondary_symbol.as_deref()
@@ -103,6 +95,7 @@ impl TradingTerminal {
             self.chart_quick_order_surface.remove(&chart_id);
         }
         if chart_identity_changed {
+            tasks.extend(self.queue_macro_history(Self::now_ms()));
             self.persist_config();
         }
 

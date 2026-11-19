@@ -295,10 +295,11 @@ fn symbols_loaded_clears_stale_macro_candles_when_chart_key_is_canonicalized() {
     canonical.ticker = "BTC".to_string();
 
     let mut chart = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
-    chart.chart.hourly_candles = vec![Candle::test_flat(500, 50.0)];
-    chart.chart.daily_candles = vec![Candle::test_flat(1_000, 100.0)];
-    chart.chart.weekly_candles = vec![Candle::test_flat(2_000, 200.0)];
-    chart.chart.monthly_candles = vec![Candle::test_flat(3_000, 300.0)];
+    chart.macro_indicators.ema_50h = true;
+    chart.chart.hourly_candles = vec![Candle::test_flat(500, 50.0)].into();
+    chart.chart.daily_candles = vec![Candle::test_flat(1_000, 100.0)].into();
+    chart.chart.weekly_candles = vec![Candle::test_flat(2_000, 200.0)].into();
+    chart.chart.monthly_candles = vec![Candle::test_flat(3_000, 300.0)].into();
     terminal.charts.insert(7, chart);
 
     let _task = terminal.apply_symbols_loaded(Ok(payload(vec![canonical])));
@@ -309,7 +310,11 @@ fn symbols_loaded_clears_stale_macro_candles_when_chart_key_is_canonicalized() {
     assert!(chart.chart.daily_candles.is_empty());
     assert!(chart.chart.weekly_candles.is_empty());
     assert!(chart.chart.monthly_candles.is_empty());
-    assert_eq!(chart.macro_candles_request_id, 1);
+    assert!(
+        terminal
+            .chart_macro_history
+            .contains_key(&("xyz:BTC".into(), Timeframe::H1))
+    );
 }
 
 #[test]

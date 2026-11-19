@@ -134,7 +134,7 @@ impl TradingTerminal {
         self.sync_chart_market_reference_prices();
         self.persist_config();
         let mut tasks = vec![self.queue_candle_fetch_for(id, &key, tf, cached_last_time)];
-        tasks.extend(self.queue_macro_candles_tasks(id, &key));
+        tasks.extend(self.queue_macro_history(Self::now_ms()));
         if self
             .charts
             .get(&id)

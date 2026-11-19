@@ -385,6 +385,7 @@ fn candle_surface_status(instance: &ChartInstance, now_ms: u64) -> Option<(Strin
     if let Some(request) = instance.candle_fetch_request.as_ref() {
         let label = match request.mode {
             CandleFetchMode::RepairTail => "Verifying recent candles".to_string(),
+            CandleFetchMode::WarmupOlder => "Loading indicator history".to_string(),
             CandleFetchMode::BackfillOlder => "Loading older candles".to_string(),
             CandleFetchMode::Refresh
                 if instance.candle_history_verified_at_ms.is_none()

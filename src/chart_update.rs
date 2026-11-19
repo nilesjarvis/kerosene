@@ -115,7 +115,8 @@ impl TradingTerminal {
             message @ (Message::ToggleMacroMenu(_)
             | Message::ToggleMacroIndicator(_, _)
             | Message::ChartMovingAveragePeriodChanged(_, _, _)
-            | Message::MacroCandlesLoaded(_, _, _, _, _)) => {
+            | Message::MacroCandlesCached(_, _)
+            | Message::MacroCandlesLoaded(_, _)) => {
                 return self.update_chart_macro_indicators(message);
             }
             message @ (Message::ToggleChartEarningsMarkers(_)
@@ -169,6 +170,7 @@ impl TradingTerminal {
             message @ (Message::ChartReload(_)
             | Message::ChartSwitchTimeframe(_, _)
             | Message::AllChartsSwitchTimeframe(_)
+            | Message::ChartCachedCandlesLoaded(_, _, _)
             | Message::ChartCandlesLoaded(_, _)
             | Message::ChartSecondaryCandlesLoaded(_, _)
             | Message::ChartFundingHistoryLoaded(_, _)

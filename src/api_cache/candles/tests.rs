@@ -159,6 +159,11 @@ fn load_fresh_candles_rejects_tail_older_than_display_window() {
     .expect("load succeeds");
 
     assert!(served.is_none());
+    let historical =
+        load_contiguous_candles_from_dir(&root, ChartBackfillSource::Hyperliquid, "BTC", timeframe)
+            .expect("historical read")
+            .expect("closed indicator history survives display TTL");
+    assert_eq!(historical[0].open_time, last_time);
 
     let _ = fs::remove_dir_all(root);
 }

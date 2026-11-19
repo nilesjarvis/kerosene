@@ -1,6 +1,8 @@
 use super::super::{CandlestickChart, ChartStatus};
 use crate::api::{Candle, is_valid_candle, normalize_candles};
 use crate::chart::model::SecondarySeries;
+use crate::timeframe::Timeframe;
+use std::sync::Arc;
 
 #[cfg(test)]
 mod tests;
@@ -126,11 +128,24 @@ impl CandlestickChart {
         self.candle_cache.clear();
     }
 
+    pub(crate) fn set_macro_history(&mut self, tf: Timeframe, candles: &Arc<[Candle]>) {
+        let current = match tf {
+            Timeframe::H1 => &mut self.hourly_candles,
+            Timeframe::D1 => &mut self.daily_candles,
+            Timeframe::W1 => &mut self.weekly_candles,
+            Timeframe::Mo1 => &mut self.monthly_candles,
+            _ => return,
+        };
+        if !candles.is_empty() && !Arc::ptr_eq(current, candles) {
+            *current = candles.clone();
+            self.candle_cache.clear();
+        }
+    }
     pub(crate) fn clear_macro_candles(&mut self) {
-        self.hourly_candles.clear();
-        self.daily_candles.clear();
-        self.weekly_candles.clear();
-        self.monthly_candles.clear();
+        self.hourly_candles = Default::default();
+        self.daily_candles = Default::default();
+        self.weekly_candles = Default::default();
+        self.monthly_candles = Default::default();
         self.candle_cache.clear();
     }
 }

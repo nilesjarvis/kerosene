@@ -353,7 +353,17 @@ fn moving_average_period_edits_reach_chart_route() {
 #[test]
 fn ema_cloud_actions_reach_chart_route() {
     use crate::config::{EmaCloudColor, EmaCloudPeriod, EmaCloudTimeframe};
+    let request = crate::chart_state::MacroCandleRequest {
+        request_id: 1,
+        symbol: "BTC".into(),
+        timeframe: crate::timeframe::Timeframe::H1,
+        period: 50,
+        start_ms: 1,
+        end_ms: 2,
+    };
     for message in [
+        Message::MacroCandlesCached(request.clone(), vec![]),
+        Message::MacroCandlesLoaded(request, Ok(vec![])),
         Message::ChartEmaCloudAdded(7),
         Message::ChartEmaCloudRemoved(7, 1),
         Message::ChartEmaCloudToggled(7, 1),

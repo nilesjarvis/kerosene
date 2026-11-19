@@ -88,15 +88,6 @@ impl TradingTerminal {
                 } else if !tf.uses_candle_backfill() {
                     instance.chart.status = crate::chart::ChartStatus::Loaded;
                 }
-                if !primary_legacy_spot_unresolved {
-                    let macro_request_id = instance.next_macro_candles_request_id();
-                    boot_tasks.extend(Self::fetch_macro_candles_tasks(
-                        id,
-                        macro_request_id,
-                        &primary_symbol,
-                        &instance.macro_indicators,
-                    ));
-                }
             } else if !primary_symbol.is_empty() && self.is_ticker_muted(&primary_symbol) {
                 Self::clear_chart_for_muted_symbol(&mut instance);
             }
@@ -122,6 +113,7 @@ impl TradingTerminal {
             charts.insert(id, instance);
         }
         self.charts = charts;
+        boot_tasks.extend(self.queue_macro_history(Self::now_ms()));
         self.next_chart_id = next_chart_id;
         boot_tasks.push(self.refresh_enabled_earnings_charts());
     }

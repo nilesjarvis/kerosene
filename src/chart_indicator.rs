@@ -398,19 +398,10 @@ impl ChartIndicatorId {
     }
 }
 
-/// Retain the normal visible history plus enough warm-up candles for custom periods.
-pub(crate) fn moving_average_lookback_ms(
-    config: &MacroIndicatorsConfig,
-    timeframe: crate::timeframe::Timeframe,
-    group: &str,
-) -> u64 {
-    let period = ChartIndicatorId::MOVING_AVERAGES
+pub(crate) fn enabled_average_period(config: &MacroIndicatorsConfig, group: &str) -> Option<usize> {
+    ChartIndicatorId::MOVING_AVERAGES
         .into_iter()
-        .filter(|key| {
-            key.group() == group
-                && key.is_enabled_in_config(config)
-                && config.moving_average_periods.contains_key(key.key())
-        })
+        .filter(|key| key.group() == group && key.is_enabled_in_config(config))
         .filter_map(|key| key.period(config))
         .chain(
             config
@@ -422,7 +413,21 @@ pub(crate) fn moving_average_lookback_ms(
                 .map(|cloud| cloud.fast_period.max(cloud.slow_period)),
         )
         .max()
-        .unwrap_or(0) as u64;
+}
+
+pub(crate) fn moving_average_lookback_ms(
+    config: &MacroIndicatorsConfig,
+    timeframe: crate::timeframe::Timeframe,
+    group: &str,
+) -> u64 {
+    average_history_span(
+        timeframe,
+        enabled_average_period(config, group).unwrap_or(0),
+    )
+}
+
+pub(crate) fn average_history_span(timeframe: crate::timeframe::Timeframe, period: usize) -> u64 {
+    let period = period as u64;
     if period == 0 {
         return timeframe.lookback_ms();
     }

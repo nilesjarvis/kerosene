@@ -103,7 +103,7 @@ impl TradingTerminal {
             if let Some(tf) = fetch_tf {
                 let mut tasks =
                     vec![self.queue_candle_fetch_for(primary_id, &valid_key, tf, cached_last_time)];
-                tasks.extend(self.queue_macro_candles_tasks(primary_id, &valid_key));
+                tasks.extend(self.queue_macro_history(Self::now_ms()));
                 if self
                     .charts
                     .get(&primary_id)

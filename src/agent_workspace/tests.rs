@@ -78,6 +78,20 @@ fn assistant_indicator_action_is_idempotent() {
     assert_eq!(second["success"], true);
     assert_eq!(second["charts"][0]["changes"][0]["outcome"], "already_set");
     assert!(terminal.charts[&7].macro_indicators.tf_ema_50);
+    assert!(terminal.charts[&7].candle_fetch_request.is_some());
+}
+
+#[test]
+fn assistant_fixed_timeframe_indicator_queues_history_immediately() {
+    let mut terminal = terminal_with_running_tool();
+    let (_, _task) =
+        terminal.handle_agent_host_action(&action_payload(true).replace("tf_ema_50", "ema_50d"));
+    assert!(terminal.charts[&7].chart.macro_indicators.ema_50d);
+    assert!(
+        terminal
+            .chart_macro_history
+            .contains_key(&("BTC".into(), Timeframe::D1))
+    );
 }
 
 #[test]

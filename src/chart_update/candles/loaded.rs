@@ -32,29 +32,35 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        let Some(instance) = self.charts.get_mut(&request.chart_id) else {
+            return Task::none();
+        };
+        let (symbol, pending) = match target {
+            CandleCacheTarget::Primary => (
+                Some(instance.symbol.as_str()),
+                &mut instance.candle_cache_request,
+            ),
+            CandleCacheTarget::Secondary => (
+                instance.secondary_symbol.as_deref(),
+                &mut instance.secondary_candle_cache_request,
+            ),
+        };
+        if symbol != Some(request.symbol.as_str())
+            || instance.interval != request.timeframe
+            || pending.as_ref() != Some(&request)
+        {
+            return Task::none();
+        }
+        *pending = None;
         let Ok(Some(candles)) = result else {
-            // The authoritative provider request is already running. A missing
-            // or unreadable optional cache must not replace its loading/error
-            // state or trigger another retry loop.
             return Task::none();
         };
         let candles = normalize_candles(candles);
         if candles.is_empty() {
             return Task::none();
         }
-
-        let Some(instance) = self.charts.get_mut(&request.chart_id) else {
-            return Task::none();
-        };
         match target {
             CandleCacheTarget::Primary => {
-                let request_matches = instance.symbol == request.symbol
-                    && instance.interval == request.timeframe
-                    && instance.candle_fetch_request.as_ref() == Some(&request);
-                if !request_matches {
-                    return Task::none();
-                }
-
                 // A websocket candle can arrive while the disk task is still
                 // running. Replay the current chart last so cache hydration
                 // cannot regress that mutable tail on a duplicate timestamp.
@@ -63,14 +69,6 @@ impl TradingTerminal {
                 instance.chart.merge_candles(live_candles);
             }
             CandleCacheTarget::Secondary => {
-                let request_matches = instance.secondary_symbol.as_deref()
-                    == Some(request.symbol.as_str())
-                    && instance.interval == request.timeframe
-                    && instance.secondary_candle_fetch_request.as_ref() == Some(&request);
-                if !request_matches {
-                    return Task::none();
-                }
-
                 let live_candles = instance
                     .chart
                     .secondary_series
@@ -108,7 +106,7 @@ impl TradingTerminal {
         let whole_unit_volume = self.is_outcome_coin(&request.symbol);
         let symbol_is_spot =
             self.is_spot_coin(&request.symbol) || is_spot_asset_context_symbol(&request.symbol);
-        let is_spot_refresh = request.mode != CandleFetchMode::BackfillOlder && symbol_is_spot;
+        let is_spot_refresh = !request.mode.is_older() && symbol_is_spot;
         let symbol_allows_sparse_intervals = symbol_is_spot || whole_unit_volume;
         let result = result.map(normalize_candles);
         let response_has_interval_gap = result.as_ref().ok().is_some_and(|candles| {
@@ -120,7 +118,6 @@ impl TradingTerminal {
         });
         let received_at_ms = Self::now_ms();
         let mut new_cache_data = None;
-        let mut remove_cache_data = None;
         let mut retry_request = None;
         let mut fetch_overlays = false;
         let mut continue_older_backfill = false;
@@ -147,17 +144,21 @@ impl TradingTerminal {
                             );
                             instance.candle_fetch_error = Some(error.clone());
                             instance.chart.set_error(error);
-                            remove_cache_data = Some((request.symbol.clone(), request.timeframe));
-                        } else if request.mode == CandleFetchMode::BackfillOlder {
+                        } else if request.mode.is_older() {
                             instance.chart.status = ChartStatus::Loaded;
                             instance.candle_fetch_error = None;
-                            instance.candle_backfill_exhausted = true;
+                            // A short seed request can miss on a sparse market
+                            // while a wider viewport page still has history.
+                            if request.mode == CandleFetchMode::BackfillOlder {
+                                instance.candle_backfill_exhausted = true;
+                            }
                         } else {
                             instance.chart.status = ChartStatus::Loaded;
                             instance.candle_fetch_error =
                                 Some("No fresh candle data returned".to_string());
                         }
                     } else {
+                        instance.candle_cache_request = None;
                         instance.candle_fetch_error = None;
                         let oldest_before_merge = instance
                             .chart
@@ -188,7 +189,7 @@ impl TradingTerminal {
                             request.timeframe,
                             symbol_allows_sparse_intervals,
                         );
-                        if request.mode != CandleFetchMode::BackfillOlder {
+                        if !request.mode.is_older() {
                             instance.candle_history_verified_at_ms = Some(received_at_ms);
                             instance.candle_interval_gap =
                                 response_has_interval_gap || merged_has_interval_gap;
@@ -208,7 +209,7 @@ impl TradingTerminal {
                             .candles
                             .first()
                             .map(|candle| candle.open_time);
-                        if request.mode == CandleFetchMode::BackfillOlder {
+                        if request.mode.is_older() {
                             // Only keep paging older if the window actually grew
                             // older. A non-empty page that does not predate the
                             // current oldest candle (provider clamped the range,
@@ -217,7 +218,7 @@ impl TradingTerminal {
                             if oldest_after_merge < oldest_before_merge {
                                 instance.candle_backfill_exhausted = false;
                                 continue_older_backfill = true;
-                            } else {
+                            } else if request.mode == CandleFetchMode::BackfillOlder {
                                 instance.candle_backfill_exhausted = true;
                             }
                         } else {
@@ -240,7 +241,7 @@ impl TradingTerminal {
                     {
                         let mut next_request = request.clone();
                         next_request.attempt = next_attempt;
-                        if next_request.mode != CandleFetchMode::BackfillOlder {
+                        if !next_request.mode.is_older() {
                             next_request.end_ms = Self::now_ms();
                         }
                         instance.candle_fetch_request = Some(next_request.clone());
@@ -262,7 +263,6 @@ impl TradingTerminal {
                         if instance.chart.candles.is_empty() {
                             instance.candle_fetch_error = Some(error.clone());
                             instance.chart.set_error(error);
-                            remove_cache_data = Some((request.symbol.clone(), request.timeframe));
                         } else {
                             instance.chart.status = ChartStatus::Loaded;
                             instance.candle_fetch_error = Some(error);
@@ -281,8 +281,6 @@ impl TradingTerminal {
             self.sync_chart_orders_for(id);
             self.sync_chart_trade_markers_for(id);
             self.cache_candles(&symbol, tf, new_cache);
-        } else if let Some((symbol, tf)) = remove_cache_data {
-            self.remove_cached_candles(&symbol, tf);
         }
 
         let mut tasks = Vec::new();
@@ -291,10 +289,11 @@ impl TradingTerminal {
             tasks.push(self.maybe_fetch_heatmap(id));
             tasks.push(self.maybe_fetch_chart_funding(id));
         }
-        if continue_older_backfill {
+        if continue_older_backfill && request.mode == CandleFetchMode::BackfillOlder {
             tasks.push(self.continue_older_primary_candle_backfill(id));
-        } else if check_viewport_backfill {
+        } else if check_viewport_backfill || continue_older_backfill {
             tasks.push(self.maybe_continue_chart_candle_backfill(id));
+            tasks.push(self.backfill_missing_average_seed(id));
         }
         if !tasks.is_empty() {
             return Task::batch(tasks);
@@ -337,7 +336,6 @@ impl TradingTerminal {
         });
         let received_at_ms = Self::now_ms();
         let mut new_cache_data = None;
-        let mut remove_cache_data = None;
         let mut retry_request = None;
         let mut continue_older_backfill = false;
         let mut check_viewport_backfill = false;
@@ -363,9 +361,9 @@ impl TradingTerminal {
                         } else {
                             instance.secondary_candle_fetch_error =
                                 Some("No comparison candle data returned".to_string());
-                            remove_cache_data = Some((request.symbol.clone(), request.timeframe));
                         }
                     } else {
+                        instance.secondary_candle_cache_request = None;
                         instance.secondary_candle_fetch_error = None;
                         let oldest_before_merge = instance
                             .chart
@@ -468,8 +466,6 @@ impl TradingTerminal {
 
         if let Some((symbol, tf, new_cache)) = new_cache_data {
             self.cache_candles(&symbol, tf, new_cache);
-        } else if let Some((symbol, tf)) = remove_cache_data {
-            self.remove_cached_candles(&symbol, tf);
         }
 
         if continue_older_backfill {
@@ -563,6 +559,7 @@ mod tests {
             attempt: 0,
         };
         instance.candle_fetch_request = Some(request.clone());
+        instance.candle_cache_request = Some(request.clone());
         instance
             .chart
             .set_candles(vec![Candle::test_flat(7_200_000, 110.0)]);
@@ -590,6 +587,66 @@ mod tests {
     }
 
     #[test]
+    fn boot_cache_still_displays_when_provider_retries_before_disk_returns() {
+        let mut config = crate::config::ChartConfig::empty(7, "BTC", "H1");
+        config.secondary_symbol = Some("ETH".into());
+        let mut terminal = TradingTerminal::boot_from_config(crate::config::KeroseneConfig {
+            charts: vec![config],
+            ..Default::default()
+        })
+        .0;
+        for target in [CandleCacheTarget::Primary, CandleCacheTarget::Secondary] {
+            let instance = &terminal.charts[&7];
+            let initial = match target {
+                CandleCacheTarget::Primary => &instance.candle_cache_request,
+                CandleCacheTarget::Secondary => &instance.secondary_candle_cache_request,
+            }
+            .clone()
+            .expect("scheduled boot cache read");
+            if target == CandleCacheTarget::Primary {
+                terminal
+                    .charts
+                    .get_mut(&7)
+                    .expect("chart")
+                    .set_symbol_identity("BTC".into(), "Bitcoin".into());
+            }
+            let failure = Err("offline".into());
+            let _ = terminal.update(match target {
+                CandleCacheTarget::Primary => Message::ChartCandlesLoaded(initial.clone(), failure),
+                CandleCacheTarget::Secondary => {
+                    Message::ChartSecondaryCandlesLoaded(initial.clone(), failure)
+                }
+            });
+            let _ = terminal.update(Message::ChartCachedCandlesLoaded(
+                initial,
+                target,
+                Ok(Some(vec![Candle::test_flat(1_000, 90.0)])),
+            ));
+            let instance = &terminal.charts[&7];
+            let (bars, pending, verified) = match target {
+                CandleCacheTarget::Primary => (
+                    &instance.chart.candles,
+                    &instance.candle_fetch_request,
+                    instance.candle_history_verified_at_ms,
+                ),
+                CandleCacheTarget::Secondary => (
+                    &instance
+                        .chart
+                        .secondary_series
+                        .as_ref()
+                        .expect("comparison")
+                        .candles,
+                    &instance.secondary_candle_fetch_request,
+                    instance.secondary_candle_history_verified_at_ms,
+                ),
+            };
+            assert_eq!(bars.len(), 1);
+            assert_eq!(pending.as_ref().expect("provider retry").attempt, 1);
+            assert!(verified.is_none());
+        }
+    }
+
+    #[test]
     fn stale_boot_cache_result_cannot_mutate_a_replaced_request() {
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.charts.clear();
@@ -612,13 +669,14 @@ mod tests {
             end_ms: 20_000,
             ..stale_request.clone()
         };
+        instance.candle_cache_request = Some(current_request.clone());
         instance.candle_fetch_request = Some(current_request.clone());
         terminal.charts.insert(1, instance);
 
         let _task = terminal.apply_chart_cached_candles_loaded(
             stale_request,
             CandleCacheTarget::Primary,
-            Ok(Some(vec![Candle::test_flat(0, 90.0)])),
+            Ok(Some(vec![Candle::test_flat(1_000, 90.0)])),
         );
 
         let instance = terminal.charts.get(&1).expect("chart instance");

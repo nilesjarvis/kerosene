@@ -504,7 +504,6 @@ impl TradingTerminal {
             self.sync_chart_orders_for(chart_id);
             self.sync_chart_trade_markers_for(chart_id);
             tasks.push(self.queue_candle_fetch_for(chart_id, symbol, timeframe, None));
-            tasks.extend(self.queue_macro_candles_tasks(chart_id, symbol));
         }
         self.sync_chart_market_reference_prices();
 

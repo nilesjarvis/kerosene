@@ -158,10 +158,10 @@ pub struct CandlestickChart {
     pub funding_annualized: bool,
     // Macro MAs
     pub macro_indicators: crate::config::MacroIndicatorsConfig,
-    pub hourly_candles: Vec<crate::api::Candle>,
-    pub daily_candles: Vec<crate::api::Candle>,
-    pub weekly_candles: Vec<crate::api::Candle>,
-    pub monthly_candles: Vec<crate::api::Candle>,
+    pub hourly_candles: std::sync::Arc<[crate::api::Candle]>,
+    pub daily_candles: std::sync::Arc<[crate::api::Candle]>,
+    pub weekly_candles: std::sync::Arc<[crate::api::Candle]>,
+    pub monthly_candles: std::sync::Arc<[crate::api::Candle]>,
     /// Inverted visual mode (price axis flipped vertically).
     pub inverted: bool,
     /// Optional theme override for bullish candle visuals.

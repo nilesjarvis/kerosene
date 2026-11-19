@@ -59,6 +59,7 @@ impl ChartInstance {
             heatmap_status: None,
             heatmap_fetching: false,
             candle_fetch_request: None,
+            candle_cache_request: None,
             candle_stream_error: None,
             candle_repair_at_ms: None,
             candle_fetch_error: None,
@@ -69,6 +70,7 @@ impl ChartInstance {
             candle_backfill_exhausted: false,
             spot_candle_gap_reloaded_at_ms: None,
             secondary_candle_fetch_request: None,
+            secondary_candle_cache_request: None,
             secondary_candle_stream_error: None,
             secondary_candle_repair_at_ms: None,
             secondary_candle_fetch_error: None,
@@ -86,7 +88,6 @@ impl ChartInstance {
             earnings_pending_ticker: None,
             funding_fetch_request: None,
             funding_last_attempt_ms: None,
-            macro_candles_request_id: 0,
             macro_indicators: config::MacroIndicatorsConfig::default(),
             quick_trade_actions: Vec::new(),
             macro_menu_open: false,
@@ -99,12 +100,13 @@ impl ChartInstance {
     }
 
     pub(crate) fn set_symbol_identity(&mut self, symbol: String, display: String) -> bool {
-        let changed = self.symbol != symbol || self.symbol_display != display;
+        let symbol_changed = self.symbol != symbol;
+        let changed = symbol_changed || self.symbol_display != display;
         self.symbol = symbol.clone();
         self.symbol_display = display.clone();
         self.chart.set_symbol_key(symbol);
         self.chart.set_symbol_label(display);
-        if changed {
+        if symbol_changed {
             self.reset_primary_candle_trust();
             self.candle_backfill_exhausted = false;
             self.spot_candle_gap_reloaded_at_ms = None;
@@ -189,6 +191,7 @@ impl ChartInstance {
             heatmap_status: self.heatmap_status.clone(),
             heatmap_fetching: false,
             candle_fetch_request: None,
+            candle_cache_request: None,
             candle_stream_error: None,
             candle_repair_at_ms: None,
             candle_fetch_error: self.candle_fetch_error.clone(),
@@ -199,6 +202,7 @@ impl ChartInstance {
             candle_backfill_exhausted: self.candle_backfill_exhausted,
             spot_candle_gap_reloaded_at_ms: self.spot_candle_gap_reloaded_at_ms,
             secondary_candle_fetch_request: None,
+            secondary_candle_cache_request: None,
             secondary_candle_stream_error: None,
             secondary_candle_repair_at_ms: None,
             secondary_candle_fetch_error: self.secondary_candle_fetch_error.clone(),
@@ -216,7 +220,6 @@ impl ChartInstance {
             earnings_pending_ticker: None,
             funding_fetch_request: None,
             funding_last_attempt_ms: self.funding_last_attempt_ms,
-            macro_candles_request_id: 0,
             macro_indicators: self.macro_indicators.clone(),
             quick_trade_actions: self.quick_trade_actions.clone(),
             macro_menu_open: false,
@@ -233,6 +236,7 @@ impl ChartInstance {
     }
 
     pub(crate) fn reset_primary_candle_trust(&mut self) {
+        self.candle_cache_request = None;
         self.candle_stream_error = None;
         self.candle_repair_at_ms = None;
         self.candle_history_verified_at_ms = None;
@@ -242,6 +246,7 @@ impl ChartInstance {
     }
 
     pub(crate) fn reset_secondary_candle_trust(&mut self) {
+        self.secondary_candle_cache_request = None;
         self.secondary_candle_stream_error = None;
         self.secondary_candle_repair_at_ms = None;
         self.secondary_candle_history_verified_at_ms = None;
@@ -375,11 +380,6 @@ impl ChartInstance {
         false
     }
 
-    pub(crate) fn next_macro_candles_request_id(&mut self) -> u64 {
-        self.macro_candles_request_id = self.macro_candles_request_id.saturating_add(1);
-        self.macro_candles_request_id
-    }
-
     /// Create a new chart with the editor open and no symbol selected.
     pub(crate) fn new_empty(id: ChartId) -> Self {
         Self {
@@ -425,6 +425,7 @@ impl ChartInstance {
             heatmap_status: None,
             heatmap_fetching: false,
             candle_fetch_request: None,
+            candle_cache_request: None,
             candle_stream_error: None,
             candle_repair_at_ms: None,
             candle_fetch_error: None,
@@ -435,6 +436,7 @@ impl ChartInstance {
             candle_backfill_exhausted: false,
             spot_candle_gap_reloaded_at_ms: None,
             secondary_candle_fetch_request: None,
+            secondary_candle_cache_request: None,
             secondary_candle_stream_error: None,
             secondary_candle_repair_at_ms: None,
             secondary_candle_fetch_error: None,
@@ -452,7 +454,6 @@ impl ChartInstance {
             earnings_pending_ticker: None,
             funding_fetch_request: None,
             funding_last_attempt_ms: None,
-            macro_candles_request_id: 0,
             macro_indicators: config::MacroIndicatorsConfig::default(),
             quick_trade_actions: Vec::new(),
             macro_menu_open: false,

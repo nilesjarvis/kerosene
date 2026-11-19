@@ -265,5 +265,5 @@ fn runtime_layout_restore_defers_unresolved_legacy_spot_aliases() {
     assert_eq!(chart.secondary_symbol.as_deref(), Some("@0"));
     assert!(chart.candle_fetch_request.is_none());
     assert!(chart.secondary_candle_fetch_request.is_none());
-    assert_eq!(chart.macro_candles_request_id, 0);
+    assert!(terminal.chart_macro_history.is_empty());
 }

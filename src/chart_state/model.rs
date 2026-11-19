@@ -40,6 +40,13 @@ pub(crate) enum CandleFetchMode {
     Refresh,
     RepairTail,
     BackfillOlder,
+    WarmupOlder,
+}
+
+impl CandleFetchMode {
+    pub(crate) fn is_older(self) -> bool {
+        matches!(self, Self::BackfillOlder | Self::WarmupOlder)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,7 +78,9 @@ impl CandleFetchRequest {
             CandleFetchMode::Refresh | CandleFetchMode::RepairTail => {
                 crate::api::CandleFetchPolicy::NetworkOnly
             }
-            CandleFetchMode::BackfillOlder => crate::api::CandleFetchPolicy::CacheFirst,
+            CandleFetchMode::BackfillOlder | CandleFetchMode::WarmupOlder => {
+                crate::api::CandleFetchPolicy::CacheFirst
+            }
         }
     }
 }
@@ -221,6 +230,8 @@ pub(crate) struct ChartInstance {
     pub(crate) heatmap_fetching: bool,
     /// Latest in-flight historical candle request for stale-response guards.
     pub(crate) candle_fetch_request: Option<CandleFetchRequest>,
+    /// Initial disk read, independent of provider retry attempts.
+    pub(crate) candle_cache_request: Option<CandleFetchRequest>,
     /// Non-blocking refresh error shown while previously loaded candles remain visible.
     pub(crate) candle_stream_error: Option<String>,
     pub(crate) candle_repair_at_ms: Option<u64>,
@@ -245,6 +256,8 @@ pub(crate) struct ChartInstance {
     pub(crate) spot_candle_gap_reloaded_at_ms: Option<u64>,
     /// Latest in-flight secondary comparison candle request for stale-response guards.
     pub(crate) secondary_candle_fetch_request: Option<CandleFetchRequest>,
+    /// Initial disk read, independent of provider retry attempts.
+    pub(crate) secondary_candle_cache_request: Option<CandleFetchRequest>,
     /// Non-blocking secondary comparison refresh error.
     pub(crate) secondary_candle_stream_error: Option<String>,
     pub(crate) secondary_candle_repair_at_ms: Option<u64>,
@@ -272,8 +285,6 @@ pub(crate) struct ChartInstance {
     pub(crate) funding_fetch_request: Option<FundingFetchRequest>,
     /// Last time this chart attempted a funding history fetch.
     pub(crate) funding_last_attempt_ms: Option<u64>,
-    /// Latest macro candle request batch for stale-response guards.
-    pub(crate) macro_candles_request_id: u64,
     /// Active macro indicators configuration.
     pub(crate) macro_indicators: config::MacroIndicatorsConfig,
     /// Persisted one-click market actions shown in the Quick Trade panel.

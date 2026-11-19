@@ -126,14 +126,10 @@ impl TradingTerminal {
         {
             return Task::none();
         }
-        let symbol = instance.symbol.clone();
         if cloud.timeframe == EmaCloudTimeframe::Chart {
-            if instance.chart.candles.len() >= cloud.fast_period.max(cloud.slow_period) {
-                return Task::none();
-            }
-            self.queue_candle_fetch_for(id, &symbol, instance.interval, None)
+            self.ensure_chart_average_history(id)
         } else {
-            Task::batch(self.queue_macro_candles_tasks(id, &symbol))
+            Task::batch(self.queue_macro_history(Self::now_ms()))
         }
     }
 }

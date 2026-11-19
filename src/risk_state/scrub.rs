@@ -378,10 +378,10 @@ mod tests {
         chart.track_last_price_update(Some(100.0), 101.0, 1_000);
         chart.chart.set_hud_armed_at(true, 1_000);
         chart.chart.set_current_spread_at(Some(0.25), 1_000);
-        chart.chart.hourly_candles = vec![Candle::test_flat(500, 100.0)];
-        chart.chart.daily_candles = vec![Candle::test_flat(1_000, 100.0)];
-        chart.chart.weekly_candles = vec![Candle::test_flat(2_000, 100.0)];
-        chart.chart.monthly_candles = vec![Candle::test_flat(3_000, 100.0)];
+        chart.chart.hourly_candles = vec![Candle::test_flat(500, 100.0)].into();
+        chart.chart.daily_candles = vec![Candle::test_flat(1_000, 100.0)].into();
+        chart.chart.weekly_candles = vec![Candle::test_flat(2_000, 100.0)].into();
+        chart.chart.monthly_candles = vec![Candle::test_flat(3_000, 100.0)].into();
         chart.chart.funding_status = Some(("stale funding".to_string(), true));
         terminal.charts.insert(7, chart);
         terminal

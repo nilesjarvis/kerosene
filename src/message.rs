@@ -1454,7 +1454,11 @@ pub(crate) enum Message {
         FundingFetchRequest,
         Box<Result<Vec<FundingRatePoint>, String>>,
     ),
-    MacroCandlesLoaded(ChartId, u64, String, Timeframe, Result<Vec<Candle>, String>),
+    MacroCandlesCached(crate::chart_state::MacroCandleRequest, Vec<Candle>),
+    MacroCandlesLoaded(
+        crate::chart_state::MacroCandleRequest,
+        Result<Vec<Candle>, String>,
+    ),
     ChartWsCandleUpdate(ChartId, String, String, MarketDataSourceContext, Candle),
     ChartWsCandleUnavailable(ChartId, String, String, MarketDataSourceContext, String),
     ChartWsCandleLagged(ChartId, String, String, MarketDataSourceContext, u64),

@@ -2,6 +2,7 @@ use super::CandleLayerContext;
 use crate::api::Candle;
 use crate::chart::CandlestickChart;
 use crate::chart::indicators::calculate_ema;
+use crate::chart::moving_averages::candles_through_average_history;
 use crate::config::EmaCloudTimeframe;
 use iced::widget::canvas;
 use iced::{Color, Point, Rectangle};
@@ -22,7 +23,7 @@ impl CandlestickChart {
                     if !cloud.enabled || !cloud.is_valid() || cloud.opacity == 0 {
                         continue;
                     }
-                    let source = match cloud.timeframe {
+                    let source: &[Candle] = match cloud.timeframe {
                         EmaCloudTimeframe::Chart => &self.candles,
                         EmaCloudTimeframe::Hour => &self.hourly_candles,
                         EmaCloudTimeframe::Day => &self.daily_candles,
@@ -30,15 +31,19 @@ impl CandlestickChart {
                         EmaCloudTimeframe::Month => &self.monthly_candles,
                     };
                     let series = ema_cloud_series(source, cloud.fast_period, cloud.slow_period);
-                    let points: Vec<_> =
-                        visible_cloud_samples(&self.candles, &series, ctx.first_vis, ctx.last_vis)
-                            .into_iter()
-                            .map(|(index, fast, slow)| CloudEdge {
-                                fast: Point::new((ctx.idx_to_cx)(index), (ctx.price_to_y)(fast)),
-                                slow: Point::new((ctx.idx_to_cx)(index), (ctx.price_to_y)(slow)),
-                                bullish: fast >= slow,
-                            })
-                            .collect();
+                    let points: Vec<_> = visible_cloud_samples(
+                        candles_through_average_history(&self.candles, source),
+                        &series,
+                        ctx.first_vis,
+                        ctx.last_vis,
+                    )
+                    .into_iter()
+                    .map(|(index, fast, slow)| CloudEdge {
+                        fast: Point::new((ctx.idx_to_cx)(index), (ctx.price_to_y)(fast)),
+                        slow: Point::new((ctx.idx_to_cx)(index), (ctx.price_to_y)(slow)),
+                        bullish: fast >= slow,
+                    })
+                    .collect();
                     for band in cloud_bands(&points) {
                         ctx.fisheye.fill_projected_polygon_without_edge_blur(
                             frame,

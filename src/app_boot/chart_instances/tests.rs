@@ -122,7 +122,7 @@ fn boot_defers_legacy_regular_chart_series_until_metadata_migration() {
     assert_eq!(chart.secondary_symbol.as_deref(), Some("@0"));
     assert!(chart.candle_fetch_request.is_none());
     assert!(chart.secondary_candle_fetch_request.is_none());
-    assert_eq!(chart.macro_candles_request_id, 0);
+    assert!(chart.chart.hourly_candles.is_empty());
     assert!(chart.chart.candles.is_empty());
     assert!(
         chart

@@ -401,6 +401,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) preset_edit_idx: Option<(OrderKind, usize)>, // which preset is being edited
     // Multi-chart state: each chart pane has its own instance
     pub(crate) charts: HashMap<ChartId, ChartInstance>,
+    pub(crate) chart_macro_history:
+        HashMap<(String, Timeframe), crate::chart_state::MacroHistoryEntry>,
     pub(crate) chart_price_change_history: ChartPriceChangeHistory,
     pub(crate) chart_open_interest_caps: ChartOpenInterestCaps,
     pub(crate) next_chart_id: ChartId,

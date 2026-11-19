@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::chart::{CANDLE_GAP_RATIO, ChartViewport, MAX_CHART_CANDLES};
-use crate::chart_state::{CandleFetchRequest, ChartId};
+use crate::chart_state::{CandleFetchMode, CandleFetchRequest, ChartId};
 use crate::message::Message;
 
 use iced::Task;
@@ -40,11 +40,34 @@ impl TradingTerminal {
         self.maybe_backfill_chart_candles_for_viewport(chart_id, viewport)
     }
 
+    /// A sparse or truncated initial response may have too few closes to draw
+    /// the average even though the request covered its nominal time span.
+    pub(super) fn backfill_missing_average_seed(&mut self, chart_id: ChartId) -> Task<Message> {
+        let Some(instance) = self.charts.get(&chart_id) else {
+            return Task::none();
+        };
+        let Some(period) = crate::chart_indicator::enabled_average_period(
+            &instance.macro_indicators,
+            "chart_timeframe",
+        ) else {
+            return Task::none();
+        };
+        // Two seeded samples form the first drawable line segment or cloud.
+        let missing = (period + 1).saturating_sub(instance.chart.candles.len());
+        if missing > 0
+            && let Some(mut request) = self.plan_next_older_primary_candle_fetch(chart_id, missing)
+        {
+            request.mode = CandleFetchMode::WarmupOlder;
+            return self.queue_candle_fetch(request);
+        }
+        Task::none()
+    }
+
     pub(in crate::chart_update) fn continue_older_primary_candle_backfill(
         &mut self,
         chart_id: ChartId,
     ) -> Task<Message> {
-        match self.plan_next_older_primary_candle_fetch(chart_id) {
+        match self.plan_next_older_primary_candle_fetch(chart_id, MAX_CHART_CANDLES) {
             Some(request) => self.queue_candle_fetch(request),
             None => Task::none(),
         }
@@ -79,12 +102,13 @@ impl TradingTerminal {
             return None;
         }
 
-        self.plan_next_older_primary_candle_fetch(chart_id)
+        self.plan_next_older_primary_candle_fetch(chart_id, MAX_CHART_CANDLES)
     }
 
     fn plan_next_older_primary_candle_fetch(
         &self,
         chart_id: ChartId,
+        limit: usize,
     ) -> Option<CandleFetchRequest> {
         let instance = self.charts.get(&chart_id)?;
         let candle_count = instance.chart.candles.len();
@@ -105,7 +129,7 @@ impl TradingTerminal {
             instance.interval,
             self.chart_backfill_request_context_for_timeframe(instance.interval),
             oldest_loaded_open_ms,
-            MAX_CHART_CANDLES - candle_count,
+            limit.min(MAX_CHART_CANDLES - candle_count),
         )
     }
 

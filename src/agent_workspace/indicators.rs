@@ -139,6 +139,7 @@ impl TradingTerminal {
         let mut chart_results = Vec::with_capacity(chart_ids.len());
         let mut funding_fetch_ids = Vec::new();
         let mut changed_any = false;
+        let mut chart_average_ids = Vec::new();
 
         for chart_id in chart_ids {
             let Some(instance) = self.charts.get_mut(&chart_id) else {
@@ -152,10 +153,13 @@ impl TradingTerminal {
             let timeframe = instance.interval.label().to_string();
             let mut change_results = Vec::with_capacity(changes.len());
 
+            let mut needs_chart_history = false;
             for change in &changes {
                 let previous_enabled = change.indicator_id.is_enabled(instance);
                 let changed = change.indicator_id.set_enabled(instance, change.enabled);
                 changed_any |= changed;
+                needs_chart_history |=
+                    changed && change.enabled && change.indicator_id.group() == "chart_timeframe";
 
                 if change.indicator_id == ChartIndicatorId::FundingRate && changed {
                     if change.enabled {
@@ -177,6 +181,9 @@ impl TradingTerminal {
                 });
             }
 
+            if needs_chart_history {
+                chart_average_ids.push(chart_id);
+            }
             instance.chart.macro_indicators = instance.macro_indicators.clone();
             instance.chart.candle_cache.clear();
             chart_results.push(ChartIndicatorChartResult {
@@ -197,10 +204,16 @@ impl TradingTerminal {
         } else {
             Vec::new()
         };
-        let tasks = funding_fetch_ids
+        let mut tasks = funding_fetch_ids
             .into_iter()
             .map(|chart_id| self.maybe_fetch_chart_funding(chart_id))
             .collect::<Vec<_>>();
+        tasks.extend(
+            chart_average_ids
+                .into_iter()
+                .map(|id| self.ensure_chart_average_history(id)),
+        );
+        tasks.extend(self.queue_macro_history(Self::now_ms()));
 
         (
             AgentHostActionResponse {

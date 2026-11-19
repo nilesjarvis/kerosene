@@ -97,7 +97,10 @@ pagination may use a complete, finalized cache page and merges that page into
 the existing history.
 
 At application boot, an optional disk-cache read and the provider refresh run
-as independent tasks:
+as independent tasks. The disk read keeps its request identity through
+provider retries. A successful provider response or a
+chart reset retires the disk read. A transient provider error leaves the saved
+closed history available for the next open.
 
 ```text
 first frame
@@ -539,8 +542,27 @@ stable slot IDs (for example, `tf_ema_50` can use period 21). Missing or invalid
 periods retain the original 50/200/20/12 defaults, preserving old layouts.
 Temporary empty/zero edits keep the last valid period and are not persisted.
 Canvas labels and active badges display the effective period; detached charts
-and restored layouts retain it. Custom averages request additional warm-up
-history, bounded to 5000 candles and subject to the source's available history.
+and restored layouts retain it. Enabled averages request warm-up history
+for both default and custom periods. The initial request covers up to 5000
+source candles. A line starts once the source has enough bars to
+seed its period. A new listing or a realtime-only tick chart can still have
+too few bars. When a chart-timeframe refresh returns too few closes for a line
+segment, the chart requests the missing seed bars up to the available history.
+
+Open charts share fixed-timeframe Hyperliquid history by symbol and source
+interval. The longest enabled period across lines and EMA clouds sets the
+request range. On startup or layout restore, `MacroCandlesCached` delivers the
+contiguous closed candles from the existing disk cache. Those bars can render
+even during an outage. When the cache covers the requested warm-up, the
+network refresh starts at the penultimate cached bar. A short cache triggers
+a full read. `MacroCandlesLoaded` applies the provider response to every
+interested chart. Lines and clouds end at the last available source bucket.
+
+The status tick retries failed or empty reads after one minute, doubling the
+delay up to sixteen minutes. During normal operation it refreshes the tail
+near the source close or within fifteen minutes. The active chart timeframe
+continues to use the chart's own candle stream. Indicator periods share raw
+candles, so editing a period can reuse history already loaded by another pane.
 
 The same indicator menu includes **EMA clouds → + Add**. A chart supports up to
 eight independent clouds, each with two editable close-price EMA periods

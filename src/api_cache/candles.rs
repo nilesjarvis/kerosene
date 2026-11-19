@@ -31,21 +31,44 @@ fn load_fresh_candles_from_dir(
     timeframe: Timeframe,
     now_ms: u64,
 ) -> Result<Option<Vec<Candle>>, String> {
-    let Some(candles) = load_candle_snapshot_from_dir(root, source, symbol, timeframe.api_str())?
+    Ok(
+        load_contiguous_candles_from_dir(root, source, symbol, timeframe)?.filter(|candles| {
+            candles.last().is_some_and(|last| {
+                now_ms.saturating_sub(last.close_time) <= timeframe.cache_display_max_age_ms()
+            })
+        }),
+    )
+}
+
+/// A finalized historical prefix remains useful to an indicator after the chart
+/// display TTL expires. Its mutable tail is always fetched independently.
+pub(crate) fn load_macro_candle_history(
+    symbol: &str,
+    timeframe: Timeframe,
+) -> Result<Option<Vec<Candle>>, String> {
+    load_contiguous_candles_from_dir(
+        &cache_root()?,
+        ChartBackfillSource::Hyperliquid,
+        symbol,
+        timeframe,
+    )
+}
+
+fn load_contiguous_candles_from_dir(
+    root: &Path,
+    source: ChartBackfillSource,
+    symbol: &str,
+    timeframe: Timeframe,
+) -> Result<Option<Vec<Candle>>, String> {
+    let Some(mut candles) =
+        load_candle_snapshot_from_dir(root, source, symbol, timeframe.api_str())?
     else {
         return Ok(None);
     };
-    let Some(last_time) = candles.last().map(|candle| candle.close_time) else {
-        return Ok(None);
-    };
-    if now_ms.saturating_sub(last_time) > timeframe.cache_display_max_age_ms() {
-        return Ok(None);
-    }
     // Never surface a snapshot across an interior gap: a stale block stitched to
     // a fresh tail (e.g. by a sleep/wake live append) would otherwise be served
     // and re-saved on every boot, rendering as a phantom price jump. Serve only
     // the trailing contiguous run; older history is repopulated by backfill.
-    let mut candles = candles;
     let start = if cache_requires_exact_intervals(symbol, timeframe.api_str()) {
         trailing_exact_run_start(&candles, timeframe.duration_ms())
     } else {

@@ -198,6 +198,7 @@ impl TradingTerminal {
             preset_edit_buffer: String::new(),
             preset_edit_idx: None,
             charts: parts.charts,
+            chart_macro_history: Default::default(),
             chart_price_change_history: Default::default(),
             chart_open_interest_caps: Default::default(),
             next_chart_id: parts.next_chart_id,

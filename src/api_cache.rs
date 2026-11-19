@@ -11,7 +11,7 @@ mod writer;
 
 pub(crate) use candles::{
     cache_eligible, cache_requires_exact_intervals, load_candles_for_range, load_fresh_candles,
-    merge_candle_page, remove_candles, save_candles_snapshot,
+    load_macro_candle_history, merge_candle_page, remove_candles, save_candles_snapshot,
 };
 pub(crate) use storage::write_bytes_atomic;
 

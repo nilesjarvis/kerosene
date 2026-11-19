@@ -130,6 +130,7 @@ pub(super) fn chart_fetch_status_label(
             .as_ref()
             .map(|request| request.mode)
         {
+            Some(CandleFetchMode::WarmupOlder) => "Loading indicator history",
             Some(CandleFetchMode::BackfillOlder) => "Loading history",
             Some(CandleFetchMode::Refresh)
                 if instance.candle_history_verified_at_ms.is_none()

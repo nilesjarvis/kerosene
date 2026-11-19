@@ -99,7 +99,7 @@ where
         let dash_segments = if spec.use_ema { &EMA_DASH[..] } else { &[] };
         let color = spec.color_role.color(self.theme);
         self.draw_series(
-            chart_candles,
+            super::candles_through_average_history(chart_candles, spec.source_candles),
             &series,
             color,
             &spec.label,
@@ -117,7 +117,7 @@ where
         dash_segments: &[f32],
         show_labels: bool,
     ) {
-        if ma_series.is_empty() || chart_candles.is_empty() {
+        if ma_series.is_empty() || self.first_vis >= chart_candles.len() {
             return;
         }
 
@@ -125,7 +125,7 @@ where
             chart_candles,
             ma_series,
             first_vis: self.first_vis,
-            last_vis: self.last_vis,
+            last_vis: self.last_vis.min(chart_candles.len() - 1),
             chart_w: self.chart_w,
             candle_w: self.candle_w,
             idx_to_cx: self.idx_to_cx,
@@ -189,6 +189,17 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cached_source_only_draws_through_its_last_known_bucket() {
+        let displayed = [1_000, 60_999, 61_000].map(|t| Candle::test_flat(t, 2.0));
+        let source = [Candle::test_flat(1_000, 2.0)];
+        assert_eq!(
+            super::super::candles_through_average_history(&displayed, &source).len(),
+            2
+        );
+        assert!(super::super::candles_through_average_history(&displayed, &[]).is_empty());
+    }
 
     #[test]
     fn moving_average_specs_use_custom_periods_for_sma_and_ema() {

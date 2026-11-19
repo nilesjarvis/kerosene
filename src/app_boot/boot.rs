@@ -169,6 +169,7 @@ impl TradingTerminal {
         boot_tasks.push(state.request_session_data_refresh_all(false));
         boot_tasks.push(connect_task);
 
+        boot_tasks.extend(state.queue_macro_history(Self::now_ms()));
         boot_tasks.extend(state.boot_window_tasks(&cfg));
 
         if state.is_calendar_open() {

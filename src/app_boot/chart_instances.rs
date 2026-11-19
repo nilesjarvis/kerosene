@@ -55,6 +55,7 @@ impl TradingTerminal {
                     .with_moving_average_history(&instance.macro_indicators);
                     instance.candle_fetch_request = Some(request.clone());
                     if can_load_cached_candles {
+                        instance.candle_cache_request = Some(request.clone());
                         boot_tasks.push(Self::load_cached_candles_task(
                             request.clone(),
                             CandleCacheTarget::Primary,
@@ -66,15 +67,6 @@ impl TradingTerminal {
                     ));
                 } else if !tf.uses_candle_backfill() {
                     instance.chart.status = crate::chart::ChartStatus::Loaded;
-                }
-                if !defer_primary_legacy_spot {
-                    let macro_request_id = instance.next_macro_candles_request_id();
-                    boot_tasks.extend(Self::fetch_macro_candles_tasks(
-                        id,
-                        macro_request_id,
-                        &chart_cfg.symbol,
-                        &instance.macro_indicators,
-                    ));
                 }
             } else if !chart_cfg.symbol.is_empty() {
                 Self::clear_chart_for_muted_symbol(&mut instance);
@@ -100,6 +92,7 @@ impl TradingTerminal {
                 );
                 instance.secondary_candle_fetch_request = Some(request.clone());
                 if can_load_cached_candles {
+                    instance.secondary_candle_cache_request = Some(request.clone());
                     boot_tasks.push(Self::load_cached_candles_task(
                         request.clone(),
                         CandleCacheTarget::Secondary,
