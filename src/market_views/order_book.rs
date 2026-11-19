@@ -33,6 +33,7 @@ impl TradingTerminal {
             OrderBookSymbolMode::Active => self.active_symbol.as_str(),
             OrderBookSymbolMode::Fixed(symbol) => symbol.as_str(),
         };
+        let title_row = self.view_order_book_title(id, inst, tracking_symbol, &theme);
         if !tracking_symbol.is_empty() && self.symbol_key_is_hidden(tracking_symbol) {
             let hidden_label = if self.is_ticker_muted(tracking_symbol) {
                 "Muted ticker"
@@ -41,8 +42,7 @@ impl TradingTerminal {
             };
             // Keep the real title row (and settings panel) so the user can
             // still rebind the widget to another symbol from here.
-            let mut content =
-                column![self.view_order_book_title(id, inst), rule::horizontal(1)].spacing(8);
+            let mut content = column![title_row, rule::horizontal(1)].spacing(8);
             if inst.settings_open {
                 content = content.push(self.view_order_book_settings(id, inst));
             }
@@ -82,7 +82,6 @@ impl TradingTerminal {
         };
         let render_tick = inst.displayed_tick_size();
         let waiting_for_selected_precision = !helpers::tick_sizes_match(render_tick, tick);
-        let title_row = self.view_order_book_title(id, inst);
         let outcome_metadata = self.view_order_book_outcome_metadata(tracking_symbol, inst);
 
         let book_has_rows = !inst.book.bids.is_empty() || !inst.book.asks.is_empty();

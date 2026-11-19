@@ -72,6 +72,8 @@ impl TradingTerminal {
         &self,
         id: OrderBookId,
         inst: &OrderBookInstance,
+        tracking_symbol: &str,
+        theme: &Theme,
     ) -> Element<'_, Message> {
         let is_active = matches!(inst.mode, OrderBookSymbolMode::Active);
 
@@ -82,15 +84,19 @@ impl TradingTerminal {
 
         let book_has_rows = !inst.book.bids.is_empty() || !inst.book.asks.is_empty();
 
+        let mut title = row![active_indicator(is_active)]
+            .spacing(2)
+            .align_y(iced::Alignment::Center);
+        if let Some(icon) = helpers::symbol_icon(tracking_symbol, 14, theme.palette().text)
+            .or_else(|| helpers::symbol_icon(&tracking_label, 14, theme.palette().text))
+        {
+            title = title.push(icon);
+        }
         let tracking_text = text(tracking_label)
             .size(10)
             .style(move |theme: &Theme| text::Style {
                 color: Some(theme.extended_palette().background.strong.text),
             });
-
-        let title = row![active_indicator(is_active), tracking_text]
-            .spacing(2)
-            .align_y(iced::Alignment::Center);
 
         // Fixed-size status badges live in the title row so background
         // refreshes and transient errors never reflow the book below.
@@ -105,6 +111,7 @@ impl TradingTerminal {
         }
 
         title
+            .push(tracking_text)
             .push(container(status).width(44).height(16).center_y(16))
             .push(iced::widget::Space::new().width(Fill))
             .push(Element::from(display_mode_button(
