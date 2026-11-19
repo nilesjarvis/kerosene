@@ -128,8 +128,6 @@ impl TradingTerminal {
             return stack(hidden_layers).width(Fill).height(Fill).into();
         }
 
-        // The toolbar elements are now integrated directly into the header row.
-
         // Determine status message overlay (if any)
         let status_overlay: Option<Element<'_, Message>> = match &instance.chart.status {
             ChartStatus::Loading if instance.chart.candles.is_empty() => {
@@ -183,6 +181,14 @@ impl TradingTerminal {
                 view_chart_surface_status_badge(instance, &theme, self.status_bar_now_ms)
             {
                 canvas_layers.push(surface_status);
+            }
+            if let Some(style_bar) = toolbar::view_annotation_style_bar(
+                chart_id,
+                surface_id,
+                instance,
+                self.active_chart_surface_tool(chart_id, surface_id),
+            ) {
+                canvas_layers.push(style_bar);
             }
             let chart_surface: Element<'_, Message> =
                 stack(canvas_layers).width(Fill).height(Fill).into();

@@ -96,6 +96,13 @@ impl AnchoredMenuOverlay<'_, '_> {
                 self.anchor.x + self.anchor.width - menu_size.width - MENU_HORIZONTAL_INSET
             }
         };
+        // The drawing palette is anchored to the chart toolbar. Keep it inside
+        // the pane as long as the pane can accommodate the menu.
+        let x = if self.kind == MenuKind::DrawingTools {
+            x.min((self.anchor.x + self.anchor.width - menu_size.width).max(self.anchor.x))
+        } else {
+            x
+        };
         let x = clamp_to_viewport(x, menu_size.width, self.viewport.x, self.viewport.width);
 
         // Open directly below the anchoring bar so the dropdown never overlaps
@@ -121,10 +128,14 @@ impl overlay::Overlay<Message, Theme, iced::Renderer> for AnchoredMenuOverlay<'_
 
         self.animation.ensure_mounted(self.kind);
 
+        let mut available = viewport.size();
+        if self.kind == MenuKind::DrawingTools {
+            available.width = available.width.min(self.anchor.width);
+        }
         let mut node = self.content.as_widget_mut().layout(
             self.tree,
             renderer,
-            &layout::Limits::new(Size::ZERO, viewport.size()),
+            &layout::Limits::new(Size::ZERO, available),
         );
         let menu_size = node.size();
 
@@ -152,11 +163,29 @@ impl overlay::Overlay<Message, Theme, iced::Renderer> for AnchoredMenuOverlay<'_
             shell.request_redraw();
         }
 
-        if let Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) = event
-            && cursor
-                .position()
-                .is_some_and(|point| !layout.bounds().contains(point))
-        {
+        let drawing_menu = matches!(self.kind, MenuKind::DrawingTools | MenuKind::DrawingColors);
+        let dismiss = match event {
+            Event::Mouse(mouse::Event::ButtonPressed(button))
+                if drawing_menu || *button == mouse::Button::Left =>
+            {
+                cursor
+                    .position()
+                    .is_some_and(|point| !layout.bounds().contains(point))
+            }
+            Event::Touch(iced::touch::Event::FingerPressed { position, .. }) if drawing_menu => {
+                !layout.bounds().contains(*position)
+            }
+            Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                ..
+            }) if drawing_menu => {
+                // The window's EscapePressed handler dismisses this palette first.
+                shell.capture_event();
+                return;
+            }
+            _ => false,
+        };
+        if dismiss {
             shell.publish(Message::CloseAllMenus);
             shell.capture_event();
             return;

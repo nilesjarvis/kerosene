@@ -70,6 +70,8 @@ impl TradingTerminal {
             && instance.chart.surface_id() == surface_id
         {
             instance.chart.active_tool = None;
+            instance.drawing_menu = None;
+            instance.selected_annotation = None;
         }
 
         let quick_order_surface = self

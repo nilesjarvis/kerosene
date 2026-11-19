@@ -291,6 +291,7 @@ impl CandlestickChart {
         }
 
         if self.active_tool.is_some() && visual_pos.x < chart_w && visual_pos.y < chart_h {
+            state.selected_annotation = None;
             state.draft_tool = None;
             state.draft_anchors.clear();
             if state.drag == Some(DragKind::DrawPen) {

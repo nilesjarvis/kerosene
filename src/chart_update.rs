@@ -152,12 +152,6 @@ impl TradingTerminal {
                     self.persist_config();
                 }
             }
-            Message::ToggleChartDrawingToolbar(id) => {
-                if let Some(instance) = self.charts.get_mut(&id) {
-                    instance.drawing_toolbar_collapsed = !instance.drawing_toolbar_collapsed;
-                    self.persist_config();
-                }
-            }
             Message::ChartFocused(id) if self.charts.contains_key(&id) => {
                 self.primary_chart_id = Some(id);
                 if let Some((workspace, pane)) = self.find_workspace_pane_matching(
@@ -192,6 +186,8 @@ impl TradingTerminal {
                     && should_reset
                 {
                     instance.chart.request_view_reset();
+                    instance.selected_annotation = None;
+                    instance.drawing_menu = None;
                     instance.heatmap_viewport = None;
                     instance.heatmap_last_fetch = None;
                     instance.heatmap_fetching = false;

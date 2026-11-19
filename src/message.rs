@@ -5,7 +5,7 @@ use crate::agent_pnl_card::{AgentPnlCardLoadResult, AgentPnlCardPath};
 use crate::agent_runtime::AgentRuntimeEvent;
 use crate::agent_state::{AgentPersistenceResult, AgentPrompt, AgentUri};
 use crate::alfred_state::{AlfredCommandId, AlfredSelectionStep};
-use crate::annotations::{Annotation, AnnotationId, AnnotationStyle, DrawingTool};
+use crate::annotations::{Annotation, AnnotationId, AnnotationStyle, DrawingMenu, DrawingTool};
 use crate::api::{self, Candle, OrderBook};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::canvas_state::{CanvasId, WorkspaceId};
@@ -1222,6 +1222,7 @@ pub(crate) enum Message {
     XFeedLoaded(XFeedSource, u64, XFeedPageMessageResult),
     XProfileImageLoaded(u64, XProfileImageMessageResult),
     // Drawing tools
+    ToggleDrawingMenu(ChartId, ChartSurfaceId, DrawingMenu),
     SetDrawingTool(ChartId, ChartSurfaceId, Option<DrawingTool>),
     AddAnnotation(ChartId, Annotation),
     RemoveAnnotation(ChartId, AnnotationId),
@@ -1497,7 +1498,6 @@ pub(crate) enum Message {
     ToggleChartInvert(ChartId),
     ToggleChartTradeMarkers(ChartId),
     ToggleChartHeaderCollapsed(ChartId),
-    ToggleChartDrawingToolbar(ChartId),
     OpenDetachedChart(ChartId),
     OpenDetachedChartForSymbol(String),
     ChartOpenEditor(ChartId),

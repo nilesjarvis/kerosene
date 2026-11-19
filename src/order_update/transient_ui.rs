@@ -16,11 +16,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn clear_workspace_transient_order_ui(&mut self, workspace: WorkspaceId) {
-        if let Some(form) = &mut self.position_tpsl.form
-            && form.workspace == workspace
-        {
-            form.visible = false;
-        }
         let chart_ids = self
             .workspace_panes(workspace)
             .into_iter()
@@ -31,6 +26,16 @@ impl TradingTerminal {
             })
             .collect::<Vec<_>>();
 
+        for &id in &chart_ids {
+            if self.dismiss_drawing_menu(id, ChartSurfaceId::Docked(id)) {
+                return;
+            }
+        }
+        if let Some(form) = &mut self.position_tpsl.form
+            && form.workspace == workspace
+        {
+            form.visible = false;
+        }
         for chart_id in chart_ids {
             self.clear_chart_surface_state(chart_id, ChartSurfaceId::Docked(chart_id));
             if let Some(instance) = self.charts.get_mut(&chart_id) {

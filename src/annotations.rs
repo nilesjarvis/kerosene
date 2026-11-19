@@ -10,6 +10,12 @@ mod tests;
 
 pub type AnnotationId = u64;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DrawingMenu {
+    Tools,
+    Colors(AnnotationId),
+}
+
 /// A single (timestamp_ms, price) anchor point.
 pub type Anchor = (u64, f64);
 

@@ -17,7 +17,6 @@ impl ChartInstance {
         instance.chart.show_trade_markers = config.show_trade_markers;
         instance.show_earnings_markers = config.show_earnings_markers;
         instance.header_collapsed = config.header_collapsed;
-        instance.drawing_toolbar_collapsed = config.drawing_toolbar_collapsed;
         instance
             .chart
             .set_funding_panel_height(config.funding_panel_height as f32);

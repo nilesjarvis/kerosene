@@ -8,6 +8,7 @@ impl TradingTerminal {
     pub(crate) fn close_chart_header_menus(&mut self) {
         for inst in self.charts.values_mut() {
             inst.macro_menu_open = false;
+            inst.drawing_menu = None;
         }
         for inst in self.spaghetti_charts.values_mut() {
             inst.style_menu_open = false;

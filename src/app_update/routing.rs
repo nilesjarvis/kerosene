@@ -619,7 +619,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SetPortfolioScope(_)
         | Message::SetPortfolioWindow(_) => UpdateRoute::PortfolioIncome,
 
-        Message::SetDrawingTool(_, _, _)
+        Message::ToggleDrawingMenu(_, _, _)
+        | Message::SetDrawingTool(_, _, _)
         | Message::AddAnnotation(_, _)
         | Message::RemoveAnnotation(_, _)
         | Message::UpdateAnnotation(_, _)
@@ -694,7 +695,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleChartInvert(_)
         | Message::ToggleChartTradeMarkers(_)
         | Message::ToggleChartHeaderCollapsed(_)
-        | Message::ToggleChartDrawingToolbar(_)
         | Message::ChartOpenEditor(_)
         | Message::ChartCloseEditor(_)
         | Message::ChartEditorSearchChanged(_, _)

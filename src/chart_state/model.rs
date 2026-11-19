@@ -1,5 +1,5 @@
 use crate::account::AssetContext;
-use crate::annotations::{Annotation, AnnotationId};
+use crate::annotations::{Annotation, AnnotationId, DrawingMenu};
 use crate::api::SecEarningsEvent;
 use crate::app_state::TradingTerminal;
 use crate::chart::{CandlestickChart, ChartViewport};
@@ -176,8 +176,7 @@ pub(crate) struct ChartInstance {
     pub(crate) editor_open: bool,
     /// Whether the chart header is collapsed to a ticker-only strip.
     pub(crate) header_collapsed: bool,
-    /// Whether the drawing-tools toolbar row is collapsed to just its toggle.
-    pub(crate) drawing_toolbar_collapsed: bool,
+    pub(crate) drawing_menu: Option<(ChartSurfaceId, DrawingMenu)>,
     /// Search query text for the symbol editor.
     pub(crate) editor_search_query: String,
     /// Search result index currently highlighted for keyboard selection.

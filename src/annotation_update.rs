@@ -1,23 +1,53 @@
+use crate::annotations::{DrawingMenu, DrawingTool};
 use crate::app_state::TradingTerminal;
-use crate::chart_state::ChartInstance;
+use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
 use iced::Task;
 
 impl TradingTerminal {
+    pub(crate) fn dismiss_drawing_menu(
+        &mut self,
+        chart_id: ChartId,
+        surface: ChartSurfaceId,
+    ) -> bool {
+        self.charts.get_mut(&chart_id).is_some_and(|instance| {
+            instance
+                .drawing_menu
+                .take_if(|(owner, _)| *owner == surface)
+                .is_some()
+        })
+    }
+
     pub(crate) fn update_annotations(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::SetDrawingTool(chart_id, surface_id, tool) => {
-                if !self.charts.contains_key(&chart_id) {
+            Message::ToggleDrawingMenu(chart_id, surface_id, menu) => {
+                let Some(instance) = self.charts.get(&chart_id) else {
+                    return Task::none();
+                };
+                if let DrawingMenu::Colors(id) = menu
+                    && (instance.selected_annotation != Some(id)
+                        || self.active_chart_surface_tool(chart_id, surface_id)
+                            != Some(DrawingTool::Select))
+                {
                     return Task::none();
                 }
+                let opening = instance.drawing_menu != Some((surface_id, menu));
+                self.close_chart_header_menus();
+                if opening && let Some(instance) = self.charts.get_mut(&chart_id) {
+                    instance.drawing_menu = Some((surface_id, menu));
+                }
+            }
+            Message::SetDrawingTool(chart_id, surface_id, tool) => {
+                let Some(instance) = self.charts.get_mut(&chart_id) else {
+                    return Task::none();
+                };
+                instance.drawing_menu = None;
                 if let Some(tool) = tool {
                     self.chart_surface_active_tools.insert(surface_id, tool);
                 } else {
                     self.chart_surface_active_tools.remove(&surface_id);
                 }
-                if let Some(instance) = self.charts.get_mut(&chart_id)
-                    && instance.chart.surface_id() == surface_id
-                {
+                if instance.chart.surface_id() == surface_id {
                     instance.chart.active_tool = tool;
                 }
             }
@@ -47,6 +77,7 @@ impl TradingTerminal {
                     instance.annotations.retain(|a| a.id != annotation_id);
                     if instance.selected_annotation == Some(annotation_id) {
                         instance.selected_annotation = None;
+                        instance.drawing_menu = None;
                     }
                     mirror_annotations(instance);
                     self.persist_config();
@@ -70,6 +101,7 @@ impl TradingTerminal {
             Message::SelectAnnotation(chart_id, annotation_id) => {
                 if let Some(instance) = self.charts.get_mut(&chart_id) {
                     instance.selected_annotation = annotation_id;
+                    instance.drawing_menu = None;
                 }
             }
             Message::RestyleAnnotation(chart_id, annotation_id, style) => {
@@ -83,6 +115,10 @@ impl TradingTerminal {
                     candidate.style = style;
                     if candidate.is_valid() {
                         *slot = candidate;
+                        if matches!(instance.drawing_menu, Some((_, DrawingMenu::Colors(id))) if id == annotation_id)
+                        {
+                            instance.drawing_menu = None;
+                        }
                         mirror_annotations(instance);
                         self.persist_config();
                     }
@@ -94,6 +130,8 @@ impl TradingTerminal {
                     && instance.chart.surface_id() == surface_id
                 {
                     instance.chart.active_tool = None;
+                    instance.drawing_menu = None;
+                    instance.selected_annotation = None;
                 }
             }
             _ => {}
@@ -132,6 +170,62 @@ mod tests {
         mirror_annotations(&mut instance);
         terminal.charts.insert(7, instance);
         terminal
+    }
+
+    #[test]
+    fn choosing_a_tool_closes_the_palette_and_arms_only_its_surface() {
+        let mut terminal = terminal_with_annotation(level(5));
+        let surface = ChartSurfaceId::Docked(7);
+        let detached = ChartSurfaceId::Detached(iced::window::Id::unique());
+        let original_config = terminal.chart_configs_snapshot();
+        let toggle = Message::ToggleDrawingMenu(7, surface, DrawingMenu::Tools);
+        let _ = terminal.update(toggle.clone());
+        assert_eq!(
+            terminal.charts[&7].drawing_menu,
+            Some((surface, DrawingMenu::Tools))
+        );
+        assert_eq!(terminal.chart_configs_snapshot(), original_config);
+        let _ = terminal.update(Message::SetDrawingTool(7, surface, Some(DrawingTool::Ray)));
+        assert_eq!(terminal.charts[&7].drawing_menu, None);
+        assert_eq!(
+            terminal.active_chart_surface_tool(7, surface),
+            Some(DrawingTool::Ray)
+        );
+        assert_eq!(terminal.active_chart_surface_tool(7, detached), None);
+
+        let _ = terminal.update(toggle);
+        let _ = terminal.update(Message::CloseAllMenus);
+        assert_eq!(terminal.charts[&7].drawing_menu, None);
+        assert_eq!(
+            terminal.active_chart_surface_tool(7, surface),
+            Some(DrawingTool::Ray)
+        );
+    }
+
+    #[test]
+    fn drawing_colors_follow_the_selection_and_close_on_restyle_or_deselection() {
+        let mut terminal = terminal_with_annotation(level(5));
+        let surface = ChartSurfaceId::Docked(7);
+        let colors = DrawingMenu::Colors(5);
+        let toggle = Message::ToggleDrawingMenu(7, surface, colors);
+        let _ = terminal.update(toggle.clone());
+        assert_eq!(terminal.charts[&7].drawing_menu, None);
+        let _ = terminal.update(Message::SetDrawingTool(
+            7,
+            surface,
+            Some(DrawingTool::Select),
+        ));
+        let _ = terminal.update(toggle.clone());
+        assert_eq!(terminal.charts[&7].drawing_menu, Some((surface, colors)));
+        let mut style = terminal.charts[&7].annotations[0].style.clone();
+        style.color = crate::annotations::DEFAULT_LEVEL_COLOR;
+        let _ = terminal.update(Message::RestyleAnnotation(7, 5, style.clone()));
+        assert_eq!(terminal.charts[&7].drawing_menu, None);
+        assert_eq!(terminal.charts[&7].chart.annotations[0].style, style);
+        let _ = terminal.update(toggle.clone());
+        let _ = terminal.update(Message::SelectAnnotation(7, None));
+        let _ = terminal.update(toggle);
+        assert_eq!(terminal.charts[&7].drawing_menu, None);
     }
 
     #[test]

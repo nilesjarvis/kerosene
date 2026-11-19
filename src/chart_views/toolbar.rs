@@ -1,5 +1,11 @@
+mod drawing;
 mod sections;
+mod selection;
 
+pub(super) use selection::view_annotation_style_bar;
+
+use crate::account_views::{AnchoredAccountMenu, AnchoredMenuLayer, MenuAlignment, MenuKind};
+use crate::annotations::DrawingMenu;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
@@ -43,33 +49,24 @@ impl TradingTerminal {
             ChartSurfaceId::Docked(_) => None,
         };
 
-        // Row 1: timeframe, indicators, reload, reset, header collapse, status,
-        // and the chart-mode toggles (invert / fills).
-        let mut controls_row = if let Some(btn) = header_collapse_btn {
-            row![
-                tf_picker,
-                sections::chart_toolbar_separator(),
-                indicator_btn,
-                sections::chart_toolbar_separator(),
-                reload_btn,
-                sections::chart_toolbar_separator(),
-                reset_view_btn,
-                sections::chart_toolbar_separator(),
-                btn,
-            ]
-        } else {
-            row![
-                tf_picker,
-                sections::chart_toolbar_separator(),
-                indicator_btn,
-                sections::chart_toolbar_separator(),
-                reload_btn,
-                sections::chart_toolbar_separator(),
-                reset_view_btn,
-            ]
-        }
+        let mut controls_row = row![
+            tf_picker,
+            sections::chart_toolbar_separator(),
+            indicator_btn,
+            sections::chart_toolbar_separator(),
+            drawing::view_drawing_button(chart_id, surface_id, instance, active_tool),
+            sections::chart_toolbar_separator(),
+            reload_btn,
+            sections::chart_toolbar_separator(),
+            reset_view_btn,
+        ]
         .spacing(0)
         .align_y(iced::Alignment::Center);
+        if let Some(btn) = header_collapse_btn {
+            controls_row = controls_row
+                .push(sections::chart_toolbar_separator())
+                .push(btn);
+        }
 
         if let Some(status) = sections::chart_fetch_status_label(has_candles, instance, &theme) {
             controls_row = controls_row
@@ -78,11 +75,14 @@ impl TradingTerminal {
         }
         controls_row = sections::push_chart_mode_buttons(controls_row, chart_id, instance);
 
-        // Row 2: collapsible drawing tools + selection style bar.
-        let tools_row =
-            sections::view_drawing_toolbar_row(chart_id, surface_id, instance, active_tool);
-
-        sections::chart_toolbar_strip(controls_row, tools_row)
+        let menu = (instance.drawing_menu == Some((surface_id, DrawingMenu::Tools))).then(|| {
+            AnchoredMenuLayer {
+                kind: MenuKind::DrawingTools,
+                alignment: MenuAlignment::Start,
+                content: drawing::tool_palette(chart_id, surface_id, active_tool),
+            }
+        });
+        AnchoredAccountMenu::new(sections::chart_toolbar_strip(controls_row), menu).into()
     }
 }
 
@@ -105,5 +105,59 @@ fn chart_toolbar_pick_list_style(theme: &Theme, status: pick_list::Status) -> pi
             width: 0.0,
             color: Color::TRANSPARENT,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::annotations::DrawingTool;
+    use crate::timeframe::Timeframe;
+    use iced::advanced::renderer::Headless;
+    use iced::advanced::{layout, widget::Tree};
+    use iced::{Font, Pixels, Renderer, Size};
+
+    #[tokio::test]
+    async fn drawing_tools_and_open_palette_keep_the_chart_toolbar_height_stable() {
+        let renderer = Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+            .await
+            .expect("software renderer");
+        let mut terminal = TradingTerminal::boot().0;
+        let surface = ChartSurfaceId::Docked(7);
+        terminal
+            .charts
+            .insert(7, ChartInstance::new(7, "BTC".into(), Timeframe::H1));
+        for width in [260.0, 320.0, 680.0] {
+            let mut idle_height = None;
+            for (tool, open) in [
+                (None, false),
+                (None, true),
+                (Some(DrawingTool::HorizontalLevel), false),
+                (Some(DrawingTool::FibRetracement), false),
+                (Some(DrawingTool::VerticalLine), true),
+            ] {
+                let _ = terminal.update_annotations(Message::SetDrawingTool(7, surface, tool));
+                if open {
+                    let _ = terminal.update_annotations(Message::ToggleDrawingMenu(
+                        7,
+                        surface,
+                        DrawingMenu::Tools,
+                    ));
+                }
+                let mut view = terminal.view_chart_toolbar(7, &terminal.charts[&7], surface);
+                let mut tree = Tree::new(view.as_widget());
+                let node = view.as_widget_mut().layout(
+                    &mut tree,
+                    &renderer,
+                    &layout::Limits::new(Size::ZERO, Size::new(width, 300.0)),
+                );
+                let height = node.size().height;
+                assert_eq!(
+                    height,
+                    *idle_height.get_or_insert(height),
+                    "width {width}, tool {tool:?}, open {open}"
+                );
+            }
+        }
     }
 }

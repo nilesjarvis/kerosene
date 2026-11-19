@@ -482,7 +482,11 @@ impl TradingTerminal {
             return;
         };
 
-        self.clear_chart_surface_state(chart_id, ChartSurfaceId::Detached(window_id));
+        let surface = ChartSurfaceId::Detached(window_id);
+        if self.dismiss_drawing_menu(chart_id, surface) {
+            return;
+        }
+        self.clear_chart_surface_state(chart_id, surface);
         if let Some(instance) = self.charts.get_mut(&chart_id) {
             instance.editor_open = false;
             instance.editor_search_query.clear();

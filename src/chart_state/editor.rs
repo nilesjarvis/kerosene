@@ -186,6 +186,7 @@ impl TradingTerminal {
         self.primary_chart_id = Some(chart_id);
         for inst in self.charts.values_mut() {
             inst.macro_menu_open = false;
+            inst.drawing_menu = None;
         }
         if let Some(instance) = self.charts.get_mut(&chart_id) {
             instance.editor_open = true;

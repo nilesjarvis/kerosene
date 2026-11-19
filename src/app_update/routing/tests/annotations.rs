@@ -1,5 +1,5 @@
 use super::*;
-use crate::annotations::{Annotation, AnnotationKind, AnnotationStyle, DrawingTool};
+use crate::annotations::{Annotation, AnnotationKind, AnnotationStyle, DrawingMenu, DrawingTool};
 use crate::chart_state::ChartSurfaceId;
 
 fn sample_annotation(id: u64) -> Annotation {
@@ -13,6 +13,10 @@ fn sample_annotation(id: u64) -> Annotation {
 #[test]
 fn drawing_and_annotation_messages_route_to_annotations() {
     let surface = ChartSurfaceId::Docked(7);
+    assert_route(
+        Message::ToggleDrawingMenu(7, surface, DrawingMenu::Tools),
+        UpdateRoute::Annotations,
+    );
     assert_route(
         Message::SetDrawingTool(7, surface, Some(DrawingTool::Rectangle)),
         UpdateRoute::Annotations,

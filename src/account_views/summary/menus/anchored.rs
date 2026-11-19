@@ -34,6 +34,8 @@ pub(crate) enum MenuKind {
     AccountPicker,
     LayoutSwitcher,
     AddWidget,
+    DrawingTools,
+    DrawingColors,
 }
 
 pub(crate) struct AnchoredMenuLayer<'a> {

@@ -12,7 +12,6 @@ fn chart_restoration_preserves_settings_and_filters_invalid_entries_in_both_path
     saved.show_trade_markers = true;
     saved.show_earnings_markers = true;
     saved.header_collapsed = true;
-    saved.drawing_toolbar_collapsed = true;
     saved.funding_panel_height = 80;
     saved.session_panel_height = 96;
     saved.macro_indicators.show_funding_rate = true;

@@ -1,4 +1,4 @@
-use crate::annotations::DrawingTool;
+use crate::annotations::{DrawingMenu, DrawingTool};
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartInstance, ChartSurfaceId, DetachedChartWindowState};
 use crate::message::Message;
@@ -67,6 +67,18 @@ fn workspace_escape_clears_only_the_originating_workspace() {
         ChartSurfaceId::Docked(canvas_chart_id),
         DrawingTool::HorizontalLevel,
     );
+
+    let main_surface = ChartSurfaceId::Docked(main_chart_id);
+    let _ = terminal.update_annotations(Message::ToggleDrawingMenu(
+        main_chart_id,
+        main_surface,
+        DrawingMenu::Tools,
+    ));
+    let _ = terminal.update_order(Message::EscapePressed(main_window_id));
+    let main_chart = &terminal.charts[&main_chart_id];
+    assert!(main_chart.drawing_menu.is_none());
+    assert_eq!(main_chart.chart.active_tool, Some(DrawingTool::TrendLine));
+    assert!(main_chart.quick_order.is_some());
 
     let _ = terminal.update_order(Message::EscapePressed(main_window_id));
 
@@ -145,6 +157,17 @@ fn detached_window_escape_clears_only_matching_chart_transient_state() {
     terminal
         .chart_surface_active_tools
         .insert(other_surface, DrawingTool::HorizontalLevel);
+
+    let _ = terminal.update_annotations(Message::ToggleDrawingMenu(
+        detached_chart_id,
+        detached_surface,
+        DrawingMenu::Tools,
+    ));
+    let _ = terminal.update_order(Message::EscapePressed(detached_window_id));
+    let chart = &terminal.charts[&detached_chart_id];
+    assert!(chart.drawing_menu.is_none());
+    assert_eq!(chart.chart.active_tool, Some(DrawingTool::TrendLine));
+    assert!(chart.quick_order.is_some());
 
     let _ = terminal.update_order(Message::EscapePressed(detached_window_id));
 

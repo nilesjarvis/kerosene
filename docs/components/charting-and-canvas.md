@@ -407,14 +407,26 @@ and percentage sizing.
 Interaction messages should carry chart ID and surface ID so detached windows
 and inline panes do not fight over state.
 
+### Drawing tools
+
+**Draw** sits beside **IND** in the chart toolbar and shows the active tool.
+Its palette groups tools by function and closes after a choice. Choose **Pan**
+to resume chart navigation. Escape or a click outside an open palette dismisses it.
+The palette opens on demand for each surface, including charts restored from
+layouts with the former `drawing_toolbar_collapsed` setting.
+
+With **Select** active, clicking a drawing shows an editing strip at the lower
+left of the plot. Click its color to reveal six swatches. The other controls
+cycle stroke pattern and width, lock or unlock the drawing, and delete an
+unlocked drawing.
+
 ### Freehand pen
 
-The **Draw** toolbar includes a pen icon. Hold the left mouse button over the
+Choose **Draw → Pen**, hold the left mouse button over the
 price plot, draw, and release to save a stroke. The pen stays active for further
 strokes; Escape or right-click cancels an unfinished stroke and exits drawing
 mode. Switching tools or losing window focus abandons an unfinished stroke.
-Select moves an entire stroke and exposes the usual color, width, line style,
-lock, and visibility controls; Eraser or Select + Delete removes it.
+Select moves an entire unlocked stroke. Eraser or Select + Delete removes it.
 
 Pen samples use timestamp/price coordinates, preserving their traversal order
 when the mouse doubles back. The existing annotation persistence stores them
