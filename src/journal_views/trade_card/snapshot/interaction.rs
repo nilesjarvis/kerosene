@@ -104,15 +104,20 @@ pub(super) fn update_snapshot_interaction(
                     view_start_ms: state.view_start_ms,
                     view_end_ms: state.view_end_ms,
                 });
-                Some(canvas::Action::capture())
+                Some(canvas::Action::request_redraw().and_capture())
             } else {
                 None
             }
         }
         iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-            let drag = state.drag?;
-            pan_snapshot_view(state, snapshot, loaded_range, bounds.size(), drag, pos);
-            Some(canvas::Action::request_redraw().and_capture())
+            if let Some(drag) = state.drag {
+                pan_snapshot_view(state, snapshot, loaded_range, bounds.size(), drag, pos);
+                Some(canvas::Action::request_redraw().and_capture())
+            } else if !snapshot.markers.is_empty() {
+                Some(canvas::Action::request_redraw())
+            } else {
+                None
+            }
         }
         iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
             if state.drag.take().is_some() {

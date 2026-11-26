@@ -1,6 +1,7 @@
 use super::super::series::ChartLayout;
 use super::nearest_chart_point;
 use crate::denomination::DisplayDenominationContext;
+use crate::journal_views::style::tooltip_origin;
 
 use chrono::{DateTime, Utc};
 use iced::widget::canvas;
@@ -106,29 +107,6 @@ fn draw_hover_marker(frame: &mut canvas::Frame, point: Point, color: Color, half
         Size::new(half_size * 2.0, half_size * 2.0),
         color,
     );
-}
-
-pub(in crate::journal_views::summary::chart) fn tooltip_origin(
-    point: Point,
-    width: f32,
-    height: f32,
-    tooltip_size: Size,
-) -> Point {
-    let x = if point.x + tooltip_size.width + 10.0 > width {
-        point.x - tooltip_size.width - 8.0
-    } else {
-        point.x + 8.0
-    }
-    .clamp(0.0, (width - tooltip_size.width).max(0.0));
-
-    let y = if point.y + tooltip_size.height + 10.0 > height {
-        point.y - tooltip_size.height - 8.0
-    } else {
-        point.y + 8.0
-    }
-    .clamp(0.0, (height - tooltip_size.height).max(0.0));
-
-    Point::new(x, y)
 }
 
 fn format_timestamp(timestamp_ms: u64) -> String {

@@ -1,8 +1,7 @@
 use super::interaction::{JournalSnapshotCanvasState, loaded_time_range};
-use super::markers::draw_markers;
+use super::markers::{MarkerGroup, draw_markers};
 use super::plot::SnapshotPlot;
 use crate::api::Candle;
-use crate::chart::TradeMarker;
 use crate::helpers::format_price;
 use crate::journal::JournalTradeSnapshot;
 use iced::widget::canvas;
@@ -11,43 +10,42 @@ use iced::{Color, Point, Size, Theme, alignment};
 pub(super) fn draw_snapshot_chart(
     frame: &mut canvas::Frame,
     theme: &Theme,
-    size: Size,
     snapshot: &JournalTradeSnapshot,
     state: &JournalSnapshotCanvasState,
-) {
+    cursor: Option<Point>,
+) -> Option<MarkerGroup> {
+    let size = frame.size();
     if snapshot.candles.is_empty() || size.width <= 20.0 || size.height <= 20.0 {
-        return;
+        return None;
     }
 
     let loaded_range = loaded_time_range(snapshot);
     let (view_start_ms, view_end_ms) = state.view_or_full_range(snapshot, loaded_range);
-    let visible_candles: Vec<Candle> = snapshot
-        .candles
-        .iter()
-        .filter(|candle| candle.close_time >= view_start_ms && candle.open_time <= view_end_ms)
-        .cloned()
-        .collect();
-    let visible_markers: Vec<TradeMarker> = snapshot
-        .markers
-        .iter()
-        .filter(|marker| marker.time_ms >= view_start_ms && marker.time_ms <= view_end_ms)
-        .copied()
-        .collect();
+    let candles = &snapshot.candles;
+    let visible_candles = &candles[candles.partition_point(|c| c.close_time < view_start_ms)
+        ..candles.partition_point(|c| c.open_time <= view_end_ms)];
+    let markers = &snapshot.markers;
+    let visible_markers = &markers[markers.partition_point(|m| m.time_ms < view_start_ms)
+        ..markers.partition_point(|m| m.time_ms <= view_end_ms)];
     let scale_candles = if visible_candles.is_empty() {
-        snapshot.candles.as_slice()
+        candles.as_slice()
     } else {
-        visible_candles.as_slice()
+        visible_candles
     };
-    // A live position has no opening fills, so keep its entry level inside the
-    // price range — the chart's whole purpose is to show price relative to it.
-    let extra_price = snapshot
-        .live_position
-        .then_some(snapshot.metrics.entry_price);
-    let plot = SnapshotPlot::new(size, view_start_ms, view_end_ms, scale_candles, extra_price);
+    let extra_prices = visible_markers.iter().map(|marker| marker.price).chain(
+        snapshot
+            .live_position
+            .then_some(snapshot.metrics.entry_price),
+    );
+    let plot = SnapshotPlot::new(
+        size,
+        view_start_ms,
+        view_end_ms,
+        scale_candles,
+        extra_prices,
+    );
     draw_grid(frame, theme, plot);
-    if !visible_candles.is_empty() {
-        draw_candles(frame, theme, plot, &visible_candles);
-    }
+    draw_candles(frame, theme, plot, visible_candles);
     if snapshot.live_position {
         draw_entry_line(frame, theme, plot, snapshot.metrics.entry_price);
     } else {
@@ -60,7 +58,14 @@ pub(super) fn draw_snapshot_chart(
             snapshot.is_open,
         );
     }
-    draw_markers(frame, theme, plot, &visible_markers);
+    draw_markers(
+        frame,
+        theme,
+        plot,
+        visible_candles,
+        visible_markers,
+        cursor.filter(|_| !state.is_dragging()),
+    )
 }
 
 fn draw_grid(frame: &mut canvas::Frame, theme: &Theme, plot: SnapshotPlot) {

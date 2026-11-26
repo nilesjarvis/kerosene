@@ -1,7 +1,11 @@
+use super::super::{canvas::JournalSnapshotCanvas, plot::SnapshotPlot};
 use super::*;
 use crate::api::Candle;
 use crate::chart::TradeMarker;
 use crate::journal::{JournalTradeSnapshotMetrics, JournalTradeSnapshotStatus};
+use iced::advanced::renderer::Headless;
+use iced::widget::canvas::Program as _;
+use iced::{Font, Pixels, Renderer, Theme};
 
 fn snapshot() -> JournalTradeSnapshot {
     JournalTradeSnapshot {
@@ -205,4 +209,76 @@ fn clamp_view_range_keeps_some_loaded_context_visible() {
 
     assert!(ranges_overlap((start, end), loaded_range));
     assert!(end > loaded_range.1);
+}
+
+#[test]
+fn hover_redraws_without_capturing_pointer_movement() {
+    let mut snapshot = snapshot();
+    snapshot.markers.push(TradeMarker {
+        time_ms: 1_010_000,
+        price: 100.0,
+        size: 1.0,
+        is_buy: true,
+    });
+    let bounds = Rectangle::new(Point::new(30.0, 10.0), Size::new(400.0, 240.0));
+    let position = Point::new(80.0, 100.0);
+    let motion = iced::Event::Mouse(mouse::Event::CursorMoved { position });
+    let mut state = JournalSnapshotCanvasState::default();
+    let (message, redraw, status) = update_snapshot_interaction(
+        &mut state,
+        &snapshot,
+        &motion,
+        bounds,
+        mouse::Cursor::Available(position),
+    )
+    .expect("hover requests a frame")
+    .into_inner();
+    assert!(message.is_none());
+    assert_eq!(redraw, iced::window::RedrawRequest::NextFrame);
+    assert_eq!(status, iced::event::Status::Ignored);
+    assert!(!state.is_dragging());
+}
+
+#[tokio::test]
+async fn tooltip_uses_canvas_coordinates_and_hides_while_panning() {
+    let mut snapshot = snapshot();
+    let candle = &snapshot.candles[0];
+    snapshot.markers.push(TradeMarker {
+        time_ms: candle.open_time + 1_000,
+        price: candle.close,
+        size: 1.0,
+        is_buy: true,
+    });
+    let chart = JournalSnapshotCanvas {
+        snapshot: &snapshot,
+    };
+    let mut state = JournalSnapshotCanvasState::default();
+    let bounds = Rectangle::new(Point::new(404.0, 200.0), Size::new(680.0, 240.0));
+    let range = state.view_or_full_range(&snapshot, loaded_time_range(&snapshot));
+    let plot = SnapshotPlot::new(bounds.size(), range.0, range.1, &snapshot.candles, []);
+    let on_buy = mouse::Cursor::Available(Point::new(
+        bounds.x + plot.x_for_time(candle.open_time),
+        bounds.y + plot.y_for_price(candle.low) + 7.0,
+    ));
+    let renderer = Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+        .await
+        .expect("software renderer");
+    let theme = Theme::Dark;
+    let layers = chart.draw(&state, &renderer, &theme, bounds, on_buy);
+    assert_eq!(layers.len(), 2, "the tooltip is drawn over the chart");
+    for cursor in [
+        mouse::Cursor::Unavailable,
+        mouse::Cursor::Available(bounds.position()),
+    ] {
+        assert_eq!(
+            chart.draw(&state, &renderer, &theme, bounds, cursor).len(),
+            1
+        );
+    }
+    let press = iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left));
+    let _ = chart.update(&mut state, &press, bounds, on_buy);
+    assert_eq!(
+        chart.draw(&state, &renderer, &theme, bounds, on_buy).len(),
+        1
+    );
 }

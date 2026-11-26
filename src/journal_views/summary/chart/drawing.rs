@@ -8,7 +8,6 @@ use iced::{Color, Point, Rectangle, Renderer, Size, Theme};
 
 mod tooltip;
 use tooltip::draw_hover_state;
-pub(super) use tooltip::tooltip_origin;
 
 const GRID_ALPHA: f32 = 0.055;
 const ZERO_LINE_ALPHA: f32 = 0.10;

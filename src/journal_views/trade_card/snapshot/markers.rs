@@ -1,128 +1,144 @@
 use super::plot::SnapshotPlot;
+use crate::api::Candle;
 use crate::chart::TradeMarker;
 use iced::widget::canvas;
 use iced::{Color, Point, Theme};
+use std::collections::BTreeMap;
 
-const SNAPSHOT_MARKER_RADIUS: f32 = 2.8;
-const SNAPSHOT_MARKER_GROUP_RADIUS: f32 = 3.8;
-const SNAPSHOT_MARKER_CHART_GAP: f32 = 2.0;
-const SNAPSHOT_MARKER_GROUP_GAP: f32 = 2.0;
-const SNAPSHOT_MARKER_OFFSET: f32 = SNAPSHOT_MARKER_GROUP_RADIUS + SNAPSHOT_MARKER_CHART_GAP;
-const SNAPSHOT_MARKER_GROUP_DISTANCE: f32 =
-    SNAPSHOT_MARKER_GROUP_RADIUS * 2.0 + SNAPSHOT_MARKER_GROUP_GAP;
+mod tooltip;
+
+const DOT_RADIUS: f32 = 3.2;
+const GROUP_RADIUS: f32 = 4.2;
+const WICK_GAP: f32 = 3.0;
+const HIT_PADDING: f32 = 5.0;
+
+pub(super) struct MarkerGroup {
+    center: Point,
+    is_buy: bool,
+    count: usize,
+    first_ms: u64,
+    last_ms: u64,
+    size: f64,
+    average_price: f64,
+}
+
+impl MarkerGroup {
+    fn radius(&self) -> f32 {
+        if self.count > 1 {
+            GROUP_RADIUS
+        } else {
+            DOT_RADIUS
+        }
+    }
+
+    fn color(&self, theme: &Theme) -> Color {
+        let palette = theme.palette();
+        let side = if self.is_buy {
+            palette.success
+        } else {
+            palette.danger
+        };
+        iced::theme::palette::mix(side, palette.text, 0.18)
+    }
+}
+
+/// One dot per candle and side. Fills in gaps keep their own time and price.
+fn marker_groups(
+    plot: SnapshotPlot,
+    candles: &[Candle],
+    markers: &[TradeMarker],
+) -> Vec<MarkerGroup> {
+    let mut groups = BTreeMap::new();
+    for marker in markers {
+        let next = candles.partition_point(|candle| candle.open_time <= marker.time_ms);
+        let candle = candles[..next]
+            .last()
+            .filter(|candle| marker.time_ms <= candle.close_time);
+        let time = candle.map_or(marker.time_ms, |candle| candle.open_time);
+        let price = candle.map_or(marker.price, |candle| {
+            if marker.is_buy {
+                candle.low
+            } else {
+                candle.high
+            }
+        });
+        let y = plot.y_for_price(price);
+        let group = groups
+            .entry((time, marker.is_buy))
+            .or_insert_with(|| MarkerGroup {
+                center: Point::new(plot.x_for_time(time), y),
+                is_buy: marker.is_buy,
+                count: 0,
+                first_ms: marker.time_ms,
+                last_ms: marker.time_ms,
+                size: 0.0,
+                average_price: marker.price,
+            });
+        group.count += 1;
+        group.last_ms = marker.time_ms;
+        group.size += marker.size;
+        group.average_price += (marker.price - group.average_price) * (marker.size / group.size);
+        // Same-time fills in a candle gap can have different execution prices.
+        group.center.y = if marker.is_buy {
+            group.center.y.max(y)
+        } else {
+            group.center.y.min(y)
+        };
+    }
+
+    groups
+        .into_values()
+        .map(|mut group| {
+            let offset = group.radius() + WICK_GAP;
+            group.center.y += if group.is_buy { offset } else { -offset };
+            group
+        })
+        .collect()
+}
+
+fn hit_test(groups: &[MarkerGroup], cursor: Point) -> Option<usize> {
+    groups
+        .iter()
+        .enumerate()
+        .filter_map(|(i, group)| {
+            let distance = cursor.distance(group.center);
+            (distance <= group.radius() + HIT_PADDING).then_some((i, distance))
+        })
+        .min_by(|(_, a), (_, b)| a.total_cmp(b))
+        .map(|(i, _)| i)
+}
 
 pub(super) fn draw_markers(
     frame: &mut canvas::Frame,
     theme: &Theme,
     plot: SnapshotPlot,
+    candles: &[Candle],
     markers: &[TradeMarker],
-) {
-    let mut marker_layouts = marker_group_layouts(plot, markers);
-    marker_layouts.sort_by(|a, b| a.center.x.total_cmp(&b.center.x));
-    let outline_color = Color {
-        a: 0.72,
-        ..theme.extended_palette().background.strong.color
-    };
-
-    for layout in marker_layouts {
-        let marker_color = Color {
-            a: 0.9,
-            ..if layout.is_buy {
-                theme.palette().success
-            } else {
-                theme.palette().danger
-            }
-        };
-        let dot = canvas::Path::circle(layout.center, layout.radius);
-        frame.fill(&dot, marker_color);
+    cursor: Option<Point>,
+) -> Option<MarkerGroup> {
+    let mut groups = marker_groups(plot, candles, markers);
+    let hovered = cursor.and_then(|point| hit_test(&groups, point));
+    for group in &groups {
+        let dot = canvas::Path::circle(group.center, group.radius());
+        frame.fill(&dot, group.color(theme));
         frame.stroke(
             &dot,
             canvas::Stroke::default()
-                .with_color(outline_color)
-                .with_width(0.75),
+                .with_color(theme.palette().background)
+                .with_width(1.0),
         );
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct SnapshotMarkerLayout {
-    center: Point,
-    radius: f32,
-    is_buy: bool,
-}
-
-fn marker_group_layouts(plot: SnapshotPlot, markers: &[TradeMarker]) -> Vec<SnapshotMarkerLayout> {
-    let mut buys: Vec<_> = markers
-        .iter()
-        .filter(|marker| marker.is_buy)
-        .map(|marker| plot.x_for_time(marker.time_ms))
-        .collect();
-    let mut sells: Vec<_> = markers
-        .iter()
-        .filter(|marker| !marker.is_buy)
-        .map(|marker| plot.x_for_time(marker.time_ms))
-        .collect();
-    buys.sort_by(|a, b| a.total_cmp(b));
-    sells.sort_by(|a, b| a.total_cmp(b));
-
-    let mut layouts = Vec::with_capacity(markers.len());
-    push_marker_side_layouts(plot, &sells, false, &mut layouts);
-    push_marker_side_layouts(plot, &buys, true, &mut layouts);
-    layouts
-}
-
-fn push_marker_side_layouts(
-    plot: SnapshotPlot,
-    marker_xs: &[f32],
-    is_buy: bool,
-    layouts: &mut Vec<SnapshotMarkerLayout>,
-) {
-    let Some((&first_x, rest)) = marker_xs.split_first() else {
-        return;
-    };
-
-    let y = if is_buy {
-        plot.top + plot.height + SNAPSHOT_MARKER_OFFSET
-    } else {
-        plot.top - SNAPSHOT_MARKER_OFFSET
-    };
-    let mut group_sum = first_x;
-    let mut group_count = 1_usize;
-    let mut group_last_x = first_x;
-
-    for &x in rest {
-        if x - group_last_x > SNAPSHOT_MARKER_GROUP_DISTANCE {
-            push_marker_group(layouts, group_sum, group_count, y, is_buy);
-            group_sum = x;
-            group_count = 1;
-        } else {
-            group_sum += x;
-            group_count += 1;
-        }
-        group_last_x = x;
-    }
-
-    push_marker_group(layouts, group_sum, group_count, y, is_buy);
-}
-
-fn push_marker_group(
-    layouts: &mut Vec<SnapshotMarkerLayout>,
-    group_sum: f32,
-    group_count: usize,
-    y: f32,
-    is_buy: bool,
-) {
-    let x = group_sum / group_count.max(1) as f32;
-    let radius = if group_count > 1 {
-        SNAPSHOT_MARKER_GROUP_RADIUS
-    } else {
-        SNAPSHOT_MARKER_RADIUS
-    };
-    layouts.push(SnapshotMarkerLayout {
-        center: Point::new(x, y),
-        radius,
-        is_buy,
-    });
+    hovered.map(|index| {
+        let group = groups.swap_remove(index);
+        let ring = canvas::Path::circle(group.center, group.radius() + 2.0);
+        frame.stroke(
+            &ring,
+            canvas::Stroke::default()
+                .with_color(group.color(theme))
+                .with_width(1.2),
+        );
+        group
+    })
 }
 
 #[cfg(test)]

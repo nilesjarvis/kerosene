@@ -1,135 +1,100 @@
 use super::*;
+use iced::Size;
 
-#[test]
-fn marker_groups_chain_adjacent_fills_without_combining_sides() {
-    let plot = SnapshotPlot {
-        left: 0.0,
-        top: 50.0,
-        width: 100.0,
-        height: 100.0,
-        start_ms: 0,
-        end_ms: 1_000,
-        min_price: 1.0,
-        max_price: 2.0,
-    };
-    let markers = [
-        (280, true),
-        (100, false),
-        (190, true),
-        (100, true),
-        (700, true),
-        (190, false),
-    ]
-    .map(|(time_ms, is_buy)| TradeMarker {
+fn fill(time_ms: u64, price: f64, size: f64, is_buy: bool) -> TradeMarker {
+    TradeMarker {
         time_ms,
+        price,
+        size,
         is_buy,
-        price: 1.0,
-        size: 1.0,
-    });
-    let layouts = marker_group_layouts(plot, &markers);
-    assert_eq!(layouts.len(), 3);
-    for (layout, (x, is_buy, radius)) in layouts.iter().zip([
-        (14.5, false, SNAPSHOT_MARKER_GROUP_RADIUS),
-        (19.0, true, SNAPSHOT_MARKER_GROUP_RADIUS),
-        (70.0, true, SNAPSHOT_MARKER_RADIUS),
-    ]) {
-        assert!((layout.center.x - x).abs() < 1e-5);
-        assert_eq!(layout.is_buy, is_buy);
-        assert_eq!(layout.radius, radius);
     }
-    assert!(marker_group_layouts(plot, &[]).is_empty());
+}
 
-    let mut boundary = Vec::new();
-    push_marker_side_layouts(
+#[test]
+fn dots_follow_their_own_candle_and_group_only_its_same_side_fills() {
+    let candles = [
+        Candle::test_ohlcv(100, 199, [101.0, 104.0, 98.0, 102.0], 10.0),
+        Candle::test_ohlcv(200, 299, [112.0, 115.0, 108.0, 110.0], 10.0),
+    ];
+    // Adjacent candles can project less than one dot-width apart in time.
+    let plot = SnapshotPlot::new(Size::new(400.0, 240.0), 0, 20_000, &candles, []);
+    let groups = marker_groups(
         plot,
-        &[0.0, SNAPSHOT_MARKER_GROUP_DISTANCE],
-        true,
-        &mut boundary,
+        &candles,
+        &[
+            fill(105, 100.0, 1.0, true),
+            fill(150, 101.0, 0.5, false),
+            fill(199, 104.0, 3.0, true),
+            fill(200, 112.0, 0.25, true),
+        ],
     );
-    assert_eq!(boundary.len(), 1);
-    assert_eq!(boundary[0].radius, SNAPSHOT_MARKER_GROUP_RADIUS);
+    assert_eq!(groups.len(), 3);
+    let (sell, buys, next_buy) = (&groups[0], &groups[1], &groups[2]);
+    assert!(!sell.is_buy);
+    assert!(buys.is_buy && next_buy.is_buy);
+    assert_eq!((buys.count, buys.size, buys.average_price), (2, 4.0, 103.0));
+    assert_eq!((buys.first_ms, buys.last_ms), (105, 199));
+    assert_eq!((sell.count, sell.size, sell.average_price), (1, 0.5, 101.0));
+    assert_eq!(sell.center.x, plot.x_for_time(100));
+    assert_eq!(
+        sell.center.y,
+        plot.y_for_price(104.0) - (DOT_RADIUS + WICK_GAP)
+    );
+    assert_eq!(buys.center.x, sell.center.x);
+    assert_eq!(
+        buys.center.y,
+        plot.y_for_price(98.0) + GROUP_RADIUS + WICK_GAP
+    );
+    assert_eq!(next_buy.center.x, plot.x_for_time(200));
+    assert_eq!(
+        next_buy.center.y,
+        plot.y_for_price(108.0) + (DOT_RADIUS + WICK_GAP)
+    );
 }
 
 #[test]
-fn marker_group_layouts_collapse_nearby_fills() {
-    let plot = SnapshotPlot {
-        left: 0.0,
-        top: 50.0,
-        width: 100.0,
-        height: 100.0,
-        start_ms: 0,
-        end_ms: 1_000,
-        min_price: 1.0,
-        max_price: 2.0,
-    };
-    let markers = vec![
-        TradeMarker {
-            time_ms: 100,
-            price: 1.0,
-            size: 1.0,
-            is_buy: true,
-        },
-        TradeMarker {
-            time_ms: 105,
-            price: 1.0,
-            size: 1.0,
-            is_buy: true,
-        },
-        TradeMarker {
-            time_ms: 350,
-            price: 1.0,
-            size: 1.0,
-            is_buy: true,
-        },
-    ];
-
-    let layouts = marker_group_layouts(plot, &markers);
-
-    assert_eq!(layouts.len(), 2);
-    assert!(layouts.iter().all(|layout| layout.is_buy));
-    assert_eq!(layouts[0].radius, SNAPSHOT_MARKER_GROUP_RADIUS);
-    assert!(layouts[1].center.x - layouts[0].center.x > layouts[0].radius + layouts[1].radius);
+fn nearest_drawn_dot_wins_with_a_small_hover_margin() {
+    let candles = [Candle::test_flat(0, 100.0)];
+    let plot = SnapshotPlot::new(Size::new(400.0, 240.0), 0, 60_000, &candles, []);
+    let groups = marker_groups(
+        plot,
+        &candles,
+        &[fill(100, 100.0, 1.0, false), fill(100, 100.0, 2.0, true)],
+    );
+    for (i, group) in groups.iter().enumerate() {
+        let near = Point::new(group.center.x + DOT_RADIUS + 2.0, group.center.y);
+        assert_eq!(hit_test(&groups, near), Some(i));
+    }
+    let x = groups[0].center.x;
+    assert_eq!(
+        hit_test(&groups, Point::new(x, plot.y_for_price(100.0) + 1.0)),
+        Some(1)
+    );
+    assert_eq!(
+        hit_test(&groups, Point::new(x, plot.top + plot.height)),
+        None
+    );
+    assert_eq!(hit_test(&[], Point::ORIGIN), None);
 }
 
 #[test]
-fn marker_group_layouts_place_sells_above_and_buys_below_plot() {
-    let plot = SnapshotPlot {
-        left: 0.0,
-        top: 50.0,
-        width: 100.0,
-        height: 100.0,
-        start_ms: 0,
-        end_ms: 1_000,
-        min_price: 1.0,
-        max_price: 2.0,
-    };
-    let markers = vec![
-        TradeMarker {
-            time_ms: 100,
-            price: 1.0,
-            size: 1.0,
-            is_buy: false,
-        },
-        TradeMarker {
-            time_ms: 900,
-            price: 1.0,
-            size: 1.0,
-            is_buy: true,
-        },
-    ];
-
-    let layouts = marker_group_layouts(plot, &markers);
-    let sell = layouts
-        .iter()
-        .find(|layout| !layout.is_buy)
-        .expect("sell marker");
-    let buy = layouts
-        .iter()
-        .find(|layout| layout.is_buy)
-        .expect("buy marker");
-
-    assert_eq!(sell.radius, SNAPSHOT_MARKER_RADIUS);
-    assert_eq!(buy.radius, SNAPSHOT_MARKER_RADIUS);
-    assert!(sell.center.y + sell.radius <= plot.top - SNAPSHOT_MARKER_CHART_GAP);
-    assert!(buy.center.y - buy.radius >= plot.top + plot.height + SNAPSHOT_MARKER_CHART_GAP);
+fn missing_candle_uses_the_execution_time_and_price() {
+    let candles = [Candle::test_flat(100_000, 100.0)];
+    let gap_fill = fill(99_999, 80.0, 1.0, true);
+    let plot = SnapshotPlot::new(
+        Size::new(400.0, 240.0),
+        0,
+        160_000,
+        &candles,
+        [gap_fill.price],
+    );
+    let groups = marker_groups(plot, &candles, &[gap_fill]);
+    assert!(plot.min_price < gap_fill.price && plot.max_price > candles[0].high);
+    let center = groups[0].center;
+    assert_eq!(center.x, plot.x_for_time(gap_fill.time_ms));
+    assert_eq!(
+        center.y,
+        plot.y_for_price(gap_fill.price) + (DOT_RADIUS + WICK_GAP)
+    );
+    assert!(center.y + DOT_RADIUS <= plot.top + plot.height);
 }

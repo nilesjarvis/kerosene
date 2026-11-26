@@ -29,14 +29,26 @@ impl canvas::Program<Message> for JournalSnapshotCanvas<'_> {
         renderer: &Renderer,
         theme: &Theme,
         bounds: Rectangle,
-        _cursor: iced::mouse::Cursor,
+        cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
         let mut frame = canvas::Frame::new(renderer, bounds.size());
         frame.fill_rectangle(Point::ORIGIN, bounds.size(), Color::TRANSPARENT);
 
-        draw_snapshot_chart(&mut frame, theme, bounds.size(), self.snapshot, state);
+        let hovered = draw_snapshot_chart(
+            &mut frame,
+            theme,
+            self.snapshot,
+            state,
+            cursor.position_in(bounds),
+        );
 
-        vec![frame.into_geometry()]
+        let mut layers = vec![frame.into_geometry()];
+        if let Some(group) = hovered {
+            let mut tooltip = canvas::Frame::new(renderer, bounds.size());
+            group.draw_tooltip(&mut tooltip, theme, &self.snapshot.coin);
+            layers.push(tooltip.into_geometry());
+        }
+        layers
     }
 
     fn mouse_interaction(

@@ -1,6 +1,6 @@
 use iced::widget::container as container_style;
 use iced::widget::{button, rule, text_input};
-use iced::{Border, Color, Theme};
+use iced::{Border, Color, Point, Size, Theme};
 
 /// Hairline rule styling (used for section dividers and KPI/cell separators).
 pub(crate) fn journal_rule_style(theme: &Theme) -> rule::Style {
@@ -275,4 +275,22 @@ pub(crate) fn journal_ghost_button_style(theme: &Theme, status: button::Status) 
         },
         ..Default::default()
     }
+}
+
+pub(super) fn tooltip_origin(point: Point, width: f32, height: f32, tooltip_size: Size) -> Point {
+    let x = if point.x + tooltip_size.width + 10.0 > width {
+        point.x - tooltip_size.width - 8.0
+    } else {
+        point.x + 8.0
+    }
+    .clamp(0.0, (width - tooltip_size.width).max(0.0));
+
+    let y = if point.y + tooltip_size.height + 10.0 > height {
+        point.y - tooltip_size.height - 8.0
+    } else {
+        point.y + 8.0
+    }
+    .clamp(0.0, (height - tooltip_size.height).max(0.0));
+
+    Point::new(x, y)
 }

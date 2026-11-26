@@ -3,8 +3,8 @@ use iced::{Point, Size};
 
 pub(super) const SNAPSHOT_LEFT_PAD: f32 = 6.0;
 pub(super) const SNAPSHOT_RIGHT_PAD: f32 = 6.0;
-pub(super) const SNAPSHOT_TOP_PAD: f32 = 48.0;
-pub(super) const SNAPSHOT_BOTTOM_PAD: f32 = 34.0;
+pub(super) const SNAPSHOT_TOP_PAD: f32 = 26.0;
+pub(super) const SNAPSHOT_BOTTOM_PAD: f32 = 12.0;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct SnapshotPlot {
@@ -24,13 +24,13 @@ impl SnapshotPlot {
         start_ms: u64,
         end_ms: u64,
         candles: &[Candle],
-        extra_price: Option<f64>,
+        extra_prices: impl IntoIterator<Item = f64>,
     ) -> Self {
         let left = SNAPSHOT_LEFT_PAD;
         let top = SNAPSHOT_TOP_PAD;
         let width = (size.width - SNAPSHOT_LEFT_PAD - SNAPSHOT_RIGHT_PAD).max(1.0);
         let height = (size.height - SNAPSHOT_TOP_PAD - SNAPSHOT_BOTTOM_PAD).max(1.0);
-        let (min_price, max_price) = price_range(candles, extra_price);
+        let (min_price, max_price) = price_range(candles, extra_prices);
         Self {
             left,
             top,
@@ -67,13 +67,16 @@ pub(super) fn point_in_snapshot_plot(size: Size, pos: Point) -> bool {
         && pos.y <= size.height - SNAPSHOT_BOTTOM_PAD
 }
 
-fn price_range(candles: &[Candle], extra_price: Option<f64>) -> (f64, f64) {
+fn price_range(candles: &[Candle], extra_prices: impl IntoIterator<Item = f64>) -> (f64, f64) {
     let (mut min_price, mut max_price) = candles.iter().fold(
         (f64::INFINITY, f64::NEG_INFINITY),
         |(min_price, max_price), candle| (min_price.min(candle.low), max_price.max(candle.high)),
     );
 
-    if let Some(extra) = extra_price.filter(|price| price.is_finite() && *price > 0.0) {
+    for extra in extra_prices
+        .into_iter()
+        .filter(|price| price.is_finite() && *price > 0.0)
+    {
         min_price = min_price.min(extra);
         max_price = max_price.max(extra);
     }

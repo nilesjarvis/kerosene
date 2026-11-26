@@ -35,6 +35,12 @@ The summary header aggregates the currently visible cards:
 
 Muted tickers are hidden from the journal. The filter can show all trades, only perpetual trades, or spot trades. Sorting can be by time or realized PnL.
 
+Select a perpetual trade to see its candle chart. Buy fills appear just below
+their candle and sell fills just above it. Hover a dot to see its execution
+price, size, and local time. A larger dot groups fills on the same side of a
+candle and shows their count, total size, volume-weighted average price, and
+first and last execution times.
+
 ## Data loading and cache
 
 Journal fills are fetched with Hyperliquid's `userFillsByTime` info request:

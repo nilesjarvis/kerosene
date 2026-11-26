@@ -1,6 +1,6 @@
-use super::drawing::tooltip_origin;
 use crate::denomination::DisplayDenominationContext;
 use crate::journal::AggregatedTrade;
+use crate::journal_views::style::tooltip_origin;
 use crate::message::Message;
 
 use iced::widget::{canvas, container, text};
