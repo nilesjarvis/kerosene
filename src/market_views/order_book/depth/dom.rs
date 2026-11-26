@@ -56,6 +56,7 @@ pub(super) fn view_order_book_dom_ladder(
                 container(asks)
                     .height(Fill)
                     .align_y(iced::alignment::Vertical::Bottom)
+                    .clip(true)
                     .into()
             })
             .height(Fill),
@@ -68,6 +69,7 @@ pub(super) fn view_order_book_dom_ladder(
                 container(bids)
                     .height(Fill)
                     .align_y(iced::alignment::Vertical::Top)
+                    .clip(true)
                     .into()
             })
             .height(Fill),

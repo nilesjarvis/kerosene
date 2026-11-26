@@ -36,12 +36,16 @@ pub(super) fn max_level_size(asks: &[(f64, f64, f64)], bids: &[(f64, f64, f64)])
         .max(1.0)
 }
 
+/// Rows to render in one half of the centered layout: enough to cover the
+/// half height, rounded up so the last row overflows the pane edge instead of
+/// leaving a blank band above or below the book. The overflowing fragment is
+/// clipped by the side container; the count stays capped by available levels.
 pub(super) fn centered_order_book_side_row_count(side_height: f32, available_rows: usize) -> usize {
     if side_height <= 0.0 {
         return 0;
     }
 
-    ((side_height / BOOK_ROW_HEIGHT).floor() as usize).min(available_rows)
+    ((side_height / BOOK_ROW_HEIGHT).ceil() as usize).min(available_rows)
 }
 
 /// Number of inert filler rows needed to bring a side up to `pad_to` rows.

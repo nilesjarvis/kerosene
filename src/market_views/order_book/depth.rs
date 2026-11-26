@@ -20,6 +20,10 @@ use rows::{
 /// while the market moves.
 const DEPTH_SIDE_ROWS: usize = 20;
 
+/// Deeper level buffer for the centered layout, which slices rows to the pane
+/// height instead of scrolling. Matches the DOM ladder's per-side buffer.
+const CENTERED_SIDE_ROWS: usize = 80;
+
 const SCROLLBAR_WIDTH: f32 = 4.0;
 const SCROLLBAR_MARGIN: f32 = 2.0;
 pub(super) const SCROLLBAR_GUTTER: f32 = SCROLLBAR_WIDTH + 2.0 * SCROLLBAR_MARGIN;
@@ -73,8 +77,24 @@ impl TradingTerminal {
             total_in_notional: inst.total_in_notional,
         };
         if inst.center_on_mid {
-            let centered_asks = ask_rows;
-            let centered_bids = bid_rows;
+            // Tall panes fit more than the 20-level scroll window per side, so
+            // centered mode renders from a deeper buffer and slices it to the
+            // pane height. Bar and heat normalizers stay calibrated to that
+            // 20-level window so pane height never rescales the bars; rows
+            // beyond it simply clamp at full width and heat.
+            let centered_asks: Vec<(f64, f64, f64)> = depth
+                .asks
+                .iter()
+                .take(CENTERED_SIDE_ROWS)
+                .rev()
+                .copied()
+                .collect();
+            let centered_bids: Vec<(f64, f64, f64)> = depth
+                .bids
+                .iter()
+                .take(CENTERED_SIDE_ROWS)
+                .copied()
+                .collect();
             let centered_ask_orders = user_order_levels.clone();
             let centered_bid_orders = user_order_levels;
 
@@ -93,6 +113,7 @@ impl TradingTerminal {
                     container(asks)
                         .height(Fill)
                         .align_y(iced::alignment::Vertical::Bottom)
+                        .clip(true)
                         .into()
                 })
                 .height(Fill),
@@ -110,6 +131,7 @@ impl TradingTerminal {
                     container(bids)
                         .height(Fill)
                         .align_y(iced::alignment::Vertical::Top)
+                        .clip(true)
                         .into()
                 })
                 .height(Fill),

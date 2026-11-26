@@ -40,5 +40,11 @@ fn centered_side_count_keeps_available_depth_within_the_viewport() {
     assert_eq!(centered_order_book_side_row_count(800.0, 0), 0);
     assert_eq!(centered_order_book_side_row_count(0.0, 20), 0);
     assert_eq!(centered_order_book_side_row_count(-5.0, 20), 0);
-    assert_eq!(centered_order_book_side_row_count(15.0, 20), 0);
+    // Positive heights round up so the side overflows the pane edge by less
+    // than one row; the overflowing fragment is clipped instead of leaving a
+    // blank band above or below the book.
+    assert_eq!(centered_order_book_side_row_count(15.0, 20), 1);
+    assert_eq!(centered_order_book_side_row_count(201.0, 20), 11);
+    assert_eq!(centered_order_book_side_row_count(200.0, 20), 10);
+    assert_eq!(centered_order_book_side_row_count(0.5, 20), 1);
 }
