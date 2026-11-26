@@ -635,7 +635,6 @@ mod tests {
             recent_hourly_payments: vec![IncomeHourlyPayment {
                 time: 123,
                 token_label: "USDC".to_string(),
-                supply: 1.0,
                 borrow: 0.0,
                 supply_rate: 0.0,
                 net: 1.0,

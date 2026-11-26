@@ -246,7 +246,6 @@ fn recent_payments_limit_valid_hourly_rows_and_preserve_timestamp_ties() {
     assert_eq!(payments[10].token_label, "first tie");
     assert_eq!(payments[11].token_label, "second tie");
     for (index, payment) in payments.iter().enumerate() {
-        assert_eq!(payment.supply, 3.0);
         assert_eq!(payment.borrow, 1.0);
         assert_eq!(payment.net, 2.0);
         let expected_rate = if index < 10 { 3.0 } else { 0.0 };

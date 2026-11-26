@@ -560,7 +560,6 @@ fn income_snapshot(time: u64, earned_total: f64) -> IncomeSnapshot {
         recent_hourly_payments: vec![IncomeHourlyPayment {
             time,
             token_label: "USDC".to_string(),
-            supply: earned_total,
             borrow: 0.0,
             supply_rate: 0.0,
             net: earned_total,

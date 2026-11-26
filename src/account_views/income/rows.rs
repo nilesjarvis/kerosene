@@ -130,36 +130,20 @@ pub(super) fn view_income_hourly_rows(
                 value_color,
                 size,
             );
-            let cells = if compact {
-                row![
-                    time,
-                    token,
-                    supply_borrow_cell(theme, row_data.supply, row_data.borrow, 3, size),
-                    apr,
-                    net,
-                ]
-            } else {
-                row![
-                    time,
-                    token,
-                    table_cell_sized(
-                        token_amount(row_data.supply),
-                        2,
-                        true,
-                        theme.palette().primary,
-                        size,
-                    ),
-                    table_cell_sized(
-                        token_amount(row_data.borrow),
-                        2,
-                        true,
-                        theme.palette().warning,
-                        size,
-                    ),
-                    apr,
-                    net,
-                ]
-            };
+            let borrow_portion = if compact { 3 } else { 2 };
+            let cells = row![
+                time,
+                token,
+                table_cell_sized(
+                    token_amount(row_data.borrow),
+                    borrow_portion,
+                    true,
+                    theme.palette().warning,
+                    size,
+                ),
+                apr,
+                net,
+            ];
 
             rows.push(
                 container(
@@ -172,37 +156,6 @@ pub(super) fn view_income_hourly_rows(
                 .padding([if compact { 4.0 } else { 6.0 }, 0.0]),
             )
         })
-}
-
-/// Supply and borrow accrual for one payment, merged into a single cell so the
-/// compact layout can carry both without growing the row.
-fn supply_borrow_cell(
-    theme: &Theme,
-    supply: f64,
-    borrow: f64,
-    portion: u16,
-    size: f32,
-) -> Element<'static, Message> {
-    container(
-        row![
-            text(token_amount(supply))
-                .size(size)
-                .font(tokens::mono())
-                .color(theme.palette().primary),
-            text("·")
-                .size(size)
-                .font(tokens::mono())
-                .color(tokens::dim(theme)),
-            text(token_amount(borrow))
-                .size(size)
-                .font(tokens::mono())
-                .color(theme.palette().warning),
-        ]
-        .spacing(3),
-    )
-    .width(Length::FillPortion(portion))
-    .align_x(iced::alignment::Horizontal::Right)
-    .into()
 }
 
 /// Render an accrual in raw token units with enough decimals for tiny hourly

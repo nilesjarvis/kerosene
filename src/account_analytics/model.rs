@@ -80,7 +80,6 @@ pub struct IncomeSnapshot {
 pub struct IncomeHourlyPayment {
     pub time: u64,
     pub token_label: String,
-    pub supply: f64,
     pub borrow: f64,
     /// Supply APR that applied when this payment accrued, recovered from the
     /// hourly interest against the position it was earned on.

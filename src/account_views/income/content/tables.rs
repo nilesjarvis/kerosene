@@ -71,18 +71,14 @@ pub(super) fn income_hourly_table_header(
     let token = header_cell(theme, "Token", 2, false);
     let apr = header_cell(theme, "S APR", 2, true);
     let net = header_cell(theme, "Net", 3, true);
-    let row = if compact {
-        row![time, token, header_cell(theme, "S / B", 3, true), apr, net]
-    } else {
-        row![
-            time,
-            token,
-            header_cell(theme, "Supply", 2, true),
-            header_cell(theme, "Borrow", 2, true),
-            apr,
-            net,
-        ]
-    };
+    let borrow_portion = if compact { 3 } else { 2 };
+    let row = row![
+        time,
+        token,
+        header_cell(theme, "Borrow", borrow_portion, true),
+        apr,
+        net,
+    ];
 
     row.spacing(8).width(Fill).into()
 }

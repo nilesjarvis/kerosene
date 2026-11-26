@@ -165,7 +165,6 @@ fn recent_hourly_payments(
             Some(IncomeHourlyPayment {
                 time: e.time,
                 token_label,
-                supply,
                 borrow,
                 supply_rate,
                 net,
