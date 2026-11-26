@@ -409,6 +409,9 @@ and inline panes do not fight over state.
 
 ### Drawing tools
 
+**IND** opens a scrollable indicator menu beneath its toolbar button. It stays
+open while you edit settings. Escape or a click outside dismisses it.
+
 **Draw** sits beside **IND** in the chart toolbar and shows the active tool.
 Its palette groups tools by function and closes after a choice. Choose **Pan**
 to resume chart navigation. Escape or a click outside an open palette dismisses it.

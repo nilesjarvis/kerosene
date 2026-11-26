@@ -5,7 +5,7 @@ use super::{MenuAlignment, MenuKind};
 use iced::advanced::renderer::Renderer as _;
 use iced::advanced::widget::tree;
 use iced::advanced::{Clipboard, Layout, Shell, layout, mouse, overlay, renderer};
-use iced::{Element, Event, Point, Rectangle, Size, Theme};
+use iced::{Element, Event, Point, Rectangle, Size, Theme, Vector};
 use std::time::{Duration, Instant};
 
 // ---------------------------------------------------------------------------
@@ -55,21 +55,20 @@ impl MenuAnimation {
         }
     }
 
-    /// Advances the animation based on elapsed wall-clock time, returning
-    /// `true` while the reveal is still in progress.
+    /// Request another layout and draw through the final resting position.
     fn advance(&mut self, now: Instant) -> bool {
+        if self.progress >= 1.0 {
+            return false;
+        }
         let delta = self
             .last_frame
             .map(|last| now.saturating_duration_since(last))
             .unwrap_or_default();
         self.last_frame = Some(now);
 
-        if self.progress < 1.0 {
-            let step = delta.as_secs_f32() / MENU_OPEN_DURATION.as_secs_f32().max(f32::EPSILON);
-            self.progress = (self.progress + step).min(1.0);
-        }
-
-        self.progress < 1.0
+        let step = delta.as_secs_f32() / MENU_OPEN_DURATION.as_secs_f32();
+        self.progress = (self.progress + step).min(1.0);
+        true
     }
 
     fn eased(&self) -> f32 {
@@ -91,6 +90,7 @@ impl AnchoredMenuOverlay<'_, '_> {
     /// The top-left corner where the menu rests once fully open.
     fn resting_position(&self, menu_size: Size) -> Point {
         let x = match self.alignment {
+            MenuAlignment::FlushStart => self.anchor.x,
             MenuAlignment::Start => self.anchor.x + MENU_HORIZONTAL_INSET,
             MenuAlignment::End => {
                 self.anchor.x + self.anchor.width - menu_size.width - MENU_HORIZONTAL_INSET
@@ -131,6 +131,13 @@ impl overlay::Overlay<Message, Theme, iced::Renderer> for AnchoredMenuOverlay<'_
         let mut available = viewport.size();
         if self.kind == MenuKind::DrawingTools {
             available.width = available.width.min(self.anchor.width);
+        } else if self.kind == MenuKind::ChartIndicators {
+            // The indicator card scrolls. Fit it above or below its trigger even in short windows.
+            let below = bounds.height - (self.anchor.y + self.anchor.height);
+            let above = self.anchor.y;
+            available.height =
+                (below.max(above) - MENU_VERTICAL_GAP - MENU_VIEWPORT_MARGIN).max(0.0);
+            available.width = (bounds.width - 2.0 * MENU_VIEWPORT_MARGIN).max(0.0);
         }
         let mut node = self.content.as_widget_mut().layout(
             self.tree,
@@ -163,22 +170,25 @@ impl overlay::Overlay<Message, Theme, iced::Renderer> for AnchoredMenuOverlay<'_
             shell.request_redraw();
         }
 
-        let drawing_menu = matches!(self.kind, MenuKind::DrawingTools | MenuKind::DrawingColors);
+        let chart_menu = matches!(
+            self.kind,
+            MenuKind::DrawingTools | MenuKind::DrawingColors | MenuKind::ChartIndicators
+        );
         let dismiss = match event {
             Event::Mouse(mouse::Event::ButtonPressed(button))
-                if drawing_menu || *button == mouse::Button::Left =>
+                if chart_menu || *button == mouse::Button::Left =>
             {
                 cursor
                     .position()
                     .is_some_and(|point| !layout.bounds().contains(point))
             }
-            Event::Touch(iced::touch::Event::FingerPressed { position, .. }) if drawing_menu => {
+            Event::Touch(iced::touch::Event::FingerPressed { position, .. }) if chart_menu => {
                 !layout.bounds().contains(*position)
             }
             Event::Keyboard(iced::keyboard::Event::KeyPressed {
                 key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
                 ..
-            }) if drawing_menu => {
+            }) if chart_menu => {
                 // The window's EscapePressed handler dismisses this palette first.
                 shell.capture_event();
                 return;
@@ -222,15 +232,10 @@ impl overlay::Overlay<Message, Theme, iced::Renderer> for AnchoredMenuOverlay<'_
         };
 
         renderer.with_layer(clip, |renderer| {
-            self.content.as_widget().draw(
-                self.tree,
-                renderer,
-                theme,
-                style,
-                layout,
-                cursor,
-                &self.viewport,
-            );
+            // Scrollables create their own render layers, so they also need the reveal bounds.
+            self.content
+                .as_widget()
+                .draw(self.tree, renderer, theme, style, layout, cursor, &clip);
         });
     }
 
@@ -255,6 +260,31 @@ impl overlay::Overlay<Message, Theme, iced::Renderer> for AnchoredMenuOverlay<'_
 
     fn index(&self) -> f32 {
         10.0
+    }
+
+    fn operate(
+        &mut self,
+        layout: Layout<'_>,
+        renderer: &iced::Renderer,
+        operation: &mut dyn iced::advanced::widget::Operation,
+    ) {
+        self.content
+            .as_widget_mut()
+            .operate(self.tree, layout, renderer, operation);
+    }
+
+    fn overlay<'a>(
+        &'a mut self,
+        layout: Layout<'a>,
+        renderer: &iced::Renderer,
+    ) -> Option<overlay::Element<'a, Message, Theme, iced::Renderer>> {
+        self.content.as_widget_mut().overlay(
+            self.tree,
+            layout,
+            renderer,
+            &self.viewport,
+            Vector::ZERO,
+        )
     }
 }
 

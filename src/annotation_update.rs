@@ -1,23 +1,10 @@
 use crate::annotations::{DrawingMenu, DrawingTool};
 use crate::app_state::TradingTerminal;
-use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
+use crate::chart_state::ChartInstance;
 use crate::message::Message;
 use iced::Task;
 
 impl TradingTerminal {
-    pub(crate) fn dismiss_drawing_menu(
-        &mut self,
-        chart_id: ChartId,
-        surface: ChartSurfaceId,
-    ) -> bool {
-        self.charts.get_mut(&chart_id).is_some_and(|instance| {
-            instance
-                .drawing_menu
-                .take_if(|(owner, _)| *owner == surface)
-                .is_some()
-        })
-    }
-
     pub(crate) fn update_annotations(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ToggleDrawingMenu(chart_id, surface_id, menu) => {
@@ -150,6 +137,7 @@ fn mirror_annotations(instance: &mut ChartInstance) {
 mod tests {
     use super::*;
     use crate::annotations::{Annotation, AnnotationKind, AnnotationStyle};
+    use crate::chart_state::ChartSurfaceId;
     use crate::timeframe::Timeframe;
 
     fn level(id: u64) -> Annotation {

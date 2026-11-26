@@ -25,6 +25,7 @@ use overlay::clamp_to_viewport;
 pub(crate) enum MenuAlignment {
     Start,
     End,
+    FlushStart,
 }
 
 /// Identifies which summary menu is being shown so the reveal animation can
@@ -34,6 +35,7 @@ pub(crate) enum MenuKind {
     AccountPicker,
     LayoutSwitcher,
     AddWidget,
+    ChartIndicators,
     DrawingTools,
     DrawingColors,
 }

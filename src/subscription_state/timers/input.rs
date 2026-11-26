@@ -48,6 +48,7 @@ impl TradingTerminal {
                 || inst.editor_open
                 || inst.chart.active_tool.is_some()
                 || inst.drawing_menu.is_some()
+                || inst.macro_menu_open
         }) || !self.chart_surface_active_tools.is_empty()
         {
             subs.push(iced::event::listen_with(|event, _status, window_id| {

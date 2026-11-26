@@ -1,8 +1,27 @@
 use crate::chart_state::{CandleFetchMode, ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
-use iced::widget::{Row, button, container, rule, text, tooltip};
+use iced::widget::{Row, button, container, rule, svg, text, tooltip};
 use iced::{Color, Element, Fill, Theme};
 use std::borrow::Cow;
+
+const TRADE_MARKERS_ICON: &[u8] = br#"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <path d="M7 2v3m0 8v3m10-8v3m0 8v3"/>
+    <rect x="4.5" y="5" width="5" height="8" rx="1"/>
+    <rect x="14.5" y="11" width="5" height="8" rx="1"/>
+  </g>
+  <g fill="currentColor">
+    <circle cx="7" cy="21" r="2.2"/>
+    <circle cx="17" cy="3" r="2.2"/>
+  </g>
+</svg>"#;
+
+const COMPARE_ICON: &[u8] = br#"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M2 13 8 6l5 3 9-7M2 21l6-5 5 3 9-7"/>
+</svg>"#;
 
 pub(super) fn chart_toolbar_strip(controls: Row<'_, Message>) -> Element<'_, Message> {
     container(controls.width(Fill).wrap().vertical_spacing(0))
@@ -129,36 +148,40 @@ pub(super) fn push_chart_mode_buttons<'a>(
         ))
         .push(chart_toolbar_separator())
         .push(tooltip(
-            chart_toolbar_button(
-                "FILL",
+            chart_toolbar_icon_button(
+                TRADE_MARKERS_ICON,
                 instance.chart.show_trade_markers,
                 Message::ToggleChartTradeMarkers(chart_id),
             ),
-            text("Show account buy/sell fills")
-                .size(10)
-                .font(crate::app_fonts::monospace_font()),
+            text(if instance.chart.show_trade_markers {
+                "Hide account buy/sell fills"
+            } else {
+                "Show account buy/sell fills"
+            })
+            .size(10)
+            .font(crate::app_fonts::monospace_font()),
             tooltip::Position::Top,
         ));
 
     toolbar = toolbar.push(chart_toolbar_separator()).push(tooltip(
-        chart_toolbar_button(
-            "CMP",
+        chart_toolbar_icon_button(
+            COMPARE_ICON,
             instance.secondary_symbol.is_some() || instance.secondary_editor_open,
             Message::ChartSecondaryOpenEditor(chart_id),
         ),
-        text("Add comparison symbol")
-            .size(10)
-            .font(crate::app_fonts::monospace_font()),
+        text(if instance.secondary_symbol.is_some() {
+            "Change comparison symbol"
+        } else {
+            "Add comparison symbol"
+        })
+        .size(10)
+        .font(crate::app_fonts::monospace_font()),
         tooltip::Position::Top,
     ));
 
     if instance.secondary_symbol.is_some() {
         toolbar = toolbar.push(tooltip(
-            chart_toolbar_button(
-                "Clear CMP",
-                false,
-                Message::ChartSecondarySymbolRemoved(chart_id),
-            ),
+            chart_toolbar_button("×", false, Message::ChartSecondarySymbolRemoved(chart_id)),
             text("Remove comparison symbol")
                 .size(10)
                 .font(crate::app_fonts::monospace_font()),
@@ -190,6 +213,34 @@ fn chart_toolbar_status_label(label: &'static str, color: Color) -> Element<'sta
         .into()
 }
 
+fn chart_toolbar_icon_button(
+    icon: &'static [u8],
+    active: bool,
+    msg: Message,
+) -> Element<'static, Message> {
+    // Match the text buttons' line height so wrapped toolbar rows stay aligned.
+    let icon_size = text::LineHeight::default().to_absolute(11.into());
+    let icon = svg(svg::Handle::from_memory(icon))
+        .width(icon_size)
+        .height(icon_size)
+        .style(move |theme: &Theme, _| svg::Style {
+            color: Some(toolbar_foreground(theme, active)),
+        });
+    button(icon)
+        .on_press(msg)
+        .padding([3, 8])
+        .style(move |theme, status| compact_toolbar_button_style(theme, status, active))
+        .into()
+}
+
+fn toolbar_foreground(theme: &Theme, active: bool) -> Color {
+    if active {
+        theme.palette().primary
+    } else {
+        theme.extended_palette().background.weak.text
+    }
+}
+
 pub(super) fn compact_toolbar_button_style(
     theme: &Theme,
     status: button::Status,
@@ -212,11 +263,7 @@ pub(super) fn compact_toolbar_button_style(
 
     button::Style {
         background: Some(background.into()),
-        text_color: if active {
-            theme.palette().primary
-        } else {
-            theme.extended_palette().background.weak.text
-        },
+        text_color: toolbar_foreground(theme, active),
         border: iced::Border {
             radius: 0.0.into(),
             ..Default::default()

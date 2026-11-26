@@ -50,7 +50,7 @@ impl TradingTerminal {
 
                 // PaneGrid emits PaneClicked even when a child text input captured
                 // the press. Keep this chart's menu mounted so period inputs retain
-                // focus; its backdrop still closes it when clicked outside the card.
+                // focus. The dropdown handles clicks outside the card.
                 let editing_chart_indicators = self
                     .workspace_panes(workspace)
                     .and_then(|panes| panes.get(pane))

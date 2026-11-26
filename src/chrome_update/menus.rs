@@ -1,10 +1,29 @@
 use crate::app_state::TradingTerminal;
+use crate::chart_state::{ChartId, ChartSurfaceId};
 
 // ---------------------------------------------------------------------------
 // Shared Chrome Menus
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    pub(crate) fn dismiss_chart_toolbar_menu(
+        &mut self,
+        chart_id: ChartId,
+        surface: ChartSurfaceId,
+    ) -> bool {
+        self.charts.get_mut(&chart_id).is_some_and(|instance| {
+            if instance.chart.surface_id() == surface
+                && std::mem::take(&mut instance.macro_menu_open)
+            {
+                return true;
+            }
+            instance
+                .drawing_menu
+                .take_if(|(owner, _)| *owner == surface)
+                .is_some()
+        })
+    }
+
     pub(crate) fn close_chart_header_menus(&mut self) {
         for inst in self.charts.values_mut() {
             inst.macro_menu_open = false;

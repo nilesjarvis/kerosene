@@ -11,8 +11,8 @@ use crate::chart_state::{ChartId, ChartInstance};
 use crate::message::Message;
 
 use iced::widget::container as container_style;
-use iced::widget::{Column, button, container, scrollable, stack};
-use iced::{Color, Element, Fill, Theme};
+use iced::widget::{Column, container, opaque, scrollable};
+use iced::{Element, Fill, Theme};
 
 mod components;
 mod ema_clouds;
@@ -138,27 +138,7 @@ impl TradingTerminal {
                 ..Default::default()
             });
 
-        let bg_overlay = button("")
-            .width(Fill)
-            .height(Fill)
-            .on_press(Message::CloseAllMenus)
-            .style(|_theme: &Theme, _status| button::Style {
-                background: Some(Color::TRANSPARENT.into()),
-                ..Default::default()
-            });
-
-        stack![
-            bg_overlay,
-            container(menu_card)
-                .width(Fill)
-                .height(Fill)
-                .padding([32, 20])
-                .align_x(iced::Alignment::Start)
-                .align_y(iced::Alignment::Start)
-        ]
-        .width(Fill)
-        .height(Fill)
-        .into()
+        opaque(menu_card)
     }
 }
 

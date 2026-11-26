@@ -27,7 +27,7 @@ impl TradingTerminal {
             .collect::<Vec<_>>();
 
         for &id in &chart_ids {
-            if self.dismiss_drawing_menu(id, ChartSurfaceId::Docked(id)) {
+            if self.dismiss_chart_toolbar_menu(id, ChartSurfaceId::Docked(id)) {
                 return;
             }
         }

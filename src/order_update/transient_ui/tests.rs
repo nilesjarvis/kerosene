@@ -80,6 +80,13 @@ fn workspace_escape_clears_only_the_originating_workspace() {
     assert_eq!(main_chart.chart.active_tool, Some(DrawingTool::TrendLine));
     assert!(main_chart.quick_order.is_some());
 
+    let _ = terminal.update(Message::ToggleMacroMenu(main_chart_id));
+    let _ = terminal.update_order(Message::EscapePressed(main_window_id));
+    let main_chart = &terminal.charts[&main_chart_id];
+    assert!(!main_chart.macro_menu_open);
+    assert_eq!(main_chart.chart.active_tool, Some(DrawingTool::TrendLine));
+    assert!(main_chart.quick_order.is_some());
+
     let _ = terminal.update_order(Message::EscapePressed(main_window_id));
 
     let main_chart = terminal.charts.get(&main_chart_id).expect("main chart");

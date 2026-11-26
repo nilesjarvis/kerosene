@@ -35,11 +35,6 @@ impl TradingTerminal {
         .text_size(11)
         .style(chart_toolbar_pick_list_style);
 
-        let indicator_btn = sections::chart_toolbar_button(
-            "IND",
-            instance.macro_menu_open,
-            Message::ToggleMacroMenu(chart_id),
-        );
         let reload_btn = sections::chart_reload_button(chart_id);
         let reset_view_btn = sections::chart_reset_view_button(chart_id, surface_id);
         let header_collapse_btn = match surface_id {
@@ -52,7 +47,7 @@ impl TradingTerminal {
         let mut controls_row = row![
             tf_picker,
             sections::chart_toolbar_separator(),
-            indicator_btn,
+            self.view_indicator_dropdown(chart_id, instance),
             sections::chart_toolbar_separator(),
             drawing::view_drawing_button(chart_id, surface_id, instance, active_tool),
             sections::chart_toolbar_separator(),
@@ -83,6 +78,24 @@ impl TradingTerminal {
             }
         });
         AnchoredAccountMenu::new(sections::chart_toolbar_strip(controls_row), menu).into()
+    }
+
+    fn view_indicator_dropdown(
+        &self,
+        chart_id: ChartId,
+        instance: &ChartInstance,
+    ) -> Element<'_, Message> {
+        let button = sections::chart_toolbar_button(
+            "IND ▾",
+            instance.macro_menu_open,
+            Message::ToggleMacroMenu(chart_id),
+        );
+        let menu = instance.macro_menu_open.then(|| AnchoredMenuLayer {
+            kind: MenuKind::ChartIndicators,
+            alignment: MenuAlignment::FlushStart,
+            content: self.view_macro_indicator_menu(chart_id, instance),
+        });
+        AnchoredAccountMenu::new(button, menu).into()
     }
 }
 
@@ -116,6 +129,107 @@ mod tests {
     use iced::advanced::renderer::Headless;
     use iced::advanced::{layout, widget::Tree};
     use iced::{Font, Pixels, Renderer, Size};
+
+    #[tokio::test]
+    async fn indicators_animate_from_the_button_and_fit_short_windows() {
+        use iced::advanced::{Layout, Shell, clipboard, mouse, renderer};
+        use iced::{Event, Point, Rectangle, Vector, window};
+        use std::time::{Duration, Instant};
+
+        let mut renderer = Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+            .await
+            .expect("software renderer");
+        let mut terminal = TradingTerminal::boot().0;
+        terminal
+            .charts
+            .insert(7, ChartInstance::new(7, "BTC".into(), Timeframe::H1));
+        let _ = terminal.update(Message::ToggleMacroMenu(7));
+        for (height, button_y, below) in [
+            (600.0, 64.0, true),
+            (205.0, 30.0, true),
+            (205.0, 160.0, false),
+        ] {
+            let size = Size::new(640.0, height);
+            let mut dropdown = terminal.view_indicator_dropdown(7, &terminal.charts[&7]);
+            let mut tree = Tree::new(dropdown.as_widget());
+            let button = dropdown
+                .as_widget_mut()
+                .layout(&mut tree, &renderer, &layout::Limits::new(Size::ZERO, size))
+                .move_to(Point::new(91.0, button_y));
+            let mut overlay = dropdown
+                .as_widget_mut()
+                .overlay(
+                    &mut tree,
+                    Layout::new(&button),
+                    &renderer,
+                    &Rectangle::with_size(size),
+                    Vector::ZERO,
+                )
+                .expect("open indicator dropdown");
+            let menu = overlay.as_overlay_mut();
+            let opening = menu.layout(&renderer, size);
+            iced::advanced::Renderer::reset(&mut renderer, Rectangle::with_size(size));
+            menu.draw(
+                &mut renderer,
+                &Theme::Dark,
+                &renderer::Style::default(),
+                Layout::new(&opening),
+                mouse::Cursor::Unavailable,
+            );
+            let pixels = renderer.screenshot(
+                Size::new(size.width as u32, size.height as u32),
+                1.0,
+                Color::BLACK,
+            );
+            assert!(
+                pixels.chunks_exact(4).all(|pixel| pixel == &pixels[..4]),
+                "scrollable controls must stay hidden until the reveal starts"
+            );
+            let now = Instant::now();
+            for frame in [now, now + Duration::from_millis(200)] {
+                menu.update(
+                    &Event::Window(window::Event::RedrawRequested(frame)),
+                    Layout::new(&opening),
+                    mouse::Cursor::Unavailable,
+                    &renderer,
+                    &mut clipboard::Null,
+                    &mut Shell::new(&mut Vec::new()),
+                );
+            }
+            let settled = menu.layout(&renderer, size).bounds();
+            assert_eq!(settled.x, button.bounds().x);
+            assert!(opening.bounds().y < settled.y);
+            assert!(settled.y >= 0.0 && settled.y + settled.height <= height);
+            if below {
+                assert!(settled.y >= button_y + button.size().height);
+            } else {
+                assert!(settled.y + settled.height <= button_y);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn draw_button_fits_the_selected_tool_label() {
+        let renderer = Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+            .await
+            .expect("software renderer");
+        let chart = ChartInstance::new(7, "BTC".into(), Timeframe::H1);
+        let button_width = |tool| {
+            let mut button =
+                drawing::view_drawing_button(7, ChartSurfaceId::Docked(7), &chart, tool);
+            let mut tree = Tree::new(button.as_widget());
+            button
+                .as_widget_mut()
+                .layout(
+                    &mut tree,
+                    &renderer,
+                    &layout::Limits::new(Size::ZERO, Size::new(320.0, 40.0)),
+                )
+                .size()
+                .width
+        };
+        assert!(button_width(None) < button_width(Some(DrawingTool::FibRetracement)));
+    }
 
     #[tokio::test]
     async fn drawing_tools_and_open_palette_keep_the_chart_toolbar_height_stable() {

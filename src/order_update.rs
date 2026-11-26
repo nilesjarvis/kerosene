@@ -483,7 +483,7 @@ impl TradingTerminal {
         };
 
         let surface = ChartSurfaceId::Detached(window_id);
-        if self.dismiss_drawing_menu(chart_id, surface) {
+        if self.dismiss_chart_toolbar_menu(chart_id, surface) {
             return;
         }
         self.clear_chart_surface_state(chart_id, surface);

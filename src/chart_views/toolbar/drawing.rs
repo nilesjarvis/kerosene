@@ -39,17 +39,15 @@ pub(super) fn view_drawing_button(
         Some(DrawingTool::FibExtension) => "Fib extend",
         _ => name,
     };
-    // Keep the remaining controls in place when the active tool changes.
     button(
         row![
             text(glyph).size(12),
-            text(short_name).size(11).width(Fill),
+            text(short_name).size(11),
             text("▾").size(10)
         ]
         .spacing(4)
         .align_y(Alignment::Center),
     )
-    .width(96)
     .padding([3, 6])
     .on_press(Message::ToggleDrawingMenu(
         chart_id,
