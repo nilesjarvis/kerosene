@@ -11,6 +11,7 @@ use self::metrics::{
 };
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
+use crate::helpers;
 use crate::message::Message;
 use iced::widget::{Space, column, responsive, row, text, tooltip};
 use iced::{Element, Fill, Length};
@@ -71,6 +72,10 @@ impl TradingTerminal {
 
         if metric_visibility.show_24h_change {
             let change = self.chart_24h_change(instance, now_ms);
+            let chg_color = change
+                .as_ref()
+                .map(|change| helpers::signed_number_color(change.absolute, &theme))
+                .unwrap_or(theme.palette().text);
             let change_text = change
                 .as_ref()
                 .map(|change| {
@@ -103,7 +108,7 @@ impl TradingTerminal {
             let chg_val = text(change_text)
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
-                .color(theme.palette().text);
+                .color(chg_color);
             let col_chg = column![
                 text("24h Chg")
                     .size(9)
