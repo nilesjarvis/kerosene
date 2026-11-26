@@ -33,8 +33,13 @@ impl TradingTerminal {
             OrderBookSymbolMode::Active => self.active_symbol.as_str(),
             OrderBookSymbolMode::Fixed(symbol) => symbol.as_str(),
         };
-        let title_row = self.view_order_book_title(id, inst, tracking_symbol, &theme);
-        if !tracking_symbol.is_empty() && self.symbol_key_is_hidden(tracking_symbol) {
+        let hidden = !tracking_symbol.is_empty() && self.symbol_key_is_hidden(tracking_symbol);
+        let tick_options = helpers::book_tick_options(inst.tick_options_mid());
+        let tick = Self::resolved_order_book_tick(inst, &tick_options);
+        let tick_picker =
+            (!hidden).then(|| Self::view_order_book_tick_picker(id, tick_options, tick));
+        let title_row = self.view_order_book_title(id, inst, tracking_symbol, &theme, tick_picker);
+        if hidden {
             let hidden_label = if self.is_ticker_muted(tracking_symbol) {
                 "Muted ticker"
             } else {
@@ -63,9 +68,6 @@ impl TradingTerminal {
                 .into();
         }
 
-        let tick_options = helpers::book_tick_options(inst.tick_options_mid());
-        let tick = Self::resolved_order_book_tick(inst, &tick_options);
-        let tick_buttons = Self::view_order_book_tick_buttons(id, &tick_options, tick);
         let header = match inst.display_mode {
             OrderBookDisplayMode::DepthList => Some(Self::view_order_book_header(
                 id,
@@ -161,7 +163,6 @@ impl TradingTerminal {
             content_col = content_col.push(self.view_order_book_settings(id, inst));
         }
 
-        content_col = content_col.push(container(tick_buttons).padding([0, 4]));
         if let Some(header) = header {
             let gutter = if inst.center_on_mid {
                 0.0

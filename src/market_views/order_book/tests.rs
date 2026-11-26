@@ -82,12 +82,17 @@ fn resolved_tick_keeps_a_tick_that_is_in_the_option_set() {
         TradingTerminal::resolved_order_book_tick(&inst, &options),
         0.1
     );
+
+    inst.set_tick_size(0.1 + f64::EPSILON);
+    assert_eq!(
+        TradingTerminal::resolved_order_book_tick(&inst, &options),
+        0.1
+    );
 }
 
 #[test]
 fn resolved_tick_snaps_to_nearest_option_after_a_regime_change() {
-    // A persisted tick from a different price regime must land on a real
-    // selector button, not silently reset to the default.
+    // A persisted tick from a different price regime selects the nearest available option.
     let inst = OrderBookInstance::new(1, OrderBookSymbolMode::Active, 50.0);
     let options = [0.01, 0.05, 0.1, 0.5, 1.0];
 

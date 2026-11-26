@@ -182,6 +182,69 @@ async fn order_book_total_headers_toggle_units_in_both_orientations_and_views() 
 }
 
 #[tokio::test]
+async fn denomination_menu_sends_each_tick_to_its_order_book() {
+    let mut renderer = iced::Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+        .await
+        .expect("software renderer");
+    let size = Size::new(280.0, 180.0);
+    let options = crate::helpers::book_tick_options(0.45);
+    let picker = TradingTerminal::view_order_book_tick_picker(91, options, options[2]);
+    let mut view = iced::widget::container(picker).into();
+    let (mut tree, node) = render(
+        &mut view,
+        &mut renderer,
+        &Theme::Dark,
+        size,
+        "denomination-menu",
+    );
+    let button = node.children()[0].bounds();
+    assert!(button.width < size.width);
+
+    for (index, tick) in options.into_iter().enumerate() {
+        click(
+            &mut view,
+            &mut tree,
+            &node,
+            &mut renderer,
+            size,
+            button.center(),
+        );
+        let mut menu = view
+            .as_widget_mut()
+            .overlay(
+                &mut tree,
+                Layout::new(&node),
+                &renderer,
+                &Rectangle::with_size(size),
+                iced::Vector::ZERO,
+            )
+            .expect("denomination menu");
+        let menu_node = menu.as_overlay_mut().layout(&renderer, size);
+        let position = Point::new(
+            button.center_x(),
+            button.y + button.height * (1.5 + index as f32),
+        );
+        let mut messages = Vec::new();
+        for event in [
+            mouse::Event::CursorMoved { position },
+            mouse::Event::ButtonPressed(mouse::Button::Left),
+        ] {
+            menu.as_overlay_mut().update(
+                &Event::Mouse(event),
+                Layout::new(&menu_node),
+                mouse::Cursor::Available(position),
+                &renderer,
+                &mut clipboard::Null,
+                &mut Shell::new(&mut messages),
+            );
+        }
+        assert!(
+            matches!(messages.as_slice(), [Message::SetBookTickSize(91, value)] if *value == tick)
+        );
+    }
+}
+
+#[tokio::test]
 async fn denomination_switches_keep_row_geometry_and_one_sided_depth_visible() {
     let mut renderer = iced::Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
         .await
@@ -315,7 +378,7 @@ async fn pane_composition_preserves_empty_loading_stale_and_spread_states() {
                     size,
                     &format!("pane-{mode_name}-{settings_open}-{state}"),
                 );
-                let expected_children = 4
+                let expected_children = 3
                     + usize::from(mode != OrderBookDisplayMode::DepthChart)
                     + usize::from(settings_open)
                     + 2 * usize::from(populated);

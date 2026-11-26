@@ -478,10 +478,11 @@ replacement arrives, in either direction. It does not recenter the scroller.
 Snapshots replace both sides atomically; finer levels are never merged into
 older coarse buckets. A live result clears the pending REST request so a late
 bootstrap response or failure cannot overwrite it. Failed switches retain the
-last snapshot with the stale indicator; clicking the selected denomination
-retries the request. Thin or one-sided books show all available levels within
-each half of the viewport; missing depth is not invented or used to hide the
-opposite side. Scrollable depth lists reserve 20 slots per side.
+last snapshot with the stale indicator. Choosing the current denomination again
+from the order book header dropdown retries the request. Thin or one-sided books
+show all available levels within each half of the viewport; missing depth is not
+invented or used to hide the opposite side. Scrollable depth lists reserve 20
+slots per side.
 
 Live API checks confirmed that L2 websocket snapshots omit the subscription's
 precision, even when multiple aggregations of the same coin are subscribed.

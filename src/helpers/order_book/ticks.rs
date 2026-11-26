@@ -99,7 +99,7 @@ pub fn tick_sizes_match(a: f64, b: f64) -> bool {
     valid_book_tick_size(a) && valid_book_tick_size(b) && (a - b).abs() / a.max(b).max(1e-12) < 0.01
 }
 
-/// Format a tick size for display in the selector buttons.
+/// Format a tick size for the order book's denomination selector.
 pub fn format_tick(tick: f64) -> String {
     if !valid_book_tick_size(tick) {
         return "-".to_string();

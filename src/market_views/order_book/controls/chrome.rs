@@ -64,6 +64,7 @@ impl TradingTerminal {
         inst: &OrderBookInstance,
         tracking_symbol: &str,
         theme: &Theme,
+        tick_picker: Option<Element<'static, Message>>,
     ) -> Element<'_, Message> {
         let tracking_label: Cow<'_, str> = match &inst.mode {
             OrderBookSymbolMode::Active => Cow::Borrowed(&self.active_symbol_display),
@@ -98,8 +99,8 @@ impl TradingTerminal {
 
         title
             .push(tracking_text)
-            .push(container(status).width(44).height(16).center_y(16))
-            .push(iced::widget::Space::new().width(Fill))
+            .push(container(status).width(Fill).center_y(16))
+            .extend(tick_picker)
             .push(Element::from(display_mode_button(
                 id,
                 inst.display_mode,
