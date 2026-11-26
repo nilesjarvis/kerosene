@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::app_time::DisplayTimeZone;
 use crate::helpers::{format_price, format_signed_percent_value};
 use crate::journal::{
     AggregatedTrade, JournalTradeSnapshot, JournalTradeSnapshotMetrics, JournalTradeSnapshotStatus,
@@ -44,7 +45,9 @@ impl TradingTerminal {
         };
 
         match &snapshot.status {
-            JournalTradeSnapshotStatus::Loaded => loaded_snapshot_view(snapshot, &theme),
+            JournalTradeSnapshotStatus::Loaded => {
+                loaded_snapshot_view(snapshot, self.display_timezone, &theme)
+            }
             JournalTradeSnapshotStatus::Unavailable(reason) => {
                 unavailable_snapshot_view(reason.as_str(), &theme)
             }
@@ -54,12 +57,14 @@ impl TradingTerminal {
 
 fn loaded_snapshot_view<'a>(
     snapshot: &'a JournalTradeSnapshot,
+    zone: DisplayTimeZone,
     theme: &Theme,
 ) -> Element<'a, Message> {
-    let chart: Element<'a, Message> = iced::widget::canvas(JournalSnapshotCanvas { snapshot })
-        .width(Fill)
-        .height(SNAPSHOT_HEIGHT)
-        .into();
+    let chart: Element<'a, Message> =
+        iced::widget::canvas(JournalSnapshotCanvas { snapshot, zone })
+            .width(Fill)
+            .height(SNAPSHOT_HEIGHT)
+            .into();
 
     column![chart, metrics_rows(&snapshot.metrics, theme)]
         .spacing(6)

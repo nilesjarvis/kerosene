@@ -56,6 +56,7 @@ impl CandlestickChart {
                 crate::config::default_chart_chromatic_aberration_strength(),
             edge_blur_enabled: false,
             edge_blur_strength: crate::config::default_chart_edge_blur_strength(),
+            display_timezone: Default::default(),
             crosshair_style: Default::default(),
             crosshair_guides_enabled: true,
             crosshair_scale: crate::config::default_chart_crosshair_scale(),
@@ -139,6 +140,7 @@ impl CandlestickChart {
             chromatic_aberration_strength: self.chromatic_aberration_strength,
             edge_blur_enabled: self.edge_blur_enabled,
             edge_blur_strength: self.edge_blur_strength,
+            display_timezone: self.display_timezone,
             crosshair_style: self.crosshair_style,
             crosshair_guides_enabled: self.crosshair_guides_enabled,
             crosshair_scale: self.crosshair_scale,
@@ -384,6 +386,13 @@ impl CandlestickChart {
         {
             self.edge_blur_enabled = enabled;
             self.edge_blur_strength = strength;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_display_timezone(&mut self, zone: crate::app_time::DisplayTimeZone) {
+        if self.display_timezone != zone {
+            self.display_timezone = zone;
             self.candle_cache.clear();
         }
     }

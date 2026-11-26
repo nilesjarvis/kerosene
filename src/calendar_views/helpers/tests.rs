@@ -16,14 +16,14 @@ fn filtered_titles(
     events: &[api::CalendarEvent],
     impact: CalendarImpactFilter,
     window: CalendarWindowFilter,
-    now: DateTime<Local>,
+    now: DateTime<chrono_tz::Tz>,
 ) -> Vec<String> {
     filtered_events(
         &parsed_events(events),
         impact,
         window,
         now.with_timezone(&Utc),
-        now,
+        now.timezone(),
     )
     .into_iter()
     .map(|(event, _)| event.title.clone())
@@ -36,7 +36,7 @@ fn next_title(events: &[api::CalendarEvent], now: DateTime<Utc>) -> Option<&str>
 
 #[test]
 fn calendar_filters_preserve_unscheduled_events_cutoffs_and_stable_ties() {
-    let now = Local
+    let now = chrono_tz::America::New_York
         .with_ymd_and_hms(2026, 6, 15, 12, 0, 0)
         .single()
         .expect("local noon");
@@ -133,7 +133,7 @@ fn calendar_view_uses_full_timestamp_precision_and_first_next_event_tie() {
             &events,
             CalendarImpactFilter::All,
             CalendarWindowFilter::Week,
-            now.with_timezone(&Local)
+            now.with_timezone(&chrono_tz::America::New_York)
         ),
         ["early-first", "early-second", "late"]
     );
@@ -152,8 +152,27 @@ fn calendar_view_uses_full_timestamp_precision_and_first_next_event_tie() {
             &[],
             CalendarImpactFilter::All,
             CalendarWindowFilter::Week,
-            now.with_timezone(&Local)
+            now.with_timezone(&chrono_tz::America::New_York)
         )
         .is_empty()
     );
+}
+
+#[test]
+fn today_filter_uses_the_selected_city_on_both_sides_of_midnight() {
+    let midnight: DateTime<Utc> = "2026-06-16T00:00:00Z".parse().expect("UTC midnight");
+    let events = vec![
+        event("before", "High", "2026-06-15T23:30:00Z".into()),
+        event("after", "High", "2026-06-16T04:30:00Z".into()),
+    ];
+    let titles = |zone| {
+        filtered_titles(
+            &events,
+            CalendarImpactFilter::All,
+            CalendarWindowFilter::Today,
+            midnight.with_timezone(&zone),
+        )
+    };
+    assert_eq!(titles(chrono_tz::UTC), ["after"]);
+    assert_eq!(titles(chrono_tz::America::New_York), ["before"]);
 }

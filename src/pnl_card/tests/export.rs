@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn filename_sanitizes_asset_ticker() {
-    let filename = pnl_card_filename("xyz:BTC/USD");
+    let filename = pnl_card_filename("xyz:BTC/USD", Default::default());
 
     assert!(filename.starts_with("kerosene-xyz-btc-usd-pnl-card-"));
     assert!(filename.ends_with(".png"));

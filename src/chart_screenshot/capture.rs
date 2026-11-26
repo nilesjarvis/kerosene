@@ -2,7 +2,8 @@ use super::ChartScreenshotState;
 use super::bitmap::encode_png_rgba;
 use super::widget::ChartCanvasSnapshot;
 
-use chrono::{DateTime, Local};
+use chrono::DateTime;
+use chrono_tz::Tz;
 use iced::advanced::graphics::geometry::Renderer as GeometryRenderer;
 use iced::advanced::renderer::Headless;
 use iced::widget::image::Handle as ImageHandle;
@@ -26,7 +27,7 @@ pub(super) struct ChartScreenshotRenderRequest {
     pub(super) timeframe: String,
     pub(super) chart: crate::chart::CandlestickChart,
     pub(super) background_color: Color,
-    pub(super) captured_at: DateTime<Local>,
+    pub(super) captured_at: DateTime<Tz>,
     pub(super) theme: Theme,
 }
 

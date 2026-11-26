@@ -17,6 +17,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     let config = KeroseneConfig {
         app_onboarding_dismissed: true,
         ui_scale: 0.85,
+        display_timezone: crate::app_time::DisplayTimeZone(chrono_tz::America::New_York),
         window_transparency_enabled: true,
         window_background_blur_enabled: true,
         window_background_opacity: 0.64,
@@ -67,6 +68,8 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     let json = json_string(&config, "config should serialize");
     let decoded: KeroseneConfig = value_from_str(&json, "config should deserialize");
     assert!(decoded.app_onboarding_dismissed);
+    assert!(json.contains("America/New_York"));
+    assert_eq!(decoded.display_timezone, config.display_timezone);
     assert_eq!(decoded.ui_scale, 0.85);
     assert!(decoded.window_transparency_enabled);
     assert!(decoded.window_background_blur_enabled);
@@ -126,6 +129,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     let mut legacy = default_config_value();
     let object = object_mut(&mut legacy, "config should serialize to object");
     object.remove("app_onboarding_dismissed");
+    object.remove("display_timezone");
     object.remove("ui_scale");
     object.remove("window_transparency_enabled");
     object.remove("window_background_blur_enabled");
@@ -161,6 +165,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         value_from_json(legacy, "legacy config should deserialize");
     assert!(!KeroseneConfig::default().app_onboarding_dismissed);
     assert!(decoded_legacy.app_onboarding_dismissed);
+    assert_eq!(decoded_legacy.display_timezone.0, chrono_tz::UTC);
     assert_eq!(decoded_legacy.ui_scale, default_ui_scale());
     assert!(!decoded_legacy.window_transparency_enabled);
     assert!(!decoded_legacy.window_background_blur_enabled);

@@ -1,4 +1,6 @@
+use crate::app_time::DisplayTimeZone;
 use crate::journal::{AggregatedTrade, is_non_perp_coin};
+use chrono::{Datelike, Timelike};
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -12,11 +14,9 @@ use std::collections::HashMap;
 // in net PnL and per-asset bars.
 // ---------------------------------------------------------------------------
 
-const TIME_OF_DAY_BUCKET_HOURS: u64 = 4;
+const TIME_OF_DAY_BUCKET_HOURS: u32 = 4;
 const TIME_OF_DAY_BUCKETS: usize = 6;
 const TIME_OF_DAY_WEEKDAYS: usize = 5;
-const MS_PER_DAY: u64 = 86_400_000;
-const MS_PER_HOUR: u64 = 3_600_000;
 
 fn journal_is_scored(trade: &AggregatedTrade) -> bool {
     trade.status == "CLOSED" && !is_non_perp_coin(&trade.coin) && trade.basis_complete
@@ -198,7 +198,7 @@ pub(crate) struct JournalHeatCell {
 
 #[derive(Debug, Clone)]
 pub(crate) struct JournalTimeOfDay {
-    /// `[weekday Mon..Fri][bucket 00/04/08/12/16/20 UTC]`.
+    /// `[weekday Mon..Fri][bucket 00/04/08/12/16/20 local]`.
     pub cells: [[JournalHeatCell; TIME_OF_DAY_BUCKETS]; TIME_OF_DAY_WEEKDAYS],
     pub max_abs_pnl: f64,
 }
@@ -212,29 +212,21 @@ impl Default for JournalTimeOfDay {
     }
 }
 
-/// Weekday index where Monday = 0 … Sunday = 6 (UTC), from an epoch timestamp.
-fn weekday_index(time_ms: u64) -> usize {
-    let days = time_ms / MS_PER_DAY;
-    // 1970-01-01 (day 0) was a Thursday; shift so Monday maps to 0.
-    ((days + 3) % 7) as usize
-}
-
-fn hour_bucket(time_ms: u64) -> usize {
-    let hour = (time_ms % MS_PER_DAY) / MS_PER_HOUR;
-    ((hour / TIME_OF_DAY_BUCKET_HOURS) as usize).min(TIME_OF_DAY_BUCKETS - 1)
-}
-
 pub(crate) fn journal_time_of_day(
+    zone: DisplayTimeZone,
     trades: &[&AggregatedTrade],
     include_fees: bool,
 ) -> JournalTimeOfDay {
     let mut grid = JournalTimeOfDay::default();
     for trade in trades {
-        let weekday = weekday_index(trade.start_time);
+        let Some(time) = zone.datetime(trade.start_time) else {
+            continue;
+        };
+        let weekday = time.weekday().num_days_from_monday() as usize;
         if weekday >= TIME_OF_DAY_WEEKDAYS {
             continue; // skip weekends
         }
-        let bucket = hour_bucket(trade.start_time);
+        let bucket = (time.hour() / TIME_OF_DAY_BUCKET_HOURS) as usize;
         let cell = &mut grid.cells[weekday][bucket];
         cell.count += 1;
         cell.pnl += trade.effective_pnl(include_fees);
@@ -477,20 +469,14 @@ mod tests {
     }
 
     #[test]
-    fn weekday_index_maps_known_dates() {
-        // 2021-01-04 00:00 UTC is a Monday.
-        let monday = 1_609_718_400_000;
-        assert_eq!(weekday_index(monday), 0);
-        // +5 days → Saturday (index 5).
-        assert_eq!(weekday_index(monday + 5 * MS_PER_DAY), 5);
-    }
-
-    #[test]
     fn time_of_day_buckets_by_weekday_and_hour() {
-        let monday_0900 = 1_609_718_400_000 + 9 * MS_PER_HOUR;
+        let monday_0900 = 1_609_718_400_000 + 9 * 3_600_000;
         let trades = [trade("BTC", true, 100.0, 0.0, monday_0900)];
         let refs: Vec<&AggregatedTrade> = trades.iter().collect();
-        let grid = journal_time_of_day(&refs, false);
+        let grid = journal_time_of_day(Default::default(), &refs, false);
+
+        let ny = journal_time_of_day(DisplayTimeZone(chrono_tz::America::New_York), &refs, false);
+        assert_eq!(ny.cells[0][1].count, 1); // 04:00 EST
 
         // 09:00 falls in the 08-12 bucket (index 2) on Monday (row 0).
         assert_eq!(grid.cells[0][2].count, 1);

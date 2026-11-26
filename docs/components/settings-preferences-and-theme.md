@@ -18,6 +18,29 @@ filters, secret storage controls, integrations, layouts, and notifications.
 | Sound | `src/sound/`, `src/preferences_update/sounds.rs` | Built-in/generated/custom sounds, HUD sounds, volume, import. |
 | Risk settings | `src/risk_state/`, `src/settings_views/risk/` | Muted tickers, market universe, denomination, market slippage, optimistic updates. |
 
+## Display time zone
+
+Choose a city or UTC from the upper-right selector in the main window or a
+candlestick chart. Both selectors control every workspace and detached window.
+Kerosene saves the preference across restarts. City offsets follow the IANA
+rules for the instant shown, including daylight-saving transitions.
+
+| Surface | What follows the selected city |
+| --- | --- |
+| Candlestick charts | Axis dates and times, crosshair, HUD clock, trade and funding tooltips, 24-hour reference candle, and exported charts |
+| Account and orders | Trade, funding and transfer histories, hourly interest payments and alerts, advanced order completion, and structured outcome expiry and resolution deadlines |
+| Portfolio and journal | PnL hover times, daily return rows, month- and year-to-date boundaries, trade detail and fill markers, sync times, and weekday/hour analytics |
+| Calendar | Event times, day headings, the Today filter, and next-event summary |
+| Market data and feeds | Order book snapshots, positioning updates, listings, market updates, ETF update times, unstaking unlocks, and X posts and refresh times |
+| App and exports | Status clock, network console, chart capture metadata and suggested image filenames |
+
+Exchange sessions and their named venue clocks follow the exchange calendar.
+Contract names and published settlement rules retain their source wording.
+Date-only filings, ETF valuation dates, and provider-defined UTC reporting
+periods retain their financial meaning. Elapsed times, funding countdowns,
+candle intervals, and the exchange timestamps used for trading are independent
+of the display preference.
+
 ## Settings Window
 
 The settings window is routed through `main_view/windows.rs` and

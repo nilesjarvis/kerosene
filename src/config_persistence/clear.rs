@@ -365,6 +365,7 @@ impl TradingTerminal {
         self.journal.clear_active_account_data();
 
         self.active_theme = defaults.active_theme;
+        self.display_timezone = defaults.display_timezone;
         self.ui_scale = defaults.ui_scale;
         self.chart_dotted_background = defaults.chart_dotted_background;
         self.chart_dotted_background_opacity = defaults.chart_dotted_background_opacity;
@@ -461,6 +462,7 @@ impl TradingTerminal {
         self.sync_chart_fisheye();
         self.sync_chart_chromatic_aberration();
         self.sync_chart_edge_blur();
+        self.sync_chart_timezone();
         self.sync_chart_crosshair_style();
         self.sync_chart_crosshair_guides();
         self.sync_chart_crosshair_scale();

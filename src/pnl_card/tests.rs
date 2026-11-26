@@ -51,6 +51,7 @@ async fn render_test_image(
         metrics,
         DisplayDenominationContext::default(),
         pnl_color,
+        Default::default(),
         Theme::Dark,
     );
     match render_pnl_card_image(request).await {

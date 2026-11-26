@@ -6,7 +6,7 @@ mod title_bar;
 mod unlock;
 mod windows;
 
-pub(crate) use title_bar::STATUS_TOGGLES_WIDTH;
+pub(crate) use title_bar::{STATUS_TOGGLES_WIDTH, TIME_ZONE_PICKER_WIDTH};
 
 use crate::app_state::TradingTerminal;
 use crate::canvas_state::WorkspaceId;

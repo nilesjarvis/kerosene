@@ -11,7 +11,12 @@ fn daily_percent_rows_use_previous_day_close_and_prior_account_value() {
     let account_values = vec![(1_672_531_200_000, 1_000.0), (1_672_617_600_000, 2_000.0)];
 
     assert_eq!(
-        compute_daily_percent_rows_from_cumulative(&pnl_points, &account_values, 3),
+        compute_daily_percent_rows_from_cumulative(
+            &pnl_points,
+            &account_values,
+            3,
+            Default::default()
+        ),
         vec![
             ("2023-01-03".to_string(), 1.5),
             ("2023-01-02".to_string(), 2.0),
@@ -31,7 +36,12 @@ fn daily_percent_rows_skip_invalid_days_and_truncate() {
         .map(|day| (start + day * day_ms, 1_000.0))
         .collect::<Vec<_>>();
 
-    let rows = compute_daily_percent_rows_from_cumulative(&pnl_points, &account_values, 7);
+    let rows = compute_daily_percent_rows_from_cumulative(
+        &pnl_points,
+        &account_values,
+        7,
+        Default::default(),
+    );
 
     assert_eq!(rows.len(), 7);
     assert_eq!(rows.first(), Some(&("2023-01-10".to_string(), 1.0)));

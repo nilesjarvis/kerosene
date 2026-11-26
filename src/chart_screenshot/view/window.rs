@@ -73,7 +73,10 @@ impl TradingTerminal {
             state.timeframe,
             state.width,
             state.height,
-            state.captured_at.format("%Y-%m-%d %H:%M:%S")
+            state
+                .captured_at
+                .with_timezone(&self.display_timezone.0)
+                .format("%Y-%m-%d %H:%M:%S %Z")
         ))
         .size(11)
         .font(crate::app_fonts::monospace_font())

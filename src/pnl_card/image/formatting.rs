@@ -1,10 +1,10 @@
-use chrono::Local;
+use crate::app_time::DisplayTimeZone;
 
 // ---------------------------------------------------------------------------
 // Export File Naming
 // ---------------------------------------------------------------------------
 
-pub(in crate::pnl_card) fn pnl_card_filename(ticker: &str) -> String {
+pub(in crate::pnl_card) fn pnl_card_filename(ticker: &str, zone: DisplayTimeZone) -> String {
     let safe_ticker = ticker
         .chars()
         .map(|ch| {
@@ -24,6 +24,8 @@ pub(in crate::pnl_card) fn pnl_card_filename(ticker: &str) -> String {
     };
     format!(
         "kerosene-{safe_ticker}-pnl-card-{}.png",
-        Local::now().format("%Y%m%d-%H%M%S")
+        chrono::Utc::now()
+            .with_timezone(&zone.0)
+            .format("%Y%m%d-%H%M%S")
     )
 }

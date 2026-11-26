@@ -9,8 +9,17 @@ fn daily_pnl_rows_use_previous_day_close_and_return_newest_first() {
         (1_672_704_000_000, 130.0), // 2023-01-03 00:00 UTC
     ];
 
+    let ny = crate::app_time::DisplayTimeZone(chrono_tz::America::New_York);
     assert_eq!(
-        compute_daily_pnl_rows_from_cumulative(&points, 3),
+        compute_daily_pnl_rows_from_cumulative(&points, 3, ny),
+        vec![
+            ("2023-01-02".to_string(), 20.0),
+            ("2023-01-01".to_string(), 10.0),
+            ("2022-12-31".to_string(), 0.0),
+        ]
+    );
+    assert_eq!(
+        compute_daily_pnl_rows_from_cumulative(&points, 3, Default::default()),
         vec![
             ("2023-01-03".to_string(), 5.0),
             ("2023-01-02".to_string(), 25.0),
@@ -28,7 +37,7 @@ fn daily_pnl_rows_skip_invalid_timestamps_and_truncate() {
     ];
 
     assert_eq!(
-        compute_daily_pnl_rows_from_cumulative(&points, 1),
+        compute_daily_pnl_rows_from_cumulative(&points, 1, Default::default()),
         vec![("2023-01-02".to_string(), 10.0)]
     );
 }
@@ -42,7 +51,7 @@ fn daily_pnl_rows_skip_nonfinite_values() {
     ];
 
     assert_eq!(
-        compute_daily_pnl_rows_from_cumulative(&points, 2),
+        compute_daily_pnl_rows_from_cumulative(&points, 2, Default::default()),
         vec![
             ("2023-01-02".to_string(), 20.0),
             ("2023-01-01".to_string(), 0.0),

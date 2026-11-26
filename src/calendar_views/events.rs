@@ -17,7 +17,7 @@ impl TradingTerminal {
     ) -> Element<'_, Message> {
         let theme = self.theme();
         let line = if let Some((event, dt)) = next_important {
-            let local_dt = dt.with_timezone(&chrono::Local);
+            let local_dt = dt.with_timezone(&self.display_timezone.0);
             format!(
                 "Next: {} {} {} · {}",
                 local_dt.format("%a %H:%M"),
@@ -55,7 +55,7 @@ impl TradingTerminal {
         let theme = self.theme();
         let mut list = Column::new().width(Fill);
         let mut current_day = None;
-        let today = now_utc.with_timezone(&chrono::Local).date_naive();
+        let today = now_utc.with_timezone(&self.display_timezone.0).date_naive();
 
         if filtered.is_empty() {
             let label = if self.calendar_loading {
@@ -77,7 +77,7 @@ impl TradingTerminal {
         }
 
         for (event, dt) in filtered {
-            let local_dt = dt.map(|dt| dt.with_timezone(&chrono::Local));
+            let local_dt = dt.map(|dt| dt.with_timezone(&self.display_timezone.0));
             let day = local_dt.map(|dt| dt.date_naive());
             let starts_day = current_day != Some(day);
             current_day = Some(day);

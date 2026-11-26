@@ -73,7 +73,7 @@ impl TradingTerminal {
                             .color(theme.palette().danger),
                     );
                 }
-                if let Some(deadline) = info.contract_deadline_label() {
+                if let Some(deadline) = info.contract_deadline_label(self.display_timezone) {
                     form = form.push(text(deadline).size(10));
                 }
                 if let Some(venue) = info.venue_label() {

@@ -1,7 +1,10 @@
 use super::refresh::AnalyticsRefreshState;
 use crate::account_analytics::{IncomeSnapshot, PortfolioHistory};
+use crate::app_time::DisplayTimeZone;
 use crate::portfolio_state::PnlValueDisplayMode;
-use chrono::{Datelike, TimeZone, Utc};
+#[cfg(test)]
+use chrono::Utc;
+use chrono::{Datelike, TimeZone};
 
 // ---------------------------------------------------------------------------
 // Portfolio Selection State
@@ -42,7 +45,7 @@ impl PortfolioWindow {
         }
     }
 
-    pub(crate) fn cutoff_ms(self, now_ms: u64) -> Option<u64> {
+    pub(crate) fn cutoff_ms(self, now_ms: u64, zone: DisplayTimeZone) -> Option<u64> {
         const DAY_MS: u64 = 24 * 60 * 60 * 1000;
         match self {
             PortfolioWindow::Day => Some(now_ms.saturating_sub(DAY_MS)),
@@ -51,21 +54,17 @@ impl PortfolioWindow {
             PortfolioWindow::Quarter => Some(now_ms.saturating_sub(90 * DAY_MS)),
             PortfolioWindow::HalfYear => Some(now_ms.saturating_sub(180 * DAY_MS)),
             PortfolioWindow::Year => Some(now_ms.saturating_sub(365 * DAY_MS)),
-            PortfolioWindow::Mtd => {
-                let now = Utc
-                    .timestamp_millis_opt(i64::try_from(now_ms).ok()?)
-                    .single()?;
-                let start = Utc
-                    .with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
-                    .single()?;
-                u64::try_from(start.timestamp_millis()).ok()
-            }
-            PortfolioWindow::Ytd => {
-                let now = Utc
-                    .timestamp_millis_opt(i64::try_from(now_ms).ok()?)
-                    .single()?;
-                let start = Utc.with_ymd_and_hms(now.year(), 1, 1, 0, 0, 0).single()?;
-                u64::try_from(start.timestamp_millis()).ok()
+            PortfolioWindow::Mtd | PortfolioWindow::Ytd => {
+                let now = zone.datetime(now_ms)?;
+                let month = if self == Self::Ytd { 1 } else { now.month() };
+                let start =
+                    chrono::NaiveDate::from_ymd_opt(now.year(), month, 1)?.and_hms_opt(0, 0, 0)?;
+                let start = zone
+                    .0
+                    .from_local_datetime(&start)
+                    .earliest()
+                    .or_else(|| chrono_tz::GapInfo::new(&start, &zone.0)?.end)?;
+                Some(start.timestamp_millis().max(0) as u64)
             }
             PortfolioWindow::AllTime => None,
         }
@@ -205,14 +204,20 @@ mod tests {
         let now_ms = timestamp_ms(2026, 6, 15, 14, 30, 12);
         let expected = timestamp_ms(2026, 6, 1, 0, 0, 0);
 
-        assert_eq!(PortfolioWindow::Mtd.cutoff_ms(now_ms), Some(expected));
+        assert_eq!(
+            PortfolioWindow::Mtd.cutoff_ms(now_ms, Default::default()),
+            Some(expected)
+        );
     }
 
     #[test]
     fn mtd_cutoff_handles_first_day_of_month() {
         let now_ms = timestamp_ms(2026, 6, 1, 0, 0, 0);
 
-        assert_eq!(PortfolioWindow::Mtd.cutoff_ms(now_ms), Some(now_ms));
+        assert_eq!(
+            PortfolioWindow::Mtd.cutoff_ms(now_ms, Default::default()),
+            Some(now_ms)
+        );
     }
 
     #[test]
@@ -226,5 +231,20 @@ mod tests {
             labels,
             vec!["1D", "1W", "MTD", "1M", "3M", "6M", "YTD", "1Y", "ALL"]
         );
+    }
+    #[test]
+    fn calendar_cutoffs_follow_the_selected_city_across_new_year() {
+        let now: chrono::DateTime<Utc> = "2026-01-01T02:00:00Z".parse().expect("valid instant");
+        let zone = DisplayTimeZone(chrono_tz::America::New_York);
+        for (window, expected) in [
+            (PortfolioWindow::Mtd, "2025-12-01T05:00:00Z"),
+            (PortfolioWindow::Ytd, "2025-01-01T05:00:00Z"),
+        ] {
+            let expected: chrono::DateTime<Utc> = expected.parse().expect("valid midnight");
+            assert_eq!(
+                window.cutoff_ms(now.timestamp_millis() as u64, zone),
+                Some(expected.timestamp_millis() as u64)
+            );
+        }
     }
 }

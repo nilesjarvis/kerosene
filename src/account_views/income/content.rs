@@ -36,8 +36,12 @@ impl TradingTerminal {
 
         let body = match self.income.view {
             IncomePaneView::Overview => {
-                let projection_bars =
-                    projected_income_bars(data, utc_datetime_from_unix_ms(self.status_bar_now_ms));
+                let projection_bars = projected_income_bars(
+                    data,
+                    utc_datetime_from_unix_ms(self.status_bar_now_ms)
+                        .with_timezone(&self.display_timezone.0)
+                        .date_naive(),
+                );
                 let chart = canvas(IncomeProjectionChart {
                     bars: projection_bars,
                     denomination: denomination.clone(),
@@ -84,7 +88,12 @@ impl TradingTerminal {
                 tables::income_hourly_section_header(data, &denomination, &theme),
                 summary::hairline(&theme),
                 tables::income_hourly_table_header(&theme, compact_table),
-                view_income_hourly_rows(&data.recent_hourly_payments, &theme, compact_table,),
+                view_income_hourly_rows(
+                    &data.recent_hourly_payments,
+                    self.display_timezone,
+                    &theme,
+                    compact_table,
+                ),
             ]
             .spacing(8)
             .width(Fill),

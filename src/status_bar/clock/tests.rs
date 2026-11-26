@@ -1,6 +1,6 @@
-use super::{market_session_summary, market_session_tooltip, status_clock_times};
+use super::{market_session_summary, market_session_tooltip};
 use crate::market_sessions::{MARKET_CLOCK_SESSIONS, MarketSession};
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 
 fn utc_at(instant: &str) -> DateTime<Utc> {
     instant.parse().expect("valid UTC test timestamp")
@@ -13,19 +13,6 @@ fn summary_at(instant: &str) -> String {
 
 fn tooltip_at(session: MarketSession, instant: &str) -> String {
     session.clock_at(utc_at(instant)).tooltip_line()
-}
-
-#[test]
-fn status_clock_times_uses_supplied_timestamp() {
-    let expected_utc = Utc
-        .with_ymd_and_hms(2026, 5, 18, 14, 0, 0)
-        .single()
-        .expect("valid UTC timestamp");
-
-    let (utc, local) = status_clock_times(expected_utc.timestamp_millis() as u64);
-
-    assert_eq!(utc, expected_utc);
-    assert_eq!(local.timestamp_millis(), expected_utc.timestamp_millis());
 }
 
 #[test]

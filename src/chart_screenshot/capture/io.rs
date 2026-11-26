@@ -1,7 +1,8 @@
 use super::super::ChartScreenshotState;
 
 use arboard::{Clipboard, ImageData};
-use chrono::{DateTime, Local};
+use chrono::DateTime;
+use chrono_tz::Tz;
 use std::borrow::Cow;
 use std::path::PathBuf;
 
@@ -42,7 +43,7 @@ pub(in crate::chart_screenshot) async fn save_chart_screenshot_png(
 pub(in crate::chart_screenshot) fn chart_screenshot_filename(
     symbol: &str,
     timeframe: &str,
-    captured_at: DateTime<Local>,
+    captured_at: DateTime<Tz>,
 ) -> String {
     format!(
         "kerosene-{}-{}-{}.png",

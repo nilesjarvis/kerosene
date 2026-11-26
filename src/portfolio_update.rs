@@ -2,7 +2,6 @@ use crate::account_analytics::{IncomeSnapshot, fetch_income_data, fetch_portfoli
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
-use chrono::{DateTime, Utc};
 use iced::Task;
 
 impl TradingTerminal {
@@ -126,11 +125,9 @@ impl TradingTerminal {
                 }
 
                 if total_positive > 0.0 {
-                    let time_label = i64::try_from(latest_time)
-                        .ok()
-                        .and_then(DateTime::<Utc>::from_timestamp_millis)
-                        .map(|dt| dt.format("%m-%d %H:%M").to_string())
-                        .unwrap_or_else(|| "latest hour".to_string());
+                    let time_label =
+                        self.display_timezone
+                            .format(latest_time, "%m-%d %H:%M %Z", "latest hour");
                     let token_label = if token_count == 1 {
                         "1 token".to_string()
                     } else {
@@ -139,7 +136,7 @@ impl TradingTerminal {
                     let display_value = self.format_display_signed_usd_value(total_positive);
                     let message = format!(
                         "Hourly interest received: {display_value} \
-                        ({token_label}, {time_label} UTC)"
+                        ({token_label}, {time_label})"
                     );
                     self.push_interest_alert(message);
                 }

@@ -2,7 +2,7 @@ use super::*;
 use crate::chart::{OrderOverlay, PositionOverlay};
 use crate::chart_state::ChartInstance;
 use crate::timeframe::Timeframe;
-use chrono::{Local, TimeZone};
+use chrono::TimeZone;
 
 mod bitmap;
 mod export;
@@ -22,8 +22,14 @@ fn error_or_panic<T>(result: Result<T, String>, context: &str) -> String {
     }
 }
 
-fn local_time(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> chrono::DateTime<Local> {
-    match Local
+fn local_time(
+    year: i32,
+    month: u32,
+    day: u32,
+    hour: u32,
+    minute: u32,
+) -> chrono::DateTime<chrono_tz::Tz> {
+    match chrono_tz::Asia::Tokyo
         .with_ymd_and_hms(year, month, day, hour, minute, 0)
         .single()
     {

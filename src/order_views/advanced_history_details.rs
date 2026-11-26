@@ -33,7 +33,7 @@ impl TradingTerminal {
         let content = column![
             history_header(entry, &theme),
             rule::horizontal(1),
-            history_summary(entry, &theme),
+            history_summary(self.display_timezone, entry, &theme),
             rule::horizontal(1),
             history_children(entry, &theme),
             rule::horizontal(1),

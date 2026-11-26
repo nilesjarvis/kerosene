@@ -29,6 +29,34 @@ fn future_pane_layout() -> PaneLayoutConfig {
 }
 
 #[test]
+fn timezone_change_reaches_existing_new_and_restored_chart_surfaces() {
+    use crate::app_time::DisplayTimeZone;
+    use crate::chart::CandlestickChart;
+    use crate::message::Message;
+
+    let zone = DisplayTimeZone(chrono_tz::Asia::Kolkata);
+    let (mut terminal, _) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+    let _ = terminal.update(Message::DisplayTimeZoneChanged(zone));
+    assert!(terminal.config_save_due_at.is_some());
+    assert!(!terminal.charts.is_empty());
+    for instance in terminal.charts.values() {
+        assert_eq!(instance.chart.display_timezone, zone);
+        assert_eq!(instance.chart.snapshot_for_export().display_timezone, zone);
+    }
+    let mut new_chart = CandlestickChart::new(99);
+    terminal.apply_chart_appearance_settings(&mut new_chart);
+    assert_eq!(new_chart.display_timezone, zone);
+    let (restored, _) = TradingTerminal::boot_from_config(terminal.config_snapshot());
+    assert_eq!(restored.display_timezone, zone);
+    assert!(
+        restored
+            .charts
+            .values()
+            .all(|instance| instance.chart.display_timezone == zone)
+    );
+}
+
+#[test]
 fn trade_history_toggle_restores_the_selected_view_on_restart() {
     use crate::message::Message;
 

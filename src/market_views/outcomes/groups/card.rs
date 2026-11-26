@@ -1,5 +1,6 @@
 use crate::api::ExchangeSymbol;
 use crate::app_state::TradingTerminal;
+use crate::app_time::DisplayTimeZone;
 use crate::message::Message;
 
 use super::OutcomeMarketSet;
@@ -97,7 +98,7 @@ impl TradingTerminal {
         });
 
         let info = sides.iter().find_map(|sym| sym.outcome.as_ref())?;
-        let market = outcome_market_title(info, nested, now_ms);
+        let market = outcome_market_title(info, nested, now_ms, self.display_timezone);
 
         let mut market_header = row![
             text(market)
@@ -123,7 +124,7 @@ impl TradingTerminal {
         if let Some(reason) = info.trading_block_reason(now_ms) {
             group_content = group_content.push(text(reason).size(11).color(theme.palette().danger));
         }
-        if let Some(deadline) = info.contract_deadline_label() {
+        if let Some(deadline) = info.contract_deadline_label(self.display_timezone) {
             group_content = group_content.push(
                 text(deadline)
                     .size(10)
@@ -194,7 +195,12 @@ fn outcome_market_set_summary(group: &OutcomeMarketSet<'_>) -> String {
     }
 }
 
-fn outcome_market_title(info: &crate::api::OutcomeSymbolInfo, nested: bool, now_ms: u64) -> String {
+fn outcome_market_title(
+    info: &crate::api::OutcomeSymbolInfo,
+    nested: bool,
+    now_ms: u64,
+    zone: DisplayTimeZone,
+) -> String {
     if nested {
         let label = info.side_condition_short_label();
         if !label.trim().is_empty() {
@@ -202,7 +208,7 @@ fn outcome_market_title(info: &crate::api::OutcomeSymbolInfo, nested: bool, now_
         }
     }
 
-    info.market_label_with_countdown(now_ms)
+    info.market_label_with_countdown(now_ms, zone)
 }
 
 fn outcome_market_set_style(theme: &Theme) -> container_style::Style {

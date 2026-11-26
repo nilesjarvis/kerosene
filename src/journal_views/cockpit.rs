@@ -47,7 +47,7 @@ impl TradingTerminal {
         let cutoff = self
             .journal
             .portfolio_window
-            .cutoff_ms(self.status_bar_now_ms);
+            .cutoff_ms(self.status_bar_now_ms, self.display_timezone);
         let windowed: Vec<&AggregatedTrade> = filtered_trades
             .iter()
             .copied()
@@ -56,7 +56,7 @@ impl TradingTerminal {
         let kpis = journal_kpis(&windowed, include_fees);
         let split = journal_direction_split(&windowed, include_fees);
         let assets = journal_asset_pnls(&windowed, include_fees);
-        let heatmap = journal_time_of_day(&windowed, include_fees);
+        let heatmap = journal_time_of_day(self.display_timezone, &windowed, include_fees);
 
         let header = row![
             text("Performance Overview")
@@ -98,7 +98,7 @@ impl TradingTerminal {
         );
 
         let heat = cockpit_panel(
-            "EDGE BY TIME OF DAY (UTC)",
+            format!("EDGE BY TIME OF DAY ({})", self.display_timezone),
             view_journal_heatmap(&heatmap, &theme),
             &theme,
         );
@@ -160,7 +160,7 @@ impl TradingTerminal {
 // ---- Panel chrome ----
 
 fn cockpit_panel<'a>(
-    title: &'static str,
+    title: impl iced::widget::text::IntoFragment<'a>,
     body: Element<'a, Message>,
     theme: &Theme,
 ) -> Element<'a, Message> {

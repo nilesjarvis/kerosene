@@ -1,3 +1,4 @@
+use crate::app_time::DisplayTimeZone;
 mod bucket;
 mod expiry;
 mod price;
@@ -52,27 +53,27 @@ impl OutcomeSymbolInfo {
     }
 
     pub fn market_label(&self) -> String {
-        self.market_label_at(None, true)
+        self.market_label_at(None, Some(DisplayTimeZone::default()))
     }
 
-    pub fn market_label_with_countdown(&self, now_ms: u64) -> String {
-        self.market_label_at(Some(now_ms), true)
+    pub fn market_label_with_countdown(&self, now_ms: u64, zone: DisplayTimeZone) -> String {
+        self.market_label_at(Some(now_ms), Some(zone))
     }
 
-    fn market_label_at(&self, now_ms: Option<u64>, include_expiry: bool) -> String {
+    fn market_label_at(&self, now_ms: Option<u64>, expiry_zone: Option<DisplayTimeZone>) -> String {
         if self.contract.blocked_reason.is_some()
             && let Some(title) = &self.contract.title
         {
             return title.clone();
         }
         if self.question_class.as_deref() == Some("priceBucket") {
-            return self.bucket_event_label(now_ms, include_expiry);
+            return self.bucket_event_label(now_ms, expiry_zone);
         }
         if self.class.as_deref() == Some("priceBinary")
             && let (Some(underlying), Some(target)) = (&self.underlying, &self.target_price)
         {
             let label = Self::price_threshold_label(underlying, target, true);
-            return Self::label_with_expiry(label, self.expiry.as_deref(), now_ms, include_expiry);
+            return Self::label_with_expiry(label, self.expiry.as_deref(), now_ms, expiry_zone);
         }
 
         if let Some(question_name) = &self.question_name {
@@ -87,7 +88,7 @@ impl OutcomeSymbolInfo {
         match (&self.underlying, &self.target_price, &self.expiry) {
             (Some(underlying), Some(target), expiry) => {
                 let label = Self::price_threshold_label(underlying, target, true);
-                Self::label_with_expiry(label, expiry.as_deref(), now_ms, include_expiry)
+                Self::label_with_expiry(label, expiry.as_deref(), now_ms, expiry_zone)
             }
             _ => self.outcome_name.clone(),
         }
@@ -106,32 +107,40 @@ impl OutcomeSymbolInfo {
     }
 
     pub fn side_condition_label(&self) -> String {
-        self.side_condition_label_at(None, true)
+        self.side_condition_label_at(None, Some(DisplayTimeZone::default()))
     }
 
-    pub fn side_condition_label_with_countdown(&self, now_ms: u64) -> String {
-        self.side_condition_label_at(Some(now_ms), true)
+    pub fn side_condition_label_with_countdown(
+        &self,
+        now_ms: u64,
+        zone: DisplayTimeZone,
+    ) -> String {
+        self.side_condition_label_at(Some(now_ms), Some(zone))
     }
 
     pub fn side_condition_short_label(&self) -> String {
-        self.side_condition_label_at(None, false)
+        self.side_condition_label_at(None, None)
     }
 
-    fn side_condition_label_at(&self, now_ms: Option<u64>, include_expiry: bool) -> String {
+    fn side_condition_label_at(
+        &self,
+        now_ms: Option<u64>,
+        expiry_zone: Option<DisplayTimeZone>,
+    ) -> String {
         if self.contract.blocked_reason.is_some() && self.contract.title.is_some() {
-            return self.market_label_at(now_ms, include_expiry);
+            return self.market_label_at(now_ms, expiry_zone);
         }
         if !self.side_name.eq_ignore_ascii_case("yes") && !self.side_name.eq_ignore_ascii_case("no")
         {
-            return self.market_label_at(now_ms, include_expiry);
+            return self.market_label_at(now_ms, expiry_zone);
         }
         if self.is_no_side() {
-            return self.complement_label(now_ms, include_expiry);
+            return self.complement_label(now_ms, expiry_zone);
         }
         if let Some(label) = self.named_outcome_label() {
             return label;
         }
-        self.market_label_at(now_ms, include_expiry)
+        self.market_label_at(now_ms, expiry_zone)
     }
 
     pub(super) fn named_outcome_label(&self) -> Option<String> {

@@ -110,7 +110,11 @@ impl TradingTerminal {
         match self.portfolio.window {
             PortfolioWindow::Day | PortfolioWindow::Week | PortfolioWindow::Month => points,
             _ => {
-                if let Some(cutoff) = self.portfolio.window.cutoff_ms(now_ms) {
+                if let Some(cutoff) = self
+                    .portfolio
+                    .window
+                    .cutoff_ms(now_ms, self.display_timezone)
+                {
                     Self::apply_cutoff_with_baseline(&points, cutoff)
                 } else {
                     points
@@ -120,17 +124,24 @@ impl TradingTerminal {
     }
 
     pub(crate) fn compute_daily_pnl_rows_from_cumulative(
+        &self,
         points: &[(u64, f64)],
         max_days: usize,
     ) -> Vec<(String, f64)> {
-        compute_daily_pnl_rows_from_cumulative(points, max_days)
+        compute_daily_pnl_rows_from_cumulative(points, max_days, self.display_timezone)
     }
 
     pub(crate) fn compute_daily_percent_rows_from_cumulative(
+        &self,
         pnl_points: &[(u64, f64)],
         account_value_points: &[(u64, f64)],
         max_days: usize,
     ) -> Vec<(String, f64)> {
-        compute_daily_percent_rows_from_cumulative(pnl_points, account_value_points, max_days)
+        compute_daily_percent_rows_from_cumulative(
+            pnl_points,
+            account_value_points,
+            max_days,
+            self.display_timezone,
+        )
     }
 }

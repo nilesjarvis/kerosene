@@ -1,35 +1,44 @@
 use super::OutcomeSymbolInfo;
+use crate::app_time::DisplayTimeZone;
 
 impl OutcomeSymbolInfo {
-    pub(super) fn bucket_event_label(&self, now_ms: Option<u64>, include_expiry: bool) -> String {
-        self.bucket_label_for_side(true, now_ms, include_expiry)
+    pub(super) fn bucket_event_label(
+        &self,
+        now_ms: Option<u64>,
+        expiry_zone: Option<DisplayTimeZone>,
+    ) -> String {
+        self.bucket_label_for_side(true, now_ms, expiry_zone)
     }
 
-    pub(super) fn complement_label(&self, now_ms: Option<u64>, include_expiry: bool) -> String {
+    pub(super) fn complement_label(
+        &self,
+        now_ms: Option<u64>,
+        expiry_zone: Option<DisplayTimeZone>,
+    ) -> String {
         if self.question_class.as_deref() == Some("priceBucket") {
-            return self.bucket_label_for_side(false, now_ms, include_expiry);
+            return self.bucket_label_for_side(false, now_ms, expiry_zone);
         }
         if self.class.as_deref() == Some("priceBinary")
             && let (Some(underlying), Some(target)) = (&self.underlying, &self.target_price)
         {
             let label = Self::price_threshold_label(underlying, target, false);
-            return Self::label_with_expiry(label, self.expiry.as_deref(), now_ms, include_expiry);
+            return Self::label_with_expiry(label, self.expiry.as_deref(), now_ms, expiry_zone);
         }
         if let Some(label) = self.named_outcome_label() {
             return format!("not {label}");
         }
 
-        format!("not {}", self.market_label_at(now_ms, include_expiry))
+        format!("not {}", self.market_label_at(now_ms, expiry_zone))
     }
 
     fn bucket_label_for_side(
         &self,
         affirmative: bool,
         now_ms: Option<u64>,
-        include_expiry: bool,
+        expiry_zone: Option<DisplayTimeZone>,
     ) -> String {
         if self.is_question_fallback {
-            return self.fallback_label_for_side(affirmative, now_ms, include_expiry);
+            return self.fallback_label_for_side(affirmative, now_ms, expiry_zone);
         }
 
         let Some(index) = self.bucket_index.map(|index| index as usize) else {
@@ -47,12 +56,7 @@ impl OutcomeSymbolInfo {
         }
 
         let with_expiry = |label| {
-            Self::label_with_expiry(
-                label,
-                self.question_expiry.as_deref(),
-                now_ms,
-                include_expiry,
-            )
+            Self::label_with_expiry(label, self.question_expiry.as_deref(), now_ms, expiry_zone)
         };
 
         if index == 0 {
@@ -92,7 +96,7 @@ impl OutcomeSymbolInfo {
         &self,
         affirmative: bool,
         now_ms: Option<u64>,
-        include_expiry: bool,
+        expiry_zone: Option<DisplayTimeZone>,
     ) -> String {
         let label = if affirmative {
             "fallback / other settlement".to_string()
@@ -102,12 +106,7 @@ impl OutcomeSymbolInfo {
             "a named outcome settles".to_string()
         };
 
-        Self::label_with_expiry(
-            label,
-            self.question_expiry.as_deref(),
-            now_ms,
-            include_expiry,
-        )
+        Self::label_with_expiry(label, self.question_expiry.as_deref(), now_ms, expiry_zone)
     }
 
     pub(super) fn is_no_side(&self) -> bool {

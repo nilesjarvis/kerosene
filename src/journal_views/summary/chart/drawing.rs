@@ -1,4 +1,5 @@
 use super::series::{ChartPoint, prepare_chart_layout};
+use crate::app_time::DisplayTimeZone;
 use crate::denomination::DisplayDenominationContext;
 use crate::helpers::ease_out_cubic;
 use crate::message::Message;
@@ -23,6 +24,7 @@ const LINE_WIDTH: f32 = 1.5;
 
 #[derive(Debug, Clone)]
 pub(super) struct JournalSummaryChart {
+    pub(super) zone: DisplayTimeZone,
     pub(super) pnl_points: Vec<(u64, f64)>,
     pub(super) account_value_points: Vec<(u64, f64)>,
     pub(super) show_account_value: bool,
@@ -93,15 +95,7 @@ fn draw_journal_summary_chart(
     }
 
     if reveal_progress >= 0.995 {
-        draw_hover_state(
-            &mut frame,
-            &layout,
-            chart.show_account_value,
-            &chart.denomination,
-            theme,
-            bounds,
-            cursor,
-        );
+        draw_hover_state(&mut frame, &layout, chart, theme, bounds, cursor);
     }
 
     vec![frame.into_geometry()]

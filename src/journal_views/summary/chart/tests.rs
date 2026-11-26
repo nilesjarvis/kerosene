@@ -228,7 +228,8 @@ fn journal_portfolio_window_applies_cutoff_with_baseline() {
     let now_ms = 10 * day_ms;
     let points = vec![(day_ms, 5.0), (8 * day_ms, 9.0), (9 * day_ms, 12.0)];
 
-    let windowed = apply_journal_portfolio_window(points, PortfolioWindow::Week, now_ms);
+    let windowed =
+        apply_journal_portfolio_window(points, PortfolioWindow::Week, now_ms, Default::default());
 
     assert_eq!(
         windowed,
@@ -242,7 +243,12 @@ fn journal_portfolio_all_time_keeps_all_points() {
     let points = vec![(1_000, 5.0), (2_000, 9.0)];
 
     assert_eq!(
-        apply_journal_portfolio_window(points.clone(), PortfolioWindow::AllTime, 3_000),
+        apply_journal_portfolio_window(
+            points.clone(),
+            PortfolioWindow::AllTime,
+            3_000,
+            Default::default()
+        ),
         points
     );
 }

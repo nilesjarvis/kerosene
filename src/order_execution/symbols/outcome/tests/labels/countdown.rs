@@ -6,7 +6,7 @@ fn countdown_label_uses_current_user_clock_distance() {
     let now_ms = utc_ms(2026, 5, 19, 13, 45);
 
     assert_eq!(
-        info.side_condition_label_with_countdown(now_ms),
+        info.side_condition_label_with_countdown(now_ms, Default::default()),
         "BTC is above 76,886 at 2026-05-20 06:00 UTC (16h 15m left)"
     );
 }
@@ -17,7 +17,7 @@ fn countdown_label_marks_expired_markets() {
     let now_ms = utc_ms(2026, 5, 20, 6, 1);
 
     assert_eq!(
-        info.side_condition_label_with_countdown(now_ms),
+        info.side_condition_label_with_countdown(now_ms, Default::default()),
         "BTC is above 76,886 at 2026-05-20 06:00 UTC (expired)"
     );
 }
@@ -53,7 +53,7 @@ fn expiry_suffix_is_consistent_across_binary_bucket_and_fallback_labels() {
             }
             assert_eq!(info.side_condition_short_label(), condition);
             assert_eq!(
-                info.side_condition_label_with_countdown(now_ms),
+                info.side_condition_label_with_countdown(now_ms, Default::default()),
                 format!("{condition}{suffix}")
             );
         }
@@ -67,7 +67,7 @@ fn countdown_keeps_expiry_precedence_and_unrepresentable_clock_behavior() {
     assert_eq!(info.time_left_label(now_ms).as_deref(), Some("1h"));
     assert_eq!(info.time_left_label(u64::MAX), None);
     assert_eq!(
-        info.side_condition_label_with_countdown(u64::MAX),
+        info.side_condition_label_with_countdown(u64::MAX, Default::default()),
         info.side_condition_label()
     );
 
@@ -77,7 +77,7 @@ fn countdown_keeps_expiry_precedence_and_unrepresentable_clock_behavior() {
     assert_eq!(info.time_left_label(now_ms).as_deref(), Some("2h"));
     // Non-bucket condition labels retain the outcome's own expiry.
     assert_eq!(
-        info.side_condition_label_with_countdown(now_ms),
+        info.side_condition_label_with_countdown(now_ms, Default::default()),
         "BTC is above 76,886 at 2026-05-20 06:00 UTC (1h left)"
     );
 
@@ -85,14 +85,14 @@ fn countdown_keeps_expiry_precedence_and_unrepresentable_clock_behavior() {
     info.expiry = Some("19690101-0000".to_string());
     assert_eq!(info.time_left_label(0).as_deref(), Some("expired"));
     assert_eq!(
-        info.side_condition_label_with_countdown(0),
+        info.side_condition_label_with_countdown(0, Default::default()),
         "BTC is above 76,886 at 1969-01-01 00:00 UTC (expired)"
     );
 
     info.expiry = Some("20260520-0600".to_string());
     info.class = None;
     assert_eq!(
-        info.market_label_with_countdown(now_ms),
+        info.market_label_with_countdown(now_ms, Default::default()),
         "BTC is above 76,886 at 2026-05-20 06:00 UTC (1h left)"
     );
 }

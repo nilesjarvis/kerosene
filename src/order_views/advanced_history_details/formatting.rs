@@ -1,5 +1,6 @@
 use crate::advanced_order_history::{AdvancedOrderHistoryChild, AdvancedOrderHistoryEntry};
-use crate::helpers::{format_duration, format_price, format_timestamp_exact};
+use crate::app_time::DisplayTimeZone;
+use crate::helpers::{format_duration, format_price};
 
 use super::super::details::order_child_id_text;
 
@@ -7,9 +8,12 @@ use super::super::details::order_child_id_text;
 // Advanced History Detail Formatting
 // ---------------------------------------------------------------------------
 
-pub(super) fn history_completed_text(entry: &AdvancedOrderHistoryEntry) -> String {
+pub(super) fn history_completed_text(
+    entry: &AdvancedOrderHistoryEntry,
+    zone: DisplayTimeZone,
+) -> String {
     if entry.completed_at_ms > 0 {
-        format_timestamp_exact(entry.completed_at_ms)
+        zone.format_timestamp(entry.completed_at_ms)
     } else {
         "-".to_string()
     }

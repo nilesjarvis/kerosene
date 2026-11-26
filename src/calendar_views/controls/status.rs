@@ -15,7 +15,7 @@ impl TradingTerminal {
         }
         status
             .push(
-                text(format!("Local time · {status_text}"))
+                text(format!("{} · {status_text}", self.display_timezone))
                     .size(10)
                     .color(status_color),
             )

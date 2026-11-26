@@ -78,7 +78,7 @@ impl TradingTerminal {
             header,
             text(format!(
                 "Opened {} · Held {} · {} fills",
-                helpers::format_timestamp_exact(trade.start_time),
+                self.display_timezone.format_timestamp(trade.start_time),
                 held,
                 trade.fill_count
             ))

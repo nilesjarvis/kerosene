@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::app_time::DisplayTimeZone;
 use crate::console_state::{ConsoleFilter, PAGE_SIZE, scroll_id};
 use crate::message::Message;
 use crate::network_activity::{ActivityEntry, ActivityKind, HISTORY_LIMIT, Provider};
@@ -79,7 +80,9 @@ impl TradingTerminal {
         .wrap();
 
         let header = row![
-            text("Time (UTC)").size(11).width(108),
+            text(format!("Time ({})", self.display_timezone))
+                .size(11)
+                .width(108),
             text("Provider").size(11).width(100),
             text("Activity").size(11).width(108),
             text("Operation").size(11).width(Fill),
@@ -89,7 +92,7 @@ impl TradingTerminal {
 
         let mut rows = Column::new().spacing(0).width(Fill);
         for entry in entries.iter().skip(start).take(PAGE_SIZE) {
-            rows = rows.push(view_entry(entry));
+            rows = rows.push(view_entry(entry, self.display_timezone));
         }
         if entries.is_empty() {
             rows = rows.push(container(text("No matching network activity").size(12)).padding(20));
@@ -137,10 +140,8 @@ impl TradingTerminal {
     }
 }
 
-fn view_entry(entry: &ActivityEntry) -> Element<'_, Message> {
-    let timestamp = chrono::DateTime::from_timestamp_millis(entry.timestamp_ms as i64)
-        .map(|time| time.format("%H:%M:%S%.3f").to_string())
-        .unwrap_or_default();
+fn view_entry(entry: &ActivityEntry, zone: DisplayTimeZone) -> Element<'_, Message> {
+    let timestamp = zone.format(entry.timestamp_ms, "%H:%M:%S%.3f", "—");
     let operation = if entry.method.is_empty() {
         entry.operation.to_string()
     } else {

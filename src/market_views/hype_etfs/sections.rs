@@ -1,5 +1,6 @@
 use super::formatting::{format_amount, format_hype, format_pct, format_usd_value};
 use super::metrics::{metric, metric_grid};
+use crate::app_time::DisplayTimeZone;
 use crate::denomination::DisplayDenominationContext;
 use crate::helpers::signed_number_color;
 use crate::hype_etf_state::{HypeEtfFund, HypeEtfTotals, HypeEtfView};
@@ -65,6 +66,7 @@ pub(super) fn summary_section(
 pub(super) fn fund_section<'a>(
     theme: &Theme,
     fund: &'a HypeEtfFund,
+    zone: DisplayTimeZone,
     available_width: f32,
     denomination: &DisplayDenominationContext,
 ) -> Element<'a, Message> {
@@ -151,6 +153,7 @@ pub(super) fn fund_section<'a>(
 
     let mut section = column![title, metric_grid(items, available_width)].spacing(6);
     if let Some(updated_at) = &fund.updated_at {
+        let updated_at = zone.format_rfc3339(updated_at, "%Y-%m-%d %H:%M:%S %Z");
         section = section.push(
             text(format!("Updated {updated_at}"))
                 .size(10)

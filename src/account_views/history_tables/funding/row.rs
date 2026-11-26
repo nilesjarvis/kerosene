@@ -25,7 +25,7 @@ impl TradingTerminal {
         let invalid_color = theme.palette().warning;
         let amount_color = history_signed_value_color(usdc, theme);
 
-        let time_str = format_history_time_millis(entry.time);
+        let time_str = format_history_time_millis(entry.time, self.display_timezone);
 
         let rate_color = history_signed_value_color(rate, theme);
 

@@ -90,6 +90,7 @@ impl TradingTerminal {
             self.combined_portfolio.scope,
             self.combined_portfolio.window,
             self.status_bar_now_ms,
+            self.display_timezone,
         )
     }
 
@@ -391,6 +392,7 @@ impl TradingTerminal {
                 self.combined_portfolio.scope,
                 self.combined_portfolio.window,
                 self.status_bar_now_ms,
+                self.display_timezone,
             )
         });
         let value = wallet
@@ -571,6 +573,7 @@ impl TradingTerminal {
 
         let chart: Element<'_, Message> = if aggregate.points.len() >= 2 {
             canvas(PortfolioPnlChart {
+                zone: self.display_timezone,
                 points: aggregate.points.clone(),
                 value_mode: PnlValueDisplayMode::Usd,
                 denomination,

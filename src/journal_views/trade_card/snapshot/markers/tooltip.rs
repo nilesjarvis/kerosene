@@ -1,6 +1,6 @@
 use super::super::plot::price_axis_left;
 use super::MarkerGroup;
-use crate::app_time::local_datetime_from_unix_ms;
+use crate::app_time::DisplayTimeZone;
 use crate::helpers::{format_decimal_with_commas, format_price, trim_decimal_zeros};
 use crate::journal_views::style::{journal_hairline, tooltip_origin};
 use iced::widget::canvas;
@@ -12,6 +12,7 @@ impl MarkerGroup {
         frame: &mut canvas::Frame,
         theme: &Theme,
         coin: &str,
+        zone: DisplayTimeZone,
     ) {
         let side = if self.is_buy { "Buy" } else { "Sell" };
         let number = |value| trim_decimal_zeros(format_decimal_with_commas(value, 8));
@@ -28,11 +29,7 @@ impl MarkerGroup {
                 "Total size",
             )
         };
-        let time = |ms| {
-            local_datetime_from_unix_ms(ms)
-                .format("%b %d, %H:%M:%S%.3f")
-                .to_string()
-        };
+        let time = |ms| zone.format(ms, "%b %d, %H:%M:%S%.3f", "Unknown");
         let palette = theme.extended_palette().background;
         let mut lines = vec![
             (header, self.color(theme)),

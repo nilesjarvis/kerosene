@@ -114,6 +114,7 @@ impl TradingTerminal {
             next_canvas_id,
             last_focused_workspace: WorkspaceId::Main,
             active_theme: cfg.active_theme.clone(),
+            display_timezone: cfg.display_timezone,
             ui_scale: cfg.ui_scale,
             window_transparency_enabled: cfg.window_transparency_enabled,
             window_background_blur_enabled: cfg.window_background_blur_enabled,

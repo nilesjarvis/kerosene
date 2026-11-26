@@ -1,7 +1,5 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::{
-    format_decimal_with_commas, format_size, format_timestamp_exact, tick_decimals,
-};
+use crate::helpers::{format_decimal_with_commas, format_size, tick_decimals};
 use crate::market_state::book_inspector::{PAGE_SIZE, SCALE, format_decimal};
 use crate::message::Message;
 use iced::widget::{
@@ -181,7 +179,7 @@ impl TradingTerminal {
                     } else {
                         "Live"
                     },
-                    format_timestamp_exact(page.timestamp_ms),
+                    self.display_timezone.format_timestamp(page.timestamp_ms),
                     page.height
                 ))
                 .size(11)

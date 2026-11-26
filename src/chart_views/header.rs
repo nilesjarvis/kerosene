@@ -24,7 +24,19 @@ impl TradingTerminal {
         surface_id: ChartSurfaceId,
     ) -> Element<'a, Message> {
         responsive(move |size| {
-            self.view_chart_header_sized(chart_id, instance, surface_id, size.width)
+            row![
+                iced::widget::container(self.view_chart_header_sized(
+                    chart_id,
+                    instance,
+                    surface_id,
+                    (size.width - crate::main_view::TIME_ZONE_PICKER_WIDTH - 8.0).max(0.0)
+                ))
+                .width(Fill),
+                self.view_time_zone_picker(),
+            ]
+            .spacing(8)
+            .align_y(iced::Alignment::Center)
+            .into()
         })
         .height(Length::Shrink)
         .into()
@@ -93,11 +105,9 @@ impl TradingTerminal {
                 .unwrap_or_else(|| "-".to_string());
             let hint = match change.and_then(|change| change.reference_time_ms) {
                 Some(time_ms) => {
-                    let time = i64::try_from(time_ms)
-                        .ok()
-                        .and_then(chrono::DateTime::from_timestamp_millis)
-                        .map(|time| time.format("%Y-%m-%d %H:%M:%S UTC").to_string())
-                        .unwrap_or_default();
+                    let time =
+                        self.display_timezone
+                            .format(time_ms, "%Y-%m-%d %H:%M:%S %Z", "Unknown");
                     format!(
                         "Minute-precision 24h change. Reference: completed candle at {time}, within one minute before 24 hours ago."
                     )

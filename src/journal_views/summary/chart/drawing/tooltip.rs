@@ -1,9 +1,8 @@
 use super::super::series::ChartLayout;
 use super::nearest_chart_point;
-use crate::denomination::DisplayDenominationContext;
 use crate::journal_views::style::tooltip_origin;
 
-use chrono::{DateTime, Utc};
+use super::JournalSummaryChart;
 use iced::widget::canvas;
 use iced::{Color, Point, Rectangle, Size, Theme};
 
@@ -17,8 +16,7 @@ const TOOLTIP_HEIGHT: f32 = 46.0;
 pub(super) fn draw_hover_state(
     frame: &mut canvas::Frame,
     layout: &ChartLayout,
-    show_account_value: bool,
-    denomination: &DisplayDenominationContext,
+    chart: &JournalSummaryChart,
     theme: &Theme,
     bounds: Rectangle,
     cursor: iced::mouse::Cursor,
@@ -54,21 +52,25 @@ pub(super) fn draw_hover_state(
     draw_hover_marker(frame, nearest_pnl.point, Color::WHITE, 2.8);
 
     let mut lines = vec![
-        format_timestamp(nearest_pnl.timestamp_ms),
+        chart.zone.format(
+            nearest_pnl.timestamp_ms,
+            "%Y-%m-%d %H:%M %Z",
+            "Time unavailable",
+        ),
         format!(
             "PnL {}",
-            denomination.format_signed_value(nearest_pnl.value, 2)
+            chart.denomination.format_signed_value(nearest_pnl.value, 2)
         ),
     ];
 
-    if show_account_value
+    if chart.show_account_value
         && let Some(nearest_account) =
             nearest_chart_point(&layout.account_value_points, cursor_pos.x)
     {
         draw_hover_marker(frame, nearest_account.point, theme.palette().primary, 2.4);
         lines.push(format!(
             "Acct {}",
-            denomination.format_value(nearest_account.value, 2)
+            chart.denomination.format_value(nearest_account.value, 2)
         ));
     }
 
@@ -107,12 +109,4 @@ fn draw_hover_marker(frame: &mut canvas::Frame, point: Point, color: Color, half
         Size::new(half_size * 2.0, half_size * 2.0),
         color,
     );
-}
-
-fn format_timestamp(timestamp_ms: u64) -> String {
-    i64::try_from(timestamp_ms)
-        .ok()
-        .and_then(DateTime::<Utc>::from_timestamp_millis)
-        .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
-        .unwrap_or_else(|| "UTC time unavailable".to_string())
 }

@@ -167,9 +167,8 @@ impl TradingTerminal {
             _ => format!("{}d ago", age_ms / 86_400_000),
         };
         let date = |ms| {
-            chrono::DateTime::from_timestamp_millis(i64::try_from(ms).unwrap_or(i64::MAX))
-                .map(|at| at.format("%Y-%m-%d %H:%M:%S UTC").to_string())
-                .unwrap_or_default()
+            self.display_timezone
+                .format(ms, "%Y-%m-%d %H:%M:%S %Z", "Unknown")
         };
         let timing = format!(
             "Detected {}\nPrevious observation {}",

@@ -161,7 +161,7 @@ impl TradingTerminal {
                 container(
                     text(format!(
                         "Data updated {}",
-                        format_positioning_timestamp(&data.timestamp)
+                        format_positioning_timestamp(&data.timestamp, self.display_timezone)
                     ))
                     .size(10),
                 )

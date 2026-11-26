@@ -1,7 +1,7 @@
 use super::TradingOverlayContext;
 use crate::chart::model::CandlestickChart;
 use crate::chart::tooltips::{TooltipLine, TooltipSurface};
-use crate::helpers::{format_price, format_timestamp_exact};
+use crate::helpers::format_price;
 use iced::widget::canvas;
 use iced::{Color, Point};
 
@@ -142,7 +142,7 @@ impl CandlestickChart {
                 },
             },
             TooltipLine {
-                content: format_timestamp_exact(candle_time),
+                content: self.display_timezone.format_timestamp(candle_time),
                 color: Color {
                     a: 0.62,
                     ..ctx.theme.palette().text

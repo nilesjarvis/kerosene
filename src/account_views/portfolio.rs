@@ -78,6 +78,7 @@ impl TradingTerminal {
 
         let chart_body: Element<'_, Message> = if chart_points.len() >= 2 {
             canvas(PortfolioPnlChart {
+                zone: self.display_timezone,
                 points: chart_points,
                 value_mode,
                 denomination: self.display_denomination_context(),

@@ -1,4 +1,5 @@
 use crate::account_analytics::{PortfolioBucket, PortfolioHistory};
+use crate::app_time::DisplayTimeZone;
 use crate::config::{CombinedPortfolioConfig, TrackedWalletConfig};
 use crate::portfolio_state::{PortfolioScope, PortfolioWindow};
 use crate::wallet_state::address_book::normalize_wallet_address_value;
@@ -158,10 +159,11 @@ pub(crate) fn aggregate_portfolios(
     scope: PortfolioScope,
     window: PortfolioWindow,
     now_ms: u64,
+    zone: DisplayTimeZone,
 ) -> CombinedPortfolioAggregate {
     let series = histories
         .iter()
-        .map(|history| selected_pnl_points(history, scope, window, now_ms))
+        .map(|history| selected_pnl_points(history, scope, window, now_ms, zone))
         .filter(|points| !points.is_empty())
         .collect::<Vec<_>>();
     let total_pnl_values = series
@@ -198,8 +200,9 @@ pub(crate) fn wallet_period_pnl(
     scope: PortfolioScope,
     window: PortfolioWindow,
     now_ms: u64,
+    zone: DisplayTimeZone,
 ) -> Option<f64> {
-    portfolio_total_pnl(&selected_pnl_points(history, scope, window, now_ms))
+    portfolio_total_pnl(&selected_pnl_points(history, scope, window, now_ms, zone))
 }
 
 pub(crate) fn latest_account_value(
@@ -218,6 +221,7 @@ fn selected_pnl_points(
     scope: PortfolioScope,
     window: PortfolioWindow,
     now_ms: u64,
+    zone: DisplayTimeZone,
 ) -> Vec<(u64, f64)> {
     let direct_key = direct_bucket_key(scope, window);
     let (bucket, used_direct_bucket) = direct_key
@@ -228,7 +232,7 @@ fn selected_pnl_points(
 
     if window == PortfolioWindow::AllTime || used_direct_bucket {
         points
-    } else if let Some(cutoff) = window.cutoff_ms(now_ms) {
+    } else if let Some(cutoff) = window.cutoff_ms(now_ms, zone) {
         apply_cutoff_with_baseline(&points, cutoff)
     } else {
         points
@@ -405,6 +409,7 @@ mod tests {
             PortfolioScope::All,
             PortfolioWindow::AllTime,
             50,
+            Default::default(),
         );
 
         assert_eq!(aggregate.total_pnl, Some(90.0));
@@ -426,6 +431,7 @@ mod tests {
             PortfolioScope::All,
             PortfolioWindow::AllTime,
             110,
+            Default::default(),
         );
 
         assert_eq!(
@@ -445,6 +451,7 @@ mod tests {
             PortfolioScope::All,
             PortfolioWindow::AllTime,
             60,
+            Default::default(),
         );
 
         // Keep both wallets' turning points, including interpolated losses.
@@ -472,6 +479,7 @@ mod tests {
             PortfolioScope::All,
             PortfolioWindow::AllTime,
             60,
+            Default::default(),
         );
 
         assert_eq!(
@@ -492,6 +500,7 @@ mod tests {
             PortfolioScope::All,
             PortfolioWindow::AllTime,
             30,
+            Default::default(),
         );
 
         assert_eq!(aggregate.points, vec![(10, 0.0), (20, -5.0), (30, -5.0)]);
@@ -516,6 +525,7 @@ mod tests {
             PortfolioScope::All,
             PortfolioWindow::AllTime,
             40,
+            Default::default(),
         );
 
         assert_eq!(aggregate.points, vec![(10, 0.0), (20, 40.0), (40, 20.0)]);
@@ -564,7 +574,13 @@ mod tests {
         );
 
         assert_eq!(
-            wallet_period_pnl(&history, PortfolioScope::All, PortfolioWindow::Week, now),
+            wallet_period_pnl(
+                &history,
+                PortfolioScope::All,
+                PortfolioWindow::Week,
+                now,
+                Default::default()
+            ),
             Some(80.0)
         );
     }

@@ -322,7 +322,8 @@ impl TradingTerminal {
             let status = format!(
                 "X rate limit reached for {}; reset {}",
                 source.label(),
-                crate::helpers::format_timestamp(reset_ms / 1_000)
+                self.display_timezone
+                    .format(reset_ms, "%m/%d %H:%M %Z", "Unknown")
             );
             if visible && let Some(instance) = self.x_feed.instances.get_mut(&id) {
                 instance.last_error = Some(status.clone());

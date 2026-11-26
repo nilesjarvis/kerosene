@@ -5,7 +5,7 @@ use super::super::model::{CandlestickChart, HudSelectorKind};
 use super::super::state::{ChartState, HudMarketSide, HudOrderKind};
 use super::{
     CrosshairOverlayContext, HUD_CHAR_WIDTH, HUD_SHADOW, HUD_WARNING_YELLOW, draw_hud_text,
-    format_hud_clock_time, hud_display_size, parse_hud_size_value, positive_finite_value,
+    hud_display_size, parse_hud_size_value, positive_finite_value,
 };
 use crate::helpers::format_with_commas;
 use iced::widget::canvas;
@@ -191,8 +191,13 @@ impl CandlestickChart {
             ..ctx.theme.palette().text
         };
 
-        let clock_label =
-            show_clock.then(|| format!("NOW {}", format_hud_clock_time(self.clock_now_ms)));
+        let clock_label = show_clock.then(|| {
+            format!(
+                "NOW {}",
+                self.display_timezone
+                    .format(self.clock_now_ms, "%H:%M:%S", "--:--:--")
+            )
+        });
         let cls_label = show_cls.then(|| {
             let countdown = self
                 .candles

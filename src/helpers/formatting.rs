@@ -14,7 +14,4 @@ pub use text::{
     redact_sensitive_response_text, redact_wallet_address_debug_value, response_excerpt,
     response_snippet, sensitive_response_excerpt, sensitive_response_snippet, text_excerpt,
 };
-pub use time::{
-    format_duration, format_relative_time, format_seen_latency_label, format_timestamp,
-    format_timestamp_exact,
-};
+pub use time::{format_duration, format_relative_time, format_seen_latency_label};

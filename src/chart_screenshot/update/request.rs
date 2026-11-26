@@ -3,7 +3,7 @@ use crate::chart_state::ChartInstance;
 
 use super::super::capture::ChartScreenshotRenderRequest;
 
-use chrono::Local;
+use chrono::Utc;
 
 // ---------------------------------------------------------------------------
 // Screenshot Render Requests
@@ -22,7 +22,7 @@ impl TradingTerminal {
             timeframe: instance.interval.label().to_string(),
             chart,
             background_color: theme.extended_palette().background.base.color,
-            captured_at: Local::now(),
+            captured_at: Utc::now().with_timezone(&self.display_timezone.0),
             theme,
         }
     }

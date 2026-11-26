@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::{format_relative_time, format_seen_latency_label, format_timestamp_exact};
+use crate::app_time::DisplayTimeZone;
+use crate::helpers::{format_relative_time, format_seen_latency_label};
 use crate::message::Message;
 use crate::x_feed::{XAuthorProfile, XFeedId, XFeedInstance, XFeedSourceOption};
 use iced::widget::{
@@ -181,7 +182,7 @@ impl TradingTerminal {
         let Some((message, is_error)) = status else {
             let label = instance
                 .last_refresh_ms
-                .map(format_timestamp_exact)
+                .map(|ms| self.display_timezone.format_timestamp(ms))
                 .map(|time| format!("Last refresh {time}"))
                 .unwrap_or_else(|| "Connect X to start polling Following and Lists".to_string());
             return text(label)
@@ -216,6 +217,7 @@ impl TradingTerminal {
         for post in &instance.posts {
             posts = posts.push(x_post_card(
                 post,
+                self.display_timezone,
                 self.x_feed.author_profile_for_post(post),
                 now_ms,
                 &theme,
@@ -228,6 +230,7 @@ impl TradingTerminal {
 
 fn x_post_card<'a>(
     post: &'a crate::x_feed::XFeedPost,
+    zone: DisplayTimeZone,
     profile: Option<&'a XAuthorProfile>,
     now_ms: u64,
     theme: &Theme,
@@ -268,7 +271,7 @@ fn x_post_card<'a>(
             header,
             text(post.text.as_str()).size(12).width(Fill),
             row![
-                text(format_timestamp_exact(post.created_at_ms))
+                text(zone.format_timestamp(post.created_at_ms))
                     .size(10)
                     .color(muted),
                 Space::new().width(Fill),

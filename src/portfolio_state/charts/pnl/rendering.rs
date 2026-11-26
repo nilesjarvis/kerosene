@@ -1,4 +1,4 @@
-use crate::denomination::DisplayDenominationContext;
+use super::PortfolioPnlChart;
 use crate::helpers::format_signed_percent_value;
 
 use super::{
@@ -8,7 +8,6 @@ use super::{
         pnl_tooltip_origin, prepare_pnl_chart_layout,
     },
 };
-use chrono::{DateTime, Utc};
 use iced::widget::canvas;
 use iced::{Color, Point, Rectangle, Renderer, Size, Theme};
 
@@ -40,9 +39,7 @@ struct PnlAreaGradientExtents {
 }
 
 pub(super) fn draw_portfolio_pnl_chart(
-    points: &[(u64, f64)],
-    value_mode: PnlValueDisplayMode,
-    denomination: &DisplayDenominationContext,
+    chart: &PortfolioPnlChart,
     renderer: &Renderer,
     theme: &Theme,
     bounds: Rectangle,
@@ -51,7 +48,7 @@ pub(super) fn draw_portfolio_pnl_chart(
     let mut frame = canvas::Frame::new(renderer, bounds.size());
     frame.fill_rectangle(Point::ORIGIN, bounds.size(), Color::TRANSPARENT);
 
-    let Some(layout) = prepare_pnl_chart_layout(points, bounds.width, bounds.height) else {
+    let Some(layout) = prepare_pnl_chart_layout(&chart.points, bounds.width, bounds.height) else {
         return vec![frame.into_geometry()];
     };
     let zero_y = layout.zero_y;
@@ -127,14 +124,17 @@ pub(super) fn draw_portfolio_pnl_chart(
         let marker = canvas::Path::circle(nearest_point, 2.8);
         frame.fill(&marker, theme.palette().text);
 
-        let ts_label = i64::try_from(nearest.timestamp_ms)
-            .ok()
-            .and_then(DateTime::<Utc>::from_timestamp_millis)
-            .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
-            .unwrap_or_else(|| "UTC time unavailable".to_string());
-        let pnl_label = match value_mode {
+        let ts_label = chart.zone.format(
+            nearest.timestamp_ms,
+            "%Y-%m-%d %H:%M %Z",
+            "Time unavailable",
+        );
+        let pnl_label = match chart.value_mode {
             PnlValueDisplayMode::Usd => {
-                format!("PnL {}", denomination.format_signed_value(nearest.pnl, 2))
+                format!(
+                    "PnL {}",
+                    chart.denomination.format_signed_value(nearest.pnl, 2)
+                )
             }
             PnlValueDisplayMode::Percent => {
                 format!("Performance {}", format_signed_percent_value(nearest.pnl))

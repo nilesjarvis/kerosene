@@ -1,5 +1,6 @@
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
+use crate::app_time::DisplayTimeZone;
 use std::collections::BTreeMap;
 
 mod card;
@@ -40,12 +41,12 @@ impl TradingTerminal {
                     let (key, title, is_question_group) = match info.question_id {
                         Some(question_id) => (
                             format!("question:{question_id}"),
-                            outcome_question_title(info, now_ms),
+                            outcome_question_title(info, now_ms, self.display_timezone),
                             true,
                         ),
                         None => (
                             format!("outcome:{}", info.outcome_id),
-                            info.market_label_with_countdown(now_ms),
+                            info.market_label_with_countdown(now_ms, self.display_timezone),
                             false,
                         ),
                     };
@@ -74,7 +75,11 @@ impl TradingTerminal {
     }
 }
 
-fn outcome_question_title(info: &crate::api::OutcomeSymbolInfo, now_ms: u64) -> String {
+fn outcome_question_title(
+    info: &crate::api::OutcomeSymbolInfo,
+    now_ms: u64,
+    zone: DisplayTimeZone,
+) -> String {
     if info.question_class.as_deref() == Some("priceBucket")
         && let Some(underlying) = info.question_underlying.as_deref()
     {
@@ -85,7 +90,7 @@ fn outcome_question_title(info: &crate::api::OutcomeSymbolInfo, now_ms: u64) -> 
         .as_ref()
         .filter(|name| !name.trim().is_empty() && name.trim() != "Recurring")
         .cloned()
-        .unwrap_or_else(|| info.market_label_with_countdown(now_ms))
+        .unwrap_or_else(|| info.market_label_with_countdown(now_ms, zone))
 }
 
 #[cfg(test)]

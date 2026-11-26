@@ -120,6 +120,7 @@ pub struct CandlestickChart {
     pub(crate) edge_blur_enabled: bool,
     /// Strength of the radial edge blur effect.
     pub(crate) edge_blur_strength: f32,
+    pub(crate) display_timezone: crate::app_time::DisplayTimeZone,
     /// Reticle style used for the chart crosshair.
     pub(crate) crosshair_style: crate::config::ChartCrosshairStyle,
     /// Whether the chart crosshair draws full-span guide lines.

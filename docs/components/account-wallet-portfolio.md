@@ -349,7 +349,7 @@ movements. It uses the same account-scoped ledger reader, refresh controls, and
 30-second polling as Deposits/Withdrawals. The tabs filter the shared history
 before pagination and keep separate page and expanded-row state.
 
-Rows show UTC time, direction, asset, exact decimal amount, sender/recipient
+Rows show the time in the selected city, direction, asset, exact decimal amount, sender/recipient
 (or the internal account route), and status. Expanded rows expose the full
 wallet addresses and ledger transaction with copy controls. Transfer fees use
 the reported fee asset when present; older spot records do not infer that asset

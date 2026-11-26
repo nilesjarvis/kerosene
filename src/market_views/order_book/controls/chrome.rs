@@ -142,7 +142,8 @@ impl TradingTerminal {
         let exchange_symbol = self.exchange_symbols.iter().find(|sym| sym.key == symbol)?;
         let info = exchange_symbol.outcome.as_ref()?;
         let theme = self.theme();
-        let condition = info.side_condition_label_with_countdown(self.status_bar_now_ms);
+        let condition =
+            info.side_condition_label_with_countdown(self.status_bar_now_ms, self.display_timezone);
         let probability = inst
             .current_mid_price()
             .or_else(|| self.resolve_mid_for_symbol_at(symbol, self.status_bar_now_ms))

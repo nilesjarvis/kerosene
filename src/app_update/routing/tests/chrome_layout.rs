@@ -48,6 +48,10 @@ fn chrome_layout_calendar_and_portfolio_routes_cover_shared_shell_messages() {
         Message::CalendarImpactFilterChanged(crate::calendar_state::CalendarImpactFilter::All),
         UpdateRoute::Chrome,
     );
+    assert_route(
+        Message::DisplayTimeZoneChanged(Default::default()),
+        UpdateRoute::Preferences,
+    );
     assert_route(Message::ToggleHidePnl, UpdateRoute::Chrome);
     assert_route(
         Message::SetTradeHistoryAggregation(true),

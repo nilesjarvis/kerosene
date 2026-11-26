@@ -325,6 +325,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) next_canvas_id: CanvasId,
     pub(crate) last_focused_workspace: WorkspaceId,
     pub(crate) active_theme: String,
+    pub(crate) display_timezone: crate::app_time::DisplayTimeZone,
     pub(crate) ui_scale: f32,
     pub(crate) window_transparency_enabled: bool,
     pub(crate) window_background_blur_enabled: bool,

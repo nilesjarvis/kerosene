@@ -108,7 +108,7 @@ impl CandlestickChart {
                 idx += step_i;
                 continue;
             };
-            let label = format_time_axis_label(ts_ms / 1000, label_mode);
+            let label = format_time_axis_label(self.display_timezone, ts_ms, label_mode);
             if label_mode != TimeAxisLabelMode::DateTime
                 && last_label.as_deref() == Some(label.as_str())
             {

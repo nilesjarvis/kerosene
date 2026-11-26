@@ -80,8 +80,10 @@ impl TradingTerminal {
                     ..Default::default()
                 });
             let age = detected_age(state.now_ms.saturating_sub(event.detected_at_ms));
-            let date = chrono::DateTime::from_timestamp_millis(event.detected_at_ms as i64)
-                .map(|date| format!("First detected {} UTC", date.format("%Y-%m-%d %H:%M:%S")))
+            let date = self
+                .display_timezone
+                .datetime(event.detected_at_ms)
+                .map(|date| format!("First detected {}", date.format("%Y-%m-%d %H:%M:%S %Z")))
                 .unwrap_or_else(|| "First detected".into());
             let available = self
                 .exchange_symbols

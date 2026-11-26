@@ -124,6 +124,7 @@ impl TradingTerminal {
         self.sync_chart_fisheye();
         self.sync_chart_chromatic_aberration();
         self.sync_chart_edge_blur();
+        self.sync_chart_timezone();
         self.sync_chart_crosshair_style();
         self.sync_chart_crosshair_guides();
         self.sync_chart_crosshair_scale();

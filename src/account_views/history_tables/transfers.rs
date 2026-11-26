@@ -6,6 +6,7 @@ use crate::account_views::{
     history::format_history_time_millis, table_helpers::account_table_scroll,
 };
 use crate::app_state::TradingTerminal;
+use crate::app_time::DisplayTimeZone;
 use crate::message::Message;
 use iced::widget::{Column, button, column, container, row, rule, text};
 use iced::{Element, Fill, Length, Theme};
@@ -62,7 +63,7 @@ impl TradingTerminal {
                 .width(Length::FillPortion(portion))
         };
         let header = row![
-            header_cell("Time (UTC)", 2),
+            header_cell("Time", 2),
             header_cell("Type", 2),
             header_cell("Asset", 1),
             header_cell("Amount sent", 2),
@@ -117,7 +118,14 @@ impl TradingTerminal {
             .take(TRANSFER_PAGE_SIZE)
         {
             let expanded = view.expanded.as_ref() == Some(&entry.id);
-            content = content.push(view_transfer_row(entry, kind, index, expanded, &theme));
+            content = content.push(view_transfer_row(
+                entry,
+                kind,
+                index,
+                expanded,
+                self.display_timezone,
+                &theme,
+            ));
         }
         account_table_scroll(content)
     }
@@ -147,6 +155,7 @@ fn view_transfer_row<'a>(
     kind: TransferHistoryKind,
     index: usize,
     expanded: bool,
+    zone: DisplayTimeZone,
     theme: &Theme,
 ) -> Element<'a, Message> {
     let direction_color = match entry.direction {
@@ -161,7 +170,7 @@ fn view_transfer_row<'a>(
         theme.palette().text
     };
     let summary = row![
-        cell(format_history_time_millis(entry.time), 2),
+        cell(format_history_time_millis(entry.time, zone), 2),
         cell(
             format!(
                 "{} {}",

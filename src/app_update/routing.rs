@@ -374,6 +374,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SetOrderBookDisplayMode(_, _) => UpdateRoute::Market,
 
         Message::ThemeChanged(_)
+        | Message::DisplayTimeZoneChanged(_)
         | Message::UiScaleChanged(_)
         | Message::ToggleWindowTransparency(_)
         | Message::ToggleWindowBackgroundBlur(_)

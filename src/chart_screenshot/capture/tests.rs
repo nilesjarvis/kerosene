@@ -130,7 +130,7 @@ async fn export_pixels_match_live_canvas_at_higher_density() {
         let state = tree.state.downcast_ref::<ChartState>();
         let resolution = ExportResolution::new(bounds.size()).expect("resolution");
         let background = theme.palette().background;
-        let captured_at = Local::now();
+        let captured_at = chrono::Utc::now().with_timezone(&chrono_tz::UTC);
         let request = ChartScreenshotRenderRequest {
             symbol: "SYNTHETIC".to_string(),
             timeframe: "1H".to_string(),

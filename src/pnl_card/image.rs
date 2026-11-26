@@ -1,3 +1,4 @@
+use crate::app_time::DisplayTimeZone;
 use crate::chart_screenshot::encode_png_rgba;
 use crate::denomination::DisplayDenominationContext;
 
@@ -35,6 +36,7 @@ pub(super) struct PnlCardRenderRequest {
     metrics: PnlCardMetrics,
     denomination: DisplayDenominationContext,
     pnl_color: Color,
+    zone: DisplayTimeZone,
     theme: Theme,
 }
 
@@ -44,6 +46,7 @@ impl PnlCardRenderRequest {
         metrics: PnlCardMetrics,
         denomination: DisplayDenominationContext,
         pnl_color: Color,
+        zone: DisplayTimeZone,
         theme: Theme,
     ) -> Self {
         Self {
@@ -51,6 +54,7 @@ impl PnlCardRenderRequest {
             metrics,
             denomination,
             pnl_color,
+            zone,
             theme,
         }
     }
@@ -79,7 +83,7 @@ pub(super) async fn render_pnl_card_image(
     );
 
     let png = encode_png_rgba(WIDTH, HEIGHT, &rgba)?;
-    let default_filename = pnl_card_filename(card.ticker());
+    let default_filename = pnl_card_filename(card.ticker(), request.zone);
 
     Ok(PnlCardImage {
         width: WIDTH,

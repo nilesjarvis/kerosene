@@ -3,7 +3,7 @@
 Open **Widgets → Windows → Console**, or find **Console** in Alfred. It opens a
 separate, read-only window; selecting it again focuses the existing window.
 
-The newest activity appears first. Each row shows a UTC timestamp, provider,
+The newest activity appears first. Each row shows a timestamp in the selected display time zone, provider,
 HTTP send/response or WebSocket send/receive, and a known operation/channel.
 HTTP request IDs match sends with responses, transport failures or cancellations.
 Responses include HTTP status and elapsed time to response headers. Proxy

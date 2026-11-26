@@ -58,6 +58,11 @@ impl TradingTerminal {
                 self.apply_chart_theme_colors();
                 self.persist_config();
             }
+            Message::DisplayTimeZoneChanged(zone) => {
+                self.display_timezone = zone;
+                self.sync_chart_timezone();
+                self.persist_config();
+            }
             Message::UiScaleChanged(value) => {
                 self.ui_scale = normalize_ui_scale(value);
                 self.persist_config();

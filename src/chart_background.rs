@@ -193,6 +193,7 @@ impl TradingTerminal {
             self.chart_chromatic_aberration_strength,
         );
         chart.set_edge_blur(self.chart_edge_blur_enabled, self.chart_edge_blur_strength);
+        chart.set_display_timezone(self.display_timezone);
         chart.set_crosshair_style(self.chart_crosshair_style);
         chart.set_crosshair_guides_enabled(self.chart_crosshair_guides_enabled);
         chart.set_crosshair_scale(self.chart_crosshair_scale);
@@ -259,6 +260,12 @@ impl TradingTerminal {
         let strength = self.chart_edge_blur_strength;
         for instance in self.charts.values_mut() {
             instance.chart.set_edge_blur(enabled, strength);
+        }
+    }
+
+    pub(crate) fn sync_chart_timezone(&mut self) {
+        for instance in self.charts.values_mut() {
+            instance.chart.set_display_timezone(self.display_timezone);
         }
     }
 

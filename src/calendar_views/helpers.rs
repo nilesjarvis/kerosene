@@ -1,6 +1,6 @@
 use crate::api;
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Utc};
 use iced::{Color, Theme};
 
 #[cfg(test)]
@@ -72,8 +72,9 @@ pub(super) fn filtered_events<'a>(
     impact_filter: CalendarImpactFilter,
     window_filter: CalendarWindowFilter,
     now_utc: DateTime<Utc>,
-    now_local: DateTime<Local>,
+    zone: chrono_tz::Tz,
 ) -> Vec<DatedEvent<'a>> {
+    let today = now_utc.with_timezone(&zone).date_naive();
     let mut filtered: Vec<_> = events
         .iter()
         .copied()
@@ -94,7 +95,7 @@ pub(super) fn filtered_events<'a>(
                     dt >= now_utc - chrono::Duration::minutes(30)
                 }
                 (CalendarWindowFilter::Today, Some(dt)) => {
-                    dt.with_timezone(&Local).date_naive() == now_local.date_naive()
+                    dt.with_timezone(&zone).date_naive() == today
                 }
                 (_, None) => true,
             };

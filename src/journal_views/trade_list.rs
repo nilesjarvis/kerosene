@@ -2,7 +2,6 @@ use super::analytics::journal_trade_r_multiple;
 use super::trade_card::journal_chip;
 use super::trades::journal_pnl_color;
 use crate::app_state::TradingTerminal;
-use crate::helpers;
 use crate::journal::{AggregatedTrade, is_non_perp_coin};
 use crate::journal_views::style::{
     journal_accent_focus, journal_accent_soft, journal_dim, journal_monogram_style, journal_muted,
@@ -104,7 +103,7 @@ impl TradingTerminal {
         let subline = text(format!(
             "{} · {}",
             self.journal_max_position_label(trade),
-            short_timestamp(trade.start_time)
+            self.display_timezone.format_timestamp(trade.start_time)
         ))
         .size(10)
         .font(crate::app_fonts::monospace_font())
@@ -273,10 +272,6 @@ pub(super) fn journal_monogram(display_coin: &str) -> String {
     } else {
         letters.to_uppercase()
     }
-}
-
-fn short_timestamp(time_ms: u64) -> String {
-    helpers::format_timestamp_exact(time_ms)
 }
 
 // ---- Sparkline canvas ----

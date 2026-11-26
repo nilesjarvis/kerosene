@@ -276,8 +276,12 @@ fn x_rate_limit_hint(response: &reqwest::Response) -> String {
 
     match (remaining, reset) {
         (Some(remaining), Some(reset)) => format!(
-            " (rate remaining {remaining}, reset {})",
-            crate::helpers::format_timestamp(reset)
+            " (rate remaining {remaining}, resets in {})",
+            crate::helpers::format_duration(
+                reset
+                    .saturating_mul(1_000)
+                    .saturating_sub(crate::app_time::now_ms())
+            )
         ),
         (Some(remaining), None) => format!(" (rate remaining {remaining})"),
         _ => String::new(),

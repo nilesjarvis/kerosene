@@ -1,6 +1,7 @@
 use crate::advanced_order_history::{
     AdvancedOrderHistoryChild, AdvancedOrderHistoryEntry, AdvancedOrderHistoryKind,
 };
+use crate::app_time::DisplayTimeZone;
 use crate::helpers::{format_duration, format_price, format_size, format_usd};
 use crate::message::Message;
 
@@ -41,6 +42,7 @@ pub(super) fn history_header<'a>(
 }
 
 pub(super) fn history_summary<'a>(
+    zone: DisplayTimeZone,
     entry: &AdvancedOrderHistoryEntry,
     theme: &Theme,
 ) -> Element<'a, Message> {
@@ -64,7 +66,7 @@ pub(super) fn history_summary<'a>(
         ]
         .spacing(8),
         row![
-            metric("Completed", history_completed_text(entry), weak),
+            metric("Completed", history_completed_text(entry, zone), weak),
             metric("Runtime", history_runtime_text(entry), weak),
             metric(
                 if entry.kind == AdvancedOrderHistoryKind::Chase {

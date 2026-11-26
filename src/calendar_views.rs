@@ -3,7 +3,7 @@ mod events;
 mod helpers;
 
 use crate::app_state::TradingTerminal;
-use crate::app_time::{local_datetime_from_unix_ms, utc_datetime_from_unix_ms};
+use crate::app_time::utc_datetime_from_unix_ms;
 use crate::message::Message;
 use iced::widget::{column, container, responsive, rule, scrollable};
 use iced::{Element, Fill};
@@ -33,7 +33,6 @@ impl TradingTerminal {
         let theme = self.theme();
         let compact = available_width < TABLE_MIN_WIDTH;
         let now_utc = utc_datetime_from_unix_ms(self.status_bar_now_ms);
-        let now_local = local_datetime_from_unix_ms(self.status_bar_now_ms);
 
         let status_text = calendar_status_text(
             self.calendar_loading,
@@ -54,7 +53,7 @@ impl TradingTerminal {
             self.calendar_impact_filter,
             self.calendar_window_filter,
             now_utc,
-            now_local,
+            self.display_timezone.0,
         );
         let next_important = helpers::next_important_event(&dated_events, now_utc);
 

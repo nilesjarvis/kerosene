@@ -176,6 +176,7 @@ impl CandlestickChart {
                 ctx.chart_h,
                 ctx.funding_panel_h,
                 self.funding_annualized,
+                self.display_timezone,
                 |point| {
                     self.timestamp_to_x(point.time_ms, ctx.state, ctx.chart_w)
                         .map(|x| ctx.fisheye.project(Point::new(x, data_pos.y)).x)
@@ -486,7 +487,7 @@ impl CandlestickChart {
         let tape_y = (visual_pos.y + tape_y_offset).clamp(10.0, ctx.price_h - 10.0);
         let price_label = self.hud_readout.price.then(|| format_price(hover_price));
         let time_label = if self.hud_readout.hover_time {
-            hover_timestamp_ms.map(format_hud_hover_time)
+            hover_timestamp_ms.map(|ms| self.display_timezone.format(ms, "%m/%d %H:%M:%S", "--"))
         } else {
             None
         };
@@ -552,8 +553,18 @@ impl CandlestickChart {
             return;
         };
 
-        let label = format_crosshair_relative_time(timestamp_ms, self.clock_now_ms);
-        let label_width = label.len() as f32 * 6.5 + 12.0;
+        let age = format_crosshair_relative_time(timestamp_ms, self.clock_now_ms);
+        let time = self
+            .display_timezone
+            .format(timestamp_ms, "%m/%d %H:%M:%S %Z", "--");
+        let width = |label: &str| label.len() as f32 * 6.5 + 12.0;
+        let full_label = format!("{time}  {age}");
+        let label = if width(&full_label) + 8.0 <= ctx.chart_w {
+            full_label
+        } else {
+            time
+        };
+        let label_width = width(&label);
         let label_height = 17.0;
         if label_width + 8.0 > ctx.chart_w {
             return;
@@ -1224,23 +1235,6 @@ fn draw_hud_connector(frame: &mut canvas::Frame, from: Point, to: Point, accent:
             .with_color(Color { a: 0.32, ..accent })
             .with_width(0.65),
     );
-}
-
-fn format_hud_hover_time(unix_ms: u64) -> String {
-    format_hud_time(unix_ms, "%m/%d %H:%M:%S", "--")
-}
-
-fn format_hud_clock_time(unix_ms: u64) -> String {
-    format_hud_time(unix_ms, "%H:%M:%S", "--:--:--")
-}
-
-fn format_hud_time(unix_ms: u64, format: &str, fallback: &str) -> String {
-    let Ok(unix_ms) = i64::try_from(unix_ms) else {
-        return fallback.to_string();
-    };
-    chrono::DateTime::<chrono::Utc>::from_timestamp_millis(unix_ms)
-        .map(|dt| dt.with_timezone(&chrono::Local).format(format).to_string())
-        .unwrap_or_else(|| fallback.to_string())
 }
 
 pub(super) fn format_crosshair_relative_time(timestamp_ms: u64, now_ms: u64) -> String {

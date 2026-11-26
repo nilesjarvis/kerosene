@@ -1,6 +1,6 @@
 use crate::account::AssetContext;
 use crate::api::OutcomeVolume24h;
-use crate::app_time::local_datetime_from_unix_ms;
+use crate::app_time::utc_datetime_from_unix_ms;
 use crate::chart_state::ChartId;
 use crate::message::Message;
 
@@ -380,7 +380,7 @@ fn clickable_metric_button(
 }
 
 fn funding_countdown(now_ms: u64) -> String {
-    let now = local_datetime_from_unix_ms(now_ms);
+    let now = utc_datetime_from_unix_ms(now_ms);
     funding_countdown_from_minute_second(now.minute(), now.second())
 }
 

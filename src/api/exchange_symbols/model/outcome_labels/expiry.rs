@@ -1,4 +1,5 @@
 use super::OutcomeSymbolInfo;
+use crate::app_time::DisplayTimeZone;
 use crate::helpers;
 
 impl OutcomeSymbolInfo {
@@ -6,10 +7,13 @@ impl OutcomeSymbolInfo {
         label: String,
         expiry: Option<&str>,
         now_ms: Option<u64>,
-        include_expiry: bool,
+        expiry_zone: Option<DisplayTimeZone>,
     ) -> String {
-        if include_expiry && let Some(expiry) = expiry {
-            format!("{label} at {}", Self::format_expiry_at(expiry, now_ms))
+        if let (Some(zone), Some(expiry)) = (expiry_zone, expiry) {
+            format!(
+                "{label} at {}",
+                Self::format_expiry_at(expiry, now_ms, zone)
+            )
         } else {
             label
         }
@@ -22,10 +26,18 @@ impl OutcomeSymbolInfo {
             .and_then(|expiry| expiry_time_left_label(expiry, now_ms))
     }
 
-    pub(super) fn format_expiry_at(expiry: &str, now_ms: Option<u64>) -> String {
+    pub(super) fn format_expiry_at(
+        expiry: &str,
+        now_ms: Option<u64>,
+        zone: DisplayTimeZone,
+    ) -> String {
         chrono::NaiveDateTime::parse_from_str(expiry, "%Y%m%d-%H%M")
             .map(|dt| {
-                let expiry_label = dt.format("%Y-%m-%d %H:%M UTC").to_string();
+                let expiry_label = dt
+                    .and_utc()
+                    .with_timezone(&zone.0)
+                    .format("%Y-%m-%d %H:%M %Z")
+                    .to_string();
                 now_ms
                     .and_then(|now_ms| time_left_label_at(dt.and_utc().timestamp_millis(), now_ms))
                     .map(|countdown| {
@@ -80,7 +92,7 @@ mod tests {
             Some("1h 1m".to_string())
         );
         assert_eq!(
-            OutcomeSymbolInfo::format_expiry_at(expiry, Some(now_ms)),
+            OutcomeSymbolInfo::format_expiry_at(expiry, Some(now_ms), Default::default()),
             "2026-05-20 06:00 UTC (1h 1m left)"
         );
         assert_eq!(

@@ -1,6 +1,7 @@
 use super::drawing::draw_snapshot_chart;
 use super::interaction::{JournalSnapshotCanvasState, update_snapshot_interaction};
 use super::plot::point_in_snapshot_plot;
+use crate::app_time::DisplayTimeZone;
 use crate::journal::JournalTradeSnapshot;
 use crate::message::Message;
 use iced::widget::canvas;
@@ -8,6 +9,7 @@ use iced::{Color, Point, Rectangle, Renderer, Theme, mouse};
 
 #[derive(Debug, Clone)]
 pub(super) struct JournalSnapshotCanvas<'a> {
+    pub(super) zone: DisplayTimeZone,
     pub(super) snapshot: &'a JournalTradeSnapshot,
 }
 
@@ -46,7 +48,7 @@ impl canvas::Program<Message> for JournalSnapshotCanvas<'_> {
         let mut layers = vec![frame.into_geometry()];
         if let Some(group) = hovered {
             let mut tooltip = canvas::Frame::new(renderer, bounds.size());
-            group.draw_tooltip(&mut tooltip, theme, &self.snapshot.coin);
+            group.draw_tooltip(&mut tooltip, theme, &self.snapshot.coin, self.zone);
             layers.push(tooltip.into_geometry());
         }
         layers

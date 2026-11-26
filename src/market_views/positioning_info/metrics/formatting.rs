@@ -1,3 +1,4 @@
+use crate::app_time::DisplayTimeZone;
 use crate::denomination::DisplayDenominationContext;
 use crate::helpers::{self, trim_decimal_zeros};
 use crate::wallet_state::address_book::WalletDisplay;
@@ -167,12 +168,7 @@ fn format_compact_display_bucket(value: f64) -> String {
 
 pub(in crate::market_views::positioning_info) fn format_positioning_timestamp(
     timestamp: &str,
+    zone: DisplayTimeZone,
 ) -> String {
-    chrono::DateTime::parse_from_rfc3339(timestamp)
-        .map(|dt| {
-            dt.with_timezone(&chrono::Local)
-                .format("%b %d, %H:%M")
-                .to_string()
-        })
-        .unwrap_or_else(|_| timestamp.to_string())
+    zone.format_rfc3339(timestamp, "%b %d, %H:%M")
 }

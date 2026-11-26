@@ -37,14 +37,5 @@ pub(super) fn hype_unstaking_wallet_tooltip(display: &WalletDisplay, address: &s
     }
 }
 
-pub(super) fn format_local_time_ms(time_ms: u64) -> String {
-    let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(time_ms as i64) else {
-        return "-".to_string();
-    };
-    dt.with_timezone(&chrono::Local)
-        .format("%m/%d %H:%M:%S")
-        .to_string()
-}
-
 #[cfg(test)]
 mod tests;

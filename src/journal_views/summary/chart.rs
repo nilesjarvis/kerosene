@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::app_time::DisplayTimeZone;
 use crate::denomination::DisplayDenominationContext;
 use crate::helpers::{
     format_decimal_with_commas, normalize_two_decimal_display_value, signed_number_color,
@@ -64,6 +65,7 @@ impl TradingTerminal {
 
         let chart_body: Element<'_, Message> = if pnl_points.len() >= 2 {
             canvas(JournalSummaryChart {
+                zone: self.display_timezone,
                 pnl_points,
                 account_value_points,
                 show_account_value,
@@ -166,6 +168,7 @@ impl TradingTerminal {
             points,
             self.journal.portfolio_window,
             self.status_bar_now_ms,
+            self.display_timezone,
         )
     }
 
@@ -273,12 +276,13 @@ fn apply_journal_portfolio_window(
     points: Vec<(u64, f64)>,
     window: PortfolioWindow,
     now_ms: u64,
+    zone: DisplayTimeZone,
 ) -> Vec<(u64, f64)> {
     if points.is_empty() || matches!(window, PortfolioWindow::AllTime) {
         return points;
     }
 
-    let Some(cutoff) = window.cutoff_ms(now_ms) else {
+    let Some(cutoff) = window.cutoff_ms(now_ms, zone) else {
         return points;
     };
     TradingTerminal::apply_cutoff_with_baseline(&points, cutoff)

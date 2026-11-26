@@ -513,7 +513,7 @@ dates remain visible under time filters but are excluded from the next-event
 summary; both sorts preserve input order for equal keys.
 
 The calendar uses a compact table at pane widths of 640px and above, with a
-grouped date gutter, local event times, impact pills, and right-aligned forecast
+grouped date gutter, event times in the selected city, impact pills, and right-aligned forecast
 and previous values. Narrower panes stack event details and omit empty value
 lines. Time and event-title tooltips retain relative timing and full titles in
 the table. Window/impact filters and refresh share a toolbar; the next release

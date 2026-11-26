@@ -47,7 +47,7 @@ impl TradingTerminal {
         let fill = trade.first;
         let (side_str, side_color) = trade_side_display(&fill.side, theme);
 
-        let time_str = format_history_time_millis(fill.time);
+        let time_str = format_history_time_millis(fill.time, self.display_timezone);
 
         let amounts = trade.amounts();
         let pnl = amounts.pnl;

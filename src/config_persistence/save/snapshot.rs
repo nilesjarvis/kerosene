@@ -56,6 +56,7 @@ impl TradingTerminal {
             order_kind: layout_snapshot.order_kind,
             reduce_only: layout_snapshot.reduce_only,
             order_quantity_is_usd: self.order_quantity_is_usd,
+            display_timezone: self.display_timezone,
             ui_scale: self.ui_scale,
             window_transparency_enabled: self.window_transparency_enabled,
             window_background_blur_enabled: self.window_background_blur_enabled,

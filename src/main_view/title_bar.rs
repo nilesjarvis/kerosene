@@ -12,9 +12,9 @@ use controls::chrome_toggle_button;
 use controls::{WindowButtonKind, window_chrome_button};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use iced::mouse;
-use iced::widget::row;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-use iced::widget::{Space, column, container, mouse_area};
+use iced::widget::{Space, container, mouse_area};
+use iced::widget::{column, pick_list, row, text, tooltip};
 use iced::{Alignment, Element, window};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use iced::{Fill, Length};
@@ -30,7 +30,9 @@ use icons::{
 // ---------------------------------------------------------------------------
 
 const TITLE_BAR_HEIGHT: f32 = 34.0;
-pub(crate) const STATUS_TOGGLES_WIDTH: f32 = 3.0 * controls::CHROME_TOGGLE_BUTTON_WIDTH;
+pub(crate) const TIME_ZONE_PICKER_WIDTH: f32 = 108.0;
+pub(crate) const STATUS_TOGGLES_WIDTH: f32 =
+    TIME_ZONE_PICKER_WIDTH + 3.0 * controls::CHROME_TOGGLE_BUTTON_WIDTH;
 #[cfg(target_os = "macos")]
 const MACOS_TRAFFIC_LIGHT_SPACER: f32 = 72.0;
 
@@ -182,8 +184,24 @@ impl TradingTerminal {
             .into()
     }
 
+    pub(crate) fn view_time_zone_picker(&self) -> Element<'static, Message> {
+        tooltip(
+            pick_list(
+                crate::app_time::DisplayTimeZone::CHOICES,
+                Some(self.display_timezone),
+                Message::DisplayTimeZoneChanged,
+            )
+            .text_size(11)
+            .padding([2, 5])
+            .width(TIME_ZONE_PICKER_WIDTH),
+            text("Time zone for all windows").size(11),
+            tooltip::Position::Bottom,
+        )
+        .into()
+    }
+
     pub(crate) fn view_chrome_status_toggles(&self) -> Element<'static, Message> {
-        row![
+        let toggles = row![
             chrome_toggle_button(
                 if self.hide_pnl {
                     PNL_HIDDEN_ICON_SVG
@@ -227,8 +245,20 @@ impl TradingTerminal {
                 Message::ToggleDesktopNotifications,
             )
         ]
-        .width(STATUS_TOGGLES_WIDTH)
-        .align_y(Alignment::Center)
-        .into()
+        .align_y(Alignment::Center);
+        // Native chrome puts these controls beside the account actions. On
+        // narrow windows the wrapped action row has room for one column here.
+        if !self.custom_window_chrome_active
+            && self.main_window_size.is_some_and(|size| size.width < 720.0)
+        {
+            column![self.view_time_zone_picker(), toggles]
+                .align_x(Alignment::End)
+                .into()
+        } else {
+            row![self.view_time_zone_picker(), toggles]
+                .width(STATUS_TOGGLES_WIDTH)
+                .align_y(Alignment::Center)
+                .into()
+        }
     }
 }

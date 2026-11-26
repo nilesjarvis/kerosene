@@ -1,4 +1,5 @@
 use super::OutcomeSymbolInfo;
+use crate::app_time::DisplayTimeZone;
 use serde::{Deserialize, Serialize};
 
 /// Resolved public contract terms. Cached terms may be displayed but never
@@ -64,15 +65,14 @@ impl OutcomeSymbolInfo {
         None
     }
 
-    pub fn contract_deadline_label(&self) -> Option<String> {
-        let timestamp = i64::try_from(self.contract.deadline_ms?).ok()?;
-        let date = chrono::DateTime::from_timestamp_millis(timestamp)?;
+    pub fn contract_deadline_label(&self, zone: DisplayTimeZone) -> Option<String> {
+        let date = zone.datetime(self.contract.deadline_ms?)?;
         let label = if self.contract.resolution_deadline {
             "Resolution deadline"
         } else {
             "Expiry"
         };
-        Some(format!("{label}: {} UTC", date.format("%Y-%m-%d %H:%M")))
+        Some(format!("{label}: {}", date.format("%Y-%m-%d %H:%M %Z")))
     }
 
     pub fn fee_terms_label(&self) -> String {

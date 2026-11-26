@@ -131,6 +131,7 @@ impl TradingTerminal {
             metrics,
             self.display_denomination_context(),
             pnl_color,
+            self.display_timezone,
             theme,
         ))
     }

@@ -242,6 +242,7 @@ async fn crosshair_and_price_badge_follow_the_pointer_on_a_markerless_chart() {
     let mut snapshot = snapshot();
     snapshot.live_position = true;
     let chart = JournalSnapshotCanvas {
+        zone: Default::default(),
         snapshot: &snapshot,
     };
     let state = JournalSnapshotCanvasState::default();
@@ -289,6 +290,7 @@ async fn tooltip_uses_canvas_coordinates_and_hides_while_panning() {
         is_buy: true,
     });
     let chart = JournalSnapshotCanvas {
+        zone: Default::default(),
         snapshot: &snapshot,
     };
     let mut state = JournalSnapshotCanvasState::default();

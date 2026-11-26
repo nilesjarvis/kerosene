@@ -5,6 +5,16 @@ backfills, websocket candle updates, iced canvas rendering, viewport
 interaction, trading overlays, optional liquidation/heatmap/funding/earnings
 data, screenshots, and comparison charts.
 
+## Display time zone
+
+The upper-right city selector emits `Message::DisplayTimeZoneChanged`.
+The preferences update applies the zone to every chart and clears cached
+candle geometry. Chart creation, layout restoration, and screenshot export
+carry the same preference. Axis ticks and hover labels convert each instant
+when drawing so a viewport spanning a clock change uses both offsets.
+Candle data and the mapping between timestamps and canvas coordinates use
+the original exchange instants.
+
 ## Component Map
 
 | Component | Key files | Responsibility |

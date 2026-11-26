@@ -1,4 +1,5 @@
-use chrono::{DateTime, Local};
+use chrono::DateTime;
+use chrono_tz::Tz;
 use iced::widget::image::Handle as ImageHandle;
 use std::fmt;
 use std::sync::Arc;
@@ -30,7 +31,7 @@ pub(crate) struct ChartScreenshotState {
     pub(crate) rgba: Arc<[u8]>,
     pub(crate) png: Arc<[u8]>,
     pub(crate) preview_handle: ImageHandle,
-    pub(crate) captured_at: DateTime<Local>,
+    pub(crate) captured_at: DateTime<Tz>,
     pub(crate) default_filename: String,
 }
 

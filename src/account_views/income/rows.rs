@@ -1,8 +1,8 @@
 use crate::account_analytics::{IncomeHourlyPayment, IncomeTokenRow};
 use crate::account_views::portfolio::tokens;
+use crate::app_time::DisplayTimeZone;
 use crate::denomination::DisplayDenominationContext;
 use crate::message::Message;
-use chrono::{DateTime, Utc};
 use iced::widget::{Column, column, container, row, text};
 use iced::{Element, Fill, Length, Theme};
 
@@ -83,6 +83,7 @@ pub(super) fn view_income_token_rows(
 
 pub(super) fn view_income_hourly_rows(
     rows: &[IncomeHourlyPayment],
+    zone: DisplayTimeZone,
     theme: &Theme,
     compact: bool,
 ) -> Column<'static, Message> {
@@ -97,11 +98,7 @@ pub(super) fn view_income_hourly_rows(
 
     rows.iter()
         .fold(Column::new().spacing(0), |rows, row_data| {
-            let time_label = i64::try_from(row_data.time)
-                .ok()
-                .and_then(DateTime::<Utc>::from_timestamp_millis)
-                .map(|dt| dt.format("%m-%d %H:%M").to_string())
-                .unwrap_or_else(|| "—".to_string());
+            let time_label = zone.format(row_data.time, "%m-%d %H:%M", "—");
             let value_color = if row_data.net >= 0.0 {
                 tokens::up(theme)
             } else {

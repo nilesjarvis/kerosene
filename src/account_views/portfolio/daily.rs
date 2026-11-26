@@ -83,13 +83,13 @@ impl TradingTerminal {
         };
 
         match value_mode {
-            PnlValueDisplayMode::Percent => Self::compute_daily_percent_rows_from_cumulative(
+            PnlValueDisplayMode::Percent => self.compute_daily_percent_rows_from_cumulative(
                 &bucket.pnl_history,
                 &bucket.account_value_history,
                 DAILY_ROWS,
             ),
             PnlValueDisplayMode::Usd => {
-                Self::compute_daily_pnl_rows_from_cumulative(&bucket.pnl_history, DAILY_ROWS)
+                self.compute_daily_pnl_rows_from_cumulative(&bucket.pnl_history, DAILY_ROWS)
             }
         }
     }

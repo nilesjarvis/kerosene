@@ -15,8 +15,7 @@ mod formatting;
 mod heat;
 
 use formatting::{
-    format_hype_amount_with_notional, format_local_time_ms, hype_unstaking_wallet_label,
-    hype_unstaking_wallet_tooltip,
+    format_hype_amount_with_notional, hype_unstaking_wallet_label, hype_unstaking_wallet_tooltip,
 };
 use heat::{HypeUnstakingAmountScale, hype_unstaking_amount_scale, hype_unstaking_row_style};
 
@@ -108,7 +107,9 @@ impl TradingTerminal {
         let secondary = theme.extended_palette().background.weak.text;
         let text_color = theme.palette().text;
         let countdown = format_countdown(event.unlock_time_ms, context.now_ms);
-        let unlock_time = format_local_time_ms(event.unlock_time_ms);
+        let unlock_time = self
+            .display_timezone
+            .format(event.unlock_time_ms, "%m/%d %H:%M:%S", "-");
         let amount = format_hype_amount_with_notional(
             event.amount_wei,
             context.hype_mid,

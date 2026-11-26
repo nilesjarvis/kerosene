@@ -165,7 +165,7 @@ impl TradingTerminal {
         let label = if self.journal.loading {
             "Syncing…".to_string()
         } else if let Some(time) = self.journal.last_refresh_time {
-            format!("Synced {}", helpers::format_timestamp_exact(time))
+            format!("Synced {}", self.display_timezone.format_timestamp(time))
         } else {
             "Not synced".to_string()
         };

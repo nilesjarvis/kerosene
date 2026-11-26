@@ -1,7 +1,7 @@
 use super::{TooltipLine, TooltipSurface};
+use crate::app_time::DisplayTimeZone;
 use crate::chart::candle_layer::format_funding_rate_percent;
 use crate::chart::model::FUNDING_RATE_ANNUALIZATION_FACTOR;
-use crate::helpers::format_timestamp_exact;
 use crate::hydromancer_api::FundingRatePoint;
 use iced::{Color, Point, Size};
 
@@ -12,6 +12,7 @@ impl TooltipSurface<'_> {
         panel_y: f32,
         panel_h: f32,
         annualized: bool,
+        zone: DisplayTimeZone,
         point_to_x: X,
     ) where
         X: Fn(&FundingRatePoint) -> Option<f32>,
@@ -70,7 +71,7 @@ impl TooltipSurface<'_> {
                 color: rate_color,
             },
             TooltipLine {
-                content: format_timestamp_exact(point.time_ms),
+                content: zone.format_timestamp(point.time_ms),
                 color: Color {
                     a: 0.62,
                     ..self.theme.palette().text

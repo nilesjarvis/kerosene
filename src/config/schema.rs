@@ -156,6 +156,9 @@ pub struct KeroseneConfig {
     /// Whether order quantity inputs default to USD notional instead of coin size.
     #[serde(default)]
     pub order_quantity_is_usd: bool,
+    /// IANA time zone for timestamps in all windows.
+    #[serde(default)]
+    pub display_timezone: crate::app_time::DisplayTimeZone,
     /// Global UI scale multiplier. Values below 1.0 make the terminal denser.
     #[serde(default = "default_ui_scale")]
     pub ui_scale: f32,

@@ -82,7 +82,13 @@ impl TradingTerminal {
                 ));
 
                 for fund in selected_funds {
-                    body = body.push(fund_section(&theme, fund, available_width, &denomination));
+                    body = body.push(fund_section(
+                        &theme,
+                        fund,
+                        self.display_timezone,
+                        available_width,
+                        &denomination,
+                    ));
                 }
             }
         } else if !self.hype_etfs.loading {

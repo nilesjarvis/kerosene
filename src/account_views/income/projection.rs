@@ -1,39 +1,26 @@
 use crate::account_analytics::IncomeSnapshot;
-use chrono::{DateTime, Datelike, TimeZone, Utc};
+use chrono::{Datelike, Months, NaiveDate};
 
 // ---------------------------------------------------------------------------
 // Income Projection Data
 // ---------------------------------------------------------------------------
 
-pub(super) fn projected_income_bars(
-    data: &IncomeSnapshot,
-    now: DateTime<Utc>,
-) -> Vec<(String, f64)> {
+pub(super) fn projected_income_bars(data: &IncomeSnapshot, today: NaiveDate) -> Vec<(String, f64)> {
     let mut projection_bars = Vec::new();
-    let mut year = now.year();
-    let mut month = now.month();
+    let Some(mut month_start) = today
+        .with_day(1)
+        .and_then(|date| date.checked_add_months(Months::new(1)))
+    else {
+        return projection_bars;
+    };
     for _ in 0..12 {
-        month += 1;
-        if month > 12 {
-            month = 1;
-            year += 1;
-        }
-        let month_start = Utc
-            .with_ymd_and_hms(year, month, 1, 0, 0, 0)
-            .single()
-            .unwrap_or(now);
-        let (next_year, next_month) = if month == 12 {
-            (year + 1, 1)
-        } else {
-            (year, month + 1)
+        let Some(next_start) = month_start.checked_add_months(Months::new(1)) else {
+            break;
         };
-        let next_start = Utc
-            .with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
-            .single()
-            .unwrap_or(now);
-        let days = (next_start - month_start).num_days().max(28) as f64;
+        let days = (next_start - month_start).num_days() as f64;
         let projected = data.net_yearly_projection * (days / 365.0);
         projection_bars.push((month_start.format("%b '%y").to_string(), projected));
+        month_start = next_start;
     }
     projection_bars
 }
@@ -66,7 +53,7 @@ mod tests {
             .single()
             .expect("valid UTC timestamp");
 
-        let bars = projected_income_bars(&snapshot, now);
+        let bars = projected_income_bars(&snapshot, now.date_naive());
 
         assert_eq!(bars.len(), 12);
         assert_eq!(bars[0].0, "Jan '27");

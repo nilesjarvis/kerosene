@@ -63,7 +63,7 @@ impl TradingTerminal {
         } else {
             breakpoint
         };
-        // Allow room for all three status controls and the action row's gap
+        // Allow room for the status controls and the action row's gap
         // when native decorations replace the custom title bar.
         if self.custom_window_chrome_active {
             breakpoint

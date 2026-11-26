@@ -919,6 +919,7 @@ pub(crate) enum Message {
     CalendarWindowFilterChanged(CalendarWindowFilter),
     Tick,
     ThemeChanged(String),
+    DisplayTimeZoneChanged(crate::app_time::DisplayTimeZone),
     UiScaleChanged(f32),
     ToggleWindowTransparency(bool),
     ToggleWindowBackgroundBlur(bool),

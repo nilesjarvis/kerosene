@@ -49,6 +49,7 @@ Related storage:
 - widget configs
 - detached chart windows
 - active symbol and order defaults
+- global display time zone (IANA identifier in `display_timezone`, default `UTC` for older configs)
 - UI scale, pane chrome, window transparency/background opacity and blur, fonts,
   themes, chart display preferences
 - accounts, active account index, hidden positions

@@ -1,3 +1,4 @@
+use crate::app_time::DisplayTimeZone;
 mod rendering;
 mod series;
 
@@ -14,6 +15,7 @@ use iced::{Rectangle, Renderer, Theme};
 // ---------------------------------------------------------------------------
 
 pub(crate) struct PortfolioPnlChart {
+    pub(crate) zone: DisplayTimeZone,
     pub(crate) points: Vec<(u64, f64)>,
     pub(crate) value_mode: PnlValueDisplayMode,
     pub(crate) denomination: DisplayDenominationContext,
@@ -36,14 +38,6 @@ impl canvas::Program<Message> for PortfolioPnlChart {
         bounds: Rectangle,
         cursor: iced::mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
-        draw_portfolio_pnl_chart(
-            &self.points,
-            self.value_mode,
-            &self.denomination,
-            renderer,
-            theme,
-            bounds,
-            cursor,
-        )
+        draw_portfolio_pnl_chart(self, renderer, theme, bounds, cursor)
     }
 }

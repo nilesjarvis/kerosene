@@ -314,6 +314,7 @@ impl Default for KeroseneConfig {
             order_kind: default_order_kind(),
             reduce_only: false,
             order_quantity_is_usd: false,
+            display_timezone: Default::default(),
             ui_scale: default_ui_scale(),
             window_transparency_enabled: false,
             window_background_blur_enabled: false,
