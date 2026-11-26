@@ -145,6 +145,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddHypeUnstakingQueuePane => UpdateRoute::Panes,
 
         Message::ToggleHidePnl
+        | Message::SetTradeHistoryAggregation(_)
         | Message::TickerTapeTick
         | Message::ToggleIncomeAlerts
         | Message::ToggleLiquidationAlerts

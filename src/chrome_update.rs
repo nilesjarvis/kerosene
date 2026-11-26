@@ -154,6 +154,10 @@ impl TradingTerminal {
                 self.hide_pnl = !self.hide_pnl;
                 self.persist_config();
             }
+            Message::SetTradeHistoryAggregation(enabled) => {
+                self.aggregate_trade_history = enabled;
+                self.persist_config();
+            }
             Message::EnterApplication if !self.app_onboarding_dismissed => {
                 self.app_onboarding_dismissed = true;
                 self.persist_config();

@@ -1,8 +1,7 @@
-use crate::account;
+use super::aggregation::{HistoryTrade, fee_currency};
 use crate::account_views::history::format_history_time_millis;
 use crate::account_views::history_tables::numbers::{
-    format_history_display_usd, invalid_history_data, parse_history_number,
-    valid_history_wire_value,
+    format_history_display_usd, invalid_history_data,
 };
 use crate::account_views::history_tables::style::history_signed_value_color;
 use crate::app_state::TradingTerminal;
@@ -12,7 +11,7 @@ use iced::widget::text::Wrapping;
 use iced::widget::{Row, Space, row, text};
 use iced::{Color, Element, Fill, Theme};
 
-pub(super) fn view_trade_history_header(theme: &Theme) -> Row<'static, Message> {
+pub(super) fn view_trade_history_header(theme: &Theme, aggregate: bool) -> Row<'static, Message> {
     let header_txt = |s: &'static str| {
         text(s)
             .size(11)
@@ -21,31 +20,43 @@ pub(super) fn view_trade_history_header(theme: &Theme) -> Row<'static, Message> 
             .wrapping(Wrapping::None)
     };
 
-    row![
+    let header = row![
         header_txt("Time"),
         header_txt("Symbol"),
         header_txt("Side"),
         header_txt("Dir"),
-        header_txt("Price"),
+        header_txt(if aggregate { "Avg price" } else { "Price" }),
         header_txt("Size"),
         header_txt("PnL"),
         header_txt("Fee"),
     ]
-    .spacing(4)
+    .spacing(4);
+    if aggregate {
+        header.push(header_txt("Fills").width(32))
+    } else {
+        header
+    }
 }
 
 impl TradingTerminal {
     pub(super) fn view_trade_history_row<'a>(
         &'a self,
-        fill: &'a account::UserFill,
+        trade: HistoryTrade<'a>,
         theme: &Theme,
     ) -> Element<'a, Message> {
+        let fill = trade.first;
         let (side_str, side_color) = trade_side_display(&fill.side, theme);
 
         let time_str = format_history_time_millis(fill.time);
 
-        let pnl = parse_history_number(&fill.closed_pnl);
-        let fee = parse_history_number(&fill.fee);
+        let amounts = trade.amounts();
+        let pnl = amounts.pnl;
+        let fee = amounts.fee;
+        let display_amount = |wire: &str, value: Option<f64>| match value {
+            None => invalid_history_data(),
+            Some(_) if trade.count() == 1 => wire.to_owned(),
+            Some(value) => trim_decimal_zeros(format!("{value:.8}")),
+        };
         let weak_color = theme.extended_palette().background.weak.text;
         let invalid_color = theme.palette().warning;
         let pnl_color = history_signed_value_color(pnl, theme);
@@ -72,7 +83,7 @@ impl TradingTerminal {
             )
             .align_y(iced::Alignment::Center);
 
-        row![
+        let row = row![
             text(time_str).size(12).width(Fill).wrapping(Wrapping::None),
             coin_content.width(Fill),
             text(side_str)
@@ -80,25 +91,25 @@ impl TradingTerminal {
                 .color(side_color)
                 .width(Fill)
                 .wrapping(Wrapping::None),
-            text(&fill.dir)
+            text(trade.direction())
                 .size(12)
                 .width(Fill)
                 .wrapping(Wrapping::None),
-            text(valid_history_wire_value(&fill.px))
+            text(display_amount(&fill.px, amounts.price))
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
                 .color(optional_value_color(
-                    parse_history_number(&fill.px),
+                    amounts.price,
                     weak_color,
                     invalid_color
                 ))
                 .width(Fill)
                 .wrapping(Wrapping::None),
-            text(valid_history_wire_value(&fill.sz))
+            text(display_amount(&fill.sz, amounts.size))
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
                 .color(optional_value_color(
-                    parse_history_number(&fill.sz),
+                    amounts.size,
                     weak_color,
                     invalid_color
                 ))
@@ -115,8 +126,12 @@ impl TradingTerminal {
                 .width(Fill)
                 .wrapping(Wrapping::None),
         ]
-        .spacing(4)
-        .into()
+        .spacing(4);
+        if self.aggregate_trade_history {
+            row.push(text(trade.count()).size(12).width(32)).into()
+        } else {
+            row.into()
+        }
     }
 }
 
@@ -143,14 +158,10 @@ fn history_fee_display(
     let Some(fee) = fee else {
         return invalid_history_data();
     };
-    match fee_token.map(str::trim) {
-        Some(token) if !token.is_empty() && !token.eq_ignore_ascii_case("USDC") => {
-            format_token_fee(fee, token)
-        }
-        _ => format!(
-            "-{}",
-            format_history_display_usd(denomination, Some(fee), 2)
-        ),
+    match fee_currency(fee_token) {
+        "USDC" if fee < 0.0 => format!("+{}", denomination.format_value(fee.abs(), 2)),
+        "USDC" => format!("-{}", denomination.format_value(fee, 2)),
+        token => format_token_fee(fee, token),
     }
 }
 

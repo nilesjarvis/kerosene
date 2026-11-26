@@ -367,6 +367,7 @@ impl TradingTerminal {
             advanced_order_history_windows: HashMap::new(),
             last_advanced_exchange_request_at: None,
             hide_pnl: cfg.hide_pnl,
+            aggregate_trade_history: cfg.aggregate_trade_history,
             ticker_tape_enabled: cfg.ticker_tape_enabled,
             ticker_tape_scroll_px: 0.0,
             ticker_tape_ctxs: HashMap::new(),

@@ -593,6 +593,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) last_advanced_exchange_request_at: Option<std::time::Instant>,
     // Hide dollar PnL values (trader focus mode)
     pub(crate) hide_pnl: bool,
+    pub(crate) aggregate_trade_history: bool,
     // Optional full-width favourites ticker tape.
     pub(crate) ticker_tape_enabled: bool,
     pub(crate) ticker_tape_scroll_px: f64,

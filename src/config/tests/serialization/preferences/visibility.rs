@@ -24,6 +24,26 @@ fn hide_pnl_round_trips_and_legacy_defaults_visible() {
 }
 
 #[test]
+fn trade_history_aggregation_round_trips_and_defaults_to_individual_fills() {
+    let config = KeroseneConfig {
+        aggregate_trade_history: true,
+        ..KeroseneConfig::default()
+    };
+    let json = json_string(&config, "config should serialize");
+    let decoded: KeroseneConfig = value_from_str(&json, "config should deserialize");
+    assert!(decoded.aggregate_trade_history);
+
+    let mut legacy = default_config_value();
+    remove_field(
+        &mut legacy,
+        "aggregate_trade_history",
+        "config should serialize to object",
+    );
+    let decoded: KeroseneConfig = value_from_json(legacy, "legacy config should deserialize");
+    assert!(!decoded.aggregate_trade_history);
+}
+
+#[test]
 fn hidden_positions_round_trip_and_legacy_defaults_empty() {
     let config = KeroseneConfig {
         hidden_positions_by_account: HashMap::from([(

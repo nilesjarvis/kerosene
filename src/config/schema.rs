@@ -388,6 +388,9 @@ pub struct KeroseneConfig {
     /// Hide dollar-denominated PnL values in account views.
     #[serde(default)]
     pub hide_pnl: bool,
+    /// Group partial executions in the Positions / History trade table.
+    #[serde(default)]
+    pub aggregate_trade_history: bool,
     /// Account-scoped position symbols hidden from the positions widget.
     #[serde(default)]
     pub hidden_positions_by_account: HashMap<String, Vec<String>>,

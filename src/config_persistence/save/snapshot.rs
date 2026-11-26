@@ -155,6 +155,7 @@ impl TradingTerminal {
             toast_animations_enabled: self.toast_animations_enabled,
             income_alerts_enabled: layout_snapshot.income_alerts_enabled,
             hide_pnl: self.hide_pnl,
+            aggregate_trade_history: self.aggregate_trade_history,
             hidden_positions_by_account,
             liquidation_alerts_enabled: layout_snapshot.liquidation_alerts_enabled,
             liquidation_alert_threshold: layout_snapshot.liquidation_alert_threshold,

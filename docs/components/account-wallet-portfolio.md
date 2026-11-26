@@ -291,6 +291,20 @@ Account views cover:
 Spot and outcome balances can feed order-entry helpers such as outcome sell
 prefill.
 
+### Trade History
+
+**Aggregate fills** combines executions with the same order ID, market, side,
+fee currency, and exchange block timestamp. A market order that sweeps several
+price levels appears as one row with its fill count, size-weighted average
+price, total size, realized PnL, and fees. A resting order that fills in later
+blocks gets a separate row for each block. Fills without an order ID stay
+individual. The table shows up to 50 rows in either mode.
+See Hyperliquid’s [fill aggregation rules](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#retrieve-a-users-fills).
+
+The `SetTradeHistoryAggregation` message saves the display preference as
+`aggregate_trade_history`. It defaults to individual fills. The table groups
+the connected account's loaded fills locally, including live updates.
+
 ### Deposits/Withdrawals
 
 The Positions / History widget's **Deposits/Withdrawals** tab combines the

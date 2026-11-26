@@ -1530,6 +1530,7 @@ pub(crate) enum Message {
     ClosePane(WorkspaceId, pane_grid::Pane),
     #[cfg_attr(target_os = "windows", allow(dead_code))]
     ToggleHidePnl,
+    SetTradeHistoryAggregation(bool),
     // Quick order form (right-click on chart)
     OpenQuickOrder(ChartId, ChartSurfaceId, f64, f32, f32, f32, f32),
     QuickOrderQtyChanged(ChartId, RedactedOrderInput),

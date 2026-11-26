@@ -390,6 +390,7 @@ impl Default for KeroseneConfig {
             toast_animations_enabled: true,
             income_alerts_enabled: false,
             hide_pnl: false,
+            aggregate_trade_history: false,
             hidden_positions_by_account: HashMap::new(),
             liquidation_alerts_enabled: false,
             liquidation_alert_threshold: default_liquidation_alert_threshold(),

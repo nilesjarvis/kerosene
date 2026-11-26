@@ -29,6 +29,19 @@ fn future_pane_layout() -> PaneLayoutConfig {
 }
 
 #[test]
+fn trade_history_toggle_restores_the_selected_view_on_restart() {
+    use crate::message::Message;
+
+    let (mut terminal, _) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+    let _ = terminal.update(Message::SetTradeHistoryAggregation(true));
+    assert!(terminal.config_save_due_at.is_some());
+    let (mut restored, _) = TradingTerminal::boot_from_config(terminal.config_snapshot());
+    assert!(restored.aggregate_trade_history);
+    let _ = restored.update(Message::SetTradeHistoryAggregation(false));
+    assert!(!restored.config_snapshot().aggregate_trade_history);
+}
+
+#[test]
 fn pane_dividers_toggle_persists_without_changing_layout_geometry() {
     let (mut terminal, _) = TradingTerminal::boot_from_config(KeroseneConfig {
         pane_border_thickness: 8.0,

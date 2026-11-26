@@ -25,6 +25,10 @@ fn trade_fee_display_keeps_usdc_fees_as_dollar_amounts() {
         history_fee_display(&denomination, Some(1.25), Some(" "), false),
         "-$1.25"
     );
+    assert_eq!(
+        history_fee_display(&denomination, Some(-0.25), Some("USDC"), false),
+        "+$0.25"
+    );
 }
 
 #[test]

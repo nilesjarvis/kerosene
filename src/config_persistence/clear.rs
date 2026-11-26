@@ -410,6 +410,7 @@ impl TradingTerminal {
         self.toast_animations_enabled = defaults.toast_animations_enabled;
         self.income_alerts_enabled = defaults.income_alerts_enabled;
         self.hide_pnl = defaults.hide_pnl;
+        self.aggregate_trade_history = defaults.aggregate_trade_history;
         self.hidden_positions_by_account.clear();
         self.show_hidden_positions = false;
         self.liquidation_alerts_enabled = defaults.liquidation_alerts_enabled;
