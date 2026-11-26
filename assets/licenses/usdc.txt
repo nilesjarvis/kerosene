@@ -1,9 +1,11 @@
-USDC Token Logo
-Source: https://commons.wikimedia.org/wiki/File:Circle_USDC_Logo.svg
+USDC Token Logo (monochrome mark)
+Source: https://www.usdc.com/ (official logo SVG, token mark cropped from
+the full lockup)
 Official brand reference: https://brand.circle.com/d/M9z54TaEwsWL/stablecoins
 Retrieved: 2026-11-26
 
 The USDC logo is a trademark of Circle Internet Group, Inc. Used here to
-identify the token. File copy is licensed CC BY-SA 4.0.
+identify the token.
 
-Modified: none (original 96x96 token mark, Circle blue #0B53BF).
+Modified: cropped to the token mark (dropped the USDC wordmark paths and
+adjusted the viewBox); geometry untouched.

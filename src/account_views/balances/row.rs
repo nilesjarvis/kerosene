@@ -25,11 +25,7 @@ pub(super) fn balance_row(
     let entry_ntl = parse_balance_number(&balance.entry_ntl);
     let coin = balance.coin.clone();
 
-    let coin_color = if coin == "USDC" {
-        Color::WHITE
-    } else {
-        theme.palette().success
-    };
+    let coin_color = theme.palette().success;
     let (total_str, avail_str, hold_str) =
         balance_amounts(&coin, total, available, hold, denomination);
     let entry_str = entry_notional_text(entry_ntl, denomination);
