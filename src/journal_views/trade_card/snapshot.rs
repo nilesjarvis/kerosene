@@ -4,7 +4,7 @@ use crate::journal::{
     AggregatedTrade, JournalTradeSnapshot, JournalTradeSnapshotMetrics, JournalTradeSnapshotStatus,
 };
 use crate::message::Message;
-use iced::widget::{Column, Row, Space, column, container, row, text};
+use iced::widget::{Column, Row, column, container, row, text};
 use iced::{Color, Element, Fill, Theme, alignment};
 
 mod canvas;
@@ -23,23 +23,19 @@ impl TradingTerminal {
         trade: &'a AggregatedTrade,
     ) -> Element<'a, Message> {
         let theme = self.theme();
-        let muted = theme.extended_palette().background.weak.text;
-
         if let Some(request) = self.journal.snapshot_requests.get(&trade.id) {
             return container(
-                row![
-                    text("Loading chart snapshot")
+                column![
+                    container(self.view_spinner(24)).center(24),
+                    text(format!("Loading {} chart…", request.timeframe.label()))
                         .size(11)
-                        .color(theme.palette().success),
-                    Space::new().width(8.0),
-                    text(request.timeframe.label()).size(11).color(muted),
+                        .color(theme.extended_palette().background.weak.text),
                 ]
-                .align_y(iced::Alignment::Center),
+                .spacing(8)
+                .align_x(iced::Alignment::Center),
             )
-            .width(Fill)
-            .height(SNAPSHOT_HEIGHT)
-            .align_x(alignment::Horizontal::Center)
-            .align_y(alignment::Vertical::Center)
+            .center_x(Fill)
+            .center_y(SNAPSHOT_HEIGHT)
             .into();
         }
 

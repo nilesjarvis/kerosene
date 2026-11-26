@@ -1136,6 +1136,38 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_spinner_tracks_the_selected_request_in_the_open_journal() {
+        let mut terminal = journal_terminal_with_account();
+        terminal.journal.active_account_key = terminal.active_journal_account_key();
+        let trade = open_position_trade("position:BTC");
+        terminal.journal.trades.push(trade.clone());
+        let select = Message::JournalSelectTrade(trade.id.clone());
+        let _ = terminal.update_journal(select.clone());
+        assert!(!terminal.journal.snapshot_spinner_active());
+
+        terminal.journal.window_id = Some(iced::window::Id::unique());
+        assert!(terminal.journal.snapshot_spinner_active());
+        let _ = terminal.update_journal(Message::JournalDeselectTrade);
+        assert!(!terminal.journal.snapshot_spinner_active());
+        let _ = terminal.update_journal(select);
+        assert!(terminal.journal.snapshot_spinner_active());
+
+        let request = terminal.journal.snapshot_requests[&trade.id].clone();
+        let candle = api::Candle::test_flat(request.trade_start_ms, trade.avg_entry_price);
+        let _ = terminal.update_journal(Message::JournalSnapshotLoaded {
+            account_key: request.account_key.clone().into(),
+            address: request.address.clone().into(),
+            request: request.into(),
+            result: Ok(vec![candle]),
+        });
+        assert!(!terminal.journal.snapshot_spinner_active());
+        assert!(matches!(
+            terminal.journal.snapshots[&trade.id].status,
+            journal::JournalTradeSnapshotStatus::Loaded
+        ));
+    }
+
+    #[test]
     fn synthetic_open_position_without_fills_queues_live_snapshot() {
         // A carried-in / current-position trade has no attributed fills but a
         // known entry price: selecting it must queue a live-position snapshot

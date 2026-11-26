@@ -62,6 +62,7 @@ impl TradingTerminal {
             || self.account_loading
             || self.portfolio.refresh.loading
             || self.income.refresh.loading
+            || self.journal.snapshot_spinner_active()
             || self.calendar_loading
             || self.hype_etfs.loading
             || self.hype_unstaking_queue.loading

@@ -123,6 +123,16 @@ impl JournalState {
         self.window_id.is_some() && self.chart_reveal_progress < 1.0
     }
 
+    pub(crate) fn snapshot_spinner_active(&self) -> bool {
+        self.window_id.is_some()
+            && self.error.is_none()
+            && self
+                .selected_trade_id
+                .as_ref()
+                .and_then(|id| self.snapshot_requests.get(id))
+                .is_some_and(|request| self.filter.matches_coin(&request.coin))
+    }
+
     pub fn advance_chart_reveal(&mut self, now_ms: u64) {
         let Some(started_ms) = self.chart_reveal_started_ms else {
             self.finish_chart_reveal();
