@@ -3,6 +3,7 @@ use crate::canvas_state::WorkspaceId;
 use crate::chart_state::ChartSurfaceId;
 use crate::message::Message;
 
+use crate::signing::OrderKind;
 use iced::Task;
 
 mod chase;
@@ -25,7 +26,7 @@ pub(crate) use form::OrderQuantityProvenance;
 pub(crate) use nuke::{NukeConfirmation, nuke_confirmation_is_armed};
 pub(crate) use results::{
     ExecutionOutcomeKind, PendingCancelStatusRequest, PendingMoveStatusRequest,
-    PendingOneShotStatusRequest, classify_execution_result,
+    PendingOneShotStatusRequest, PlacementLookup, classify_execution_result,
 };
 
 impl TradingTerminal {
@@ -69,9 +70,22 @@ impl TradingTerminal {
             }
             Message::EditPresetChanged(new_text) => self.handle_edit_preset_changed(new_text),
             Message::EditPresetSave(kind, idx) => self.handle_edit_preset_save(kind, idx),
-            Message::ExecutePreset(kind, preset, is_buy) => {
+            Message::ExecutePreset {
+                kind,
+                preset,
+                is_buy,
+                account_generation,
+            } => {
+                if matches!(
+                    kind,
+                    OrderKind::Market | OrderKind::Limit | OrderKind::LimitIoc
+                ) && !self.standard_ticket_click_is_current(account_generation)
+                {
+                    return Task::none();
+                }
                 return self.handle_execute_preset(kind, preset, is_buy);
             }
+            Message::RecheckTicketOrderStatus(id) => return self.recheck_ticket_order_status(id),
             Message::DismissOrderStatus => self.handle_dismiss_order_status(),
             Message::PlaceOrder { is_buy, snapshot } => {
                 return self.execute_order_from_snapshot(is_buy, snapshot);

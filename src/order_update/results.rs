@@ -10,6 +10,7 @@ pub(crate) use classification::{
 };
 pub(crate) use pending::{
     PendingCancelStatusRequest, PendingMoveStatusRequest, PendingOneShotStatusRequest,
+    PlacementLookup,
 };
 
 #[cfg(test)]

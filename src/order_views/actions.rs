@@ -1,14 +1,17 @@
 mod chase;
 mod twap;
 
+#[cfg(test)]
+mod tests;
+
 use crate::app_state::TradingTerminal;
 use crate::helpers::{buy_button, sell_button};
 use crate::message::Message;
-use crate::order_execution::PendingOrderAction;
+use crate::order_execution::{PendingOrderAction, TicketWait};
+use crate::order_update::PlacementLookup;
 use crate::signing::OrderKind;
-use iced::widget::container as container_style;
-use iced::widget::{Column, button, container, row, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::widget::{Column, button, row, text};
+use iced::{Element, Fill};
 
 // ---------------------------------------------------------------------------
 // Order Action Controls
@@ -37,82 +40,113 @@ impl TradingTerminal {
             OrderKind::Market | OrderKind::Limit | OrderKind::LimitIoc => {}
         }
 
-        let pending_buy = self.pending_order_action == Some(PendingOrderAction::Buy);
-        let pending_sell = self.pending_order_action == Some(PendingOrderAction::Sell);
-        let pending_standard = pending_buy || pending_sell;
-
-        let buy_label = format!("BUY {}", self.active_symbol_display.to_uppercase());
-        let sell_label = format!("SELL {}", self.active_symbol_display.to_uppercase());
-        let palette = self.theme().palette();
-        let snapshot = self.ticket_order_submission_snapshot();
-        let mut buy_btn: Element<'_, Message> = if pending_buy {
-            pending_order_button(self.view_spinner(14), &buy_label, palette.success)
-        } else {
-            buy_button(
-                buy_label.clone(),
-                Message::PlaceOrder {
-                    is_buy: true,
-                    snapshot: snapshot.clone(),
-                },
-            )
-        };
-        let mut sell_btn: Element<'_, Message> = if pending_sell {
-            pending_order_button(self.view_spinner(14), &sell_label, palette.danger)
-        } else {
-            sell_button(
-                sell_label.clone(),
-                Message::PlaceOrder {
-                    is_buy: false,
-                    snapshot,
-                },
-            )
-        };
-
-        if !can_trade || pending_standard {
-            buy_btn = if pending_buy {
-                pending_order_button(self.view_spinner(14), &buy_label, palette.success)
-            } else {
-                disabled_order_button(buy_label)
+        let wait = self.standard_ticket_wait();
+        let reselect_size = self.outdated_ticket_percentage_source().is_some();
+        let enabled = can_trade && wait.is_none() && !reselect_size;
+        let action = |is_buy: bool| {
+            let label = format!(
+                "{} {}",
+                if is_buy { "BUY" } else { "SELL" },
+                self.active_symbol_display.to_uppercase()
+            );
+            if !enabled {
+                return disabled_order_button(label);
+            }
+            let message = Message::PlaceOrder {
+                is_buy,
+                snapshot: self.ticket_order_submission_snapshot(),
             };
-            sell_btn = if pending_sell {
-                pending_order_button(self.view_spinner(14), &sell_label, palette.danger)
+            if is_buy {
+                buy_button(label, message)
             } else {
-                disabled_order_button(sell_label)
-            };
+                sell_button(label, message)
+            }
+        };
+        let form = form.push(row![action(true), action(false)].spacing(8));
+        match wait {
+            Some(wait) if self.connected_address.is_some() => self.push_ticket_wait(form, wait),
+            None if can_trade && reselect_size => form.push(
+                text("Account updated. Reselect the percentage or enter a quantity.")
+                    .size(11)
+                    .color(self.theme().palette().warning),
+            ),
+            _ => form,
         }
-        form.push(row![buy_btn, sell_btn].spacing(8))
+    }
+
+    fn push_ticket_wait<'a>(
+        &'a self,
+        form: Column<'a, Message>,
+        wait: TicketWait<'_>,
+    ) -> Column<'a, Message> {
+        let mut control = None;
+        let label = match wait {
+            TicketWait::OrderStatus(check) => {
+                let symbol = self.display_name_for_symbol(&check.context.symbol_key);
+                if check.lookup == PlacementLookup::Checking {
+                    format!("Checking {symbol} order status. Execution is unconfirmed.")
+                } else {
+                    control = Some((
+                        "Check order status",
+                        Message::RecheckTicketOrderStatus(check.request_id),
+                    ));
+                    format!("{symbol} order unconfirmed. Check open orders and fills.")
+                }
+            }
+            TicketWait::TradingRequest => match self.pending_order_action {
+                Some(PendingOrderAction::Buy) => "Awaiting buy confirmation…",
+                Some(PendingOrderAction::Sell) => "Awaiting sell confirmation…",
+                _ => "Waiting for the previous trading request",
+            }
+            .into(),
+            TicketWait::Refreshing => "Refreshing account data…".into(),
+            TicketWait::RateLimited => {
+                "Account refresh rate limited. Retrying automatically.".into()
+            }
+            TicketWait::AccountDataUnavailable => {
+                control = Some(("Refresh account", Message::RefreshAccountData));
+                "Waiting for fresh account data".into()
+            }
+        };
+        let color = if matches!(
+            wait,
+            TicketWait::OrderStatus(_)
+                | TicketWait::AccountDataUnavailable
+                | TicketWait::RateLimited
+        ) {
+            self.theme().palette().warning
+        } else {
+            self.theme().palette().text
+        };
+        let mut status = row![];
+        if matches!(wait, TicketWait::Refreshing)
+            || (matches!(wait, TicketWait::TradingRequest) && self.pending_order_action.is_some())
+        {
+            status = status.push(self.view_spinner(12));
+        }
+        let mut status = status
+            .push(text(label).size(11).color(color).width(Fill))
+            .align_y(iced::Alignment::Center)
+            .spacing(4);
+        if let Some((label, message)) = control {
+            status = status.push(
+                button(text(label).size(11))
+                    .on_press(message)
+                    .style(button::secondary)
+                    .padding([2, 6]),
+            );
+        }
+        form.push(status)
     }
 }
 
-fn pending_order_button<'a>(
-    spinner: Element<'a, Message>,
-    label: &str,
-    background: Color,
-) -> Element<'a, Message> {
-    container(
-        row![spinner, text(label.to_string()).size(14)]
-            .spacing(6)
-            .align_y(iced::Alignment::Center),
-    )
-    .padding([8, 0])
-    .center_x(Fill)
-    .width(Fill)
-    .style(move |_theme: &Theme| container_style::Style {
-        background: Some(background.into()),
-        text_color: Some(crate::helpers::text_color_for_bg(background)),
-        border: iced::Border {
-            radius: 4.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    })
-    .into()
-}
-
 fn disabled_order_button(label: String) -> Element<'static, Message> {
-    button(text(label).size(14).center().width(Fill))
-        .padding([8, 16])
-        .width(Fill)
-        .style(button::secondary)
-        .into()
+    // A different widget tree drops a press held across a disabled interval.
+    iced::widget::column![
+        button(text(label).size(14).center().width(Fill))
+            .padding([8, 16])
+            .width(Fill)
+            .style(button::secondary)
+    ]
+    .into()
 }

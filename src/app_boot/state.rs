@@ -182,6 +182,7 @@ impl TradingTerminal {
             order_leverage_dropdown_open: false,
             pending_leverage_update: None,
             order_status: None,
+            ticket_receipt_during_refresh: None,
             next_one_shot_status_request_id: 0,
             pending_one_shot_status_requests: BTreeMap::new(),
             pending_cancel_status_request: None,

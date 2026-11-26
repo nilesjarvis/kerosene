@@ -1,4 +1,5 @@
 use super::*;
+use crate::order_execution::TicketWait;
 
 #[test]
 fn one_shot_ambiguous_outcome_sets_cloid_reconciliation_status() {
@@ -80,7 +81,7 @@ fn one_shot_order_status_result_normalizes_terminal_statuses() {
 }
 
 #[test]
-fn one_shot_missing_status_stays_pending_until_account_refresh() {
+fn ticket_missing_status_stays_unconfirmed_after_account_refresh() {
     let mut terminal = terminal_with_connected_account();
     let context = one_shot_context();
     let request_id = begin_one_shot_status_request(&mut terminal, &context);
@@ -101,7 +102,9 @@ fn one_shot_missing_status_stays_pending_until_account_refresh() {
 
     finish_current_account_refresh(&mut terminal);
 
-    assert!(terminal.pending_one_shot_status_requests.is_empty());
+    assert!(
+        matches!(terminal.standard_ticket_wait(), Some(TicketWait::OrderStatus(check)) if check.lookup == PlacementLookup::Unconfirmed)
+    );
     assert!(!terminal.has_pending_trading_request());
 }
 
@@ -123,8 +126,8 @@ fn one_shot_canceled_status_stays_pending_until_account_refresh() {
     assert!(terminal.account_reconciliation_required);
     let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
-    assert!(message.contains("placement status still uncertain"));
-    assert!(message.contains("refreshing account data"));
+    assert!(message.contains("BTC order canceled"));
+    assert!(message.contains("partial fills"));
 
     finish_current_account_refresh(&mut terminal);
 
@@ -133,7 +136,7 @@ fn one_shot_canceled_status_stays_pending_until_account_refresh() {
 }
 
 #[test]
-fn one_shot_status_error_stays_pending_until_account_refresh() {
+fn ticket_status_error_stays_unconfirmed_after_account_refresh() {
     let mut terminal = terminal_with_connected_account();
     let context = one_shot_context();
     let request_id = begin_one_shot_status_request(&mut terminal, &context);
@@ -157,7 +160,9 @@ fn one_shot_status_error_stays_pending_until_account_refresh() {
 
     finish_current_account_refresh(&mut terminal);
 
-    assert!(terminal.pending_one_shot_status_requests.is_empty());
+    assert!(
+        matches!(terminal.standard_ticket_wait(), Some(TicketWait::OrderStatus(check)) if check.lookup == PlacementLookup::Unconfirmed)
+    );
     assert!(!terminal.has_pending_trading_request());
 }
 
@@ -295,7 +300,7 @@ fn one_shot_limit_direct_resting_response_remains_successful() {
 
     let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(!is_error);
-    assert_eq!(message, "Resting (oid 42)");
+    assert_eq!(message, "BTC · Resting (oid 42)");
 }
 
 #[test]
@@ -323,7 +328,7 @@ fn one_shot_success_during_refresh_backoff_marks_reconciliation_required() {
     );
     let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(!is_error);
-    assert_eq!(message, "Resting (oid 42)");
+    assert_eq!(message, "BTC · Resting (oid 42)");
 }
 
 #[test]
@@ -384,4 +389,99 @@ fn one_shot_results_are_ignored_after_account_switch() {
     );
 
     assert!(terminal.order_status.is_none());
+}
+
+#[test]
+fn ticket_status_lookup_survives_refresh_and_rechecks_only_the_original_order() {
+    for surface in [OrderSurface::Ticket, OrderSurface::Preset] {
+        let mut terminal = terminal_with_connected_account();
+        let context = OneShotPlacementContext {
+            surface,
+            ..one_shot_context()
+        };
+        let _ =
+            terminal.handle_order_result(None, context.clone(), Err("request timed out".into()));
+        let initial = terminal.pending_one_shot_status_requests[&0].request_id;
+        finish_current_account_refresh(&mut terminal);
+        assert!(
+            matches!(terminal.standard_ticket_wait(), Some(TicketWait::OrderStatus(check)) if check.lookup == PlacementLookup::Checking)
+        );
+        assert_eq!(terminal.recheck_ticket_order_status(initial).units(), 0);
+
+        let mut wrong_order = order_status("filled");
+        wrong_order.cloid = Some("another-order".into());
+        let _ = terminal.handle_one_shot_placement_status_result(
+            initial,
+            context.clone(),
+            Ok(wrong_order),
+        );
+        finish_current_account_refresh(&mut terminal);
+        terminal.handle_dismiss_order_status();
+        assert!(terminal.reject_if_standard_ticket_waiting());
+        assert!(terminal.pending_order_action.is_none());
+        assert!(terminal.pending_order_indicators.is_empty());
+
+        terminal.connected_address = Some(OTHER_ACCOUNT.into());
+        terminal.retain_unconfirmed_ticket_checks();
+        assert!(terminal.standard_ticket_wait().is_none());
+        assert_eq!(terminal.recheck_ticket_order_status(initial).units(), 0);
+        terminal.connected_address = Some(TEST_ACCOUNT.into());
+        let task = terminal.recheck_ticket_order_status(initial);
+        assert_eq!(task.units(), 1);
+        assert_eq!(terminal.recheck_ticket_order_status(initial).units(), 0);
+        let (&id, check) = terminal
+            .pending_one_shot_status_requests
+            .first_key_value()
+            .expect("pending lookup");
+        assert_eq!(check.context, context);
+        assert_ne!(id, initial);
+        assert!(terminal.pending_order_action.is_none());
+        assert!(terminal.pending_order_indicators.is_empty());
+
+        let _ = terminal.handle_one_shot_placement_status_result(
+            initial,
+            context.clone(),
+            Ok(order_status("open")),
+        );
+        assert!(matches!(
+            terminal.standard_ticket_wait(),
+            Some(TicketWait::OrderStatus(_))
+        ));
+        let _ = terminal.handle_one_shot_placement_status_result(
+            id,
+            context,
+            Ok(order_status("filled")),
+        );
+        assert_eq!(
+            terminal.standard_ticket_wait(),
+            Some(TicketWait::Refreshing)
+        );
+        finish_current_account_refresh(&mut terminal);
+        assert!(terminal.standard_ticket_wait().is_none());
+        assert!(
+            terminal
+                .order_status
+                .as_ref()
+                .is_some_and(|(msg, error)| !error && msg.contains("filled"))
+        );
+        assert!(terminal.pending_order_action.is_none());
+    }
+}
+
+#[test]
+fn account_refresh_keeps_existing_recovery_policy_for_other_order_surfaces() {
+    let mut terminal = terminal_with_connected_account();
+    let context = OneShotPlacementContext {
+        surface: OrderSurface::Hud,
+        ..one_shot_context()
+    };
+    let id = terminal.begin_one_shot_status_request(&context);
+    assert_eq!(
+        terminal.standard_ticket_wait(),
+        Some(TicketWait::TradingRequest)
+    );
+    finish_current_account_refresh(&mut terminal);
+    assert!(terminal.pending_one_shot_status_requests.is_empty());
+    assert!(terminal.standard_ticket_wait().is_none());
+    assert_eq!(terminal.recheck_ticket_order_status(id).units(), 0);
 }

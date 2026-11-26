@@ -180,7 +180,8 @@ impl TradingTerminal {
                     }
                     return followup_task;
                 }
-                self.clear_pending_one_shot_status_request_for_account(&address);
+                self.ticket_receipt_during_refresh = None;
+                self.reconcile_placement_checks_after_refresh(&address);
                 self.clear_pending_order_status_requests_for_account_after_refresh(&address);
                 let chase_task = self.reconcile_chase_after_account_refresh();
                 let twap_task = if let Some(warning) = fills_incomplete {

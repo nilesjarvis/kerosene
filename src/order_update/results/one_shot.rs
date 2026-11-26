@@ -1,5 +1,6 @@
 use super::{
-    ExecutionOutcome, ExecutionOutcomeKind, PendingOneShotStatusRequest, classify_execution_result,
+    ExecutionOutcome, ExecutionOutcomeKind, PendingOneShotStatusRequest, PlacementLookup,
+    classify_execution_result,
 };
 use crate::api::{OrderStatusResult, fetch_order_status_by_cloid};
 use crate::app_state::TradingTerminal;
@@ -35,6 +36,9 @@ impl TradingTerminal {
         summary: &str,
     ) -> Task<Message> {
         self.set_unexpected_one_shot_resting_status(context, summary);
+        if context.surface.is_standard_ticket() {
+            self.ticket_receipt_during_refresh = self.order_status.clone();
+        }
         self.refresh_account_data()
     }
 
@@ -90,7 +94,7 @@ impl TradingTerminal {
     pub(crate) fn apply_one_shot_placement_outcome(
         &mut self,
         context: OneShotPlacementContext,
-        outcome: ExecutionOutcome,
+        mut outcome: ExecutionOutcome,
     ) -> Task<Message> {
         if !self.one_shot_context_matches_current_account(&context) {
             return Task::none();
@@ -114,14 +118,7 @@ impl TradingTerminal {
                 true,
             );
             let request_id = self.begin_one_shot_status_request(&context);
-            let status_task = Task::perform(
-                fetch_order_status_by_cloid(context.account_address.clone(), context.cloid.clone()),
-                move |result| Message::OneShotPlacementStatusLoaded {
-                    request_id,
-                    context,
-                    result: Box::new(result),
-                },
-            );
+            let status_task = placement_status_task(request_id, context);
             return if outcome.refresh_account {
                 Task::batch([self.refresh_account_data(), status_task])
             } else {
@@ -135,7 +132,40 @@ impl TradingTerminal {
             return self.handle_unexpected_one_shot_resting_order(&context, &outcome.status);
         }
 
+        if context.surface.is_standard_ticket()
+            && matches!(
+                outcome.kind,
+                ExecutionOutcomeKind::Filled | ExecutionOutcomeKind::AcceptedResting
+            )
+        {
+            let display = self.display_name_for_symbol(&context.symbol_key);
+            outcome.status = format!("{display} · {}", outcome.status);
+        }
+        if context.surface.is_standard_ticket() && outcome.refresh_account {
+            self.ticket_receipt_during_refresh = Some((outcome.status.clone(), outcome.is_error));
+        }
         self.apply_execution_outcome(outcome)
+    }
+
+    pub(crate) fn recheck_ticket_order_status(&mut self, id: u64) -> Task<Message> {
+        let Some(check) = self.pending_one_shot_status_requests.get(&id) else {
+            return Task::none();
+        };
+        if !check.needs_ticket_confirmation()
+            || check.lookup != PlacementLookup::Unconfirmed
+            || !self.one_shot_context_matches_current_account(&check.context)
+        {
+            return Task::none();
+        }
+        let Some(mut check) = self.pending_one_shot_status_requests.remove(&id) else {
+            return Task::none();
+        };
+        check.lookup = PlacementLookup::Checking;
+        check.request_id = self.next_one_shot_status_request_id;
+        self.next_one_shot_status_request_id = self.next_one_shot_status_request_id.wrapping_add(1);
+        let task = placement_status_task(check.request_id, check.context.clone());
+        self.insert_pending_one_shot_status_request(check);
+        task
     }
 
     pub(crate) fn handle_one_shot_placement_status_result(
@@ -144,20 +174,30 @@ impl TradingTerminal {
         context: OneShotPlacementContext,
         result: Result<OrderStatusResult, String>,
     ) -> Task<Message> {
-        let request_matches = self
-            .pending_one_shot_status_requests
-            .get(&request_id)
-            .is_some_and(|pending| pending.matches(request_id, &context));
-        if !request_matches {
-            return Task::none();
-        }
-
-        if !self.one_shot_context_matches_current_account(&context) {
-            self.pending_one_shot_status_requests.remove(&request_id);
-            return Task::none();
-        }
-
         let display = self.display_name_for_symbol(&context.symbol_key);
+        let current_account = self.one_shot_context_matches_current_account(&context);
+        let Some(check) = self.pending_one_shot_status_requests.get_mut(&request_id) else {
+            return Task::none();
+        };
+        if !check.matches(request_id, &context) || check.lookup != PlacementLookup::Checking {
+            return Task::none();
+        }
+        check.lookup = PlacementLookup::Unconfirmed;
+        if !current_account {
+            if !check.needs_ticket_confirmation() {
+                self.pending_one_shot_status_requests.remove(&request_id);
+            }
+            return Task::none();
+        }
+
+        let ticket = context.surface.is_standard_ticket();
+        let result = result.and_then(|status| {
+            if ticket && !status.is_missing() && status.cloid.as_deref() != Some(&context.cloid) {
+                Err("Exchange did not confirm the requested order ID".to_owned())
+            } else {
+                Ok(status)
+            }
+        });
         match result {
             Ok(status) if status.is_open() && context.order_kind.allows_resting_response() => {
                 self.pending_one_shot_status_requests.remove(&request_id);
@@ -195,6 +235,16 @@ impl TradingTerminal {
                         "{} placement rejected according to orderStatus for {}: {}",
                         context.placement_label(),
                         display,
+                        status.raw_summary
+                    ),
+                    true,
+                );
+            }
+            Ok(status) if ticket && status.is_no_fill_terminal() => {
+                check.lookup = PlacementLookup::Canceled;
+                self.set_order_status(
+                    format!(
+                        "{display} order canceled. Check trade history for partial fills. {}",
                         status.raw_summary
                     ),
                     true,
@@ -251,6 +301,20 @@ impl TradingTerminal {
             }
         }
 
+        if ticket {
+            self.ticket_receipt_during_refresh = self.order_status.clone();
+        }
         self.refresh_account_data()
     }
+}
+
+fn placement_status_task(request_id: u64, context: OneShotPlacementContext) -> Task<Message> {
+    Task::perform(
+        fetch_order_status_by_cloid(context.account_address.clone(), context.cloid.clone()),
+        move |result| Message::OneShotPlacementStatusLoaded {
+            request_id,
+            context,
+            result: Box::new(result),
+        },
+    )
 }

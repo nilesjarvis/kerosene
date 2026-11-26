@@ -217,6 +217,7 @@ fn pending_one_shot_status_request() -> PendingOneShotStatusRequest {
 #[test]
 fn ticket_order_submission_snapshot_debug_redacts_order_inputs() {
     let snapshot = TicketOrderSubmissionSnapshot {
+        account_generation: 0,
         order_kind: OrderKind::LimitIoc,
         symbol_key: "SECRETCOIN".into(),
         price_input: "price-secret".into(),
@@ -604,6 +605,11 @@ fn execute_order_rejects_percentage_quantity_after_account_snapshot_changes() {
     terminal.handle_order_percentage_changed(50.0);
     terminal.bump_account_data_revision();
 
+    assert_eq!(
+        terminal.outdated_ticket_percentage_source(),
+        Some("an older account snapshot")
+    );
+
     let _task = terminal.execute_order(true);
 
     let (status, is_error) = order_status_or_panic(&terminal);
@@ -758,4 +764,111 @@ fn manual_quantity_after_percentage_size_is_not_tied_to_snapshot() {
 
     assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
     assert!(!terminal.pending_order_indicators.is_empty());
+}
+
+#[test]
+fn repeated_ticket_clicks_preserve_the_fill_and_require_a_fresh_click_after_refresh() {
+    use crate::message::Message;
+    use crate::order_execution::TicketWait;
+    let mut terminal = terminal_for_percentage_order(percentage_account_data());
+    terminal.order_quantity = "100".into();
+    let first = terminal.ticket_order_submission_snapshot();
+    assert!(
+        terminal
+            .execute_order_from_snapshot(true, first.clone())
+            .units()
+            > 0
+    );
+    let repeat = terminal.execute_order_from_snapshot(true, first.clone());
+    assert_eq!(repeat.units(), 0);
+
+    let indicator = terminal.pending_order_indicators.keys().next().copied();
+    let account = terminal.connected_address.clone().expect("test account");
+    let context = OneShotPlacementContext {
+        surface: OrderSurface::Ticket,
+        account_address: account.clone(),
+        order_kind: ExchangeOrderKind::Market,
+        symbol_key: "BTC".into(),
+        cloid: "test-order".into(),
+    };
+    let response = serde_json::from_value(serde_json::json!({
+        "status": "ok", "response": {"type":"order","data":{"statuses":[{"filled":{"totalSz":"1","avgPx":"100","oid":42}}]}}
+    })).expect("exchange response");
+    let _ = terminal.handle_order_result(indicator, context, Ok(response));
+    assert_eq!(
+        terminal.standard_ticket_wait(),
+        Some(TicketWait::Refreshing)
+    );
+    let receipt = Some(("BTC · Filled 1 @ $100 (oid 42)".to_string(), false));
+    assert_eq!(terminal.order_status, receipt);
+    assert_eq!(
+        terminal
+            .execute_order_from_snapshot(false, first.clone())
+            .units(),
+        0
+    );
+    assert_eq!(terminal.ticket_receipt_during_refresh, receipt);
+    terminal.order_status = Some(("Another trading action reported a status".into(), true));
+    // A refresh requested while the first read is in flight also gates the ticket.
+    let _ = terminal.refresh_account_data();
+    for followup in [true, false] {
+        let query = terminal.current_account_data_request_context();
+        let _ = terminal.apply_account_data_loaded(
+            account.clone(),
+            query,
+            Ok(percentage_account_data()),
+        );
+        assert_eq!(terminal.standard_ticket_wait().is_some(), followup);
+        assert_eq!(terminal.ticket_receipt_during_refresh.is_some(), followup);
+    }
+    assert_eq!(
+        terminal
+            .execute_order_from_snapshot(true, first.clone())
+            .units(),
+        0
+    );
+    let preset = Message::ExecutePreset {
+        kind: OrderKind::Market,
+        preset: crate::config::OrderPreset {
+            label: "100".into(),
+            size: 100.0,
+            price_offset_pct: None,
+        },
+        is_buy: false,
+        account_generation: first.account_generation,
+    };
+    assert_eq!(terminal.update_order(preset).units(), 0);
+    assert!(terminal.pending_order_action.is_none());
+    assert!(terminal.pending_order_indicators.is_empty());
+    assert_eq!(
+        terminal.order_status.as_ref().expect("other status").0,
+        "Another trading action reported a status"
+    );
+    let fresh = terminal.ticket_order_submission_snapshot();
+    assert!(terminal.execute_order_from_snapshot(false, fresh).units() > 0);
+    assert_eq!(
+        terminal.pending_order_action,
+        Some(PendingOrderAction::Sell)
+    );
+}
+
+#[test]
+fn ticket_wait_distinguishes_a_running_refresh_from_backoff_and_failure() {
+    use crate::order_execution::TicketWait;
+    let mut terminal = terminal_for_percentage_order(percentage_account_data());
+    let _ = terminal.refresh_account_data();
+    assert_eq!(
+        terminal.standard_ticket_wait(),
+        Some(TicketWait::Refreshing)
+    );
+    terminal.account_loading = false;
+    assert_eq!(
+        terminal.standard_ticket_wait(),
+        Some(TicketWait::AccountDataUnavailable)
+    );
+    terminal.account_refresh_retry_due_ms = Some(1);
+    assert_eq!(
+        terminal.standard_ticket_wait(),
+        Some(TicketWait::RateLimited)
+    );
 }

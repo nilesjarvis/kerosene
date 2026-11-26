@@ -2,51 +2,59 @@ use crate::app_state::TradingTerminal;
 use crate::order_execution::{OneShotPlacementContext, OrderSurface};
 use std::fmt;
 
-#[derive(Clone, PartialEq, Eq)]
-pub(crate) struct PendingOneShotStatusRequest {
-    pub(crate) request_id: u64,
-    account_address: String,
-    cloid: String,
-    surface: OrderSurface,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlacementLookup {
+    Checking,
+    Unconfirmed,
+    Canceled,
 }
 
-impl fmt::Debug for PendingOneShotStatusRequest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PendingOneShotStatusRequest")
-            .field("request_id", &self.request_id)
-            .field("account_address", &"<redacted>")
-            .field("cloid", &self.cloid)
-            .field("surface", &self.surface)
-            .finish()
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PendingOneShotStatusRequest {
+    pub(crate) request_id: u64,
+    pub(crate) context: OneShotPlacementContext,
+    pub(crate) lookup: PlacementLookup,
+    // A snapshot releases the existing account-wide gate. The standard ticket
+    // also needs a result for its own client order ID before another placement.
+    account_refreshed: bool,
 }
 
 impl PendingOneShotStatusRequest {
     pub(crate) fn new(request_id: u64, context: &OneShotPlacementContext) -> Self {
         Self {
             request_id,
-            account_address: context.account_address.clone(),
-            cloid: context.cloid.clone(),
-            surface: context.surface,
+            context: context.clone(),
+            lookup: PlacementLookup::Checking,
+            account_refreshed: false,
         }
     }
 
     pub(super) fn matches(&self, request_id: u64, context: &OneShotPlacementContext) -> bool {
-        self.request_id == request_id
-            && self.account_address == context.account_address
-            && self.cloid == context.cloid
+        self.request_id == request_id && &self.context == context
     }
 
     pub(super) fn is_for_context(&self, context: &OneShotPlacementContext) -> bool {
-        self.account_address == context.account_address && self.cloid == context.cloid
+        self.context.account_address == context.account_address
+            && self.context.cloid == context.cloid
     }
 
     pub(crate) fn is_for_account(&self, account_address: &str) -> bool {
-        self.account_address == account_address
+        crate::order_execution::order_account_addresses_match(
+            &self.context.account_address,
+            account_address,
+        )
     }
 
     pub(crate) fn surface(&self) -> OrderSurface {
-        self.surface
+        self.context.surface
+    }
+
+    pub(crate) fn blocks_trading_request(&self) -> bool {
+        !self.account_refreshed
+    }
+
+    pub(crate) fn needs_ticket_confirmation(&self) -> bool {
+        self.context.surface.is_standard_ticket() && self.lookup != PlacementLookup::Canceled
     }
 }
 
@@ -156,12 +164,20 @@ impl TradingTerminal {
         !self.pending_one_shot_status_requests.is_empty()
     }
 
-    pub(crate) fn clear_pending_one_shot_status_request_for_account(
-        &mut self,
-        account_address: &str,
-    ) {
-        self.pending_one_shot_status_requests
-            .retain(|_, pending| !pending.is_for_account(account_address));
+    pub(crate) fn reconcile_placement_checks_after_refresh(&mut self, account_address: &str) {
+        self.pending_one_shot_status_requests.retain(|_, pending| {
+            if !pending.is_for_account(account_address) {
+                return true;
+            }
+            pending.account_refreshed = true;
+            pending.needs_ticket_confirmation()
+        });
+    }
+
+    pub(crate) fn retain_unconfirmed_ticket_checks(&mut self) {
+        self.pending_one_shot_status_requests.retain(|_, pending| {
+            pending.needs_ticket_confirmation() && !pending.blocks_trading_request()
+        });
     }
 
     pub(crate) fn clear_pending_order_status_requests_for_account_after_refresh(

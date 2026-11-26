@@ -185,12 +185,7 @@ impl TradingTerminal {
     pub(crate) fn preset_order_preflight_ready(&mut self, kind: OrderKind) -> bool {
         match kind {
             OrderKind::Market | OrderKind::Limit | OrderKind::LimitIoc => {
-                if self.reject_if_pending_trading_request("placing an order") {
-                    return false;
-                }
-                if self
-                    .reject_if_account_reconciliation_required("placing an order", "account data")
-                {
+                if self.reject_if_standard_ticket_waiting() {
                     return false;
                 }
                 self.checked_order_signing_account().is_some()

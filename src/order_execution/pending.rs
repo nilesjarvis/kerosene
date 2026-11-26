@@ -134,7 +134,10 @@ impl TradingTerminal {
             || self.pending_order_action.is_some()
             || self.pending_nuke_execution.is_some()
             || self.pending_leverage_update.is_some()
-            || !self.pending_one_shot_status_requests.is_empty()
+            || self
+                .pending_one_shot_status_requests
+                .values()
+                .any(|pending| pending.blocks_trading_request())
             || self.pending_cancel_status_request.is_some()
             || self.pending_move_status_request.is_some()
             || !self.pending_move_order_contexts.is_empty()
@@ -160,7 +163,9 @@ impl TradingTerminal {
             || self
                 .pending_one_shot_status_requests
                 .values()
-                .any(|pending| pending.surface() != OrderSurface::Hud)
+                .any(|pending| {
+                    pending.blocks_trading_request() && pending.surface() != OrderSurface::Hud
+                })
             || self.pending_cancel_status_request.is_some()
             || self.pending_move_status_request.is_some()
             || !self.pending_move_order_contexts.is_empty()

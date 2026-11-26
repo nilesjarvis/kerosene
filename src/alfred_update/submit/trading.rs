@@ -134,11 +134,7 @@ impl TradingTerminal {
         limit_price: Option<String>,
         is_buy: bool,
     ) -> bool {
-        if self.reject_if_pending_trading_request("placing an order") {
-            self.toast_order_status();
-            return false;
-        }
-        if self.reject_if_account_reconciliation_required("placing an order", "account data") {
+        if self.reject_if_standard_ticket_waiting() {
             self.toast_order_status();
             return false;
         }

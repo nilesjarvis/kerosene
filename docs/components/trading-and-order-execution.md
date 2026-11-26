@@ -131,6 +131,20 @@ immediate Buy/Sell actions. Chase status and TWAP settings scroll with the form
 while their start controls remain in the footer. All controls use the active
 application theme and retain the shared order-submission boundary.
 
+Standard Buy/Sell buttons and market and limit presets are disabled while a trading
+request or account refresh blocks submission. The footer shows the previous order
+result alongside the wait reason. A rate-limited refresh retries automatically.
+After a failed refresh, the trader can request fresh account data from the footer.
+The form stays editable. If a refresh invalidates a percentage size, the trader
+must reselect the percentage or enter a quantity. Every placement requires a fresh click.
+
+If a ticket placement times out, the ticket tracks that order's client order ID
+for the current app session, including across wallet switches. A general account
+snapshot releases the ordinary account refresh gate. The ticket also requires
+the exchange to identify the order before it accepts another standard placement
+for that wallet. **Check order status** sends a read-only lookup. A confirmed
+cancellation can include partial fills, which the trader can review in trade history.
+
 ```text
 PlaceBuy / PlaceSell
   -> order_update.rs chooses by OrderKind

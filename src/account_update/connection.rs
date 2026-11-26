@@ -84,7 +84,7 @@ impl TradingTerminal {
                 self.account_data_address = None;
                 self.pending_order_indicators.clear();
                 self.hud_placements.clear();
-                self.pending_one_shot_status_requests.clear();
+                self.retain_unconfirmed_ticket_checks();
                 self.pending_cancel_status_request = None;
                 self.pending_move_status_request = None;
                 self.clear_pending_move_order_state();
@@ -287,7 +287,7 @@ impl TradingTerminal {
         self.account_data_address = None;
         self.pending_order_indicators.clear();
         self.hud_placements.clear();
-        self.pending_one_shot_status_requests.clear();
+        self.retain_unconfirmed_ticket_checks();
         self.pending_cancel_status_request = None;
         self.pending_move_status_request = None;
         self.clear_pending_move_order_state();
@@ -386,7 +386,7 @@ impl TradingTerminal {
         self.account_data_address = None;
         self.pending_order_indicators.clear();
         self.hud_placements.clear();
-        self.pending_one_shot_status_requests.clear();
+        self.retain_unconfirmed_ticket_checks();
         self.pending_cancel_status_request = None;
         self.pending_move_status_request = None;
         self.clear_pending_move_order_state();

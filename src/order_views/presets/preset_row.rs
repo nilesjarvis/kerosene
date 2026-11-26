@@ -16,9 +16,14 @@ impl TradingTerminal {
         let theme = self.theme();
         let mut row_items = row![].spacing(6);
 
+        let standard = matches!(
+            kind,
+            OrderKind::Market | OrderKind::Limit | OrderKind::LimitIoc
+        );
+        let enabled = !standard
+            || (self.order_entry_unavailable_hint().is_none()
+                && self.standard_ticket_wait().is_none());
         for (idx, p) in presets.iter().enumerate() {
-            let preset = p.clone();
-
             if self.preset_edit_mode {
                 if self.preset_edit_idx == Some((kind, idx)) {
                     let input = text_input("Size", &self.preset_edit_buffer)
@@ -63,59 +68,43 @@ impl TradingTerminal {
                     row_items = row_items.push(edit_btn);
                 }
             } else {
-                let buy_btn = button(
-                    text(format!("Buy {}", p.label))
-                        .size(10)
-                        .color(theme.palette().success),
-                )
-                .on_press(Message::ExecutePreset(kind, preset.clone(), true))
-                .padding([3, 6])
-                .style(|theme: &Theme, status| {
-                    let bg = match status {
-                        button::Status::Hovered => Color {
-                            a: 0.15,
-                            ..theme.palette().success
-                        },
-                        _ => theme.extended_palette().background.weak.color,
-                    };
-                    button::Style {
-                        background: Some(bg.into()),
-                        text_color: theme.palette().text,
-                        border: iced::Border {
-                            radius: 3.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
+                let action = |is_buy, side| -> Element<'_, Message> {
+                    let control = button(text(format!("{side} {}", p.label)).size(10))
+                        .on_press_maybe(enabled.then(|| Message::ExecutePreset {
+                            kind,
+                            preset: p.clone(),
+                            is_buy,
+                            account_generation: self.account_data_request_generation,
+                        }))
+                        .padding([3, 6])
+                        .style(move |theme: &Theme, status| {
+                            let accent = if is_buy {
+                                theme.palette().success
+                            } else {
+                                theme.palette().danger
+                            };
+                            let mut style = button::secondary(theme, status);
+                            if status != button::Status::Disabled {
+                                style.background = Some(
+                                    if status == button::Status::Hovered {
+                                        Color { a: 0.15, ..accent }
+                                    } else {
+                                        theme.extended_palette().background.weak.color
+                                    }
+                                    .into(),
+                                );
+                                style.text_color = accent;
+                            }
+                            style
+                        });
+                    if enabled {
+                        control.into()
+                    } else {
+                        column![control].into()
                     }
-                });
-
-                let sell_btn = button(
-                    text(format!("Sell {}", p.label))
-                        .size(10)
-                        .color(theme.palette().danger),
-                )
-                .on_press(Message::ExecutePreset(kind, preset.clone(), false))
-                .padding([3, 6])
-                .style(|theme: &Theme, status| {
-                    let bg = match status {
-                        button::Status::Hovered => Color {
-                            a: 0.15,
-                            ..theme.palette().danger
-                        },
-                        _ => theme.extended_palette().background.weak.color,
-                    };
-                    button::Style {
-                        background: Some(bg.into()),
-                        text_color: theme.palette().text,
-                        border: iced::Border {
-                            radius: 3.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                });
-
-                row_items = row_items.push(row![buy_btn, sell_btn].spacing(1));
+                };
+                row_items =
+                    row_items.push(row![action(true, "Buy"), action(false, "Sell")].spacing(1));
             }
         }
 

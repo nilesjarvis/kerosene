@@ -8,7 +8,7 @@ fn pending_one_shot_status_request_debug_redacts_account_address() {
 
     assert!(rendered.contains("<redacted>"));
     assert!(!rendered.contains(TEST_ACCOUNT));
-    assert!(rendered.contains("0x00000000000000000000000000000000"));
+    assert!(!rendered.contains("0x00000000000000000000000000000000"));
 }
 
 #[test]

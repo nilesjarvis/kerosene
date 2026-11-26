@@ -27,12 +27,8 @@ impl TradingTerminal {
         let theme = self.theme();
         let active_is_spot = self.is_spot_coin(&self.active_symbol);
         let active_is_outcome = self.is_outcome_coin(&self.active_symbol);
-        let active_symbol_is_orderable = self
-            .resolve_exchange_symbol_by_key_or_ticker(&self.active_symbol)
-            .is_some_and(|symbol| self.exchange_symbol_is_orderable(symbol));
-        let can_trade = self.connected_address.is_some()
-            && self.has_active_committed_agent_key()
-            && active_symbol_is_orderable;
+        let unavailable_hint = self.order_entry_unavailable_hint();
+        let can_trade = unavailable_hint.is_none();
 
         let (symbol_row, margin_used) = self.view_order_entry_symbol_row(&theme);
         let context_row = self.view_order_entry_context_row(margin_used, &theme);
@@ -116,7 +112,7 @@ impl TradingTerminal {
 
         let actions = self.push_order_action_controls(column![].spacing(6), can_trade);
         let feedback = self.push_order_status_feedback(column![].spacing(4), &theme);
-        let feedback = self.push_order_entry_hint(feedback, active_is_outcome, can_trade);
+        let feedback = self.push_order_entry_hint(feedback, active_is_outcome, unavailable_hint);
         let feedback = container(scrollable(feedback)).max_height(60).width(Fill);
         let footer_content: Element<'_, Message> = if wide {
             row![feedback, actions.width(Fill)]

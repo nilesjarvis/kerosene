@@ -194,7 +194,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::EditPresetStart(_, _, _)
         | Message::EditPresetChanged(_)
         | Message::EditPresetSave(_, _)
-        | Message::ExecutePreset(_, _, _)
+        | Message::ExecutePreset { .. }
+        | Message::RecheckTicketOrderStatus(_)
         | Message::DismissOrderStatus
         | Message::PlaceOrder { .. }
         | Message::OrderResult { .. }

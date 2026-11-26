@@ -58,6 +58,7 @@ impl TradingTerminal {
     }
 
     pub(crate) fn clear_account_scoped_chart_state(&mut self) {
+        self.handle_dismiss_order_status();
         self.position_close_preview.clear();
         self.close_menu_coin = None;
         self.position_tpsl.clear();

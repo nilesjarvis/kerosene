@@ -48,7 +48,7 @@ pub(crate) use quick_order::{
 pub(crate) use quick_trade::QuickTradeOrderRequest;
 pub(crate) use resting_order::{RestingOrderWireError, validate_resting_order_wire};
 pub(crate) use sizing::order_size_from_quantity_input;
-pub(crate) use submit::{TicketOrderPlaceIntent, TicketOrderSubmissionSnapshot};
+pub(crate) use submit::{TicketOrderPlaceIntent, TicketOrderSubmissionSnapshot, TicketWait};
 
 #[cfg(test)]
 pub(crate) use position_actions::{NukePositionOrder, NukeSkipReason};

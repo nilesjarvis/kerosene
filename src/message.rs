@@ -710,7 +710,12 @@ pub(crate) enum Message {
     EditPresetStart(crate::signing::OrderKind, usize, String),
     EditPresetChanged(String),
     EditPresetSave(crate::signing::OrderKind, usize),
-    ExecutePreset(crate::signing::OrderKind, crate::config::OrderPreset, bool),
+    ExecutePreset {
+        kind: crate::signing::OrderKind,
+        preset: crate::config::OrderPreset,
+        is_buy: bool,
+        account_generation: u64,
+    },
     ToggleFavourite(String),
     ToggleTickerTape,
     TickerTapeTick,
@@ -1259,6 +1264,7 @@ pub(crate) enum Message {
         result: Box<Result<ExchangeResponse, String>>,
     },
     DismissOrderStatus,
+    RecheckTicketOrderStatus(u64),
     CancelOrder {
         coin: String,
         oid: u64,

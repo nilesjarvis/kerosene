@@ -129,6 +129,7 @@ impl TradingTerminal {
 
     pub(crate) fn handle_dismiss_order_status(&mut self) {
         self.order_status = None;
+        self.ticket_receipt_during_refresh = None;
     }
 
     fn order_reference_price(&self) -> Option<f64> {
@@ -471,6 +472,20 @@ impl TradingTerminal {
         self.order_quantity_provenance = None;
     }
 
+    pub(crate) fn outdated_ticket_percentage_source(&self) -> Option<&'static str> {
+        let provenance = self.order_quantity_provenance.as_ref()?;
+        if self
+            .exchange_symbol_for_key(&self.active_symbol)
+            .is_some_and(|symbol| symbol.market_type == crate::api::MarketType::Spot)
+        {
+            (self.spot_balances_revision != provenance.spot_balances_revision)
+                .then_some("older spot balances")
+        } else {
+            (self.account_data_revision != provenance.account_data_revision)
+                .then_some("an older account snapshot")
+        }
+    }
+
     pub(crate) fn stale_percentage_order_quantity_task(
         &mut self,
         action: &str,
@@ -543,29 +558,19 @@ impl TradingTerminal {
             return Some(Task::none());
         }
 
+        if let Some(source) = self.outdated_ticket_percentage_source() {
+            self.order_status = Some((
+                format!(
+                    "Percentage size was calculated from {source}; reselect size before {action}"
+                ),
+                true,
+            ));
+            return Some(Task::none());
+        }
+
         let is_spot = self
             .exchange_symbol_for_key(&self.active_symbol)
             .is_some_and(|symbol| symbol.market_type == crate::api::MarketType::Spot);
-        if is_spot && self.spot_balances_revision != provenance.spot_balances_revision {
-            self.order_status = Some((
-                format!(
-                    "Percentage size was calculated from older spot balances; reselect size before {action}"
-                ),
-                true,
-            ));
-            return Some(Task::none());
-        }
-
-        if !is_spot && self.account_data_revision != provenance.account_data_revision {
-            self.order_status = Some((
-                format!(
-                    "Percentage size was calculated from an older account snapshot; reselect size before {action}"
-                ),
-                true,
-            ));
-            return Some(Task::none());
-        }
-
         if is_spot {
             if let Err(message) = self.validate_spot_quantity_denomination(
                 &self.active_symbol,

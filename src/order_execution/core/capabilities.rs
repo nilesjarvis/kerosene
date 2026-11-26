@@ -57,6 +57,10 @@ pub(crate) fn validate_surface_market_type(
 }
 
 impl OrderSurface {
+    pub(crate) fn is_standard_ticket(self) -> bool {
+        matches!(self, Self::Ticket | Self::Preset)
+    }
+
     pub(crate) fn allows_market_type(
         self,
         operation: OrderOperation,

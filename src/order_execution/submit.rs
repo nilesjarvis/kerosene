@@ -8,9 +8,8 @@ use crate::order_execution::{
     MarketUsdSizeReference, OrderSurface, PlaceIntent, PreparedExchangeOrder, PriceSource,
     QuantityDenomination, QuantitySource, ReduceOnlySource, place_order_task,
 };
-use crate::signing::{ExchangeOrderKind, OrderKind};
-
-use crate::signing::CapturedAgentKey;
+use crate::order_update::{PendingOneShotStatusRequest, PlacementLookup};
+use crate::signing::{CapturedAgentKey, ExchangeOrderKind, OrderKind};
 use iced::Task;
 use std::fmt;
 
@@ -18,6 +17,15 @@ use std::fmt;
 mod inputs;
 #[cfg(test)]
 mod tests;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TicketWait<'a> {
+    OrderStatus(&'a PendingOneShotStatusRequest),
+    TradingRequest,
+    Refreshing,
+    RateLimited,
+    AccountDataUnavailable,
+}
 
 pub(crate) struct TicketOrderPlaceIntent {
     pub(crate) surface: OrderSurface,
@@ -32,6 +40,7 @@ pub(crate) struct TicketOrderPlaceIntent {
 
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct TicketOrderSubmissionSnapshot {
+    pub(crate) account_generation: u64,
     pub(crate) order_kind: OrderKind,
     pub(crate) symbol_key: String,
     pub(crate) price_input: String,
@@ -58,8 +67,51 @@ impl fmt::Debug for TicketOrderSubmissionSnapshot {
 }
 
 impl TradingTerminal {
+    pub(crate) fn standard_ticket_wait(&self) -> Option<TicketWait<'_>> {
+        if let Some(check) = self
+            .pending_one_shot_status_requests
+            .values()
+            .find(|check| {
+                check.needs_ticket_confirmation()
+                    && self.connected_order_account_matches(&check.context.account_address)
+            })
+        {
+            return Some(TicketWait::OrderStatus(check));
+        }
+        if self.has_pending_trading_request() {
+            return Some(TicketWait::TradingRequest);
+        }
+        self.account_reconciliation_required.then(|| {
+            if self.account_refresh_retry_due_ms.is_some() {
+                TicketWait::RateLimited
+            } else if self.account_loading {
+                TicketWait::Refreshing
+            } else {
+                TicketWait::AccountDataUnavailable
+            }
+        })
+    }
+
+    pub(crate) fn reject_if_standard_ticket_waiting(&mut self) -> bool {
+        let Some(wait) = self.standard_ticket_wait() else {
+            return false;
+        };
+        let message = match wait {
+            TicketWait::OrderStatus(check) if check.lookup == PlacementLookup::Unconfirmed => {
+                "Previous order is unconfirmed. Check its status in Order Entry."
+            }
+            TicketWait::OrderStatus(_) | TicketWait::TradingRequest => {
+                "Wait for pending trading requests to finish before placing an order"
+            }
+            _ => "Account refresh pending; wait for fresh account data before placing an order",
+        };
+        self.order_status = Some((message.into(), true));
+        true
+    }
+
     pub(crate) fn ticket_order_submission_snapshot(&self) -> TicketOrderSubmissionSnapshot {
         TicketOrderSubmissionSnapshot {
+            account_generation: self.account_data_request_generation,
             order_kind: self.order_kind,
             symbol_key: self.active_symbol.clone(),
             price_input: self.order_price.clone(),
@@ -85,11 +137,30 @@ impl TradingTerminal {
             && self.builder_codes.config == snapshot.builder_code
     }
 
+    pub(crate) fn standard_ticket_click_is_current(&mut self, account_generation: u64) -> bool {
+        // A queued click can arrive after the account has refreshed. A fresh
+        // render and a new click are required to place the next ticket order.
+        if self.standard_ticket_wait().is_some() {
+            return false;
+        }
+        if account_generation != self.account_data_request_generation {
+            self.push_silent_toast(
+                "Account updated. Review the order and click again.".into(),
+                true,
+            );
+            return false;
+        }
+        true
+    }
+
     pub(crate) fn execute_order_from_snapshot(
         &mut self,
         is_buy: bool,
         snapshot: TicketOrderSubmissionSnapshot,
     ) -> Task<Message> {
+        if !self.standard_ticket_click_is_current(snapshot.account_generation) {
+            return Task::none();
+        }
         if !self.ticket_order_submission_snapshot_matches(&snapshot) {
             self.order_status = Some(("Order form changed; review and submit again".into(), true));
             return Task::none();
@@ -123,10 +194,7 @@ impl TradingTerminal {
         // The disabled-button state in the view is not a submission gate:
         // queued click events can outrun a re-render, and presets/Alfred
         // reach this path without any button state at all.
-        if self.reject_if_pending_trading_request("placing an order") {
-            return Task::none();
-        }
-        if self.reject_if_account_reconciliation_required("placing an order", "account data") {
+        if self.reject_if_standard_ticket_waiting() {
             return Task::none();
         }
         if let Some(task) = self.stale_percentage_order_quantity_task("placing an order", is_buy) {

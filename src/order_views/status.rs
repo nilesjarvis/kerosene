@@ -9,6 +9,18 @@ impl TradingTerminal {
         form: Column<'a, Message>,
         theme: &Theme,
     ) -> Column<'a, Message> {
+        let mut form = form;
+        if let Some((receipt, is_error)) = &self.ticket_receipt_during_refresh
+            && self.account_reconciliation_required
+            && self.ticket_receipt_during_refresh != self.order_status
+        {
+            let color = if *is_error {
+                theme.palette().danger
+            } else {
+                theme.palette().success
+            };
+            form = form.push(text(receipt).size(11).color(color));
+        }
         let Some((msg, is_err)) = &self.order_status else {
             return form;
         };
@@ -31,30 +43,43 @@ impl TradingTerminal {
         form.push(status_row)
     }
 
+    pub(super) fn order_entry_unavailable_hint(&self) -> Option<&'static str> {
+        let Some(account) = self.connected_address.as_deref() else {
+            return Some("Connect wallet to trade");
+        };
+        if self.active_account_is_ghost() {
+            return Some("Watch-only account");
+        }
+        if !self.has_active_committed_agent_key() {
+            return Some("Add agent key to trade");
+        }
+        if !self.active_wallet_context_matches_connected_account(account) {
+            return Some("Reconnect the active account to trade");
+        }
+        let orderable = self
+            .resolve_exchange_symbol_by_key_or_ticker(&self.active_symbol)
+            .is_some_and(|symbol| self.exchange_symbol_is_orderable(symbol));
+        (!orderable).then_some("Market unavailable for trading")
+    }
+
     pub(super) fn push_order_entry_hint<'a>(
         &self,
         form: Column<'a, Message>,
         active_is_outcome: bool,
-        can_trade: bool,
+        unavailable_hint: Option<&'static str>,
     ) -> Column<'a, Message> {
-        if active_is_outcome {
+        if let Some(hint) = unavailable_hint {
+            form.push(
+                text(hint)
+                    .size(10)
+                    .color(self.theme().extended_palette().background.weak.text),
+            )
+        } else if active_is_outcome {
             let quote_symbol = self.outcome_quote_symbol_for_coin(&self.active_symbol);
             form.push(
                 text(format!(
                     "Outcome orders use {quote_symbol} prices and whole-contract sizes"
                 ))
-                .size(10)
-                .color(self.theme().extended_palette().background.weak.text),
-            )
-        } else if !can_trade {
-            form.push(
-                text(if self.connected_address.is_none() {
-                    "Connect wallet to trade"
-                } else if !self.has_active_committed_agent_key() {
-                    "Add agent key to trade"
-                } else {
-                    "Market unavailable for trading"
-                })
                 .size(10)
                 .color(self.theme().extended_palette().background.weak.text),
             )
