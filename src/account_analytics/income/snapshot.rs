@@ -49,8 +49,12 @@ pub(super) fn build_income_snapshot(
 
     let dedup_by_day = income_per_day_dedup_with_stats(interest_entries);
     let earned_total: f64 = dedup_by_day.values.values().sum();
-    let recent_hourly =
-        recent_hourly_payments(interest_entries, reserve_by_token, token_name_by_id);
+    let recent_hourly = recent_hourly_payments(
+        interest_entries,
+        &user_state,
+        reserve_by_token,
+        token_name_by_id,
+    );
 
     let now_ms = now_ms();
     let day_ms: u64 = 24 * 60 * 60 * 1000;
@@ -113,14 +117,25 @@ fn income_token_row(
     })
 }
 
+/// Hours of interest accrual per year, used to annualize one hourly payment.
+const HOURLY_ACCRUALS_PER_YEAR: f64 = 365.0 * 24.0;
+
 fn recent_hourly_payments(
     interest_entries: &[BorrowLendInterestEntry],
+    user_state: &BorrowLendUserState,
     reserve_by_token: &HashMap<u32, BorrowLendReserveState>,
     token_name_by_id: &HashMap<u32, String>,
 ) -> Vec<IncomeHourlyPayment> {
     let name_to_id: HashMap<&str, u32> = token_name_by_id
         .iter()
         .map(|(id, name)| (name.as_str(), *id))
+        .collect();
+    let supplied_value_by_token: HashMap<u32, f64> = user_state
+        .token_to_state
+        .iter()
+        .filter_map(|(token, state)| {
+            parse_f64_str(&state.supply.value).map(|value| (*token, value))
+        })
         .collect();
     let mut hourly_entries: Vec<_> = interest_entries
         .iter()
@@ -143,8 +158,9 @@ fn recent_hourly_payments(
                 .unwrap_or_else(|| e.token.clone());
             let supply_rate = token_id
                 .or_else(|| name_to_id.get(e.token.as_str()).copied())
-                .and_then(|idx| reserve_by_token.get(&idx))
-                .and_then(|reserve| parse_f64_str(&reserve.supply_yearly_rate))
+                .and_then(|idx| {
+                    payment_supply_rate(supply, idx, &supplied_value_by_token, reserve_by_token)
+                })
                 .unwrap_or(0.0);
             Some(IncomeHourlyPayment {
                 time: e.time,
@@ -157,6 +173,29 @@ fn recent_hourly_payments(
         })
         .take(12)
         .collect()
+}
+
+/// Supply APR that applied when one hourly payment accrued, recovered from
+/// the payment against the position it was earned on (`interest * price /
+/// supplied value`, annualized). Reserve rates change every hour, so this
+/// varies per payment; falls back to the reserve's current supply rate when
+/// the position has since been closed or its value or price is unusable, and
+/// to 0 when the token has no reserve state.
+fn payment_supply_rate(
+    hourly_supply: f64,
+    token: u32,
+    supplied_value_by_token: &HashMap<u32, f64>,
+    reserve_by_token: &HashMap<u32, BorrowLendReserveState>,
+) -> Option<f64> {
+    let reserve = reserve_by_token.get(&token)?;
+    let fallback = parse_f64_str(&reserve.supply_yearly_rate).unwrap_or(0.0);
+    let supplied_value = supplied_value_by_token.get(&token).copied().unwrap_or(0.0);
+    let oracle_px = parse_f64_str(&reserve.oracle_px).unwrap_or(0.0);
+    if supplied_value <= 0.0 || oracle_px <= 0.0 {
+        return Some(fallback);
+    }
+    let rate = hourly_supply * oracle_px / supplied_value * HOURLY_ACCRUALS_PER_YEAR;
+    Some(if rate.is_finite() { rate } else { fallback })
 }
 
 #[cfg(test)]

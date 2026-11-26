@@ -41,6 +41,17 @@ fn interest(time: u64, token: &str, supply: &str, borrow: &str) -> BorrowLendInt
     }
 }
 
+fn user_state(supplies: Vec<(u32, &str)>) -> BorrowLendUserState {
+    BorrowLendUserState {
+        token_to_state: supplies
+            .into_iter()
+            .map(|(token, supply)| (token, token_state(supply, "0")))
+            .collect(),
+        health: "healthy".to_string(),
+        health_factor: None,
+    }
+}
+
 #[test]
 fn income_snapshot_skips_invalid_numeric_rows_and_reports_counts() {
     let user_state = BorrowLendUserState {
@@ -77,13 +88,12 @@ fn income_snapshot_skips_invalid_numeric_rows_and_reports_counts() {
 }
 
 #[test]
-fn income_snapshot_hourly_rows_join_supply_rate_by_symbol_or_index() {
-    let user_state = BorrowLendUserState {
-        token_to_state: vec![(0, token_state("10", "4"))],
-        health: "healthy".to_string(),
-        health_factor: None,
-    };
-    let reserve_by_token = HashMap::from([(0, reserve("2", "0.10", "0.20"))]);
+fn income_snapshot_hourly_rows_derive_supply_rate_per_payment() {
+    // Supplied value 8760 at oracle px 1 annualizes each hourly interest
+    // into a supply APR equal to the interest itself, so each payment shows
+    // the rate of its own hour instead of one joined current rate.
+    let user_state = user_state(vec![(0, "8760")]);
+    let reserve_by_token = HashMap::from([(0, reserve("1", "0.10", "0.20"))]);
     let token_name_by_id = HashMap::from([(0, "USDC".to_string())]);
     let interest_entries = vec![
         interest(1_000, "0", "5", "1"),
@@ -98,14 +108,17 @@ fn income_snapshot_hourly_rows_join_supply_rate_by_symbol_or_index() {
         &token_name_by_id,
     );
 
-    let by_time: HashMap<u64, f64> = snapshot
-        .recent_hourly_payments
-        .iter()
-        .map(|payment| (payment.time, payment.supply_rate))
-        .collect();
-    assert_eq!(by_time.get(&1_000), Some(&0.1));
-    assert_eq!(by_time.get(&2_000), Some(&0.1));
-    assert_eq!(by_time.get(&3_000), Some(&0.0));
+    let rate_at = |time: u64| {
+        snapshot
+            .recent_hourly_payments
+            .iter()
+            .find(|payment| payment.time == time)
+            .map(|payment| payment.supply_rate)
+            .unwrap_or(f64::NAN)
+    };
+    assert!((rate_at(1_000) - 5.0).abs() < 1e-9);
+    assert!((rate_at(2_000) - 2.0).abs() < 1e-9);
+    assert!((rate_at(3_000) - 0.0).abs() < 1e-9);
 }
 
 #[test]
@@ -219,6 +232,7 @@ fn recent_payments_limit_valid_hourly_rows_and_preserve_timestamp_ties() {
 
     let payments = recent_hourly_payments(
         &entries,
+        &user_state(vec![(0, "8760")]),
         &HashMap::from([(0, reserve("1", "0.1", "0.2"))]),
         &HashMap::from([(0, "USDC".to_string())]),
     );
@@ -235,7 +249,8 @@ fn recent_payments_limit_valid_hourly_rows_and_preserve_timestamp_ties() {
         assert_eq!(payment.supply, 3.0);
         assert_eq!(payment.borrow, 1.0);
         assert_eq!(payment.net, 2.0);
-        assert_eq!(payment.supply_rate, if index < 10 { 0.1 } else { 0.0 });
+        let expected_rate = if index < 10 { 3.0 } else { 0.0 };
+        assert!((payment.supply_rate - expected_rate).abs() < 1e-9);
     }
 }
 
@@ -249,6 +264,7 @@ fn recent_payments_keep_numeric_token_precedence_and_default_invalid_rates() {
     ];
     let payments = recent_hourly_payments(
         &entries,
+        &user_state(vec![]),
         &HashMap::from([
             (0, reserve("1", "0.1", "0.2")),
             (1, reserve("1", "NaN", "0.2")),
@@ -265,4 +281,27 @@ fn recent_payments_keep_numeric_token_precedence_and_default_invalid_rates() {
         labels_and_rates,
         vec![("USDC", 0.1), ("1", 0.0), ("2", 0.0), ("UNKNOWN", 0.0)]
     );
+}
+
+#[test]
+fn recent_payment_supply_rates_vary_with_each_payment() {
+    // Regression: the payments table must not show one current joined rate
+    // for every hour; each payment carries the rate of its own hour.
+    let entries = vec![
+        interest(3_000, "USDC", "0.4", "0"),
+        interest(2_000, "USDC", "0.2", "0"),
+        interest(1_000, "USDC", "0.1", "0"),
+    ];
+    let payments = recent_hourly_payments(
+        &entries,
+        &user_state(vec![(0, "8760")]),
+        &HashMap::from([(0, reserve("1", "0.1", "0.2"))]),
+        &HashMap::from([(0, "USDC".to_string())]),
+    );
+
+    let rates: Vec<_> = payments.iter().map(|payment| payment.supply_rate).collect();
+    assert_eq!(rates.len(), 3);
+    assert!((rates[0] - 0.4).abs() < 1e-9);
+    assert!((rates[1] - 0.2).abs() < 1e-9);
+    assert!((rates[2] - 0.1).abs() < 1e-9);
 }
