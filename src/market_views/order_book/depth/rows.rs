@@ -44,24 +44,6 @@ pub(super) fn centered_order_book_side_row_count(side_height: f32, available_row
     ((side_height / BOOK_ROW_HEIGHT).floor() as usize).min(available_rows)
 }
 
-pub(super) fn order_book_row_padding() -> iced::Padding {
-    iced::Padding {
-        top: 0.0,
-        right: 15.0,
-        bottom: 0.0,
-        left: 0.0,
-    }
-}
-
-pub(super) fn order_book_scroll_direction() -> iced::widget::scrollable::Direction {
-    iced::widget::scrollable::Direction::Vertical(
-        iced::widget::scrollable::Scrollbar::new()
-            .width(4.0)
-            .scroller_width(4.0)
-            .margin(2.0),
-    )
-}
-
 /// Number of inert filler rows needed to bring a side up to `pad_to` rows.
 /// Keeping both sides at a constant row count keeps the scroll content height
 /// stable while levels appear and disappear, so nothing shifts under the

@@ -4,7 +4,7 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::{nice_step_ceil, tick_decimals};
 use crate::market_state::{OrderBookId, OrderBookInstance};
 use crate::message::Message;
-use iced::widget::{container, responsive, row, scrollable, text};
+use iced::widget::{container, responsive, row, text};
 use iced::{Element, Fill};
 
 const DOM_SIDE_ROWS: usize = 80;
@@ -75,27 +75,12 @@ pub(super) fn view_order_book_dom_ladder(
         .height(Fill)
         .spacing(2);
 
-        return container(ladder)
-            .width(Fill)
-            .height(Fill)
-            .padding(super::order_book_row_padding())
-            .clip(true)
-            .into();
+        return container(ladder).width(Fill).height(Fill).clip(true).into();
     }
 
     let asks = dom_rows_column(&rows.asks, row_context, &user_order_levels);
     let bids = dom_rows_column(&rows.bids, row_context, &user_order_levels);
-    let ladder = iced::widget::column![asks, spread_widget, bids].spacing(2);
-
-    scrollable(
-        container(ladder)
-            .width(Fill)
-            .padding(super::order_book_row_padding()),
-    )
-    .height(Fill)
-    .direction(super::order_book_scroll_direction())
-    .id(inst.scroll_id.clone())
-    .into()
+    super::scrollable_book_rows(asks, spread_widget, bids, inst.scroll_id.clone())
 }
 
 pub(super) fn view_order_book_dom_header(
@@ -109,33 +94,28 @@ pub(super) fn view_order_book_dom_header(
         ["Bid Total", "Bid Size", "Price", "Ask Size", "Ask Total"]
     };
 
-    // Mirror the data rows' insets (15px scrollbar gutter outside, 4px
-    // horizontal padding per cell) so the labels line up with the numbers.
-    container(
-        row![
-            container(TradingTerminal::view_order_book_total_header(
-                id,
-                labels[0],
-                total_in_notional,
-                11
-            ))
-            .width(Fill)
-            .padding([0, 4]),
-            header_cell(labels[1]),
-            header_cell(labels[2]),
-            header_cell(labels[3]),
-            container(TradingTerminal::view_order_book_total_header(
-                id,
-                labels[4],
-                total_in_notional,
-                11
-            ))
-            .width(Fill)
-            .padding([0, 4]),
-        ]
-        .spacing(3),
-    )
-    .padding(super::order_book_row_padding())
+    row![
+        container(TradingTerminal::view_order_book_total_header(
+            id,
+            labels[0],
+            total_in_notional,
+            11
+        ))
+        .width(Fill)
+        .padding([0, 4]),
+        header_cell(labels[1]),
+        header_cell(labels[2]),
+        header_cell(labels[3]),
+        container(TradingTerminal::view_order_book_total_header(
+            id,
+            labels[4],
+            total_in_notional,
+            11
+        ))
+        .width(Fill)
+        .padding([0, 4]),
+    ]
+    .spacing(3)
     .into()
 }
 

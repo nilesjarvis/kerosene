@@ -44,6 +44,11 @@ impl TradingTerminal {
                 )
             };
 
+        let side_padding = if inst.center_on_mid {
+            4.0
+        } else {
+            super::SCROLLBAR_GUTTER
+        };
         container(
             row![
                 container(mid_readout).width(Fill),
@@ -62,13 +67,9 @@ impl TradingTerminal {
             .align_y(iced::Alignment::Center),
         )
         .width(Fill)
-        .padding([3, 0])
+        .padding([3.0, side_padding])
         .style(move |theme: &Theme| container_style::Style {
             background: Some(theme.extended_palette().background.weak.color.into()),
-            border: iced::Border {
-                radius: 2.0.into(),
-                ..Default::default()
-            },
             ..Default::default()
         })
         .into()

@@ -59,7 +59,7 @@ impl TradingTerminal {
             return container(content)
                 .width(Fill)
                 .height(Fill)
-                .padding(10)
+                .padding(4)
                 .into();
         }
 
@@ -86,7 +86,7 @@ impl TradingTerminal {
 
         let book_has_rows = !inst.book.bids.is_empty() || !inst.book.asks.is_empty();
         let body: Element<'_, Message> = if !book_has_rows {
-            if let Some(error) = &inst.book_error {
+            let status: Element<'_, Message> = if let Some(error) = &inst.book_error {
                 column![
                     text("Order book unavailable")
                         .size(12)
@@ -120,7 +120,8 @@ impl TradingTerminal {
                 .size(12)
                 .color(theme.extended_palette().background.weak.text)
                 .into()
-            }
+            };
+            container(status).padding([0, 4]).into()
         } else {
             let user_order_levels = self.user_order_book_levels(tracking_symbol, render_tick);
             let whole_contracts = self.is_outcome_coin(tracking_symbol);
@@ -151,7 +152,7 @@ impl TradingTerminal {
             }
         };
 
-        let mut content_col = column![title_row].spacing(4);
+        let mut content_col = column![container(title_row).padding([0, 4])].spacing(4);
         if let Some(outcome_metadata) = outcome_metadata {
             content_col = content_col.push(outcome_metadata);
         }
@@ -160,9 +161,14 @@ impl TradingTerminal {
             content_col = content_col.push(self.view_order_book_settings(id, inst));
         }
 
-        content_col = content_col.push(tick_buttons);
+        content_col = content_col.push(container(tick_buttons).padding([0, 4]));
         if let Some(header) = header {
-            content_col = content_col.push(header);
+            let gutter = if inst.center_on_mid {
+                0.0
+            } else {
+                depth::SCROLLBAR_GUTTER
+            };
+            content_col = content_col.push(container(header).padding(iced::padding::right(gutter)));
         }
         content_col = content_col.push(rule::horizontal(1)).push(body);
 
@@ -175,7 +181,7 @@ impl TradingTerminal {
         container(content_col)
             .width(Fill)
             .height(Fill)
-            .padding(10)
+            .padding([4, 0])
             .into()
     }
 

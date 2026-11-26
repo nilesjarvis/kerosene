@@ -7,18 +7,22 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::{nice_step_ceil, tick_decimals};
 use crate::market_state::{OrderBookId, OrderBookInstance};
 use crate::message::Message;
-use iced::widget::{column, container, responsive, scrollable};
+use iced::widget::{Column, Id, column, container, responsive, scrollable};
 use iced::{Element, Fill, Theme};
 
 use rows::{
     DepthColumnContext, centered_order_book_side_row_count, depth_ask_column, depth_bid_column,
-    max_cumulative_depth, max_level_size, order_book_row_padding, order_book_scroll_direction,
+    max_cumulative_depth, max_level_size,
 };
 
 /// Fixed number of rows rendered per side. The sides are padded with inert
 /// filler rows up to this count so the scroll content height never changes
 /// while the market moves.
 const DEPTH_SIDE_ROWS: usize = 20;
+
+const SCROLLBAR_WIDTH: f32 = 4.0;
+const SCROLLBAR_MARGIN: f32 = 2.0;
+pub(super) const SCROLLBAR_GUTTER: f32 = SCROLLBAR_WIDTH + 2.0 * SCROLLBAR_MARGIN;
 
 // ---------------------------------------------------------------------------
 // Order Book Depth
@@ -116,7 +120,6 @@ impl TradingTerminal {
             return container(order_book_rows)
                 .width(Fill)
                 .height(Fill)
-                .padding(order_book_row_padding())
                 .clip(true)
                 .into();
         }
@@ -133,17 +136,7 @@ impl TradingTerminal {
             &user_order_levels,
             DEPTH_SIDE_ROWS,
         );
-        let order_book_rows = column![asks, spread_widget, bids].spacing(2);
-
-        scrollable(
-            container(order_book_rows)
-                .width(Fill)
-                .padding(order_book_row_padding()),
-        )
-        .height(Fill)
-        .direction(order_book_scroll_direction())
-        .id(inst.scroll_id.clone())
-        .into()
+        scrollable_book_rows(asks, spread_widget, bids, inst.scroll_id.clone())
     }
 
     pub(super) fn view_order_book_dom_ladder(
@@ -222,6 +215,26 @@ impl TradingTerminal {
         .height(Fill)
         .into()
     }
+}
+
+fn scrollable_book_rows(
+    asks: Column<'static, Message>,
+    spread: Element<'static, Message>,
+    bids: Column<'static, Message>,
+    scroll_id: Id,
+) -> Element<'static, Message> {
+    let gutter = iced::padding::right(SCROLLBAR_GUTTER);
+    let rows = column![asks.padding(gutter), spread, bids.padding(gutter)].spacing(2);
+    scrollable(rows)
+        .height(Fill)
+        .direction(scrollable::Direction::Vertical(
+            scrollable::Scrollbar::new()
+                .width(SCROLLBAR_WIDTH)
+                .scroller_width(SCROLLBAR_WIDTH)
+                .margin(SCROLLBAR_MARGIN),
+        ))
+        .id(scroll_id)
+        .into()
 }
 
 #[cfg(test)]

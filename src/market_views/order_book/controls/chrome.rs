@@ -22,17 +22,7 @@ impl TradingTerminal {
             row![header_cell("Price"), header_cell("Size"), total]
         };
 
-        // Mirror the data rows' insets (4px row padding, plus the 15px
-        // scrollbar gutter on the right) so the labels sit exactly over the
-        // columns they name.
-        container(headers.spacing(4))
-            .padding(iced::Padding {
-                top: 0.0,
-                right: 19.0,
-                bottom: 0.0,
-                left: 4.0,
-            })
-            .into()
+        headers.spacing(4).padding([0, 4]).into()
     }
 
     pub(in crate::market_views::order_book) fn view_order_book_total_header(
