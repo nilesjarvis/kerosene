@@ -1,6 +1,6 @@
 use super::interaction::{JournalSnapshotCanvasState, loaded_time_range};
 use super::markers::{MarkerGroup, draw_markers};
-use super::plot::SnapshotPlot;
+use super::plot::{SnapshotPlot, point_in_snapshot_plot};
 use crate::api::Candle;
 use crate::helpers::format_price;
 use crate::journal::JournalTradeSnapshot;
@@ -44,7 +44,9 @@ pub(super) fn draw_snapshot_chart(
         scale_candles,
         extra_prices,
     );
-    draw_grid(frame, theme, plot);
+    let cursor = cursor.filter(|_| !state.is_dragging());
+    let crosshair = cursor.filter(|pos| point_in_snapshot_plot(size, *pos));
+    draw_grid(frame, theme, plot, crosshair);
     draw_candles(frame, theme, plot, visible_candles);
     if snapshot.live_position {
         draw_entry_line(frame, theme, plot, snapshot.metrics.entry_price);
@@ -58,17 +60,20 @@ pub(super) fn draw_snapshot_chart(
             snapshot.is_open,
         );
     }
-    draw_markers(
-        frame,
-        theme,
-        plot,
-        visible_candles,
-        visible_markers,
-        cursor.filter(|_| !state.is_dragging()),
-    )
+    if let Some(pos) = crosshair {
+        draw_crosshair(frame, theme, plot, pos);
+    }
+    draw_markers(frame, theme, plot, visible_candles, visible_markers, cursor)
 }
 
-fn draw_grid(frame: &mut canvas::Frame, theme: &Theme, plot: SnapshotPlot) {
+const PRICE_LABEL_HEIGHT: f32 = 18.0;
+
+fn draw_grid(
+    frame: &mut canvas::Frame,
+    theme: &Theme,
+    plot: SnapshotPlot,
+    crosshair: Option<Point>,
+) {
     for fraction in [0.25_f32, 0.5, 0.75] {
         let y = plot.top + plot.height * fraction;
         let path = canvas::Path::line(
@@ -84,7 +89,72 @@ fn draw_grid(frame: &mut canvas::Frame, theme: &Theme, plot: SnapshotPlot) {
                 })
                 .with_width(1.0),
         );
+        if crosshair.is_none_or(|pos| (pos.y - y).abs() >= PRICE_LABEL_HEIGHT) {
+            draw_price_label(frame, theme, plot, y, false);
+        }
     }
+}
+
+fn draw_crosshair(frame: &mut canvas::Frame, theme: &Theme, plot: SnapshotPlot, pos: Point) {
+    let guides = canvas::Path::new(|path| {
+        path.move_to(Point::new(pos.x, plot.top));
+        path.line_to(Point::new(pos.x, plot.top + plot.height));
+        path.move_to(Point::new(plot.left, pos.y));
+        path.line_to(Point::new(plot.left + plot.width, pos.y));
+    });
+    frame.stroke(
+        &guides,
+        canvas::Stroke {
+            line_dash: canvas::stroke::LineDash {
+                segments: &[4.0, 3.0],
+                offset: 0,
+            },
+            ..canvas::Stroke::default().with_color(Color {
+                a: 0.55,
+                ..theme.palette().text
+            })
+        },
+    );
+    draw_price_label(frame, theme, plot, pos.y, true);
+}
+
+fn draw_price_label(
+    frame: &mut canvas::Frame,
+    theme: &Theme,
+    plot: SnapshotPlot,
+    y: f32,
+    hovered: bool,
+) {
+    let content = plot.price_label_at_y(y);
+    let right = frame.width();
+    let color = if hovered {
+        let accent = theme.extended_palette().primary.base;
+        let width = (right - (plot.left + plot.width))
+            .max(content.len() as f32 * 6.6 + 10.0)
+            .min(right);
+        let badge = canvas::Path::rounded_rectangle(
+            Point::new(right - width, y - PRICE_LABEL_HEIGHT * 0.5),
+            Size::new(width, PRICE_LABEL_HEIGHT),
+            3.0.into(),
+        );
+        frame.fill(&badge, accent.color);
+        accent.text
+    } else {
+        Color {
+            a: 0.65,
+            ..theme.palette().text
+        }
+    };
+    frame.fill_text(canvas::Text {
+        content,
+        position: Point::new(right - 5.0, y),
+        color,
+        size: iced::Pixels(11.0),
+        align_x: alignment::Horizontal::Right.into(),
+        align_y: alignment::Vertical::Center,
+        font: crate::app_fonts::monospace_font(),
+        ..canvas::Text::default()
+    });
 }
 
 /// Horizontal entry-level guide for a live position (no opening fills, so the

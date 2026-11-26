@@ -1,3 +1,4 @@
+use super::super::plot::price_axis_left;
 use super::MarkerGroup;
 use crate::app_time::local_datetime_from_unix_ms;
 use crate::helpers::{format_decimal_with_commas, format_price, trim_decimal_zeros};
@@ -57,7 +58,9 @@ impl MarkerGroup {
             (chars as f32 * 7.0 + 2.0 * padding).min(frame.width()),
             lines.len() as f32 * line_height + 2.0 * padding,
         );
-        let origin = tooltip_origin(self.center, frame.width(), frame.height(), size);
+        // Keep the price scale clear when the card fits inside the plot.
+        let tooltip_area_width = price_axis_left(frame.size()).max(size.width);
+        let origin = tooltip_origin(self.center, tooltip_area_width, frame.height(), size);
         let card = canvas::Path::rounded_rectangle(origin, size, 4.0.into());
         frame.fill(
             &card,

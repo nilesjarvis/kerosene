@@ -113,10 +113,8 @@ pub(super) fn update_snapshot_interaction(
             if let Some(drag) = state.drag {
                 pan_snapshot_view(state, snapshot, loaded_range, bounds.size(), drag, pos);
                 Some(canvas::Action::request_redraw().and_capture())
-            } else if !snapshot.markers.is_empty() {
-                Some(canvas::Action::request_redraw())
             } else {
-                None
+                Some(canvas::Action::request_redraw())
             }
         }
         iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {

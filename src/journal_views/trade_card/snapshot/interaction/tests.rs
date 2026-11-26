@@ -1,8 +1,9 @@
 use super::super::{canvas::JournalSnapshotCanvas, plot::SnapshotPlot};
 use super::*;
 use crate::api::Candle;
-use crate::chart::TradeMarker;
+use crate::chart::{PRICE_AXIS_WIDTH, TradeMarker};
 use crate::journal::{JournalTradeSnapshotMetrics, JournalTradeSnapshotStatus};
+use iced::advanced::graphics::geometry::Renderer as _;
 use iced::advanced::renderer::Headless;
 use iced::widget::canvas::Program as _;
 use iced::{Font, Pixels, Renderer, Theme};
@@ -80,7 +81,10 @@ fn reset_identity_keeps_its_existing_fields_and_exclusions() {
 fn snapshot_interaction_keeps_zoom_pan_reset_and_cursor_exit_behavior() {
     let snapshot = snapshot();
     let mut state = JournalSnapshotCanvasState::default();
-    let bounds = Rectangle::new(Point::ORIGIN, Size::new(412.0, 240.0));
+    let bounds = Rectangle::new(
+        Point::ORIGIN,
+        Size::new(400.0 + SNAPSHOT_LEFT_PAD + PRICE_AXIS_WIDTH, 240.0),
+    );
     let center = Point::new(206.0, 80.0);
     let wheel = iced::Event::Mouse(mouse::Event::WheelScrolled {
         delta: mouse::ScrollDelta::Lines { x: 0.0, y: 1.0 },
@@ -181,7 +185,7 @@ fn snapshot_interaction_keeps_zoom_pan_reset_and_cursor_exit_behavior() {
             bounds,
             mouse::Cursor::Available(center)
         )
-        .is_none()
+        .is_some()
     );
     assert_eq!(
         (state.view_start_ms, state.view_end_ms),
@@ -212,14 +216,8 @@ fn clamp_view_range_keeps_some_loaded_context_visible() {
 }
 
 #[test]
-fn hover_redraws_without_capturing_pointer_movement() {
-    let mut snapshot = snapshot();
-    snapshot.markers.push(TradeMarker {
-        time_ms: 1_010_000,
-        price: 100.0,
-        size: 1.0,
-        is_buy: true,
-    });
+fn hover_redraws_without_fills_or_capturing_pointer_movement() {
+    let snapshot = snapshot();
     let bounds = Rectangle::new(Point::new(30.0, 10.0), Size::new(400.0, 240.0));
     let position = Point::new(80.0, 100.0);
     let motion = iced::Event::Mouse(mouse::Event::CursorMoved { position });
@@ -237,6 +235,47 @@ fn hover_redraws_without_capturing_pointer_movement() {
     assert_eq!(redraw, iced::window::RedrawRequest::NextFrame);
     assert_eq!(status, iced::event::Status::Ignored);
     assert!(!state.is_dragging());
+}
+
+#[tokio::test]
+async fn crosshair_and_price_badge_follow_the_pointer_on_a_markerless_chart() {
+    let mut snapshot = snapshot();
+    snapshot.live_position = true;
+    let chart = JournalSnapshotCanvas {
+        snapshot: &snapshot,
+    };
+    let state = JournalSnapshotCanvasState::default();
+    let bounds = Rectangle::new(Point::new(404.0, 200.0), Size::new(400.0, 240.0));
+    let theme = Theme::Dark;
+    let mut renderer = Renderer::new(Font::DEFAULT, Pixels(12.0), Some("tiny-skia"))
+        .await
+        .expect("software renderer");
+    let mut render = |point: Option<Point>| {
+        let cursor = point.map_or(mouse::Cursor::Unavailable, |p| {
+            mouse::Cursor::Available(Point::new(bounds.x + p.x, bounds.y + p.y))
+        });
+        iced::advanced::Renderer::reset(&mut renderer, Rectangle::with_size(bounds.size()));
+        for layer in chart.draw(&state, &renderer, &theme, bounds, cursor) {
+            renderer.draw_geometry(layer);
+        }
+        renderer.screenshot(Size::new(400, 240), 1.0, theme.palette().background)
+    };
+    let idle = render(None);
+    let pixel = |pixels: &[u8], x: usize, y: usize| -> [u8; 4] {
+        let offset = (y * 400 + x) * 4;
+        pixels[offset..offset + 4].try_into().expect("RGBA pixel")
+    };
+    for (x, y) in [(75, 30), (300, 220)] {
+        let hover = render(Some(Point::new(x as f32 + 0.5, y as f32 + 0.5)));
+        // Compare with the idle chart at the same pixels, away from the intersection and text.
+        assert!((90..180).any(|row| pixel(&hover, x, row) != pixel(&idle, x, row)));
+        assert!((150..180).any(|col| pixel(&hover, col, y) != pixel(&idle, col, y)));
+        assert_ne!(pixel(&hover, 334, y), pixel(&idle, 334, y));
+    }
+    assert!(
+        render(Some(Point::new(380.0, 120.0))) == idle,
+        "moving onto the price axis clears the crosshair"
+    );
 }
 
 #[tokio::test]

@@ -1,5 +1,6 @@
 use super::drawing::draw_snapshot_chart;
 use super::interaction::{JournalSnapshotCanvasState, update_snapshot_interaction};
+use super::plot::point_in_snapshot_plot;
 use crate::journal::JournalTradeSnapshot;
 use crate::message::Message;
 use iced::widget::canvas;
@@ -61,8 +62,11 @@ impl canvas::Program<Message> for JournalSnapshotCanvas<'_> {
             return mouse::Interaction::Grabbing;
         }
 
-        if cursor.position_in(bounds).is_some() {
-            mouse::Interaction::Grab
+        if cursor
+            .position_in(bounds)
+            .is_some_and(|pos| point_in_snapshot_plot(bounds.size(), pos))
+        {
+            mouse::Interaction::Crosshair
         } else {
             mouse::Interaction::default()
         }

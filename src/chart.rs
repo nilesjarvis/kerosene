@@ -31,9 +31,6 @@ mod volume_profile;
 
 pub(crate) use self::data::MAX_CHART_CANDLES;
 pub(crate) use self::indicators::calculate_ema;
-pub(crate) use self::model::HudSelectorKind;
-#[cfg(test)]
-pub use self::model::PRICE_AXIS_WIDTH;
 pub use self::model::{
     CANDLE_GAP_RATIO, CandlestickChart, ChartStatus, ChartViewport, DEFAULT_CANDLE_WIDTH,
     DEFAULT_FUNDING_PANEL_HEIGHT, DEFAULT_SESSION_PANEL_HEIGHT, EarningsMarker,
@@ -42,6 +39,7 @@ pub use self::model::{
     MIN_SESSION_PANEL_HEIGHT, OrderOverlay, OrderOverlayPendingState, PAN_SPEED, PRICE_PADDING_PCT,
     PositionOverlay, TIME_AXIS_HEIGHT, TradeMarker, VOLUME_REGION_RATIO, ZOOM_SPEED,
 };
+pub(crate) use self::model::{HudSelectorKind, PRICE_AXIS_WIDTH};
 pub use self::state::ChartState;
 
 #[cfg(test)]
