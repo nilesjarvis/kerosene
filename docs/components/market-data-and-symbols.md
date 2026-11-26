@@ -7,6 +7,21 @@ HYPE-specific informational panes.
 It bridges REST snapshots, websocket streams, user preferences, hidden-symbol
 risk filters, and pure iced views.
 
+## Status bar market clock
+
+The status bar uses a bundled 2025–2035 cash-session calendar for New York
+(XNYS), London (XLON), and Tokyo (XTKS). Each exchange's local date determines
+its holidays and adjusted hours. The tooltip shows the holiday name when
+available and counts down to the next scheduled open or close. Tokyo's clock
+spans the lunch break. Dates beyond the bundled calendar show availability as
+unknown. Chart bands and chart anchors use their own session conventions.
+
+The calendar is generated from the [exchange_calendars](https://github.com/gerrymanoim/exchange_calendars)
+schedule. Future dates reflect the rules known when the snapshot was generated.
+To pick up a newly announced closure, update the pinned package in
+`scripts/generate-market-calendar.py`, run `uv run scripts/generate-market-calendar.py`,
+and ship the regenerated table. Running Kerosene requires only the bundled data.
+
 ## Trade Feed
 
 The **Trade Feed** widget is available under Widgets > Feeds and in Alfred.

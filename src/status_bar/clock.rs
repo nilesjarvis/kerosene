@@ -1,18 +1,12 @@
 use crate::app_state::TradingTerminal;
 use crate::app_time::{local_datetime_from_unix_ms, utc_datetime_from_unix_ms};
 use crate::helpers;
-use crate::market_sessions::{MARKET_CLOCK_SESSIONS, MarketSession};
+use crate::market_sessions::{MARKET_CLOCK_SESSIONS, MarketClock, MarketClockState};
 use crate::message::Message;
 use chrono::{DateTime, Local, Timelike, Utc};
 use iced::widget::{Row, row, text};
 
 use super::connectivity::widgets::status_element_tooltip;
-
-mod session;
-
-#[cfg(test)]
-use session::{market_clock_text, market_is_active};
-use session::{session_clock_text, session_is_active};
 
 // ---------------------------------------------------------------------------
 // Status Clock Row
@@ -34,11 +28,12 @@ impl TradingTerminal {
             .spacing(8)
             .align_y(iced::Alignment::Center);
 
+        let clocks = MARKET_CLOCK_SESSIONS.map(|session| session.clock_at(now_utc));
         push_clock_gap(row, separated).push(status_element_tooltip(
-            text(market_session_summary(now_utc))
+            text(market_session_summary(&clocks))
                 .size(10)
                 .color(theme.palette().primary),
-            market_session_tooltip(now_utc),
+            market_session_tooltip(&clocks),
         ))
     }
 }
@@ -58,33 +53,29 @@ fn push_clock_gap(row: Row<'static, Message>, separated: bool) -> Row<'static, M
     }
 }
 
-fn market_session_summary(now_utc: DateTime<Utc>) -> String {
-    let active: Vec<_> = MARKET_CLOCK_SESSIONS
-        .into_iter()
-        .filter(|session| session_is_active(now_utc, *session))
-        .map(MarketSession::label)
+fn market_session_summary(clocks: &[MarketClock]) -> String {
+    let active: Vec<_> = clocks
+        .iter()
+        .filter(|clock| matches!(clock.state, MarketClockState::Open { .. }))
+        .map(|clock| clock.session.label())
         .collect();
 
-    if active.is_empty() {
-        "Markets closed".to_string()
-    } else {
+    if !active.is_empty() {
         format!("{} open", active.join(" + "))
+    } else if clocks
+        .iter()
+        .any(|clock| matches!(clock.state, MarketClockState::Unavailable))
+    {
+        "Market hours unavailable".to_string()
+    } else {
+        "Markets closed".to_string()
     }
 }
 
-fn market_session_tooltip(now_utc: DateTime<Utc>) -> String {
-    let sessions = MARKET_CLOCK_SESSIONS
-        .into_iter()
-        .map(|session| {
-            let state = if session_is_active(now_utc, session) {
-                "OPEN"
-            } else {
-                "CLOSED"
-            };
-            let detail =
-                session_clock_text(now_utc, session).unwrap_or_else(|| session.label().to_string());
-            format!("{state}  {detail}")
-        })
+fn market_session_tooltip(clocks: &[MarketClock]) -> String {
+    let sessions = clocks
+        .iter()
+        .map(MarketClock::tooltip_line)
         .collect::<Vec<_>>()
         .join("\n");
 

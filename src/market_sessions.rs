@@ -1,6 +1,10 @@
-use crate::helpers::not_available_placeholder;
-use chrono::{DateTime, Datelike, Duration, TimeZone, Timelike, Utc, Weekday};
+use chrono::{DateTime, Datelike, Duration, TimeZone, Utc, Weekday};
 use chrono_tz::Tz;
+
+mod calendar;
+mod calendar_data;
+
+pub(crate) use calendar::{MarketClock, MarketClockState};
 
 // ---------------------------------------------------------------------------
 // Market Session Domain
@@ -13,13 +17,9 @@ use chrono_tz::Tz;
 //   - Asia      -> TSE    09:00-15:30 Asia/Tokyo
 //   - Overnight -> the post-NY gap until the next Asia open.
 //
-// Conventions:
-//   - The clock state (`market_window_is_active`/`next_market_open`) and the
-//     session anchor (`last_open_ms`) skip weekends, reflecting real market
-//     state. The chart bands (`visible_session_ranges`) instead tile every day,
-//     including weekends, as a continuous time-of-day rhythm.
-//   - Exchange holidays, half-days, and intraday breaks (e.g. the TSE
-//     11:30-12:30 lunch) are intentionally not modeled.
+// The status bar uses a bundled exchange calendar for holidays and adjusted
+// sessions. Tokyo is shown as one cash session across its lunch break.
+// Chart bands tile every day and chart session anchors use weekday opens.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum MarketSession {
@@ -49,14 +49,6 @@ pub(crate) enum SessionAnchor {
 struct MarketSessionBoundary {
     time_ms: u64,
     next_kind: MarketSession,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MarketClockSpec {
-    label: &'static str,
-    tz: Tz,
-    open: (u32, u32),
-    close: (u32, u32),
 }
 
 pub(crate) const MARKET_CLOCK_SESSIONS: [MarketSession; 3] = [
@@ -120,13 +112,7 @@ impl MarketSession {
         local_time_ms(self.timezone(), date, hour, minute)
     }
 
-    /// Most recent real session open at or before `reference_ms`, as UTC ms.
-    ///
-    /// Equity markets are shut on weekends, so a Saturday/Sunday reference — or a
-    /// weekday before its open — anchors to the prior trading day's open (the
-    /// preceding Friday across a weekend) rather than to a session that never
-    /// happened. This mirrors the weekend handling in [`market_window_is_active`]
-    /// and [`next_market_open`]. Exchange holidays and half-days are not modeled.
+    /// Most recent weekday chart-session open at or before `reference_ms`, in UTC ms.
     pub(crate) fn last_open_ms(self, reference_ms: u64) -> u64 {
         let Ok(reference_i64) = i64::try_from(reference_ms) else {
             return reference_ms;
@@ -149,27 +135,6 @@ impl MarketSession {
             })
             .find(|&open_ms| open_ms <= reference_ms)
             .unwrap_or(reference_ms)
-    }
-
-    pub(crate) fn market_is_active(self, now_utc: DateTime<Utc>) -> bool {
-        self.clock_spec()
-            .is_some_and(|spec| market_window_is_active(now_utc, spec.tz, spec.open, spec.close))
-    }
-
-    pub(crate) fn market_clock_text(self, now_utc: DateTime<Utc>) -> Option<String> {
-        let spec = self.clock_spec()?;
-        Some(market_clock_text_for_window(
-            spec.label, now_utc, spec.tz, spec.open, spec.close,
-        ))
-    }
-
-    fn clock_spec(self) -> Option<MarketClockSpec> {
-        Some(MarketClockSpec {
-            label: self.label(),
-            tz: self.timezone(),
-            open: self.open_hm(),
-            close: self.close_hm()?,
-        })
     }
 }
 
@@ -221,56 +186,6 @@ pub(crate) fn visible_session_ranges(start_ms: u64, end_ms: u64) -> Vec<MarketSe
         .collect()
 }
 
-pub(crate) fn market_window_is_active(
-    now_utc: DateTime<Utc>,
-    tz: Tz,
-    open: (u32, u32),
-    close: (u32, u32),
-) -> bool {
-    let local_now = now_utc.with_timezone(&tz);
-    let date = local_now.date_naive();
-    if matches!(date.weekday(), Weekday::Sat | Weekday::Sun) {
-        return false;
-    }
-
-    let Some(open_local) = local_datetime_for_date(tz, date, open.0, open.1) else {
-        return false;
-    };
-    let Some(close_local) = local_datetime_for_date(tz, date, close.0, close.1) else {
-        return false;
-    };
-
-    local_now >= open_local && local_now < close_local
-}
-
-pub(crate) fn market_clock_text_for_window(
-    label: &str,
-    now_utc: DateTime<Utc>,
-    tz: Tz,
-    open: (u32, u32),
-    close: (u32, u32),
-) -> String {
-    let now_local = now_utc.with_timezone(&tz);
-    let session_status = if market_window_is_active(now_utc, tz, open, close) {
-        let close_in = current_market_close(now_utc, tz, close.0, close.1)
-            .map(|dt| format_market_time_until(now_utc, dt.with_timezone(&Utc)))
-            .unwrap_or_else(not_available_placeholder);
-        format!("closes in {close_in}")
-    } else {
-        let next_open = next_market_open(now_utc, tz, open.0, open.1)
-            .map(|dt| format_market_time_until(now_utc, dt.with_timezone(&Utc)))
-            .unwrap_or_else(not_available_placeholder);
-        format!("opens in {next_open}")
-    };
-    format!(
-        "{label} {:02}:{:02}:{:02} {} ({session_status})",
-        now_local.hour(),
-        now_local.minute(),
-        now_local.second(),
-        now_local.format("%Z")
-    )
-}
-
 fn session_boundaries(start_ms: u64, end_ms: u64) -> Vec<MarketSessionBoundary> {
     let Some(start_dt) = utc_from_ms(start_ms) else {
         return Vec::new();
@@ -319,37 +234,6 @@ fn format_market_time_until(now_utc: DateTime<Utc>, target_utc: DateTime<Utc>) -
     }
 }
 
-fn next_market_open(
-    now_utc: DateTime<Utc>,
-    tz: Tz,
-    hour: u32,
-    minute: u32,
-) -> Option<DateTime<Tz>> {
-    let local_now = now_utc.with_timezone(&tz);
-    for day_offset in 0..8 {
-        let date = local_now.date_naive() + Duration::days(day_offset);
-        if matches!(date.weekday(), Weekday::Sat | Weekday::Sun) {
-            continue;
-        }
-        let open_local = local_datetime_for_date(tz, date, hour, minute)?;
-        if open_local > local_now {
-            return Some(open_local);
-        }
-    }
-    None
-}
-
-fn current_market_close(
-    now_utc: DateTime<Utc>,
-    tz: Tz,
-    hour: u32,
-    minute: u32,
-) -> Option<DateTime<Tz>> {
-    let local_now = now_utc.with_timezone(&tz);
-    let close_local = local_datetime_for_date(tz, local_now.date_naive(), hour, minute)?;
-    (close_local > local_now).then_some(close_local)
-}
-
 fn local_time_ms(tz: Tz, date: chrono::NaiveDate, hour: u32, minute: u32) -> Option<u64> {
     local_datetime_for_date(tz, date, hour, minute)
         .and_then(|local| u64::try_from(local.with_timezone(&Utc).timestamp_millis()).ok())
@@ -383,10 +267,7 @@ fn utc_from_ms(time_ms: u64) -> Option<chrono::DateTime<Utc>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        MarketSession, SessionAnchor, market_clock_text_for_window, market_window_is_active,
-        visible_session_ranges,
-    };
+    use super::{MarketSession, SessionAnchor, visible_session_ranges};
     use chrono::{TimeZone, Utc};
 
     fn ts(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> u64 {
@@ -540,87 +421,5 @@ mod tests {
             SessionAnchor::UtcYear.last_open_ms(ts(2026, 8, 14, 2, 30)),
             ts(2026, 1, 1, 0, 0)
         );
-    }
-
-    #[test]
-    fn market_activity_uses_local_hours_and_weekends() {
-        assert!(
-            MarketSession::NewYork.market_is_active(
-                Utc.with_ymd_and_hms(2026, 5, 18, 14, 0, 0)
-                    .single()
-                    .expect("valid UTC timestamp")
-            )
-        );
-        assert!(
-            !MarketSession::NewYork.market_is_active(
-                Utc.with_ymd_and_hms(2026, 5, 18, 13, 0, 0)
-                    .single()
-                    .expect("valid UTC timestamp")
-            )
-        );
-        assert!(
-            !MarketSession::NewYork.market_is_active(
-                Utc.with_ymd_and_hms(2026, 5, 16, 14, 0, 0)
-                    .single()
-                    .expect("valid UTC timestamp")
-            )
-        );
-        assert!(market_window_is_active(
-            Utc.with_ymd_and_hms(2026, 5, 18, 1, 0, 0)
-                .single()
-                .expect("valid UTC timestamp"),
-            chrono_tz::Asia::Tokyo,
-            (9, 0),
-            (15, 0),
-        ));
-    }
-
-    #[test]
-    fn asia_session_uses_extended_1530_close() {
-        // TSE extended its regular close from 15:00 to 15:30 JST (effective 2024-11-05).
-        // 2026-05-18 is a Monday; 06:10 UTC == 15:10 JST is still within the session.
-        let in_extension = Utc
-            .with_ymd_and_hms(2026, 5, 18, 6, 10, 0)
-            .single()
-            .expect("valid UTC timestamp");
-        assert!(MarketSession::Asia.market_is_active(in_extension));
-        assert_eq!(
-            MarketSession::Asia
-                .market_clock_text(in_extension)
-                .expect("clock text"),
-            "Asia 15:10:00 JST (closes in 0h 20m)"
-        );
-
-        // 06:45 UTC == 15:45 JST is past the new close.
-        assert!(
-            !MarketSession::Asia.market_is_active(
-                Utc.with_ymd_and_hms(2026, 5, 18, 6, 45, 0)
-                    .single()
-                    .expect("valid UTC timestamp")
-            )
-        );
-    }
-
-    #[test]
-    fn market_clock_text_reports_open_and_close_countdowns() {
-        let active = MarketSession::NewYork
-            .market_clock_text(
-                Utc.with_ymd_and_hms(2026, 5, 18, 14, 0, 0)
-                    .single()
-                    .expect("valid UTC timestamp"),
-            )
-            .expect("clock text");
-        assert_eq!(active, "New York 10:00:00 EDT (closes in 6h 0m)");
-
-        let inactive = market_clock_text_for_window(
-            "New York",
-            Utc.with_ymd_and_hms(2026, 5, 18, 13, 0, 0)
-                .single()
-                .expect("valid UTC timestamp"),
-            chrono_tz::America::New_York,
-            (9, 30),
-            (16, 0),
-        );
-        assert_eq!(inactive, "New York 09:00:00 EDT (opens in 0h 30m)");
     }
 }
